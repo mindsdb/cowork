@@ -13,24 +13,14 @@
 
 import { cloneElement, useEffect, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
-import Ico from './Icons';
 import { Alert, Button, Spinner, Tooltip } from './ui';
 import SkillAudienceFields from './SkillAudienceFields';
 import {
   canEditSkill, sameSkillAccessPayload, skillAccess, skillAccessPayload,
 } from '../lib/orgSharing';
+import { UpToDateTag } from './UpToDateTag';
 
 export const SKILL_SHARE_TITLE = 'Who can use this skill';
-
-
-function UpToDateTag() {
-  return (
-    <span className="inline-flex items-center gap-[6px] py-[7px] px-1 font-body font-semibold text-sm text-ink-3">
-      <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(14)}</span>
-      Up to date
-    </span>
-  );
-}
 
 /**
  * @param {{

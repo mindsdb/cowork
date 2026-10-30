@@ -105,8 +105,6 @@ describe('PublishMenu with org sharing', () => {
       allowed_user_ids: [],
       allowed_emails: [],
       owner_only: false,
-      emails: [],
-      team_ids: [],
     });
   });
 
@@ -153,9 +151,6 @@ describe('PublishMenu with org sharing', () => {
       allowed_user_ids: ['u-ana'],
       allowed_emails: ['zed@partner.io'],
       owner_only: false,
-      // The names cowork-server's publish still reads.
-      emails: ['zed@partner.io'],
-      team_ids: ['t-platform'],
       // Exactly the people this save adds.
       notify: { user_ids: ['u-ana'], emails: ['zed@partner.io'] },
     });

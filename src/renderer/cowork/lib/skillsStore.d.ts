@@ -49,12 +49,12 @@ export type CoworkSkill = {
   updatedAt?: string;
   capabilities?: SkillCapabilities;
   attribution?: SkillAttribution;
-  /** Org sharing (ENG-3787): who the skill reaches. Hosted org mode only.
-   *  The server may send it snake_case too. */
+  /** Org sharing (ENG-3787): who the skill reaches. Hosted org mode only. */
   access?: SkillAccess;
   /** Which Skills page section the caller sees it in. */
   section?: 'mine' | 'shared_with_me' | 'team' | 'org';
-  can_edit?: boolean;
+  /** Whether the caller may change the skill (org sharing). */
+  canEdit?: boolean;
   owner?: { id: string | null; email: string | null };
   [key: string]: unknown;
 };

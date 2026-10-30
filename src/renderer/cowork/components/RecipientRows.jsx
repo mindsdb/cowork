@@ -1,8 +1,8 @@
 // Recipient rows (ENG-3787): who something is shared with, one full-width row
 // each, the way a Google Docs share dialog lists people. A row is a leading
 // tile (team icon, a person's initials, a mail icon for an outside email, a
-// muted "?" for someone the hub doesn't know), a name and a second line
-// ("Team · 12 people", the person's email, "Outside ‹org›"), and, where the
+// muted "?" for someone the hub doesn't know or couldn't name), a name and a
+// second line ("Team", the person's email, "Outside ‹org›"), and, where the
 // list is editable, a remove ×.
 //
 // The editable list lives in `<RecipientField>`. Read-only, the same rows say
@@ -24,17 +24,16 @@ import {
 import { useHubTeams, useKnownPeople } from '../hooks/useOrgSharing';
 
 export const UNKNOWN_TEAM = 'Unknown team';
+export const PERSON_NOT_LOADED = "Couldn't load name";
 const NONE = Object.freeze([]);
-
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * The rows for a set of recipients, teams first, then people, then emails.
  *
  * @param {{ teamIds?: string[], userIds?: string[], emails?: string[] }} value
  * @param {{
- *   teamsState?: { status: string, teams: Array<{ id: string, display_name: string, member_count?: number | null }> } | null,
- *   people?: Array<{ id: string, name?: string | null, email?: string | null, pending?: boolean }>,
+ *   teamsState?: { status: string, teams: Array<{ id: string, display_name: string }> } | null,
+ *   people?: Array<{ id: string, name?: string | null, email?: string | null, pending?: boolean, failed?: boolean }>,
  *   orgName?: string | null,
  *   emailsOnly?: boolean,
  * }} context
@@ -51,12 +50,11 @@ export function recipientItems({ teamIds = NONE, userIds = NONE, emails = NONE }
     let primary;
     if (team) primary = team.display_name;
     else primary = teamsState?.status === 'ready' ? UNKNOWN_TEAM : 'Loading…';
-    const count = team?.member_count;
     items.push({
       key: `t:${id}`,
       kind: 'team',
       primary,
-      secondary: Number.isInteger(count) ? `Team · ${plural(count, 'person', 'people')}` : 'Team',
+      secondary: 'Team',
       removeLabel: `Remove ${primary}`,
       muted: !team,
     });
@@ -65,6 +63,11 @@ export function recipientItems({ teamIds = NONE, userIds = NONE, emails = NONE }
     const person = peopleById.get(id);
     if (person?.pending) {
       items.push({ key: `u:${id}`, kind: 'person', primary: 'Loading…', secondary: null, removeLabel: 'Remove person', person, muted: true });
+      continue;
+    }
+    // The hub couldn't be asked: not known to be missing, so never "Unknown".
+    if (person?.failed) {
+      items.push({ key: `u:${id}`, kind: 'person', primary: PERSON_NOT_LOADED, secondary: null, removeLabel: 'Remove person', person, muted: true });
       continue;
     }
     const name = person?.name || person?.email || UNKNOWN_PERSON;
@@ -92,7 +95,9 @@ export function recipientItems({ teamIds = NONE, userIds = NONE, emails = NONE }
 
 const TILE = 'inline-grid shrink-0 place-items-center w-[28px] h-[28px] rounded-full border border-solid';
 
-function RowTile({ item }) {
+/** A recipient's leading tile, by `item.kind` ('team', 'person', 'outside',
+    'email', 'org', 'private'), in the rows here and the picker's dropdown. */
+export function RecipientTile({ item }) {
   if (item.kind === 'person' && !item.muted) {
     return (
       <span aria-hidden="true" className={`${TILE} border-transparent bg-accent-bg text-accent font-body text-[11px] font-semibold`}>
@@ -122,7 +127,7 @@ export function RecipientRow({ item, onRemove = null }) {
       data-recipient-row={item.kind}
       className="flex min-w-0 items-center gap-2.5 py-[6px] px-2"
     >
-      <RowTile item={item} />
+      <RecipientTile item={item} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span
           className={`truncate font-body text-[13px] font-medium leading-[18px] ${item.muted ? 'text-ink-3' : 'text-ink'}`}

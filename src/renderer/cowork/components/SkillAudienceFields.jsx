@@ -23,15 +23,12 @@ import {
   alwaysOnHelp,
   ALWAYS_ON_LABEL,
   ORG_ADMIN_ONLY_HINT,
-  PRIVATE_ACCESS,
   alwaysOnLockReason,
   canBeAlwaysOn,
   everyoneAtLabel,
   namesDefaultTeam,
   withoutDefaultTeam,
 } from '../lib/orgSharing';
-
-export { PRIVATE_ACCESS };
 
 function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
   const control = (

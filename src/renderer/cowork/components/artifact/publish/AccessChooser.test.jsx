@@ -66,8 +66,8 @@ describe('buildAccessPayload — restricted', () => {
 
   it('sends Everyone at the org as org_allowed and nothing else', () => {
     expect(buildAccessPayload({ mode: 'org', emailsText: 'a@x.com', teamIds: ['t1'], userIds: ['u1'] }, { orgSharing: true })).toEqual({
-      mode: 'restricted', emails: [], org_allowed: true, owner_only: false,
-      allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [], team_ids: [],
+      mode: 'restricted', org_allowed: true, owner_only: false,
+      allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
     });
   });
 
@@ -77,10 +77,10 @@ describe('buildAccessPayload — restricted', () => {
     });
   });
 
-  it('splits specific teams, people and outside emails with org sharing', () => {
+  it('splits specific teams, people and outside emails with org sharing, under the canonical names only', () => {
     expect(buildAccessPayload({ mode: 'restricted', emailsText: 'zed@partner.io', teamIds: ['t1'], userIds: ['u1', 'u1'] }, { orgSharing: true })).toEqual({
-      mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false,
-      allowed_emails: ['zed@partner.io'], allowed_team_ids: ['t1'], allowed_user_ids: ['u1'], team_ids: ['t1'],
+      mode: 'restricted', org_allowed: false, owner_only: false,
+      allowed_emails: ['zed@partner.io'], allowed_team_ids: ['t1'], allowed_user_ids: ['u1'],
     });
   });
 });

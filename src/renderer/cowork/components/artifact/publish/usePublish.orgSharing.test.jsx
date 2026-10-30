@@ -89,7 +89,7 @@ describe('usePublish with org sharing', () => {
 
     const access = {
       mode: 'restricted', org_allowed: false, allowed_team_ids: ['t-platform'], allowed_user_ids: ['u-ana'],
-      allowed_emails: ['zed@partner.io'], owner_only: false, emails: ['zed@partner.io'], team_ids: ['t-platform'],
+      allowed_emails: ['zed@partner.io'], owner_only: false,
     };
     await act(async () => { await result.current.publish(access); });
 
@@ -108,7 +108,7 @@ describe('usePublish with org sharing', () => {
     await act(async () => {
       await result.current.publish({
         mode: 'restricted', org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u-ana'],
-        allowed_emails: [], owner_only: false, emails: [], team_ids: [],
+        allowed_emails: [], owner_only: false,
       });
     });
 

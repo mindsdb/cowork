@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
@@ -24,7 +24,7 @@ const TEAMS = {
   reachable: true,
   teams: [
     { id: 't-all', display_name: 'All members', is_default: true },
-    { id: 't-platform', display_name: 'Platform', member_count: 12 },
+    { id: 't-platform', display_name: 'Platform' },
     { id: 't-andes', display_name: 'Andes Ops' },
     { id: 't-finance', display_name: 'Finance' },
   ],
@@ -68,7 +68,7 @@ describe('<RecipientField>', () => {
     await user.click(input());
 
     await waitFor(() => expect(options()).toEqual([
-      'Platform12 people', 'Andes OpsTeam', 'FinanceTeam',
+      'PlatformTeam', 'Andes OpsTeam', 'FinanceTeam',
       'ARAna Ruizana@acme.com', 'APAndy Parkandy@acme.com', 'BCBo Chenbo@acme.com',
     ]));
     const listbox = screen.getByRole('listbox');
@@ -188,7 +188,7 @@ describe('<RecipientField>', () => {
     await user.click(input());
     expect(screen.getAllByTestId('recipient-skeleton').length).toBeGreaterThan(0);
     // The teams are already there.
-    expect(options()).toEqual(['Platform12 people', 'Andes OpsTeam', 'FinanceTeam']);
+    expect(options()).toEqual(['PlatformTeam', 'Andes OpsTeam', 'FinanceTeam']);
   });
 
   it("says when the directory couldn't be read, and Retry asks again", async () => {
@@ -198,7 +198,7 @@ describe('<RecipientField>', () => {
     await user.click(input());
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent("Couldn't load your organization's directory");
-    expect(options()).toEqual(['Platform12 people', 'Andes OpsTeam', 'FinanceTeam']);
+    expect(options()).toEqual(['PlatformTeam', 'Andes OpsTeam', 'FinanceTeam']);
 
     await user.click(within(alert).getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(options()).toHaveLength(6));
@@ -325,7 +325,95 @@ describe('<RecipientField>', () => {
       fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com bo@acme.com' } });
 
       await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] }));
-      expect(screen.getByRole('alert')).toHaveTextContent('Not added: bo@acme.com (not in Acme)');
+      expect(screen.getByRole('alert')).toHaveTextContent('Not added: bo@acme.com (not found in the first 2 people of Acme)');
+    });
+  });
+
+  describe('an address the loaded directory does not have', () => {
+    const realNow = Date.now.bind(Date);
+    // The directory answers without Bo first, and with him once read again.
+    const loadWithoutBo = (over = {}) => {
+      api.directory
+        .mockResolvedValueOnce(directoryAnswer({ people: [ANA, ANDY], ...over }))
+        .mockResolvedValue(directoryAnswer({ people: [ANA, ANDY, BO], ...over }));
+    };
+    let clock = null;
+    const ageDirectory = () => { clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 61 * 1000); };
+    afterEach(() => { clock?.mockRestore(); clock = null; });
+
+    it('reads a directory over a minute old again, once, and finds them there', async () => {
+      loadWithoutBo();
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      ageDirectory();
+
+      await user.type(input(), 'bo@acme.com{Enter}');
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('adds them as a person, not an outside email, when Invite is picked on an old directory', async () => {
+      loadWithoutBo();
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      ageDirectory();
+
+      await user.type(input(), 'bo@acme.com');
+      await user.click(await screen.findByRole('option', { name: 'Invite bo@acme.com (outside Acme)' }));
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(api.directory).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not read a fresh directory again', async () => {
+      loadWithoutBo();
+      const user = userEvent.setup();
+      render(<Harness />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+
+      await user.type(input(), 'bo@acme.com{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: bo@acme.com (not in Acme)');
+      expect(api.directory).toHaveBeenCalledTimes(1);
+    });
+
+    it('says how far a truncated directory went when they are still not found, for org-only sharing', async () => {
+      api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
+      const user = userEvent.setup();
+      render(<Harness />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      ageDirectory();
+
+      await user.type(input(), 'zed@acme.com{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not found in the first 2 people of Acme)');
+      expect(api.directory).toHaveBeenCalledTimes(2);
+    });
+
+    it('adds them as outside when a truncated directory still does not have them and outside emails are allowed', async () => {
+      api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      ageDirectory();
+
+      await user.type(input(), 'zed@acme.com{Enter}');
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@acme.com'] }));
+      expect(api.directory).toHaveBeenCalledTimes(2);
+      await waitFor(() => expect(rows()).toEqual([['zed@acme.com', 'Outside Acme']]));
     });
   });
 
@@ -442,20 +530,18 @@ describe('<RecipientField>', () => {
   });
 
   it('lists stored recipients as rows with their second line', async () => {
-    const teams = { ...TEAMS, teams: [...TEAMS.teams, { id: 't-one', display_name: 'Solo', member_count: 1 }] };
-    render(<Harness allowExternal teamsState={teams} initial={{ teamIds: ['t-platform', 't-one', 't-andes'], userIds: ['u-ana'], emails: ['zed@partner.io'] }} />);
+    render(<Harness allowExternal initial={{ teamIds: ['t-platform', 't-andes'], userIds: ['u-ana'], emails: ['zed@partner.io'] }} />);
     await waitFor(() => expect(list()).toHaveTextContent('Ana Ruiz'));
     expect(rows()).toEqual([
-      ['Platform', 'Team · 12 people'],
-      ['Solo', 'Team · 1 person'],
+      ['Platform', 'Team'],
       ['Andes Ops', 'Team'],
       ['Ana Ruiz', 'ana@acme.com'],
       ['zed@partner.io', 'Outside Acme'],
     ]);
     const kinds = within(list()).getAllByRole('listitem').map((row) => row.getAttribute('data-recipient-row'));
-    expect(kinds).toEqual(['team', 'team', 'team', 'person', 'outside']);
+    expect(kinds).toEqual(['team', 'team', 'person', 'outside']);
     // A person's tile is their initials.
-    expect(within(list()).getAllByRole('listitem')[3]).toHaveTextContent(/^AR/);
+    expect(within(list()).getAllByRole('listitem')[2]).toHaveTextContent(/^AR/);
   });
 
   it('adds each address of a paste: org people as people, the rest as outside emails', async () => {
@@ -490,7 +576,7 @@ describe('<RecipientField>', () => {
     render(<Harness allowExternal spy={spy} initial={{ teamIds: ['t-platform', 't-gone'], userIds: ['u-bo', 'u-gone'] }} />);
     await waitFor(() => expect(list()).toHaveTextContent('Bo Chen'));
     expect(rows()).toEqual([
-      ['Platform', 'Team · 12 people'],
+      ['Platform', 'Team'],
       ['Unknown team', 'Team'],
       ['Bo Chen', 'bo@acme.com'],
       ['Unknown person'],
@@ -501,6 +587,35 @@ describe('<RecipientField>', () => {
     await user.click(screen.getByRole('button', { name: 'Remove Unknown person' }));
     await user.click(screen.getByRole('button', { name: 'Remove Unknown team' }));
     expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-platform'], userIds: ['u-bo'], emails: [] });
+  });
+
+  it('never takes people the hub could not be asked about for unknown, and asks again on Retry', async () => {
+    api.byIds.mockImplementationOnce(async () => ({ reachable: false, people: [], unanswered: ['u-bo'] }));
+    const user = userEvent.setup();
+    render(<Harness allowExternal initial={{ userIds: ['u-bo', 'u-gone'] }} />);
+
+    await waitFor(() => expect(rows()).toEqual([["Couldn't load name"], ['Unknown person']]));
+    expect(screen.getByRole('button', { name: 'Remove Unknown person' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove person' })).toBeInTheDocument();
+    expect(screen.getByText(/Couldn't load some names/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(rows()).toEqual([['Bo Chen', 'bo@acme.com'], ['Unknown person']]));
+    expect(api.byIds).toHaveBeenLastCalledWith(['u-bo']);
+    expect(screen.queryByText(/Couldn't load some names/)).toBeNull();
+  });
+
+  it('keeps every id of a lookup that failed outright as not loaded, and asks again on the next open', async () => {
+    api.byIds.mockImplementationOnce(async () => ({ reachable: false, people: [] }));
+    const { unmount } = render(<Harness initial={{ userIds: ['u-bo'] }} />);
+    await waitFor(() => expect(rows()).toEqual([["Couldn't load name"]]));
+    expect(screen.queryByText('Unknown person')).toBeNull();
+    unmount();
+
+    render(<Harness initial={{ userIds: ['u-bo'] }} />);
+    await waitFor(() => expect(rows()).toEqual([['Bo Chen', 'bo@acme.com']]));
+    expect(api.byIds).toHaveBeenCalledTimes(2);
   });
 
   it('marks outside emails apart from people in the org', () => {

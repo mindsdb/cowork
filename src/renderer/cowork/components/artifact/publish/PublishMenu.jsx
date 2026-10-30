@@ -34,6 +34,7 @@ import {
 import { SharedWithList, useRecipientItems } from '../../RecipientRows';
 import { artifactShareState, recipientSummary } from '../../../lib/orgSharing';
 import { shareStateIcon } from '../../ShareStateLabel';
+import { UpToDateTag } from '../../UpToDateTag';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -94,20 +95,6 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, chil
       {busy && <Spinner style={{ color: 'currentColor' }} />}
       {busy ? busyLabel : children}
     </Button>
-  );
-}
-
-// Calm, non-interactive "synced" status shown in the footer when there is
-// nothing to publish — deliberately not styled as a control, so status reads
-// as status and the action button only appears when there is something to do
-// (ENG-500).
-function UpToDateTag() {
-  return (
-    <span className="inline-flex items-center gap-[6px] py-[7px] px-1 font-body font-semibold text-sm text-ink-3">
-      {/* var(--ok) has no config utility (distinct from the --success hex) — keep inline. */}
-      <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(14)}</span>
-      Up to date
-    </span>
   );
 }
 

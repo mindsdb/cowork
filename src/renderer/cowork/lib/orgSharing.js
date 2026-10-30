@@ -7,12 +7,18 @@
  * Skills and artifacts name their audience the same way: everyone in the
  * org is `org_allowed`, teams are `allowed_team_ids`, people in the org are
  * `allowed_user_ids` (hub user ids), and, for artifacts only, people outside
- * the org are `allowed_emails`. Skills add `always_on`. The server may send
- * any of them snake_case or camelCase, so each reader accepts both.
+ * the org are `allowed_emails`. Skills add `always_on`. A skill arrives
+ * serialized camelCase (`access.orgAllowed`, `canEdit`).
  */
 
-import { isEmailShaped } from './emailAddress';
 import { canUseSharedResource } from './sharedResourceAccess';
+
+/** What org sharing allows on a build without it, and until the server says:
+    nothing, so every sharing surface stays hidden. */
+export const SHARING_OFF = Object.freeze({ enabled: false, can_share_org: false, can_write_org: false, org_name: null });
+
+/** "1 person", "3 people". */
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 export const SKILL_SECTIONS = ['mine', 'shared_with_me', 'team', 'org'];
 
@@ -40,27 +46,8 @@ export function orgNameOrGeneric(orgName) {
   return orgName || 'your organization';
 }
 
-/** "People in Acme" / "People in your organization". */
-export function peopleInLabel(orgName) {
-  return `People in ${orgNameOrGeneric(orgName)}`;
-}
-
-/** "People outside Acme" / "People outside your organization". */
-export function peopleOutsideLabel(orgName) {
-  return `People outside ${orgNameOrGeneric(orgName)}`;
-}
-
-/** Chip text for a person picked from the org: "Name (email)", the email
-    alone, "Loading…" while their name is being looked up, or
-    "Unknown person" for an id the hub doesn't know. */
+/** The primary line of a person the hub doesn't know. */
 export const UNKNOWN_PERSON = 'Unknown person';
-
-export function personLabel(person) {
-  if (!person) return UNKNOWN_PERSON;
-  if (person.email) return person.name ? `${person.name} (${person.email})` : person.email;
-  if (person.pending) return 'Loading…';
-  return person.name || UNKNOWN_PERSON;
-}
 
 /* Every org has a default team everyone is in ("All members"). The server
    maps it to org-wide, so sharing never lists it as a team: "Everyone at
@@ -68,7 +55,7 @@ export function personLabel(person) {
 
 /** Whether a team (as fetchHubTeams returns it) is the org's default team. */
 export function isDefaultTeam(team) {
-  return team?.is_default === true || team?.isDefault === true;
+  return team?.is_default === true;
 }
 
 /** The teams to offer when sharing: all but the default team. */
@@ -134,8 +121,6 @@ export function personInitials(person) {
   return email ? email[0].toUpperCase() : '?';
 }
 
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
 /**
  * The line under a recipient field: "2 teams · 1 person · 1 outside Acme",
  * zero parts left out. `emailsOnly` (no org) counts addresses as people.
@@ -169,10 +154,10 @@ export function skillAccess(skill) {
   const access = skill?.access;
   if (!access || typeof access !== 'object') return { ...PRIVATE_ACCESS, allowedTeamIds: [], allowedUserIds: [] };
   const out = {
-    orgAllowed: firstDefined(access.orgAllowed, access.org_allowed) === true,
-    allowedTeamIds: stringList(firstDefined(access.allowedTeamIds, access.allowed_team_ids)),
-    allowedUserIds: stringList(firstDefined(access.allowedUserIds, access.allowed_user_ids)),
-    alwaysOn: firstDefined(access.alwaysOn, access.always_on) === true,
+    orgAllowed: access.orgAllowed === true,
+    allowedTeamIds: stringList(access.allowedTeamIds),
+    allowedUserIds: stringList(access.allowedUserIds),
+    alwaysOn: access.alwaysOn === true,
   };
   if (!canBeAlwaysOn(out)) out.alwaysOn = false;
   return out;
@@ -229,12 +214,20 @@ export function skillSection(skill) {
   return SKILL_SECTIONS.includes(section) ? section : 'mine';
 }
 
-/** Whether the caller may change the skill: the server's `can_edit` when it
+/** Whether the caller may change the skill: the server's `canEdit` when it
     sends one, else the older capabilities check. */
 export function canEditSkill(skill) {
-  const flag = skill?.can_edit ?? skill?.canEdit;
+  const flag = skill?.canEdit;
   if (typeof flag === 'boolean') return flag;
   return canUseSharedResource(skill, 'canEdit');
+}
+
+/** Who may change who can use a skill, for the Share dropdown and the Edit
+    dialog alike: its owner or an admin, which the server already folds into
+    the skill's own `capabilities.canShare`. Never a built-in. */
+export function canChangeSkillAudience(skill) {
+  if (skill?.isBuiltin || !canEditSkill(skill)) return false;
+  return skill?.capabilities?.canShare !== false;
 }
 
 /** The owner's email, or null when the server didn't name them. */
@@ -295,25 +288,6 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
   }));
   groups.push({ id: 'builtin', title: 'Built-in', skills: buckets.builtin });
   return groups.filter((group) => group.skills.length > 0);
-}
-
-/**
- * Splits typed text into addresses: valid ones (lowercased, deduped against
- * `existing`) and the ones that aren't an email.
- */
-export function parseEmailInput(text, existing = []) {
-  const seen = new Set(existing.map((e) => e.toLowerCase()));
-  const valid = [];
-  const invalid = [];
-  for (const raw of String(text || '').split(/[\s,;]+/)) {
-    const email = raw.trim().toLowerCase();
-    if (!email) continue;
-    if (!isEmailShaped(email)) { invalid.push(raw.trim()); continue; }
-    if (seen.has(email)) continue;
-    seen.add(email);
-    valid.push(email);
-  }
-  return { valid, invalid };
 }
 
 /* Artifact access, as a publish answer or the access route reports it. */

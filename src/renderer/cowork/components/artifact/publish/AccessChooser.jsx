@@ -127,11 +127,10 @@ export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
 // Turn a draft into the `access` payload `publishArtifact` expects. `owner_only`
 // is derived, never stored on the draft.
 // With org sharing on (ENG-3787) a restricted payload names its audience the
-// way skills do: `org_allowed`, `allowed_team_ids`, `allowed_user_ids` (people
-// in the org) and `allowed_emails` (people outside it). `emails` and
-// `team_ids` repeat the outside emails and the teams under the names
-// cowork-server's publish still reads. Everyone at ‹org› sends `org_allowed`
-// and empty lists.
+// way skills do, and only so: `org_allowed`, `allowed_team_ids`,
+// `allowed_user_ids` (people in the org) and `allowed_emails` (people outside
+// it). Everyone at ‹org› sends `org_allowed` and empty lists. Without org
+// sharing the outside emails are `emails`, as that publish reads them.
 //
 // `notify` (`{ userIds, emails }`, when given) becomes `notify: { user_ids,
 // emails }` on a restricted payload: exactly the individuals this save adds,
@@ -170,12 +169,12 @@ function buildOrgAccessPayload(draft, { orgSharing }) {
   const restricted = draft?.mode === 'restricted';
   const teamIds = restricted ? [...(draft.teamIds || [])] : [];
   const userIds = restricted ? [...new Set(draft.userIds || [])] : [];
+  const { emails, ...rest } = payload;
   return {
-    ...payload,
-    allowed_emails: [...payload.emails],
+    ...rest,
+    allowed_emails: [...emails],
     allowed_team_ids: teamIds,
     allowed_user_ids: userIds,
-    team_ids: teamIds,
     owner_only: payload.owner_only && teamIds.length === 0 && userIds.length === 0,
   };
 }

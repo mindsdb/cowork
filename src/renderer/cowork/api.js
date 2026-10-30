@@ -22,6 +22,7 @@ import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { SHARING_OFF } from './lib/orgSharing';
 import {
   expectedOrganizationHeaders,
   handleOrganizationBoundaryResponse,
@@ -1977,21 +1978,16 @@ export async function setSkillSharing(label, shared) {
 /* Org sharing (ENG-3787): who a skill reaches on a hosted org deployment.
    `enabled: false` is every other build, and the sharing UI stays hidden
    there. A server without the route answers 404 and reads the same. */
-const SHARING_OFF = Object.freeze({ enabled: false, can_share_org: false, can_write_org: false, org_name: null });
-
 export async function fetchSkillSharingCapabilities() {
   try {
     const data = await req('/skills/sharing-capabilities');
     if (!data || typeof data !== 'object') return SHARING_OFF;
+    const name = data.orgName;
     return {
       enabled: data.enabled === true,
-      // The server serializes camelCase; snake_case is accepted too.
-      can_share_org: (data.canShareOrg ?? data.can_share_org) === true,
-      can_write_org: (data.canWriteOrg ?? data.can_write_org) === true,
-      org_name: (() => {
-        const name = data.orgName ?? data.org_name;
-        return typeof name === 'string' && name.trim() ? name.trim() : null;
-      })(),
+      can_share_org: data.canShareOrg === true,
+      can_write_org: data.canWriteOrg === true,
+      org_name: typeof name === 'string' && name.trim() ? name.trim() : null,
     };
   } catch (err) {
     if (err?.status === 404) return SHARING_OFF;
@@ -2030,9 +2026,7 @@ export async function fetchHubTeams() {
           display_name: hubTeamName(team),
           // The org's default "All members" team, which the server maps to
           // org-wide: the pickers leave it out for "Everyone at ‹org›".
-          is_default: (team.isDefault ?? team.is_default) === true,
-          // How many people the team has, when the hub says; null otherwise.
-          member_count: hubTeamMemberCount(team),
+          is_default: team.isDefault === true,
         }))
       : [];
     return { reachable: data?.reachable !== false, teams };
@@ -2041,31 +2035,20 @@ export async function fetchHubTeams() {
   }
 }
 
-/* A team's name to show. cowork-server sends `displayName` (camelCase);
-   older builds sent `display_name`. A raw id is never shown. */
-export const UNNAMED_TEAM = 'Unnamed team';
-
-function hubTeamMemberCount(team) {
-  const count = team.memberCount ?? team.member_count ?? team.membersCount ?? team.members_count;
-  return Number.isInteger(count) && count >= 0 ? count : null;
-}
+/* A team's name to show; a raw id is never shown. */
+const UNNAMED_TEAM = 'Unnamed team';
 
 function hubTeamName(team) {
-  for (const candidate of [team.displayName, team.display_name, team.name]) {
-    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
-  }
-  return UNNAMED_TEAM;
+  const name = team.displayName;
+  return typeof name === 'string' && name.trim() ? name.trim() : UNNAMED_TEAM;
 }
 
 /* One person as the hub sends them, or null without an id. The id is what
-   sharing stores (`allowed_user_ids`); the name and email only label a chip. */
+   sharing stores (`allowed_user_ids`); the name and email only label a row. */
 function hubPerson(person) {
   if (!person || typeof person.id !== 'string' || !person.id) return null;
   const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
-  // The server may serialize camelCase (`displayName`, `fullName`).
-  const rawName = [person.name, person.displayName, person.display_name, person.fullName, person.full_name]
-    .find((candidate) => typeof candidate === 'string' && candidate.trim());
-  const name = rawName ? rawName.trim() : null;
+  const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
   return { id: person.id, name, email };
 }
 
@@ -2074,9 +2057,9 @@ function hubPerson(person) {
    hub caps the list; `truncated` says there are more than it sent. Parsed
    tolerantly: a bare array is taken as the people, and any answer with no
    list at all reads as unreachable, so the picker offers Retry. */
-export async function fetchHubDirectory({ signal } = {}) {
+export async function fetchHubDirectory() {
   try {
-    const data = await req('/hub/people/', { headers: await hubHeaders(), signal });
+    const data = await req('/hub/people/', { headers: await hubHeaders() });
     const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
     if (!raw || data?.reachable === false) return { reachable: false, people: [], truncated: false };
     const seen = new Set();
@@ -2093,15 +2076,16 @@ export async function fetchHubDirectory({ signal } = {}) {
   }
 }
 
-export const HUB_PEOPLE_IDS_BATCH = 50;
+const HUB_PEOPLE_IDS_BATCH = 50;
 
-/* The people a stored audience names, by user id, so their chips can say who
-   they are. Asked in batches of at most 50 ids. Ids the hub doesn't know are
-   simply absent from `people`; `reachable: false` when any batch could not be
-   asked (the people the other batches named are still returned). */
-export async function fetchHubPeopleByIds(ids, { signal } = {}) {
+/* The people a stored audience names, by user id, so their rows can say who
+   they are. Asked in batches of at most 50 ids. Ids the hub answered for but
+   doesn't know are simply absent from `people`. `unanswered` lists the ids of
+   any batch that could not be asked (`reachable` is then false): those are
+   not known to be missing, only not looked up yet. */
+export async function fetchHubPeopleByIds(ids) {
   const unique = [...new Set((ids || []).filter((id) => typeof id === 'string' && id))];
-  if (unique.length === 0) return { reachable: true, people: [] };
+  if (unique.length === 0) return { reachable: true, people: [], unanswered: [] };
   const batches = [];
   for (let i = 0; i < unique.length; i += HUB_PEOPLE_IDS_BATCH) {
     batches.push(unique.slice(i, i + HUB_PEOPLE_IDS_BATCH));
@@ -2110,23 +2094,26 @@ export async function fetchHubPeopleByIds(ids, { signal } = {}) {
   const answers = await Promise.all(batches.map(async (batch) => {
     try {
       const params = new URLSearchParams({ ids: batch.join(',') });
-      const data = await req(`/hub/people/?${params}`, { headers, signal });
+      const data = await req(`/hub/people/?${params}`, { headers });
       return {
+        batch,
         reachable: data?.reachable !== false,
         people: (Array.isArray(data?.people) ? data.people : []).map(hubPerson).filter(Boolean),
       };
     } catch {
-      return { reachable: false, people: [] };
+      return { batch, reachable: false, people: [] };
     }
   }));
   const wanted = new Set(unique);
   const byId = new Map();
+  const unanswered = [];
   for (const answer of answers) {
+    if (!answer.reachable) unanswered.push(...answer.batch);
     for (const person of answer.people) {
       if (wanted.has(person.id) && !byId.has(person.id)) byId.set(person.id, person);
     }
   }
-  return { reachable: answers.every((a) => a.reachable), people: [...byId.values()] };
+  return { reachable: unanswered.length === 0, people: [...byId.values()], unanswered };
 }
 
 export async function deleteSkill(label) {

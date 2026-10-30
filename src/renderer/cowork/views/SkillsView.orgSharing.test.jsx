@@ -30,32 +30,32 @@ const PLATFORM = { id: 't-platform', display_name: 'Platform' };
 const mine = {
   label: 'weekly-report', slug: 'weekly-report', description: 'Mine.', isBuiltin: false, enabled: true,
   // The caller's own, shared with a team: the server lists it under My teams.
-  section: 'team', can_edit: true, owner: { id: 'u1', email: 'me@acme.com' },
+  section: 'team', canEdit: true, owner: { id: 'u1', email: 'me@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [] }, capabilities: OWNER_CAPS,
   enabledForMe: true, canDisableForEveryone: true, visibleToOthers: true,
 };
 const yours = {
   label: 'daily-notes', slug: 'daily-notes', description: 'Private.', isBuiltin: false, enabled: true,
-  section: 'mine', can_edit: true, owner: { id: 'u1', email: 'me@acme.com' },
+  section: 'mine', canEdit: true, owner: { id: 'u1', email: 'me@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }, capabilities: OWNER_CAPS,
   enabledForMe: true, canDisableForEveryone: true, visibleToOthers: false,
 };
 const fromColleague = {
   label: 'forecast-review', slug: 'forecast-review', description: 'Theirs.', isBuiltin: false, enabled: true,
-  section: 'shared_with_me', can_edit: false, owner: { id: 'u2', email: 'ana@acme.com' },
+  section: 'shared_with_me', canEdit: false, owner: { id: 'u2', email: 'ana@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u1', 'u5', 'u6'] },
   capabilities: READER_CAPS,
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
 const orgWide = {
   label: 'brand-voice', slug: 'brand-voice', description: 'Org.', isBuiltin: false, enabled: true,
-  section: 'org', can_edit: false, owner: { id: 'u3', email: 'admin@acme.com' },
+  section: 'org', canEdit: false, owner: { id: 'u3', email: 'admin@acme.com' },
   access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] }, capabilities: READER_CAPS,
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
 const teamSkill = {
   label: 'team-playbook', slug: 'team-playbook', description: 'Team.', isBuiltin: false, enabled: true,
-  section: 'team', can_edit: false, owner: { id: 'u4', email: 'lead@acme.com' },
+  section: 'team', canEdit: false, owner: { id: 'u4', email: 'lead@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [], alwaysOn: true }, capabilities: READER_CAPS,
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
@@ -226,7 +226,7 @@ describe('SkillsView with org sharing', () => {
 
   it('badges only always-on skills as Always on, with a tooltip', async () => {
     const user = userEvent.setup();
-    await renderPage([mine, orgWide, teamSkill, { ...orgWide, label: 'legal-checks', slug: 'legal-checks', access: { org_allowed: true, always_on: true } }]);
+    await renderPage([mine, orgWide, teamSkill, { ...orgWide, label: 'legal-checks', slug: 'legal-checks', access: { orgAllowed: true, alwaysOn: true } }]);
 
     const row = (label) => screen.getByRole('article', { name: label });
     await waitFor(() => expect(within(row('team-playbook')).getByText('Always on')).toBeInTheDocument());

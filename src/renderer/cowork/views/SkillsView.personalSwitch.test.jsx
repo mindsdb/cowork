@@ -38,37 +38,37 @@ const DISABLED_HINT = 'Disabled for everyone by an editor';
 
 const privateOwn = {
   label: 'daily-notes', slug: 'daily-notes', description: 'Private.', declarative: 'Take notes.', isBuiltin: false, enabled: true,
-  section: 'mine', can_edit: true, owner: { id: 'u1', email: 'me@acme.com' },
+  section: 'mine', canEdit: true, owner: { id: 'u1', email: 'me@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }, capabilities: OWNER_CAPS,
   enabledForMe: true, canDisableForEveryone: true, visibleToOthers: false,
 };
 const ownShared = {
   label: 'weekly-report', slug: 'weekly-report', description: 'Mine, shared.', declarative: 'Report.', isBuiltin: false, enabled: true,
-  section: 'team', can_edit: true, owner: { id: 'u1', email: 'me@acme.com' },
+  section: 'team', canEdit: true, owner: { id: 'u1', email: 'me@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: ['u5'] }, capabilities: OWNER_CAPS,
   enabledForMe: true, canDisableForEveryone: true, visibleToOthers: true,
 };
 const teamEdited = {
   label: 'team-runbook', slug: 'team-runbook', description: 'Team, edited by its members.', declarative: 'Run.', isBuiltin: false, enabled: true,
-  section: 'team', can_edit: true, owner: { id: 'u4', email: 'lead@acme.com' },
+  section: 'team', canEdit: true, owner: { id: 'u4', email: 'lead@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [], alwaysOn: true }, capabilities: EDITOR_CAPS,
   enabledForMe: true, canDisableForEveryone: true, visibleToOthers: true,
 };
 const fromColleague = {
   label: 'forecast-review', slug: 'forecast-review', description: 'Theirs.', isBuiltin: false, enabled: true,
-  section: 'shared_with_me', can_edit: false, owner: { id: 'u2', email: 'ana@acme.com' },
+  section: 'shared_with_me', canEdit: false, owner: { id: 'u2', email: 'ana@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u1'] }, capabilities: READER_CAPS,
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
 const teamSkill = {
   label: 'team-playbook', slug: 'team-playbook', description: 'Team.', isBuiltin: false, enabled: true,
-  section: 'team', can_edit: false, owner: { id: 'u4', email: 'lead@acme.com' },
+  section: 'team', canEdit: false, owner: { id: 'u4', email: 'lead@acme.com' },
   access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [] }, capabilities: READER_CAPS,
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
 const orgWide = {
   label: 'brand-voice', slug: 'brand-voice', description: 'Org.', isBuiltin: false, enabled: true,
-  section: 'org', can_edit: false, owner: { id: 'u3', email: 'admin@acme.com' },
+  section: 'org', canEdit: false, owner: { id: 'u3', email: 'admin@acme.com' },
   access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] }, capabilities: READER_CAPS,
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
@@ -194,6 +194,101 @@ describe('the switch just for me', () => {
 
     await waitFor(() => expect(toast.add).toHaveBeenCalledWith({ title: 'Nope', type: 'danger' }));
     expect(screen.getByRole('switch', { name: TURN_OFF_FOR_ME })).toHaveAttribute('aria-checked', 'true');
+  });
+});
+
+describe('overlapping on/off changes', () => {
+  // Each request answers when its test says so.
+  function deferredCalls(mock) {
+    const calls = [];
+    mock.mockImplementation(() => new Promise((resolve, reject) => { calls.push({ resolve, reject }); }));
+    return calls;
+  }
+  const flip = async (user, label) => user.click(within(row(label)).getByRole('switch'));
+  const checked = (label) => within(row(label)).getByRole('switch').getAttribute('aria-checked');
+
+  it('ignores an earlier answer that lands after a later one, in the switch and the store', async () => {
+    const user = userEvent.setup();
+    await renderPage([teamSkill]);
+    await screen.findByRole('article', { name: 'team-playbook' });
+    const calls = deferredCalls(api.setSkillEnabledForMe);
+    // Reloads fail, so only the patches the answers make reach the list.
+    api.fetchSkills.mockRejectedValue(new Error('offline'));
+
+    await flip(user, 'team-playbook');
+    await flip(user, 'team-playbook');
+    expect(api.setSkillEnabledForMe.mock.calls.map((c) => c[1])).toEqual([false, true]);
+    expect(checked('team-playbook')).toBe('true');
+
+    calls[1].resolve({ ...teamSkill, enabledForMe: true });
+    await waitFor(() => expect(checked('team-playbook')).toBe('true'));
+    calls[0].resolve({ ...teamSkill, enabledForMe: false });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(checked('team-playbook')).toBe('true');
+    expect(toast.add).not.toHaveBeenCalled();
+  });
+
+  it('does not roll a later choice back when an earlier request fails', async () => {
+    const user = userEvent.setup();
+    await renderPage([teamSkill]);
+    await screen.findByRole('article', { name: 'team-playbook' });
+    const calls = deferredCalls(api.setSkillEnabledForMe);
+    api.fetchSkills.mockResolvedValue({ skills: [teamSkill], canShare: false });
+
+    await flip(user, 'team-playbook');
+    await flip(user, 'team-playbook');
+    calls[0].reject(new Error('Too slow'));
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Still the latest choice, still in flight, and no failure to show.
+    expect(checked('team-playbook')).toBe('true');
+    expect(toast.add).not.toHaveBeenCalled();
+
+    calls[1].resolve({ ...teamSkill, enabledForMe: true });
+    await waitFor(() => expect(checked('team-playbook')).toBe('true'));
+    expect(toast.add).not.toHaveBeenCalled();
+  });
+
+  it('rolls back to what the last successful request set when the latest fails', async () => {
+    const user = userEvent.setup();
+    await renderPage([teamSkill]);
+    await screen.findByRole('article', { name: 'team-playbook' });
+    const calls = deferredCalls(api.setSkillEnabledForMe);
+    api.fetchSkills.mockResolvedValue({ skills: [{ ...teamSkill, enabledForMe: false }], canShare: false });
+
+    await flip(user, 'team-playbook');
+    await flip(user, 'team-playbook');
+    calls[0].resolve({ ...teamSkill, enabledForMe: false });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(checked('team-playbook')).toBe('true');
+
+    calls[1].reject(new Error('Nope'));
+
+    await waitFor(() => expect(checked('team-playbook')).toBe('false'));
+    expect(toast.add).toHaveBeenCalledTimes(1);
+    expect(toast.add).toHaveBeenCalledWith({ title: 'Nope', type: 'danger' });
+  });
+
+  it("settles the caller's own private skill on the latest of two changes for everyone", async () => {
+    const user = userEvent.setup();
+    await renderPage([privateOwn]);
+    await screen.findByRole('article', { name: 'daily-notes' });
+    const calls = deferredCalls(api.saveSkill);
+    api.fetchSkills.mockResolvedValue({ skills: [privateOwn], canShare: false });
+
+    await flip(user, 'daily-notes');
+    await flip(user, 'daily-notes');
+    expect(api.saveSkill.mock.calls.map((c) => c[0].enabled)).toEqual([false, true]);
+
+    calls[0].reject(new Error('Too slow'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(checked('daily-notes')).toBe('true');
+    expect(toast.add).not.toHaveBeenCalled();
+
+    calls[1].resolve({ ...privateOwn, enabled: true });
+    await waitFor(() => expect(checked('daily-notes')).toBe('true'));
+    expect(toast.add).not.toHaveBeenCalled();
   });
 });
 

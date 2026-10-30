@@ -177,10 +177,12 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         accessMode: m,
         accessProtected: m === 'password',
         accessPassword: m === 'password' ? (access?.password || '') : '',
-        accessEmails: m === 'restricted' ? (r.accessEmails || r.allowed_emails || access?.emails || []) : [],
+        // The request's outside emails: `allowed_emails` with org sharing,
+        // `emails` without it.
+        accessEmails: m === 'restricted' ? (r.accessEmails || r.allowed_emails || access?.allowed_emails || access?.emails || []) : [],
         orgAllowed: m === 'restricted' ? (hasOrgField(r) ? accessOrgAllowed(r) : !!access?.org_allowed) : false,
         allowedTeamIds: m === 'restricted'
-          ? (hasTeamField(r) ? accessAllowedTeamIds(r) : (access?.allowed_team_ids || access?.team_ids || []))
+          ? (hasTeamField(r) ? accessAllowedTeamIds(r) : (access?.allowed_team_ids || []))
           : [],
         allowedUserIds: m === 'restricted'
           ? (hasUserField(r) ? accessAllowedUserIds(r) : (access?.allowed_user_ids || []))

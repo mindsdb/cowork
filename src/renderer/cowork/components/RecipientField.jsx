@@ -15,13 +15,20 @@
 //
 // Typing filters the lists locally (name, email or team name; case and
 // accents ignored), with no request per keystroke; a truncated directory says
-// how many it shows. A typed or pasted email is matched against the loaded
-// directory only: a match is that person, anything else becomes "Invite …"
-// when outside emails are allowed and is reported as not in the org when
-// they aren't. Before the directory has loaded, addresses wait ("Checking…")
-// and resolve once it does; if it failed they stay in the input for a Retry. ↑/↓ move across both groups, Enter / Tab / comma add the
-// highlighted (or top) row, Escape closes; the input keeps the focus, so one
-// can keep typing and adding. A paste of several addresses adds each.
+// how many it shows.
+//
+// A typed or pasted email is matched against the loaded directory: a match is
+// that person, anything else becomes "Invite …" when outside emails are
+// allowed and is reported as not in the org when they aren't. An address the
+// directory doesn't have, when the directory is over a minute old, is checked
+// once against a fresh copy first, so someone who joined since is found.
+// Before the directory has loaded (or while it is read again), addresses wait
+// ("Checking…") and resolve once it does; if it failed they stay in the input
+// for a Retry.
+//
+// ↑/↓ move across both groups, Enter / Tab / comma add the highlighted (or
+// top) row, Escape closes; the input keeps the focus, so one can keep typing
+// and adding. A paste of several addresses adds each.
 //
 // The dropdown is portalled to the body and placed under the input with
 // fixed coordinates, so it floats over whatever is below (a popover's
@@ -39,12 +46,11 @@ import {
   filterPeople,
   filterTeams,
   orgNameOrGeneric,
-  personInitials,
   recipientSummary,
   shareableTeams,
 } from '../lib/orgSharing';
-import { useHubTeams, useKnownPeople, useOrgDirectory } from '../hooks/useOrgSharing';
-import { RecipientRow, UNKNOWN_TEAM, recipientItems } from './RecipientRows';
+import { DIRECTORY_MAX_AGE_MS, useHubTeams, useKnownPeople, useOrgDirectory } from '../hooks/useOrgSharing';
+import { RecipientRow, RecipientTile, recipientItems } from './RecipientRows';
 
 const SEPARATORS = /[\s,;]+/;
 // The dropdown's tallest, and the least room below the input before it opens
@@ -52,34 +58,15 @@ const SEPARATORS = /[\s,;]+/;
 const MENU_MAX_HEIGHT = 320;
 const MENU_MIN_BELOW = 200;
 const MENU_GAP = 4;
-export { UNKNOWN_TEAM };
 
 const EMPTY_VALUE = Object.freeze({ teamIds: [], userIds: [], emails: [] });
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
-const TILE = 'inline-grid shrink-0 place-items-center w-[28px] h-[28px] rounded-full';
-
-function TeamTile() {
-  return <span aria-hidden="true" className={`${TILE} border border-solid border-line bg-surface-2 text-ink-3`}>{Ico.people(14)}</span>;
-}
-
-function PersonTile({ person }) {
-  return (
-    <span aria-hidden="true" className={`${TILE} bg-accent-bg text-accent font-body text-[11px] font-semibold`}>
-      {person && (person.name || person.email) ? personInitials(person) : '?'}
-    </span>
-  );
-}
-
-function MailTile() {
-  return <span aria-hidden="true" className={`${TILE} border border-solid border-warning-border bg-warning-bg text-warning-text`}>{Ico.mail(14)}</span>;
-}
+const SKELETON_TILE = 'inline-grid shrink-0 place-items-center w-[28px] h-[28px] rounded-full';
 
 /* A grey placeholder row while the directory loads. */
 function SkeletonRow({ width }) {
   return (
     <li role="presentation" aria-hidden="true" data-testid="recipient-skeleton" className="flex items-center gap-2.5 py-[7px] px-2">
-      <span className={`${TILE} bg-surface-2 animate-pulse`} />
+      <span className={`${SKELETON_TILE} bg-surface-2 animate-pulse`} />
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="h-[9px] rounded-full bg-surface-2 animate-pulse" style={{ width }} />
         <span className="h-[8px] rounded-full bg-surface-2 animate-pulse" style={{ width: `calc(${width} * 1.4)` }} />
@@ -130,7 +117,7 @@ function useMenuPosition(anchorRef, open) {
  *   allowExternal?: boolean,
  *   emailsOnly?: boolean,
  *   orgName?: string | null,
- *   teamsState?: { status: string, reachable: boolean, teams: Array<{ id: string, display_name: string, is_default?: boolean, member_count?: number | null }> } | null,
+ *   teamsState?: { status: string, reachable: boolean, teams: Array<{ id: string, display_name: string, is_default?: boolean }> } | null,
  *   label?: string,
  *   autoFocus?: boolean,
  * }} props
@@ -171,13 +158,17 @@ export function RecipientField({
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(-1);
   const [notAdded, setNotAdded] = useState([]);
-  // Addresses typed or pasted before the directory loaded, held (their text
-  // left in the input) until it can say who is in the org.
+  // Addresses typed or pasted before the directory loaded, or while it is
+  // read again, held (their text left in the input) until it can say who is
+  // in the org: `{ tokens, refreshed }`, `refreshed` once a fresh copy was
+  // asked for them, so it is asked only once.
   const [held, setHeld] = useState(null);
   const listId = useId();
   const optionId = (i) => `${listId}-opt-${i}`;
   const query = text.trim();
   const directoryReady = directory.status === 'ready';
+  // Too old to say an address isn't in the org without reading it again.
+  const directoryStale = directoryReady && Date.now() - (directory.loadedAt || 0) > DIRECTORY_MAX_AGE_MS;
 
   // ── What the menu offers ──
   const typedEmail = query.toLowerCase();
@@ -243,6 +234,12 @@ export function RecipientField({
       known.remember([option.person]);
       if (!latest.current.userIds.includes(option.person.id)) emit({ userIds: [...latest.current.userIds, option.person.id] });
     } else if (option.kind === 'invite') {
+      // An old directory may just not know them yet: check it first.
+      if (!emailsOnly && directoryStale) {
+        resolveTokens([option.email]);
+        if (close) setOpen(false);
+        return;
+      }
       if (!latest.current.emails.includes(option.email)) emit({ emails: [...latest.current.emails, option.email] });
     }
     resetInput();
@@ -257,20 +254,38 @@ export function RecipientField({
   // else it is reported. Until the directory has loaded nothing is added, so
   // a member is never taken for an outside address: the text stays in the
   // input, held while the directory loads, and left for a Retry if it failed.
-  const resolveTokens = (tokens) => {
-    if (!emailsOnly && !directoryReady) {
-      setText(tokens.join(' '));
-      setActive(-1);
-      setNotAdded([]);
+  // An address a directory over a minute old doesn't have is held while it is
+  // read again, once.
+  const holdTokens = (tokens, refreshed) => {
+    setText(tokens.join(' '));
+    setActive(-1);
+    setNotAdded([]);
+    setHeld({ tokens, refreshed });
+  };
+  const resolveTokens = (tokens, { refreshed = false } = {}) => {
+    if (!emailsOnly && (!directoryReady || directory.refreshing)) {
       if (directory.status === 'error') {
+        setText(tokens.join(' '));
+        setActive(-1);
+        setNotAdded([]);
         if (typeof document !== 'undefined' && document.activeElement === inputRef.current) setOpen(true);
       } else {
-        setHeld(tokens);
+        holdTokens(tokens, refreshed);
       }
+      return;
+    }
+    const unmatched = (raw) => isEmailShaped(raw.toLowerCase()) && !findByEmail(raw.toLowerCase());
+    if (!emailsOnly && !refreshed && directoryStale && tokens.some(unmatched)) {
+      holdTokens(tokens, true);
+      directory.refresh();
       return;
     }
     setHeld(null);
     resetInput();
+    // Not found in a capped directory: they may be past its end.
+    const notInOrg = directory.truncated
+      ? `not found in the first ${directory.people.length} people of ${org}`
+      : `not in ${org}`;
     const answers = tokens.map((raw) => {
       const email = raw.toLowerCase();
       if (!isEmailShaped(email)) return { raw, reason: 'not an email' };
@@ -278,7 +293,7 @@ export function RecipientField({
       const person = findByEmail(email);
       if (person) return { person };
       if (allowExternal) return { email };
-      return { raw: email, reason: `not in ${org}` };
+      return { raw: email, reason: notInOrg };
     });
     const next = { ...latest.current, userIds: [...latest.current.userIds], emails: [...latest.current.emails] };
     const people = [];
@@ -304,10 +319,10 @@ export function RecipientField({
   // them in the input with the directory's Retry.
   useEffect(() => {
     if (!held) return;
-    if (directory.status === 'ready') resolveTokens(held);
+    if (directory.status === 'ready' && !directory.refreshing) resolveTokens(held.tokens, { refreshed: held.refreshed });
     else if (directory.status === 'error') setHeld(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [directory.status, held]);
+  }, [directory.status, directory.refreshing, held]);
 
   /** Adds what Enter / Tab / comma means right now; false when nothing. */
   const commit = () => {
@@ -425,13 +440,12 @@ export function RecipientField({
       className: `flex min-w-0 cursor-pointer items-center gap-2.5 rounded-[8px] py-[6px] px-2 font-body ${selected ? 'bg-surface-2' : ''}`,
     };
     if (option.kind === 'team') {
-      const count = option.team.member_count;
       return (
         <li key={option.key} {...rowProps}>
-          <TeamTile />
+          <RecipientTile item={{ kind: 'team' }} />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-[13px] font-medium leading-[18px] text-ink" title={option.team.display_name}>{option.team.display_name}</span>
-            <span className="truncate text-[11.5px] leading-[16px] text-ink-3">{Number.isInteger(count) ? plural(count, 'person', 'people') : 'Team'}</span>
+            <span className="truncate text-[11.5px] leading-[16px] text-ink-3">Team</span>
           </span>
         </li>
       );
@@ -440,7 +454,7 @@ export function RecipientField({
       const { name, email } = option.person;
       return (
         <li key={option.key} {...rowProps}>
-          <PersonTile person={option.person} />
+          <RecipientTile item={{ kind: 'person', person: option.person }} />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-[13px] font-medium leading-[18px] text-ink" title={name || email}>{name || email}</span>
             {name && email && <span className="truncate text-[11.5px] leading-[16px] text-ink-3" title={email}>{email}</span>}
@@ -450,7 +464,7 @@ export function RecipientField({
     }
     return (
       <li key={option.key} {...rowProps}>
-        <MailTile />
+        <RecipientTile item={{ kind: 'outside' }} />
         <span className="min-w-0 flex-1 truncate text-[13px] text-ink" title={option.email}>
           {emailsOnly ? `Add ${option.email}` : `Invite ${option.email}`}
           {!emailsOnly && <span className="text-ink-3">{` (outside ${org})`}</span>}
@@ -611,6 +625,16 @@ export function RecipientField({
       {notAdded.length > 0 && (
         <span className="mt-[6px] font-body text-xs text-danger" role="alert">
           {`Not added: ${notAdded.map((n) => `${n.raw} (${n.reason})`).join(', ')}`}
+        </span>
+      )}
+      {known.unreachable && (
+        <span className="mt-[6px] font-body text-xs text-ink-3" role="status">
+          {"Couldn't load some names. "}
+          <button
+            type="button"
+            onClick={known.retry}
+            className="bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
+          >Retry</button>
         </span>
       )}
       {rows.length > 0 && (

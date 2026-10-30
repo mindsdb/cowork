@@ -21,7 +21,7 @@ const PLATFORM = { id: 't-platform', display_name: 'Platform' };
 const FINANCE = { id: 't-finance', display_name: 'Finance' };
 const ALL_MEMBERS = { id: 't-all', display_name: 'All members', is_default: true };
 
-const skill = (access, extra = {}) => ({ label: 'weekly-report', slug: 'weekly-report', can_edit: true, access, ...extra });
+const skill = (access, extra = {}) => ({ label: 'weekly-report', slug: 'weekly-report', canEdit: true, access, ...extra });
 const ADMIN = { enabled: true, can_share_org: true, org_name: 'Acme' };
 const MEMBER = { enabled: true, can_share_org: false, org_name: 'Acme' };
 
@@ -335,7 +335,7 @@ describe('SkillShareMenu', () => {
       const user = userEvent.setup();
       const { dialog, onSave } = await renderDialog({
         // The server may send access snake_case.
-        access: { org_allowed: false, allowed_team_ids: ['t-finance'], allowed_user_ids: ['u-bo'], always_on: true },
+        access: { orgAllowed: false, allowedTeamIds: ['t-finance'], allowedUserIds: ['u-bo'], alwaysOn: true },
       });
 
       expect(alwaysOn(dialog)).toBeChecked();
@@ -380,7 +380,7 @@ describe('SkillShareMenu', () => {
       const user = userEvent.setup();
       const { dialog } = await renderDialog({
         access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [] },
-        extra: { can_edit: false },
+        extra: { canEdit: false },
       });
 
       expect(alwaysOn(dialog)).toHaveAttribute('aria-disabled', 'true');

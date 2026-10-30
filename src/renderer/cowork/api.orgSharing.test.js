@@ -21,7 +21,7 @@ afterEach(() => {
 describe('fetchSkillSharingCapabilities', () => {
   it('reads the capabilities', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      enabled: true, can_share_org: true, can_write_org: false, org_name: 'Acme',
+      enabled: true, canShareOrg: true, canWriteOrg: false, orgName: 'Acme',
     }));
 
     expect(await fetchSkillSharingCapabilities()).toEqual({
@@ -96,47 +96,25 @@ describe('setSkillAccess', () => {
 describe('fetchHubTeams', () => {
   it('asks the hub route with the MindsHub credential', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      reachable: true, teams: [{ id: 't1', display_name: 'Platform' }, { bad: true }],
+      reachable: true, teams: [{ id: 't1', displayName: 'Platform' }, { bad: true }],
     }));
 
-    expect(await fetchHubTeams()).toEqual({ reachable: true, teams: [{ id: 't1', display_name: 'Platform', is_default: false, member_count: null }] });
+    expect(await fetchHubTeams()).toEqual({ reachable: true, teams: [{ id: 't1', display_name: 'Platform', is_default: false }] });
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/teams/');
     expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
   });
 
-  it('reads the camelCase displayName cowork-server sends', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      reachable: true, teams: [{ id: 't1', displayName: 'Platform' }, { id: 't2', display_name: 'Finance' }],
-    }));
-
-    expect((await fetchHubTeams()).teams).toEqual([
-      { id: 't1', display_name: 'Platform', is_default: false, member_count: null },
-      { id: 't2', display_name: 'Finance', is_default: false, member_count: null },
-    ]);
-  });
-
-  it('keeps the member count when the hub sends one', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      reachable: true, teams: [{ id: 't1', displayName: 'Platform', memberCount: 12 }, { id: 't2', display_name: 'Ops', member_count: 'x' }],
-    }));
-
-    expect((await fetchHubTeams()).teams.map((t) => t.member_count)).toEqual([12, null]);
-  });
-
-  it('keeps which team is the org default, in either spelling', async () => {
+  it('keeps which team is the org default', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
       reachable: true,
       teams: [
         { id: 't0', displayName: 'All members', isDefault: true },
-        { id: 't9', display_name: 'All members (old)', is_default: true },
         { id: 't1', displayName: 'Platform', isDefault: false },
       ],
     }));
 
-    expect((await fetchHubTeams()).teams.map((t) => [t.id, t.is_default])).toEqual([
-      ['t0', true], ['t9', true], ['t1', false],
-    ]);
+    expect((await fetchHubTeams()).teams.map((t) => [t.id, t.is_default])).toEqual([['t0', true], ['t1', false]]);
   });
 
   it('never shows a raw id for a team without a name', async () => {
@@ -162,7 +140,7 @@ describe('fetchHubDirectory', () => {
       reachable: true,
       truncated: true,
       people: [
-        { id: 'u1', displayName: 'Ana López', email: 'Ana@Acme.com' },
+        { id: 'u1', name: 'Ana López', email: 'Ana@Acme.com' },
         { id: 'u2', email: 'bo@acme.com' },
         { id: 'u1', name: 'Dup', email: 'ana@acme.com' },
         { id: 'u3' },
@@ -214,6 +192,7 @@ describe('fetchHubPeopleByIds', () => {
     expect(await fetchHubPeopleByIds(['u1', 'u2', 'u1', ''])).toEqual({
       reachable: true,
       people: [{ id: 'u1', name: 'Ana Ruiz', email: 'ana@acme.com' }],
+      unanswered: [],
     });
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = fetch.mock.calls[0];
@@ -235,7 +214,7 @@ describe('fetchHubPeopleByIds', () => {
     expect(result.people.map((p) => p.id)).toEqual(ids);
   });
 
-  it('keeps what the other batches named when one fails', async () => {
+  it('keeps what the other batches named when one fails, and lists the ids it could not ask', async () => {
     const ids = Array.from({ length: 60 }, (_, i) => `u${i}`);
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonRes({ detail: 'boom' }, 500))
@@ -244,12 +223,13 @@ describe('fetchHubPeopleByIds', () => {
     expect(await fetchHubPeopleByIds(ids)).toEqual({
       reachable: false,
       people: [{ id: 'u55', name: 'Bo', email: 'bo@acme.com' }],
+      unanswered: ids.slice(0, 50),
     });
   });
 
   it('asks nothing for no ids', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch');
-    expect(await fetchHubPeopleByIds([])).toEqual({ reachable: true, people: [] });
+    expect(await fetchHubPeopleByIds([])).toEqual({ reachable: true, people: [], unanswered: [] });
     expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -17,13 +17,12 @@ import { Popover } from '@base-ui/react/popover';
 import Ico from './Icons';
 import { Badge, Button, Tooltip } from './ui';
 import { MarkdownContent } from './markdown/MarkdownContent';
-import { AudienceList, UNKNOWN_TEAM } from './RecipientRows';
+import { AudienceList, PERSON_NOT_LOADED, useRecipientItems } from './RecipientRows';
 import { projectLabelByName } from '../lib/projectLabel';
 import { relativeAge } from '../lib/formatTime';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
-  UNKNOWN_PERSON,
   canEditSkill,
   everyoneAtLabel,
   isSkillAlwaysOn,
@@ -61,6 +60,7 @@ function OwnerValue({ skill }) {
   const person = known.people[0];
   if (!person) return <span className="text-ink-3">Unknown</span>;
   if (person.pending) return <span className="text-ink-3">Loading…</span>;
+  if (person.failed) return <span className="text-ink-3">{PERSON_NOT_LOADED}</span>;
   const name = person.name || person.email;
   if (!name) return <span className="text-ink-3">Unknown</span>;
   return <span className="truncate" title={person.email || name}>{name}</span>;
@@ -77,18 +77,16 @@ function AudienceValue({ skill, orgName, teamsState: teamsProp }) {
   const teams = teamsState.teams || NO_IDS;
   const everyone = access.orgAllowed || namesDefaultTeam(access.allowedTeamIds, teams);
   const teamIds = withoutDefaultTeam(access.allowedTeamIds, teams);
-  const known = useKnownPeople(everyone ? NO_IDS : access.allowedUserIds);
+  // Named exactly as the full list's rows name them.
+  const listed = useRecipientItems(
+    { teamIds: everyone ? NO_IDS : teamIds, userIds: everyone ? NO_IDS : access.allowedUserIds },
+    { teamsState, orgName },
+  );
 
   if (everyone) return <span className="truncate">{everyoneAtLabel(orgName)}</span>;
   if (teamIds.length === 0 && access.allowedUserIds.length === 0) return <span>Only you</span>;
 
-  const teamNames = teamIds.map((id) => {
-    const team = teams.find((t) => t.id === id);
-    if (team) return team.display_name;
-    return teamsState.status === 'ready' ? UNKNOWN_TEAM : 'Loading…';
-  });
-  const personNames = known.people.map((p) => (p.pending ? 'Loading…' : (p.name || p.email || UNKNOWN_PERSON)));
-  const names = [...teamNames, ...personNames];
+  const names = listed.map((item) => item.primary);
   const rest = names.length - NAMES_SHOWN;
   const compact = `${names.slice(0, NAMES_SHOWN).join(', ')}${rest > 0 ? ` +${rest}` : ''}`;
 

@@ -187,14 +187,24 @@ export async function setSkillAccessAndSync(slug, access) {
   return saved;
 }
 
+/* Per skill, the number of the latest `enabledForMe` answer patched into the
+   cached row, so an older request answering late never overwrites a newer
+   one's value. */
+let _forMeSeq = 0;
+const _forMeApplied = new Map();
+
 /** Turn a skill on or off for the caller alone (ENG-3787), then refresh the
  *  shared list. The PUT succeeded, so the cached row takes the new
- *  `enabledForMe` at once and keeps it if the reload fails; nothing else is
- *  adopted from the response. Re-throws, so the switch can move back. */
+ *  `enabledForMe` at once and keeps it if the reload fails, unless a request
+ *  sent later has already set it; nothing else is adopted from the response.
+ *  Re-throws, so the switch can move back. */
 export async function setSkillEnabledForMeAndSync(slug, enabled) {
+  const seq = ++_forMeSeq;
   const saved = await setSkillEnabledForMe(slug, enabled);
   const enabledForMe = typeof saved?.enabledForMe === 'boolean' ? saved.enabledForMe : enabled;
-  if (Array.isArray(_skills)) {
+  const stale = (_forMeApplied.get(slug) ?? 0) > seq;
+  if (!stale) _forMeApplied.set(slug, seq);
+  if (!stale && Array.isArray(_skills)) {
     _skills = _skills.map((s) => (
       s.label === slug || s.slug === slug || s.id === slug ? { ...s, enabledForMe } : s
     ));

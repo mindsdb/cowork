@@ -16,13 +16,9 @@ import {
   groupSkillsBySection,
   isPrivateAccess,
   isSkillAlwaysOn,
-  parseEmailInput,
-  personLabel,
   skillAccess,
   skillAccessPayload,
   skillAudienceBadge,
-  peopleInLabel,
-  peopleOutsideLabel,
   shareableTeams,
   namesDefaultTeam,
   withoutDefaultTeam,
@@ -65,7 +61,6 @@ describe('skillAudienceBadge', () => {
     [{ orgAllowed: false, allowedTeamIds: ['t-other'], allowedUserIds: [] }, '1 team'],
     [{ orgAllowed: false, allowedTeamIds: ['t1', 't2'], allowedUserIds: ['u1'] }, '2 teams · 1 person'],
     [{ orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u1', 'u2', 'u3'] }, '3 people'],
-    [{ org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u1', 'u2'] }, '2 people'],
   ])('labels %j as %s', (access, label) => {
     expect(skillAudienceBadge(skill('s', { access }), { teams, orgName: 'Acme' })).toBe(label);
   });
@@ -97,9 +92,9 @@ describe('default team', () => {
 });
 
 describe('always on', () => {
-  it('reads alwaysOn in either spelling, and only for org-wide or team skills', () => {
+  it('reads alwaysOn only for org-wide or team skills', () => {
     expect(isSkillAlwaysOn(skill('s', { access: { orgAllowed: true, alwaysOn: true } }))).toBe(true);
-    expect(isSkillAlwaysOn(skill('s', { access: { allowed_team_ids: ['t1'], always_on: true } }))).toBe(true);
+    expect(isSkillAlwaysOn(skill('s', { access: { allowedTeamIds: ['t1'], alwaysOn: true } }))).toBe(true);
     expect(isSkillAlwaysOn(skill('s', { access: { orgAllowed: true } }))).toBe(false);
     expect(isSkillAlwaysOn(skill('s', { access: { allowedUserIds: ['u1'], alwaysOn: true } }))).toBe(false);
     expect(isSkillAlwaysOn(skill('s'))).toBe(false);
@@ -130,20 +125,11 @@ describe('always on', () => {
 });
 
 describe('canEditSkill', () => {
-  it('follows can_edit when the server sends it, else the capabilities', () => {
-    expect(canEditSkill({ can_edit: false, capabilities: { canEdit: true } })).toBe(false);
-    expect(canEditSkill({ can_edit: true })).toBe(true);
+  it('follows canEdit when the server sends it, else the capabilities', () => {
+    expect(canEditSkill({ canEdit: false, capabilities: { canEdit: true } })).toBe(false);
+    expect(canEditSkill({ canEdit: true })).toBe(true);
     expect(canEditSkill({ capabilities: { canEdit: true } })).toBe(true);
     expect(canEditSkill({})).toBe(false); // web fails closed
-  });
-});
-
-describe('parseEmailInput', () => {
-  it('lowercases, dedupes against what is there and sets aside what is not an email', () => {
-    expect(parseEmailInput('A@x.com, b@x.com; nope a@x.com', ['B@x.com'])).toEqual({
-      valid: ['a@x.com'],
-      invalid: ['nope'],
-    });
   });
 });
 
@@ -163,30 +149,12 @@ describe('artifact access fields', () => {
   });
 });
 
-describe('people labels', () => {
-  it('names the org, or says your organization', () => {
-    expect(peopleInLabel('Acme')).toBe('People in Acme');
-    expect(peopleOutsideLabel('Acme')).toBe('People outside Acme');
-    expect(peopleInLabel(null)).toBe('People in your organization');
-    expect(peopleOutsideLabel(null)).toBe('People outside your organization');
-  });
-});
-
 describe('skillAccess', () => {
-  it('reads access in either spelling and treats a skill without it as private', () => {
-    expect(skillAccess(skill('s', { access: { org_allowed: true, allowed_team_ids: ['t1'], allowed_user_ids: ['u1'], always_on: true } })))
+  it('reads the camelCase access the server sends and treats a skill without it as private', () => {
+    expect(skillAccess(skill('s', { access: { orgAllowed: true, allowedTeamIds: ['t1'], allowedUserIds: ['u1'], alwaysOn: true } })))
       .toEqual({ orgAllowed: true, allowedTeamIds: ['t1'], allowedUserIds: ['u1'], alwaysOn: true });
     expect(isPrivateAccess(skillAccess(skill('s')))).toBe(true);
     expect(isPrivateAccess(skillAccess(skill('s', { access: { allowedUserIds: ['u1'] } })))).toBe(false);
-  });
-});
-
-describe('personLabel', () => {
-  it('says who a picked person is, or that they are unknown', () => {
-    expect(personLabel({ id: 'u1', name: 'Ana Ruiz', email: 'ana@acme.com' })).toBe('Ana Ruiz (ana@acme.com)');
-    expect(personLabel({ id: 'u1', name: null, email: 'ana@acme.com' })).toBe('ana@acme.com');
-    expect(personLabel({ id: 'u1', pending: true })).toBe('Loading…');
-    expect(personLabel({ id: 'u1', name: null, email: null })).toBe('Unknown person');
   });
 });
 

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { projectLabel, projectLabelByName } from '../lib/projectLabel';
+import { projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
   PageHeader, FilterRow, SearchInput, SortPill, CollectionState,
   ListGroup, ListItem, useCollectionShortcut,
 } from '../components/collection';
-import { Alert, Menu, Badge, Button, Field, Select, Input, Textarea, Tooltip } from '../components/ui';
+import { Menu, Badge, Button, Field, Select, Tooltip } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
@@ -18,21 +18,16 @@ import {
 } from '../lib/skillsStore';
 import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
 import SkillShareMenu from '../components/SkillShareMenu';
-import SkillAudienceFields from '../components/SkillAudienceFields';
 import SkillDetail from '../components/SkillDetail';
-import { AudienceList } from '../components/RecipientRows';
+import SkillModal, { OWN_SHARED_CHANGE_NOTE, skillFieldStyle } from '../components/SkillModal';
 import { ShareStateLabel, shareStateIcon } from '../components/ShareStateLabel';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
+  canChangeSkillAudience,
   canEditSkill,
   groupSkillsBySection,
-  isPrivateAccess,
-  PRIVATE_ACCESS,
   isSkillAlwaysOn,
-  sameSkillAccessPayload,
-  skillAccess,
-  skillAccessPayload,
   skillShareState,
   skillAudienceBadge,
   skillOwnerEmail,
@@ -50,19 +45,11 @@ import {
   SKILL_SHARING_OPTIONS,
   SKILL_SHARING_PRIVATE,
   canShareSkill,
+  isOwnSharedSkill,
   isSharedSkill,
   sharedFromValue,
   sharingValue,
 } from '../lib/skillSharing';
-
-// Sentinel for the "All projects" choice in the Project <Select>. It must
-// be a non-empty string: Base UI's <Select.Value> treats an empty-string value
-// as "nothing selected" and shows the placeholder, so an option with value ''
-// would render as the "Select…" placeholder on the closed control even though
-// its item still carries a checkmark (ENG-1246). This value never reaches
-// storage — `submit` maps it back to an empty `projects` array, and it can't
-// collide with a real project name.
-const ALL_PROJECTS = '__all_projects__';
 
 /* The same sentence cowork-server answers when it refuses a change to a skill
    someone else shares with the caller. */
@@ -75,24 +62,11 @@ function lockedActionHint(skill) {
   return 'Admin or creator';
 }
 
-/* The caller's own skill that others use: `shared: true` with the edit
-   capability granted, since cowork-server grants a shared skill's capabilities
-   only to its creator (_skill_response in cowork/api/v1/endpoints/skills.py).
-   Others read the creator's copy live, `enabled` included (shared_turn_skills
-   in cowork/services/skills.py), so the creator's switch and Uninstall reach
-   them too. */
-function isOwnSharedSkill(skill) {
-  return isSharedSkill(skill) && canUseSharedResource(skill, 'canEdit');
-}
-
 /* The detail note on an always-on team or org-wide skill someone else shares. */
 const ALWAYS_ON_DETAIL = "It's part of every task, and only its owner can change it.";
 
 const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
 const OWN_SHARED_REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
-/* Shown in the detail view and the Edit modal, since an edit or the switch
-   reaches every reader at their next answer. */
-const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
 // The detail view's note for a skill the caller can't edit.
 function readOnlyNote(skill) {
@@ -305,294 +279,6 @@ function BuiltinSection({ count, open, onToggle, children }) {
   );
 }
 
-/* Who may change who can use a skill on an org, for the Share dropdown and
-   the Edit dialog alike: its owner or an admin. cowork-server grants
-   `capabilities.canShare` on the owner's own skill only, so a team member
-   who edits a team skill reads its audience; an admin, who holds
-   can_share_org, may still change anyone's. Never a built-in. */
-/* Who may change who can use a skill: its owner or an admin, which the
-   server already folds into the skill's own `capabilities.canShare`. */
-function canChangeSkillAudience(skill) {
-  if (skill?.isBuiltin || !canEditSkill(skill)) return false;
-  return skill?.capabilities?.canShare !== false;
-}
-
-const AUDIENCE_OWNER_ONLY_HINT = 'Only the owner can change who can use it';
-
-const fieldStyle = {
-  width: '100%',
-  border: '1px solid var(--border-01)',
-  borderRadius: 8,
-  padding: 8,
-  fontSize: 13,
-  outline: 'none',
-  background: 'var(--surface-0)',
-  color: 'var(--ink)',
-  fontFamily: 'var(--font-body)',
-  resize: 'vertical',
-  boxSizing: 'border-box',
-};
-
-// Wide enough for the form beside a ~300px settings column; capped to the
-// window so a narrow one stacks the two (see the 720px breakpoint below).
-const SKILL_MODAL_WIDTH = 'min(960px, 94vw)';
-const SKILL_MODAL_HEIGHT = 'min(680px, 88vh)';
-
-function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = null, projects = [], canShare = false, orgSharing = null }) {
-  const isEdit = initial !== null;
-  const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
-  const [busy, setBusy] = useState(false);
-  /* Org sharing (ENG-3787): both a create and an edit show who can use the
-     skill with the Share dialog's audience controls, and apply the answer
-     through PUT /skills/{slug}/sharing once the skill is saved: a create's
-     when it isn't Only me, an edit's only when it changed. An edit opens at
-     the skill's audience, and only someone the Share dropdown would let
-     change it (its owner or an admin) may; anyone else reads it. */
-  const asksAudience = !!orgSharing?.enabled;
-  const canChangeAudience = !isEdit || canChangeSkillAudience(initial);
-  const editsAudience = asksAudience && canChangeAudience;
-  const savedAccess = isEdit ? skillAccess(initial) : PRIVATE_ACCESS;
-  const [access, setAccess] = useState(PRIVATE_ACCESS);
-  const [audiencePending, setAudiencePending] = useState(false);
-  // Bumped on each open so the audience fields re-seed from the skill.
-  const [audienceKey, setAudienceKey] = useState(0);
-  // Set once the skill is saved but sharing it failed: the button then
-  // retries only the sharing, never a second create or save.
-  const [retrySlug, setRetrySlug] = useState(null);
-  const [inlineError, setInlineError] = useState('');
-  /* Who can use the skill: a create asks where the list grants sharing, the
-     creator's own edit where this skill's own capabilities do. A create sends
-     the answer as `shared`; an edit applies a changed choice through the
-     sharing route after the save, and surfaces its refusal. Org sharing
-     replaces this select. */
-  const asksSharing = !orgSharing?.enabled && (isEdit ? canShareSkill(initial) : canShare);
-
-  useEffect(() => {
-    if (!open) return;
-    if (initial) {
-      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || ALL_PROJECTS, sharing: sharingValue(initial) });
-    } else {
-      setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
-    }
-    setAccess(initial ? skillAccess(initial) : PRIVATE_ACCESS);
-    setAudienceKey((key) => key + 1);
-    setAudiencePending(false);
-    setRetrySlug(null);
-    setInlineError('');
-  }, [open]);
-
-  const setField = (key, value) =>
-    setDraft((prev) => ({ ...prev, [key]: value }));
-
-  const handleClose = () => {
-    onClose();
-  };
-
-  const submit = async () => {
-    if (isEdit && !canUseSharedResource(initial, 'canEdit')) {
-      onError?.('You do not have permission to edit this shared skill.');
-      return;
-    }
-    const label = isEdit ? initial.label : draft.label.trim();
-    if (!label || !draft.declarative.trim()) return;
-    if (editsAudience && audiencePending) return;
-    const shareAfterSave = editsAudience && (isEdit
-      ? !sameSkillAccessPayload(skillAccessPayload(access), skillAccessPayload(savedAccess))
-      : !isPrivateAccess(access));
-    setBusy(true);
-    setInlineError('');
-    /* The skill is saved; sharing it is the only thing left. A refusal keeps
-       the dialog open with the reason, since the skill is already saved. */
-    const shareSaved = async (slug, saved) => {
-      try {
-        await setSkillAccessAndSync(slug, skillAccessPayload(access));
-      } catch (err) {
-        const reason = err?.message || 'unknown error';
-        setRetrySlug(slug);
-        setInlineError(isEdit
-          ? `Skill saved, but sharing couldn't be updated: ${reason}.`
-          : `Skill created, but it couldn't be shared: ${reason}. You can share it from the skill's menu.`);
-        await onPartialSave?.(saved);
-        return false;
-      }
-      handleClose();
-      await onSaved(saved, isEdit ? { updatedSharing: true } : { sharedWithAudience: true });
-      return true;
-    };
-    if (retrySlug) {
-      try {
-        await shareSaved(retrySlug, { label, slug: retrySlug });
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
-    try {
-      const scopedProject = draft.project && draft.project !== ALL_PROJECTS ? [draft.project] : [];
-      const payload = { label, description: draft.description, declarative: draft.declarative, projects: scopedProject };
-      const sharedChoice = sharedFromValue(draft.sharing);
-      /* A create sends the sharing choice inline. The edit PUT never carries
-         it, so an edit applies a changed choice through the sharing route. */
-      if (asksSharing && !isEdit) payload.shared = sharedChoice;
-      const sharingChanged = isEdit && asksSharing && draft.sharing !== sharingValue(initial);
-      const saved = await saveSkillAndSync(payload, isEdit);
-      if (shareAfterSave) {
-        // An edit's slug is the skill's own; a create's is the server's answer.
-        const slug = isEdit ? (initial.slug || label) : (saved?.slug || saved?.label || label);
-        await shareSaved(slug, saved ?? { label });
-        return;
-      }
-      if (sharingChanged) await setSkillSharingAndSync(label, sharedChoice);
-      handleClose();
-      await onSaved(saved, {
-        shared: (!isEdit && payload.shared === true) || (sharingChanged && sharedChoice),
-        stoppedSharing: sharingChanged && !sharedChoice,
-      });
-    } catch (err) {
-      onError?.(err?.message || 'Could not save skill.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy && !(editsAudience && audiencePending);
-
-  return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      width={SKILL_MODAL_WIDTH}
-      height={SKILL_MODAL_HEIGHT}
-      labelledBy="skill-modal-title"
-    >
-      <ModalHeader
-        id="skill-modal-title"
-        title={isEdit ? 'Edit Skill' : 'Add a Skill'}
-        subtitle="Write a name, description, and instructions for the skill."
-        onClose={handleClose}
-      />
-      {/* Two columns on a wide window: what the skill says on the left, where
-          it applies and who can use it on the right. Below 720px they stack,
-          main first, and the body scrolls as one. */}
-      <ModalBody padding="0">
-        <div className="flex flex-col min-[720px]:h-full min-[720px]:min-h-0 min-[720px]:flex-row">
-          <div
-            data-testid="skill-modal-main"
-            className="flex min-w-0 flex-col gap-3 p-5 min-[720px]:min-h-0 min-[720px]:flex-1 min-[720px]:overflow-y-auto"
-          >
-            {isEdit && isOwnSharedSkill(initial) && (
-              <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
-            )}
-            <Field label="Label">
-              <Input
-                aria-label="Label"
-                value={draft.label}
-                onChange={(v) => setField('label', v)}
-                placeholder="weekly-status-report"
-                readOnly={isEdit}
-                style={{ ...fieldStyle, height: 34, resize: 'none', ...(isEdit && { opacity: 0.5, cursor: 'default' }) }}
-                autoFocus={!isEdit}
-              />
-            </Field>
-            <Field label="Description">
-              <Textarea
-                aria-label="Description"
-                value={draft.description}
-                onChange={(v) => setField('description', v)}
-                placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
-                style={{ ...fieldStyle, height: 80 }}
-              />
-            </Field>
-            {/* Instructions take whatever height the column has left. */}
-            <Field label="Instructions" className="min-[720px]:min-h-0 min-[720px]:flex-1">
-              <Textarea
-                aria-label="Instructions"
-                value={draft.declarative}
-                onChange={(v) => setField('declarative', v)}
-                placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
-                className="min-[720px]:flex-1"
-                style={{ ...fieldStyle, minHeight: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
-              />
-            </Field>
-            {inlineError && <Alert variant="danger">{inlineError}</Alert>}
-          </div>
-          <aside
-            aria-label="Skill settings"
-            className="flex flex-col gap-3 border-0 border-t border-solid border-line p-5 min-[720px]:w-[300px] min-[720px]:shrink-0 min-[720px]:overflow-y-auto min-[720px]:border-l min-[720px]:border-t-0"
-          >
-            <Field label="Project">
-              <Select
-                ariaLabel="Project"
-                value={draft.project}
-                onValueChange={(v) => setField('project', v)}
-                style={{ ...fieldStyle, height: 34 }}
-                options={[
-                  // The global scope is a mode, not a project — set it apart from
-                  // the real projects (which map 1:1 to the projects page) with a
-                  // leading icon and a divider.
-                  { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
-                  { separator: true },
-                  // value stays the slug -- it is what `submit` persists into
-                  // `skill.projects`. Only the label is for reading.
-                  ...projects.map((p) => ({ value: p.name, label: projectLabel(p) })),
-                ]}
-              />
-            </Field>
-            {asksAudience && (
-              <Field label={SKILL_SHARING_LABEL} help={canChangeAudience ? undefined : AUDIENCE_OWNER_ONLY_HINT}>
-                <div role="group" aria-label={SKILL_SHARING_LABEL} className="min-w-0">
-                  {canChangeAudience ? (
-                    <SkillAudienceFields
-                      key={audienceKey}
-                      value={access}
-                      onChange={setAccess}
-                      capabilities={orgSharing}
-                      // The creator can always edit their own new skill.
-                      canEdit={!isEdit || canEditSkill(initial)}
-                      onPendingChange={setAudiencePending}
-                    />
-                  ) : (
-                    <div className="flex min-w-0 flex-col gap-2" data-testid="skill-audience-read-only">
-                      <AudienceList
-                        orgAllowed={savedAccess.orgAllowed}
-                        teamIds={savedAccess.allowedTeamIds}
-                        userIds={savedAccess.allowedUserIds}
-                        orgName={orgSharing.org_name ?? null}
-                        label={SKILL_SHARING_LABEL}
-                      />
-                      {savedAccess.alwaysOn && (
-                        <span className="font-body text-[12px] text-ink-3">{ALWAYS_ON_BADGE_HINT}</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </Field>
-            )}
-            {asksSharing && (
-              <Field label={SKILL_SHARING_LABEL} help={isEdit ? undefined : SKILL_SHARING_CREATE_HINT}>
-                <Select
-                  ariaLabel={SKILL_SHARING_LABEL}
-                  value={draft.sharing}
-                  onValueChange={(v) => setField('sharing', v)}
-                  style={{ ...fieldStyle, height: 34 }}
-                  options={SKILL_SHARING_OPTIONS}
-                />
-              </Field>
-            )}
-          </aside>
-        </div>
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={handleClose}>Cancel</Button>
-        <Button variant="primary" disabled={!canSubmit} onClick={submit}>
-          {!isEdit && !busy && Ico.plus(14)}
-          {busy ? 'Saving…' : retrySlug ? 'Retry sharing' : isEdit ? 'Save' : 'Create'}
-        </Button>
-      </ModalFooter>
-    </Modal>
-  );
-}
-
 function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false }) {
   const [dragging, setDragging] = useState(false);
   const [file, setFile]         = useState(null);
@@ -694,7 +380,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
                 value={sharing}
                 onValueChange={setSharing}
                 disabled={busy}
-                style={{ ...fieldStyle, height: 34 }}
+                style={{ ...skillFieldStyle, height: 34 }}
                 options={SKILL_SHARING_OPTIONS}
               />
             </Field>
@@ -888,25 +574,55 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     copy.delete(label);
     return copy;
   });
+  /* On/off requests can overlap when a switch is flipped quickly. Each one
+     gets a number, and per skill and setting only the latest settles the
+     switch, moves it back or says it failed; an earlier one's answer is
+     ignored. `base` is what a failure of the latest moves back to: the value
+     the last request to succeed set, else the one before the first. */
+  const toggleRequests = useRef({ enabled: new Map(), forMe: new Map() });
+  const toggleSeq = useRef(0);
+  const beginToggle = (kind, label, current) => {
+    const requests = toggleRequests.current[kind];
+    const seq = ++toggleSeq.current;
+    const inFlight = requests.get(label);
+    requests.set(label, { seq, base: inFlight ? inFlight.base : current });
+    const isLatest = () => requests.get(label)?.seq === seq;
+    return {
+      isLatest,
+      succeeded: (value) => {
+        const latest = requests.get(label);
+        if (latest) latest.base = value;
+      },
+      base: () => requests.get(label)?.base ?? current,
+      finish: () => { if (isLatest()) requests.delete(label); },
+    };
+  };
 
   /* Turns a skill on or off for everyone: its own `enabled`. The switch
      moves at once; a refusal moves it back and shows the server's sentence.
      The reload inside the save re-points the open skill through the effect
      above; adopting the response here would trade the catalogue entry for a
-     serializer that need not carry capabilities. True once it is saved. */
+     serializer that need not carry capabilities. True once it is saved, and
+     only for the latest request on the skill. */
   const writeEnabled = async (skill, next) => {
     const targetLabel = skill.label;
+    const request = beginToggle('enabled', targetLabel, isEnabledForEveryone(skill));
     setEnabledPending((current) => new Map(current).set(targetLabel, next));
     patchOpen(targetLabel, { enabled: next });
     try {
       await saveSkillAndSync({ label: targetLabel, enabled: next }, true);
-      return true;
+      request.succeeded(next);
+      return request.isLatest();
     } catch (err) {
-      patchOpen(targetLabel, { enabled: !next });
+      if (!request.isLatest()) return false;
+      patchOpen(targetLabel, { enabled: request.base() });
       showToast(err.message || 'Could not update skill.');
       return false;
     } finally {
-      settle(setEnabledPending, targetLabel);
+      if (request.isLatest()) {
+        request.finish();
+        settle(setEnabledPending, targetLabel);
+      }
     }
   };
   /* The switch on the caller's own private skill, which nobody else uses. */
@@ -925,16 +641,21 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
      same optimistic move and rollback, through the caller's own setting. */
   const setSkillEnabledForMe = async (skill, next) => {
     const targetLabel = skill.label;
-    const before = skill.enabledForMe;
+    const request = beginToggle('forMe', targetLabel, isEnabledForMe(skill));
     setForMePending((current) => new Map(current).set(targetLabel, next));
     patchOpen(targetLabel, { enabledForMe: next });
     try {
       await setSkillEnabledForMeAndSync(skill.slug || targetLabel, next);
+      request.succeeded(next);
     } catch (err) {
-      patchOpen(targetLabel, { enabledForMe: before });
+      if (!request.isLatest()) return;
+      patchOpen(targetLabel, { enabledForMe: request.base() });
       showToast(err.message || 'Could not update skill.');
     } finally {
-      settle(setForMePending, targetLabel);
+      if (request.isLatest()) {
+        request.finish();
+        settle(setForMePending, targetLabel);
+      }
     }
   };
   const isEnabledForEveryone = (skill) => enabledPending.get(skill.label) ?? skill.enabled ?? true;
