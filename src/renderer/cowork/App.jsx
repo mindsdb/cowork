@@ -92,6 +92,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
+import { frameScheduler } from './lib/frameScheduler';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -1144,6 +1145,14 @@ function AppCore() {
     return () => clearInterval(timer);
   }, [inFlightSet.size, hasPendingReservationMiss, refreshInFlightSet]);
 
+  // Every queue write goes through here so messageQueueRef stays in step:
+  // stream events in one network read run before any commit, and the queue
+  // drain reads the ref between them. `update` must be pure.
+  const updateMessageQueue = (update) => {
+    setMessageQueue(update);
+    messageQueueRef.current = update(messageQueueRef.current);
+  };
+
   const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
@@ -1153,10 +1162,10 @@ function AppCore() {
     // send, not whatever the composer happens to show when it finally
     // drains (which, for a cross-task drain, belongs to another task).
     const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
-    setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
+    updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
-    setMessageQueue((prev) => {
+    updateMessageQueue((prev) => {
       const arr = (prev[taskId] || []).filter((q) => q.id !== itemId);
       const next = { ...prev };
       if (arr.length === 0) delete next[taskId];
@@ -1165,15 +1174,9 @@ function AppCore() {
     });
   };
   const popQueueHead = (taskId) => {
-    const arr = messageQueueRef.current[taskId] || [];
-    if (arr.length === 0) return null;
-    const [head, ...rest] = arr;
-    setMessageQueue((prev) => {
-      const next = { ...prev };
-      if (rest.length === 0) delete next[taskId];
-      else next[taskId] = rest;
-      return next;
-    });
+    const head = (messageQueueRef.current[taskId] || [])[0];
+    if (!head) return null;
+    removeFromQueue(taskId, head.id);
     return head;
   };
   // When the server mints a canonical id for a task that was streaming under
@@ -1181,13 +1184,13 @@ function AppCore() {
   // The drain finds a task by its queue key, so a queue left under a stale
   // id would never re-match the task (ENG-1378).
   const migrateQueuedMessages = (fromIds, toId) => {
-    setMessageQueue((prev) => mergeQueuesForAdoptedId(prev, fromIds, toId));
+    updateMessageQueue((queues) => mergeQueuesForAdoptedId(queues, fromIds, toId));
   };
 
   const clearQueueForTask = (taskId) => {
-    setMessageQueue((prev) => {
-      if (!prev[taskId]) return prev;
-      const next = { ...prev };
+    updateMessageQueue((queues) => {
+      if (!queues[taskId]) return queues;
+      const next = { ...queues };
       delete next[taskId];
       return next;
     });
@@ -1198,11 +1201,19 @@ function AppCore() {
   const stampUserMessageIdOnTasks = (taskIds, userMessageId) => {
     if (!userMessageId) return;
     const ids = new Set(taskIds.filter(Boolean).map(String));
-    setTasks((prev) => prev.map((t) => {
-      if (!ids.has(String(t.id))) return t;
-      const next = stampUserMessageId(t.messages, userMessageId);
-      return next === t.messages ? t : { ...t, messages: next };
-    }));
+    // Runs on every stream event: returning `prev` when nothing changed keeps
+    // it from re-rendering the app between the paced answer renders.
+    setTasks((prev) => {
+      let changed = false;
+      const next = prev.map((t) => {
+        if (!ids.has(String(t.id))) return t;
+        const messages = stampUserMessageId(t.messages, userMessageId);
+        if (messages === t.messages) return t;
+        changed = true;
+        return { ...t, messages };
+      });
+      return changed ? next : prev;
+    });
   };
 
   // Called from every stream's onEvent, right after reduceStream. Keeps
@@ -1438,13 +1449,8 @@ function AppCore() {
       else delete next[cidToCancel];
       return next;
     };
-    setMessageQueue(withoutQueuedAtClick);
-    /*
-     * Prune the ref in lockstep: the drain below reads messageQueueRef
-     * synchronously and the state→ref effect hasn't run yet, so without this
-     * it would still see (and could re-pick) the dropped messages.
-     */
-    messageQueueRef.current = withoutQueuedAtClick(messageQueueRef.current);
+    // The drain below reads messageQueueRef before the state→ref effect runs.
+    updateMessageQueue(withoutQueuedAtClick);
 
     // Re-read after the awaits above: only the holder clears the shared slot.
     releaseSlotClaim(cidToCancel);
@@ -2345,6 +2351,7 @@ function AppCore() {
     let streamState = initialStreamState();
 
     const flushStreaming = () => {
+      if (!isCurrentStream(taskId, ctrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== taskId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -2362,6 +2369,8 @@ function AppCore() {
       }));
     };
 
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
+
     activeStreamingTaskIdRef.current = taskId;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
     const ctrl = tailInFlight(taskId, {
@@ -2378,9 +2387,10 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(taskId, open._scratchpadTabId);
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onDone() {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(taskId, ctrl);
         releaseStream(taskId, ctrl);
         if (superseded) return;
@@ -2448,6 +2458,7 @@ function AppCore() {
         drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         // Read first, drop second: the record is what answers "am I still the
         // live stream here", so releasing before reading would make every
         // terminal look superseded. Releasing is controller-guarded, so a
@@ -3636,6 +3647,7 @@ function AppCore() {
     let streamState = initialStreamState();
 
     const flushStreamingMessage = () => {
+      if (!isCurrentStream(resolvedId, sessionCtrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== resolvedId && t.id !== taskId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -3658,6 +3670,7 @@ function AppCore() {
     // stream. Two RAFs give React a guaranteed paint between phases
     // (one to commit the route+task, one to commit the empty mount).
     let sessionCtrl = null;
+    const streamFlush = frameScheduler(() => flushSync(flushStreamingMessage));
     const startConversation = () => {
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
@@ -3713,7 +3726,7 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(resolvedId || taskId, open._scratchpadTabId);
         }
-        flushSync(() => flushStreamingMessage());
+        streamFlush.request();
       },
       onProgress(event, sid) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
@@ -3728,6 +3741,7 @@ function AppCore() {
         // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId, sessionCtrl);
         releaseStream(resolvedId, sessionCtrl);
         if (superseded) return;
@@ -3811,6 +3825,7 @@ function AppCore() {
         drainNextQueuedMessage(finalId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || taskId, sessionCtrl);
         releaseStream(resolvedId || taskId, sessionCtrl);
         if (superseded) return;
@@ -4153,6 +4168,7 @@ function AppCore() {
     };
 
     const flushStreaming = () => {
+      if (!isCurrentStream(resolvedId || id, ctrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== id && t.id !== resolvedId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -4183,6 +4199,7 @@ function AppCore() {
     // Tag this task as currently streaming so reconcileTaskMessages
     // can distinguish a real in-flight turn from a zombie placeholder.
     activeStreamingTaskIdRef.current = id;
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
     const ctrl = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectId: taskProjectId,
@@ -4205,9 +4222,10 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(resolvedId || id, open._scratchpadTabId);
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onDone() {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
@@ -4280,6 +4298,7 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
@@ -4490,6 +4509,7 @@ function AppCore() {
     };
 
     const flushStreaming = () => {
+      if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== id && t.id !== resolvedId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -4509,6 +4529,7 @@ function AppCore() {
 
     activeStreamingTaskIdRef.current = id;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
     // Same superseded guard the other three stream sites carry, in the same
     // order: read → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"
@@ -4573,7 +4594,7 @@ function AppCore() {
             }
           }
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onChunk(chunk, sid) {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
@@ -4591,6 +4612,7 @@ function AppCore() {
         }
       },
       onDone(sid) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
@@ -4660,6 +4682,7 @@ function AppCore() {
        * drains.
        */
       onError(message) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
