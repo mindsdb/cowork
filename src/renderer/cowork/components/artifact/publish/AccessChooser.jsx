@@ -70,7 +70,7 @@ export function accessDraftFromArtifact(artifact, { orgSharing = false, teams = 
     password: artifact?.accessPassword || '',
     // People outside the org (or, without org sharing, everyone listed).
     emailsText: (artifact?.accessEmails || []).join(', '),
-    // The default team stands for "Everyone at ‹org›", never a team pill.
+    // The default team stands for "Everyone at ‹org›", never a team row.
     teamIds: withoutDefaultTeam(storedTeamIds, teams),
     // People in the org, by hub user id (ENG-3787).
     userIds: [...(artifact?.allowedUserIds || [])],
@@ -132,7 +132,35 @@ export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
 // `team_ids` repeat the outside emails and the teams under the names
 // cowork-server's publish still reads. Everyone at ‹org› sends `org_allowed`
 // and empty lists.
-export function buildAccessPayload(draft, { orgSharing = false } = {}) {
+//
+// `notify` (a boolean, when given) becomes `notify_recipients` on a restricted
+// payload: whether the people this change newly lists are told by email. The
+// server forwards it to auth, which emails only the newly added ones.
+export function buildAccessPayload(draft, { orgSharing = false, notify } = {}) {
+  return withNotify(buildOrgAccessPayload(draft, { orgSharing }), notify);
+}
+
+function withNotify(payload, notify) {
+  if (typeof notify !== 'boolean' || payload.mode !== 'restricted') return payload;
+  return { ...payload, notify_recipients: notify };
+}
+
+/**
+ * The individuals a draft lists that the saved access doesn't: people in the
+ * org (`userIds`, org sharing only) and emails. Teams, the whole org, a
+ * password and public never count. Only a "Specific …" draft adds anyone.
+ */
+export function addedIndividuals(draft, saved, { orgSharing = false } = {}) {
+  if (draft?.mode !== 'restricted') return { userIds: [], emails: [] };
+  const savedEmails = new Set(parseEmailList(saved?.emailsText).valid);
+  const savedUsers = new Set(saved?.userIds || []);
+  return {
+    userIds: orgSharing ? [...new Set(draft.userIds || [])].filter((id) => !savedUsers.has(id)) : [],
+    emails: parseEmailList(draft.emailsText).valid.filter((e) => !savedEmails.has(e)),
+  };
+}
+
+function buildOrgAccessPayload(draft, { orgSharing }) {
   const payload = buildBaseAccessPayload(draft, { orgSharing });
   if (!orgSharing || payload.mode !== 'restricted') return payload;
   const restricted = draft?.mode === 'restricted';

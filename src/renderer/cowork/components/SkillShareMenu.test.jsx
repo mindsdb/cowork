@@ -193,7 +193,7 @@ describe('SkillShareMenu', () => {
     await user.type(field(dialog), 'ana');
     await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
 
-    expect(within(dialog).getByRole('group', { name: 'Recipients' })).toHaveTextContent('Ana Ruiz');
+    expect(within(dialog).getByRole('list', { name: 'Recipients' })).toHaveTextContent('Ana Ruiz');
     // A picked person is never looked up again.
     expect(people.byIds).not.toHaveBeenCalled();
     await user.click(save(dialog));
@@ -221,7 +221,7 @@ describe('SkillShareMenu', () => {
     });
 
     checked(radio(dialog, SPECIFIC));
-    const picked = within(dialog).getByRole('group', { name: 'Recipients' });
+    const picked = within(dialog).getByRole('list', { name: 'Recipients' });
     await waitFor(() => expect(picked).toHaveTextContent('Unknown person'));
     expect(picked).toHaveTextContent('Bo Chen');
     expect(people.byIds).toHaveBeenCalledTimes(1);
@@ -255,7 +255,7 @@ describe('SkillShareMenu', () => {
     });
 
     checked(radio(dialog, SPECIFIC));
-    const picked = within(dialog).getByRole('group', { name: 'Recipients' });
+    const picked = within(dialog).getByRole('list', { name: 'Recipients' });
     expect(picked).toHaveTextContent('Finance');
     // The stored id is named once the hub answers.
     await waitFor(() => expect(picked).toHaveTextContent('Bo Chen'));
@@ -274,7 +274,7 @@ describe('SkillShareMenu', () => {
 
     checked(radio(dialog, EVERYONE));
     await user.click(radio(dialog, SPECIFIC));
-    expect(within(dialog).getByRole('group', { name: 'Recipients' })).toHaveTextContent('Finance');
+    expect(within(dialog).getByRole('list', { name: 'Recipients' })).toHaveTextContent('Finance');
     await user.click(save(dialog));
     expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: ['t-finance'], allowed_user_ids: [], always_on: false });
   });

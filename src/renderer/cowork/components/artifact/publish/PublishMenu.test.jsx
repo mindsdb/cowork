@@ -86,7 +86,7 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     fireEvent.click(screen.getByText('Change'));
 
     // Draft seeded empty (list not loaded yet).
-    const recipients = () => screen.getByRole('group', { name: 'Recipients' });
+    const recipients = () => screen.getByRole('list', { name: 'Recipients' });
     expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
 
     // Server list lands → draft re-seeds (user hasn't edited), so an empty

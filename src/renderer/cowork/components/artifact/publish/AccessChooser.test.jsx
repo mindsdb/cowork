@@ -6,6 +6,7 @@ import {
   isAccessDraftValid,
   isOwnerOnlySelection,
   buildAccessPayload,
+  addedIndividuals,
   ACCESS_LABELS,
   newAccessDraft,
 } from './AccessChooser';
@@ -168,5 +169,29 @@ describe('a first share with the platform UI on', () => {
   it('describes Public and Password as reaching the internet', () => {
     expect(ACCESS_LABELS.public.desc).toBe('Anyone on the internet with the URL');
     expect(ACCESS_LABELS.password.desc).toBe('Anyone on the internet with the password');
+  });
+});
+
+describe('notifying added people (ENG-3787)', () => {
+  const draft = (over) => ({ mode: 'restricted', password: '', emailsText: '', teamIds: [], userIds: [], ...over });
+
+  it('adds notify_recipients to a restricted payload only when asked', () => {
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: true }))
+      .toEqual(expect.objectContaining({ mode: 'restricted', notify_recipients: true }));
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { orgSharing: true, notify: false }))
+      .toEqual(expect.objectContaining({ allowed_emails: ['a@x.io'], notify_recipients: false }));
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }))).not.toHaveProperty('notify_recipients');
+    expect(buildAccessPayload({ mode: 'password', password: 'pw' }, { notify: false })).toEqual({ mode: 'password', password: 'pw' });
+    expect(buildAccessPayload({ mode: 'public' }, { notify: true })).toEqual({ mode: 'public' });
+  });
+
+  it('counts only people and emails the saved access lacks', () => {
+    const saved = draft({ emailsText: 'a@x.io', userIds: ['u1'], teamIds: ['t1'] });
+    const next = draft({ emailsText: 'a@x.io, b@x.io', userIds: ['u1', 'u2'], teamIds: ['t1', 't2'] });
+    expect(addedIndividuals(next, saved, { orgSharing: true })).toEqual({ userIds: ['u2'], emails: ['b@x.io'] });
+    // Without org sharing there are no user ids.
+    expect(addedIndividuals(next, saved)).toEqual({ userIds: [], emails: ['b@x.io'] });
+    // Only a Specific draft adds anyone.
+    expect(addedIndividuals({ ...next, mode: 'org' }, saved, { orgSharing: true })).toEqual({ userIds: [], emails: [] });
   });
 });

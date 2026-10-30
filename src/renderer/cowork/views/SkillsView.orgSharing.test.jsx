@@ -327,7 +327,7 @@ describe('SkillsView with org sharing', () => {
       expect(within(dialog).getByRole('textbox', { name: 'Instructions' })).toBeInTheDocument();
     });
 
-    it('lists who can use it as read-only pills, with the project and owner', async () => {
+    it('lists who can use it as read-only rows, with the project and owner', async () => {
       const user = userEvent.setup();
       api.fetchHubPeopleByIds.mockResolvedValue({ reachable: true, people: [{ id: 'u7', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
       await renderPage([{ ...mine, access: { orgAllowed: false, allowedTeamIds: ['t-supply'], allowedUserIds: ['u7'] } }]);
@@ -336,6 +336,7 @@ describe('SkillsView with org sharing', () => {
       const pills = screen.getByRole('list', { name: 'Who can use it' });
       expect(within(pills).getByText('Supply Planning')).toBeInTheDocument();
       expect(await within(pills).findByText('Ana Ruiz')).toBeInTheDocument();
+      expect(within(pills).getByText('ana@kinaxis.com')).toBeInTheDocument();
       // Read only: no way to remove a recipient here.
       expect(within(pills).queryByRole('button')).toBeNull();
       expect(screen.getByTestId('skill-meta-project')).toHaveTextContent('All projects');

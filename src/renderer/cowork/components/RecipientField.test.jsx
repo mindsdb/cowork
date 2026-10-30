@@ -54,6 +54,12 @@ function Harness({ initial = {}, spy = () => {}, ...props }) {
 const input = () => screen.getByRole('combobox');
 const options = () => within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent);
 const summary = () => screen.getByTestId('recipient-summary').textContent;
+const list = () => screen.getByRole('list', { name: 'Recipients' });
+// Each row as [primary, secondary], top to bottom.
+const rows = () => within(list()).getAllByRole('listitem').map((row) => {
+  const texts = [...row.querySelectorAll('span.truncate')].map((el) => el.textContent);
+  return texts;
+});
 
 describe('<RecipientField>', () => {
   it('lists your teams on focus, the default team left out, with member counts', async () => {
@@ -69,12 +75,16 @@ describe('<RecipientField>', () => {
     expect(api.search).not.toHaveBeenCalled();
   });
 
-  it('opens the same list from the + button', async () => {
-    const user = userEvent.setup();
+  it('puts a full-width search input on top, and no list while nobody is picked', () => {
     render(<Harness allowExternal />);
-    await user.click(screen.getByRole('button', { name: 'Show suggestions' }));
-    expect(options()).toHaveLength(3);
-    expect(input()).toHaveFocus();
+    expect(input()).toHaveAttribute('placeholder', 'Add teams, people or emails…');
+    expect(screen.queryByRole('list', { name: 'Recipients' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
+  });
+
+  it('says only teams or people in the placeholder when outside emails are not allowed', () => {
+    render(<Harness />);
+    expect(input()).toHaveAttribute('placeholder', 'Add teams or people…');
   });
 
   it('groups typed matches into Teams and People in the org', async () => {
@@ -92,7 +102,7 @@ describe('<RecipientField>', () => {
     expect(api.search).toHaveBeenLastCalledWith('an', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
-  it('adds a picked person and a picked team as pills, and hides them from suggestions', async () => {
+  it('adds a picked person and a picked team as rows, newest on top, and hides them from suggestions', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();
     render(<Harness allowExternal spy={spy} />);
@@ -102,8 +112,9 @@ describe('<RecipientField>', () => {
 
     await user.click(screen.getByRole('option', { name: /Finance/ }));
     expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-finance'], userIds: ['u-ana'], emails: [] });
-    expect(screen.getByRole('group', { name: 'Recipients' })).toHaveTextContent('Ana Ruiz');
-    expect(screen.getByRole('group', { name: 'Recipients' })).toHaveTextContent('Finance');
+    expect(rows()).toEqual([['Finance', 'Team'], ['Ana Ruiz', 'ana@kinaxis.com']]);
+    // The suggestions sit under the input, above the list.
+    expect(screen.getByRole('listbox').compareDocumentPosition(list()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(options()).not.toContain('Finance');
     expect(summary()).toBe('1 team · 1 person');
   });
@@ -119,6 +130,7 @@ describe('<RecipientField>', () => {
     await user.keyboard('{Enter}');
     expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@partner.io'] });
     expect(summary()).toBe('1 outside Kinaxis');
+    expect(rows()).toEqual([['zed@partner.io', 'Outside Kinaxis']]);
     expect(screen.getByRole('button', { name: 'Remove zed@partner.io' })).toBeInTheDocument();
   });
 
@@ -173,17 +185,44 @@ describe('<RecipientField>', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('removes the last pill with Backspace in an empty input, and any pill with its ×', async () => {
+  it('removes a row with its labelled ×, by click or keyboard, and Backspace leaves rows alone', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();
     render(<Harness allowExternal spy={spy} initial={{ teamIds: ['t-finance'], userIds: ['u-ana'], emails: ['zed@partner.io'] }} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove Ana Ruiz' })).toBeInTheDocument());
     await user.click(input());
     await user.keyboard('{Backspace}');
-    expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-finance'], userIds: ['u-ana'], emails: [] });
+    expect(spy).not.toHaveBeenCalled();
 
+    // The × is reachable with Tab and works with Enter.
+    await user.keyboard('{Escape}');
     screen.getByRole('button', { name: 'Remove Finance' }).focus();
     await user.keyboard('{Enter}');
+    expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: ['zed@partner.io'] });
+    // The focus goes back to the input without opening the suggestions.
+    expect(input()).toHaveFocus();
+    expect(screen.queryByRole('listbox')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Remove zed@partner.io' }));
     expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] });
+    expect(rows()).toEqual([['Ana Ruiz', 'ana@kinaxis.com']]);
+  });
+
+  it('lists stored recipients as rows with their second line', async () => {
+    const teams = { ...TEAMS, teams: [...TEAMS.teams, { id: 't-one', display_name: 'Solo', member_count: 1 }] };
+    render(<Harness allowExternal teamsState={teams} initial={{ teamIds: ['t-supply', 't-one', 't-andes'], userIds: ['u-ana'], emails: ['zed@partner.io'] }} />);
+    await waitFor(() => expect(list()).toHaveTextContent('Ana Ruiz'));
+    expect(rows()).toEqual([
+      ['Supply Planning', 'Team · 12 people'],
+      ['Solo', 'Team · 1 person'],
+      ['Andes Ops', 'Team'],
+      ['Ana Ruiz', 'ana@kinaxis.com'],
+      ['zed@partner.io', 'Outside Kinaxis'],
+    ]);
+    const kinds = within(list()).getAllByRole('listitem').map((row) => row.getAttribute('data-recipient-row'));
+    expect(kinds).toEqual(['team', 'team', 'team', 'person', 'outside']);
+    // A person's tile is their initials.
+    expect(within(list()).getAllByRole('listitem')[3]).toHaveTextContent(/^AR/);
   });
 
   it('adds each address of a paste: org people as people, the rest as outside emails', async () => {
@@ -197,6 +236,7 @@ describe('<RecipientField>', () => {
     }));
     expect(screen.getByRole('alert')).toHaveTextContent('Not added: nope (not an email)');
     expect(summary()).toBe('2 people · 1 outside Kinaxis');
+    await waitFor(() => expect(rows().map((r) => r[0])).toEqual(['Ana Ruiz', 'Bo Chen', 'zed@partner.io']));
   });
 
   it('reports pasted outside addresses as not added when only the org is allowed', async () => {
@@ -212,12 +252,13 @@ describe('<RecipientField>', () => {
     const user = userEvent.setup();
     const spy = vi.fn();
     render(<Harness allowExternal spy={spy} initial={{ teamIds: ['t-supply', 't-gone'], userIds: ['u-bo', 'u-gone'] }} />);
-    const box = screen.getByRole('group', { name: 'Recipients' });
-
-    await waitFor(() => expect(box).toHaveTextContent('Bo Chen'));
-    expect(box).toHaveTextContent('Supply Planning');
-    expect(box).toHaveTextContent('Unknown team');
-    expect(box).toHaveTextContent('Unknown person');
+    await waitFor(() => expect(list()).toHaveTextContent('Bo Chen'));
+    expect(rows()).toEqual([
+      ['Supply Planning', 'Team · 12 people'],
+      ['Unknown team', 'Team'],
+      ['Bo Chen', 'bo@kinaxis.com'],
+      ['Unknown person'],
+    ]);
     expect(api.byIds).toHaveBeenCalledWith(['u-bo', 'u-gone']);
     expect(summary()).toBe('2 teams · 2 people');
 
@@ -228,8 +269,9 @@ describe('<RecipientField>', () => {
 
   it('marks outside emails apart from people in the org', () => {
     render(<Harness allowExternal initial={{ emails: ['zed@partner.io'] }} />);
-    const pill = screen.getByRole('button', { name: 'Remove zed@partner.io' }).closest('[data-recipient-pill]');
-    expect(pill.className).toContain('bg-warning-bg');
+    const row = screen.getByRole('button', { name: 'Remove zed@partner.io' }).closest('[data-recipient-row]');
+    expect(row).toHaveAttribute('data-recipient-row', 'outside');
+    expect(row.querySelector('.bg-warning-bg')).not.toBeNull();
   });
 
   it('summarises an empty field', () => {
@@ -248,8 +290,10 @@ describe('<RecipientField>', () => {
 
       await user.type(input(), 'Zed@Partner.io{Enter}');
       expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@partner.io'] });
-      const pill = screen.getByRole('button', { name: 'Remove zed@partner.io' }).closest('[data-recipient-pill]');
-      expect(pill.className).not.toContain('bg-warning-bg');
+      const row = screen.getByRole('button', { name: 'Remove zed@partner.io' }).closest('[data-recipient-row]');
+      expect(row).toHaveAttribute('data-recipient-row', 'email');
+      expect(row.querySelector('.bg-warning-bg')).toBeNull();
+      expect(rows()).toEqual([['zed@partner.io']]);
       expect(summary()).toBe('1 person');
 
       fireEvent.paste(input(), { clipboardData: { getData: () => 'a@x.io, b@x.io\nbad' } });

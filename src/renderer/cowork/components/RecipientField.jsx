@@ -1,7 +1,7 @@
-// `<RecipientField>` — who to share with, typed the way an email client's
-// "To:" line is (ENG-3787). One bordered box holds the picked recipients as
-// pills and a text input that wraps after them; the trailing + opens the
-// suggestions.
+// `<RecipientField>` — who to share with (ENG-3787), the way a Google Docs
+// share dialog asks: a search input on top, the suggestions under it, and the
+// recipients picked so far as a list of rows below (`<RecipientRow>`), each
+// with its own remove ×. The newest addition goes to the top of the list.
 //
 // Recipients come in three kinds, kept apart in `value`:
 //   - teams (`teamIds`) — the caller's own MindsHub teams, the org's default
@@ -11,71 +11,35 @@
 //   - outside emails (`emails`) — only with `allowExternal`.
 // With `emailsOnly` (no org to search) it is just addresses.
 //
-// Focusing, clicking or + with nothing typed lists the teams. Typing filters
-// them and, after a short pause, searches people (a newer keystroke aborts the
-// older request). A typed email nobody in the org has becomes the last row,
-// "Invite …", when outside emails are allowed. ↑/↓ move, Enter / Tab / comma
-// add the highlighted (or top) row, Escape closes, Backspace in an empty input
-// removes the last pill. A paste of several addresses adds each: a person
-// when the org has that exact email, else an outside email when allowed, else
-// it is reported as not added.
+// Focusing or clicking the input with nothing typed lists the teams. Typing
+// filters them and, after a short pause, searches people (a newer keystroke
+// aborts the older request). A typed email nobody in the org has becomes the
+// last row, "Invite …", when outside emails are allowed. ↑/↓ move, Enter /
+// Tab / comma add the highlighted (or top) row, Escape closes. A paste of
+// several addresses adds each: a person when the org has that exact email,
+// else an outside email when allowed, else it is reported as not added.
 
 import { useEffect, useId, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Tooltip } from './ui';
+import { Spinner } from './ui';
 import { searchHubPeople } from '../api';
 import { isEmailShaped } from '../lib/emailAddress';
 import {
-  UNKNOWN_PERSON,
-  everyoneAtLabel,
   filterTeams,
-  namesDefaultTeam,
-  withoutDefaultTeam,
   orgNameOrGeneric,
   personInitials,
   recipientSummary,
   shareableTeams,
 } from '../lib/orgSharing';
 import { useHubTeams, useKnownPeople } from '../hooks/useOrgSharing';
+import { RecipientRow, UNKNOWN_TEAM, recipientItems } from './RecipientRows';
 
 export const RECIPIENT_SEARCH_DEBOUNCE_MS = 200;
 const MIN_QUERY = 2;
 const SEPARATORS = /[\s,;]+/;
-export const UNKNOWN_TEAM = 'Unknown team';
+export { UNKNOWN_TEAM };
 
 const EMPTY_VALUE = Object.freeze({ teamIds: [], userIds: [], emails: [] });
-
-/* A recipient pill. Without `onRemove` it is read-only: no remove button,
-   as `<AudiencePills>` shows an audience in the skill detail. */
-function PillShell({ tone = 'default', children, onRemove, removeLabel }) {
-  const toneClass = tone === 'outside'
-    ? 'bg-warning-bg border-warning-border text-warning-text'
-    : 'bg-surface-2 border-line text-ink';
-  return (
-    <span
-      data-recipient-pill=""
-      className={`inline-flex min-w-0 max-w-full items-center gap-[5px] rounded-full border border-solid py-[1px] pl-[3px] ${onRemove ? 'pr-[2px]' : 'pr-[8px]'} font-body text-[12px] leading-[20px] ${toneClass}`}
-    >
-      {children}
-      {onRemove && <button
-        type="button"
-        aria-label={removeLabel}
-        onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        // Keeps the focus where it was when the pill goes.
-        onMouseDown={(e) => e.preventDefault()}
-        className="inline-flex shrink-0 rounded-full bg-transparent border-0 cursor-pointer p-[2px] text-current opacity-60 hover:opacity-100"
-      >{Ico.close(12)}</button>}
-    </span>
-  );
-}
-
-function PillLabel({ text, tip }) {
-  return (
-    <Tooltip content={tip || text}>
-      <span className="min-w-0 truncate">{text}</span>
-    </Tooltip>
-  );
-}
 
 function IconTile({ children }) {
   return (
@@ -90,79 +54,6 @@ function Avatar({ person, size = 18 }) {
       className="inline-grid shrink-0 place-items-center rounded-full bg-accent-bg text-accent font-body font-semibold"
       style={{ width: size, height: size, fontSize: size <= 18 ? 9.5 : 11 }}
     >{person && (person.name || person.email) ? personInitials(person) : '?'}</span>
-  );
-}
-
-/**
- * Who a skill reaches, read-only, as the recipient field's pills: Everyone
- * at ‹org› (org-wide or the default team), then each team and person; "Only
- * you" when it names nobody. People are named through useKnownPeople.
- *
- * @param {{
- *   orgAllowed?: boolean,
- *   teamIds?: string[],
- *   userIds?: string[],
- *   orgName?: string | null,
- *   teamsState?: { status: string, teams: Array<{ id: string, display_name: string, is_default?: boolean }> } | null,
- *   label?: string,
- * }} props
- */
-export function AudiencePills({
-  orgAllowed = false, teamIds = EMPTY_VALUE.teamIds, userIds = EMPTY_VALUE.userIds,
-  orgName = null, teamsState: teamsProp = null, label = 'Who can use it',
-}) {
-  const ownTeams = useHubTeams(!teamsProp);
-  const teamsState = teamsProp || ownTeams;
-  const known = useKnownPeople(userIds);
-  const teams = teamsState.teams || [];
-  const everyone = orgAllowed || namesDefaultTeam(teamIds, teams);
-  const shownTeams = withoutDefaultTeam(teamIds, teams);
-  const peopleById = new Map(known.people.map((p) => [p.id, p]));
-  const teamName = (id) => {
-    const team = teams.find((t) => t.id === id);
-    if (team) return team.display_name;
-    return teamsState.status === 'ready' ? UNKNOWN_TEAM : 'Loading…';
-  };
-  const pills = [];
-  if (everyone) {
-    pills.push(
-      <PillShell key="org">
-        <IconTile>{Ico.building(12)}</IconTile>
-        <PillLabel text={everyoneAtLabel(orgName)} />
-      </PillShell>,
-    );
-  }
-  for (const id of shownTeams) {
-    const name = teamName(id);
-    pills.push(
-      <PillShell key={`t:${id}`}>
-        <IconTile>{Ico.people(12)}</IconTile>
-        <PillLabel text={name} />
-      </PillShell>,
-    );
-  }
-  for (const id of userIds) {
-    const person = peopleById.get(id);
-    const name = person?.pending ? 'Loading…' : (person?.name || person?.email || UNKNOWN_PERSON);
-    pills.push(
-      <PillShell key={`u:${id}`}>
-        <Avatar person={person} />
-        <PillLabel text={name} tip={person?.email || name} />
-      </PillShell>,
-    );
-  }
-  if (pills.length === 0) {
-    pills.push(
-      <PillShell key="me">
-        <IconTile>{Ico.lock(12)}</IconTile>
-        <PillLabel text="Only you" />
-      </PillShell>,
-    );
-  }
-  return (
-    <ul aria-label={label} data-testid="audience-pills" className="m-0 flex list-none flex-wrap items-center gap-1.5 p-0">
-      {pills.map((pill) => <li key={pill.key} className="inline-flex min-w-0 max-w-full">{pill}</li>)}
-    </ul>
   );
 }
 
@@ -365,11 +256,6 @@ export function RecipientField({
   const removeTeam = (id) => emit({ teamIds: latest.current.teamIds.filter((t) => t !== id) });
   const removeUser = (id) => emit({ userIds: latest.current.userIds.filter((u) => u !== id) });
   const removeEmail = (email) => emit({ emails: latest.current.emails.filter((e) => e !== email) });
-  const removeLast = () => {
-    if (emails.length) removeEmail(emails[emails.length - 1]);
-    else if (userIds.length) removeUser(userIds[userIds.length - 1]);
-    else if (teamIds.length) removeTeam(teamIds[teamIds.length - 1]);
-  };
 
   const onKeyDown = (e) => {
     if (e.key === 'ArrowDown') {
@@ -394,8 +280,6 @@ export function RecipientField({
       if (menuOpen) { e.preventDefault(); e.stopPropagation(); }
       setOpen(false);
       setActive(-1);
-    } else if (e.key === 'Backspace' && text === '') {
-      if (teamIds.length || userIds.length || emails.length) { e.preventDefault(); removeLast(); }
     }
   };
 
@@ -408,56 +292,45 @@ export function RecipientField({
     resolveTokens(tokens);
   };
 
-  const focusInput = () => inputRef.current?.focus();
-  const onPlus = () => {
-    if (emailsOnly && query) { commit(); focusInput(); return; }
-    focusInput();
-    setOpen(true);
+  // ── The list ──
+  // Newest first: keys already shown keep their place, new ones go on top.
+  const items = recipientItems({ teamIds, userIds, emails }, { teamsState, people: known.people, orgName, emailsOnly });
+  const order = useRef(null);
+  const quietFocus = useRef(false);
+  const listRef = useRef(null);
+  const keys = items.map((item) => item.key);
+  if (order.current === null) {
+    order.current = keys;
+  } else {
+    const present = new Set(keys);
+    const kept = order.current.filter((k) => present.has(k));
+    const keptSet = new Set(kept);
+    order.current = [...keys.filter((k) => !keptSet.has(k)), ...kept];
+  }
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  const rows = order.current.map((k) => byKey.get(k));
+  const newest = rows[0]?.key;
+  // An addition shows at the top, so the list scrolls back there.
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [newest]);
+  const removeItem = (item) => {
+    const id = item.key.slice(2);
+    if (item.key.startsWith('t:')) removeTeam(id);
+    else if (item.key.startsWith('u:')) removeUser(id);
+    else removeEmail(id);
+    // The row and its × go; the focus lands back on the input, quietly.
+    quietFocus.current = true;
+    inputRef.current?.focus();
+    quietFocus.current = false;
   };
-
-  // ── Pills ──
-  const teamName = (id) => {
-    const team = (teamsState.teams || []).find((t) => t.id === id);
-    if (team) return team.display_name;
-    return teamsState.status === 'ready' ? UNKNOWN_TEAM : 'Loading…';
-  };
-  const peopleById = new Map(known.people.map((p) => [p.id, p]));
-  const outsideTip = `Outside ${org}`;
-
-  const pills = [
-    ...teamIds.map((id) => {
-      const name = teamName(id);
-      return (
-        <PillShell key={`t:${id}`} removeLabel={`Remove ${name}`} onRemove={() => removeTeam(id)}>
-          <IconTile>{Ico.people(12)}</IconTile>
-          <PillLabel text={name} />
-        </PillShell>
-      );
-    }),
-    ...userIds.map((id) => {
-      const person = peopleById.get(id);
-      const name = person?.pending ? 'Loading…' : (person?.name || person?.email || UNKNOWN_PERSON);
-      return (
-        <PillShell key={`u:${id}`} removeLabel={`Remove ${person?.email || name}`} onRemove={() => removeUser(id)}>
-          <Avatar person={person} />
-          <PillLabel text={name} tip={person?.email || name} />
-        </PillShell>
-      );
-    }),
-    ...emails.map((email) => (
-      <PillShell key={`e:${email}`} tone={emailsOnly ? 'default' : 'outside'} removeLabel={`Remove ${email}`} onRemove={() => removeEmail(email)}>
-        <IconTile>{Ico.mail(12)}</IconTile>
-        <PillLabel text={email} tip={emailsOnly ? email : `${email} · ${outsideTip}`} />
-      </PillShell>
-    )),
-  ];
 
   const fieldLabel = label || (emailsOnly
     ? 'Add people by email'
     : (allowExternal ? 'Add teams, people or emails' : 'Add teams or people'));
-  const placeholder = pills.length ? '' : (emailsOnly
-    ? 'name@company.com'
-    : (allowExternal ? 'Teams, people or emails' : 'Teams or people'));
+  const placeholder = emailsOnly
+    ? 'Add people by email…'
+    : (allowExternal ? 'Add teams, people or emails…' : 'Add teams or people…');
   const summary = recipientSummary({ teamIds, userIds, emails }, { orgName, emailsOnly, allowExternal });
 
   const groupHeader = (text) => (
@@ -467,16 +340,13 @@ export function RecipientField({
   return (
     <div className="flex min-w-0 flex-col">
       <div
-        role="group"
-        aria-label="Recipients"
-        onClick={(e) => { if (e.target === e.currentTarget) { focusInput(); setOpen(true); } }}
-        className="flex min-h-[36px] min-w-0 cursor-text flex-wrap items-center gap-[5px] rounded-card-row border border-solid bg-surface py-[5px] pl-[6px] pr-[5px]"
+        className="flex h-[34px] min-w-0 items-center gap-2 rounded-card-row border border-solid bg-surface pl-[10px] pr-2"
         style={{
           borderColor: focused ? 'var(--accent)' : 'var(--line)',
           transition: 'border-color var(--dur-hover) ease',
         }}
       >
-        {pills}
+        <span aria-hidden="true" className="inline-flex shrink-0 text-ink-4">{Ico.search(14)}</span>
         <input
           ref={inputRef}
           role="combobox"
@@ -497,27 +367,18 @@ export function RecipientField({
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          onFocus={() => { setFocused(true); if (!emailsOnly) setOpen(true); }}
+          onFocus={() => { setFocused(true); if (!emailsOnly && !quietFocus.current) setOpen(true); }}
           onClick={() => setOpen(true)}
           onBlur={() => {
             setFocused(false);
             setOpen(false);
             setActive(-1);
-            // An address typed and left becomes a pill rather than lingering.
+            // An address typed and left is added rather than lingering.
             if (typedIsEmail && (emailsOnly || allowExternal)) commitEmail();
           }}
-          className="min-w-[80px] flex-1 bg-transparent border-0 [outline:none] py-[3px] px-1 font-body text-[13px] text-ink"
+          className="min-w-0 flex-1 bg-transparent border-0 [outline:none] p-0 font-body text-[13px] text-ink"
         />
         {resolving > 0 && <Spinner />}
-        <Tooltip content={emailsOnly ? 'Add' : 'Show suggestions'}>
-          <button
-            type="button"
-            aria-label={emailsOnly ? 'Add' : 'Show suggestions'}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={onPlus}
-            className="ml-auto inline-grid shrink-0 place-items-center w-[24px] h-[24px] rounded-[6px] bg-transparent border-0 cursor-pointer text-ink-3 hover:bg-surface-2"
-          >{Ico.plus(14)}</button>
-        </Tooltip>
       </div>
 
       {menuOpen && (
@@ -592,6 +453,15 @@ export function RecipientField({
         <span className="mt-[6px] font-body text-xs text-danger" role="alert">
           {`Not added: ${notAdded.map((n) => `${n.raw} (${n.reason})`).join(', ')}`}
         </span>
+      )}
+      {rows.length > 0 && (
+        <ul
+          ref={listRef}
+          aria-label="Recipients"
+          className="m-0 mt-2 flex min-w-0 max-h-[206px] list-none flex-col overflow-y-auto rounded-card-row border border-solid border-line bg-surface py-[2px] px-0"
+        >
+          {rows.map((item) => <RecipientRow key={item.key} item={item} onRemove={() => removeItem(item)} />)}
+        </ul>
       )}
       <span className="mt-[6px] font-body text-xs text-ink-3" data-testid="recipient-summary" aria-live="polite">{summary}</span>
     </div>

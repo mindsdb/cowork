@@ -57,7 +57,7 @@ describe('PublishMenu with the platform UI off and no shared publish token', () 
     fireEvent.click(screen.getByRole('radio', { name: /Only you/ }));
     fireEvent.click(shareButton());
     expect(ctrl.publish).toHaveBeenCalledWith({
-      mode: 'restricted', emails: [], org_allowed: false, owner_only: true,
+      mode: 'restricted', emails: [], org_allowed: false, owner_only: true, notify_recipients: false,
     });
   });
 

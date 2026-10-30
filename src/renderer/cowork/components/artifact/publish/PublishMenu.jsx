@@ -15,7 +15,7 @@
 // viewer (Artifacts grid, chat bubble, working-folder rail) gets the same
 // rich flow — previously only the grid had it.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
 import { Alert, Button, OutsidePressLayer, Spinner, Tooltip } from '../../ui';
@@ -23,6 +23,7 @@ import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
   accessDraftFromArtifact,
+  addedIndividuals,
   accessSummaryLabel,
   buildAccessPayload,
   isAccessDraftValid,
@@ -30,6 +31,8 @@ import {
   newAccessDraft,
   parseEmailList,
 } from './AccessChooser';
+import { SharedWithList, useRecipientItems } from '../../RecipientRows';
+import { recipientSummary } from '../../../lib/orgSharing';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -127,17 +130,82 @@ function UrlField({ url }) {
   );
 }
 
-// Read-only "current access" card (summary view).
+// Read-only "current access" card (summary view). Shared with specific
+// teams and people, it lists them right away (the first few, then "+N
+// more"), so seeing who has access never takes a click on Change.
 function AccessSummaryCard({ pub, sharing }) {
-  const m = accessSummaryLabel({ ...pub, mode: pub.accessMode }, { orgSharing: !!sharing, orgName: sharing?.orgName });
+  const orgSharing = !!sharing;
+  const m = accessSummaryLabel({ ...pub, mode: pub.accessMode }, { orgSharing, orgName: sharing?.orgName });
+  const draft = accessDraftFromArtifact(pub, { orgSharing, teams: sharing?.teams?.teams || [] });
+  const listed = draft.mode === 'restricted';
+  const emails = listed ? parseEmailList(draft.emailsText).valid : [];
+  const teamIds = listed && orgSharing ? draft.teamIds : [];
+  const userIds = listed && orgSharing ? draft.userIds : [];
+  const count = emails.length + teamIds.length + userIds.length;
+  const desc = count > 0
+    ? recipientSummary({ teamIds, userIds, emails }, { orgName: sharing?.orgName || null, emailsOnly: !orgSharing })
+    : m.desc;
   return (
-    <div className="flex items-center gap-[10px] py-[10px] px-3 rounded-card bg-surface-2 border border-solid border-line">
-      <span className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-card-row bg-surface border border-solid border-line text-ink-3">{m.icon(16)}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-body font-semibold text-[13px] text-ink">{m.title}</span>
-        <span className="block font-body text-[11.5px] text-ink-3 mt-px">{m.desc}</span>
-      </span>
-      <span className="shrink-0 text-ink-4 inline-flex">{Ico.check(14)}</span>
+    <div className="flex flex-col rounded-card bg-surface-2 border border-solid border-line" data-testid="access-summary">
+      <div className="flex items-center gap-[10px] py-[10px] px-3">
+        <span className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-card-row bg-surface border border-solid border-line text-ink-3">{m.icon(16)}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-body font-semibold text-[13px] text-ink">{m.title}</span>
+          <span className="block font-body text-[11.5px] text-ink-3 mt-px">{desc}</span>
+        </span>
+        <span className="shrink-0 text-ink-4 inline-flex">{Ico.check(14)}</span>
+      </div>
+      {count > 0 && (
+        <div className="border-t border-b-0 border-x-0 border-solid border-line py-1 px-1">
+          <SharedWithList
+            teamIds={teamIds}
+            userIds={userIds}
+            emails={emails}
+            orgName={sharing?.orgName || null}
+            teamsState={sharing?.teams || null}
+            emailsOnly={!orgSharing}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Shown in the footer, in place of its buttons, when a save adds people one
+// by one (not teams, the org, a password or public): whether to tell them by
+// email. Either answer saves; Escape goes back to editing.
+const NOTIFY_SHOWN = 3;
+
+function NotifyConfirm({ added, sharing, busy, choice, onDecide }) {
+  const items = useRecipientItems(
+    { userIds: added.userIds, emails: added.emails },
+    { teamsState: sharing?.teams || null, orgName: sharing?.orgName || null, emailsOnly: !sharing },
+  );
+  const notifyRef = useRef(null);
+  useEffect(() => { notifyRef.current?.focus(); }, []);
+  const count = items.length;
+  const names = items.slice(0, NOTIFY_SHOWN).map((item) => item.primary).join(', ');
+  const more = count - Math.min(count, NOTIFY_SHOWN);
+  return (
+    <div role="group" aria-label="Notify new people" data-testid="notify-confirm" className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-body font-semibold text-sm text-ink">
+          {`Let ${count === 1 ? '1 new person' : `${count} new people`} know by email?`}
+        </span>
+        <span className="truncate font-body text-xs text-ink-3" title={items.map((item) => item.primary).join(', ')}>
+          {names}{more > 0 && <span className="text-ink-4">{` +${more} more`}</span>}
+        </span>
+      </div>
+      <div className="flex justify-end gap-2">
+        <FooterButton onClick={() => onDecide(false)} disabled={busy}
+          busy={busy && choice === false} busyLabel="Saving…">
+          Don&apos;t notify
+        </FooterButton>
+        <Button ref={notifyRef} variant="primary" onClick={() => onDecide(true)} disabled={busy}>
+          {busy && choice === true && <Spinner style={{ color: 'currentColor' }} />}
+          {busy && choice === true ? 'Saving…' : 'Notify'}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -225,6 +293,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   const [draftDirty, setDraftDirty] = useState(false);
   const [pwd, setPwd] = useState({ value: '', reveal: false });
   const [activatingMd5, setActivatingMd5] = useState('');
+  // Asking whether to email the people a save adds: `{ draft, added, then }`,
+  // `then` being 'publish' (first share) or 'apply' (an access change).
+  const [notifyPrompt, setNotifyPrompt] = useState(null);
+  const [notifyChoice, setNotifyChoice] = useState(null);
 
   // Re-seed the panel each time it opens (and whenever published-state
   // flips underneath it) so it never shows a stale draft.
@@ -233,6 +305,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     pub.setError('');
     setPwd({ value: '', reveal: false });
     setDraftDirty(false);
+    setNotifyPrompt(null);
     if (isPublished) {
       setView('summary');
       setDraft(seedDraft());
@@ -257,12 +330,38 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
 
   const current = seedDraft();
   const draftValid = (d) => isAccessDraftValid(d, { orgSharing: !!sharing });
-  const accessPayload = (d) => buildAccessPayload(d, { orgSharing: !!sharing });
+  const accessPayload = (d, notify) => buildAccessPayload(d, { orgSharing: !!sharing, notify });
+
+  // Saves `d`, first asking whether to email the individuals it adds over
+  // `saved` (none added: saved without asking, nobody notified).
+  const saveAccess = (d, saved, then) => {
+    const added = addedIndividuals(d, saved, { orgSharing: !!sharing });
+    if (added.userIds.length + added.emails.length > 0) {
+      setNotifyChoice(null);
+      setNotifyPrompt({ draft: d, added, then });
+      return Promise.resolve(false);
+    }
+    return commitAccess(d, false);
+  };
+  const commitAccess = async (d, notify) => {
+    const ok = await pub.publish(accessPayload(d, notify));
+    if (ok) setView('summary');
+    return ok;
+  };
+  const decideNotify = async (notify) => {
+    if (!notifyPrompt || pub.busy) return;
+    setNotifyChoice(notify);
+    await commitAccess(notifyPrompt.draft, notify);
+    setNotifyPrompt(null);
+  };
+  const editDraft = (d) => {
+    setDraft(d);
+    setNotifyPrompt(null);
+  };
 
   const doPublish = async () => {
     if (!draftValid(draft)) return;
-    const ok = await pub.publish(accessPayload(draft));
-    if (ok) setView('summary');
+    await saveAccess(draft, newAccessDraft(), 'publish');
   };
   const doApplyAccess = async () => {
     // Never submit an access change before the real prior list has loaded —
@@ -270,9 +369,17 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     // the disabled "Update" button below.
     if (!pub.accessLoaded) return;
     if (!draftValid(draft) || !draftDiffers(draft, current)) return;
-    const ok = await pub.publish(accessPayload(draft));
-    if (ok) setView('summary');
+    await saveAccess(draft, current, 'apply');
   };
+  const notifyConfirm = notifyPrompt && (
+    <NotifyConfirm
+      added={notifyPrompt.added}
+      sharing={sharing}
+      busy={pub.busy}
+      choice={notifyChoice}
+      onDecide={decideNotify}
+    />
+  );
   const doSavePassword = async () => {
     const value = pwd.value.trim();
     if (!value || value === (pub.accessPassword || '')) return;
@@ -311,7 +418,18 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
           zIndex={89}
         />
       )}
-      <Popover.Root open={open} onOpenChange={(v) => { if (!disabled) setOpen(v); }}>
+      <Popover.Root
+        open={open}
+        onOpenChange={(v, details) => {
+          if (disabled) return;
+          // Escape while asking about notifying goes back to editing.
+          if (!v && notifyPrompt && details?.reason === 'escape-key') {
+            if (!pub.busy) setNotifyPrompt(null);
+            return;
+          }
+          setOpen(v);
+        }}
+      >
         <Popover.Trigger
           disabled={disabled}
           title={disabled ? (disabledReason || undefined) : undefined}
@@ -341,15 +459,17 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <PanelHeader title="Share to the Web" />
                   <div className="py-3 px-4">
                     <SectionLabel>Who can access your app</SectionLabel>
-                    <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} sharing={sharing} />
+                    <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} />
                   </div>
                   <ErrorRow message={pub.error} />
                   <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
-                    <FooterButton primary onClick={doPublish}
-                      disabled={pub.busy || !draftValid(draft)}
-                      busy={pub.phase === 'publishing'} busyLabel="Sharing">
-                      Share
-                    </FooterButton>
+                    {notifyConfirm || (
+                      <FooterButton primary onClick={doPublish}
+                        disabled={pub.busy || !draftValid(draft)}
+                        busy={pub.phase === 'publishing'} busyLabel="Sharing">
+                        Share
+                      </FooterButton>
+                    )}
                   </div>
                 </>
               )}
@@ -386,10 +506,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                     {view === 'access' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('summary'); }}>Dismiss</LinkButton>}>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setNotifyPrompt(null); setView('summary'); }}>Dismiss</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
-                        <AccessChooser value={draft} onChange={(d) => { setDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
+                        <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
                       </>
                     )}
   
@@ -438,6 +558,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <ErrorRow message={pub.error} />
   
                   <div className="flex items-center justify-between gap-2 py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
+                    {notifyConfirm || (<>
                     {pub.supportsPublishRoutes !== false ? (
                       <FooterButton onClick={doUnpublish} disabled={pub.busy}
                         busy={pub.phase === 'unpublishing'} busyLabel="Stopping…">
@@ -482,6 +603,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                     ) : (
                       <UpToDateTag />
                     )}
+                    </>)}
                   </div>
                 </>
               )}

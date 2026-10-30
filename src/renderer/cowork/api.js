@@ -2538,9 +2538,11 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 // `access` (optional): a publish-mode object, one of
 //   { mode: 'public' }
 //   { mode: 'password', password: '...' }
-//   { mode: 'restricted', emails: [...], org_allowed: bool }
+//   { mode: 'restricted', emails: [...], org_allowed: bool, notify_recipients?: bool }
 // Public (or a falsy access) sends just `{ path }`, which clears any prior
-// protection on re-publish.
+// protection on re-publish. `notify_recipients` goes through as given:
+// cowork-server forwards it to auth, which emails the newly added people
+// only when it is true (ENG-3787).
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });

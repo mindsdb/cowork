@@ -1,6 +1,6 @@
 // Teams and "Everyone at ‹org›" in the restricted choice (ENG-3787).
 import { beforeEach, describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const people = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn() }));
@@ -73,7 +73,7 @@ async function openChange(user) {
 }
 
 const radio = (name) => screen.getByRole('radio', { name });
-const recipients = () => screen.getByRole('group', { name: 'Recipients' });
+const recipients = () => screen.getByRole('list', { name: 'Recipients' });
 
 describe('PublishMenu with org sharing', () => {
   it('offers Only you, Everyone at the org, Specific teams and people, Password, Public in that order', async () => {
@@ -109,6 +109,7 @@ describe('PublishMenu with org sharing', () => {
       owner_only: false,
       emails: [],
       team_ids: [],
+      notify_recipients: false,
     });
   });
 
@@ -145,6 +146,9 @@ describe('PublishMenu with org sharing', () => {
     expect(screen.getByTestId('recipient-summary')).toHaveTextContent('1 team · 1 person · 1 outside Kinaxis');
 
     await user.click(screen.getByRole('button', { name: 'Update' }));
+    // Two people are added one by one: asked first.
+    expect(pub.publish).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Notify' }));
     expect(pub.publish).toHaveBeenCalledWith({
       mode: 'restricted',
       org_allowed: false,
@@ -155,6 +159,7 @@ describe('PublishMenu with org sharing', () => {
       // The names cowork-server's publish still reads.
       emails: ['zed@partner.io'],
       team_ids: ['t-supply'],
+      notify_recipients: true,
     });
   });
 
@@ -183,7 +188,7 @@ describe('PublishMenu with org sharing', () => {
     expect(radio(/^Everyone at Kinaxis/)).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('reads stored lists as Specific teams and people, naming them as pills', async () => {
+  it('reads stored lists as Specific teams and people, naming them as rows', async () => {
     const user = userEvent.setup();
     render(<PublishMenu controller={makeController({
       allowedTeamIds: ['t-supply'], allowedUserIds: ['u-bo', 'u-gone'], accessEmails: ['zed@partner.io'], ownerOnly: false,
@@ -279,8 +284,156 @@ describe('PublishMenu with org sharing', () => {
 
     await user.type(field, 'Zed@Partner.io{Enter}');
     await user.click(screen.getByRole('button', { name: 'Update' }));
-    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
+    expect(screen.getByTestId('notify-confirm')).toHaveTextContent('Let 1 new person know by email?');
+    expect(screen.getByTestId('notify-confirm')).toHaveTextContent('zed@partner.io');
+    await user.click(screen.getByRole('button', { name: "Don't notify" }));
+    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false, notify_recipients: false });
     expect(people.search).not.toHaveBeenCalled();
     expect(within(document.body).queryByText(/Kinaxis/)).toBeNull();
+  });
+  describe('the collapsed summary', () => {
+    const open = (user) => user.click(screen.getByText(/Shared/));
+    const sharedWith = () => screen.getByRole('list', { name: 'Shared with' });
+    const names = () => within(sharedWith()).getAllByRole('listitem').map((row) => row.querySelector('span.truncate').textContent);
+
+    it('lists who it is shared with, without clicking Change', async () => {
+      const user = userEvent.setup();
+      render(<PublishMenu controller={makeController({
+        allowedTeamIds: ['t-supply'], allowedUserIds: ['u-ana'], accessEmails: ['zed@partner.io'], ownerOnly: false,
+      })} />);
+      await open(user);
+
+      expect(screen.getByTestId('access-summary')).toHaveTextContent('Specific teams and people');
+      expect(screen.getByTestId('access-summary')).toHaveTextContent('1 team · 1 person · 1 outside Kinaxis');
+      await waitFor(() => expect(names()).toEqual(['Supply Planning', 'Ana Ruiz', 'zed@partner.io']));
+      expect(sharedWith()).toHaveTextContent('Outside Kinaxis');
+      // Read only.
+      expect(within(sharedWith()).queryByRole('button')).toBeNull();
+      expect(screen.queryByRole('combobox')).toBeNull();
+    });
+
+    it('shows the first four and +N more, which expands the rest', async () => {
+      const user = userEvent.setup();
+      const emails = ['a@x.io', 'b@x.io', 'c@x.io', 'd@x.io', 'e@x.io', 'f@x.io', 'g@x.io'];
+      render(<PublishMenu controller={makeController({
+        allowedTeamIds: ['t-supply'], accessEmails: emails, ownerOnly: false,
+      })} />);
+      await open(user);
+
+      expect(names()).toEqual(['Supply Planning', 'a@x.io', 'b@x.io', 'c@x.io']);
+      await user.click(screen.getByRole('button', { name: '+4 more' }));
+      expect(names()).toEqual(['Supply Planning', ...emails]);
+      expect(screen.queryByRole('button', { name: /more$/ })).toBeNull();
+    });
+
+    it('says Everyone at the org plainly, with no list', async () => {
+      const user = userEvent.setup();
+      render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false })} />);
+      await open(user);
+      expect(screen.getByTestId('access-summary')).toHaveTextContent('Everyone at Kinaxis');
+      expect(screen.queryByRole('list', { name: 'Shared with' })).toBeNull();
+    });
+
+    it('lists the emails of Specific people without org sharing', async () => {
+      const user = userEvent.setup();
+      render(<PublishMenu controller={makeController({
+        accessEmails: ['zed@partner.io', 'amy@partner.io'], ownerOnly: false,
+        orgSharing: { enabled: false, orgName: null, teams: TEAMS },
+      })} />);
+      await open(user);
+      expect(screen.getByTestId('access-summary')).toHaveTextContent('Specific people');
+      expect(screen.getByTestId('access-summary')).toHaveTextContent('2 people');
+      expect(names()).toEqual(['zed@partner.io', 'amy@partner.io']);
+      expect(people.byIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('asking whether to notify added people', () => {
+    it('asks only when people are added one by one, listing them with +N more', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ allowedUserIds: ['u-bo'], ownerOnly: false });
+      render(<PublishMenu controller={pub} />);
+      await openChange(user);
+
+      const field = screen.getByRole('combobox', { name: 'Add teams, people or emails' });
+      await user.type(field, 'ana');
+      await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
+      fireEvent.paste(field, { clipboardData: { getData: () => 'a@x.io b@x.io c@x.io' } });
+      await waitFor(() => expect(screen.getByTestId('recipient-summary')).toHaveTextContent('2 people · 3 outside Kinaxis'));
+      await user.click(screen.getByRole('button', { name: 'Update' }));
+
+      const confirm = screen.getByTestId('notify-confirm');
+      expect(confirm).toHaveTextContent('Let 4 new people know by email?');
+      // Bo was already there: not counted.
+      await waitFor(() => expect(confirm).toHaveTextContent('Ana Ruiz, a@x.io, b@x.io +1 more'));
+      expect(confirm).not.toHaveTextContent('Bo Chen');
+      expect(screen.getByRole('button', { name: 'Notify' })).toHaveFocus();
+      expect(pub.publish).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: "Don't notify" }));
+      expect(pub.publish).toHaveBeenCalledTimes(1);
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
+        allowed_user_ids: ['u-bo', 'u-ana'], allowed_emails: ['a@x.io', 'b@x.io', 'c@x.io'], notify_recipients: false,
+      }));
+    });
+
+    it('sends notify_recipients: true on Notify, on a first share too', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ publishedUrl: '', ownerOnly: false });
+      render(<PublishMenu controller={pub} />);
+      await user.click(screen.getByText('Share'));
+      await user.click(radio(/^Specific teams and people/));
+      await user.type(screen.getByRole('combobox'), 'ana');
+      await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
+      // The footer's Share, not the trigger.
+      await user.click(screen.getAllByRole('button', { name: 'Share' }).at(-1));
+
+      expect(screen.getByTestId('notify-confirm')).toHaveTextContent('Let 1 new person know by email?');
+      await user.click(screen.getByRole('button', { name: 'Notify' }));
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ allowed_user_ids: ['u-ana'], notify_recipients: true }));
+    });
+
+    it('does not ask when only teams are added', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ allowedUserIds: ['u-bo'], ownerOnly: false });
+      render(<PublishMenu controller={pub} />);
+      await openChange(user);
+      await user.click(screen.getByRole('combobox'));
+      await user.click(screen.getByRole('option', { name: /Supply Planning/ }));
+      await user.click(screen.getByRole('button', { name: 'Update' }));
+
+      expect(screen.queryByTestId('notify-confirm')).toBeNull();
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
+        allowed_team_ids: ['t-supply'], allowed_user_ids: ['u-bo'], notify_recipients: false,
+      }));
+    });
+
+    it('does not ask on an unchanged save', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ allowedUserIds: ['u-bo'], ownerOnly: false, modified: true });
+      render(<PublishMenu controller={pub} />);
+      await openChange(user);
+      await user.click(screen.getByRole('button', { name: 'Update' }));
+
+      expect(screen.queryByTestId('notify-confirm')).toBeNull();
+    });
+
+    it('goes back to editing on Escape, without saving or closing', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ ownerOnly: false, allowedTeamIds: ['t-supply'] });
+      render(<PublishMenu controller={pub} />);
+      await openChange(user);
+      await user.type(screen.getByRole('combobox'), 'ana');
+      await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
+      await user.click(screen.getByRole('button', { name: 'Update' }));
+      expect(screen.getByTestId('notify-confirm')).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+      expect(screen.queryByTestId('notify-confirm')).toBeNull();
+      expect(pub.publish).not.toHaveBeenCalled();
+      // Still editing, with Ana still picked.
+      expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled();
+      expect(screen.getByRole('list', { name: 'Recipients' })).toHaveTextContent('Ana Ruiz');
+    });
   });
 });

@@ -10,7 +10,7 @@
 import Ico from './Icons';
 import { Badge, Button, Tooltip } from './ui';
 import { MarkdownContent } from './markdown/MarkdownContent';
-import { AudiencePills } from './RecipientField';
+import { AudienceList } from './RecipientRows';
 import { projectLabelByName } from '../lib/projectLabel';
 import { relativeAge } from '../lib/formatTime';
 import {
@@ -154,7 +154,7 @@ export default function SkillDetail({
         </MetaRow>
         {showAudience && (
           <MetaRow label={SKILL_SHARING_LABEL} testId="skill-meta-audience">
-            <AudiencePills
+            <AudienceList
               orgAllowed={access.orgAllowed}
               teamIds={access.allowedTeamIds}
               userIds={access.allowedUserIds}
