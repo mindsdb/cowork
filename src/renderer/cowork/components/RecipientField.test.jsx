@@ -3,10 +3,9 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
-const api = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn(), directory: vi.fn() }));
+const api = vi.hoisted(() => ({ byIds: vi.fn(), directory: vi.fn() }));
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal()),
-  searchHubPeople: api.search,
   fetchHubPeopleByIds: api.byIds,
   fetchHubDirectory: api.directory,
 }));
@@ -35,11 +34,6 @@ beforeEach(() => {
   __resetOrgSharingForTests();
   api.directory.mockReset();
   api.directory.mockImplementation(async () => directoryAnswer());
-  api.search.mockReset();
-  api.search.mockImplementation(async (q) => ({
-    reachable: true,
-    people: DIRECTORY.filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(q.toLowerCase())),
-  }));
   api.byIds.mockReset();
   api.byIds.mockImplementation(async (ids) => ({ reachable: true, people: DIRECTORY.filter((p) => ids.includes(p.id)) }));
 });
@@ -82,7 +76,6 @@ describe('<RecipientField>', () => {
     expect(listbox).toHaveTextContent('People in Acme');
     expect(listbox).not.toHaveTextContent('All members');
     expect(api.directory).toHaveBeenCalledTimes(1);
-    expect(api.search).not.toHaveBeenCalled();
   });
 
   it('says so when nobody else is in the org, instead of dropping the people group', async () => {
@@ -145,7 +138,6 @@ describe('<RecipientField>', () => {
     await user.type(input(), 'BO@AC');
     expect(options()).toEqual(['BCBo Chenbo@acme.com']);
     expect(api.directory).toHaveBeenCalledTimes(1);
-    expect(api.search).not.toHaveBeenCalled();
   });
 
   it('ignores case and accents', async () => {
@@ -215,44 +207,61 @@ describe('<RecipientField>', () => {
     expect(input()).toHaveFocus();
   });
 
+  it('takes a typed email as an outside one when the directory could not be read', async () => {
+    api.directory.mockResolvedValue({ reachable: false, people: [], truncated: false });
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    render(<Harness allowExternal spy={spy} />);
+    await user.click(input());
+    await screen.findByRole('alert');
+    await user.type(input(), 'bo@acme.com{Enter}');
+    expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['bo@acme.com'] });
+  });
+
   describe('a truncated directory', () => {
     beforeEach(() => {
       api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
     });
 
-    it('says so under the list', async () => {
+    it('says how many it shows under the list', async () => {
       const user = userEvent.setup();
       render(<Harness allowExternal />);
       await user.click(input());
-      expect(await screen.findByText('Showing the first 2 people. Type to search everyone.')).toBeInTheDocument();
+      expect(await screen.findByText('Showing the first 2 people.')).toBeInTheDocument();
+      expect(screen.queryByText(/Type to search/)).toBeNull();
     });
 
-    it('also searches the hub for two or more typed characters, merged into People', async () => {
+    it('filters only what it loaded', async () => {
+      const user = userEvent.setup();
+      render(<Harness />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+      await user.type(input(), 'bo');
+      expect(screen.queryByRole('option', { name: /Bo Chen/ })).toBeNull();
+      expect(screen.getByRole('status')).toHaveTextContent('No matches');
+    });
+
+    it('takes a typed email it does not hold as an outside one when allowed', async () => {
       const user = userEvent.setup();
       const spy = vi.fn();
       render(<Harness allowExternal spy={spy} />);
       await user.click(input());
       await waitFor(() => expect(options()).toHaveLength(5));
-      await user.type(input(), 'b');
-      expect(api.search).not.toHaveBeenCalled();
-      await user.type(input(), 'o');
-
-      await waitFor(() => expect(options()).toEqual(['BCBo Chenbo@acme.com']));
-      expect(api.search).toHaveBeenLastCalledWith('bo', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-      expect(screen.getByRole('listbox')).toHaveTextContent('People in Acme');
+      await user.type(input(), 'bo@acme.com');
+      await screen.findByRole('option', { name: 'Invite bo@acme.com (outside Acme)' });
       await user.keyboard('{Enter}');
-      expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] });
+      expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['bo@acme.com'] });
     });
 
-    it('lists a person found both ways once', async () => {
-      const user = userEvent.setup();
-      render(<Harness allowExternal />);
-      await user.click(input());
-      await waitFor(() => expect(options()).toHaveLength(5));
-      await user.type(input(), 'ana');
-      await waitFor(() => expect(api.search).toHaveBeenCalled());
-      await waitFor(() => expect(screen.queryByText(/Searching everyone/)).toBeNull());
-      expect(options()).toEqual(['ARAna Ruizana@acme.com']);
+    it('reports a pasted email it does not hold as not in the org when only the org is allowed', async () => {
+      const spy = vi.fn();
+      render(<Harness spy={spy} />);
+      fireEvent.focus(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com bo@acme.com' } });
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] }));
+      expect(screen.getByRole('alert')).toHaveTextContent('Not added: bo@acme.com (not in Acme)');
     });
   });
 
@@ -397,14 +406,14 @@ describe('<RecipientField>', () => {
     }));
     expect(screen.getByRole('alert')).toHaveTextContent('Not added: nope (not an email)');
     expect(summary()).toBe('2 people · 1 outside Acme');
-    // The directory knew both people: nobody was searched for.
-    expect(api.search).not.toHaveBeenCalled();
     await waitFor(() => expect(rows().map((r) => r[0])).toEqual(['Ana Ruiz', 'Bo Chen', 'zed@partner.io']));
   });
 
   it('reports pasted outside addresses as not added when only the org is allowed', async () => {
     const spy = vi.fn();
     render(<Harness spy={spy} />);
+    fireEvent.focus(input());
+    await screen.findByRole('option', { name: /Ana Ruiz/ });
     fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com zed@partner.io' } });
 
     await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] }));
@@ -443,7 +452,7 @@ describe('<RecipientField>', () => {
   });
 
   describe('emails only (no org)', () => {
-    it('takes addresses without teams or search', async () => {
+    it('takes addresses without teams or the directory', async () => {
       const user = userEvent.setup();
       const spy = vi.fn();
       render(<Harness emailsOnly allowExternal orgName={null} teamsState={null} spy={spy} />);
@@ -462,7 +471,6 @@ describe('<RecipientField>', () => {
       fireEvent.paste(input(), { clipboardData: { getData: () => 'a@x.io, b@x.io\nbad' } });
       await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@partner.io', 'a@x.io', 'b@x.io'] }));
       expect(screen.getByRole('alert')).toHaveTextContent('Not added: bad (not an email)');
-      expect(api.search).not.toHaveBeenCalled();
       expect(api.byIds).not.toHaveBeenCalled();
       expect(api.directory).not.toHaveBeenCalled();
     });

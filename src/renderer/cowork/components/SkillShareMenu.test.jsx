@@ -7,10 +7,9 @@ vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
   ...(await importOriginal()),
   useHubTeams: () => teams.state,
 }));
-const people = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn(), directory: vi.fn() }));
+const people = vi.hoisted(() => ({ byIds: vi.fn(), directory: vi.fn() }));
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal()),
-  searchHubPeople: people.search,
   fetchHubPeopleByIds: people.byIds,
   fetchHubDirectory: people.directory,
 }));
@@ -63,14 +62,6 @@ beforeEach(() => {
   people.byIds.mockImplementation(async (ids) => ({
     reachable: true,
     people: DIRECTORY.filter((p) => ids.includes(p.id)),
-  }));
-  people.search.mockReset();
-  people.search.mockImplementation(async (q) => ({
-    reachable: true,
-    people: [
-      { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@acme.com' },
-      { id: 'u-bo', name: 'Bo Chen', email: 'bo@acme.com' },
-    ].filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(q.toLowerCase())),
   }));
   teams.state = { status: 'ready', reachable: true, teams: [PLATFORM, FINANCE] };
 });

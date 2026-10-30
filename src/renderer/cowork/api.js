@@ -2068,39 +2068,14 @@ function hubPerson(person) {
   return { id: person.id, name, email };
 }
 
-/* People in the caller's active MindsHub org whose name or email matches `q`
-   (the server wants at least 2 characters and leaves the caller out).
-   `reachable: false` on any failure, so the picker can say it couldn't
-   search rather than claim nobody matched. */
-export async function searchHubPeople(q, { signal, limit = 8 } = {}) {
-  const text = String(q ?? '').trim();
-  if (text.length < 2) return { reachable: true, people: [] };
-  try {
-    const params = new URLSearchParams({ q: text, limit: String(limit) });
-    const data = await req(`/hub/people/?${params}`, { headers: await hubHeaders(), signal });
-    const seen = new Set();
-    const people = [];
-    for (const raw of Array.isArray(data?.people) ? data.people : []) {
-      const person = hubPerson(raw);
-      // A match is picked by its email, so one without is no use here.
-      if (!person?.email || seen.has(person.id)) continue;
-      seen.add(person.id);
-      people.push(person);
-    }
-    return { reachable: data?.reachable !== false, people };
-  } catch {
-    return { reachable: false, people: [] };
-  }
-}
-
 /* Everyone in the caller's active MindsHub org, read once so the recipient
-   picker can list and filter them locally (`GET /hub/people/?all=1`). The
+   picker can list and filter them locally (`GET /hub/people/`). The
    hub caps the list; `truncated` says there are more than it sent. Parsed
    tolerantly: a bare array is taken as the people, and any answer with no
    list at all reads as unreachable, so the picker offers Retry. */
 export async function fetchHubDirectory({ signal } = {}) {
   try {
-    const data = await req('/hub/people/?all=1', { headers: await hubHeaders(), signal });
+    const data = await req('/hub/people/', { headers: await hubHeaders(), signal });
     const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
     if (!raw || data?.reachable === false) return { reachable: false, people: [], truncated: false };
     const seen = new Set();

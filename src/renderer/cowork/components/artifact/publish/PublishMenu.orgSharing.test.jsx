@@ -3,10 +3,9 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const people = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn(), directory: vi.fn() }));
+const people = vi.hoisted(() => ({ byIds: vi.fn(), directory: vi.fn() }));
 vi.mock('../../../api', async (importOriginal) => ({
   ...(await importOriginal()),
-  searchHubPeople: people.search,
   fetchHubPeopleByIds: people.byIds,
   fetchHubDirectory: people.directory,
 }));
@@ -27,12 +26,6 @@ beforeEach(() => {
   people.byIds.mockImplementation(async (ids) => ({
     reachable: true,
     people: DIRECTORY.filter((p) => ids.includes(p.id)),
-  }));
-  people.search.mockReset();
-  people.search.mockImplementation(async (q) => ({
-    reachable: true,
-    people: [{ id: 'u-ana', name: 'Ana Ruiz', email: 'ana@acme.com' }]
-      .filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(q.toLowerCase())),
   }));
 });
 
@@ -293,7 +286,6 @@ describe('PublishMenu with org sharing', () => {
     expect(screen.getByTestId('notify-confirm')).toHaveTextContent('zed@partner.io');
     await user.click(screen.getByRole('button', { name: "Don't notify" }));
     expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
-    expect(people.search).not.toHaveBeenCalled();
     expect(within(document.body).queryByText(/Acme/)).toBeNull();
   });
   describe('the collapsed summary', () => {

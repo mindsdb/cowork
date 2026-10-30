@@ -14,7 +14,6 @@ const api = vi.hoisted(() => ({
   uploadSkillFile: vi.fn(),
   fetchSkillSharingCapabilities: vi.fn(),
   fetchHubTeams: vi.fn(),
-  searchHubPeople: vi.fn(),
   fetchHubPeopleByIds: vi.fn(async () => ({ reachable: true, people: [] })),
   fetchHubDirectory: vi.fn(async () => ({ reachable: true, people: [], truncated: false })),
 }));

@@ -14,11 +14,11 @@
 // With `emailsOnly` (no org) it is just addresses, with no dropdown.
 //
 // Typing filters the lists locally (name, email or team name; case and
-// accents ignored), with no request per keystroke. Only when the hub sent a
-// truncated directory does a typed query of two or more characters also ask
-// the hub (`searchHubPeople`, debounced), merging what it finds into People.
-// A typed email nobody in the org has becomes "Invite …" when outside emails
-// are allowed. ↑/↓ move across both groups, Enter / Tab / comma add the
+// accents ignored), with no request per keystroke; a truncated directory says
+// how many it shows. A typed or pasted email is matched against the loaded
+// directory only: a match is that person, anything else becomes "Invite …"
+// when outside emails are allowed and is reported as not in the org when
+// they aren't. ↑/↓ move across both groups, Enter / Tab / comma add the
 // highlighted (or top) row, Escape closes; the input keeps the focus, so one
 // can keep typing and adding. A paste of several addresses adds each.
 //
@@ -31,8 +31,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
-import { Spinner } from './ui';
-import { searchHubPeople } from '../api';
 import { openExternal } from '../../platform/host';
 import { MINDS_MEMBERS_URL } from '../../lib/mindsUrls';
 import { isEmailShaped } from '../lib/emailAddress';
@@ -47,8 +45,6 @@ import {
 import { useHubTeams, useKnownPeople, useOrgDirectory } from '../hooks/useOrgSharing';
 import { RecipientRow, UNKNOWN_TEAM, recipientItems } from './RecipientRows';
 
-export const RECIPIENT_SEARCH_DEBOUNCE_MS = 200;
-const MIN_QUERY = 2;
 const SEPARATORS = /[\s,;]+/;
 // The dropdown's tallest, and the least room below the input before it opens
 // above instead.
@@ -151,8 +147,8 @@ export function RecipientField({
   const teamIds = value?.teamIds || EMPTY_VALUE.teamIds;
   const userIds = value?.userIds || EMPTY_VALUE.userIds;
   const emails = value?.emails || EMPTY_VALUE.emails;
-  // Several additions can land from one paste, some after a lookup, so each
-  // builds on the last rather than on this render's value.
+  // Several additions can land from one paste, so each builds on the last
+  // rather than on this render's value.
   const latest = useRef({ teamIds, userIds, emails });
   latest.current = { teamIds, userIds, emails };
   const emit = (patch) => {
@@ -173,52 +169,20 @@ export function RecipientField({
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(-1);
-  // The hub search a truncated (or unreadable) directory falls back on:
-  // 'idle' | 'searching' | 'ready' | 'unreachable'.
-  const [status, setStatus] = useState('idle');
-  const [results, setResults] = useState([]);
   const [notAdded, setNotAdded] = useState([]);
-  const [resolving, setResolving] = useState(0);
   const listId = useId();
   const optionId = (i) => `${listId}-opt-${i}`;
   const query = text.trim();
   const directoryReady = directory.status === 'ready';
-  // The directory holds everyone: nothing to ask the hub.
-  const directoryComplete = directoryReady && !directory.truncated;
-  const searches = !emailsOnly && !directoryComplete && directory.status !== 'loading' && directory.status !== 'idle'
-    && query.length >= MIN_QUERY && !SEPARATORS.test(query);
-
-  useEffect(() => {
-    if (!searches) {
-      setStatus('idle');
-      setResults([]);
-      return undefined;
-    }
-    setStatus('searching');
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      searchHubPeople(query, { signal: controller.signal }).then((result) => {
-        if (controller.signal.aborted) return;
-        setResults(result.people || []);
-        setStatus(result.reachable ? 'ready' : 'unreachable');
-      });
-    }, RECIPIENT_SEARCH_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query, searches]);
 
   // ── What the menu offers ──
   const typedEmail = query.toLowerCase();
   const typedIsEmail = isEmailShaped(typedEmail);
   const directoryPeople = directoryReady ? directory.people : EMPTY_VALUE.userIds;
-  const findByEmail = (email) => directoryPeople.find((p) => (p.email || '') === email)
-    || results.find((p) => (p.email || '').toLowerCase() === email)
-    || null;
+  const findByEmail = (email) => directoryPeople.find((p) => (p.email || '').toLowerCase() === email) || null;
   const matchedPerson = typedIsEmail ? findByEmail(typedEmail) : null;
   // Whether "nobody in the org has this address" is known yet.
-  const emailAnswered = directoryComplete || status === 'ready';
+  const emailAnswered = directoryReady;
   const teamsReady = teamsState.status === 'ready' && teamsState.reachable;
   const ownShareable = teamsReady ? shareableTeams(teamsState.teams) : [];
   const teamOptions = emailsOnly ? [] : filterTeams(ownShareable, query).filter((t) => !teamIds.includes(t.id));
@@ -227,7 +191,7 @@ export function RecipientField({
     const seen = new Set(userIds);
     // Pasted lists aren't filtered: they are added on their own.
     const local = SEPARATORS.test(query) ? [] : filterPeople(directoryPeople, query);
-    for (const person of [...local, ...(searches ? results : [])]) {
+    for (const person of local) {
       if (seen.has(person.id)) continue;
       seen.add(person.id);
       peopleOptions.push(person);
@@ -245,8 +209,7 @@ export function RecipientField({
   // Rows under the lists: loading, a failure, nothing found.
   const directoryLoading = !emailsOnly && (directory.status === 'loading' || directory.status === 'idle');
   const teamsLoading = !emailsOnly && !teamsProp && teamsState.status !== 'ready';
-  const searching = searches && status === 'searching';
-  const nothingFound = !emailsOnly && !!query && options.length === 0 && !directoryLoading && !searching
+  const nothingFound = !emailsOnly && !!query && options.length === 0 && !directoryLoading
     && directory.status !== 'error' && !(typedIsEmail && !allowExternal);
   const menuOpen = open && !emailsOnly ? true : open && options.length > 0;
   // A typed email nobody in the org has, where only the org may be named.
@@ -286,31 +249,19 @@ export function RecipientField({
   };
 
   // Each typed or pasted address becomes a person when the org has that
-  // exact email, else an outside email when allowed, else it is reported.
-  // The directory answers when it holds everyone; otherwise the hub is asked.
-  const resolveTokens = async (tokens) => {
+  // exact email in the loaded directory, else an outside email when allowed,
+  // else it is reported.
+  const resolveTokens = (tokens) => {
     resetInput();
-    const lookups = tokens.map(async (raw) => {
+    const answers = tokens.map((raw) => {
       const email = raw.toLowerCase();
       if (!isEmailShaped(email)) return { raw, reason: 'not an email' };
       if (emailsOnly) return { email };
-      const local = findByEmail(email);
-      if (local) return { person: local };
-      if (!directoryComplete) {
-        const found = await searchHubPeople(email).catch(() => ({ reachable: false, people: [] }));
-        const person = (found.people || []).find((p) => (p.email || '').toLowerCase() === email);
-        if (person) return { person };
-      }
+      const person = findByEmail(email);
+      if (person) return { person };
       if (allowExternal) return { email };
       return { raw: email, reason: `not in ${org}` };
     });
-    setResolving((n) => n + 1);
-    let answers;
-    try {
-      answers = await Promise.all(lookups);
-    } finally {
-      setResolving((n) => n - 1);
-    }
     const next = { ...latest.current, userIds: [...latest.current.userIds], emails: [...latest.current.emails] };
     const people = [];
     const refused = [];
@@ -534,15 +485,13 @@ export function RecipientField({
     );
   }
   const teamsUnreachable = !emailsOnly && teamsState.status === 'ready' && !teamsState.reachable;
-  const statusLine = searching
-    ? <span className="inline-flex items-center gap-2"><Spinner /> Searching everyone in {org}…</span>
-    : showOrgOnlyHint ? `Only people in ${org}`
+  const statusLine = showOrgOnlyHint ? `Only people in ${org}`
     : nothingFound ? 'No matches'
       : (!query && !peopleEmpty && !directoryLoading && !teamsLoading && options.length === 0 && directory.status !== 'error' && !teamsUnreachable)
         ? 'Everyone you can add is already added.'
         : null;
   const truncatedNote = !emailsOnly && directoryReady && directory.truncated
-    ? `Showing the first ${directory.people.length} people. Type to search everyone.`
+    ? `Showing the first ${directory.people.length} people.`
     : null;
 
   const menu = menuOpen && (
@@ -627,7 +576,6 @@ export function RecipientField({
           }}
           className="min-w-0 flex-1 bg-transparent border-0 [outline:none] p-0 font-body text-[13px] text-ink"
         />
-        {resolving > 0 && <Spinner />}
       </div>
 
       {menu && typeof document !== 'undefined' ? createPortal(menu, document.body) : null}
