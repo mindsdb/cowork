@@ -2083,6 +2083,30 @@ export async function searchHubPeople(q, { signal, limit = 8 } = {}) {
   }
 }
 
+/* Everyone in the caller's active MindsHub org, read once so the recipient
+   picker can list and filter them locally (`GET /hub/people/?all=1`). The
+   hub caps the list; `truncated` says there are more than it sent. Parsed
+   tolerantly: a bare array is taken as the people, and any answer with no
+   list at all reads as unreachable, so the picker offers Retry. */
+export async function fetchHubDirectory({ signal } = {}) {
+  try {
+    const data = await req('/hub/people/?all=1', { headers: await hubHeaders(), signal });
+    const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
+    if (!raw || data?.reachable === false) return { reachable: false, people: [], truncated: false };
+    const seen = new Set();
+    const people = [];
+    for (const entry of raw) {
+      const person = hubPerson(entry);
+      if (!person || (!person.email && !person.name) || seen.has(person.id)) continue;
+      seen.add(person.id);
+      people.push(person);
+    }
+    return { reachable: true, people, truncated: data?.truncated === true };
+  } catch {
+    return { reachable: false, people: [], truncated: false };
+  }
+}
+
 export const HUB_PEOPLE_IDS_BATCH = 50;
 
 /* The people a stored audience names, by user id, so their chips can say who
@@ -2538,11 +2562,10 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 // `access` (optional): a publish-mode object, one of
 //   { mode: 'public' }
 //   { mode: 'password', password: '...' }
-//   { mode: 'restricted', emails: [...], org_allowed: bool, notify_recipients?: bool }
+//   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
 // Public (or a falsy access) sends just `{ path }`, which clears any prior
-// protection on re-publish. `notify_recipients` goes through as given:
-// cowork-server forwards it to auth, which emails the newly added people
-// only when it is true (ENG-3787).
+// protection on re-publish. `notify` goes through as given: cowork-server
+// forwards it to auth, which emails exactly the people it lists (ENG-3787).
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });

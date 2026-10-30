@@ -7,14 +7,16 @@ vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
   ...(await importOriginal()),
   useHubTeams: () => teams.state,
 }));
-const people = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn() }));
+const people = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn(), directory: vi.fn() }));
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal()),
   searchHubPeople: people.search,
   fetchHubPeopleByIds: people.byIds,
+  fetchHubDirectory: people.directory,
 }));
 
 import SkillShareMenu from './SkillShareMenu';
+import { __resetOrgSharingForTests } from '../hooks/useOrgSharing';
 
 const SUPPLY = { id: 't-supply', display_name: 'Supply Planning' };
 const FINANCE = { id: 't-finance', display_name: 'Finance' };
@@ -42,9 +44,10 @@ const upToDate = (dialog) => within(dialog).queryByText('Up to date');
 const ALWAYS_ON = 'Always include in every task';
 const alwaysOn = (dialog) => within(dialog).queryByRole('switch', { name: ALWAYS_ON });
 
+// The suggestions float over the page, outside the dialog.
 async function addTeam(user, dialog, name) {
   await user.click(field(dialog));
-  await user.click(await within(dialog).findByRole('option', { name: new RegExp(name) }));
+  await user.click(await screen.findByRole('option', { name: new RegExp(name) }));
 }
 
 const DIRECTORY = [
@@ -53,6 +56,9 @@ const DIRECTORY = [
 ];
 
 beforeEach(() => {
+  __resetOrgSharingForTests();
+  people.directory.mockReset();
+  people.directory.mockImplementation(async () => ({ reachable: true, people: DIRECTORY, truncated: false }));
   people.byIds.mockReset();
   people.byIds.mockImplementation(async (ids) => ({
     reachable: true,
@@ -139,17 +145,6 @@ describe('SkillShareMenu', () => {
     expect(save(dialog)).not.toBeDisabled();
   });
 
-  it('says so when the caller is in no teams', async () => {
-    const user = userEvent.setup();
-    teams.state = { status: 'ready', reachable: true, teams: [] };
-    const { dialog } = await renderDialog();
-
-    await user.click(radio(dialog, SPECIFIC));
-    await user.click(field(dialog));
-
-    expect(within(dialog).getByText(/You're not in any teams yet\./)).toBeInTheDocument();
-  });
-
   it("doesn't list the org's default team: Everyone at the org is that choice", async () => {
     const user = userEvent.setup();
     teams.state = { status: 'ready', reachable: true, teams: [ALL_MEMBERS, SUPPLY] };
@@ -158,8 +153,8 @@ describe('SkillShareMenu', () => {
     await user.click(radio(dialog, SPECIFIC));
     await user.click(field(dialog));
 
-    expect(within(dialog).getByRole('option', { name: /Supply Planning/ })).toBeInTheDocument();
-    expect(within(dialog).queryByRole('option', { name: /All members/ })).toBeNull();
+    expect(await screen.findByRole('option', { name: /Supply Planning/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /All members/ })).toBeNull();
   });
 
   it('shows a skill shared with the default team as Everyone at the org', async () => {
@@ -182,7 +177,7 @@ describe('SkillShareMenu', () => {
     await user.click(radio(dialog, SPECIFIC));
     await user.click(field(dialog));
 
-    expect(within(dialog).getByText("Couldn't load your teams. Try again later.")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load your teams. Try again later.")).toBeInTheDocument();
   });
 
   it('picks people from the org and saves their user ids', async () => {
@@ -191,7 +186,7 @@ describe('SkillShareMenu', () => {
 
     await user.click(radio(dialog, SPECIFIC));
     await user.type(field(dialog), 'ana');
-    await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
+    await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
 
     expect(within(dialog).getByRole('list', { name: 'Recipients' })).toHaveTextContent('Ana Ruiz');
     // A picked person is never looked up again.
@@ -207,8 +202,8 @@ describe('SkillShareMenu', () => {
     await user.click(radio(dialog, SPECIFIC));
     await user.type(field(dialog), 'zed@elsewhere.com');
 
-    expect(await within(dialog).findByText('Only people in Kinaxis')).toBeInTheDocument();
-    expect(within(dialog).queryByRole('option', { name: /Invite/ })).toBeNull();
+    expect(await screen.findByText('Only people in Kinaxis')).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Invite/ })).toBeNull();
     await user.keyboard('{Enter}');
     expect(await within(dialog).findByText(/Not added: zed@elsewhere.com/)).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /^Remove / })).toBeNull();
@@ -242,7 +237,7 @@ describe('SkillShareMenu', () => {
     });
 
     await user.type(field(dialog), 'ana');
-    await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
+    await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
     await user.click(save(dialog));
     await waitFor(() => expect(within(dialog).getByRole('alert'))
       .toHaveTextContent('Skills can only be shared with people in your organization.'));
@@ -300,7 +295,7 @@ describe('SkillShareMenu', () => {
       await user.click(radio(dialog, SPECIFIC));
       expect(alwaysOn(dialog)).toBeNull();
       await user.type(field(dialog), 'ana');
-      await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
+      await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
       // People alone never make a skill always on.
       expect(alwaysOn(dialog)).toBeNull();
 

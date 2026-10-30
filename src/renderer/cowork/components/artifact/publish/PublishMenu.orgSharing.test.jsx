@@ -3,14 +3,16 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const people = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn() }));
+const people = vi.hoisted(() => ({ search: vi.fn(), byIds: vi.fn(), directory: vi.fn() }));
 vi.mock('../../../api', async (importOriginal) => ({
   ...(await importOriginal()),
   searchHubPeople: people.search,
   fetchHubPeopleByIds: people.byIds,
+  fetchHubDirectory: people.directory,
 }));
 
 import { PublishMenu } from './PublishMenu';
+import { __resetOrgSharingForTests } from '../../../hooks/useOrgSharing';
 
 const DIRECTORY = [
   { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@kinaxis.com' },
@@ -18,6 +20,9 @@ const DIRECTORY = [
 ];
 
 beforeEach(() => {
+  __resetOrgSharingForTests();
+  people.directory.mockReset();
+  people.directory.mockImplementation(async () => ({ reachable: true, people: DIRECTORY, truncated: false }));
   people.byIds.mockReset();
   people.byIds.mockImplementation(async (ids) => ({
     reachable: true,
@@ -109,7 +114,6 @@ describe('PublishMenu with org sharing', () => {
       owner_only: false,
       emails: [],
       team_ids: [],
-      notify_recipients: false,
     });
   });
 
@@ -159,7 +163,8 @@ describe('PublishMenu with org sharing', () => {
       // The names cowork-server's publish still reads.
       emails: ['zed@partner.io'],
       team_ids: ['t-supply'],
-      notify_recipients: true,
+      // Exactly the people this save adds.
+      notify: { user_ids: ['u-ana'], emails: ['zed@partner.io'] },
     });
   });
 
@@ -287,7 +292,7 @@ describe('PublishMenu with org sharing', () => {
     expect(screen.getByTestId('notify-confirm')).toHaveTextContent('Let 1 new person know by email?');
     expect(screen.getByTestId('notify-confirm')).toHaveTextContent('zed@partner.io');
     await user.click(screen.getByRole('button', { name: "Don't notify" }));
-    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false, notify_recipients: false });
+    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
     expect(people.search).not.toHaveBeenCalled();
     expect(within(document.body).queryByText(/Kinaxis/)).toBeNull();
   });
@@ -373,11 +378,13 @@ describe('PublishMenu with org sharing', () => {
       await user.click(screen.getByRole('button', { name: "Don't notify" }));
       expect(pub.publish).toHaveBeenCalledTimes(1);
       expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
-        allowed_user_ids: ['u-bo', 'u-ana'], allowed_emails: ['a@x.io', 'b@x.io', 'c@x.io'], notify_recipients: false,
+        allowed_user_ids: ['u-bo', 'u-ana'], allowed_emails: ['a@x.io', 'b@x.io', 'c@x.io'],
       }));
+      // Don't notify sends no notify at all.
+      expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('notify');
     });
 
-    it('sends notify_recipients: true on Notify, on a first share too', async () => {
+    it('sends notify with the added people on Notify, on a first share too', async () => {
       const user = userEvent.setup();
       const pub = makeController({ publishedUrl: '', ownerOnly: false });
       render(<PublishMenu controller={pub} />);
@@ -390,7 +397,7 @@ describe('PublishMenu with org sharing', () => {
 
       expect(screen.getByTestId('notify-confirm')).toHaveTextContent('Let 1 new person know by email?');
       await user.click(screen.getByRole('button', { name: 'Notify' }));
-      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ allowed_user_ids: ['u-ana'], notify_recipients: true }));
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ allowed_user_ids: ['u-ana'], notify: { user_ids: ['u-ana'], emails: [] } }));
     });
 
     it('does not ask when only teams are added', async () => {
@@ -404,8 +411,9 @@ describe('PublishMenu with org sharing', () => {
 
       expect(screen.queryByTestId('notify-confirm')).toBeNull();
       expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
-        allowed_team_ids: ['t-supply'], allowed_user_ids: ['u-bo'], notify_recipients: false,
+        allowed_team_ids: ['t-supply'], allowed_user_ids: ['u-bo'],
       }));
+      expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('notify');
     });
 
     it('does not ask on an unchanged save', async () => {

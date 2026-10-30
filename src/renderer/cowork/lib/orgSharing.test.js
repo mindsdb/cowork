@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 
 import {
+  artifactShareState,
+  audienceCountsPhrase,
+  filterPeople,
+  foldForSearch,
+  skillShareState,
   accessAllowedTeamIds,
   accessAllowedUserIds,
   accessOrgAllowed,
@@ -227,5 +232,54 @@ describe('groupSkillsBySection with empty sections', () => {
     const groups = groupSkillsBySection([{ label: 'a', isBuiltin: false }], { orgName: 'Kinaxis' });
     expect(groups.map((g) => [g.id, g.skills.length])).toEqual([['mine', 1]]);
     expect(groupSkillsBySection([], { orgName: 'Kinaxis' })).toEqual([]);
+  });
+});
+
+describe('local search', () => {
+  it('folds case and accents', () => {
+    expect(foldForSearch('  José LÓPEZ ')).toBe('jose lopez');
+  });
+
+  it('filters people by name or email and teams by name, accents ignored', () => {
+    const people = [{ id: '1', name: 'José López', email: 'jose@k.com' }, { id: '2', name: 'Ana', email: 'ana@k.com' }];
+    expect(filterPeople(people, 'lopez').map((p) => p.id)).toEqual(['1']);
+    expect(filterPeople(people, 'ANA@').map((p) => p.id)).toEqual(['2']);
+    expect(filterPeople(people, '')).toBe(people);
+    expect(filterTeams([{ id: 't', display_name: 'Logística' }], 'logist').map((t) => t.id)).toEqual(['t']);
+  });
+});
+
+describe('Share or Shared', () => {
+  it('phrases audience counts', () => {
+    expect(audienceCountsPhrase({})).toBeNull();
+    expect(audienceCountsPhrase({ teams: 1 })).toBe('1 team');
+    expect(audienceCountsPhrase({ teams: 2, people: 3 })).toBe('2 teams and 3 people');
+    expect(audienceCountsPhrase({ teams: 1, people: 1, outside: 2 })).toBe('1 team, 1 person and 2 outside emails');
+  });
+
+  it('reads a skill', () => {
+    const skill = (access) => ({ access });
+    const teams = [{ id: 't0', is_default: true }, { id: 't1' }];
+    expect(skillShareState(skill({ orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }), { teams }))
+      .toEqual({ shared: false, kind: 'private', hint: 'Only you can use it' });
+    expect(skillShareState(skill({ orgAllowed: true }), { teams, orgName: 'Kinaxis' }))
+      .toEqual({ shared: true, kind: 'org', hint: 'Shared with everyone at Kinaxis' });
+    expect(skillShareState(skill({ allowedTeamIds: ['t0'] }), { teams }).hint).toBe('Shared with everyone in your organization');
+    expect(skillShareState(skill({ allowedTeamIds: ['t1'], allowedUserIds: ['u1', 'u2'] }), { teams }))
+      .toEqual({ shared: true, kind: 'specific', hint: 'Shared with 1 team and 2 people' });
+  });
+
+  it('reads an artifact', () => {
+    expect(artifactShareState({}).shared).toBe(false);
+    expect(artifactShareState({ publishedUrl: 'u', accessMode: 'public' }).kind).toBe('public');
+    expect(artifactShareState({ publishedUrl: 'u', accessProtected: true }).kind).toBe('password');
+    expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', ownerOnly: true }))
+      .toEqual({ shared: false, kind: 'private', hint: 'Only you can open it' });
+    expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', orgAllowed: true }, { orgSharing: true, orgName: 'Kinaxis' }).hint)
+      .toBe('Shared with everyone at Kinaxis');
+    expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', allowedUserIds: ['u1'], accessEmails: ['a@x.io'] }, { orgSharing: true }).hint)
+      .toBe('Shared with 1 person and 1 outside email');
+    expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', accessEmails: ['a@x.io', 'b@x.io'] }).hint)
+      .toBe('Shared with 2 people');
   });
 });

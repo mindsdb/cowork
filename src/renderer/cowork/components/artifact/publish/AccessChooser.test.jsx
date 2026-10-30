@@ -175,14 +175,17 @@ describe('a first share with the platform UI on', () => {
 describe('notifying added people (ENG-3787)', () => {
   const draft = (over) => ({ mode: 'restricted', password: '', emailsText: '', teamIds: [], userIds: [], ...over });
 
-  it('adds notify_recipients to a restricted payload only when asked', () => {
-    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: true }))
-      .toEqual(expect.objectContaining({ mode: 'restricted', notify_recipients: true }));
-    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { orgSharing: true, notify: false }))
-      .toEqual(expect.objectContaining({ allowed_emails: ['a@x.io'], notify_recipients: false }));
-    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }))).not.toHaveProperty('notify_recipients');
-    expect(buildAccessPayload({ mode: 'password', password: 'pw' }, { notify: false })).toEqual({ mode: 'password', password: 'pw' });
-    expect(buildAccessPayload({ mode: 'public' }, { notify: true })).toEqual({ mode: 'public' });
+  it('adds notify with exactly the people to email, on a restricted payload only', () => {
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: { userIds: [], emails: ['a@x.io'] } }))
+      .toEqual(expect.objectContaining({ mode: 'restricted', notify: { user_ids: [], emails: ['a@x.io'] } }));
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { orgSharing: true, notify: { userIds: ['u1', 'u1'], emails: ['a@x.io'] } }))
+      .toEqual(expect.objectContaining({ allowed_emails: ['a@x.io'], notify: { user_ids: ['u1'], emails: ['a@x.io'] } }));
+    // Not asked, or Don't notify: no notify at all.
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }))).not.toHaveProperty('notify');
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: null })).not.toHaveProperty('notify');
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: { userIds: [], emails: [] } })).not.toHaveProperty('notify');
+    expect(buildAccessPayload({ mode: 'password', password: 'pw' }, { notify: { emails: ['a@x.io'] } })).toEqual({ mode: 'password', password: 'pw' });
+    expect(buildAccessPayload({ mode: 'public' }, { notify: { emails: ['a@x.io'] } })).toEqual({ mode: 'public' });
   });
 
   it('counts only people and emails the saved access lacks', () => {

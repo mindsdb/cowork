@@ -9,12 +9,12 @@
 // admin) shows in place and keeps the dropdown open; a success closes it.
 //
 //   <SkillShareMenu skill={skill} capabilities={caps} onSave={save}
-//     trigger={<Button>Share</Button>} />
+//     trigger={<Button>Share</Button>} tooltip="Shared with 2 teams" />
 
-import { useEffect, useState } from 'react';
+import { cloneElement, useEffect, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import Ico from './Icons';
-import { Alert, Button, Spinner } from './ui';
+import { Alert, Button, Spinner, Tooltip } from './ui';
 import SkillAudienceFields from './SkillAudienceFields';
 import { canEditSkill, skillAccess, skillAccessPayload } from '../lib/orgSharing';
 
@@ -42,10 +42,11 @@ function UpToDateTag() {
  *   capabilities: { can_share_org?: boolean, org_name?: string | null },
  *   onSave: (access: { org_allowed: boolean, allowed_team_ids: string[], allowed_user_ids: string[], always_on: boolean }) => Promise<void>,
  *   trigger: import('react').ReactElement,
+ *   tooltip?: string | null,
  *   align?: 'start' | 'center' | 'end',
  * }} props
  */
-export function SkillShareMenu({ skill, capabilities, onSave, trigger, align = 'end' }) {
+export function SkillShareMenu({ skill, capabilities, onSave, trigger, tooltip = null, align = 'end' }) {
   const [open, setOpen] = useState(false);
   const [access, setAccess] = useState(() => skillAccess(skill));
   // "Specific teams and people" picked with nobody in it: Update waits.
@@ -84,7 +85,14 @@ export function SkillShareMenu({ skill, capabilities, onSave, trigger, align = '
 
   return (
     <Popover.Root open={open} onOpenChange={(next) => { if (!busy) setOpen(next); }}>
-      <Popover.Trigger render={trigger} />
+      {/* Who it's shared with, on hover; not over the open dropdown. The
+          tooltip sits inside the trigger's render so the popover keeps its
+          anchor. */}
+      <Popover.Trigger
+        render={(props) => (
+          <Tooltip content={open ? null : tooltip}>{cloneElement(trigger, props)}</Tooltip>
+        )}
+      />
       <Popover.Portal>
         <Popover.Positioner side="bottom" align={align} sideOffset={8} style={{ zIndex: 90 }}>
           <Popover.Popup

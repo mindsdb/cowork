@@ -133,16 +133,20 @@ export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
 // cowork-server's publish still reads. Everyone at ‹org› sends `org_allowed`
 // and empty lists.
 //
-// `notify` (a boolean, when given) becomes `notify_recipients` on a restricted
-// payload: whether the people this change newly lists are told by email. The
-// server forwards it to auth, which emails only the newly added ones.
+// `notify` (`{ userIds, emails }`, when given) becomes `notify: { user_ids,
+// emails }` on a restricted payload: exactly the individuals this save adds,
+// whom the person chose to tell by email. Absent when they chose not to, or
+// were never asked; the server forwards it to auth, which emails those listed.
 export function buildAccessPayload(draft, { orgSharing = false, notify } = {}) {
   return withNotify(buildOrgAccessPayload(draft, { orgSharing }), notify);
 }
 
 function withNotify(payload, notify) {
-  if (typeof notify !== 'boolean' || payload.mode !== 'restricted') return payload;
-  return { ...payload, notify_recipients: notify };
+  if (!notify || payload.mode !== 'restricted') return payload;
+  const userIds = [...new Set(notify.userIds || [])];
+  const emails = [...new Set(notify.emails || [])];
+  if (userIds.length + emails.length === 0) return payload;
+  return { ...payload, notify: { user_ids: userIds, emails } };
 }
 
 /**

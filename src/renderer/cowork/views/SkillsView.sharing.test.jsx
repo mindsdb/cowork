@@ -75,7 +75,7 @@ describe('SkillsView: who can use a skill', () => {
     const control = await openSkill(user, own.label);
 
     expect(control).toHaveTextContent('Only me');
-    expect(screen.getByRole('heading', { name: 'Who can use it' })).toBeInTheDocument();
+    expect(screen.getByTestId('skill-meta-sharing')).toHaveTextContent(/^Shared with/);
   });
 
   it.each([
@@ -100,7 +100,7 @@ describe('SkillsView: who can use a skill', () => {
     const control = await openSkill(user, skill.label);
 
     expect(control).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Who can use it' })).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('skill-properties')).queryByRole('combobox')).toBeNull();
   });
 
   it('shares the skill with everyone, reloads the list and says so', async () => {

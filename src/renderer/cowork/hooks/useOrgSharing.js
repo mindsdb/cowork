@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchHubPeopleByIds, fetchHubTeams, fetchSkillSharingCapabilities } from '../api';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { fetchHubDirectory, fetchHubPeopleByIds, fetchHubTeams, fetchSkillSharingCapabilities } from '../api';
 import { subscribeOrganizationChanges } from '../lib/organizationChanges';
 
 /*
@@ -19,6 +19,7 @@ let teamsPromise = null;
 subscribeOrganizationChanges(() => {
   capabilitiesPromise = null;
   teamsPromise = null;
+  resetDirectory();
 });
 
 function loadCapabilities() {
@@ -50,6 +51,7 @@ function loadTeams() {
 export function __resetOrgSharingForTests() {
   capabilitiesPromise = null;
   teamsPromise = null;
+  resetDirectory();
 }
 
 /** `{ enabled, can_share_org, can_write_org, org_name }`; off until known,
@@ -142,4 +144,64 @@ export function useKnownPeople(ids) {
   const people = list.map((id) => known.get(id)
     || (unknown.has(id) ? { id, name: null, email: null } : { id, name: null, email: null, pending: true }));
   return { people, remember, unreachable };
+}
+
+/*
+ * The org's people directory (`fetchHubDirectory`), read once per session and
+ * organization and shared by every recipient picker, so filtering is local.
+ * A failure is not cached: it shows as `error` until `retry` asks again.
+ */
+const DIRECTORY_IDLE = Object.freeze({ status: 'idle', people: [], truncated: false });
+let directory = DIRECTORY_IDLE;
+let directoryGeneration = 0;
+const directoryListeners = new Set();
+
+function setDirectory(next) {
+  directory = next;
+  for (const listener of directoryListeners) listener();
+}
+
+function resetDirectory() {
+  directoryGeneration += 1;
+  setDirectory(DIRECTORY_IDLE);
+}
+
+function loadDirectory() {
+  if (directory.status === 'loading' || directory.status === 'ready') return;
+  const generation = directoryGeneration;
+  setDirectory({ status: 'loading', people: [], truncated: false });
+  Promise.resolve().then(() => fetchHubDirectory()).catch(() => null).then((result) => {
+    if (generation !== directoryGeneration) return;
+    if (!result || !result.reachable) {
+      setDirectory({ status: 'error', people: [], truncated: false });
+      return;
+    }
+    setDirectory({ status: 'ready', people: result.people || [], truncated: result.truncated === true });
+  });
+}
+
+function subscribeDirectory(listener) {
+  directoryListeners.add(listener);
+  return () => directoryListeners.delete(listener);
+}
+
+const readDirectory = () => directory;
+
+/**
+ * Everyone in the org, for the recipient picker: `{ status, people,
+ * truncated, retry }`, `status` being 'idle' | 'loading' | 'ready' | 'error'.
+ * Read the first time a picker is `active`; every later picker shares it.
+ */
+export function useOrgDirectory(active = true) {
+  const state = useSyncExternalStore(subscribeDirectory, readDirectory, readDirectory);
+  useEffect(() => {
+    if (active && directory.status === 'idle') loadDirectory();
+  }, [active]);
+  const retry = useCallback(() => {
+    if (directory.status === 'error') {
+      setDirectory(DIRECTORY_IDLE);
+      loadDirectory();
+    }
+  }, []);
+  return { ...state, retry };
 }

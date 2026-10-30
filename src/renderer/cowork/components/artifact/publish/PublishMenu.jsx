@@ -32,7 +32,8 @@ import {
   parseEmailList,
 } from './AccessChooser';
 import { SharedWithList, useRecipientItems } from '../../RecipientRows';
-import { recipientSummary } from '../../../lib/orgSharing';
+import { artifactShareState, recipientSummary } from '../../../lib/orgSharing';
+import { shareStateIcon } from '../../ShareStateLabel';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -341,17 +342,19 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
       setNotifyPrompt({ draft: d, added, then });
       return Promise.resolve(false);
     }
-    return commitAccess(d, false);
+    return commitAccess(d, null);
   };
   const commitAccess = async (d, notify) => {
     const ok = await pub.publish(accessPayload(d, notify));
     if (ok) setView('summary');
     return ok;
   };
+  // Notify lists exactly the individuals this save adds; Don't notify sends
+  // no `notify` at all.
   const decideNotify = async (notify) => {
     if (!notifyPrompt || pub.busy) return;
     setNotifyChoice(notify);
-    await commitAccess(notifyPrompt.draft, notify);
+    await commitAccess(notifyPrompt.draft, notify ? notifyPrompt.added : null);
     setNotifyPrompt(null);
   };
   const editDraft = (d) => {
@@ -396,12 +399,15 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     try { await pub.activate(md5); } finally { setActivatingMd5(''); }
   };
 
+  const shareState = artifactShareState(pub, {
+    orgSharing: !!sharing, orgName: sharing?.orgName || null, teams: sharing?.teams?.teams || [],
+  });
   const triggerStyle = {
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.55 : 1,
     fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, lineHeight: 1,
     display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8,
     ...(isPublished
-      ? { background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)', padding: '7px 10px 7px 12px' }
+      ? { background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)', padding: '7px 8px 7px 10px' }
       : { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: '7px 16px' }),
   };
 
@@ -430,17 +436,32 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
           setOpen(v);
         }}
       >
+        {/* Who can open it, on hover, once it's shared (not over the open
+            panel, and not when the reason it's disabled is the hint). Inside
+            the trigger's render, so the popover keeps its anchor. */}
         <Popover.Trigger
           disabled={disabled}
           title={disabled ? (disabledReason || undefined) : undefined}
           style={triggerStyle}
+          data-share-state={shareState.kind}
+          render={(props) => (
+            <Tooltip content={isSharedWithSomeone && !open && !disabled ? shareState.hint : null}>
+              <button type="button" {...props} />
+            </Tooltip>
+          )}
         >
           {/* "Shared" is a claim about other people having access. An
               owner-only artifact is published — on Cloud everything is, from
               birth — but nobody else can open it, so the button that offers to
               change that still reads "Share". */}
           {isSharedWithSomeone
-            ? (<>Shared <span className="inline-flex text-ink-3">{Ico.chevDown(14)}</span></>)
+            ? (
+              <>
+                <span aria-hidden="true" className="inline-flex text-ink-3">{shareStateIcon(shareState.kind, 14)}</span>
+                Shared
+                <span aria-hidden="true" className="inline-flex text-ink-3">{Ico.chevDown(14)}</span>
+              </>
+            )
             : 'Share'}
         </Popover.Trigger>
         <Popover.Portal>

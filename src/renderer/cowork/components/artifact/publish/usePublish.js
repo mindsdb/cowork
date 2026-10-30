@@ -154,7 +154,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const busy = phase !== 'idle';
 
   // `access` is the payload `buildAccessPayload` makes, sent as is, so its
-  // `notify_recipients` (email the newly added people, ENG-3787) reaches the
+  // `notify` (the newly added people to email, ENG-3787) reaches the
   // server whichever route carries it.
   const publish = useCallback(async (access) => {
     if (phase !== 'idle' || !canAct) return false;

@@ -92,15 +92,33 @@ export function withoutDefaultTeam(teamIds, teams) {
   return (teamIds || []).filter((id) => !ids.includes(id));
 }
 
+/** Text folded for a local search: lower case, accents dropped
+    ("López" finds "lopez" and the other way round). */
+export function foldForSearch(text) {
+  return String(text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+/** Whether any of `fields` contains `query`, folded (an empty query matches). */
+export function matchesQuery(query, ...fields) {
+  const q = foldForSearch(query);
+  if (!q) return true;
+  return fields.some((field) => foldForSearch(field).includes(q));
+}
+
 /**
- * The teams whose name matches `query` (case-insensitive substring). An empty
- * query returns every team. Ids in `keepIds` stay listed whatever the query.
+ * The teams whose name matches `query` (case- and accent-insensitive
+ * substring). An empty query returns every team. Ids in `keepIds` stay listed
+ * whatever the query.
  */
 export function filterTeams(teams, query, keepIds = []) {
-  const q = (query || '').trim().toLowerCase();
-  if (!q) return teams;
-  return teams.filter((team) => keepIds.includes(team.id)
-    || (team.display_name || '').toLowerCase().includes(q));
+  if (!foldForSearch(query)) return teams;
+  return teams.filter((team) => keepIds.includes(team.id) || matchesQuery(query, team.display_name));
+}
+
+/** The people whose name or email matches `query`, folded. */
+export function filterPeople(people, query) {
+  if (!foldForSearch(query)) return people;
+  return people.filter((person) => matchesQuery(query, person.name, person.email));
 }
 
 /** Up to two initials for a person's avatar: from the name, else the email. */
@@ -305,4 +323,67 @@ export function accessAllowedUserIds(access) {
     answers also said `org_wide`). */
 export function accessOrgAllowed(access) {
   return !!firstDefined(access?.org_allowed, access?.orgAllowed, access?.org_wide, access?.orgWide);
+}
+
+/* ── "Share" or "Shared" (ENG-3787) ─────────────────────────────────────
+   A Share button reads "Shared" once something reaches anyone besides its
+   owner, with an icon for how and a tooltip saying who. */
+
+/** "2 teams and 3 people", "1 team, 2 people and 1 outside email"; null for none. */
+export function audienceCountsPhrase({ teams = 0, people = 0, outside = 0 } = {}) {
+  const parts = [];
+  if (teams) parts.push(plural(teams, 'team', 'teams'));
+  if (people) parts.push(plural(people, 'person', 'people'));
+  if (outside) parts.push(plural(outside, 'outside email', 'outside emails'));
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/** "Shared with everyone at Kinaxis" / "… in your organization". */
+export function sharedWithEveryoneHint(orgName) {
+  return orgName ? `Shared with everyone at ${orgName}` : 'Shared with everyone in your organization';
+}
+
+/**
+ * Whether a skill is shared and how, for its Share button:
+ * `{ shared, kind: 'private' | 'org' | 'specific', hint }`. The default team
+ * reads as the whole org.
+ */
+export function skillShareState(skill, { teams = [], orgName = null } = {}) {
+  const access = skillAccess(skill);
+  if (access.orgAllowed || namesDefaultTeam(access.allowedTeamIds, teams)) {
+    return { shared: true, kind: 'org', hint: sharedWithEveryoneHint(orgName) };
+  }
+  const phrase = audienceCountsPhrase({
+    teams: withoutDefaultTeam(access.allowedTeamIds, teams).length,
+    people: access.allowedUserIds.length,
+  });
+  if (!phrase) return { shared: false, kind: 'private', hint: 'Only you can use it' };
+  return { shared: true, kind: 'specific', hint: `Shared with ${phrase}` };
+}
+
+/**
+ * The same for a published artifact (its publish controller or artifact):
+ * `kind` 'private' | 'public' | 'password' | 'org' | 'specific'.
+ */
+export function artifactShareState(artifact, { orgSharing = false, orgName = null, teams = [] } = {}) {
+  if (!artifact?.publishedUrl) return { shared: false, kind: 'private', hint: 'Not shared yet' };
+  const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
+  if (mode === 'public') return { shared: true, kind: 'public', hint: 'Public link: anyone with the URL can open it' };
+  if (mode === 'password') return { shared: true, kind: 'password', hint: 'Password protected' };
+  const teamIds = artifact.allowedTeamIds || [];
+  const userIds = artifact.allowedUserIds || [];
+  const emails = artifact.accessEmails || [];
+  const ownerOnly = artifact.ownerOnly != null
+    ? !!artifact.ownerOnly
+    : (!artifact.orgAllowed && teamIds.length + userIds.length + emails.length === 0);
+  if (ownerOnly) return { shared: false, kind: 'private', hint: 'Only you can open it' };
+  if (orgSharing && (artifact.orgAllowed || namesDefaultTeam(teamIds, teams))) {
+    return { shared: true, kind: 'org', hint: sharedWithEveryoneHint(orgName) };
+  }
+  const phrase = orgSharing
+    ? audienceCountsPhrase({ teams: withoutDefaultTeam(teamIds, teams).length, people: userIds.length, outside: emails.length })
+    : audienceCountsPhrase({ people: emails.length });
+  return { shared: true, kind: 'specific', hint: phrase ? `Shared with ${phrase}` : 'Shared' };
 }

@@ -1,60 +1,127 @@
-// `<RecipientField>` — who to share with (ENG-3787), the way a Google Docs
-// share dialog asks: a search input on top, the suggestions under it, and the
-// recipients picked so far as a list of rows below (`<RecipientRow>`), each
-// with its own remove ×. The newest addition goes to the top of the list.
+// `<RecipientField>` — who to share with (ENG-3787), the way Google Drive's
+// share dialog asks: a search input on top and, once it is clicked or
+// focused, a dropdown anchored right under it that lists everyone it could
+// add, grouped: the caller's Teams, then the People in ‹org›. The recipients
+// picked so far sit below as a list of rows (`<RecipientRow>`), newest on
+// top, each with its own remove ×.
 //
 // Recipients come in three kinds, kept apart in `value`:
 //   - teams (`teamIds`) — the caller's own MindsHub teams, the org's default
 //     team left out ("Everyone at ‹org›" is that choice);
-//   - people in the org (`userIds`) — found by name or email in the org's
-//     directory (`searchHubPeople`), named afterwards by `useKnownPeople`;
+//   - people in the org (`userIds`) — from the org's directory, read once
+//     per session (`useOrgDirectory`) and named afterwards by `useKnownPeople`;
 //   - outside emails (`emails`) — only with `allowExternal`.
-// With `emailsOnly` (no org to search) it is just addresses.
+// With `emailsOnly` (no org) it is just addresses, with no dropdown.
 //
-// Focusing or clicking the input with nothing typed lists the teams. Typing
-// filters them and, after a short pause, searches people (a newer keystroke
-// aborts the older request). A typed email nobody in the org has becomes the
-// last row, "Invite …", when outside emails are allowed. ↑/↓ move, Enter /
-// Tab / comma add the highlighted (or top) row, Escape closes. A paste of
-// several addresses adds each: a person when the org has that exact email,
-// else an outside email when allowed, else it is reported as not added.
+// Typing filters the lists locally (name, email or team name; case and
+// accents ignored), with no request per keystroke. Only when the hub sent a
+// truncated directory does a typed query of two or more characters also ask
+// the hub (`searchHubPeople`, debounced), merging what it finds into People.
+// A typed email nobody in the org has becomes "Invite …" when outside emails
+// are allowed. ↑/↓ move across both groups, Enter / Tab / comma add the
+// highlighted (or top) row, Escape closes; the input keeps the focus, so one
+// can keep typing and adding. A paste of several addresses adds each.
+//
+// The dropdown is portalled to the body and placed under the input with
+// fixed coordinates, so it floats over whatever is below (a popover's
+// footer, the rest of a form) rather than pushing it down or being clipped
+// by a scrolling panel. It stays in the React tree of the field, so the
+// Share popover around it counts a press inside it as inside.
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Spinner } from './ui';
 import { searchHubPeople } from '../api';
 import { isEmailShaped } from '../lib/emailAddress';
 import {
+  filterPeople,
   filterTeams,
   orgNameOrGeneric,
   personInitials,
   recipientSummary,
   shareableTeams,
 } from '../lib/orgSharing';
-import { useHubTeams, useKnownPeople } from '../hooks/useOrgSharing';
+import { useHubTeams, useKnownPeople, useOrgDirectory } from '../hooks/useOrgSharing';
 import { RecipientRow, UNKNOWN_TEAM, recipientItems } from './RecipientRows';
 
 export const RECIPIENT_SEARCH_DEBOUNCE_MS = 200;
 const MIN_QUERY = 2;
 const SEPARATORS = /[\s,;]+/;
+// The dropdown's tallest, and the least room below the input before it opens
+// above instead.
+const MENU_MAX_HEIGHT = 320;
+const MENU_MIN_BELOW = 200;
+const MENU_GAP = 4;
 export { UNKNOWN_TEAM };
 
 const EMPTY_VALUE = Object.freeze({ teamIds: [], userIds: [], emails: [] });
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-function IconTile({ children }) {
+const TILE = 'inline-grid shrink-0 place-items-center w-[28px] h-[28px] rounded-full';
+
+function TeamTile() {
+  return <span aria-hidden="true" className={`${TILE} border border-solid border-line bg-surface-2 text-ink-3`}>{Ico.people(14)}</span>;
+}
+
+function PersonTile({ person }) {
   return (
-    <span className="inline-grid shrink-0 place-items-center w-[18px] h-[18px] rounded-full bg-surface text-ink-3">{children}</span>
+    <span aria-hidden="true" className={`${TILE} bg-accent-bg text-accent font-body text-[11px] font-semibold`}>
+      {person && (person.name || person.email) ? personInitials(person) : '?'}
+    </span>
   );
 }
 
-function Avatar({ person, size = 18 }) {
+function MailTile() {
+  return <span aria-hidden="true" className={`${TILE} border border-solid border-warning-border bg-warning-bg text-warning-text`}>{Ico.mail(14)}</span>;
+}
+
+/* A grey placeholder row while the directory loads. */
+function SkeletonRow({ width }) {
   return (
-    <span
-      aria-hidden="true"
-      className="inline-grid shrink-0 place-items-center rounded-full bg-accent-bg text-accent font-body font-semibold"
-      style={{ width: size, height: size, fontSize: size <= 18 ? 9.5 : 11 }}
-    >{person && (person.name || person.email) ? personInitials(person) : '?'}</span>
+    <li role="presentation" aria-hidden="true" data-testid="recipient-skeleton" className="flex items-center gap-2.5 py-[7px] px-2">
+      <span className={`${TILE} bg-surface-2 animate-pulse`} />
+      <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <span className="h-[9px] rounded-full bg-surface-2 animate-pulse" style={{ width }} />
+        <span className="h-[8px] rounded-full bg-surface-2 animate-pulse" style={{ width: `calc(${width} * 1.4)` }} />
+      </span>
+    </li>
   );
+}
+
+/** Where the dropdown goes: under the input, or above when there's no room. */
+function useMenuPosition(anchorRef, open) {
+  const [position, setPosition] = useState(null);
+  useLayoutEffect(() => {
+    if (!open) { setPosition(null); return undefined; }
+    const place = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const viewport = window.innerHeight || document.documentElement.clientHeight || 0;
+      const below = viewport - rect.bottom - MENU_GAP - 12;
+      const above = rect.top - MENU_GAP - 12;
+      const flip = below < MENU_MIN_BELOW && above > below;
+      setPosition({
+        left: rect.left,
+        width: rect.width,
+        ...(flip ? { bottom: viewport - rect.top + MENU_GAP } : { top: rect.bottom + MENU_GAP }),
+        maxHeight: Math.max(160, Math.min(MENU_MAX_HEIGHT, flip ? above : below)),
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    // Capture: any scrolling ancestor (a popover's body, a modal) moves the input.
+    window.addEventListener('scroll', place, true);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
+    if (observer && anchorRef.current) observer.observe(anchorRef.current);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      observer?.disconnect();
+    };
+  }, [open, anchorRef]);
+  return position;
 }
 
 /**
@@ -93,15 +160,19 @@ export function RecipientField({
 
   const ownTeams = useHubTeams(!emailsOnly && !teamsProp);
   const teamsState = teamsProp || ownTeams;
+  const directory = useOrgDirectory(!emailsOnly);
   const known = useKnownPeople(emailsOnly ? EMPTY_VALUE.userIds : userIds);
   const org = orgNameOrGeneric(orgName);
 
+  const anchorRef = useRef(null);
   const inputRef = useRef(null);
+  const menuRef = useRef(null);
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(-1);
-  // 'idle' | 'searching' | 'ready' | 'unreachable'
+  // The hub search a truncated (or unreadable) directory falls back on:
+  // 'idle' | 'searching' | 'ready' | 'unreachable'.
   const [status, setStatus] = useState('idle');
   const [results, setResults] = useState([]);
   const [notAdded, setNotAdded] = useState([]);
@@ -109,7 +180,11 @@ export function RecipientField({
   const listId = useId();
   const optionId = (i) => `${listId}-opt-${i}`;
   const query = text.trim();
-  const searches = !emailsOnly && query.length >= MIN_QUERY && !SEPARATORS.test(query);
+  const directoryReady = directory.status === 'ready';
+  // The directory holds everyone: nothing to ask the hub.
+  const directoryComplete = directoryReady && !directory.truncated;
+  const searches = !emailsOnly && !directoryComplete && directory.status !== 'loading' && directory.status !== 'idle'
+    && query.length >= MIN_QUERY && !SEPARATORS.test(query);
 
   useEffect(() => {
     if (!searches) {
@@ -135,15 +210,29 @@ export function RecipientField({
   // ── What the menu offers ──
   const typedEmail = query.toLowerCase();
   const typedIsEmail = isEmailShaped(typedEmail);
-  const matchedPerson = results.find((p) => (p.email || '').toLowerCase() === typedEmail) || null;
+  const directoryPeople = directoryReady ? directory.people : EMPTY_VALUE.userIds;
+  const findByEmail = (email) => directoryPeople.find((p) => (p.email || '') === email)
+    || results.find((p) => (p.email || '').toLowerCase() === email)
+    || null;
+  const matchedPerson = typedIsEmail ? findByEmail(typedEmail) : null;
+  // Whether "nobody in the org has this address" is known yet.
+  const emailAnswered = directoryComplete || status === 'ready';
   const teamsReady = teamsState.status === 'ready' && teamsState.reachable;
   const ownShareable = teamsReady ? shareableTeams(teamsState.teams) : [];
   const teamOptions = emailsOnly ? [] : filterTeams(ownShareable, query).filter((t) => !teamIds.includes(t.id));
-  const peopleOptions = searches && (status === 'ready' || status === 'unreachable')
-    ? results.filter((p) => !userIds.includes(p.id))
-    : [];
+  let peopleOptions = [];
+  if (!emailsOnly) {
+    const seen = new Set(userIds);
+    // Pasted lists aren't filtered: they are added on their own.
+    const local = SEPARATORS.test(query) ? [] : filterPeople(directoryPeople, query);
+    for (const person of [...local, ...(searches ? results : [])]) {
+      if (seen.has(person.id)) continue;
+      seen.add(person.id);
+      peopleOptions.push(person);
+    }
+  }
   const canInvite = typedIsEmail && !emails.includes(typedEmail) && (emailsOnly
-    || (allowExternal && status === 'ready' && !matchedPerson));
+    || (allowExternal && emailAnswered && !matchedPerson));
   const options = [
     ...teamOptions.map((team) => ({ kind: 'team', key: `team:${team.id}`, team })),
     ...peopleOptions.map((person) => ({ kind: 'person', key: `person:${person.id}`, person })),
@@ -151,24 +240,24 @@ export function RecipientField({
   ];
   const current = active >= 0 && active < options.length ? active : (query && options.length ? 0 : -1);
 
-  let statusLine = null;
-  if (!emailsOnly) {
-    if (!query) {
-      if (teamsState.status !== 'ready') statusLine = <span className="inline-flex items-center gap-2"><Spinner /> Loading teams…</span>;
-      else if (!teamsState.reachable) statusLine = "Couldn't load your teams. Try again later.";
-      else if (ownShareable.length === 0) statusLine = "You're not in any teams yet. Type a name to find people.";
-      else if (teamOptions.length === 0) statusLine = 'All your teams are added. Type a name to find people.';
-    } else if (searches && status === 'searching') {
-      statusLine = <span className="inline-flex items-center gap-2"><Spinner /> Searching…</span>;
-    } else if (searches && status === 'unreachable') {
-      statusLine = `Couldn't search people in ${org}.`;
-    } else if (searches && status === 'ready' && options.length === 0) {
-      statusLine = 'No matches';
-    }
-  }
-  const menuOpen = open && (options.length > 0 || statusLine != null);
+  // Rows under the lists: loading, a failure, nothing found.
+  const directoryLoading = !emailsOnly && (directory.status === 'loading' || directory.status === 'idle');
+  const teamsLoading = !emailsOnly && !teamsProp && teamsState.status !== 'ready';
+  const searching = searches && status === 'searching';
+  const nothingFound = !emailsOnly && !!query && options.length === 0 && !directoryLoading && !searching
+    && directory.status !== 'error' && !(typedIsEmail && !allowExternal);
+  const menuOpen = open && !emailsOnly ? true : open && options.length > 0;
   // A typed email nobody in the org has, where only the org may be named.
-  const showOrgOnlyHint = !emailsOnly && !allowExternal && typedIsEmail && status === 'ready' && !matchedPerson;
+  const showOrgOnlyHint = !emailsOnly && !allowExternal && typedIsEmail && emailAnswered && !matchedPerson;
+  const position = useMenuPosition(anchorRef, menuOpen);
+
+  // Keep the highlighted row in view as the arrows move it.
+  useEffect(() => {
+    if (!menuOpen || current < 0) return;
+    const el = menuRef.current?.querySelector(`[id="${optionId(current)}"]`);
+    el?.scrollIntoView?.({ block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, menuOpen]);
 
   // ── Adding and removing ──
   const resetInput = () => {
@@ -192,17 +281,20 @@ export function RecipientField({
 
   // Each typed or pasted address becomes a person when the org has that
   // exact email, else an outside email when allowed, else it is reported.
+  // The directory answers when it holds everyone; otherwise the hub is asked.
   const resolveTokens = async (tokens) => {
     resetInput();
     const lookups = tokens.map(async (raw) => {
       const email = raw.toLowerCase();
       if (!isEmailShaped(email)) return { raw, reason: 'not an email' };
       if (emailsOnly) return { email };
-      const local = results.find((p) => (p.email || '').toLowerCase() === email);
+      const local = findByEmail(email);
       if (local) return { person: local };
-      const found = await searchHubPeople(email).catch(() => ({ reachable: false, people: [] }));
-      const person = (found.people || []).find((p) => (p.email || '').toLowerCase() === email);
-      if (person) return { person };
+      if (!directoryComplete) {
+        const found = await searchHubPeople(email).catch(() => ({ reachable: false, people: [] }));
+        const person = (found.people || []).find((p) => (p.email || '').toLowerCase() === email);
+        if (person) return { person };
+      }
       if (allowExternal) return { email };
       return { raw: email, reason: `not in ${org}` };
     });
@@ -333,13 +425,143 @@ export function RecipientField({
     : (allowExternal ? 'Add teams, people or emails…' : 'Add teams or people…');
   const summary = recipientSummary({ teamIds, userIds, emails }, { orgName, emailsOnly, allowExternal });
 
-  const groupHeader = (text) => (
-    <li role="presentation" className="px-2 pt-[6px] pb-[2px] font-body text-[11px] font-semibold uppercase tracking-[0.04em] text-ink-4">{text}</li>
+  // ── The dropdown ──
+  const groupHeader = (key, title) => (
+    <li key={key} role="presentation" className="px-2 pt-2 pb-1 font-body text-[11.5px] font-medium text-ink-4">{title}</li>
+  );
+  const optionRow = (option, i) => {
+    const selected = i === current;
+    const rowProps = {
+      id: optionId(i),
+      role: 'option',
+      'aria-selected': selected,
+      // mousedown, not click: the input's blur would close the list first.
+      onMouseDown: (e) => { e.preventDefault(); add(option); },
+      onMouseMove: () => { if (active !== i) setActive(i); },
+      className: `flex min-w-0 cursor-pointer items-center gap-2.5 rounded-[8px] py-[6px] px-2 font-body ${selected ? 'bg-surface-2' : ''}`,
+    };
+    if (option.kind === 'team') {
+      const count = option.team.member_count;
+      return (
+        <li key={option.key} {...rowProps}>
+          <TeamTile />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-[13px] font-medium leading-[18px] text-ink" title={option.team.display_name}>{option.team.display_name}</span>
+            <span className="truncate text-[11.5px] leading-[16px] text-ink-3">{Number.isInteger(count) ? plural(count, 'person', 'people') : 'Team'}</span>
+          </span>
+        </li>
+      );
+    }
+    if (option.kind === 'person') {
+      const { name, email } = option.person;
+      return (
+        <li key={option.key} {...rowProps}>
+          <PersonTile person={option.person} />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-[13px] font-medium leading-[18px] text-ink" title={name || email}>{name || email}</span>
+            {name && email && <span className="truncate text-[11.5px] leading-[16px] text-ink-3" title={email}>{email}</span>}
+          </span>
+        </li>
+      );
+    }
+    return (
+      <li key={option.key} {...rowProps}>
+        <MailTile />
+        <span className="min-w-0 flex-1 truncate text-[13px] text-ink" title={option.email}>
+          {emailsOnly ? `Add ${option.email}` : `Invite ${option.email}`}
+          {!emailsOnly && <span className="text-ink-3">{` (outside ${org})`}</span>}
+        </span>
+      </li>
+    );
+  };
+
+  const listChildren = [];
+  options.forEach((option, i) => {
+    const prev = options[i - 1];
+    if (!prev || prev.kind !== option.kind) {
+      if (option.kind === 'team') listChildren.push(groupHeader('h-team', 'Teams'));
+      if (option.kind === 'person') listChildren.push(groupHeader('h-person', `People in ${org}`));
+    }
+    listChildren.push(optionRow(option, i));
+  });
+  // Placeholders where a group is still on its way, under that group's title.
+  const skeletons = (key, title, widths) => [
+    groupHeader(`${key}-h`, title),
+    ...widths.map((w, i) => <SkeletonRow key={`${key}-${i}`} width={w} />),
+  ];
+  if (teamsLoading && !query) listChildren.unshift(...skeletons('st', 'Teams', ['38%']));
+  if (directoryLoading) listChildren.push(...skeletons('sp', `People in ${org}`, ['42%', '30%', '36%']));
+
+  let footer = null;
+  if (!emailsOnly && directory.status === 'error') {
+    footer = (
+      <div role="alert" className="flex items-center justify-between gap-3 py-2 px-2 font-body text-xs text-ink-3">
+        <span className="min-w-0">Couldn&apos;t load your organization&apos;s directory</span>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={directory.retry}
+          className="shrink-0 bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
+        >Retry</button>
+      </div>
+    );
+  }
+  const teamsUnreachable = !emailsOnly && teamsState.status === 'ready' && !teamsState.reachable;
+  const statusLine = searching
+    ? <span className="inline-flex items-center gap-2"><Spinner /> Searching everyone in {org}…</span>
+    : showOrgOnlyHint ? `Only people in ${org}`
+    : nothingFound ? 'No matches'
+      : (!query && !directoryLoading && !teamsLoading && options.length === 0 && directory.status !== 'error' && !teamsUnreachable)
+        ? 'Everyone you can add is already added.'
+        : null;
+  const truncatedNote = !emailsOnly && directoryReady && directory.truncated
+    ? `Showing the first ${directory.people.length} people. Type to search everyone.`
+    : null;
+
+  const menu = menuOpen && (
+    <div
+      ref={menuRef}
+      data-testid="recipient-menu"
+      // A press anywhere in the menu (its scrollbar too) keeps the input focused.
+      onMouseDown={(e) => e.preventDefault()}
+      className="flex flex-col overflow-hidden rounded-[10px] border border-solid border-line bg-surface font-body shadow-sh-popup"
+      style={{
+        position: 'fixed',
+        zIndex: 1000,
+        left: position?.left ?? 0,
+        top: position?.top,
+        bottom: position?.bottom,
+        width: position?.width || undefined,
+        maxHeight: position?.maxHeight ?? MENU_MAX_HEIGHT,
+        visibility: position ? 'visible' : 'hidden',
+      }}
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto p-1">
+        {listChildren.length > 0 && (
+          <ul id={listId} role="listbox" aria-label="Suggestions" className="m-0 flex list-none flex-col p-0">
+            {listChildren}
+          </ul>
+        )}
+        {teamsUnreachable && !query && (
+          <div role="status" className="py-2 px-2 font-body text-xs text-ink-3">Couldn&apos;t load your teams. Try again later.</div>
+        )}
+        {statusLine && (
+          <div role="status" className="py-2 px-2 font-body text-xs text-ink-3">{statusLine}</div>
+        )}
+        {footer}
+      </div>
+      {truncatedNote && (
+        <div className="shrink-0 border-t border-b-0 border-x-0 border-solid border-line py-2 px-3 font-body text-[11.5px] text-ink-3" role="note">
+          {truncatedNote}
+        </div>
+      )}
+    </div>
   );
 
   return (
     <div className="flex min-w-0 flex-col">
       <div
+        ref={anchorRef}
         className="flex h-[34px] min-w-0 items-center gap-2 rounded-card-row border border-solid bg-surface pl-[10px] pr-2"
         style={{
           borderColor: focused ? 'var(--accent)' : 'var(--line)',
@@ -381,74 +603,8 @@ export function RecipientField({
         {resolving > 0 && <Spinner />}
       </div>
 
-      {menuOpen && (
-        <div className="mt-1 min-w-0 rounded-card border border-solid border-line bg-surface p-1 shadow-sm">
-          {options.length > 0 && (
-            <ul id={listId} role="listbox" aria-label="Suggestions" className="m-0 p-0 list-none flex max-h-[220px] flex-col overflow-y-auto">
-              {options.map((option, i) => {
-                const prev = options[i - 1];
-                const header = !prev || prev.kind !== option.kind
-                  ? (option.kind === 'team' ? 'Teams' : option.kind === 'person' ? `People in ${org}` : null)
-                  : null;
-                const selected = i === current;
-                const rowClass = `flex min-w-0 cursor-pointer items-center gap-2 rounded-card-row py-[6px] px-2 font-body text-[13px] ${selected ? 'bg-surface-2' : ''}`;
-                const rowProps = {
-                  id: optionId(i),
-                  role: 'option',
-                  'aria-selected': selected,
-                  // mousedown, not click: the input's blur would close the list first.
-                  onMouseDown: (e) => { e.preventDefault(); add(option); },
-                  onMouseEnter: () => setActive(i),
-                  className: rowClass,
-                };
-                let row;
-                if (option.kind === 'team') {
-                  const count = option.team.member_count;
-                  row = (
-                    <li {...rowProps}>
-                      <IconTile>{Ico.people(12)}</IconTile>
-                      <span className="min-w-0 flex-1 truncate text-ink" title={option.team.display_name}>{option.team.display_name}</span>
-                      {Number.isInteger(count) && (
-                        <span className="shrink-0 text-[11.5px] text-ink-4">{count === 1 ? '1 member' : `${count} members`}</span>
-                      )}
-                    </li>
-                  );
-                } else if (option.kind === 'person') {
-                  row = (
-                    <li {...rowProps}>
-                      <Avatar person={option.person} size={22} />
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        {option.person.name && <span className="truncate font-semibold text-ink" title={option.person.name}>{option.person.name}</span>}
-                        <span className={`truncate ${option.person.name ? 'text-[11.5px] text-ink-3' : 'text-ink'}`} title={option.person.email}>{option.person.email}</span>
-                      </span>
-                    </li>
-                  );
-                } else {
-                  row = (
-                    <li {...rowProps}>
-                      <IconTile>{Ico.mail(12)}</IconTile>
-                      <span className="min-w-0 flex-1 truncate text-ink" title={option.email}>
-                        {emailsOnly ? `Add ${option.email}` : `Invite ${option.email}`}
-                        {!emailsOnly && <span className="text-ink-3">{` (outside ${org})`}</span>}
-                      </span>
-                    </li>
-                  );
-                }
-                return (
-                  <FragmentRow key={option.key} header={header && groupHeader(header)}>{row}</FragmentRow>
-                );
-              })}
-            </ul>
-          )}
-          {statusLine && (
-            <div role="status" className="py-[6px] px-2 font-body text-xs text-ink-3">{statusLine}</div>
-          )}
-        </div>
-      )}
+      {menu && typeof document !== 'undefined' ? createPortal(menu, document.body) : null}
 
-      {showOrgOnlyHint && (
-        <span className="mt-[6px] font-body text-xs text-ink-3" role="note">{`Only people in ${org}`}</span>
-      )}
       {notAdded.length > 0 && (
         <span className="mt-[6px] font-body text-xs text-danger" role="alert">
           {`Not added: ${notAdded.map((n) => `${n.raw} (${n.reason})`).join(', ')}`}
@@ -465,15 +621,6 @@ export function RecipientField({
       )}
       <span className="mt-[6px] font-body text-xs text-ink-3" data-testid="recipient-summary" aria-live="polite">{summary}</span>
     </div>
-  );
-}
-
-function FragmentRow({ header, children }) {
-  return (
-    <>
-      {header}
-      {children}
-    </>
   );
 }
 

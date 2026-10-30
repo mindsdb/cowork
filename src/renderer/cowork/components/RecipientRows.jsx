@@ -210,11 +210,12 @@ export function SharedWithList({ teamIds = NONE, userIds = NONE, emails = NONE, 
  *   teamsState?: { status: string, teams: Array<{ id: string, display_name: string, is_default?: boolean }> } | null,
  *   label?: string,
  *   limit?: number,
+ *   flush?: boolean,
  * }} props
  */
 export function AudienceList({
   orgAllowed = false, teamIds = NONE, userIds = NONE,
-  orgName = null, teamsState: teamsProp = null, label = 'Who can use it', limit = 6,
+  orgName = null, teamsState: teamsProp = null, label = 'Who can use it', limit = 6, flush = true,
 }) {
   const ownTeams = useHubTeams(!teamsProp);
   const teamsState = teamsProp || ownTeams;
@@ -232,7 +233,7 @@ export function AudienceList({
   if (items.length === 0) {
     items.push({ key: 'me', kind: 'private', primary: 'Only you', secondary: 'Nobody else can use it' });
   }
-  // Pulled out by the rows' own padding, so names line up with the text
-  // around them.
-  return <ReadOnlyRecipientRows items={items} label={label} limit={limit} testId="audience-list" className="-mx-2 -my-[4px]" />;
+  // `flush`: pulled out by the rows' own padding, so names line up with the
+  // text around them.
+  return <ReadOnlyRecipientRows items={items} label={label} limit={limit} testId="audience-list" className={flush ? '-mx-2 -my-[4px]' : ''} />;
 }

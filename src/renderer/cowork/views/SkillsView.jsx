@@ -19,6 +19,7 @@ import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
 import SkillShareMenu from '../components/SkillShareMenu';
 import SkillAudienceFields from '../components/SkillAudienceFields';
 import SkillDetail from '../components/SkillDetail';
+import { ShareStateLabel, shareStateIcon } from '../components/ShareStateLabel';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
@@ -28,6 +29,7 @@ import {
   PRIVATE_ACCESS,
   isSkillAlwaysOn,
   skillAccessPayload,
+  skillShareState,
   skillAudienceBadge,
   skillOwnerEmail,
   skillSection,
@@ -139,7 +141,7 @@ function SkillTile({ skill }) {
     <span
       aria-hidden="true"
       className="inline-grid h-6 w-6 shrink-0 place-items-center rounded-[6px] border border-solid border-line bg-surface-2 font-mono text-[12px] font-semibold text-ink-3"
-    >{skill.isBuiltin ? Ico.cube(12) : '/'}</span>
+    >{Ico.cube(12)}</span>
   );
 }
 
@@ -802,23 +804,34 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       onClick: () => remove(skill),
     }]),
   ];
-  const shareMenu = (skill, trigger) => (
+  /* "Share" or "Shared", with who in the tooltip. */
+  const shareState = (skill) => skillShareState(skill, { teams: teamsState.teams, orgName: sharingCapabilities.org_name });
+  const shareMenu = (skill, trigger, tooltip = shareState(skill).hint) => (
     <SkillShareMenu
       skill={skill}
       capabilities={sharingCapabilities}
       onSave={(access) => saveAccess(skill, access)}
       trigger={trigger}
+      tooltip={tooltip}
     />
   );
   const rowActions = (skill) => (
     <>
       {enabledControl(skill)}
       <div className={REVEAL_ACTIONS} data-testid="skill-row-actions">
-        {canOpenShare(skill) && shareMenu(skill, (
-          <Button icon size="xxs" variant="subtle" aria-label={`Share ${skill.label}`} title="Share">
-            {Ico.people(14)}
-          </Button>
-        ))}
+        {canOpenShare(skill) && (() => {
+          const state = shareState(skill);
+          // Shared: the word says so; private: just the icon, like the menu.
+          return shareMenu(skill, state.shared ? (
+            <Button size="xxs" variant="subtle" aria-label={`Shared: ${skill.label}`}>
+              <ShareStateLabel state={state} size={12} />
+            </Button>
+          ) : (
+            <Button icon size="xxs" variant="subtle" aria-label={`Share ${skill.label}`}>
+              {shareStateIcon(state.kind, 14)}
+            </Button>
+          ), state.shared ? state.hint : 'Share');
+        })()}
         <OverflowMenu label={`More actions for ${skill.label}`} title="More actions" items={skillMenuItems(skill)} />
       </div>
     </>
@@ -869,8 +882,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               <>
                 {canOpenShare(selected) && shareMenu(selected, (
                   <Button variant="default">
-                    {Ico.people(14)}
-                    Share
+                    <ShareStateLabel state={shareState(selected)} />
                   </Button>
                 ))}
                 {!hidesOwnerActions(selected) && canUseSharedResource(selected, 'canEdit') && (

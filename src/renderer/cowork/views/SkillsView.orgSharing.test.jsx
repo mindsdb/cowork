@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   fetchHubTeams: vi.fn(),
   searchHubPeople: vi.fn(),
   fetchHubPeopleByIds: vi.fn(async () => ({ reachable: true, people: [] })),
+  fetchHubDirectory: vi.fn(async () => ({ reachable: true, people: [], truncated: false })),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
 
@@ -73,12 +74,13 @@ const RECIPIENTS = 'Add teams or people';
 async function pickSpecificTeam(user, dialog, team = /Supply Planning/) {
   await user.click(within(dialog).getByRole('radio', { name: /^Specific teams and people/ }));
   await user.click(within(dialog).getByRole('combobox', { name: RECIPIENTS }));
-  await user.click(await within(dialog).findByRole('option', { name: team }));
+  // The suggestions float over the page, outside the dialog.
+  await user.click(await screen.findByRole('option', { name: team }));
 }
 async function pickSpecificPerson(user, dialog, query, person) {
   await user.click(within(dialog).getByRole('radio', { name: /^Specific teams and people/ }));
   await user.type(within(dialog).getByRole('combobox', { name: RECIPIENTS }), query);
-  await user.click(await within(dialog).findByRole('option', { name: person }));
+  await user.click(await screen.findByRole('option', { name: person }));
 }
 
 beforeEach(() => {
@@ -144,7 +146,8 @@ describe('SkillsView with org sharing', () => {
 
     const toggle = within(row).getByRole('switch', { name: "Turn off: Anton won't use this skill" });
     expect(toggle).toHaveAttribute('title', "Turn off: Anton won't use this skill");
-    expect(within(row).getByRole('button', { name: 'Share weekly-report' })).toBeInTheDocument();
+    // Shared with a team: the action says Shared.
+    expect(within(row).getByRole('button', { name: 'Shared: weekly-report' })).toHaveTextContent('Shared');
     expect(within(row).getByRole('button', { name: 'More actions for weekly-report' })).toBeInTheDocument();
     const reveal = within(row).getByTestId('skill-row-actions').className;
     expect(reveal).toContain('opacity-0');
@@ -256,7 +259,7 @@ describe('SkillsView with org sharing', () => {
     api.fetchSkills.mockResolvedValue({ skills: [privateNow], canShare: false });
 
     await user.click(screen.getByText('weekly-report'));
-    await user.click(screen.getByRole('button', { name: 'Share' }));
+    await user.click(screen.getByRole('button', { name: 'Shared' }));
     const dialog = await screen.findByRole('dialog');
     // An anchored dropdown, not a modal.
     expect(within(dialog).getByText('Who can use this skill')).toBeInTheDocument();
@@ -270,7 +273,8 @@ describe('SkillsView with org sharing', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(api.fetchSkills.mock.calls.length).toBe(loads + 1);
     // The detail reads Only you, and back on the list it sits under Yours.
-    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Who can use it' })).getByText('Only you')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Shared withOnly you'));
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Skills' }));
     expect(within(section('Yours')).getByText('weekly-report')).toBeInTheDocument();
     expect(section('My teams')).toBeNull();
@@ -301,7 +305,9 @@ describe('SkillsView with org sharing', () => {
   });
 
   describe('the skill detail', () => {
-    it('puts Share, Edit, the switch and the menu in the header, with the name, description and badges', async () => {
+    const properties = () => screen.getByTestId('skill-properties');
+
+    it('puts the name, the description and Shared, Edit, the switch and the menu in the header', async () => {
       const user = userEvent.setup();
       await renderPage([mine]);
       await user.click(screen.getByText('weekly-report'));
@@ -309,61 +315,103 @@ describe('SkillsView with org sharing', () => {
       const header = screen.getByTestId('skill-detail-header');
       expect(within(header).getByRole('heading', { level: 1, name: 'weekly-report' })).toBeInTheDocument();
       expect(within(header).getByText('Mine.')).toBeInTheDocument();
-      expect(within(header).getByText('Team: Supply Planning')).toBeInTheDocument();
+      // The audience is said once, in the properties, not as a header badge.
+      expect(within(header).queryByText(/Supply Planning/)).toBeNull();
       const actions = within(header).getByRole('group', { name: 'Skill actions' });
-      expect(within(actions).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+      expect(within(actions).getByRole('button', { name: 'Shared' })).toBeInTheDocument();
       expect(within(actions).getByRole('button', { name: 'Edit weekly-report' })).toBeInTheDocument();
       expect(within(actions).getByRole('switch', { name: /^Turn off/ })).toBeInTheDocument();
       expect(within(actions).getByRole('button', { name: 'More actions' })).toBeInTheDocument();
     });
 
-    it('opens the Edit dialog from the header', async () => {
+    it('reads Share on a skill only its owner can use', async () => {
       const user = userEvent.setup();
-      await renderPage([mine]);
-      await user.click(screen.getByText('weekly-report'));
-
-      await user.click(screen.getByRole('button', { name: 'Edit weekly-report' }));
-      const dialog = await screen.findByRole('dialog');
-      expect(within(dialog).getByRole('textbox', { name: 'Instructions' })).toBeInTheDocument();
+      await renderPage([yours]);
+      await user.click(screen.getByText('daily-notes'));
+      const actions = screen.getByRole('group', { name: 'Skill actions' });
+      expect(within(actions).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+      expect(within(actions).queryByRole('button', { name: 'Shared' })).toBeNull();
+      expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Only you');
     });
 
-    it('lists who can use it as read-only rows, with the project and owner', async () => {
+    it('lays the properties out on one borderless line: project, audience, owner, update', async () => {
       const user = userEvent.setup();
-      api.fetchHubPeopleByIds.mockResolvedValue({ reachable: true, people: [{ id: 'u7', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
-      await renderPage([{ ...mine, access: { orgAllowed: false, allowedTeamIds: ['t-supply'], allowedUserIds: ['u7'] } }]);
+      await renderPage([{ ...mine, updatedAt: new Date(Date.now() - 3_600_000).toISOString() }]);
       await user.click(screen.getByText('weekly-report'));
 
-      const pills = screen.getByRole('list', { name: 'Who can use it' });
-      expect(within(pills).getByText('Supply Planning')).toBeInTheDocument();
-      expect(await within(pills).findByText('Ana Ruiz')).toBeInTheDocument();
-      expect(within(pills).getByText('ana@kinaxis.com')).toBeInTheDocument();
-      // Read only: no way to remove a recipient here.
-      expect(within(pills).queryByRole('button')).toBeNull();
+      const terms = within(properties()).getAllByRole('term').map((t) => t.textContent);
+      expect(terms).toEqual(['Project', 'Shared with', 'Owner', 'Updated']);
       expect(screen.getByTestId('skill-meta-project')).toHaveTextContent('All projects');
-      expect(screen.getByTestId('skill-meta-owner')).toHaveTextContent('You · me@kinaxis.com');
+      expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Supply Planning');
+      expect(screen.getByTestId('skill-meta-owner')).toHaveTextContent('OwnerYou');
+      expect(screen.getByTestId('skill-meta-updated')).toHaveTextContent('1h ago');
+      // No card, no nested list of rows.
+      expect(properties().className).not.toMatch(/\bborder\b/);
+      expect(screen.queryByRole('list', { name: 'Shared with' })).toBeNull();
     });
 
-    it('names the owner of a skill shared with the caller, and offers no Edit', async () => {
+    it('says a list audience compactly, and opens the whole list on click', async () => {
+      const user = userEvent.setup();
+      api.fetchHubPeopleByIds.mockResolvedValue({ reachable: true, people: [
+        { id: 'u7', name: 'Ana López', email: 'ana@kinaxis.com' },
+        { id: 'u8', name: 'Bo Chen', email: 'bo@kinaxis.com' },
+        { id: 'u9', name: 'Cy Diaz', email: 'cy@kinaxis.com' },
+      ] });
+      await renderPage([{ ...mine, access: { orgAllowed: false, allowedTeamIds: ['t-supply'], allowedUserIds: ['u7', 'u8', 'u9'] } }]);
+      await user.click(screen.getByText('weekly-report'));
+
+      const summary = await screen.findByTestId('skill-audience-summary');
+      await waitFor(() => expect(summary).toHaveTextContent('Supply Planning, Ana López +2'));
+      await user.click(summary);
+      const list = await screen.findByRole('list', { name: 'Shared with' });
+      expect(within(list).getByText('Supply Planning')).toBeInTheDocument();
+      expect(within(list).getByText('Cy Diaz')).toBeInTheDocument();
+      expect(within(list).getByText('bo@kinaxis.com')).toBeInTheDocument();
+      // Read only: no way to remove anyone here.
+      expect(within(list).queryByRole('button')).toBeNull();
+    });
+
+    it('names the owner of a skill shared with the caller, says Everyone at the org once, and offers no Edit', async () => {
       const user = userEvent.setup();
       await renderPage([orgWide]);
       await user.click(screen.getByText('brand-voice'));
 
-      expect(within(screen.getByRole('list', { name: 'Who can use it' })).getByText('Everyone at Kinaxis')).toBeInTheDocument();
+      expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Shared withEveryone at Kinaxis');
+      expect(screen.getAllByText('Everyone at Kinaxis')).toHaveLength(1);
+      expect(screen.queryByText('Anyone in your organization')).toBeNull();
+      expect(screen.queryByTestId('skill-audience-summary')).toBeNull();
       expect(screen.getByTestId('skill-meta-owner')).toHaveTextContent('admin@kinaxis.com');
       expect(screen.queryByRole('button', { name: /^Edit/ })).toBeNull();
     });
 
-    it('renders the instructions as markdown, and says when there are none', async () => {
+    it('says Always on in the properties', async () => {
+      const user = userEvent.setup();
+      await renderPage([teamSkill]);
+      await user.click(screen.getByText('team-playbook'));
+      expect(screen.getByTestId('skill-meta-always-on')).toHaveTextContent('Always on');
+    });
+
+    it('renders the instructions as markdown with no card, and says when there are none', async () => {
       const user = userEvent.setup();
       await renderPage([{ ...mine, declarative: '## Steps\n\n1. Gather the numbers' }, { ...yours, declarative: '' }]);
       await user.click(screen.getByText('weekly-report'));
+      expect(screen.getByRole('heading', { level: 2, name: 'Instructions' })).toBeInTheDocument();
       const body = screen.getByTestId('skill-instructions');
       expect(within(body).getByRole('heading', { name: 'Steps' })).toBeInTheDocument();
+      expect(body.className).not.toMatch(/\bborder\b/);
 
       await user.click(screen.getByRole('button', { name: 'Skills' }));
       await user.click(screen.getByText('daily-notes'));
       expect(screen.getByTestId('skill-instructions-empty')).toHaveTextContent('This skill has no instructions yet.');
       expect(screen.getByRole('button', { name: 'Add instructions' })).toBeInTheDocument();
+    });
+
+    it("shows who it's shared with in the Shared button's tooltip", async () => {
+      const user = userEvent.setup();
+      await renderPage([{ ...mine, access: { orgAllowed: false, allowedTeamIds: ['t-supply'], allowedUserIds: ['u7', 'u8'] } }]);
+      await user.click(screen.getByText('weekly-report'));
+      await user.hover(screen.getByRole('button', { name: 'Shared' }));
+      expect(await screen.findByText('Shared with 1 team and 2 people')).toBeInTheDocument();
     });
   });
 
@@ -473,7 +521,7 @@ describe('SkillsView with org sharing', () => {
       const user = userEvent.setup();
       api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
       api.setSkillAccess.mockResolvedValue({});
-      api.searchHubPeople.mockResolvedValue({ reachable: true, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
+      api.fetchHubDirectory.mockResolvedValue({ reachable: true, truncated: false, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
       const dialog = await openWriteForm(user);
 
       await pickSpecificPerson(user, dialog, 'ana', /Ana Ruiz/);
@@ -490,7 +538,7 @@ describe('SkillsView with org sharing', () => {
       api.setSkillAccess.mockRejectedValueOnce(Object.assign(
         new Error('Skills can only be shared with people in your organization: ana@kinaxis.com'), { status: 400 },
       ));
-      api.searchHubPeople.mockResolvedValue({ reachable: true, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
+      api.fetchHubDirectory.mockResolvedValue({ reachable: true, truncated: false, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
       const dialog = await openWriteForm(user);
 
       await pickSpecificPerson(user, dialog, 'ana', /Ana Ruiz/);
