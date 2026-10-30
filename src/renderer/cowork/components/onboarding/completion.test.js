@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { stepsCompletedBySend, classifyStart } from './completion';
 import { OWN_WORK_PROMPT, HABIT_TRACKER_PROMPT } from './steps';
-import { TASK_MODES } from '../taskmodes/taskModes';
+import { TASK_MODES, composeModeMessage } from '../taskmodes/taskModes';
+import { sampleId } from '../../lib/consoleHandoff';
 
 describe('stepsCompletedBySend', () => {
   it('completes the own-work step, and only it, for its prompt', () => {
@@ -60,8 +61,21 @@ describe('classifyStart', () => {
     const got = classifyStart(`${plain.prompt}${added}`);
     expect(got.start_kind).toBe('example');
     expect(got.added_chars).toBe(added.length);
-    const ordinary = TASK_MODES[0].samples[0];
-    expect(classifyStart(`${ordinary.prompt} More.`)).toEqual({ start_kind: 'free_text' });
+  });
+
+  it('still names an example the person edited, with a mode pill selected', () => {
+    const mode = TASK_MODES.find((m) => m.instruction && m.samples.some((s) => !s.plain));
+    const sample = mode.samples.find((s) => !s.plain);
+    const edit = ' with a space theme';
+    const sent = composeModeMessage(mode, `${sample.prompt}${edit}`);
+    expect(sent).not.toBe(`${sample.prompt}${edit}`);
+    expect(classifyStart(sent)).toEqual({ start_kind: 'example', example_id: sampleId(sample.label), added_chars: edit.length });
+  });
+
+  it('does not count the instruction a mode pill adds as what the person added', () => {
+    const mode = TASK_MODES.find((m) => m.instruction);
+    expect(classifyStart(composeModeMessage(mode, `${OWN_WORK_PROMPT} About my Q3 report.`)))
+      .toEqual({ start_kind: 'own_work', added_chars: 20 });
   });
 
   it('knows the other onboarding steps and the habit tracker', () => {

@@ -23,11 +23,22 @@ export function stepsCompletedBySend(text) {
   return ids;
 }
 
+// The instruction line a selected mode pill appends to an edited message is
+// the app's, not the person's, so it is taken off before the message is read.
+function withoutModeInstruction(sent) {
+  for (const mode of TASK_MODES) {
+    const tail = mode.instruction ? `\n\n${mode.instruction}` : '';
+    if (tail && sent.endsWith(tail)) return sent.slice(0, -tail.length);
+  }
+  return sent;
+}
+
 // What kind of start a new task's first message was, for analytics. The text
 // itself is never kept: only the kind, the example's id, and how much the
-// person added to a start or example (a paste, or details).
+// person added to a start or example (a paste, or details). It reads the
+// message as sent, so an example the person edited still counts as that example.
 export function classifyStart(text) {
-  const sent = typeof text === 'string' ? text.trim() : '';
+  const sent = withoutModeInstruction(typeof text === 'string' ? text.trim() : '');
   if (sent.startsWith(OWN_WORK_PREFIX)) {
     return { start_kind: 'own_work', added_chars: Math.max(0, sent.length - OWN_WORK_PROMPT.length) };
   }
@@ -38,7 +49,7 @@ export function classifyStart(text) {
       if (sample.prompt === sent) {
         return { start_kind: 'example', example_id: sampleId(sample.label), added_chars: 0 };
       }
-      if (sample.plain && sent.startsWith(sample.prompt)) {
+      if (sent.startsWith(sample.prompt)) {
         return { start_kind: 'example', example_id: sampleId(sample.label), added_chars: sent.length - sample.prompt.length };
       }
     }
