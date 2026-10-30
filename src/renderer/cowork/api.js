@@ -1954,6 +1954,16 @@ export async function uploadSkillFile(file, { shared } = {}) {
   return res.json();
 }
 
+/* Turns a skill on or off for the caller alone (ENG-3787). Any skill the
+   caller can see takes it, a built-in included; the skill's own `enabled`
+   (on or off for everyone) is untouched. Answers the updated skill. */
+export async function setSkillEnabledForMe(slug, enabled) {
+  return req(`/skills/${encodeURIComponent(slug)}/me`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled: enabled === true }),
+  });
+}
+
 /* Shares the caller's own skill with everyone, read-only, or stops sharing
    it. The refusal's sentence comes back as the error message. */
 export async function setSkillSharing(label, shared) {

@@ -14,11 +14,13 @@ import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, uploadSkillFile } from '../api';
 import {
   useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync, setSkillAccessAndSync,
+  setSkillEnabledForMeAndSync,
 } from '../lib/skillsStore';
 import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
 import SkillShareMenu from '../components/SkillShareMenu';
 import SkillAudienceFields from '../components/SkillAudienceFields';
 import SkillDetail from '../components/SkillDetail';
+import { AudienceList } from '../components/RecipientRows';
 import { ShareStateLabel, shareStateIcon } from '../components/ShareStateLabel';
 import {
   ALWAYS_ON_BADGE,
@@ -28,6 +30,8 @@ import {
   isPrivateAccess,
   PRIVATE_ACCESS,
   isSkillAlwaysOn,
+  sameSkillAccessPayload,
+  skillAccess,
   skillAccessPayload,
   skillShareState,
   skillAudienceBadge,
@@ -65,9 +69,8 @@ const ALL_PROJECTS = '__all_projects__';
 const SHARED_SKILL_NOTE = "This skill is shared with you and can't be changed here.";
 
 /* Why Edit or Uninstall is disabled, shown beside the menu item. Only an
-   explicit `shared: true` names sharing; a built-in keeps its own label. */
+   explicit `shared: true` names sharing. A built-in offers neither. */
 function lockedActionHint(skill) {
-  if (skill.isBuiltin) return 'Built-in';
   if (isSharedSkill(skill)) return 'Shared with you';
   return 'Admin or creator';
 }
@@ -100,22 +103,56 @@ function readOnlyNote(skill) {
 
 /* The on/off switch, on a row and in the detail header. Its label and
    tooltip say what flipping it does; where it is locked, the tooltip says
-   why. A team or org-wide skill someone else owns has no switch at all, only
-   the reason. */
+   why. */
 export const TURN_ON_LABEL = 'Turn on: Anton can use this skill';
 export const TURN_OFF_LABEL = "Turn off: Anton won't use this skill";
 const NO_PERMISSION_SWITCH_HINT = 'You do not have permission to enable or disable this skill.';
 
-function SkillEnabledControl({ skill, checked, hiddenReason = null, onChange, size = 'sm' }) {
-  if (hiddenReason) {
+/* ENG-3787: a skill anyone else sees, and every built-in, has a switch "just
+   for me": it turns the skill on or off in the caller's own tasks and leaves
+   everyone else's alone. Only an editor turns it off for everyone, from the
+   menu, and then the personal switch rests off and locked. */
+export const TURN_ON_FOR_ME_LABEL = 'Turn on for me: Anton can use this skill in your tasks';
+export const TURN_OFF_FOR_ME_LABEL = "Turn off for me: Anton won't use this skill in your tasks";
+export const DISABLED_FOR_EVERYONE_HINT = 'Disabled for everyone by an editor';
+export const DISABLED_FOR_EVERYONE_BADGE = 'Disabled for everyone';
+
+/* Whether the skill's switch is the caller's own. The caller's own private
+   skill keeps the one global switch, since nobody else uses it; so does a
+   skill from a server that doesn't say who sees it. */
+export function usesPersonalSwitch(skill) {
+  return skill?.isBuiltin === true || skill?.visibleToOthers === true;
+}
+
+/* Whether the ⋯ menu offers "Disable/Enable for everyone": an editor's skill
+   that someone else sees. Never a built-in. */
+function offersEveryoneToggle(skill) {
+  return !skill?.isBuiltin && skill?.visibleToOthers === true && skill?.canDisableForEveryone === true;
+}
+
+function SkillEnabledControl({ skill, checked, personal = false, disabledForEveryone = false, onChange, size = 'sm' }) {
+  if (personal) {
+    if (disabledForEveryone) {
+      return (
+        <Switch
+          size={size}
+          checked={false}
+          aria-label={TURN_ON_FOR_ME_LABEL}
+          title={DISABLED_FOR_EVERYONE_HINT}
+          disabled
+          onCheckedChange={() => {}}
+        />
+      );
+    }
+    const label = checked ? TURN_OFF_FOR_ME_LABEL : TURN_ON_FOR_ME_LABEL;
     return (
-      <span
-        role="img"
-        aria-label={hiddenReason}
-        title={hiddenReason}
-        data-testid="skill-switch-locked"
-        className="inline-grid w-[32px] place-items-center text-ink-4"
-      >{Ico.lock(14)}</span>
+      <Switch
+        size={size}
+        checked={checked}
+        aria-label={label}
+        title={label}
+        onCheckedChange={onChange}
+      />
     );
   }
   const canDisable = canUseSharedResource(skill, 'canDisable');
@@ -149,7 +186,7 @@ function SkillTile({ skill }) {
 // it reaches, Always on, who shared it). Project and last update sit at the
 // right; the switch, Share and the overflow menu after them. Share and the
 // menu show on hover or focus, and always on a touch screen.
-function SkillRow({ skill, onClick, projects = [], orgSharing = null, actions = null }) {
+function SkillRow({ skill, onClick, projects = [], orgSharing = null, actions = null, disabled = false, disabledForEveryone = false }) {
   const age = relativeAge(skill.updatedAt);
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
@@ -162,7 +199,7 @@ function SkillRow({ skill, onClick, projects = [], orgSharing = null, actions = 
   const shared = !orgSharing && isSharedSkill(skill);
   const audience = orgSharing ? skillAudienceBadge(skill, orgSharing) : null;
   const alwaysOn = !!orgSharing && isSkillAlwaysOn(skill);
-  const hasBadges = skill.enabled === false || skill.isBuiltin || shared || audience || alwaysOn || sharedBy;
+  const hasBadges = disabled || disabledForEveryone || skill.isBuiltin || shared || audience || alwaysOn || sharedBy;
   return (
     <ListItem
       as="article"
@@ -185,7 +222,9 @@ function SkillRow({ skill, onClick, projects = [], orgSharing = null, actions = 
     >
       {hasBadges && (
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5" data-testid="skill-badges">
-          {skill.enabled === false && <Badge variant="muted" size="sm">Disabled</Badge>}
+          {disabledForEveryone
+            ? <Badge variant="muted" size="sm">{DISABLED_FOR_EVERYONE_BADGE}</Badge>
+            : disabled && <Badge variant="muted" size="sm">Disabled</Badge>}
           {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
           {shared && <Badge variant="muted" size="sm">Shared</Badge>}
           {audience && <Badge variant="default" size="sm">{audience}</Badge>}
@@ -218,6 +257,68 @@ const SECTION_ICONS = {
 // does not shift the layout.
 const LIST_CLASS = 'mx-8 mb-[60px]';
 
+/* Whether the Built-in section is open. It starts folded; storage may be
+   missing or refuse (a private window), and then it simply stays folded. */
+const BUILTIN_OPEN_KEY = 'anton:skills-builtin-open';
+function readBuiltinOpen() {
+  try {
+    return localStorage.getItem(BUILTIN_OPEN_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+function writeBuiltinOpen(open) {
+  try {
+    localStorage.setItem(BUILTIN_OPEN_KEY, open ? 'true' : 'false');
+  } catch {
+    // Not remembered; the section still opens.
+  }
+}
+
+/* The built-in skills, last on the page and folded by default: a header
+   "Built-in · N" that opens and closes the rows. */
+function BuiltinSection({ count, open, onToggle, children }) {
+  const listId = 'skills-builtin-list';
+  return (
+    <section aria-label="Built-in" className="grid min-w-0 grid-cols-1 gap-2">
+      <h2 className="m-0 flex min-h-8 items-center px-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          onClick={onToggle}
+          className="inline-flex min-w-0 cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent p-0 font-body text-base font-semibold text-ink focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
+        >
+          <span className="inline-flex text-ink-4" aria-hidden="true">{SECTION_ICONS.builtin(14)}</span>
+          <span>Built-in</span>
+          <span className="text-sm font-normal text-ink-4">
+            · <span data-testid="section-count">{count}</span>
+          </span>
+          <span
+            aria-hidden="true"
+            className={`inline-flex text-ink-4 transition-transform duration-hover ${open ? 'rotate-180' : ''}`}
+          >{Ico.chevDown(12)}</span>
+        </button>
+      </h2>
+      {open && <ListGroup id={listId}>{children}</ListGroup>}
+    </section>
+  );
+}
+
+/* Who may change who can use a skill on an org, for the Share dropdown and
+   the Edit dialog alike: its owner or an admin. cowork-server grants
+   `capabilities.canShare` on the owner's own skill only, so a team member
+   who edits a team skill reads its audience; an admin, who holds
+   can_share_org, may still change anyone's. Never a built-in. */
+/* Who may change who can use a skill: its owner or an admin, which the
+   server already folds into the skill's own `capabilities.canShare`. */
+function canChangeSkillAudience(skill) {
+  if (skill?.isBuiltin || !canEditSkill(skill)) return false;
+  return skill?.capabilities?.canShare !== false;
+}
+
+const AUDIENCE_OWNER_ONLY_HINT = 'Only the owner can change who can use it';
+
 const fieldStyle = {
   width: '100%',
   border: '1px solid var(--border-01)',
@@ -241,16 +342,23 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
   const isEdit = initial !== null;
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
   const [busy, setBusy] = useState(false);
-  /* Org sharing (ENG-3787): a create asks who can use the skill with the
-     Share dialog's audience controls, and applies a non-private answer
-     through PUT /skills/{slug}/sharing once the skill exists. Edits leave
-     the audience to the Share dialog. */
-  const asksAudience = !!orgSharing?.enabled && !isEdit;
+  /* Org sharing (ENG-3787): both a create and an edit show who can use the
+     skill with the Share dialog's audience controls, and apply the answer
+     through PUT /skills/{slug}/sharing once the skill is saved: a create's
+     when it isn't Only me, an edit's only when it changed. An edit opens at
+     the skill's audience, and only someone the Share dropdown would let
+     change it (its owner or an admin) may; anyone else reads it. */
+  const asksAudience = !!orgSharing?.enabled;
+  const canChangeAudience = !isEdit || canChangeSkillAudience(initial);
+  const editsAudience = asksAudience && canChangeAudience;
+  const savedAccess = isEdit ? skillAccess(initial) : PRIVATE_ACCESS;
   const [access, setAccess] = useState(PRIVATE_ACCESS);
   const [audiencePending, setAudiencePending] = useState(false);
-  // Set once the skill exists but sharing it failed: Create then retries
-  // only the sharing, never a second create.
-  const [createdSlug, setCreatedSlug] = useState(null);
+  // Bumped on each open so the audience fields re-seed from the skill.
+  const [audienceKey, setAudienceKey] = useState(0);
+  // Set once the skill is saved but sharing it failed: the button then
+  // retries only the sharing, never a second create or save.
+  const [retrySlug, setRetrySlug] = useState(null);
   const [inlineError, setInlineError] = useState('');
   /* Who can use the skill: a create asks where the list grants sharing, the
      creator's own edit where this skill's own capabilities do. A create sends
@@ -266,9 +374,10 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
     } else {
       setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
     }
-    setAccess(PRIVATE_ACCESS);
+    setAccess(initial ? skillAccess(initial) : PRIVATE_ACCESS);
+    setAudienceKey((key) => key + 1);
     setAudiencePending(false);
-    setCreatedSlug(null);
+    setRetrySlug(null);
     setInlineError('');
   }, [open]);
 
@@ -286,28 +395,33 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
     }
     const label = isEdit ? initial.label : draft.label.trim();
     if (!label || !draft.declarative.trim()) return;
-    if (asksAudience && audiencePending) return;
-    const shareAfterCreate = asksAudience && !isPrivateAccess(access);
+    if (editsAudience && audiencePending) return;
+    const shareAfterSave = editsAudience && (isEdit
+      ? !sameSkillAccessPayload(skillAccessPayload(access), skillAccessPayload(savedAccess))
+      : !isPrivateAccess(access));
     setBusy(true);
     setInlineError('');
-    /* The skill exists; sharing it is the only thing left. A refusal keeps
+    /* The skill is saved; sharing it is the only thing left. A refusal keeps
        the dialog open with the reason, since the skill is already saved. */
-    const shareCreated = async (slug, saved) => {
+    const shareSaved = async (slug, saved) => {
       try {
         await setSkillAccessAndSync(slug, skillAccessPayload(access));
       } catch (err) {
-        setCreatedSlug(slug);
-        setInlineError(`Skill created, but it couldn't be shared: ${err?.message || 'unknown error'}. You can share it from the skill's menu.`);
+        const reason = err?.message || 'unknown error';
+        setRetrySlug(slug);
+        setInlineError(isEdit
+          ? `Skill saved, but sharing couldn't be updated: ${reason}.`
+          : `Skill created, but it couldn't be shared: ${reason}. You can share it from the skill's menu.`);
         await onPartialSave?.(saved);
         return false;
       }
       handleClose();
-      await onSaved(saved, { sharedWithAudience: true });
+      await onSaved(saved, isEdit ? { updatedSharing: true } : { sharedWithAudience: true });
       return true;
     };
-    if (createdSlug) {
+    if (retrySlug) {
       try {
-        await shareCreated(createdSlug, { label, slug: createdSlug });
+        await shareSaved(retrySlug, { label, slug: retrySlug });
       } finally {
         setBusy(false);
       }
@@ -322,8 +436,10 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
       if (asksSharing && !isEdit) payload.shared = sharedChoice;
       const sharingChanged = isEdit && asksSharing && draft.sharing !== sharingValue(initial);
       const saved = await saveSkillAndSync(payload, isEdit);
-      if (shareAfterCreate) {
-        await shareCreated(saved?.slug || saved?.label || label, saved ?? { label });
+      if (shareAfterSave) {
+        // An edit's slug is the skill's own; a create's is the server's answer.
+        const slug = isEdit ? (initial.slug || label) : (saved?.slug || saved?.label || label);
+        await shareSaved(slug, saved ?? { label });
         return;
       }
       if (sharingChanged) await setSkillSharingAndSync(label, sharedChoice);
@@ -339,7 +455,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
     }
   };
 
-  const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy && !(asksAudience && audiencePending);
+  const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy && !(editsAudience && audiencePending);
 
   return (
     <Modal
@@ -423,16 +539,32 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
               />
             </Field>
             {asksAudience && (
-              <Field label={SKILL_SHARING_LABEL}>
+              <Field label={SKILL_SHARING_LABEL} help={canChangeAudience ? undefined : AUDIENCE_OWNER_ONLY_HINT}>
                 <div role="group" aria-label={SKILL_SHARING_LABEL} className="min-w-0">
-                  <SkillAudienceFields
-                    value={access}
-                    onChange={setAccess}
-                    capabilities={orgSharing}
-                    // The creator can always edit their own new skill.
-                    canEdit
-                    onPendingChange={setAudiencePending}
-                  />
+                  {canChangeAudience ? (
+                    <SkillAudienceFields
+                      key={audienceKey}
+                      value={access}
+                      onChange={setAccess}
+                      capabilities={orgSharing}
+                      // The creator can always edit their own new skill.
+                      canEdit={!isEdit || canEditSkill(initial)}
+                      onPendingChange={setAudiencePending}
+                    />
+                  ) : (
+                    <div className="flex min-w-0 flex-col gap-2" data-testid="skill-audience-read-only">
+                      <AudienceList
+                        orgAllowed={savedAccess.orgAllowed}
+                        teamIds={savedAccess.allowedTeamIds}
+                        userIds={savedAccess.allowedUserIds}
+                        orgName={orgSharing.org_name ?? null}
+                        label={SKILL_SHARING_LABEL}
+                      />
+                      {savedAccess.alwaysOn && (
+                        <span className="font-body text-[12px] text-ink-3">{ALWAYS_ON_BADGE_HINT}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </Field>
             )}
@@ -454,7 +586,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
         <Button variant="subtle" onClick={handleClose}>Cancel</Button>
         <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           {!isEdit && !busy && Ico.plus(14)}
-          {busy ? 'Saving…' : isEdit ? 'Save' : createdSlug ? 'Retry sharing' : 'Create'}
+          {busy ? 'Saving…' : retrySlug ? 'Retry sharing' : isEdit ? 'Save' : 'Create'}
         </Button>
       </ModalFooter>
     </Modal>
@@ -639,9 +771,20 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const orgSharing = orgSharingOn
     ? { teams: teamsState.teams, orgName: sharingCapabilities.org_name }
     : null;
-  /* On/off changes in flight: skill label → the value asked for, so a row's
-     switch moves at once and moves back on a refusal. */
+  /* On/off changes in flight: skill label → the value asked for, so a
+     switch moves at once and moves back on a refusal. `enabledPending` holds
+     the skill's own `enabled` (everyone's), `forMePending` the caller's own
+     setting. */
   const [enabledPending, setEnabledPending] = useState(() => new Map());
+  const [forMePending, setForMePending] = useState(() => new Map());
+  // Skill awaiting the "Disable for everyone" confirmation.
+  const [disablingForEveryone, setDisablingForEveryone] = useState(null);
+  // The Built-in section starts folded; opening it is remembered.
+  const [builtinOpen, setBuiltinOpen] = useState(readBuiltinOpen);
+  const toggleBuiltin = () => setBuiltinOpen((open) => {
+    writeBuiltinOpen(!open);
+    return !open;
+  });
 
   // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
   const showToast = (msg, type = 'error') => toastManager.add({ title: msg, type: type === 'error' ? 'danger' : type });
@@ -663,9 +806,12 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
      lock the creator out of the skill they just saved. The effect above
      re-points `selected` at the reloaded entry; a save response only names
      the skill for the toast. */
-  const onSkillSaved = (saved, { shared = false, stoppedSharing = false, sharedWithAudience = false } = {}) => {
+  const onSkillSaved = (saved, {
+    shared = false, stoppedSharing = false, sharedWithAudience = false, updatedSharing = false,
+  } = {}) => {
     const label = saved?.label;
     if (sharedWithAudience) showToast(`Created and shared ${label}.`, 'success');
+    else if (updatedSharing) showToast(`Saved ${label} and updated who can use it.`, 'success');
     else if (shared) showToast(`Saved and shared ${label} with everyone.`, 'success');
     else if (stoppedSharing) showToast(`Saved ${label} and stopped sharing it.`, 'success');
     else showToast(`Saved ${label}.`, 'success');
@@ -734,61 +880,108 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     showToast(`Updated who can use ${skill.label}.`, 'success');
   };
 
-  /* Turns a skill on or off from its row or the detail header. The switch
+  const patchOpen = (label, patch) => setSelected((current) => (
+    current?.label === label ? { ...current, ...patch } : current
+  ));
+  const settle = (setPending, label) => setPending((current) => {
+    const copy = new Map(current);
+    copy.delete(label);
+    return copy;
+  });
+
+  /* Turns a skill on or off for everyone: its own `enabled`. The switch
      moves at once; a refusal moves it back and shows the server's sentence.
      The reload inside the save re-points the open skill through the effect
      above; adopting the response here would trade the catalogue entry for a
-     serializer that need not carry capabilities. */
-  const setSkillEnabled = async (skill, next) => {
-    if (!canUseSharedResource(skill, 'canDisable')) return;
+     serializer that need not carry capabilities. True once it is saved. */
+  const writeEnabled = async (skill, next) => {
     const targetLabel = skill.label;
-    const setOpen = (value) => setSelected((current) => (
-      current?.label === targetLabel ? { ...current, enabled: value } : current
-    ));
     setEnabledPending((current) => new Map(current).set(targetLabel, next));
-    setOpen(next);
+    patchOpen(targetLabel, { enabled: next });
     try {
       await saveSkillAndSync({ label: targetLabel, enabled: next }, true);
+      return true;
     } catch (err) {
-      setOpen(!next);
+      patchOpen(targetLabel, { enabled: !next });
       showToast(err.message || 'Could not update skill.');
+      return false;
     } finally {
-      setEnabledPending((current) => {
-        const copy = new Map(current);
-        copy.delete(targetLabel);
-        return copy;
-      });
+      settle(setEnabledPending, targetLabel);
     }
   };
-  const isEnabled = (skill) => enabledPending.get(skill.label) ?? skill.enabled ?? true;
+  /* The switch on the caller's own private skill, which nobody else uses. */
+  const setSkillEnabled = async (skill, next) => {
+    if (!canUseSharedResource(skill, 'canDisable')) return;
+    await writeEnabled(skill, next);
+  };
+  /* "Disable/Enable for everyone" from the menu of a skill others see. */
+  const setEnabledForEveryone = async (skill, next) => {
+    if (!offersEveryoneToggle(skill)) return;
+    if (await writeEnabled(skill, next)) {
+      showToast(next ? `Turned ${skill.label} on for everyone.` : `Turned ${skill.label} off for everyone.`, 'success');
+    }
+  };
+  /* The switch "just for me" on a skill others see, or a built-in: the
+     same optimistic move and rollback, through the caller's own setting. */
+  const setSkillEnabledForMe = async (skill, next) => {
+    const targetLabel = skill.label;
+    const before = skill.enabledForMe;
+    setForMePending((current) => new Map(current).set(targetLabel, next));
+    patchOpen(targetLabel, { enabledForMe: next });
+    try {
+      await setSkillEnabledForMeAndSync(skill.slug || targetLabel, next);
+    } catch (err) {
+      patchOpen(targetLabel, { enabledForMe: before });
+      showToast(err.message || 'Could not update skill.');
+    } finally {
+      settle(setForMePending, targetLabel);
+    }
+  };
+  const isEnabledForEveryone = (skill) => enabledPending.get(skill.label) ?? skill.enabled ?? true;
+  const isEnabledForMe = (skill) => forMePending.get(skill.label) ?? skill.enabledForMe ?? true;
+  /* Whether Anton uses the skill in the caller's tasks: on for everyone and
+     on for them. A change in flight to a private skill's switch shows as
+     asked, since turning it on clears the caller's own off too. */
+  const isEnabled = (skill) => {
+    if (!usesPersonalSwitch(skill) && enabledPending.has(skill.label)) return enabledPending.get(skill.label);
+    return isEnabledForEveryone(skill) && isEnabledForMe(skill);
+  };
+  /* An editor turned it off for everyone; every viewer is told. */
+  const isDisabledForEveryone = (skill) => usesPersonalSwitch(skill) && !isEnabledForEveryone(skill);
 
   /* Whether the open skill offers Share: the caller's own, on an org. */
-  const canOpenShare = (skill) => orgSharingOn && !skill.isBuiltin && canEditSkill(skill);
-  /* An org skill someone else owns keeps no Edit or Uninstall at all. */
-  const hidesOwnerActions = (skill) => orgSharingOn && !canEditSkill(skill);
-  /* Team and org-wide skills someone else owns offer no on/off switch. */
+  const canOpenShare = (skill) => orgSharingOn && canChangeSkillAudience(skill);
+  /* An org skill someone else owns keeps no Edit or Uninstall at all, and a
+     built-in never does. */
+  const hidesOwnerActions = (skill) => !!skill.isBuiltin || (orgSharingOn && !canEditSkill(skill));
+  /* A team or org-wide skill someone else owns. */
   const alwaysApplied = (skill) => orgSharingOn && !canEditSkill(skill)
     && (skillSection(skill) === 'team' || skillSection(skill) === 'org');
-  /* Why such a skill has no switch. */
-  const switchHiddenReason = (skill) => {
-    if (!alwaysApplied(skill)) return null;
-    const owner = skillOwnerEmail(skill);
-    return isSkillAlwaysOn(skill)
-      ? `Part of every task for everyone it's shared with. Only ${owner || 'its owner'} can change it.`
-      : `Shared with your ${skillSection(skill) === 'team' ? 'team' : 'organization'}. Only ${owner || 'its owner'} can turn it off.`;
+  const enabledControl = (skill, size) => {
+    const personal = usesPersonalSwitch(skill);
+    return (
+      <SkillEnabledControl
+        size={size}
+        skill={skill}
+        personal={personal}
+        checked={personal ? isEnabledForMe(skill) : isEnabled(skill)}
+        disabledForEveryone={isDisabledForEveryone(skill)}
+        onChange={(next) => (personal ? setSkillEnabledForMe(skill, next) : setSkillEnabled(skill, next))}
+      />
+    );
   };
-  const enabledControl = (skill, size) => (
-    <SkillEnabledControl
-      size={size}
-      skill={skill}
-      checked={isEnabled(skill)}
-      hiddenReason={switchHiddenReason(skill)}
-      onChange={(next) => setSkillEnabled(skill, next)}
-    />
-  );
-  /* The skill's menu: Try in chat, then Edit and Uninstall where they apply. */
+  /* "Disable for everyone" asks first; "Enable for everyone" just does it. */
+  const everyoneMenuItems = (skill) => {
+    if (!offersEveryoneToggle(skill)) return [];
+    return isEnabledForEveryone(skill)
+      ? [{ id: 'disable-everyone', label: 'Disable for everyone', icon: Ico.powerOff(14), onClick: () => setDisablingForEveryone(skill) }]
+      : [{ id: 'enable-everyone', label: 'Enable for everyone', icon: Ico.power(14), onClick: () => setEnabledForEveryone(skill, true) }];
+  };
+  /* The skill's menu: Try in chat, on or off for everyone where the caller
+     edits a skill others see, then Edit and Uninstall where they apply. */
   const skillMenuItems = (skill) => [
     { id: 'try', label: 'Try in chat', icon: Ico.chats(14), onClick: () => onTryInChat?.(`/${skill.label}`, skill.projects?.[0]) },
+    ...everyoneMenuItems(skill),
     ...(hidesOwnerActions(skill) ? [] : [{
       id: 'edit', label: 'Edit', icon: Ico.edit(14),
       disabled: !canUseSharedResource(skill, 'canEdit'),
@@ -862,6 +1055,22 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     return 0;
   });
 
+  // Without org sharing the list is flat, built-ins folded away at the end.
+  const ownSkills = sorted.filter((skill) => !skill.isBuiltin);
+  const builtinSkills = sorted.filter((skill) => skill.isBuiltin);
+  const skillRow = (skill) => (
+    <SkillRow
+      key={skill.label}
+      skill={skill}
+      onClick={setSelected}
+      projects={projects}
+      orgSharing={orgSharing}
+      actions={rowActions(skill)}
+      disabled={!usesPersonalSwitch(skill) && skill.enabled === false}
+      disabledForEveryone={isDisabledForEveryone(skill)}
+    />
+  );
+
   return (
     <div className="scroll-clean flex-1 overflow-y-auto pb-10">
       {selected ? (
@@ -877,6 +1086,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             orgSharing={orgSharing}
             teamsState={orgSharingOn ? teamsState : null}
             enabled={isEnabled(selected)}
+            disabledForEveryone={isDisabledForEveryone(selected)}
             canEdit={!hidesOwnerActions(selected) && canUseSharedResource(selected, 'canEdit')}
             onEdit={() => startEdit(selected)}
             actions={(
@@ -968,7 +1178,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               <div className={`${LIST_CLASS} flex flex-col gap-6`}>
                 {/* Only the sections that hold a skill; an empty list keeps
                     CollectionState's one empty state. */}
-                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName }).map((group) => (
+                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName }).map((group) => (group.id === 'builtin' ? (
+                  <BuiltinSection key={group.id} count={group.skills.length} open={builtinOpen} onToggle={toggleBuiltin}>
+                    {group.skills.map(skillRow)}
+                  </BuiltinSection>
+                ) : (
                   <ListGroup
                     key={group.id}
                     aria-label={group.title}
@@ -980,18 +1194,19 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                     )}
                     description={<span data-testid="section-count">{group.skills.length}</span>}
                   >
-                    {group.skills.map((skill) => (
-                      <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} orgSharing={orgSharing} actions={rowActions(skill)} />
-                    ))}
+                    {group.skills.map(skillRow)}
                   </ListGroup>
-                ))}
+                )))}
               </div>
             ) : (
-              <ListGroup className={LIST_CLASS}>
-                {sorted.map((skill) => (
-                  <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} actions={rowActions(skill)} />
-                ))}
-              </ListGroup>
+              <div className={`${LIST_CLASS} flex flex-col gap-6`}>
+                {ownSkills.length > 0 && <ListGroup>{ownSkills.map(skillRow)}</ListGroup>}
+                {builtinSkills.length > 0 && (
+                  <BuiltinSection count={builtinSkills.length} open={builtinOpen} onToggle={toggleBuiltin}>
+                    {builtinSkills.map(skillRow)}
+                  </BuiltinSection>
+                )}
+              </div>
             )}
           </CollectionState>
         </>
@@ -1011,6 +1226,19 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         destructive
         onClose={() => setRemoving(null)}
         onConfirm={() => { const skill = removing; setRemoving(null); if (skill) confirmRemove(skill); }}
+      />
+      <ConfirmModal
+        open={!!disablingForEveryone}
+        title={disablingForEveryone ? `Turn off ${disablingForEveryone.label} for everyone it's shared with?` : ''}
+        message="Anton won't use it in anyone's tasks until an editor turns it back on."
+        confirmLabel="Disable for everyone"
+        destructive
+        onClose={() => setDisablingForEveryone(null)}
+        onConfirm={() => {
+          const skill = disablingForEveryone;
+          setDisablingForEveryone(null);
+          if (skill) setEnabledForEveryone(skill, false);
+        }}
       />
       <SkillModal
         open={modalSkill !== null}

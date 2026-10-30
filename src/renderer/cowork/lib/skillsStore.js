@@ -15,7 +15,9 @@
 
 import { useSyncExternalStore } from 'react';
 
-import { fetchSkills, saveSkill, deleteSkill, setSkillSharing, setSkillAccess } from '../api';
+import {
+  fetchSkills, saveSkill, deleteSkill, setSkillSharing, setSkillAccess, setSkillEnabledForMe,
+} from '../api';
 
 // `null` = never loaded yet (consumers can show a loading state); an array
 // once a fetch has settled. `_catalogueStatus` distinguishes a verified empty
@@ -36,8 +38,9 @@ function _emit() {
 
 function _getSnapshot() {
   /* Must return a stable reference between mutations or useSyncExternalStore
-     loops. `_skills` is reassigned only by a reload or the sharing patches in
-     setSkillSharingAndSync and setSkillAccessAndSync, and each emits, so it is stable between mutations. */
+     loops. `_skills` is reassigned only by a reload or the patches in
+     setSkillSharingAndSync, setSkillAccessAndSync and
+     setSkillEnabledForMeAndSync, and each emits, so it is stable between mutations. */
   return _skills;
 }
 
@@ -177,6 +180,23 @@ export async function setSkillAccessAndSync(slug, access) {
   if (Object.keys(patch).length && Array.isArray(_skills)) {
     _skills = _skills.map((s) => (
       s.label === slug || s.slug === slug || s.id === slug ? { ...s, ...patch } : s
+    ));
+    _emit();
+  }
+  await reloadSkills({ afterCurrent: true });
+  return saved;
+}
+
+/** Turn a skill on or off for the caller alone (ENG-3787), then refresh the
+ *  shared list. The PUT succeeded, so the cached row takes the new
+ *  `enabledForMe` at once and keeps it if the reload fails; nothing else is
+ *  adopted from the response. Re-throws, so the switch can move back. */
+export async function setSkillEnabledForMeAndSync(slug, enabled) {
+  const saved = await setSkillEnabledForMe(slug, enabled);
+  const enabledForMe = typeof saved?.enabledForMe === 'boolean' ? saved.enabledForMe : enabled;
+  if (Array.isArray(_skills)) {
+    _skills = _skills.map((s) => (
+      s.label === slug || s.slug === slug || s.id === slug ? { ...s, enabledForMe } : s
     ));
     _emit();
   }

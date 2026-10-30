@@ -15,8 +15,8 @@ import { PublishMenu } from './PublishMenu';
 import { __resetOrgSharingForTests } from '../../../hooks/useOrgSharing';
 
 const DIRECTORY = [
-  { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@kinaxis.com' },
-  { id: 'u-bo', name: 'Bo Chen', email: 'bo@kinaxis.com' },
+  { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@acme.com' },
+  { id: 'u-bo', name: 'Bo Chen', email: 'bo@acme.com' },
 ];
 
 beforeEach(() => {
@@ -31,12 +31,12 @@ beforeEach(() => {
   people.search.mockReset();
   people.search.mockImplementation(async (q) => ({
     reachable: true,
-    people: [{ id: 'u-ana', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }]
+    people: [{ id: 'u-ana', name: 'Ana Ruiz', email: 'ana@acme.com' }]
       .filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(q.toLowerCase())),
   }));
 });
 
-const TEAMS = { status: 'ready', reachable: true, teams: [{ id: 't-supply', display_name: 'Supply Planning' }] };
+const TEAMS = { status: 'ready', reachable: true, teams: [{ id: 't-platform', display_name: 'Platform' }] };
 
 function makeController(overrides = {}) {
   return {
@@ -55,7 +55,7 @@ function makeController(overrides = {}) {
     versions: [],
     modified: false,
     supportsPublishRoutes: false,
-    orgSharing: { enabled: true, orgName: 'Kinaxis', teams: TEAMS },
+    orgSharing: { enabled: true, orgName: 'Acme', teams: TEAMS },
     setError: vi.fn(),
     loadVersions: vi.fn(),
     publish: vi.fn(async () => true),
@@ -89,7 +89,7 @@ describe('PublishMenu with org sharing', () => {
     const names = screen.getAllByRole('radio').map((r) => r.textContent);
     expect(names).toEqual([
       'Only youNobody else can open this',
-      'Everyone at KinaxisAnyone in your organization',
+      'Everyone at AcmeAnyone in your organization',
       'Specific teams and peoplePick teams, colleagues or outside emails',
       expect.stringMatching(/^Password protected/),
       expect.stringMatching(/^Public/),
@@ -102,7 +102,7 @@ describe('PublishMenu with org sharing', () => {
     const user = userEvent.setup();
     const pub = makeController();
     render(<PublishMenu controller={pub} />);
-    await openAccessChange(user, /^Everyone at Kinaxis/);
+    await openAccessChange(user, /^Everyone at Acme/);
     await user.click(screen.getByRole('button', { name: 'Update' }));
 
     expect(pub.publish).toHaveBeenCalledWith({
@@ -142,12 +142,12 @@ describe('PublishMenu with org sharing', () => {
 
     const field = screen.getByRole('combobox', { name: 'Add teams, people or emails' });
     await user.click(field);
-    await user.click(screen.getByRole('option', { name: /Supply Planning/ }));
+    await user.click(screen.getByRole('option', { name: /Platform/ }));
     await user.type(field, 'ana');
     await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
     await user.type(field, 'Zed@Partner.io');
     await user.click(await screen.findByRole('option', { name: /Invite zed@partner.io/ }));
-    expect(screen.getByTestId('recipient-summary')).toHaveTextContent('1 team · 1 person · 1 outside Kinaxis');
+    expect(screen.getByTestId('recipient-summary')).toHaveTextContent('1 team · 1 person · 1 outside Acme');
 
     await user.click(screen.getByRole('button', { name: 'Update' }));
     // Two people are added one by one: asked first.
@@ -156,13 +156,13 @@ describe('PublishMenu with org sharing', () => {
     expect(pub.publish).toHaveBeenCalledWith({
       mode: 'restricted',
       org_allowed: false,
-      allowed_team_ids: ['t-supply'],
+      allowed_team_ids: ['t-platform'],
       allowed_user_ids: ['u-ana'],
       allowed_emails: ['zed@partner.io'],
       owner_only: false,
       // The names cowork-server's publish still reads.
       emails: ['zed@partner.io'],
-      team_ids: ['t-supply'],
+      team_ids: ['t-platform'],
       // Exactly the people this save adds.
       notify: { user_ids: ['u-ana'], emails: ['zed@partner.io'] },
     });
@@ -177,11 +177,11 @@ describe('PublishMenu with org sharing', () => {
     expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled();
     expect(screen.getByTestId('recipient-summary')).toHaveTextContent('Add at least one team, person or email.');
     await user.click(screen.getByRole('combobox'));
-    await user.click(screen.getByRole('option', { name: /Supply Planning/ }));
+    await user.click(screen.getByRole('option', { name: /Platform/ }));
     await user.click(screen.getByRole('button', { name: 'Update' }));
 
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
-      allowed_team_ids: ['t-supply'], org_allowed: false, owner_only: false,
+      allowed_team_ids: ['t-platform'], org_allowed: false, owner_only: false,
     }));
   });
 
@@ -190,19 +190,19 @@ describe('PublishMenu with org sharing', () => {
     render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false })} />);
     expect(screen.getByText(/Shared/)).toBeInTheDocument();
     await openChange(user);
-    expect(radio(/^Everyone at Kinaxis/)).toHaveAttribute('aria-checked', 'true');
+    expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-checked', 'true');
   });
 
   it('reads stored lists as Specific teams and people, naming them as rows', async () => {
     const user = userEvent.setup();
     render(<PublishMenu controller={makeController({
-      allowedTeamIds: ['t-supply'], allowedUserIds: ['u-bo', 'u-gone'], accessEmails: ['zed@partner.io'], ownerOnly: false,
+      allowedTeamIds: ['t-platform'], allowedUserIds: ['u-bo', 'u-gone'], accessEmails: ['zed@partner.io'], ownerOnly: false,
     })} />);
     await openChange(user);
 
     expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true');
     await waitFor(() => expect(recipients()).toHaveTextContent('Bo Chen'));
-    expect(recipients()).toHaveTextContent('Supply Planning');
+    expect(recipients()).toHaveTextContent('Platform');
     expect(recipients()).toHaveTextContent('Unknown person');
     expect(recipients()).toHaveTextContent('zed@partner.io');
     expect(people.byIds).toHaveBeenCalledWith(['u-bo', 'u-gone']);
@@ -213,30 +213,30 @@ describe('PublishMenu with org sharing', () => {
     const withDefault = { ...TEAMS, teams: [{ id: 't-all', display_name: 'All members', is_default: true }, ...TEAMS.teams] };
     render(<PublishMenu controller={makeController({
       allowedTeamIds: ['t-all'], ownerOnly: false,
-      orgSharing: { enabled: true, orgName: 'Kinaxis', teams: withDefault },
+      orgSharing: { enabled: true, orgName: 'Acme', teams: withDefault },
     })} />);
     await openChange(user);
 
-    expect(radio(/^Everyone at Kinaxis/)).toHaveAttribute('aria-checked', 'true');
+    expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-checked', 'true');
     await user.click(radio(/^Specific teams and people/));
     expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
     await user.click(screen.getByRole('combobox'));
-    expect(screen.getByRole('option', { name: /Supply Planning/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Platform/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /All members/ })).toBeNull();
   });
 
   it('reads org_allowed with lists as Everyone, keeping the lists for Specific', async () => {
     const user = userEvent.setup();
-    const pub = makeController({ orgAllowed: true, allowedTeamIds: ['t-supply'], ownerOnly: false });
+    const pub = makeController({ orgAllowed: true, allowedTeamIds: ['t-platform'], ownerOnly: false });
     render(<PublishMenu controller={pub} />);
     await openChange(user);
 
-    expect(radio(/^Everyone at Kinaxis/)).toHaveAttribute('aria-checked', 'true');
+    expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-checked', 'true');
     await user.click(radio(/^Specific teams and people/));
-    expect(recipients()).toHaveTextContent('Supply Planning');
+    expect(recipients()).toHaveTextContent('Platform');
     await user.click(screen.getByRole('button', { name: 'Update' }));
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
-      org_allowed: false, allowed_team_ids: ['t-supply'],
+      org_allowed: false, allowed_team_ids: ['t-platform'],
     }));
   });
 
@@ -244,7 +244,7 @@ describe('PublishMenu with org sharing', () => {
     render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false })} />);
     // The popover is closed; the summary is what opening it shows.
     return userEvent.setup().click(screen.getByText(/Shared/)).then(() => {
-      expect(screen.getByText('Everyone at Kinaxis')).toBeInTheDocument();
+      expect(screen.getByText('Everyone at Acme')).toBeInTheDocument();
       expect(screen.getByText('Anyone in your organization')).toBeInTheDocument();
     });
   });
@@ -252,7 +252,7 @@ describe('PublishMenu with org sharing', () => {
   it('says when the teams could not be loaded', async () => {
     const user = userEvent.setup();
     render(<PublishMenu controller={makeController({
-      orgSharing: { enabled: true, orgName: 'Kinaxis', teams: { status: 'ready', reachable: false, teams: [] } },
+      orgSharing: { enabled: true, orgName: 'Acme', teams: { status: 'ready', reachable: false, teams: [] } },
     })} />);
     await openAccessChange(user);
     await user.click(screen.getByRole('combobox'));
@@ -294,7 +294,7 @@ describe('PublishMenu with org sharing', () => {
     await user.click(screen.getByRole('button', { name: "Don't notify" }));
     expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
     expect(people.search).not.toHaveBeenCalled();
-    expect(within(document.body).queryByText(/Kinaxis/)).toBeNull();
+    expect(within(document.body).queryByText(/Acme/)).toBeNull();
   });
   describe('the collapsed summary', () => {
     const open = (user) => user.click(screen.getByText(/Shared/));
@@ -304,14 +304,14 @@ describe('PublishMenu with org sharing', () => {
     it('lists who it is shared with, without clicking Change', async () => {
       const user = userEvent.setup();
       render(<PublishMenu controller={makeController({
-        allowedTeamIds: ['t-supply'], allowedUserIds: ['u-ana'], accessEmails: ['zed@partner.io'], ownerOnly: false,
+        allowedTeamIds: ['t-platform'], allowedUserIds: ['u-ana'], accessEmails: ['zed@partner.io'], ownerOnly: false,
       })} />);
       await open(user);
 
       expect(screen.getByTestId('access-summary')).toHaveTextContent('Specific teams and people');
-      expect(screen.getByTestId('access-summary')).toHaveTextContent('1 team · 1 person · 1 outside Kinaxis');
-      await waitFor(() => expect(names()).toEqual(['Supply Planning', 'Ana Ruiz', 'zed@partner.io']));
-      expect(sharedWith()).toHaveTextContent('Outside Kinaxis');
+      expect(screen.getByTestId('access-summary')).toHaveTextContent('1 team · 1 person · 1 outside Acme');
+      await waitFor(() => expect(names()).toEqual(['Platform', 'Ana Ruiz', 'zed@partner.io']));
+      expect(sharedWith()).toHaveTextContent('Outside Acme');
       // Read only.
       expect(within(sharedWith()).queryByRole('button')).toBeNull();
       expect(screen.queryByRole('combobox')).toBeNull();
@@ -321,13 +321,13 @@ describe('PublishMenu with org sharing', () => {
       const user = userEvent.setup();
       const emails = ['a@x.io', 'b@x.io', 'c@x.io', 'd@x.io', 'e@x.io', 'f@x.io', 'g@x.io'];
       render(<PublishMenu controller={makeController({
-        allowedTeamIds: ['t-supply'], accessEmails: emails, ownerOnly: false,
+        allowedTeamIds: ['t-platform'], accessEmails: emails, ownerOnly: false,
       })} />);
       await open(user);
 
-      expect(names()).toEqual(['Supply Planning', 'a@x.io', 'b@x.io', 'c@x.io']);
+      expect(names()).toEqual(['Platform', 'a@x.io', 'b@x.io', 'c@x.io']);
       await user.click(screen.getByRole('button', { name: '+4 more' }));
-      expect(names()).toEqual(['Supply Planning', ...emails]);
+      expect(names()).toEqual(['Platform', ...emails]);
       expect(screen.queryByRole('button', { name: /more$/ })).toBeNull();
     });
 
@@ -335,7 +335,7 @@ describe('PublishMenu with org sharing', () => {
       const user = userEvent.setup();
       render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false })} />);
       await open(user);
-      expect(screen.getByTestId('access-summary')).toHaveTextContent('Everyone at Kinaxis');
+      expect(screen.getByTestId('access-summary')).toHaveTextContent('Everyone at Acme');
       expect(screen.queryByRole('list', { name: 'Shared with' })).toBeNull();
     });
 
@@ -364,7 +364,7 @@ describe('PublishMenu with org sharing', () => {
       await user.type(field, 'ana');
       await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
       fireEvent.paste(field, { clipboardData: { getData: () => 'a@x.io b@x.io c@x.io' } });
-      await waitFor(() => expect(screen.getByTestId('recipient-summary')).toHaveTextContent('2 people · 3 outside Kinaxis'));
+      await waitFor(() => expect(screen.getByTestId('recipient-summary')).toHaveTextContent('2 people · 3 outside Acme'));
       await user.click(screen.getByRole('button', { name: 'Update' }));
 
       const confirm = screen.getByTestId('notify-confirm');
@@ -406,12 +406,12 @@ describe('PublishMenu with org sharing', () => {
       render(<PublishMenu controller={pub} />);
       await openChange(user);
       await user.click(screen.getByRole('combobox'));
-      await user.click(screen.getByRole('option', { name: /Supply Planning/ }));
+      await user.click(screen.getByRole('option', { name: /Platform/ }));
       await user.click(screen.getByRole('button', { name: 'Update' }));
 
       expect(screen.queryByTestId('notify-confirm')).toBeNull();
       expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
-        allowed_team_ids: ['t-supply'], allowed_user_ids: ['u-bo'],
+        allowed_team_ids: ['t-platform'], allowed_user_ids: ['u-bo'],
       }));
       expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('notify');
     });
@@ -428,7 +428,7 @@ describe('PublishMenu with org sharing', () => {
 
     it('goes back to editing on Escape, without saving or closing', async () => {
       const user = userEvent.setup();
-      const pub = makeController({ ownerOnly: false, allowedTeamIds: ['t-supply'] });
+      const pub = makeController({ ownerOnly: false, allowedTeamIds: ['t-platform'] });
       render(<PublishMenu controller={pub} />);
       await openChange(user);
       await user.type(screen.getByRole('combobox'), 'ana');

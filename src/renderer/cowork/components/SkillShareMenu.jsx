@@ -16,16 +16,12 @@ import { Popover } from '@base-ui/react/popover';
 import Ico from './Icons';
 import { Alert, Button, Spinner, Tooltip } from './ui';
 import SkillAudienceFields from './SkillAudienceFields';
-import { canEditSkill, skillAccess, skillAccessPayload } from '../lib/orgSharing';
+import {
+  canEditSkill, sameSkillAccessPayload, skillAccess, skillAccessPayload,
+} from '../lib/orgSharing';
 
 export const SKILL_SHARE_TITLE = 'Who can use this skill';
 
-const samePayload = (a, b) => {
-  const ids = (list) => [...list].sort().join(',');
-  return a.org_allowed === b.org_allowed && a.always_on === b.always_on
-    && ids(a.allowed_team_ids) === ids(b.allowed_team_ids)
-    && ids(a.allowed_user_ids) === ids(b.allowed_user_ids);
-};
 
 function UpToDateTag() {
   return (
@@ -67,7 +63,7 @@ export function SkillShareMenu({ skill, capabilities, onSave, trigger, tooltip =
   }, [open, skill?.label]);
 
   const payload = skillAccessPayload(access);
-  const changed = !samePayload(payload, skillAccessPayload(skillAccess(skill)));
+  const changed = !sameSkillAccessPayload(payload, skillAccessPayload(skillAccess(skill)));
 
   const update = async () => {
     if (busy || pending || !changed) return;

@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   deleteSkill: vi.fn(),
   setSkillSharing: vi.fn(),
   setSkillAccess: vi.fn(),
+  setSkillEnabledForMe: vi.fn(),
   uploadSkillFile: vi.fn(),
   // Org sharing (ENG-3787) is off here: this file is the per-person build.
   fetchSkillSharingCapabilities: vi.fn(async () => ({ enabled: false })),
@@ -65,6 +66,7 @@ const ONLY_ME = /Only me/;
 beforeEach(() => {
   vi.clearAllMocks();
   hostState.isWeb = true;
+  localStorage.removeItem('anton:skills-builtin-open');
 });
 
 describe('SkillsView: who can use a skill', () => {
@@ -94,6 +96,8 @@ describe('SkillsView: who can use a skill', () => {
     }],
   ])('hides the control for %s', async (_, isWeb, skill) => {
     hostState.isWeb = isWeb;
+    // The Built-in section starts folded; this one was left open.
+    if (skill.isBuiltin) localStorage.setItem('anton:skills-builtin-open', 'true');
     const user = userEvent.setup();
     await renderPage([skill]);
 

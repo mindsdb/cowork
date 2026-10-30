@@ -40,9 +40,9 @@ describe('groupSkillsBySection', () => {
       skill('mine-one', { section: 'mine' }),
       skill('team-one', { section: 'team' }),
       skill('creator', { isBuiltin: true }),
-    ], { orgName: 'Kinaxis' });
+    ], { orgName: 'Acme' });
 
-    expect(groups.map((g) => g.title)).toEqual(['Yours', 'My teams', 'Everyone at Kinaxis', 'Built-in']);
+    expect(groups.map((g) => g.title)).toEqual(['Yours', 'My teams', 'Everyone at Acme', 'Built-in']);
     // Sections no longer claim their skills are applied to every task.
     expect(groups.every((g) => !('hint' in g))).toBe(true);
   });
@@ -57,34 +57,34 @@ describe('groupSkillsBySection', () => {
 });
 
 describe('skillAudienceBadge', () => {
-  const teams = [{ id: 't1', display_name: 'Supply Planning' }];
+  const teams = [{ id: 't1', display_name: 'Platform' }];
   it.each([
     [{ orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }, null],
-    [{ orgAllowed: true, allowedTeamIds: ['t1'], allowedUserIds: ['u1'] }, 'Everyone at Kinaxis'],
-    [{ orgAllowed: false, allowedTeamIds: ['t1'], allowedUserIds: [] }, 'Team: Supply Planning'],
+    [{ orgAllowed: true, allowedTeamIds: ['t1'], allowedUserIds: ['u1'] }, 'Everyone at Acme'],
+    [{ orgAllowed: false, allowedTeamIds: ['t1'], allowedUserIds: [] }, 'Team: Platform'],
     [{ orgAllowed: false, allowedTeamIds: ['t-other'], allowedUserIds: [] }, '1 team'],
     [{ orgAllowed: false, allowedTeamIds: ['t1', 't2'], allowedUserIds: ['u1'] }, '2 teams · 1 person'],
     [{ orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u1', 'u2', 'u3'] }, '3 people'],
     [{ org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u1', 'u2'] }, '2 people'],
   ])('labels %j as %s', (access, label) => {
-    expect(skillAudienceBadge(skill('s', { access }), { teams, orgName: 'Kinaxis' })).toBe(label);
+    expect(skillAudienceBadge(skill('s', { access }), { teams, orgName: 'Acme' })).toBe(label);
   });
 
   it('reads a skill shared with the default team as everyone at the org', () => {
     const withDefault = [{ id: 't0', display_name: 'All members', is_default: true }, ...teams];
     const badge = (allowedTeamIds) => skillAudienceBadge(
-      skill('s', { access: { orgAllowed: false, allowedTeamIds, allowedUserIds: [] } }), { teams: withDefault, orgName: 'Kinaxis' },
+      skill('s', { access: { orgAllowed: false, allowedTeamIds, allowedUserIds: [] } }), { teams: withDefault, orgName: 'Acme' },
     );
-    expect(badge(['t0'])).toBe('Everyone at Kinaxis');
-    expect(badge(['t0', 't1'])).toBe('Everyone at Kinaxis');
-    expect(badge(['t1'])).toBe('Team: Supply Planning');
+    expect(badge(['t0'])).toBe('Everyone at Acme');
+    expect(badge(['t0', 't1'])).toBe('Everyone at Acme');
+    expect(badge(['t1'])).toBe('Team: Platform');
   });
 });
 
 describe('default team', () => {
   const teams = [
     { id: 't0', display_name: 'All members', is_default: true },
-    { id: 't1', display_name: 'Supply Planning', is_default: false },
+    { id: 't1', display_name: 'Platform', is_default: false },
   ];
   it('is left out of the teams to share with', () => {
     expect(shareableTeams(teams).map((t) => t.id)).toEqual(['t1']);
@@ -165,8 +165,8 @@ describe('artifact access fields', () => {
 
 describe('people labels', () => {
   it('names the org, or says your organization', () => {
-    expect(peopleInLabel('Kinaxis')).toBe('People in Kinaxis');
-    expect(peopleOutsideLabel('Kinaxis')).toBe('People outside Kinaxis');
+    expect(peopleInLabel('Acme')).toBe('People in Acme');
+    expect(peopleOutsideLabel('Acme')).toBe('People outside Acme');
     expect(peopleInLabel(null)).toBe('People in your organization');
     expect(peopleOutsideLabel(null)).toBe('People outside your organization');
   });
@@ -183,8 +183,8 @@ describe('skillAccess', () => {
 
 describe('personLabel', () => {
   it('says who a picked person is, or that they are unknown', () => {
-    expect(personLabel({ id: 'u1', name: 'Ana Ruiz', email: 'ana@kinaxis.com' })).toBe('Ana Ruiz (ana@kinaxis.com)');
-    expect(personLabel({ id: 'u1', name: null, email: 'ana@kinaxis.com' })).toBe('ana@kinaxis.com');
+    expect(personLabel({ id: 'u1', name: 'Ana Ruiz', email: 'ana@acme.com' })).toBe('Ana Ruiz (ana@acme.com)');
+    expect(personLabel({ id: 'u1', name: null, email: 'ana@acme.com' })).toBe('ana@acme.com');
     expect(personLabel({ id: 'u1', pending: true })).toBe('Loading…');
     expect(personLabel({ id: 'u1', name: null, email: null })).toBe('Unknown person');
   });
@@ -192,18 +192,18 @@ describe('personLabel', () => {
 
 describe('filterTeams', () => {
   const teams = [
-    { id: 't1', display_name: 'Supply Planning' },
+    { id: 't1', display_name: 'Platform' },
     { id: 't2', display_name: 'Finance' },
-    { id: 't3', display_name: 'Supply Chain Ops' },
+    { id: 't3', display_name: 'Data Platform' },
   ];
   it('returns every team for an empty query', () => {
     expect(filterTeams(teams, '  ')).toEqual(teams);
   });
   it('matches names case-insensitively', () => {
-    expect(filterTeams(teams, 'supply').map((t) => t.id)).toEqual(['t1', 't3']);
+    expect(filterTeams(teams, 'PLATFORM').map((t) => t.id)).toEqual(['t1', 't3']);
   });
   it('keeps the given ids listed', () => {
-    expect(filterTeams(teams, 'supply', ['t2']).map((t) => t.id)).toEqual(['t1', 't2', 't3']);
+    expect(filterTeams(teams, 'platform', ['t2']).map((t) => t.id)).toEqual(['t1', 't2', 't3']);
   });
 });
 
@@ -216,8 +216,8 @@ describe('recipient field helpers', () => {
   });
 
   it('summarises what was added, leaving out empty parts', () => {
-    expect(recipientSummary({ teamIds: ['a', 'b'], userIds: ['u'], emails: ['z@x.io'] }, { orgName: 'Kinaxis' }))
-      .toBe('2 teams · 1 person · 1 outside Kinaxis');
+    expect(recipientSummary({ teamIds: ['a', 'b'], userIds: ['u'], emails: ['z@x.io'] }, { orgName: 'Acme' }))
+      .toBe('2 teams · 1 person · 1 outside Acme');
     expect(recipientSummary({ userIds: ['u', 'v'] }, {})).toBe('2 people');
     expect(recipientSummary({ emails: ['z@x.io'] }, {})).toBe('1 outside your organization');
     expect(recipientSummary({}, {})).toBe('Add at least one team, person or email.');
@@ -229,9 +229,9 @@ describe('recipient field helpers', () => {
 
 describe('groupSkillsBySection with empty sections', () => {
   it('shows only the sections that hold a skill', () => {
-    const groups = groupSkillsBySection([{ label: 'a', isBuiltin: false }], { orgName: 'Kinaxis' });
+    const groups = groupSkillsBySection([{ label: 'a', isBuiltin: false }], { orgName: 'Acme' });
     expect(groups.map((g) => [g.id, g.skills.length])).toEqual([['mine', 1]]);
-    expect(groupSkillsBySection([], { orgName: 'Kinaxis' })).toEqual([]);
+    expect(groupSkillsBySection([], { orgName: 'Acme' })).toEqual([]);
   });
 });
 
@@ -262,8 +262,8 @@ describe('Share or Shared', () => {
     const teams = [{ id: 't0', is_default: true }, { id: 't1' }];
     expect(skillShareState(skill({ orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }), { teams }))
       .toEqual({ shared: false, kind: 'private', hint: 'Only you can use it' });
-    expect(skillShareState(skill({ orgAllowed: true }), { teams, orgName: 'Kinaxis' }))
-      .toEqual({ shared: true, kind: 'org', hint: 'Shared with everyone at Kinaxis' });
+    expect(skillShareState(skill({ orgAllowed: true }), { teams, orgName: 'Acme' }))
+      .toEqual({ shared: true, kind: 'org', hint: 'Shared with everyone at Acme' });
     expect(skillShareState(skill({ allowedTeamIds: ['t0'] }), { teams }).hint).toBe('Shared with everyone in your organization');
     expect(skillShareState(skill({ allowedTeamIds: ['t1'], allowedUserIds: ['u1', 'u2'] }), { teams }))
       .toEqual({ shared: true, kind: 'specific', hint: 'Shared with 1 team and 2 people' });
@@ -275,8 +275,8 @@ describe('Share or Shared', () => {
     expect(artifactShareState({ publishedUrl: 'u', accessProtected: true }).kind).toBe('password');
     expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', ownerOnly: true }))
       .toEqual({ shared: false, kind: 'private', hint: 'Only you can open it' });
-    expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', orgAllowed: true }, { orgSharing: true, orgName: 'Kinaxis' }).hint)
-      .toBe('Shared with everyone at Kinaxis');
+    expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', orgAllowed: true }, { orgSharing: true, orgName: 'Acme' }).hint)
+      .toBe('Shared with everyone at Acme');
     expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', allowedUserIds: ['u1'], accessEmails: ['a@x.io'] }, { orgSharing: true }).hint)
       .toBe('Shared with 1 person and 1 outside email');
     expect(artifactShareState({ publishedUrl: 'u', accessMode: 'restricted', accessEmails: ['a@x.io', 'b@x.io'] }).hint)

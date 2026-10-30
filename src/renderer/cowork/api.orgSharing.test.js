@@ -21,22 +21,22 @@ afterEach(() => {
 describe('fetchSkillSharingCapabilities', () => {
   it('reads the capabilities', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      enabled: true, can_share_org: true, can_write_org: false, org_name: 'Kinaxis',
+      enabled: true, can_share_org: true, can_write_org: false, org_name: 'Acme',
     }));
 
     expect(await fetchSkillSharingCapabilities()).toEqual({
-      enabled: true, can_share_org: true, can_write_org: false, org_name: 'Kinaxis',
+      enabled: true, can_share_org: true, can_write_org: false, org_name: 'Acme',
     });
     expect(fetch.mock.calls[0][0]).toBe('http://127.0.0.1:26866/api/v1/skills/sharing-capabilities');
   });
 
   it('reads the camelCase capabilities the server sends', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      enabled: true, canShareOrg: true, canWriteOrg: true, orgName: ' Kinaxis ',
+      enabled: true, canShareOrg: true, canWriteOrg: true, orgName: ' Acme ',
     }));
 
     expect(await fetchSkillSharingCapabilities()).toEqual({
-      enabled: true, can_share_org: true, can_write_org: true, org_name: 'Kinaxis',
+      enabled: true, can_share_org: true, can_write_org: true, org_name: 'Acme',
     });
   });
 
@@ -96,10 +96,10 @@ describe('setSkillAccess', () => {
 describe('fetchHubTeams', () => {
   it('asks the hub route with the MindsHub credential', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      reachable: true, teams: [{ id: 't1', display_name: 'Supply Planning' }, { bad: true }],
+      reachable: true, teams: [{ id: 't1', display_name: 'Platform' }, { bad: true }],
     }));
 
-    expect(await fetchHubTeams()).toEqual({ reachable: true, teams: [{ id: 't1', display_name: 'Supply Planning', is_default: false, member_count: null }] });
+    expect(await fetchHubTeams()).toEqual({ reachable: true, teams: [{ id: 't1', display_name: 'Platform', is_default: false, member_count: null }] });
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/teams/');
     expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
@@ -107,18 +107,18 @@ describe('fetchHubTeams', () => {
 
   it('reads the camelCase displayName cowork-server sends', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      reachable: true, teams: [{ id: 't1', displayName: 'Supply Planning' }, { id: 't2', display_name: 'Finance' }],
+      reachable: true, teams: [{ id: 't1', displayName: 'Platform' }, { id: 't2', display_name: 'Finance' }],
     }));
 
     expect((await fetchHubTeams()).teams).toEqual([
-      { id: 't1', display_name: 'Supply Planning', is_default: false, member_count: null },
+      { id: 't1', display_name: 'Platform', is_default: false, member_count: null },
       { id: 't2', display_name: 'Finance', is_default: false, member_count: null },
     ]);
   });
 
   it('keeps the member count when the hub sends one', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
-      reachable: true, teams: [{ id: 't1', displayName: 'Supply', memberCount: 12 }, { id: 't2', display_name: 'Ops', member_count: 'x' }],
+      reachable: true, teams: [{ id: 't1', displayName: 'Platform', memberCount: 12 }, { id: 't2', display_name: 'Ops', member_count: 'x' }],
     }));
 
     expect((await fetchHubTeams()).teams.map((t) => t.member_count)).toEqual([12, null]);
@@ -130,7 +130,7 @@ describe('fetchHubTeams', () => {
       teams: [
         { id: 't0', displayName: 'All members', isDefault: true },
         { id: 't9', display_name: 'All members (old)', is_default: true },
-        { id: 't1', displayName: 'Supply Planning', isDefault: false },
+        { id: 't1', displayName: 'Platform', isDefault: false },
       ],
     }));
 
@@ -160,7 +160,7 @@ describe('searchHubPeople', () => {
   it('reads a camelCase display name', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
       reachable: true,
-      people: [{ id: 'u1', displayName: 'Ana Ruiz', email: 'ana@kinaxis.com' }, { id: 'u2', fullName: 'Bo Chen', email: 'bo@kinaxis.com' }],
+      people: [{ id: 'u1', displayName: 'Ana Ruiz', email: 'ana@acme.com' }, { id: 'u2', fullName: 'Bo Chen', email: 'bo@acme.com' }],
     }));
 
     expect((await searchHubPeople('an')).people.map((p) => p.name)).toEqual(['Ana Ruiz', 'Bo Chen']);
@@ -170,11 +170,11 @@ describe('searchHubPeople', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
       reachable: true,
       people: [
-        { id: 'u1', name: 'Ana Ruiz', email: 'Ana@Kinaxis.com' },
-        { id: 'u2', name: '', email: 'bo@kinaxis.com' },
+        { id: 'u1', name: 'Ana Ruiz', email: 'Ana@Acme.com' },
+        { id: 'u2', name: '', email: 'bo@acme.com' },
         { id: 'u3', name: 'No Email' },
-        { id: 'u1', name: 'Dup', email: 'ana@kinaxis.com' },
-        { name: 'No Id', email: 'noid@kinaxis.com' },
+        { id: 'u1', name: 'Dup', email: 'ana@acme.com' },
+        { name: 'No Id', email: 'noid@acme.com' },
         null,
       ],
     }));
@@ -183,8 +183,8 @@ describe('searchHubPeople', () => {
     expect(await searchHubPeople(' an ', { signal: controller.signal })).toEqual({
       reachable: true,
       people: [
-        { id: 'u1', name: 'Ana Ruiz', email: 'ana@kinaxis.com' },
-        { id: 'u2', name: null, email: 'bo@kinaxis.com' },
+        { id: 'u1', name: 'Ana Ruiz', email: 'ana@acme.com' },
+        { id: 'u2', name: null, email: 'bo@acme.com' },
       ],
     });
     const [url, init] = fetch.mock.calls[0];
@@ -225,11 +225,11 @@ describe('fetchHubDirectory', () => {
       reachable: true,
       truncated: true,
       people: [
-        { id: 'u1', displayName: 'Ana López', email: 'Ana@Kinaxis.com' },
-        { id: 'u2', email: 'bo@kinaxis.com' },
-        { id: 'u1', name: 'Dup', email: 'ana@kinaxis.com' },
+        { id: 'u1', displayName: 'Ana López', email: 'Ana@Acme.com' },
+        { id: 'u2', email: 'bo@acme.com' },
+        { id: 'u1', name: 'Dup', email: 'ana@acme.com' },
         { id: 'u3' },
-        { name: 'No Id', email: 'x@kinaxis.com' },
+        { name: 'No Id', email: 'x@acme.com' },
       ],
     }));
 
@@ -237,8 +237,8 @@ describe('fetchHubDirectory', () => {
       reachable: true,
       truncated: true,
       people: [
-        { id: 'u1', name: 'Ana López', email: 'ana@kinaxis.com' },
-        { id: 'u2', name: null, email: 'bo@kinaxis.com' },
+        { id: 'u1', name: 'Ana López', email: 'ana@acme.com' },
+        { id: 'u2', name: null, email: 'bo@acme.com' },
       ],
     });
     const [url, init] = fetch.mock.calls[0];
@@ -247,9 +247,9 @@ describe('fetchHubDirectory', () => {
   });
 
   it('takes a bare array and reads a missing truncated as false', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes([{ id: 'u1', name: 'Ana', email: 'ana@kinaxis.com' }]));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes([{ id: 'u1', name: 'Ana', email: 'ana@acme.com' }]));
     expect(await fetchHubDirectory()).toEqual({
-      reachable: true, truncated: false, people: [{ id: 'u1', name: 'Ana', email: 'ana@kinaxis.com' }],
+      reachable: true, truncated: false, people: [{ id: 'u1', name: 'Ana', email: 'ana@acme.com' }],
     });
   });
 
@@ -268,15 +268,15 @@ describe('fetchHubPeopleByIds', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
       reachable: true,
       people: [
-        { id: 'u1', name: 'Ana Ruiz', email: 'Ana@Kinaxis.com' },
-        { id: 'u-other', name: 'Not Asked', email: 'x@kinaxis.com' },
+        { id: 'u1', name: 'Ana Ruiz', email: 'Ana@Acme.com' },
+        { id: 'u-other', name: 'Not Asked', email: 'x@acme.com' },
         { name: 'No Id' },
       ],
     }));
 
     expect(await fetchHubPeopleByIds(['u1', 'u2', 'u1', ''])).toEqual({
       reachable: true,
-      people: [{ id: 'u1', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }],
+      people: [{ id: 'u1', name: 'Ana Ruiz', email: 'ana@acme.com' }],
     });
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = fetch.mock.calls[0];
@@ -288,7 +288,7 @@ describe('fetchHubPeopleByIds', () => {
     const ids = Array.from({ length: 120 }, (_, i) => `u${i}`);
     const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       const asked = new URL(url).searchParams.get('ids').split(',');
-      return jsonRes({ reachable: true, people: asked.map((id) => ({ id, name: id, email: `${id}@kinaxis.com` })) });
+      return jsonRes({ reachable: true, people: asked.map((id) => ({ id, name: id, email: `${id}@acme.com` })) });
     });
 
     const result = await fetchHubPeopleByIds(ids);
@@ -302,11 +302,11 @@ describe('fetchHubPeopleByIds', () => {
     const ids = Array.from({ length: 60 }, (_, i) => `u${i}`);
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonRes({ detail: 'boom' }, 500))
-      .mockResolvedValueOnce(jsonRes({ reachable: true, people: [{ id: 'u55', name: 'Bo', email: 'bo@kinaxis.com' }] }));
+      .mockResolvedValueOnce(jsonRes({ reachable: true, people: [{ id: 'u55', name: 'Bo', email: 'bo@acme.com' }] }));
 
     expect(await fetchHubPeopleByIds(ids)).toEqual({
       reachable: false,
-      people: [{ id: 'u55', name: 'Bo', email: 'bo@kinaxis.com' }],
+      people: [{ id: 'u55', name: 'Bo', email: 'bo@acme.com' }],
     });
   });
 

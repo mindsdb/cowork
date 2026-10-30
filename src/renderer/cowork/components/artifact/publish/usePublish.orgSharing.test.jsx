@@ -38,11 +38,11 @@ const ORG_ARTIFACT = {
   accessMode: 'restricted',
   ownerOnly: true,
 };
-const TEAMS = { status: 'ready', reachable: true, teams: [{ id: 't-supply', display_name: 'Supply Planning' }] };
+const TEAMS = { status: 'ready', reachable: true, teams: [{ id: 't-platform', display_name: 'Platform' }] };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  sharing.useSharingCapabilities.mockReturnValue({ enabled: true, can_share_org: false, org_name: 'Kinaxis' });
+  sharing.useSharingCapabilities.mockReturnValue({ enabled: true, can_share_org: false, org_name: 'Acme' });
   sharing.useHubTeams.mockReturnValue(TEAMS);
   setOrgMode(true);
 });
@@ -53,29 +53,29 @@ describe('usePublish with org sharing', () => {
   it('reads the teams, people in the org and org flag from the access route', async () => {
     wsMock.loadArtifactAccess.mockResolvedValue({
       accessMode: 'restricted', accessEmails: ['zed@partner.io'], ownerOnly: false,
-      allowed_team_ids: ['t-supply'], allowed_user_ids: ['u-ana'], org_allowed: true,
+      allowed_team_ids: ['t-platform'], allowed_user_ids: ['u-ana'], org_allowed: true,
     });
     const onChange = vi.fn();
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true, onChange }));
 
-    await waitFor(() => expect(result.current.allowedTeamIds).toEqual(['t-supply']));
+    await waitFor(() => expect(result.current.allowedTeamIds).toEqual(['t-platform']));
     expect(result.current.allowedUserIds).toEqual(['u-ana']);
     expect(result.current.accessEmails).toEqual(['zed@partner.io']);
     expect(result.current.orgAllowed).toBe(true);
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      allowedTeamIds: ['t-supply'], allowedUserIds: ['u-ana'], orgAllowed: true,
+      allowedTeamIds: ['t-platform'], allowedUserIds: ['u-ana'], orgAllowed: true,
     }));
   });
 
   it('reads the camelCase answer too', async () => {
     wsMock.loadArtifactAccess.mockResolvedValue({
       accessMode: 'restricted', accessEmails: [], ownerOnly: false, orgAllowed: false,
-      allowedTeamIds: ['t-supply'], allowedUserIds: ['u-bo'],
+      allowedTeamIds: ['t-platform'], allowedUserIds: ['u-bo'],
     });
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
 
     await waitFor(() => expect(result.current.allowedUserIds).toEqual(['u-bo']));
-    expect(result.current.allowedTeamIds).toEqual(['t-supply']);
+    expect(result.current.allowedTeamIds).toEqual(['t-platform']);
     expect(result.current.orgAllowed).toBe(false);
   });
 
@@ -83,18 +83,18 @@ describe('usePublish with org sharing', () => {
     wsMock.loadArtifactAccess.mockResolvedValue({ accessMode: 'restricted', ownerOnly: true });
     wsMock.setArtifactAccess.mockResolvedValue({
       url: 'https://share/abc', accessMode: 'restricted', accessEmails: ['zed@partner.io'], ownerOnly: false,
-      allowedTeamIds: ['t-supply'], allowedUserIds: ['u-ana'], orgAllowed: false,
+      allowedTeamIds: ['t-platform'], allowedUserIds: ['u-ana'], orgAllowed: false,
     });
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
 
     const access = {
-      mode: 'restricted', org_allowed: false, allowed_team_ids: ['t-supply'], allowed_user_ids: ['u-ana'],
-      allowed_emails: ['zed@partner.io'], owner_only: false, emails: ['zed@partner.io'], team_ids: ['t-supply'],
+      mode: 'restricted', org_allowed: false, allowed_team_ids: ['t-platform'], allowed_user_ids: ['u-ana'],
+      allowed_emails: ['zed@partner.io'], owner_only: false, emails: ['zed@partner.io'], team_ids: ['t-platform'],
     };
     await act(async () => { await result.current.publish(access); });
 
     expect(wsMock.setArtifactAccess).toHaveBeenCalledWith(ORG_ARTIFACT, access);
-    expect(result.current.allowedTeamIds).toEqual(['t-supply']);
+    expect(result.current.allowedTeamIds).toEqual(['t-platform']);
     expect(result.current.allowedUserIds).toEqual(['u-ana']);
     expect(result.current.accessEmails).toEqual(['zed@partner.io']);
     expect(result.current.orgAllowed).toBe(false);
@@ -117,6 +117,6 @@ describe('usePublish with org sharing', () => {
 
   it('hands the panel the org name and teams', () => {
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
-    expect(result.current.orgSharing).toEqual({ enabled: true, orgName: 'Kinaxis', teams: TEAMS });
+    expect(result.current.orgSharing).toEqual({ enabled: true, orgName: 'Acme', teams: TEAMS });
   });
 });

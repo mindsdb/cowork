@@ -13,7 +13,7 @@ import {
 
 const PERSONAL = { id: 'org-personal', name: 'personal_user-1', isPersonal: true };
 const ACME = { id: 'org-acme', name: 'acme', isPersonal: false };
-const KINAXIS = { id: 'org-kinaxis', name: 'kinaxis', isPersonal: false };
+const GLOBEX = { id: 'org-globex', name: 'globex', isPersonal: false };
 
 beforeEach(() => {
   localStorage.clear();
@@ -36,11 +36,11 @@ describe('pickLandingOrg', () => {
   });
 
   it('lands in the company organization used last', () => {
-    expect(pickLandingOrg([PERSONAL, ACME, KINAXIS], { lastUsedOrgId: KINAXIS.id })).toBe(KINAXIS);
+    expect(pickLandingOrg([PERSONAL, ACME, GLOBEX], { lastUsedOrgId: GLOBEX.id })).toBe(GLOBEX);
   });
 
   it('lands in the first company organization when none was used yet', () => {
-    expect(pickLandingOrg([PERSONAL, ACME, KINAXIS], {})).toBe(ACME);
+    expect(pickLandingOrg([PERSONAL, ACME, GLOBEX], {})).toBe(ACME);
   });
 
   it('ignores a last-used organization the person left', () => {
@@ -54,14 +54,14 @@ describe('pickLandingOrg', () => {
 });
 
 describe('landingSwitchTarget', () => {
-  const orgs = [ACME, PERSONAL, KINAXIS];
+  const orgs = [ACME, PERSONAL, GLOBEX];
 
   it('moves someone in their personal organization', () => {
-    expect(landingSwitchTarget(orgs, { activeOrgId: PERSONAL.id, lastUsedOrgId: KINAXIS.id })).toBe(KINAXIS);
+    expect(landingSwitchTarget(orgs, { activeOrgId: PERSONAL.id, lastUsedOrgId: GLOBEX.id })).toBe(GLOBEX);
   });
 
   it('leaves someone already in a company organization', () => {
-    expect(landingSwitchTarget(orgs, { activeOrgId: ACME.id, lastUsedOrgId: KINAXIS.id })).toBeNull();
+    expect(landingSwitchTarget(orgs, { activeOrgId: ACME.id, lastUsedOrgId: GLOBEX.id })).toBeNull();
   });
 
   it('never overrides an organization the person just chose', () => {
@@ -88,12 +88,12 @@ describe('useOrgLanding', () => {
 
   it('remembers the company organization in use and returns to it', () => {
     const switchOrg = vi.fn();
-    run({ sub: 'user-1', orgs: [ACME, KINAXIS, PERSONAL], activeOrg: KINAXIS, switchOrg });
-    expect(readLastUsedOrgId('user-1')).toBe(KINAXIS.id);
+    run({ sub: 'user-1', orgs: [ACME, GLOBEX, PERSONAL], activeOrg: GLOBEX, switchOrg });
+    expect(readLastUsedOrgId('user-1')).toBe(GLOBEX.id);
     expect(switchOrg).not.toHaveBeenCalled();
 
-    run({ sub: 'user-1', orgs: [ACME, KINAXIS, PERSONAL], activeOrg: PERSONAL, switchOrg });
-    expect(switchOrg).toHaveBeenCalledWith(KINAXIS.id);
+    run({ sub: 'user-1', orgs: [ACME, GLOBEX, PERSONAL], activeOrg: PERSONAL, switchOrg });
+    expect(switchOrg).toHaveBeenCalledWith(GLOBEX.id);
   });
 
   it('leaves the personal organization a person picked this session', () => {

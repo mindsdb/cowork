@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   uploadSkillFile: vi.fn(),
   saveSkillAndSync: vi.fn(),
   deleteSkillAndSync: vi.fn(),
+  setSkillEnabledForMeAndSync: vi.fn(),
 }));
 const skillState = vi.hoisted(() => ({ skills: [] }));
 
@@ -36,6 +37,7 @@ vi.mock('../lib/skillsStore', () => ({
   useSkillNames: () => new Set(skillState.skills.map((skill) => skill.label)),
   saveSkillAndSync: (...args) => mocks.saveSkillAndSync(...args),
   deleteSkillAndSync: (...args) => mocks.deleteSkillAndSync(...args),
+  setSkillEnabledForMeAndSync: (...args) => mocks.setSkillEnabledForMeAndSync(...args),
 }));
 
 vi.mock('../components/ui/Toast', () => ({
@@ -57,6 +59,7 @@ beforeEach(() => {
     capabilities: { canEdit: true, canDelete: true, canDisable: true },
   });
   localStorage.removeItem('anton:skills-view');
+  localStorage.removeItem('anton:skills-builtin-open');
 });
 
 describe('SkillsView shared-resource permissions', () => {
@@ -74,7 +77,7 @@ describe('SkillsView shared-resource permissions', () => {
     expect(screen.getByRole('menuitem', { name: /Uninstall/ })).toHaveAttribute('data-disabled');
   });
 
-  it('shows a built-in skill with every capability false as read-only built-in', () => {
+  it('shows a built-in skill with every capability false as read-only built-in, with its own switch', () => {
     /* The shape cowork-server sends for a built-in or operator-provided skill
        on a stack where each person has their own space: no capability and no
        attribution actor. */
@@ -89,25 +92,31 @@ describe('SkillsView shared-resource permissions', () => {
     skillState.skills = [builtinSkill];
     render(<SkillsView />);
 
+    // Folded away under Built-in until opened.
+    expect(screen.queryByRole('article', { name: 'operator-skill' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Built-in/ }));
     const row = screen.getByRole('article', { name: 'operator-skill' });
     expect(within(row).getByText('Built-in')).toBeInTheDocument();
     expect(within(row).queryByText('Shared')).not.toBeInTheDocument();
     expect(within(row).queryByText('Another member')).not.toBeInTheDocument();
+    // The switch only, no Share.
+    expect(within(row).getByRole('switch', { name: /^Turn off for me:/ })).not.toHaveAttribute('aria-disabled', 'true');
+    expect(within(row).queryByRole('button', { name: /Share/ })).toBeNull();
 
     fireEvent.click(screen.getByText('operator-skill'));
 
-    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ }))
-      .toHaveAttribute('aria-disabled', 'true');
+    // Read only, but anyone may turn a built-in off for themselves.
+    expect(screen.getByRole('switch', { name: /^Turn off for me:/ }))
+      .not.toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('note')).toHaveTextContent('Built-in skills are read only.');
     expect(screen.queryByText(/Created by/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Edit/ })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
-    const edit = screen.getByRole('menuitem', { name: /Edit/ });
-    const uninstall = screen.getByRole('menuitem', { name: /Uninstall/ });
-    expect(edit).toHaveAttribute('data-disabled');
-    expect(edit).toHaveTextContent('Built-in');
-    expect(uninstall).toHaveAttribute('data-disabled');
-    expect(uninstall).toHaveTextContent('Built-in');
+    expect(screen.getByRole('menuitem', { name: /Try in chat/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Edit/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Uninstall/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /for everyone/ })).toBeNull();
   });
 
   it('renders rows with no view toggle, even with a stored grid preference', () => {

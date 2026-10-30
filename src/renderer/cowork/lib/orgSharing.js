@@ -30,7 +30,7 @@ export const ALWAYS_ON_EDITOR_HINT = 'Only people who can edit this skill can ch
 export const ALWAYS_ON_BADGE = 'Always on';
 export const ALWAYS_ON_BADGE_HINT = "Part of every task for everyone it's shared with";
 
-/** "Everyone at Kinaxis", or a generic label when the org has no name. */
+/** "Everyone at Acme", or a generic label when the org has no name. */
 export function everyoneAtLabel(orgName) {
   return orgName ? `Everyone at ${orgName}` : 'Everyone in your organization';
 }
@@ -40,12 +40,12 @@ export function orgNameOrGeneric(orgName) {
   return orgName || 'your organization';
 }
 
-/** "People in Kinaxis" / "People in your organization". */
+/** "People in Acme" / "People in your organization". */
 export function peopleInLabel(orgName) {
   return `People in ${orgNameOrGeneric(orgName)}`;
 }
 
-/** "People outside Kinaxis" / "People outside your organization". */
+/** "People outside Acme" / "People outside your organization". */
 export function peopleOutsideLabel(orgName) {
   return `People outside ${orgNameOrGeneric(orgName)}`;
 }
@@ -137,7 +137,7 @@ export function personInitials(person) {
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /**
- * The line under a recipient field: "2 teams · 1 person · 1 outside Kinaxis",
+ * The line under a recipient field: "2 teams · 1 person · 1 outside Acme",
  * zero parts left out. `emailsOnly` (no org) counts addresses as people.
  */
 export function recipientSummary({ teamIds = [], userIds = [], emails = [] } = {}, { orgName = null, emailsOnly = false, allowExternal = true } = {}) {
@@ -211,6 +211,15 @@ export function skillAccessPayload(access) {
     allowed_user_ids: [...access.allowedUserIds],
     always_on: access.alwaysOn === true && canBeAlwaysOn(access),
   };
+}
+
+/** Whether two `PUT /skills/{slug}/sharing` bodies name the same audience,
+    whatever order the ids come in. */
+export function sameSkillAccessPayload(a, b) {
+  const ids = (list) => [...list].sort().join(',');
+  return a.org_allowed === b.org_allowed && a.always_on === b.always_on
+    && ids(a.allowed_team_ids) === ids(b.allowed_team_ids)
+    && ids(a.allowed_user_ids) === ids(b.allowed_user_ids);
 }
 
 /** Which section of the Skills page a skill sits in. A skill without one (an
@@ -341,7 +350,7 @@ export function audienceCountsPhrase({ teams = 0, people = 0, outside = 0 } = {}
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
-/** "Shared with everyone at Kinaxis" / "… in your organization". */
+/** "Shared with everyone at Acme" / "… in your organization". */
 export function sharedWithEveryoneHint(orgName) {
   return orgName ? `Shared with everyone at ${orgName}` : 'Shared with everyone in your organization';
 }

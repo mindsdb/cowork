@@ -6,7 +6,7 @@
 // width, the way chat renders it, with no card around them.
 //
 // The audience is said once, in the properties line: "Everyone at ‹org›",
-// "Only you", or for a list a compact "Supply Planning, Ana López +2" that
+// "Only you", or for a list a compact "Platform, Ana López +2" that
 // opens the full list.
 //
 // SkillsView owns every action and permission: it passes the actions, the
@@ -146,6 +146,7 @@ function formatDate(iso) {
  *   orgSharing?: { teams: Array<object>, orgName?: string | null } | null,
  *   teamsState?: object | null,
  *   enabled: boolean,
+ *   disabledForEveryone?: boolean,
  *   actions?: import('react').ReactNode,
  *   notes?: import('react').ReactNode,
  *   sharingControl?: import('react').ReactNode,
@@ -154,7 +155,7 @@ function formatDate(iso) {
  * }} props
  */
 export default function SkillDetail({
-  skill, projects = [], orgSharing = null, teamsState = null, enabled = true,
+  skill, projects = [], orgSharing = null, teamsState = null, enabled = true, disabledForEveryone = false,
   actions = null, notes = null, sharingControl = null, canEdit = false, onEdit,
 }) {
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project) || 'All projects';
@@ -175,7 +176,11 @@ export default function SkillDetail({
         <div className="flex min-w-0 flex-[1_1_20rem] flex-col gap-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
             <h1 id="skill-detail-title" className="s-h1 m-0 min-w-0 break-words">{skill.label}</h1>
-            {!enabled && <Badge variant="muted" size="md">Disabled</Badge>}
+            {/* Off for everyone, by an editor, is said to every viewer; else
+                the caller's own off. */}
+            {disabledForEveryone
+              ? <Badge variant="muted" size="md">Disabled for everyone</Badge>
+              : !enabled && <Badge variant="muted" size="md">Disabled</Badge>}
           </div>
           {skill.description && (
             <p className="m-0 max-w-[72ch] text-[14px] leading-[1.55] text-ink-3 select-text">

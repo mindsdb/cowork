@@ -14,9 +14,9 @@ vi.mock('../api', async (importOriginal) => ({
 import RecipientField from './RecipientField';
 import { __resetOrgSharingForTests } from '../hooks/useOrgSharing';
 
-const ANA = { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@kinaxis.com' };
-const ANDY = { id: 'u-andy', name: 'Andy Park', email: 'andy@kinaxis.com' };
-const BO = { id: 'u-bo', name: 'Bo Chen', email: 'bo@kinaxis.com' };
+const ANA = { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@acme.com' };
+const ANDY = { id: 'u-andy', name: 'Andy Park', email: 'andy@acme.com' };
+const BO = { id: 'u-bo', name: 'Bo Chen', email: 'bo@acme.com' };
 const DIRECTORY = [ANA, ANDY, BO];
 const directoryAnswer = (over = {}) => ({ reachable: true, people: DIRECTORY, truncated: false, ...over });
 
@@ -25,7 +25,7 @@ const TEAMS = {
   reachable: true,
   teams: [
     { id: 't-all', display_name: 'All members', is_default: true },
-    { id: 't-supply', display_name: 'Supply Planning', member_count: 12 },
+    { id: 't-platform', display_name: 'Platform', member_count: 12 },
     { id: 't-andes', display_name: 'Andes Ops' },
     { id: 't-finance', display_name: 'Finance' },
   ],
@@ -50,7 +50,7 @@ function Harness({ initial = {}, spy = () => {}, ...props }) {
     <RecipientField
       value={value}
       onChange={(next) => { spy(next); setValue(next); }}
-      orgName="Kinaxis"
+      orgName="Acme"
       teamsState={TEAMS}
       {...props}
     />
@@ -74,12 +74,12 @@ describe('<RecipientField>', () => {
     await user.click(input());
 
     await waitFor(() => expect(options()).toEqual([
-      'Supply Planning12 people', 'Andes OpsTeam', 'FinanceTeam',
-      'ARAna Ruizana@kinaxis.com', 'APAndy Parkandy@kinaxis.com', 'BCBo Chenbo@kinaxis.com',
+      'Platform12 people', 'Andes OpsTeam', 'FinanceTeam',
+      'ARAna Ruizana@acme.com', 'APAndy Parkandy@acme.com', 'BCBo Chenbo@acme.com',
     ]));
     const listbox = screen.getByRole('listbox');
     expect(listbox).toHaveTextContent('Teams');
-    expect(listbox).toHaveTextContent('People in Kinaxis');
+    expect(listbox).toHaveTextContent('People in Acme');
     expect(listbox).not.toHaveTextContent('All members');
     expect(api.directory).toHaveBeenCalledTimes(1);
     expect(api.search).not.toHaveBeenCalled();
@@ -92,8 +92,8 @@ describe('<RecipientField>', () => {
     await user.click(input());
 
     const listbox = await screen.findByRole('listbox');
-    await waitFor(() => expect(listbox).toHaveTextContent('No one else is in Kinaxis yet.'));
-    expect(listbox).toHaveTextContent('People in Kinaxis');
+    await waitFor(() => expect(listbox).toHaveTextContent('No one else is in Acme yet.'));
+    expect(listbox).toHaveTextContent('People in Acme');
     expect(within(listbox).getByRole('button', { name: /Invite people/ })).toBeTruthy();
     expect(screen.queryByText('Everyone you can add is already added.')).toBeNull();
   });
@@ -103,7 +103,7 @@ describe('<RecipientField>', () => {
     render(<Harness allowExternal initial={{ userIds: DIRECTORY.map((p) => p.id) }} />);
     await user.click(input());
 
-    await waitFor(() => expect(screen.getByRole('listbox')).toHaveTextContent('Everyone in Kinaxis is already added.'));
+    await waitFor(() => expect(screen.getByRole('listbox')).toHaveTextContent('Everyone in Acme is already added.'));
   });
 
   it('floats the dropdown over the page, under the input, rather than inside the field', async () => {
@@ -136,29 +136,29 @@ describe('<RecipientField>', () => {
     await user.type(input(), 'an');
 
     expect(options()).toEqual([
-      'Supply Planning12 people', 'Andes OpsTeam', 'FinanceTeam',
-      'ARAna Ruizana@kinaxis.com', 'APAndy Parkandy@kinaxis.com',
+      'Andes OpsTeam', 'FinanceTeam',
+      'ARAna Ruizana@acme.com', 'APAndy Parkandy@acme.com',
     ]);
     await user.type(input(), 'dy');
-    expect(options()).toEqual(['APAndy Parkandy@kinaxis.com']);
+    expect(options()).toEqual(['APAndy Parkandy@acme.com']);
     await user.clear(input());
-    await user.type(input(), 'BO@KIN');
-    expect(options()).toEqual(['BCBo Chenbo@kinaxis.com']);
+    await user.type(input(), 'BO@AC');
+    expect(options()).toEqual(['BCBo Chenbo@acme.com']);
     expect(api.directory).toHaveBeenCalledTimes(1);
     expect(api.search).not.toHaveBeenCalled();
   });
 
   it('ignores case and accents', async () => {
-    api.directory.mockResolvedValue(directoryAnswer({ people: [...DIRECTORY, { id: 'u-jose', name: 'José López', email: 'jose@kinaxis.com' }] }));
+    api.directory.mockResolvedValue(directoryAnswer({ people: [...DIRECTORY, { id: 'u-jose', name: 'José López', email: 'jose@acme.com' }] }));
     const user = userEvent.setup();
     render(<Harness allowExternal />);
     await user.click(input());
     await waitFor(() => expect(options()).toHaveLength(7));
     await user.type(input(), 'lopez');
-    expect(options()).toEqual(['JLJosé Lópezjose@kinaxis.com']);
+    expect(options()).toEqual(['JLJosé Lópezjose@acme.com']);
     await user.clear(input());
     await user.type(input(), 'JOSÉ');
-    expect(options()).toEqual(['JLJosé Lópezjose@kinaxis.com']);
+    expect(options()).toEqual(['JLJosé Lópezjose@acme.com']);
   });
 
   it('reads the directory once for every field on the page', async () => {
@@ -185,7 +185,7 @@ describe('<RecipientField>', () => {
     await user.keyboard('{ArrowDown}{Enter}');
     expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] });
     expect(input()).toHaveFocus();
-    expect(options()).not.toContain('ARAna Ruizana@kinaxis.com');
+    expect(options()).not.toContain('ARAna Ruizana@acme.com');
     expect(options()).toHaveLength(5);
   });
 
@@ -196,7 +196,7 @@ describe('<RecipientField>', () => {
     await user.click(input());
     expect(screen.getAllByTestId('recipient-skeleton').length).toBeGreaterThan(0);
     // The teams are already there.
-    expect(options()).toEqual(['Supply Planning12 people', 'Andes OpsTeam', 'FinanceTeam']);
+    expect(options()).toEqual(['Platform12 people', 'Andes OpsTeam', 'FinanceTeam']);
   });
 
   it("says when the directory couldn't be read, and Retry asks again", async () => {
@@ -206,7 +206,7 @@ describe('<RecipientField>', () => {
     await user.click(input());
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent("Couldn't load your organization's directory");
-    expect(options()).toEqual(['Supply Planning12 people', 'Andes OpsTeam', 'FinanceTeam']);
+    expect(options()).toEqual(['Platform12 people', 'Andes OpsTeam', 'FinanceTeam']);
 
     await user.click(within(alert).getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(options()).toHaveLength(6));
@@ -237,9 +237,9 @@ describe('<RecipientField>', () => {
       expect(api.search).not.toHaveBeenCalled();
       await user.type(input(), 'o');
 
-      await waitFor(() => expect(options()).toEqual(['BCBo Chenbo@kinaxis.com']));
+      await waitFor(() => expect(options()).toEqual(['BCBo Chenbo@acme.com']));
       expect(api.search).toHaveBeenLastCalledWith('bo', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-      expect(screen.getByRole('listbox')).toHaveTextContent('People in Kinaxis');
+      expect(screen.getByRole('listbox')).toHaveTextContent('People in Acme');
       await user.keyboard('{Enter}');
       expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] });
     });
@@ -252,7 +252,7 @@ describe('<RecipientField>', () => {
       await user.type(input(), 'ana');
       await waitFor(() => expect(api.search).toHaveBeenCalled());
       await waitFor(() => expect(screen.queryByText(/Searching everyone/)).toBeNull());
-      expect(options()).toEqual(['ARAna Ruizana@kinaxis.com']);
+      expect(options()).toEqual(['ARAna Ruizana@acme.com']);
     });
   });
 
@@ -271,7 +271,7 @@ describe('<RecipientField>', () => {
     await user.click(input());
     await user.click(await screen.findByRole('option', { name: /Finance/ }));
     expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-finance'], userIds: ['u-ana'], emails: [] });
-    expect(rows()).toEqual([['Finance', 'Team'], ['Ana Ruiz', 'ana@kinaxis.com']]);
+    expect(rows()).toEqual([['Finance', 'Team'], ['Ana Ruiz', 'ana@acme.com']]);
     await user.click(input());
     await screen.findByRole('listbox');
     expect(options()).not.toContain('FinanceTeam');
@@ -284,12 +284,12 @@ describe('<RecipientField>', () => {
     render(<Harness allowExternal spy={spy} />);
     await user.type(input(), 'zed@partner.io');
 
-    const invite = await screen.findByRole('option', { name: 'Invite zed@partner.io (outside Kinaxis)' });
+    const invite = await screen.findByRole('option', { name: 'Invite zed@partner.io (outside Acme)' });
     expect(invite).toBeInTheDocument();
     await user.keyboard('{Enter}');
     expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@partner.io'] });
-    expect(summary()).toBe('1 outside Kinaxis');
-    expect(rows()).toEqual([['zed@partner.io', 'Outside Kinaxis']]);
+    expect(summary()).toBe('1 outside Acme');
+    expect(rows()).toEqual([['zed@partner.io', 'Outside Acme']]);
     expect(screen.getByRole('button', { name: 'Remove zed@partner.io' })).toBeInTheDocument();
   });
 
@@ -297,7 +297,7 @@ describe('<RecipientField>', () => {
     const user = userEvent.setup();
     const spy = vi.fn();
     render(<Harness allowExternal spy={spy} />);
-    await user.type(input(), 'bo@kinaxis.com');
+    await user.type(input(), 'bo@acme.com');
     await screen.findByRole('option', { name: /Bo Chen/ });
     expect(screen.queryByRole('option', { name: /Invite/ })).toBeNull();
     await user.keyboard('{Enter}');
@@ -310,10 +310,10 @@ describe('<RecipientField>', () => {
     render(<Harness spy={spy} />);
     await user.type(input(), 'zed@partner.io');
 
-    expect(await screen.findByText('Only people in Kinaxis')).toBeInTheDocument();
+    expect(await screen.findByText('Only people in Acme')).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Invite/ })).toBeNull();
     await user.keyboard('{Enter}');
-    expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@partner.io (not in Kinaxis)');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@partner.io (not in Acme)');
     expect(spy).not.toHaveBeenCalled();
     expect(summary()).toBe('Add at least one team or person.');
   });
@@ -335,8 +335,8 @@ describe('<RecipientField>', () => {
     expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-andes', 't-finance'], userIds: [], emails: [] });
     expect(input()).toHaveFocus();
 
-    await user.type(input(), 'supp,');
-    expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-andes', 't-finance', 't-supply'], userIds: [], emails: [] });
+    await user.type(input(), 'plat,');
+    expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-andes', 't-finance', 't-platform'], userIds: [], emails: [] });
 
     await user.type(input(), 'zz');
     expect(screen.getByRole('status')).toBeInTheDocument();
@@ -365,19 +365,19 @@ describe('<RecipientField>', () => {
 
     await user.click(screen.getByRole('button', { name: 'Remove zed@partner.io' }));
     expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] });
-    expect(rows()).toEqual([['Ana Ruiz', 'ana@kinaxis.com']]);
+    expect(rows()).toEqual([['Ana Ruiz', 'ana@acme.com']]);
   });
 
   it('lists stored recipients as rows with their second line', async () => {
     const teams = { ...TEAMS, teams: [...TEAMS.teams, { id: 't-one', display_name: 'Solo', member_count: 1 }] };
-    render(<Harness allowExternal teamsState={teams} initial={{ teamIds: ['t-supply', 't-one', 't-andes'], userIds: ['u-ana'], emails: ['zed@partner.io'] }} />);
+    render(<Harness allowExternal teamsState={teams} initial={{ teamIds: ['t-platform', 't-one', 't-andes'], userIds: ['u-ana'], emails: ['zed@partner.io'] }} />);
     await waitFor(() => expect(list()).toHaveTextContent('Ana Ruiz'));
     expect(rows()).toEqual([
-      ['Supply Planning', 'Team · 12 people'],
+      ['Platform', 'Team · 12 people'],
       ['Solo', 'Team · 1 person'],
       ['Andes Ops', 'Team'],
-      ['Ana Ruiz', 'ana@kinaxis.com'],
-      ['zed@partner.io', 'Outside Kinaxis'],
+      ['Ana Ruiz', 'ana@acme.com'],
+      ['zed@partner.io', 'Outside Acme'],
     ]);
     const kinds = within(list()).getAllByRole('listitem').map((row) => row.getAttribute('data-recipient-row'));
     expect(kinds).toEqual(['team', 'team', 'team', 'person', 'outside']);
@@ -390,13 +390,13 @@ describe('<RecipientField>', () => {
     render(<Harness allowExternal spy={spy} />);
     fireEvent.focus(input());
     await screen.findByRole('option', { name: /Ana Ruiz/ });
-    fireEvent.paste(input(), { clipboardData: { getData: () => 'Ana@Kinaxis.com, zed@partner.io;\nnope bo@kinaxis.com' } });
+    fireEvent.paste(input(), { clipboardData: { getData: () => 'Ana@Acme.com, zed@partner.io;\nnope bo@acme.com' } });
 
     await waitFor(() => expect(spy).toHaveBeenLastCalledWith({
       teamIds: [], userIds: ['u-ana', 'u-bo'], emails: ['zed@partner.io'],
     }));
     expect(screen.getByRole('alert')).toHaveTextContent('Not added: nope (not an email)');
-    expect(summary()).toBe('2 people · 1 outside Kinaxis');
+    expect(summary()).toBe('2 people · 1 outside Acme');
     // The directory knew both people: nobody was searched for.
     expect(api.search).not.toHaveBeenCalled();
     await waitFor(() => expect(rows().map((r) => r[0])).toEqual(['Ana Ruiz', 'Bo Chen', 'zed@partner.io']));
@@ -405,21 +405,21 @@ describe('<RecipientField>', () => {
   it('reports pasted outside addresses as not added when only the org is allowed', async () => {
     const spy = vi.fn();
     render(<Harness spy={spy} />);
-    fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@kinaxis.com zed@partner.io' } });
+    fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com zed@partner.io' } });
 
     await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Not added: zed@partner.io (not in Kinaxis)');
+    expect(screen.getByRole('alert')).toHaveTextContent('Not added: zed@partner.io (not in Acme)');
   });
 
   it('names stored people and teams, showing ones nobody knows as Unknown', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();
-    render(<Harness allowExternal spy={spy} initial={{ teamIds: ['t-supply', 't-gone'], userIds: ['u-bo', 'u-gone'] }} />);
+    render(<Harness allowExternal spy={spy} initial={{ teamIds: ['t-platform', 't-gone'], userIds: ['u-bo', 'u-gone'] }} />);
     await waitFor(() => expect(list()).toHaveTextContent('Bo Chen'));
     expect(rows()).toEqual([
-      ['Supply Planning', 'Team · 12 people'],
+      ['Platform', 'Team · 12 people'],
       ['Unknown team', 'Team'],
-      ['Bo Chen', 'bo@kinaxis.com'],
+      ['Bo Chen', 'bo@acme.com'],
       ['Unknown person'],
     ]);
     expect(api.byIds).toHaveBeenCalledWith(['u-bo', 'u-gone']);
@@ -427,7 +427,7 @@ describe('<RecipientField>', () => {
 
     await user.click(screen.getByRole('button', { name: 'Remove Unknown person' }));
     await user.click(screen.getByRole('button', { name: 'Remove Unknown team' }));
-    expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-supply'], userIds: ['u-bo'], emails: [] });
+    expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-platform'], userIds: ['u-bo'], emails: [] });
   });
 
   it('marks outside emails apart from people in the org', () => {

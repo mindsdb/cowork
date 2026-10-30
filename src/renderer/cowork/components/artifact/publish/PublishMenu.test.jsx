@@ -165,11 +165,11 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
       ['specific', { ...PUBLISHED_RESTRICTED, accessEmails: ['a@x.io', 'b@x.io'], ownerOnly: false }, 'Shared with 2 people'],
       ['org', {
         ...PUBLISHED_RESTRICTED, orgAllowed: true, ownerOnly: false,
-        orgSharing: { enabled: true, orgName: 'Kinaxis', teams: { status: 'ready', reachable: true, teams: [] } },
-      }, 'Shared with everyone at Kinaxis'],
+        orgSharing: { enabled: true, orgName: 'Acme', teams: { status: 'ready', reachable: true, teams: [] } },
+      }, 'Shared with everyone at Acme'],
       ['specific', {
         ...PUBLISHED_RESTRICTED, ownerOnly: false, allowedTeamIds: ['t1', 't2'], allowedUserIds: ['u1', 'u2', 'u3'],
-        orgSharing: { enabled: true, orgName: 'Kinaxis', teams: { status: 'ready', reachable: true, teams: [] } },
+        orgSharing: { enabled: true, orgName: 'Acme', teams: { status: 'ready', reachable: true, teams: [] } },
       }, 'Shared with 2 teams and 3 people'],
     ])('marks a %s share with its icon and says who in a tooltip', async (kind, over, hint) => {
       const user = userEvent.setup();
