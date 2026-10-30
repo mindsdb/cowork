@@ -18,19 +18,19 @@ import Ico from './Icons';
 import { Tooltip } from './ui';
 import { Switch } from './ui/Switch';
 import { useHubTeams } from '../hooks/useOrgSharing';
-import AudiencePanel from './AudiencePanel';
+import AudiencePanel, { everyoneOption } from './AudiencePanel';
 import {
   alwaysOnHelp,
   ALWAYS_ON_LABEL,
-  ORG_ADMIN_ONLY_HINT,
   alwaysOnLockReason,
   canBeAlwaysOn,
-  everyoneAtLabel,
   namesDefaultTeam,
   withoutDefaultTeam,
 } from '../lib/orgSharing';
 
-function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
+/** The "Always include in every task" switch with its help line; disabled,
+    with `lockReason` on hover, when the caller may not change it. */
+export function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
   const control = (
     <div className="flex items-center justify-between gap-3">
       <span className="font-body text-[13px] font-semibold text-ink">{ALWAYS_ON_LABEL}</span>
@@ -130,15 +130,7 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
 
   const options = [
     { value: 'private', icon: Ico.lock(16), title: 'Only me', desc: 'Nobody else can use it' },
-    {
-      value: 'org',
-      icon: Ico.building(16),
-      title: everyoneAtLabel(orgName),
-      desc: 'Anyone in your organization',
-      disabled: !canShareOrg,
-      disabledHint: ORG_ADMIN_ONLY_HINT,
-      disabledTestId: 'org-option-locked',
-    },
+    everyoneOption({ orgName, canShareOrg }),
     { value: 'specific', icon: Ico.people(16), title: 'Specific teams and people', desc: 'Pick teams or colleagues' },
   ];
 

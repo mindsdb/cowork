@@ -69,7 +69,7 @@ export const skillFieldStyle = {
 const SKILL_MODAL_WIDTH = 'min(960px, 94vw)';
 const SKILL_MODAL_HEIGHT = 'min(680px, 88vh)';
 
-export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = null, projects = [], canShare = false, orgSharing = null }) {
+export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = null, projects = [], canShare = false, capabilities = null }) {
   const isEdit = initial !== null;
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
   const [busy, setBusy] = useState(false);
@@ -79,7 +79,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
      when it isn't Only me, an edit's only when it changed. An edit opens at
      the skill's audience, and only someone the Share dropdown would let
      change it (its owner or an admin) may; anyone else reads it. */
-  const asksAudience = !!orgSharing?.enabled;
+  const asksAudience = capabilities?.enabled === true;
   const canChangeAudience = !isEdit || canChangeSkillAudience(initial);
   const editsAudience = asksAudience && canChangeAudience;
   const savedAccess = isEdit ? skillAccess(initial) : PRIVATE_ACCESS;
@@ -96,7 +96,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
      the answer as `shared`; an edit applies a changed choice through the
      sharing route after the save, and surfaces its refusal. Org sharing
      replaces this select. */
-  const asksSharing = !orgSharing?.enabled && (isEdit ? canShareSkill(initial) : canShare);
+  const asksSharing = !asksAudience && (isEdit ? canShareSkill(initial) : canShare);
 
   useEffect(() => {
     if (!open) return;
@@ -277,7 +277,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
                       key={audienceKey}
                       value={access}
                       onChange={setAccess}
-                      capabilities={orgSharing}
+                      capabilities={capabilities}
                       // The creator can always edit their own new skill.
                       canEdit={!isEdit || canEditSkill(initial)}
                       onPendingChange={setAudiencePending}
@@ -288,7 +288,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
                         orgAllowed={savedAccess.orgAllowed}
                         teamIds={savedAccess.allowedTeamIds}
                         userIds={savedAccess.allowedUserIds}
-                        orgName={orgSharing.org_name ?? null}
+                        orgName={capabilities.org_name ?? null}
                         label={SKILL_SHARING_LABEL}
                       />
                       {savedAccess.alwaysOn && (

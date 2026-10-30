@@ -141,7 +141,7 @@ function formatDate(iso) {
  * @param {{
  *   skill: object,
  *   projects?: Array<object>,
- *   orgSharing?: { teams: Array<object>, orgName?: string | null } | null,
+ *   capabilities?: { enabled: boolean, org_name?: string | null } | null,
  *   teamsState?: object | null,
  *   enabled: boolean,
  *   disabledForEveryone?: boolean,
@@ -153,18 +153,21 @@ function formatDate(iso) {
  * }} props
  */
 export default function SkillDetail({
-  skill, projects = [], orgSharing = null, teamsState = null, enabled = true, disabledForEveryone = false,
+  skill, projects = [], capabilities = null, teamsState = null, enabled = true, disabledForEveryone = false,
   actions = null, notes = null, sharingControl = null, canEdit = false, onEdit,
 }) {
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project) || 'All projects';
-  const alwaysOn = !!orgSharing && isSkillAlwaysOn(skill);
+  // Org sharing is on where `capabilities` (useSharingCapabilities' answer)
+  // says so.
+  const orgSharingOn = capabilities?.enabled === true;
+  const alwaysOn = orgSharingOn && isSkillAlwaysOn(skill);
   const age = relativeAge(skill.updatedAt);
   const updated = formatDate(skill.updatedAt);
-  const showAudience = !!orgSharing && !skill.isBuiltin;
+  const showAudience = orgSharingOn && !skill.isBuiltin;
   // Without org sharing a skill is shared with everyone or nobody; one that
   // offers no control (someone else's) still says so.
-  const sharedWithEveryone = !orgSharing && !sharingControl && isSharedSkill(skill);
-  const showOwner = !!orgSharing && !skill.isBuiltin && (skillOwnerEmail(skill) || skill.owner?.id);
+  const sharedWithEveryone = !orgSharingOn && !sharingControl && isSharedSkill(skill);
+  const showOwner = orgSharingOn && !skill.isBuiltin && (skillOwnerEmail(skill) || skill.owner?.id);
   const instructions = (skill.declarative || '').trim();
 
   return (
@@ -200,7 +203,7 @@ export default function SkillDetail({
         </Property>
         {showAudience && (
           <Property label={SHARED_WITH_LABEL} testId="skill-meta-audience">
-            <AudienceValue skill={skill} orgName={orgSharing.orgName} teamsState={teamsState} />
+            <AudienceValue skill={skill} orgName={capabilities.org_name} teamsState={teamsState} />
           </Property>
         )}
         {sharingControl && (

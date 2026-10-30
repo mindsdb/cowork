@@ -28,9 +28,11 @@ export const ORG_ADMIN_ONLY_HINT = 'Only admins can share with the whole organiz
    to a task. Someone allowed to may make it "always on": part of every task
    for everyone it reaches. The server enforces who may; these mirror it. */
 export const ALWAYS_ON_LABEL = 'Always include in every task';
-export const ALWAYS_ON_HELP_OFF = "Anton will use this skill only when it's relevant.";
-export const ALWAYS_ON_HELP_ON = 'Anton will include this skill in every task.';
-export const alwaysOnHelp = (on) => (on ? ALWAYS_ON_HELP_ON : ALWAYS_ON_HELP_OFF);
+/** What "always on" does for a skill (`name`), on or off: the switch's help
+    line, and the toast once a save changes only it. */
+export const alwaysOnHelp = (on, name = 'this skill') => (on
+  ? `Anton will include ${name} in every task.`
+  : `Anton will use ${name} only when it's relevant.`);
 export const ALWAYS_ON_ORG_ADMIN_HINT = 'Only admins can make an organization-wide skill always on';
 export const ALWAYS_ON_EDITOR_HINT = 'Only people who can edit this skill can change this';
 export const ALWAYS_ON_BADGE = 'Always on';
@@ -40,6 +42,9 @@ export const ALWAYS_ON_BADGE_HINT = "Part of every task for everyone it's shared
 export function everyoneAtLabel(orgName) {
   return orgName ? `Everyone at ${orgName}` : 'Everyone in your organization';
 }
+
+/** The second line under "Everyone at ‹org›", wherever it shows. */
+export const EVERYONE_AT_DESC = 'Anyone in your organization';
 
 /** The org's name for running text, or "your organization". */
 export function orgNameOrGeneric(orgName) {
@@ -183,6 +188,17 @@ export function alwaysOnLockReason(access, { canShareOrg = false, canEdit = fals
   return null;
 }
 
+/** Whether the caller may switch "always on" for a skill as it is shared
+    now: one they can edit, that the org or a team reaches, and only where
+    `alwaysOnLockReason` lets them (`canShareOrg` for org-wide). A member of
+    one of its teams may, though only the owner or an admin changes who it
+    reaches (`canChangeSkillAudience`). Never a built-in. */
+export function canChangeSkillAlwaysOn(skill, { canShareOrg = false } = {}) {
+  if (skill?.isBuiltin || !canEditSkill(skill)) return false;
+  const access = skillAccess(skill);
+  return canBeAlwaysOn(access) && alwaysOnLockReason(access, { canShareOrg, canEdit: true }) === null;
+}
+
 /** Only me: nobody else is named. */
 export function isPrivateAccess(access) {
   return !access.orgAllowed && access.allowedTeamIds.length === 0 && access.allowedUserIds.length === 0;
@@ -198,13 +214,19 @@ export function skillAccessPayload(access) {
   };
 }
 
-/** Whether two `PUT /skills/{slug}/sharing` bodies name the same audience,
-    whatever order the ids come in. */
-export function sameSkillAccessPayload(a, b) {
+/** Whether two `PUT /skills/{slug}/sharing` bodies let the same org, teams
+    and people use the skill, whatever order the ids come in. */
+export function sameSkillAudience(a, b) {
   const ids = (list) => [...list].sort().join(',');
-  return a.org_allowed === b.org_allowed && a.always_on === b.always_on
+  return a.org_allowed === b.org_allowed
     && ids(a.allowed_team_ids) === ids(b.allowed_team_ids)
     && ids(a.allowed_user_ids) === ids(b.allowed_user_ids);
+}
+
+/** Whether two `PUT /skills/{slug}/sharing` bodies are the same: the same
+    audience and the same `always_on`. */
+export function sameSkillAccessPayload(a, b) {
+  return sameSkillAudience(a, b) && a.always_on === b.always_on;
 }
 
 /** Which section of the Skills page a skill sits in. A skill without one (an
@@ -303,10 +325,9 @@ export function accessAllowedUserIds(access) {
   return stringList(firstDefined(access?.allowed_user_ids, access?.allowedUserIds));
 }
 
-/** Whether an artifact's access lets the whole org in (`org_allowed`; older
-    answers also said `org_wide`). */
+/** Whether an artifact's access lets the whole org in (`org_allowed`). */
 export function accessOrgAllowed(access) {
-  return !!firstDefined(access?.org_allowed, access?.orgAllowed, access?.org_wide, access?.orgWide);
+  return !!firstDefined(access?.org_allowed, access?.orgAllowed);
 }
 
 /* ── "Share" or "Shared" (ENG-3787) ─────────────────────────────────────

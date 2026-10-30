@@ -21,7 +21,7 @@ const toast = vi.hoisted(() => ({ add: vi.fn() }));
 
 vi.mock('../api', () => api);
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => toast }));
-vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
+vi.mock('../../platform/host', () => ({ host: { isWeb: true }, getAccessToken: async () => null }));
 
 const OWNER_CAPS = { canEdit: true, canDelete: true, canDisable: true };
 const READER_CAPS = { canEdit: false, canDelete: false, canDisable: false };
@@ -289,6 +289,88 @@ describe('SkillsView with org sharing', () => {
     expect(screen.getByRole('note')).toHaveTextContent("It's part of every task, and only its owner can change it.");
   });
 
+  describe('always on, for a member of a team the skill is shared with', () => {
+    // The server lets a teammate edit a team skill, and switch always on,
+    // but only its owner or an admin changes who it reaches.
+    const teammate = {
+      ...teamSkill, canEdit: true, capabilities: { ...OWNER_CAPS, canShare: false },
+      access: { ...teamSkill.access, alwaysOn: false },
+    };
+
+    it('offers the switch, which saves always_on alone', async () => {
+      const user = userEvent.setup();
+      await renderPage([teammate]);
+      await waitFor(() => expect(section('My teams')).toBeInTheDocument());
+      api.setSkillAccess.mockResolvedValue({ ...teammate, access: { ...teammate.access, alwaysOn: true } });
+
+      await user.click(screen.getByText('team-playbook'));
+      await user.click(screen.getByRole('button', { name: 'Shared' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).queryByRole('radio')).toBeNull();
+      await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+      await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('team-playbook', { always_on: true }));
+      // Who can use it did not change, so the toast doesn't say it did.
+      await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+        title: 'Anton will include team-playbook in every task.', type: 'success',
+      }));
+      expect(toast.add).not.toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringMatching(/^Updated who can use/) }));
+    });
+
+    it('says so when the switch is turned off', async () => {
+      const user = userEvent.setup();
+      const on = { ...teammate, access: { ...teammate.access, alwaysOn: true } };
+      await renderPage([on]);
+      await waitFor(() => expect(section('My teams')).toBeInTheDocument());
+      api.setSkillAccess.mockResolvedValue(teammate);
+
+      await user.click(screen.getByText('team-playbook'));
+      await user.click(screen.getByRole('button', { name: 'Shared' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+      await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('team-playbook', { always_on: false }));
+      await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+        title: "Anton will use team-playbook only when it's relevant.", type: 'success',
+      }));
+    });
+
+    it('offers nothing on an org-wide skill without can_share_org', async () => {
+      const user = userEvent.setup();
+      await renderPage([{
+        ...orgWide, canEdit: true, capabilities: { ...OWNER_CAPS, canShare: false },
+      }]);
+      await waitFor(() => expect(section('Everyone at Acme')).toBeInTheDocument());
+
+      await user.click(screen.getByText('brand-voice'));
+      expect(screen.queryByRole('button', { name: /^Share/ })).toBeNull();
+    });
+  });
+
+  it("says what always on does when the owner's save changes only that", async () => {
+    // The owner's Share sends the whole audience; only always_on differs.
+    const user = userEvent.setup();
+    await renderPage([mine]);
+    await waitFor(() => expect(section('My teams')).toBeInTheDocument());
+    api.setSkillAccess.mockResolvedValue({ ...mine, access: { ...mine.access, alwaysOn: true } });
+
+    await user.click(screen.getByText('weekly-report'));
+    await user.click(screen.getByRole('button', { name: 'Shared' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('weekly-report', {
+      org_allowed: false, allowed_team_ids: ['t-platform'], allowed_user_ids: [], always_on: true,
+    }));
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+      title: 'Anton will include weekly-report in every task.', type: 'success',
+    }));
+    expect(toast.add).not.toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringMatching(/^Updated who can use/) }));
+  });
+
   it('shares the caller\'s own skill through the dialog and moves it to Yours', async () => {
     const user = userEvent.setup();
     await renderPage([mine]);
@@ -310,6 +392,7 @@ describe('SkillsView with org sharing', () => {
 
     await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('weekly-report', { org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(toast.add).toHaveBeenCalledWith({ title: 'Updated who can use weekly-report.', type: 'success' });
     expect(api.fetchSkills.mock.calls.length).toBe(loads + 1);
     // The detail reads Only you, and back on the list it sits under Yours.
     await waitFor(() => expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Shared withOnly you'));

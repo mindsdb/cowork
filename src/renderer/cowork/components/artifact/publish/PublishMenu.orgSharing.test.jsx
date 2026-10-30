@@ -1,17 +1,31 @@
 // Teams and "Everyone at ‹org›" in the restricted choice (ENG-3787).
-import { beforeEach, describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 
 const people = vi.hoisted(() => ({ byIds: vi.fn(), directory: vi.fn() }));
+const sharingRead = vi.hoisted(() => vi.fn());
 vi.mock('../../../api', async (importOriginal) => ({
   ...(await importOriginal()),
   fetchHubPeopleByIds: people.byIds,
   fetchHubDirectory: people.directory,
+  fetchSkillSharingCapabilities: sharingRead,
+}));
+// The access route, for the panel driven by the real usePublish.
+const workspace = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn() }));
+vi.mock('../../../lib/artifactWorkspaceApi', async (importOriginal) => ({
+  ...(await importOriginal()),
+  canUseArtifactWorkspace: () => true,
+  loadArtifactAccess: workspace.load,
+  setArtifactAccess: workspace.save,
 }));
 
 import { PublishMenu } from './PublishMenu';
+import { usePublish } from './usePublish';
 import { __resetOrgSharingForTests } from '../../../hooks/useOrgSharing';
+import { SHARING_OFF } from '../../../lib/orgSharing';
+import { setOrgMode } from '../../../../lib/orgMode';
 
 const DIRECTORY = [
   { id: 'u-ana', name: 'Ana Ruiz', email: 'ana@acme.com' },
@@ -30,6 +44,13 @@ beforeEach(() => {
 });
 
 const TEAMS = { status: 'ready', reachable: true, teams: [{ id: 't-platform', display_name: 'Platform' }] };
+// What usePublish hands an org deployment's panel once the capabilities read
+// answered: useSharingCapabilities' `status`, `capabilities` (here an
+// admin's) and `retry`, with the caller's `teams`.
+const ADMIN_CAPABILITIES = { enabled: true, can_share_org: true, can_write_org: false, org_name: 'Acme' };
+const orgSharing = ({ capabilities = {}, ...over } = {}) => ({
+  status: 'ready', retry: vi.fn(), capabilities: { ...ADMIN_CAPABILITIES, ...capabilities }, teams: TEAMS, ...over,
+});
 
 function makeController(overrides = {}) {
   return {
@@ -47,8 +68,8 @@ function makeController(overrides = {}) {
     accessLoaded: true,
     versions: [],
     modified: false,
-    supportsPublishRoutes: false,
-    orgSharing: { enabled: true, orgName: 'Acme', teams: TEAMS },
+    orgMode: true,
+    orgSharing: orgSharing(),
     setError: vi.fn(),
     loadVersions: vi.fn(),
     publish: vi.fn(async () => true),
@@ -105,6 +126,34 @@ describe('PublishMenu with org sharing', () => {
       allowed_user_ids: [],
       allowed_emails: [],
       owner_only: false,
+    });
+  });
+
+  describe('who may share with everyone at the org', () => {
+    it('disables Everyone at the org for a member, with the admin hint, and saves nothing org-wide', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ orgSharing: orgSharing({ capabilities: { can_share_org: false } }) });
+      render(<PublishMenu controller={pub} />);
+      await openAccessChange(user, null);
+
+      expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
+      await user.hover(screen.getByTestId('org-option-locked'));
+      expect(await screen.findByText('Only admins can share with the whole organization')).toBeInTheDocument();
+      await user.click(radio(/^Everyone at Acme/));
+      expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-checked', 'false');
+      expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+      expect(pub.publish).not.toHaveBeenCalled();
+    });
+
+    it('lets an admin pick it', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ orgSharing: orgSharing({ capabilities: { can_share_org: true } }) });
+      render(<PublishMenu controller={pub} />);
+      await openAccessChange(user, /^Everyone at Acme/);
+
+      expect(screen.queryByTestId('org-option-locked')).toBeNull();
+      await user.click(screen.getByRole('button', { name: 'Update' }));
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ org_allowed: true, owner_only: false }));
     });
   });
 
@@ -201,7 +250,7 @@ describe('PublishMenu with org sharing', () => {
     const withDefault = { ...TEAMS, teams: [{ id: 't-all', display_name: 'All members', is_default: true }, ...TEAMS.teams] };
     render(<PublishMenu controller={makeController({
       allowedTeamIds: ['t-all'], ownerOnly: false,
-      orgSharing: { enabled: true, orgName: 'Acme', teams: withDefault },
+      orgSharing: orgSharing({ teams: withDefault }),
     })} />);
     await openChange(user);
 
@@ -240,7 +289,7 @@ describe('PublishMenu with org sharing', () => {
   it('says when the teams could not be loaded', async () => {
     const user = userEvent.setup();
     render(<PublishMenu controller={makeController({
-      orgSharing: { enabled: true, orgName: 'Acme', teams: { status: 'ready', reachable: false, teams: [] } },
+      orgSharing: orgSharing({ teams: { status: 'ready', reachable: false, teams: [] } }),
     })} />);
     await openAccessChange(user);
     await user.click(screen.getByRole('combobox'));
@@ -264,7 +313,7 @@ describe('PublishMenu with org sharing', () => {
 
   it('offers Specific people by email only without org sharing', async () => {
     const user = userEvent.setup();
-    const pub = makeController({ orgSharing: { enabled: false, orgName: null, teams: TEAMS } });
+    const pub = makeController({ orgSharing: orgSharing({ capabilities: SHARING_OFF }) });
     render(<PublishMenu controller={pub} />);
     await openAccessChange(user, /^Specific people/);
 
@@ -280,8 +329,93 @@ describe('PublishMenu with org sharing', () => {
     expect(screen.getByTestId('notify-confirm')).toHaveTextContent('Let 1 new person know by email?');
     expect(screen.getByTestId('notify-confirm')).toHaveTextContent('zed@partner.io');
     await user.click(screen.getByRole('button', { name: "Don't notify" }));
-    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
+    // The org access route takes the org names whatever org sharing allows.
+    expect(pub.publish).toHaveBeenCalledWith({
+      mode: 'restricted', org_allowed: false, owner_only: false,
+      allowed_emails: ['zed@partner.io'], allowed_team_ids: [], allowed_user_ids: [],
+    });
     expect(within(document.body).queryByText(/Acme/)).toBeNull();
+  });
+
+  // `orgMode` alone decides the route; usePublish hands every deployment an
+  // `orgSharing`, idle where nothing is asked.
+  it('on desktop waits for nothing and sends outside emails as desktop publish reads them', async () => {
+    const user = userEvent.setup();
+    const pub = makeController({
+      orgMode: false,
+      orgSharing: orgSharing({ status: 'idle', capabilities: SHARING_OFF }),
+    });
+    render(<PublishMenu controller={pub} />);
+    await openAccessChange(user, /^Specific people/);
+
+    await user.type(screen.getByRole('combobox', { name: 'Add people by email' }), 'zed@partner.io{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    await user.click(screen.getByRole('button', { name: "Don't notify" }));
+    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
+  });
+
+  describe('before the sharing capabilities are known', () => {
+    const update = () => screen.getByRole('button', { name: 'Update' });
+
+    it('shows no chooser and saves nothing while they load', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ orgSharing: orgSharing({ status: 'loading', capabilities: SHARING_OFF }) });
+      render(<PublishMenu controller={pub} />);
+      await openAccessChange(user, null);
+
+      expect(screen.getByRole('status')).toHaveTextContent('Loading sharing settings…');
+      expect(screen.queryByRole('radio')).toBeNull();
+      expect(update()).toBeDisabled();
+      await user.click(update());
+      expect(pub.publish).not.toHaveBeenCalled();
+    });
+
+    it('holds a first share too', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ publishedUrl: '', orgSharing: orgSharing({ status: 'loading', capabilities: SHARING_OFF }) });
+      render(<PublishMenu controller={pub} />);
+      await user.click(screen.getByText('Share'));
+
+      expect(screen.queryByRole('radio')).toBeNull();
+      const share = screen.getAllByRole('button', { name: 'Share' }).at(-1);
+      expect(share).toBeDisabled();
+      await user.click(share);
+      expect(pub.publish).not.toHaveBeenCalled();
+    });
+
+    it('offers Retry when they could not be read, and saves nothing', async () => {
+      const user = userEvent.setup();
+      const retry = vi.fn();
+      const pub = makeController({ orgSharing: orgSharing({ status: 'error', retry, capabilities: SHARING_OFF }) });
+      render(<PublishMenu controller={pub} />);
+      await openAccessChange(user, null);
+
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load the sharing settings.");
+      expect(screen.queryByRole('radio')).toBeNull();
+      expect(update()).toBeDisabled();
+      await user.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(retry).toHaveBeenCalledTimes(1);
+      expect(pub.publish).not.toHaveBeenCalled();
+    });
+
+    it('sends Only you under the org names, with no emails key, once they are known', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({ allowedTeamIds: ['t-platform'], ownerOnly: false });
+      const { rerender } = render(<PublishMenu controller={{ ...pub, orgSharing: orgSharing({ status: 'loading', capabilities: SHARING_OFF }) }} />);
+      await openChange(user);
+      expect(screen.queryByRole('radio')).toBeNull();
+
+      rerender(<PublishMenu controller={pub} />);
+      await user.click(radio(/^Only you/));
+      await user.click(update());
+
+      expect(pub.publish).toHaveBeenCalledTimes(1);
+      expect(pub.publish).toHaveBeenCalledWith({
+        mode: 'restricted', org_allowed: false, owner_only: true,
+        allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
+      });
+      expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('emails');
+    });
   });
   describe('the collapsed summary', () => {
     const open = (user) => user.click(screen.getByText(/Shared/));
@@ -330,7 +464,7 @@ describe('PublishMenu with org sharing', () => {
       const user = userEvent.setup();
       render(<PublishMenu controller={makeController({
         accessEmails: ['zed@partner.io', 'amy@partner.io'], ownerOnly: false,
-        orgSharing: { enabled: false, orgName: null, teams: TEAMS },
+        orgSharing: orgSharing({ capabilities: SHARING_OFF }),
       })} />);
       await open(user);
       expect(screen.getByTestId('access-summary')).toHaveTextContent('Specific people');
@@ -430,5 +564,134 @@ describe('PublishMenu with org sharing', () => {
       expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled();
       expect(screen.getByRole('list', { name: 'Recipients' })).toHaveTextContent('Ana Ruiz');
     });
+  });
+});
+
+describe('PublishMenu on an org card, driven by usePublish', () => {
+  // cowork-server's org card says restricted but carries no audience: its
+  // teams, people and org flag are empty whoever it is shared with. Only
+  // the access route says who has access.
+  const CARD = {
+    id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70',
+    projectId: 'proj-1',
+    publishedUrl: 'https://share/abc',
+    accessMode: 'restricted',
+    ownerOnly: false,
+    orgAllowed: false,
+    allowedTeamIds: [],
+    allowedUserIds: [],
+  };
+  const SHARED_WITH_PLATFORM = {
+    accessMode: 'restricted', accessEmails: [], ownerOnly: false,
+    org_allowed: false, allowed_team_ids: ['t-platform'], allowed_user_ids: [],
+  };
+
+  function OrgPanel() {
+    const pub = usePublish(CARD, { enabled: true });
+    return <PublishMenu controller={pub} />;
+  }
+
+  beforeEach(() => {
+    workspace.load.mockReset();
+    workspace.save.mockReset();
+    sharingRead.mockReset();
+    sharingRead.mockResolvedValue(ADMIN_CAPABILITIES);
+    setOrgMode(true);
+  });
+  afterEach(() => setOrgMode(false));
+
+  it('keeps Update disabled until the access route answers, then saves the stored audience with the change', async () => {
+    const user = userEvent.setup();
+    let answer;
+    workspace.load.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    workspace.save.mockResolvedValue({ url: 'https://share/abc', ...SHARED_WITH_PLATFORM, allowed_user_ids: ['u-ana'] });
+    render(<OrgPanel />);
+    await openChange(user);
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Loading current access…'));
+    // Nothing to pick from the card's empty audience, and nothing to save.
+    expect(screen.queryByRole('radio')).toBeNull();
+    const update = screen.getByRole('button', { name: 'Update' });
+    expect(update).toBeDisabled();
+    expect(update).toHaveAttribute('title', 'Loading current access…');
+    await user.click(update);
+    expect(workspace.save).not.toHaveBeenCalled();
+
+    await act(async () => { answer(SHARED_WITH_PLATFORM); });
+    await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
+    await user.type(screen.getByRole('combobox', { name: 'Add teams, people or emails' }), 'ana');
+    await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    await user.click(screen.getByRole('button', { name: "Don't notify" }));
+
+    // The team the artifact is shared with stays; only Ana is added.
+    await waitFor(() => expect(workspace.save).toHaveBeenCalledTimes(1));
+    expect(workspace.save).toHaveBeenCalledWith(CARD, {
+      mode: 'restricted',
+      org_allowed: false,
+      allowed_team_ids: ['t-platform'],
+      allowed_user_ids: ['u-ana'],
+      allowed_emails: [],
+      owner_only: false,
+    });
+  });
+
+  it('keeps the stored audience when the list reloads mid-edit', async () => {
+    const user = userEvent.setup();
+    workspace.load.mockResolvedValue(SHARED_WITH_PLATFORM);
+    workspace.save.mockResolvedValue({ url: 'https://share/abc', ...SHARED_WITH_PLATFORM, allowed_user_ids: ['u-ana'] });
+    // Like the app: the parent keeps the card, takes the hook's reports, and
+    // replaces the card when its artifacts list reloads after a turn.
+    let reloadCard;
+    function ReloadingPanel() {
+      const [card, setCard] = useState(CARD);
+      reloadCard = setCard;
+      const pub = usePublish(card, { enabled: true, onChange: setCard });
+      return <PublishMenu controller={pub} />;
+    }
+    render(<ReloadingPanel />);
+    await openChange(user);
+    await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
+
+    // A fresh card with no audience, `modified` flipped by an edit that
+    // autopublish has not caught up with yet.
+    await act(async () => { reloadCard({ ...CARD, modified: true }); });
+    await user.type(screen.getByRole('combobox', { name: 'Add teams, people or emails' }), 'ana');
+    await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    await user.click(screen.getByRole('button', { name: "Don't notify" }));
+
+    await waitFor(() => expect(workspace.save).toHaveBeenCalledTimes(1));
+    expect(workspace.save.mock.calls[0][1]).toEqual({
+      mode: 'restricted',
+      org_allowed: false,
+      allowed_team_ids: ['t-platform'],
+      allowed_user_ids: ['u-ana'],
+      allowed_emails: [],
+      owner_only: false,
+    });
+  });
+
+  it("offers Retry when the access route fails, never the card's empty audience", async () => {
+    const user = userEvent.setup();
+    workspace.load.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { status: 503 }));
+    workspace.load.mockResolvedValueOnce(SHARED_WITH_PLATFORM);
+    render(<OrgPanel />);
+    await user.click(screen.getByText(/Shared/));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the current access.");
+    expect(screen.queryByTestId('access-summary')).toBeNull();
+    await user.click(screen.getByText('Change'));
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load the current access.");
+    expect(screen.queryByRole('radio')).toBeNull();
+    const update = screen.getByRole('button', { name: 'Update' });
+    expect(update).toBeDisabled();
+    // It isn't loading any more; the alert says what happened.
+    expect(update).not.toHaveAttribute('title');
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
+    expect(workspace.load).toHaveBeenCalledTimes(2);
+    expect(workspace.save).not.toHaveBeenCalled();
   });
 });

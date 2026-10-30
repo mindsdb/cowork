@@ -22,8 +22,8 @@ import { Tooltip } from '../../ui';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
-import AudiencePanel from '../../AudiencePanel';
-import { everyoneAtLabel, namesDefaultTeam, withoutDefaultTeam } from '../../../lib/orgSharing';
+import AudiencePanel, { everyoneOption } from '../../AudiencePanel';
+import { EVERYONE_AT_DESC, everyoneAtLabel, namesDefaultTeam, withoutDefaultTeam } from '../../../lib/orgSharing';
 
 // Shared class strings for the bare-input shell (a bordered row wrapping an
 // unstyled <input>), so the password field and any future inputs stay in sync.
@@ -126,18 +126,21 @@ export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
 
 // Turn a draft into the `access` payload `publishArtifact` expects. `owner_only`
 // is derived, never stored on the draft.
-// With org sharing on (ENG-3787) a restricted payload names its audience the
-// way skills do, and only so: `org_allowed`, `allowed_team_ids`,
-// `allowed_user_ids` (people in the org) and `allowed_emails` (people outside
-// it). Everyone at ‹org› sends `org_allowed` and empty lists. Without org
-// sharing the outside emails are `emails`, as that publish reads them.
+// On an org deployment (`orgMode`, ENG-3787) the access route reads a
+// restricted audience the way skills name it, and only so: `org_allowed`,
+// `allowed_team_ids`, `allowed_user_ids` (people in the org) and
+// `allowed_emails` (people outside it). It refuses `emails` with a 400, so
+// every org-mode save sends these names, whatever org sharing allows.
+// Everyone at ‹org› sends `org_allowed` and empty lists. Desktop's `/publish`
+// reads outside emails as `emails`.
 //
 // `notify` (`{ userIds, emails }`, when given) becomes `notify: { user_ids,
 // emails }` on a restricted payload: exactly the individuals this save adds,
 // whom the person chose to tell by email. Absent when they chose not to, or
-// were never asked; the server forwards it to auth, which emails those listed.
-export function buildAccessPayload(draft, { orgSharing = false, notify } = {}) {
-  return withNotify(buildOrgAccessPayload(draft, { orgSharing }), notify);
+// were never asked; the server forwards it to the auth service, which emails
+// those listed.
+export function buildAccessPayload(draft, { orgMode = false, notify } = {}) {
+  return withNotify(orgMode ? buildOrgAccessPayload(draft) : buildBaseAccessPayload(draft), notify);
 }
 
 function withNotify(payload, notify) {
@@ -163,9 +166,12 @@ export function addedIndividuals(draft, saved, { orgSharing = false } = {}) {
   };
 }
 
-function buildOrgAccessPayload(draft, { orgSharing }) {
-  const payload = buildBaseAccessPayload(draft, { orgSharing });
-  if (!orgSharing || payload.mode !== 'restricted') return payload;
+function buildOrgAccessPayload(draft) {
+  if (draft?.mode === 'org') {
+    return { mode: 'restricted', org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], allowed_emails: [], owner_only: false };
+  }
+  const payload = buildBaseAccessPayload(draft);
+  if (payload.mode !== 'restricted') return payload;
   const restricted = draft?.mode === 'restricted';
   const teamIds = restricted ? [...(draft.teamIds || [])] : [];
   const userIds = restricted ? [...new Set(draft.userIds || [])] : [];
@@ -179,16 +185,13 @@ function buildOrgAccessPayload(draft, { orgSharing }) {
   };
 }
 
-function buildBaseAccessPayload(draft, { orgSharing }) {
+function buildBaseAccessPayload(draft) {
   if (draft?.mode === 'password') return { mode: 'password', password: (draft.password || '').trim() };
   // Collapse the UI mode back to the wire shape. `owner_only` is load-bearing:
   // `restricted` with neither emails nor an org would otherwise be read as an
   // empty selection and degrade to public — the exact opposite of the choice.
   if (draft?.mode === 'ownerOnly') {
     return { mode: 'restricted', emails: [], org_allowed: false, owner_only: true };
-  }
-  if (draft?.mode === 'org' && orgSharing) {
-    return { mode: 'restricted', emails: [], org_allowed: true, owner_only: false };
   }
   if (draft?.mode === 'restricted') {
     const { valid } = parseEmailList(draft.emailsText);
@@ -237,7 +240,7 @@ export const ACCESS_LABELS = {
     title: 'Specific teams and people',
     desc: 'Pick teams, colleagues or outside emails',
   },
-  org: { icon: Ico.building, title: everyoneAtLabel(null), desc: 'Anyone in your organization' },
+  org: { icon: Ico.building, title: everyoneAtLabel(null), desc: EVERYONE_AT_DESC },
   ownerOnly: { icon: Ico.lock, title: 'Only you', desc: 'Nobody else can open this' },
 };
 
@@ -265,9 +268,12 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
 // `modes` lets a caller restrict the offered set (e.g. ['public','password']);
 // defaults to every mode this build offers. `value`/`onChange` are the
 // controlled draft.
-// `sharing` turns on org sharing (ENG-3787): `{ enabled, orgName, teams }`,
-// where `teams` is what `useHubTeams` returns. Off, there is no "Everyone",
-// and "Specific people" takes emails only.
+// `sharing` turns on org sharing (ENG-3787) when its `capabilities.enabled`
+// is true: `{ capabilities, teams }`, where `capabilities` is what
+// `useSharingCapabilities` reads and `teams` is what `useHubTeams` returns.
+// Off, there is no "Everyone", and "Specific people" takes emails only.
+// Without `capabilities.can_share_org` (admins only) "Everyone" is greyed
+// with the admin hint, as on a skill.
 export function AccessChooser({
   value,
   onChange,
@@ -284,8 +290,8 @@ export function AccessChooser({
     latest.current = { ...latest.current, ...patch };
     onChange?.(latest.current);
   };
-  const orgSharing = sharing?.enabled === true;
-  const orgName = orgSharing ? sharing.orgName || null : null;
+  const orgSharing = sharing?.capabilities?.enabled === true;
+  const orgName = orgSharing ? sharing.capabilities.org_name || null : null;
   const specific = orgSharing ? ACCESS_LABELS.specific : ACCESS_LABELS.restricted;
 
   const recipients = {
@@ -309,7 +315,7 @@ export function AccessChooser({
   // visible in the choice they had selected.
   const options = [
     modes.includes('ownerOnly') && { value: 'ownerOnly', icon: Ico.lock(16), title: ACCESS_LABELS.ownerOnly.title, desc: ACCESS_LABELS.ownerOnly.desc },
-    orgSharing && modes.includes('org') && { value: 'org', icon: Ico.building(16), title: everyoneAtLabel(orgName), desc: ACCESS_LABELS.org.desc },
+    orgSharing && modes.includes('org') && everyoneOption({ orgName, canShareOrg: sharing.capabilities.can_share_org === true }),
     modes.includes('restricted') && { value: 'restricted', icon: Ico.people(16), title: specific.title, desc: specific.desc },
     modes.includes('password') && { value: 'password', icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc },
     modes.includes('public') && { value: 'public', icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },

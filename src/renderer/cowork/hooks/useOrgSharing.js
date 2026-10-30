@@ -8,8 +8,10 @@ import { SHARING_OFF } from '../lib/orgSharing';
  * read once per organization and shared by every surface that asks: the
  * Skills page, the skill Share dialog and the artifact Share panel.
  *
- * Until the answer lands, and on any failure, sharing reads as off, so those
- * surfaces render exactly as they do on a build without it.
+ * Until the answer lands, and on any failure, the capabilities read as off,
+ * so those surfaces render exactly as they do on a build without it. Their
+ * `status` says whether the answer is in (ready), still coming (loading) or
+ * failed (error), for a surface that must not act before it knows.
  */
 
 let capabilitiesPromise = null;
@@ -23,10 +25,11 @@ subscribeOrganizationChanges(() => {
 
 function loadCapabilities() {
   if (!capabilitiesPromise) {
-    capabilitiesPromise = Promise.resolve().then(() => fetchSkillSharingCapabilities()).catch(() => {
-      // A failed read is retried on the next mount rather than cached as off.
+    capabilitiesPromise = Promise.resolve().then(() => fetchSkillSharingCapabilities()).catch((error) => {
+      // A failed read is asked again on the next mount or retry, never
+      // cached, and never taken for "sharing is off".
       capabilitiesPromise = null;
-      return SHARING_OFF;
+      throw error;
     });
   }
   return capabilitiesPromise;
@@ -53,17 +56,28 @@ export function __resetOrgSharingForTests() {
   resetDirectory();
 }
 
-/** `{ enabled, can_share_org, can_write_org, org_name }`; off until known,
-    and not asked while `active` is false. */
+/**
+ * What org sharing allows: `{ status, capabilities, retry }`.
+ * `capabilities` is `{ enabled, can_share_org, can_write_org, org_name }`,
+ * off (`SHARING_OFF`) until the answer lands and when it couldn't be read.
+ * `status` is 'idle' while `active` is false (nothing is asked), then
+ * 'loading', 'ready', or 'error', which `retry` asks again.
+ */
 export function useSharingCapabilities(active = true) {
-  const [capabilities, setCapabilities] = useState(SHARING_OFF);
+  const [state, setState] = useState({ status: 'loading', capabilities: SHARING_OFF });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!active) return undefined;
     let live = true;
-    loadCapabilities().then((next) => { if (live) setCapabilities(next); });
+    setState((current) => (current.status === 'ready' ? current : { status: 'loading', capabilities: SHARING_OFF }));
+    loadCapabilities().then(
+      (capabilities) => { if (live) setState({ status: 'ready', capabilities }); },
+      () => { if (live) setState({ status: 'error', capabilities: SHARING_OFF }); },
+    );
     return () => { live = false; };
-  }, [active]);
-  return active ? capabilities : SHARING_OFF;
+  }, [active, attempt]);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  return active ? { ...state, retry } : { status: 'idle', capabilities: SHARING_OFF, retry };
 }
 
 /**
@@ -183,7 +197,8 @@ export function useKnownPeople(ids) {
  * organization and shared by every recipient picker, so filtering is local.
  * A failure is not cached: it shows as `error` until `retry` asks again.
  * `refresh` reads it again while the loaded list stays in place
- * (`refreshing`), for an address the list is too old to know.
+ * (`refreshing`), for an address the list is too old to know. This is the
+ * app's one copy of the directory, and `loadedAt` says how old it is.
  */
 const DIRECTORY_IDLE = Object.freeze({ status: 'idle', people: [], truncated: false, loadedAt: 0, refreshing: false });
 

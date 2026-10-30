@@ -73,14 +73,12 @@ describe('setSkillAccess', () => {
     });
   });
 
-  it('sends always_on false when it is left out', async () => {
+  it('sends only the fields it is given, which the route changes and keeps the rest', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ label: 'weekly' }));
 
-    await setSkillAccess('weekly', { org_allowed: true });
+    await setSkillAccess('weekly', { always_on: true });
 
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
-      org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], always_on: false,
-    });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ always_on: true });
   });
 
   it("throws a 403 with the server's sentence", async () => {
@@ -94,7 +92,7 @@ describe('setSkillAccess', () => {
 });
 
 describe('fetchHubTeams', () => {
-  it('asks the hub route with the MindsHub credential', async () => {
+  it('asks the hub route with no X-MindsHub-Authorization, which it does not read', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
       reachable: true, teams: [{ id: 't1', displayName: 'Platform' }, { bad: true }],
     }));
@@ -102,7 +100,7 @@ describe('fetchHubTeams', () => {
     expect(await fetchHubTeams()).toEqual({ reachable: true, teams: [{ id: 't1', display_name: 'Platform', is_default: false }] });
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/teams/');
-    expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
+    expect(init.headers).not.toHaveProperty('X-MindsHub-Authorization');
   });
 
   it('keeps which team is the org default', async () => {
@@ -135,7 +133,7 @@ describe('fetchHubTeams', () => {
 });
 
 describe('fetchHubDirectory', () => {
-  it('reads the whole directory without params, with the MindsHub credential', async () => {
+  it('reads the whole directory without params, and with no X-MindsHub-Authorization', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
       reachable: true,
       truncated: true,
@@ -158,7 +156,7 @@ describe('fetchHubDirectory', () => {
     });
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/people/');
-    expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
+    expect(init.headers).not.toHaveProperty('X-MindsHub-Authorization');
   });
 
   it('takes a bare array and reads a missing truncated as false', async () => {
@@ -197,7 +195,7 @@ describe('fetchHubPeopleByIds', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/people/?ids=u1%2Cu2');
-    expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
+    expect(init.headers).not.toHaveProperty('X-MindsHub-Authorization');
   });
 
   it('asks in batches of at most 50 ids', async () => {

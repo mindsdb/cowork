@@ -18,11 +18,33 @@
 // no hover of its own, so the hint hangs off a wrapper (`disabledTestId`).
 // The option whose value is `specificValue` unfolds a `<RecipientField>`
 // (given `recipients`) right under its own card when picked.
+// `everyoneOption` is the "Everyone at ‹org›" card both audiences offer.
 
 import { RadioGroup } from '@base-ui/react/radio-group';
+import Ico from './Icons';
 import { Tooltip } from './ui';
 import { AudienceOption } from './AudienceOption';
 import RecipientField from './RecipientField';
+import { EVERYONE_AT_DESC, ORG_ADMIN_ONLY_HINT, everyoneAtLabel } from '../lib/orgSharing';
+
+/**
+ * The "Everyone at ‹org›" option, `value` 'org'. Only someone who may share
+ * with the whole org (`can_share_org`) can pick it; anyone else sees it
+ * greyed, with the admin hint on hover. One already shared org-wide shows it
+ * picked all the same.
+ * @param {{ orgName: string | null, canShareOrg: boolean }} args
+ */
+export function everyoneOption({ orgName, canShareOrg }) {
+  return {
+    value: 'org',
+    icon: Ico.building(16),
+    title: everyoneAtLabel(orgName),
+    desc: EVERYONE_AT_DESC,
+    disabled: !canShareOrg,
+    disabledHint: ORG_ADMIN_ONLY_HINT,
+    disabledTestId: 'org-option-locked',
+  };
+}
 
 /**
  * @param {{

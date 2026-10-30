@@ -588,6 +588,11 @@ exceptions are requests from the document preview frame, from frames inside
 it, and requests with no frame: the main process adds no token to those
 (`src/main/document-preview-guard.ts`).
 
+Only `/api/v1/hub/usage/` and the `/api/v1/hub/workspaces/` routes send
+`X-MindsHub-Authorization`. The org sharing reads, `/api/v1/hub/teams/` and
+`/api/v1/hub/people/`, send none, because cowork-server answers them from the
+`Authorization` the gateway validated (`cowork.principal.caller_bearer`).
+
 ### The MindsHub workspace selector
 
 A bordered control at the bottom of the sidebar, docked with the account row,

@@ -11,11 +11,14 @@ import {
   accessAllowedTeamIds,
   accessAllowedUserIds,
   accessOrgAllowed,
+  alwaysOnHelp,
   alwaysOnLockReason,
   canEditSkill,
   groupSkillsBySection,
   isPrivateAccess,
   isSkillAlwaysOn,
+  sameSkillAccessPayload,
+  sameSkillAudience,
   skillAccess,
   skillAccessPayload,
   skillAudienceBadge,
@@ -114,6 +117,21 @@ describe('always on', () => {
       .toEqual({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
   });
 
+  it('tells an always_on change apart from an audience change, whatever order the ids come in', () => {
+    const before = { org_allowed: false, allowed_team_ids: ['t1', 't2'], allowed_user_ids: ['u1'], always_on: false };
+    const onlyAlwaysOn = { ...before, allowed_team_ids: ['t2', 't1'], always_on: true };
+    expect(sameSkillAudience(onlyAlwaysOn, before)).toBe(true);
+    expect(sameSkillAccessPayload(onlyAlwaysOn, before)).toBe(false);
+    expect(sameSkillAudience({ ...before, allowed_user_ids: [] }, before)).toBe(false);
+    expect(sameSkillAudience({ ...before, org_allowed: true }, before)).toBe(false);
+  });
+
+  it('says what always on does, for this skill or one by name', () => {
+    expect(alwaysOnHelp(true)).toBe('Anton will include this skill in every task.');
+    expect(alwaysOnHelp(false)).toBe("Anton will use this skill only when it's relevant.");
+    expect(alwaysOnHelp(true, 'brand-voice')).toBe('Anton will include brand-voice in every task.');
+  });
+
   it('locks it for an org-wide skill without can_share_org and a team skill without can_edit', () => {
     const org = { orgAllowed: true, allowedTeamIds: ['t1'], allowedUserIds: [] };
     const team = { orgAllowed: false, allowedTeamIds: ['t1'], allowedUserIds: [] };
@@ -134,7 +152,7 @@ describe('canEditSkill', () => {
 });
 
 describe('artifact access fields', () => {
-  it('reads team ids, user ids and org_allowed in either spelling', () => {
+  it('reads team ids, user ids and org_allowed in either spelling, and never the retired org_wide', () => {
     expect(accessAllowedTeamIds({ allowed_team_ids: ['t1'] })).toEqual(['t1']);
     expect(accessAllowedTeamIds({ allowedTeamIds: ['t2'] })).toEqual(['t2']);
     expect(accessAllowedTeamIds({})).toEqual([]);
@@ -143,8 +161,8 @@ describe('artifact access fields', () => {
     expect(accessAllowedUserIds({})).toEqual([]);
     expect(accessOrgAllowed({ org_allowed: true })).toBe(true);
     expect(accessOrgAllowed({ orgAllowed: true })).toBe(true);
-    expect(accessOrgAllowed({ org_wide: true })).toBe(true);
-    expect(accessOrgAllowed({ orgAllowed: false, orgWide: true })).toBe(false);
+    expect(accessOrgAllowed({ org_wide: true })).toBe(false);
+    expect(accessOrgAllowed({ orgWide: true })).toBe(false);
     expect(accessOrgAllowed({})).toBe(false);
   });
 });

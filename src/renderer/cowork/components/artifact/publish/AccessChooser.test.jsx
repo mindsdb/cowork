@@ -65,7 +65,7 @@ describe('buildAccessPayload — restricted', () => {
   });
 
   it('sends Everyone at the org as org_allowed and nothing else', () => {
-    expect(buildAccessPayload({ mode: 'org', emailsText: 'a@x.com', teamIds: ['t1'], userIds: ['u1'] }, { orgSharing: true })).toEqual({
+    expect(buildAccessPayload({ mode: 'org', emailsText: 'a@x.com', teamIds: ['t1'], userIds: ['u1'] }, { orgMode: true })).toEqual({
       mode: 'restricted', org_allowed: true, owner_only: false,
       allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
     });
@@ -77,11 +77,25 @@ describe('buildAccessPayload — restricted', () => {
     });
   });
 
-  it('splits specific teams, people and outside emails with org sharing, under the canonical names only', () => {
-    expect(buildAccessPayload({ mode: 'restricted', emailsText: 'zed@partner.io', teamIds: ['t1'], userIds: ['u1', 'u1'] }, { orgSharing: true })).toEqual({
+  it('splits specific teams, people and outside emails in org mode, under the canonical names only', () => {
+    expect(buildAccessPayload({ mode: 'restricted', emailsText: 'zed@partner.io', teamIds: ['t1'], userIds: ['u1', 'u1'] }, { orgMode: true })).toEqual({
       mode: 'restricted', org_allowed: false, owner_only: false,
       allowed_emails: ['zed@partner.io'], allowed_team_ids: ['t1'], allowed_user_ids: ['u1'],
     });
+  });
+
+  // The org access route answers `emails` with a 400.
+  it('never sends emails in org mode, Only you and Specific people included', () => {
+    expect(buildAccessPayload({ mode: 'ownerOnly', emailsText: 'a@x.com' }, { orgMode: true })).toEqual({
+      mode: 'restricted', org_allowed: false, owner_only: true,
+      allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
+    });
+    const specific = buildAccessPayload(restricted('a@x.com'), { orgMode: true });
+    expect(specific).toEqual({
+      mode: 'restricted', org_allowed: false, owner_only: false,
+      allowed_emails: ['a@x.com'], allowed_team_ids: [], allowed_user_ids: [],
+    });
+    expect(specific).not.toHaveProperty('emails');
   });
 });
 
@@ -178,7 +192,7 @@ describe('notifying added people (ENG-3787)', () => {
   it('adds notify with exactly the people to email, on a restricted payload only', () => {
     expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { notify: { userIds: [], emails: ['a@x.io'] } }))
       .toEqual(expect.objectContaining({ mode: 'restricted', notify: { user_ids: [], emails: ['a@x.io'] } }));
-    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { orgSharing: true, notify: { userIds: ['u1', 'u1'], emails: ['a@x.io'] } }))
+    expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }), { orgMode: true, notify: { userIds: ['u1', 'u1'], emails: ['a@x.io'] } }))
       .toEqual(expect.objectContaining({ allowed_emails: ['a@x.io'], notify: { user_ids: ['u1'], emails: ['a@x.io'] } }));
     // Not asked, or Don't notify: no notify at all.
     expect(buildAccessPayload(draft({ emailsText: 'a@x.io' }))).not.toHaveProperty('notify');

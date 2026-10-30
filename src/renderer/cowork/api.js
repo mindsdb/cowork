@@ -1997,27 +1997,25 @@ export async function fetchSkillSharingCapabilities() {
 
 /* Sets who a skill reaches: everyone in the org, teams by id, people in the
    org by user id. An empty audience is Only me. `always_on` makes an
-   org-wide or team skill part of every task. A refusal (400/403) throws with
-   the server's `detail` as its message. */
-export async function setSkillAccess(slug, {
-  org_allowed = false, allowed_team_ids = [], allowed_user_ids = [], always_on = false,
-} = {}) {
+   org-wide or team skill part of every task. The route keeps any field left
+   out, so someone who may switch only `always_on` sends it alone: the people
+   are listed only to the owner or an admin, and an empty list from anyone
+   else would read as removing them. A refusal (400/403) throws with the
+   server's `detail` as its message. */
+export async function setSkillAccess(slug, access) {
   return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
     method: 'PUT',
-    body: JSON.stringify({
-      org_allowed: org_allowed === true,
-      allowed_team_ids,
-      allowed_user_ids,
-      always_on: always_on === true,
-    }),
+    body: JSON.stringify(access),
   });
 }
 
 /* The caller's teams in the MindsHub org. `reachable: false` when the hub
-   could not be asked, so the picker can say so rather than show no teams. */
+   could not be asked, so the picker can say so rather than show no teams.
+   This read and the two people reads below send no X-MindsHub-Authorization
+   (README, "The MindsHub hub routes", says why). */
 export async function fetchHubTeams() {
   try {
-    const data = await req('/hub/teams/', { headers: await hubHeaders() });
+    const data = await req('/hub/teams/');
     const teams = Array.isArray(data?.teams)
       ? data.teams
         .filter((team) => team && typeof team.id === 'string' && team.id)
@@ -2059,7 +2057,7 @@ function hubPerson(person) {
    list at all reads as unreachable, so the picker offers Retry. */
 export async function fetchHubDirectory() {
   try {
-    const data = await req('/hub/people/', { headers: await hubHeaders() });
+    const data = await req('/hub/people/');
     const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
     if (!raw || data?.reachable === false) return { reachable: false, people: [], truncated: false };
     const seen = new Set();
@@ -2090,11 +2088,10 @@ export async function fetchHubPeopleByIds(ids) {
   for (let i = 0; i < unique.length; i += HUB_PEOPLE_IDS_BATCH) {
     batches.push(unique.slice(i, i + HUB_PEOPLE_IDS_BATCH));
   }
-  const headers = await hubHeaders();
   const answers = await Promise.all(batches.map(async (batch) => {
     try {
       const params = new URLSearchParams({ ids: batch.join(',') });
-      const data = await req(`/hub/people/?${params}`, { headers });
+      const data = await req(`/hub/people/?${params}`);
       return {
         batch,
         reachable: data?.reachable !== false,
@@ -2538,7 +2535,8 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 //   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
 // Public (or a falsy access) sends just `{ path }`, which clears any prior
 // protection on re-publish. `notify` goes through as given: cowork-server
-// forwards it to auth, which emails exactly the people it lists (ENG-3787).
+// forwards it to the auth service, which emails exactly the people it lists
+// (ENG-3787).
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });

@@ -394,6 +394,36 @@ describe('SkillShareMenu', () => {
       expect(alwaysOn(dialog)).not.toHaveAttribute('aria-disabled', 'true');
       expect(screen.queryByTestId('always-on-locked')).toBeNull();
     });
+
+    // A teammate edits a team skill but only its owner or an admin changes
+    // who it reaches; the server lists its people to them alone.
+    it('is the whole dropdown for a team member who may not change the audience, and saves always_on alone', async () => {
+      const user = userEvent.setup();
+      const { dialog, onSave } = await renderDialog({
+        access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [] },
+        extra: { capabilities: { canEdit: true, canShare: false } },
+      });
+
+      expect(within(dialog).queryByRole('radio')).toBeNull();
+      expect(within(dialog).getByRole('note')).toHaveTextContent('Only its owner or an admin can change who can use it.');
+      expect(alwaysOn(dialog)).not.toBeChecked();
+      expect(upToDate(dialog)).toBeInTheDocument();
+      await user.click(alwaysOn(dialog));
+      await user.click(save(dialog));
+
+      expect(onSave).toHaveBeenCalledWith({ always_on: true });
+    });
+
+    it('stays locked for such a member on an org-wide skill without can_share_org', async () => {
+      const { dialog } = await renderDialog({
+        capabilities: MEMBER,
+        access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [], alwaysOn: true },
+        extra: { capabilities: { canEdit: true, canShare: false } },
+      });
+
+      expect(within(dialog).queryByRole('radio')).toBeNull();
+      expect(alwaysOn(dialog)).toHaveAttribute('aria-disabled', 'true');
+    });
   });
 });
 

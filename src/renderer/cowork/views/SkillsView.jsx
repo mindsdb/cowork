@@ -24,10 +24,15 @@ import { ShareStateLabel, shareStateIcon } from '../components/ShareStateLabel';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
+  alwaysOnHelp,
+  canChangeSkillAlwaysOn,
   canChangeSkillAudience,
   canEditSkill,
   groupSkillsBySection,
   isSkillAlwaysOn,
+  sameSkillAudience,
+  skillAccess,
+  skillAccessPayload,
   skillShareState,
   skillAudienceBadge,
   skillOwnerEmail,
@@ -160,19 +165,21 @@ function SkillTile({ skill }) {
 // it reaches, Always on, who shared it). Project and last update sit at the
 // right; the switch, Share and the overflow menu after them. Share and the
 // menu show on hover or focus, and always on a touch screen.
-function SkillRow({ skill, onClick, projects = [], orgSharing = null, actions = null, disabled = false, disabledForEveryone = false }) {
+function SkillRow({ skill, onClick, projects = [], capabilities = null, teams = [], actions = null, disabled = false, disabledForEveryone = false }) {
   const age = relativeAge(skill.updatedAt);
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
-  /* With org sharing on, a skill someone else owns names them; the caller's
-     own skills need no byline. */
-  const sharedBy = orgSharing && !canEditSkill(skill) ? skillOwnerEmail(skill) : null;
-  const author = orgSharing ? null : sharedResourceAttribution(skill)?.createdBy;
+  /* Org sharing is on where `capabilities` (useSharingCapabilities'
+     answer) says so. A skill someone else owns then names them; the
+     caller's own skills need no byline. */
+  const orgSharingOn = capabilities?.enabled === true;
+  const sharedBy = orgSharingOn && !canEditSkill(skill) ? skillOwnerEmail(skill) : null;
+  const author = orgSharingOn ? null : sharedResourceAttribution(skill)?.createdBy;
   /* `shared: true` marks the creator's own shared skill and one someone else
      shares alike; the detail view's actions tell the two apart. */
-  const shared = !orgSharing && isSharedSkill(skill);
-  const audience = orgSharing ? skillAudienceBadge(skill, orgSharing) : null;
-  const alwaysOn = !!orgSharing && isSkillAlwaysOn(skill);
+  const shared = !orgSharingOn && isSharedSkill(skill);
+  const audience = orgSharingOn ? skillAudienceBadge(skill, { teams, orgName: capabilities.org_name }) : null;
+  const alwaysOn = orgSharingOn && isSkillAlwaysOn(skill);
   const hasBadges = disabled || disabledForEveryone || skill.isBuiltin || shared || audience || alwaysOn || sharedBy;
   return (
     <ListItem
@@ -451,12 +458,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   /* Org sharing (ENG-3787) groups the list by who each skill reaches and
      replaces the "Who can use it" select with the Share dialog. Off on every
      other build, where the page is as it was. */
-  const sharingCapabilities = useSharingCapabilities();
+  const { capabilities: sharingCapabilities } = useSharingCapabilities();
   const orgSharingOn = sharingCapabilities.enabled;
   const teamsState = useHubTeams(orgSharingOn);
-  const orgSharing = orgSharingOn
-    ? { teams: teamsState.teams, orgName: sharingCapabilities.org_name }
-    : null;
   /* On/off changes in flight: skill label → the value asked for, so a
      switch moves at once and moves back on a refusal. `enabledPending` holds
      the skill's own `enabled` (everyone's), `forMePending` the caller's own
@@ -561,9 +565,16 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   };
 
   const saveAccess = async (skill, access) => {
+    // What the skill had, and what this save leaves it with: the route keeps
+    // a field the body leaves out.
+    const before = skillAccessPayload(skillAccess(skill));
+    const after = { ...before, ...access };
     // Throws on a refusal, which the Share dropdown shows in place.
     await setSkillAccessAndSync(skill.slug || skill.label, access);
-    showToast(`Updated who can use ${skill.label}.`, 'success');
+    // A save that changes only "always on" says what that does; who can use
+    // the skill stays as it was.
+    const alwaysOnOnly = sameSkillAudience(after, before) && after.always_on !== before.always_on;
+    showToast(alwaysOnOnly ? alwaysOnHelp(after.always_on, skill.label) : `Updated who can use ${skill.label}.`, 'success');
   };
 
   const patchOpen = (label, patch) => setSelected((current) => (
@@ -670,8 +681,10 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   /* An editor turned it off for everyone; every viewer is told. */
   const isDisabledForEveryone = (skill) => usesPersonalSwitch(skill) && !isEnabledForEveryone(skill);
 
-  /* Whether the open skill offers Share: the caller's own, on an org. */
-  const canOpenShare = (skill) => orgSharingOn && canChangeSkillAudience(skill);
+  /* Whether the open skill offers Share, on an org: the caller's own, or one
+     whose "always on" they may switch, such as a team skill they can edit. */
+  const canOpenShare = (skill) => orgSharingOn && (canChangeSkillAudience(skill)
+    || canChangeSkillAlwaysOn(skill, { canShareOrg: sharingCapabilities.can_share_org === true }));
   /* An org skill someone else owns keeps no Edit or Uninstall at all, and a
      built-in never does. */
   const hidesOwnerActions = (skill) => !!skill.isBuiltin || (orgSharingOn && !canEditSkill(skill));
@@ -785,7 +798,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       skill={skill}
       onClick={setSelected}
       projects={projects}
-      orgSharing={orgSharing}
+      capabilities={sharingCapabilities}
+      teams={teamsState.teams}
       actions={rowActions(skill)}
       disabled={!usesPersonalSwitch(skill) && skill.enabled === false}
       disabledForEveryone={isDisabledForEveryone(skill)}
@@ -804,7 +818,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <SkillDetail
             skill={selected}
             projects={projects}
-            orgSharing={orgSharing}
+            capabilities={sharingCapabilities}
             teamsState={orgSharingOn ? teamsState : null}
             enabled={isEnabled(selected)}
             disabledForEveryone={isDisabledForEveryone(selected)}
@@ -895,11 +909,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               style: { flex: 1 },
             }}
           >
-            {orgSharing ? (
+            {orgSharingOn ? (
               <div className={`${LIST_CLASS} flex flex-col gap-6`}>
                 {/* Only the sections that hold a skill; an empty list keeps
                     CollectionState's one empty state. */}
-                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName }).map((group) => (group.id === 'builtin' ? (
+                {groupSkillsBySection(sorted, { orgName: sharingCapabilities.org_name }).map((group) => (group.id === 'builtin' ? (
                   <BuiltinSection key={group.id} count={group.skills.length} open={builtinOpen} onToggle={toggleBuiltin}>
                     {group.skills.map(skillRow)}
                   </BuiltinSection>
@@ -970,7 +984,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         initial={modalSkill ?? null}
         projects={projects}
         canShare={canShare}
-        orgSharing={orgSharingOn ? sharingCapabilities : null}
+        capabilities={sharingCapabilities}
       />
     </div>
   );

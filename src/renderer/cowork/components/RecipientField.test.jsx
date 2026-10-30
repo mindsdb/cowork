@@ -9,6 +9,10 @@ vi.mock('../api', async (importOriginal) => ({
   fetchHubPeopleByIds: api.byIds,
   fetchHubDirectory: api.directory,
 }));
+// The person signed in. The directory leaves them out, as the auth service's
+// member list does.
+const account = vi.hoisted(() => ({ user: null }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => account.user }));
 
 import RecipientField from './RecipientField';
 import { __resetOrgSharingForTests } from '../hooks/useOrgSharing';
@@ -32,6 +36,7 @@ const TEAMS = {
 
 beforeEach(() => {
   __resetOrgSharingForTests();
+  account.user = { name: 'Mia Lane', email: 'Mia@Acme.com', sub: 'u-mia' };
   api.directory.mockReset();
   api.directory.mockImplementation(async () => directoryAnswer());
   api.byIds.mockReset();
@@ -373,6 +378,31 @@ describe('<RecipientField>', () => {
       expect(api.directory).toHaveBeenCalledTimes(2);
     });
 
+    it('keeps the address in the input, never as an outside email, when the directory could not be read again', async () => {
+      api.directory
+        .mockResolvedValueOnce(directoryAnswer({ people: [ANA, ANDY] }))
+        .mockResolvedValueOnce({ reachable: false, people: [], truncated: false })
+        .mockResolvedValue(directoryAnswer({ people: [ANA, ANDY, BO] }));
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      ageDirectory();
+
+      await user.type(input(), 'bo@acme.com{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Not added: bo@acme.com (couldn't check who is in Acme, try again)");
+      expect(input()).toHaveValue('bo@acme.com');
+      expect(spy).not.toHaveBeenCalled();
+      expect(api.directory).toHaveBeenCalledTimes(2);
+
+      // Enter asks again, and the fresh copy has him.
+      await user.keyboard('{Enter}');
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(spy.mock.calls.every(([value]) => value.emails.length === 0)).toBe(true);
+    });
+
     it('does not read a fresh directory again', async () => {
       loadWithoutBo();
       const user = userEvent.setup();
@@ -414,6 +444,51 @@ describe('<RecipientField>', () => {
       await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@acme.com'] }));
       expect(api.directory).toHaveBeenCalledTimes(2);
       await waitFor(() => expect(rows()).toEqual([['zed@acme.com', 'Outside Acme']]));
+    });
+  });
+
+  describe('the address of the person signed in', () => {
+    it('is refused as "that\'s you", never invited as an outside email', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+
+      await user.type(input(), 'mia@acme.com');
+      expect(screen.getByRole('status')).toHaveTextContent("That's you");
+      expect(screen.queryByRole('option', { name: /Invite/ })).toBeNull();
+      await user.keyboard('{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Not added: mia@acme.com (that's you)");
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('is refused from a paste while the rest is added', async () => {
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      fireEvent.focus(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com MIA@acme.com zed@partner.io' } });
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: ['zed@partner.io'] }));
+      expect(screen.getByRole('alert')).toHaveTextContent("Not added: mia@acme.com (that's you)");
+    });
+
+    it('does not send an old directory to be read again', async () => {
+      const realNow = Date.now.bind(Date);
+      const user = userEvent.setup();
+      render(<Harness allowExternal />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 61 * 1000);
+      try {
+        await user.type(input(), 'mia@acme.com{Enter}');
+        expect(await screen.findByRole('alert')).toHaveTextContent("Not added: mia@acme.com (that's you)");
+        expect(api.directory).toHaveBeenCalledTimes(1);
+      } finally {
+        clock.mockRestore();
+      }
     });
   });
 

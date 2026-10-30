@@ -20,8 +20,17 @@
 // A typed or pasted email is matched against the loaded directory: a match is
 // that person, anything else becomes "Invite …" when outside emails are
 // allowed and is reported as not in the org when they aren't. An address the
-// directory doesn't have, when the directory is over a minute old, is checked
-// once against a fresh copy first, so someone who joined since is found.
+// directory doesn't have, when the directory is over a minute old
+// (useOrgDirectory), is checked once against a new read first, so someone
+// who joined since is found; if that read fails, the address stays in the
+// input rather than becoming an outside email.
+// The directory leaves out the person signed in, so their own address
+// (useAccountUser) is refused here as "that's you" rather than taken for an
+// outside one. cowork-server's artifact access route
+// (`PUT /artifacts/workspace/…/access`) refuses it as well.
+// A truncated directory can't say whether an address past its end belongs to
+// a member, and no route looks a member up by address. With outside emails
+// allowed, such an address is added as an outside email.
 // Before the directory has loaded (or while it is read again), addresses wait
 // ("Checking…") and resolve once it does; if it failed they stay in the input
 // for a Retry.
@@ -50,6 +59,7 @@ import {
   shareableTeams,
 } from '../lib/orgSharing';
 import { DIRECTORY_MAX_AGE_MS, useHubTeams, useKnownPeople, useOrgDirectory } from '../hooks/useOrgSharing';
+import { useAccountUser } from '../hooks/useAccountUser';
 import { RecipientRow, RecipientTile, recipientItems } from './RecipientRows';
 
 const SEPARATORS = /[\s,;]+/;
@@ -149,6 +159,10 @@ export function RecipientField({
   const directory = useOrgDirectory(!emailsOnly);
   const known = useKnownPeople(emailsOnly ? EMPTY_VALUE.userIds : userIds);
   const org = orgNameOrGeneric(orgName);
+  // The person signed in, whom the directory leaves out.
+  const accountUser = useAccountUser();
+  const ownEmail = (accountUser?.email || '').toLowerCase();
+  const isOwnEmail = (email) => !emailsOnly && !!ownEmail && email === ownEmail;
 
   const anchorRef = useRef(null);
   const inputRef = useRef(null);
@@ -192,8 +206,9 @@ export function RecipientField({
       peopleOptions.push(person);
     }
   }
+  const typedIsOwn = typedIsEmail && isOwnEmail(typedEmail);
   const canInvite = typedIsEmail && !emails.includes(typedEmail) && (emailsOnly
-    || (allowExternal && emailAnswered && !matchedPerson));
+    || (allowExternal && emailAnswered && !matchedPerson && !typedIsOwn));
   const options = [
     ...teamOptions.map((team) => ({ kind: 'team', key: `team:${team.id}`, team })),
     ...peopleOptions.map((person) => ({ kind: 'person', key: `person:${person.id}`, person })),
@@ -208,7 +223,7 @@ export function RecipientField({
     && directory.status !== 'error' && !(typedIsEmail && !allowExternal);
   const menuOpen = open && !emailsOnly ? true : open && options.length > 0;
   // A typed email nobody in the org has, where only the org may be named.
-  const showOrgOnlyHint = !emailsOnly && !allowExternal && typedIsEmail && emailAnswered && !matchedPerson;
+  const showOrgOnlyHint = !emailsOnly && !allowExternal && typedIsEmail && emailAnswered && !matchedPerson && !typedIsOwn;
   const position = useMenuPosition(anchorRef, menuOpen);
 
   // Keep the highlighted row in view as the arrows move it.
@@ -274,21 +289,31 @@ export function RecipientField({
       }
       return;
     }
-    const unmatched = (raw) => isEmailShaped(raw.toLowerCase()) && !findByEmail(raw.toLowerCase());
+    const unmatched = (raw) => {
+      const email = raw.toLowerCase();
+      return isEmailShaped(email) && !isOwnEmail(email) && !findByEmail(email);
+    };
     if (!emailsOnly && !refreshed && directoryStale && tokens.some(unmatched)) {
       holdTokens(tokens, true);
       directory.refresh();
       return;
     }
+    // A fresh copy was asked for and the directory is still old: that read
+    // failed. An address the old copy lacks may belong to someone who joined
+    // since, so it is neither taken for an outside email nor called "not in"
+    // the org. It stays in the input, and Enter checks it again.
+    const unchecked = !emailsOnly && refreshed && directoryStale ? tokens.filter(unmatched) : [];
     setHeld(null);
     resetInput();
+    if (unchecked.length) setText(unchecked.join(' '));
     // Not found in a capped directory: they may be past its end.
     const notInOrg = directory.truncated
       ? `not found in the first ${directory.people.length} people of ${org}`
       : `not in ${org}`;
-    const answers = tokens.map((raw) => {
+    const answers = tokens.filter((raw) => !unchecked.includes(raw)).map((raw) => {
       const email = raw.toLowerCase();
       if (!isEmailShaped(email)) return { raw, reason: 'not an email' };
+      if (isOwnEmail(email)) return { raw: email, reason: "that's you" };
       if (emailsOnly) return { email };
       const person = findByEmail(email);
       if (person) return { person };
@@ -312,7 +337,7 @@ export function RecipientField({
     if (next.userIds.length !== latest.current.userIds.length || next.emails.length !== latest.current.emails.length) {
       emit({ userIds: next.userIds, emails: next.emails });
     }
-    setNotAdded(refused);
+    setNotAdded([...refused, ...unchecked.map((raw) => ({ raw: raw.toLowerCase(), reason: `couldn't check who is in ${org}, try again` }))]);
   };
 
   // The held addresses resolve once the directory answers; a failure leaves
@@ -526,7 +551,8 @@ export function RecipientField({
     );
   }
   const teamsUnreachable = !emailsOnly && teamsState.status === 'ready' && !teamsState.reachable;
-  const statusLine = showOrgOnlyHint ? `Only people in ${org}`
+  const statusLine = typedIsOwn ? "That's you"
+    : showOrgOnlyHint ? `Only people in ${org}`
     : nothingFound ? 'No matches'
       : (!query && !peopleEmpty && !directoryLoading && !teamsLoading && options.length === 0 && directory.status !== 'error' && !teamsUnreachable)
         ? 'Everyone you can add is already added.'

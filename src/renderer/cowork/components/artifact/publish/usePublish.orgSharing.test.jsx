@@ -39,10 +39,15 @@ const ORG_ARTIFACT = {
   ownerOnly: true,
 };
 const TEAMS = { status: 'ready', reachable: true, teams: [{ id: 't-platform', display_name: 'Platform' }] };
+const retryCapabilities = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
-  sharing.useSharingCapabilities.mockReturnValue({ enabled: true, can_share_org: false, org_name: 'Acme' });
+  sharing.useSharingCapabilities.mockReturnValue({
+    status: 'ready',
+    capabilities: { enabled: true, can_share_org: false, org_name: 'Acme' },
+    retry: retryCapabilities,
+  });
   sharing.useHubTeams.mockReturnValue(TEAMS);
   setOrgMode(true);
 });
@@ -115,8 +120,56 @@ describe('usePublish with org sharing', () => {
     expect(result.current.allowedUserIds).toEqual(['u-ana']);
   });
 
-  it('hands the panel the org name and teams', () => {
+  // One spelling of what org sharing allows: the capabilities object as
+  // useSharingCapabilities reads it, never a renamed copy of its fields.
+  it('hands the panel the capabilities read as it answered, with the teams', () => {
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
-    expect(result.current.orgSharing).toEqual({ enabled: true, orgName: 'Acme', teams: TEAMS });
+    expect(result.current.orgMode).toBe(true);
+    expect(result.current.orgSharing).toEqual({
+      status: 'ready',
+      capabilities: { enabled: true, can_share_org: false, org_name: 'Acme' },
+      retry: retryCapabilities,
+      teams: TEAMS,
+    });
+  });
+
+  it('passes on a capabilities read still loading or failed', () => {
+    sharing.useSharingCapabilities.mockReturnValue({
+      status: 'error', capabilities: { enabled: false, can_share_org: false, org_name: null }, retry: retryCapabilities,
+    });
+    const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
+    expect(result.current.orgSharing).toEqual(expect.objectContaining({
+      status: 'error', capabilities: expect.objectContaining({ enabled: false }), retry: retryCapabilities,
+    }));
+  });
+
+  it('says it is not org mode, and never asks what org sharing allows, outside it', () => {
+    setOrgMode(false);
+    sharing.useSharingCapabilities.mockReturnValue({
+      status: 'idle', capabilities: { enabled: false, can_share_org: false, org_name: null }, retry: retryCapabilities,
+    });
+    const { result } = renderHook(() => usePublish({ ...ORG_ARTIFACT, path: '/w/a.html' }, { enabled: true }));
+    expect(result.current.orgMode).toBe(false);
+    expect(sharing.useSharingCapabilities).toHaveBeenCalledWith(false);
+    expect(result.current.orgSharing).toEqual(expect.objectContaining({
+      status: 'idle', capabilities: { enabled: false, can_share_org: false, org_name: null },
+    }));
+  });
+
+  it('never reads the retired org_wide from an answer', async () => {
+    wsMock.loadArtifactAccess.mockResolvedValue({ accessMode: 'restricted', ownerOnly: true });
+    wsMock.setArtifactAccess.mockResolvedValue({
+      url: 'https://share/abc', accessMode: 'restricted', ownerOnly: false, org_wide: true,
+    });
+    const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
+
+    await act(async () => {
+      await result.current.publish({
+        mode: 'restricted', org_allowed: false, allowed_team_ids: [], allowed_user_ids: ['u-ana'],
+        allowed_emails: [], owner_only: false,
+      });
+    });
+
+    expect(result.current.orgAllowed).toBe(false);
   });
 });

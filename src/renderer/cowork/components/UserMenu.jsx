@@ -42,7 +42,7 @@ import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
-import { markExplicitOrgChoice, useOrgLanding } from '../lib/orgLanding';
+import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
 import { organizationLabel } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened } from '../lib/analytics';
@@ -149,8 +149,9 @@ export function UserMenu({ user, onOpenSettings }) {
   const [pendingOrgId, setPendingOrgId] = useState(null);
 
   const pick = async (organizationId) => {
-    // A pick made here is never undone by landing, personal included.
-    markExplicitOrgChoice(user.sub ?? null);
+    // A pick made here is where landing goes from now on, in every tab and
+    // window, personal included.
+    rememberLastOrg(user.sub ?? null, organizationId);
     setPendingOrgId(organizationId);
     let result;
     try {

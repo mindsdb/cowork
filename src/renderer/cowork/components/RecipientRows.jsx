@@ -14,6 +14,7 @@ import { useState } from 'react';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import {
+  EVERYONE_AT_DESC,
   UNKNOWN_PERSON,
   everyoneAtLabel,
   namesDefaultTeam,
@@ -232,7 +233,7 @@ export function AudienceList({
   );
   const items = [];
   if (everyone) {
-    items.push({ key: 'org', kind: 'org', primary: everyoneAtLabel(orgName), secondary: 'Anyone in your organization' });
+    items.push({ key: 'org', kind: 'org', primary: everyoneAtLabel(orgName), secondary: EVERYONE_AT_DESC });
   }
   items.push(...listed);
   if (items.length === 0) {

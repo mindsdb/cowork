@@ -77,6 +77,12 @@ export type SkillAccessPayload = {
   always_on: boolean;
 };
 
+/** The same route's body from someone who may switch only "always on" (a
+ *  member of a team the skill is shared with): the route keeps the audience. */
+export type SkillAlwaysOnPayload = {
+  always_on: boolean;
+};
+
 /** `loaded` is the only status whose absence/presence decision came from a
  *  valid server response. A refresh moves the status to `loading` while the
  *  last settled list stays in place. */
@@ -119,6 +125,6 @@ export function saveSkillAndSync(payload: SkillSavePayload, isEdit?: boolean): P
 /** PUT /skills/{label}/sharing, then a reload that starts after it. */
 export function setSkillSharingAndSync(label: string, shared: boolean): Promise<CoworkSkill>;
 /** PUT /skills/{slug}/sharing with an org audience, then a reload after it. */
-export function setSkillAccessAndSync(slug: string, access: SkillAccessPayload): Promise<CoworkSkill>;
+export function setSkillAccessAndSync(slug: string, access: SkillAccessPayload | SkillAlwaysOnPayload): Promise<CoworkSkill>;
 /** The API answers a delete with 204, which the client surfaces as `{ ok: true }`. */
 export function deleteSkillAndSync(label: string): Promise<{ ok: true }>;

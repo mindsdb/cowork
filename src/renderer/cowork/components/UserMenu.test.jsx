@@ -301,6 +301,33 @@ describe('UserMenu — organization picker', () => {
     expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
   });
 
+  // Cloud lands a company member in the company organization (ENG-3787),
+  // but never over a pick from this menu, in this tab or a new one.
+  it('keeps a personal pick from here in a new tab, where landing would otherwise move it', async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    try {
+      withOrgs([ACME, PERSONAL], ACME);
+      const first = renderMenu(<UserMenu user={user} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+      await waitFor(() => expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal'));
+      first.unmount();
+
+      // The new tab: same browser storage, a fresh session, in Personal.
+      sessionStorage.clear();
+      orgsMock.switchOrg.mockClear();
+      withOrgs([ACME, PERSONAL], PERSONAL);
+      renderMenu(<UserMenu user={user} />);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(orgsMock.switchOrg).not.toHaveBeenCalled();
+    } finally {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+  });
+
   it('acknowledges the click on the row that was clicked, before the switch lands', async () => {
     // A desktop switch takes a second or more — a Keycloak round trip, a token
     // exchange and a sidecar restart — and the menu used to close on the click,

@@ -23,7 +23,7 @@ const toast = vi.hoisted(() => ({ add: vi.fn() }));
 
 vi.mock('../api', () => api);
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => toast }));
-vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
+vi.mock('../../platform/host', () => ({ host: { isWeb: true }, getAccessToken: async () => null }));
 
 const OWNER_CAPS = { canEdit: true, canDelete: true, canDisable: true, canShare: true };
 // A team member who edits a team skill they don't own: no say in its audience.
