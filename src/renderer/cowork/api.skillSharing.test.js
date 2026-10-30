@@ -4,7 +4,7 @@ vi.mock('../platform/host', () => ({
   host: { getApiOrigin: () => 'http://127.0.0.1:26866', getAccessToken: vi.fn(async () => null), isWeb: false },
 }));
 
-import { setSkillSharing, uploadSkillFile } from './api';
+import { setSkillEnabledForMe, setSkillSharing, uploadSkillFile } from './api';
 
 const jsonRes = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -38,6 +38,20 @@ describe('setSkillSharing', () => {
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toBe(refusal);
     expect(err.status).toBe(409);
+  });
+});
+
+describe('setSkillEnabledForMe', () => {
+  it.each([true, false])('PUTs {"enabled": %s} to the skill\'s per-user route', async (enabled) => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ label: 'weekly report', enabledForMe: enabled }));
+
+    const saved = await setSkillEnabledForMe('weekly report', enabled);
+
+    expect(saved).toEqual({ label: 'weekly report', enabledForMe: enabled });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe('http://127.0.0.1:26866/api/v1/skills/weekly%20report/me');
+    expect(options.method).toBe('PUT');
+    expect(JSON.parse(options.body)).toEqual({ enabled });
   });
 });
 

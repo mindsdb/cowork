@@ -42,6 +42,7 @@ import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
+import { markExplicitOrgChoice, useOrgLanding } from '../lib/orgLanding';
 import { organizationLabel } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened } from '../lib/analytics';
@@ -107,6 +108,8 @@ export function UserMenu({ user, onOpenSettings }) {
   const triggerRef = useRef(null);
   const { loggingOut, waitNote, logout } = useLogout();
   const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
+  // Cloud lands a company member in a company organization (ENG-3787).
+  useOrgLanding({ sub: user.sub ?? null, orgs, activeOrg, switchOrg });
   const toastManager = useToastManager();
 
   const displayName = user.name || user.username || user.email;
@@ -146,6 +149,8 @@ export function UserMenu({ user, onOpenSettings }) {
   const [pendingOrgId, setPendingOrgId] = useState(null);
 
   const pick = async (organizationId) => {
+    // A pick made here is never undone by landing, personal included.
+    markExplicitOrgChoice(user.sub ?? null);
     setPendingOrgId(organizationId);
     let result;
     try {

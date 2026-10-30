@@ -15,7 +15,9 @@
 
 import { useSyncExternalStore } from 'react';
 
-import { fetchSkills, saveSkill, deleteSkill, setSkillSharing } from '../api';
+import {
+  fetchSkills, saveSkill, deleteSkill, setSkillSharing, setSkillAccess, setSkillEnabledForMe,
+} from '../api';
 
 // `null` = never loaded yet (consumers can show a loading state); an array
 // once a fetch has settled. `_catalogueStatus` distinguishes a verified empty
@@ -36,8 +38,9 @@ function _emit() {
 
 function _getSnapshot() {
   /* Must return a stable reference between mutations or useSyncExternalStore
-     loops. `_skills` is reassigned only by a reload or the sharing patch in
-     setSkillSharingAndSync, and each emits, so it is stable between mutations. */
+     loops. `_skills` is reassigned only by a reload or the patches in
+     setSkillSharingAndSync, setSkillAccessAndSync and
+     setSkillEnabledForMeAndSync, and each emits, so it is stable between mutations. */
   return _skills;
 }
 
@@ -160,6 +163,54 @@ export async function setSkillSharingAndSync(label, shared) {
     _skills = _skills.map((s) => (s.label === label ? { ...s, shared } : s));
     _emit();
   }
+  return saved;
+}
+
+/** Set who an org skill reaches (ENG-3787), then refresh the shared list so
+ *  its section and badge follow. The PUT answers the skill's new `access`
+ *  and `section`, so the cached row takes them at once and the skill moves
+ *  section before the reload lands (and stays moved if the reload fails);
+ *  nothing else is adopted from the response, whose capabilities a mutation
+ *  response may omit. Re-throws, so the dialog can show a refusal. */
+export async function setSkillAccessAndSync(slug, access) {
+  const saved = await setSkillAccess(slug, access);
+  const patch = {};
+  if (saved?.access && typeof saved.access === 'object') patch.access = saved.access;
+  if (typeof saved?.section === 'string') patch.section = saved.section;
+  if (Object.keys(patch).length && Array.isArray(_skills)) {
+    _skills = _skills.map((s) => (
+      s.label === slug || s.slug === slug || s.id === slug ? { ...s, ...patch } : s
+    ));
+    _emit();
+  }
+  await reloadSkills({ afterCurrent: true });
+  return saved;
+}
+
+/* Per skill, the number of the latest `enabledForMe` answer patched into the
+   cached row, so an older request answering late never overwrites a newer
+   one's value. */
+let _forMeSeq = 0;
+const _forMeApplied = new Map();
+
+/** Turn a skill on or off for the caller alone (ENG-3787), then refresh the
+ *  shared list. The PUT succeeded, so the cached row takes the new
+ *  `enabledForMe` at once and keeps it if the reload fails, unless a request
+ *  sent later has already set it; nothing else is adopted from the response.
+ *  Re-throws, so the switch can move back. */
+export async function setSkillEnabledForMeAndSync(slug, enabled) {
+  const seq = ++_forMeSeq;
+  const saved = await setSkillEnabledForMe(slug, enabled);
+  const enabledForMe = typeof saved?.enabledForMe === 'boolean' ? saved.enabledForMe : enabled;
+  const stale = (_forMeApplied.get(slug) ?? 0) > seq;
+  if (!stale) _forMeApplied.set(slug, seq);
+  if (!stale && Array.isArray(_skills)) {
+    _skills = _skills.map((s) => (
+      s.label === slug || s.slug === slug || s.id === slug ? { ...s, enabledForMe } : s
+    ));
+    _emit();
+  }
+  await reloadSkills({ afterCurrent: true });
   return saved;
 }
 

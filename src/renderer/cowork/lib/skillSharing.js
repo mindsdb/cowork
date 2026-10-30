@@ -6,6 +6,8 @@
    desktop app and a deployment whose skills everyone already shares never
    do, so the control never shows there. */
 
+import { canUseSharedResource } from './sharedResourceAccess';
+
 export const SKILL_SHARING_LABEL = 'Who can use it';
 
 export const SKILL_SHARING_PRIVATE = 'private';
@@ -43,4 +45,14 @@ export function sharingValue(skill) {
 /* The `shared` flag the API takes for a control value. */
 export function sharedFromValue(value) {
   return value === SKILL_SHARING_EVERYONE;
+}
+
+/* The caller's own skill that others use: `shared: true` with the edit
+   capability granted, since cowork-server grants a shared skill's capabilities
+   only to its creator (_skill_response in cowork/api/v1/endpoints/skills.py).
+   Others read the creator's copy live, `enabled` included (shared_turn_skills
+   in cowork/services/skills.py), so the creator's switch and Uninstall reach
+   them too. */
+export function isOwnSharedSkill(skill) {
+  return isSharedSkill(skill) && canUseSharedResource(skill, 'canEdit');
 }

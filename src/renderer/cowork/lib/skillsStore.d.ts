@@ -49,7 +49,32 @@ export type CoworkSkill = {
   updatedAt?: string;
   capabilities?: SkillCapabilities;
   attribution?: SkillAttribution;
+  /** Org sharing (ENG-3787): who the skill reaches. Hosted org mode only. */
+  access?: SkillAccess;
+  /** Which Skills page section the caller sees it in. */
+  section?: 'mine' | 'shared_with_me' | 'team' | 'org';
+  /** Whether the caller may change the skill (org sharing). */
+  canEdit?: boolean;
+  owner?: { id: string | null; email: string | null };
   [key: string]: unknown;
+};
+
+/** A skill's `access`: everyone in the org, teams, people in the org (hub
+ *  user ids), and whether it's part of every task for everyone it reaches
+ *  (only for org-wide or team skills). */
+export type SkillAccess = {
+  orgAllowed: boolean;
+  allowedTeamIds: string[];
+  allowedUserIds: string[];
+  alwaysOn?: boolean;
+};
+
+/** The body of `PUT /skills/{slug}/sharing` in org mode. */
+export type SkillAccessPayload = {
+  org_allowed: boolean;
+  allowed_team_ids: string[];
+  allowed_user_ids: string[];
+  always_on: boolean;
 };
 
 /** `loaded` is the only status whose absence/presence decision came from a
@@ -93,5 +118,7 @@ export function useSkillNames(): Set<string>;
 export function saveSkillAndSync(payload: SkillSavePayload, isEdit?: boolean): Promise<CoworkSkill>;
 /** PUT /skills/{label}/sharing, then a reload that starts after it. */
 export function setSkillSharingAndSync(label: string, shared: boolean): Promise<CoworkSkill>;
+/** PUT /skills/{slug}/sharing with an org audience, then a reload after it. */
+export function setSkillAccessAndSync(slug: string, access: SkillAccessPayload): Promise<CoworkSkill>;
 /** The API answers a delete with 204, which the client surfaces as `{ ok: true }`. */
 export function deleteSkillAndSync(label: string): Promise<{ ok: true }>;

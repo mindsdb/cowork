@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { PublishMenu } from './PublishMenu';
 
 function makeController(overrides = {}) {
@@ -86,16 +87,16 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     fireEvent.click(screen.getByText('Change'));
 
     // Draft seeded empty (list not loaded yet).
-    const ta = screen.getByPlaceholderText('alice@acme.com, bob@acme.com');
-    expect(ta.value).toBe('');
+    const recipients = () => screen.getByRole('list', { name: 'Recipients' });
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
 
     // Server list lands → draft re-seeds (user hasn't edited), so an empty
     // list can never be what "Update" would submit.
     rerender(<PublishMenu controller={makeController({
       ...base, accessEmails: ['alice@x.com', 'bob@x.com'], accessLoaded: true,
     })} />);
-    expect(screen.getByPlaceholderText('alice@acme.com, bob@acme.com').value)
-      .toBe('alice@x.com, bob@x.com');
+    expect(recipients()).toHaveTextContent('alice@x.com');
+    expect(recipients()).toHaveTextContent('bob@x.com');
   });
 });
 
@@ -155,6 +156,39 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
       })} />);
 
       expect(screen.getByText('Shared')).toBeInTheDocument();
+    });
+
+    const trigger = () => screen.getByText(/^Shared?$/).closest('button');
+    it.each([
+      ['public', { publishedUrl: 'https://share/abc', accessMode: 'public' }, 'Public link: anyone with the URL can open it'],
+      ['password', { publishedUrl: 'https://share/abc', accessMode: 'password', accessPassword: 'pw' }, 'Password protected'],
+      ['specific', { ...PUBLISHED_RESTRICTED, accessEmails: ['a@x.io', 'b@x.io'], ownerOnly: false }, 'Shared with 2 people'],
+      ['org', {
+        ...PUBLISHED_RESTRICTED, orgAllowed: true, ownerOnly: false,
+        orgSharing: { enabled: true, orgName: 'Acme', teams: { status: 'ready', reachable: true, teams: [] } },
+      }, 'Shared with everyone at Acme'],
+      ['specific', {
+        ...PUBLISHED_RESTRICTED, ownerOnly: false, allowedTeamIds: ['t1', 't2'], allowedUserIds: ['u1', 'u2', 'u3'],
+        orgSharing: { enabled: true, orgName: 'Acme', teams: { status: 'ready', reachable: true, teams: [] } },
+      }, 'Shared with 2 teams and 3 people'],
+    ])('marks a %s share with its icon and says who in a tooltip', async (kind, over, hint) => {
+      const user = userEvent.setup();
+      render(<PublishMenu controller={makeController(over)} />);
+      expect(trigger()).toHaveTextContent(/^Shared$/);
+      expect(trigger()).toHaveAttribute('data-share-state', kind);
+      expect(trigger().querySelector('svg')).not.toBeNull();
+      await user.hover(trigger());
+      expect(await screen.findByText(hint)).toBeInTheDocument();
+    });
+
+    it('has no tooltip while only its owner can open it', async () => {
+      const user = userEvent.setup();
+      render(<PublishMenu controller={makeController({ ...PUBLISHED_RESTRICTED, accessEmails: [], ownerOnly: true })} />);
+      expect(trigger()).toHaveTextContent(/^Share$/);
+      expect(trigger()).toHaveAttribute('data-share-state', 'private');
+      await user.hover(trigger());
+      await new Promise((r) => setTimeout(r, 50));
+      expect(screen.queryByText(/Only you can open it/)).toBeNull();
     });
   });
 });

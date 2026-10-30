@@ -22,6 +22,7 @@ import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { SHARING_OFF } from './lib/orgSharing';
 import {
   expectedOrganizationHeaders,
   handleOrganizationBoundaryResponse,
@@ -1955,6 +1956,16 @@ export async function uploadSkillFile(file, { shared } = {}) {
   return res.json();
 }
 
+/* Turns a skill on or off for the caller alone (ENG-3787). Any skill the
+   caller can see takes it, a built-in included; the skill's own `enabled`
+   (on or off for everyone) is untouched. Answers the updated skill. */
+export async function setSkillEnabledForMe(slug, enabled) {
+  return req(`/skills/${encodeURIComponent(slug)}/me`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled: enabled === true }),
+  });
+}
+
 /* Shares the caller's own skill with everyone, read-only, or stops sharing
    it. The refusal's sentence comes back as the error message. */
 export async function setSkillSharing(label, shared) {
@@ -1962,6 +1973,147 @@ export async function setSkillSharing(label, shared) {
     method: 'PUT',
     body: JSON.stringify({ shared }),
   });
+}
+
+/* Org sharing (ENG-3787): who a skill reaches on a hosted org deployment.
+   `enabled: false` is every other build, and the sharing UI stays hidden
+   there. A server without the route answers 404 and reads the same. */
+export async function fetchSkillSharingCapabilities() {
+  try {
+    const data = await req('/skills/sharing-capabilities');
+    if (!data || typeof data !== 'object') return SHARING_OFF;
+    const name = data.orgName;
+    return {
+      enabled: data.enabled === true,
+      can_share_org: data.canShareOrg === true,
+      can_write_org: data.canWriteOrg === true,
+      org_name: typeof name === 'string' && name.trim() ? name.trim() : null,
+    };
+  } catch (err) {
+    if (err?.status === 404) return SHARING_OFF;
+    throw err;
+  }
+}
+
+/* Sets who a skill reaches: everyone in the org, teams by id, people in the
+   org by user id. An empty audience is Only me. `always_on` makes an
+   org-wide or team skill part of every task. A refusal (400/403) throws with
+   the server's `detail` as its message. */
+export async function setSkillAccess(slug, {
+  org_allowed = false, allowed_team_ids = [], allowed_user_ids = [], always_on = false,
+} = {}) {
+  return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      org_allowed: org_allowed === true,
+      allowed_team_ids,
+      allowed_user_ids,
+      always_on: always_on === true,
+    }),
+  });
+}
+
+/* The caller's teams in the MindsHub org. `reachable: false` when the hub
+   could not be asked, so the picker can say so rather than show no teams. */
+export async function fetchHubTeams() {
+  try {
+    const data = await req('/hub/teams/', { headers: await hubHeaders() });
+    const teams = Array.isArray(data?.teams)
+      ? data.teams
+        .filter((team) => team && typeof team.id === 'string' && team.id)
+        .map((team) => ({
+          id: team.id,
+          display_name: hubTeamName(team),
+          // The org's default "All members" team, which the server maps to
+          // org-wide: the pickers leave it out for "Everyone at ‹org›".
+          is_default: team.isDefault === true,
+        }))
+      : [];
+    return { reachable: data?.reachable !== false, teams };
+  } catch {
+    return { reachable: false, teams: [] };
+  }
+}
+
+/* A team's name to show; a raw id is never shown. */
+const UNNAMED_TEAM = 'Unnamed team';
+
+function hubTeamName(team) {
+  const name = team.displayName;
+  return typeof name === 'string' && name.trim() ? name.trim() : UNNAMED_TEAM;
+}
+
+/* One person as the hub sends them, or null without an id. The id is what
+   sharing stores (`allowed_user_ids`); the name and email only label a row. */
+function hubPerson(person) {
+  if (!person || typeof person.id !== 'string' || !person.id) return null;
+  const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
+  const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
+  return { id: person.id, name, email };
+}
+
+/* Everyone in the caller's active MindsHub org, read once so the recipient
+   picker can list and filter them locally (`GET /hub/people/`). The
+   hub caps the list; `truncated` says there are more than it sent. Parsed
+   tolerantly: a bare array is taken as the people, and any answer with no
+   list at all reads as unreachable, so the picker offers Retry. */
+export async function fetchHubDirectory() {
+  try {
+    const data = await req('/hub/people/', { headers: await hubHeaders() });
+    const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
+    if (!raw || data?.reachable === false) return { reachable: false, people: [], truncated: false };
+    const seen = new Set();
+    const people = [];
+    for (const entry of raw) {
+      const person = hubPerson(entry);
+      if (!person || (!person.email && !person.name) || seen.has(person.id)) continue;
+      seen.add(person.id);
+      people.push(person);
+    }
+    return { reachable: true, people, truncated: data?.truncated === true };
+  } catch {
+    return { reachable: false, people: [], truncated: false };
+  }
+}
+
+const HUB_PEOPLE_IDS_BATCH = 50;
+
+/* The people a stored audience names, by user id, so their rows can say who
+   they are. Asked in batches of at most 50 ids. Ids the hub answered for but
+   doesn't know are simply absent from `people`. `unanswered` lists the ids of
+   any batch that could not be asked (`reachable` is then false): those are
+   not known to be missing, only not looked up yet. */
+export async function fetchHubPeopleByIds(ids) {
+  const unique = [...new Set((ids || []).filter((id) => typeof id === 'string' && id))];
+  if (unique.length === 0) return { reachable: true, people: [], unanswered: [] };
+  const batches = [];
+  for (let i = 0; i < unique.length; i += HUB_PEOPLE_IDS_BATCH) {
+    batches.push(unique.slice(i, i + HUB_PEOPLE_IDS_BATCH));
+  }
+  const headers = await hubHeaders();
+  const answers = await Promise.all(batches.map(async (batch) => {
+    try {
+      const params = new URLSearchParams({ ids: batch.join(',') });
+      const data = await req(`/hub/people/?${params}`, { headers });
+      return {
+        batch,
+        reachable: data?.reachable !== false,
+        people: (Array.isArray(data?.people) ? data.people : []).map(hubPerson).filter(Boolean),
+      };
+    } catch {
+      return { batch, reachable: false, people: [] };
+    }
+  }));
+  const wanted = new Set(unique);
+  const byId = new Map();
+  const unanswered = [];
+  for (const answer of answers) {
+    if (!answer.reachable) unanswered.push(...answer.batch);
+    for (const person of answer.people) {
+      if (wanted.has(person.id) && !byId.has(person.id)) byId.set(person.id, person);
+    }
+  }
+  return { reachable: unanswered.length === 0, people: [...byId.values()], unanswered };
 }
 
 export async function deleteSkill(label) {
@@ -2383,9 +2535,10 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 // `access` (optional): a publish-mode object, one of
 //   { mode: 'public' }
 //   { mode: 'password', password: '...' }
-//   { mode: 'restricted', emails: [...], org_allowed: bool }
+//   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
 // Public (or a falsy access) sends just `{ path }`, which clears any prior
-// protection on re-publish.
+// protection on re-publish. `notify` goes through as given: cowork-server
+// forwards it to auth, which emails exactly the people it lists (ENG-3787).
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });

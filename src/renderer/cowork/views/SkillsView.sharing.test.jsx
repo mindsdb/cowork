@@ -10,7 +10,12 @@ const api = vi.hoisted(() => ({
   saveSkill: vi.fn(),
   deleteSkill: vi.fn(),
   setSkillSharing: vi.fn(),
+  setSkillAccess: vi.fn(),
+  setSkillEnabledForMe: vi.fn(),
   uploadSkillFile: vi.fn(),
+  // Org sharing (ENG-3787) is off here: this file is the per-person build.
+  fetchSkillSharingCapabilities: vi.fn(async () => ({ enabled: false })),
+  fetchHubTeams: vi.fn(async () => ({ reachable: true, teams: [] })),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
 const hostState = vi.hoisted(() => ({ isWeb: true }));
@@ -61,6 +66,7 @@ const ONLY_ME = /Only me/;
 beforeEach(() => {
   vi.clearAllMocks();
   hostState.isWeb = true;
+  localStorage.removeItem('anton:skills-builtin-open');
 });
 
 describe('SkillsView: who can use a skill', () => {
@@ -71,7 +77,7 @@ describe('SkillsView: who can use a skill', () => {
     const control = await openSkill(user, own.label);
 
     expect(control).toHaveTextContent('Only me');
-    expect(screen.getByRole('heading', { name: 'Who can use it' })).toBeInTheDocument();
+    expect(screen.getByTestId('skill-meta-sharing')).toHaveTextContent(/^Shared with/);
   });
 
   it.each([
@@ -90,13 +96,15 @@ describe('SkillsView: who can use a skill', () => {
     }],
   ])('hides the control for %s', async (_, isWeb, skill) => {
     hostState.isWeb = isWeb;
+    // The Built-in section starts folded; this one was left open.
+    if (skill.isBuiltin) localStorage.setItem('anton:skills-builtin-open', 'true');
     const user = userEvent.setup();
     await renderPage([skill]);
 
     const control = await openSkill(user, skill.label);
 
     expect(control).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Who can use it' })).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('skill-properties')).queryByRole('combobox')).toBeNull();
   });
 
   it('shares the skill with everyone, reloads the list and says so', async () => {
@@ -625,5 +633,34 @@ describe('SkillsView: asking who can use a new skill', () => {
     const file = await submitUpload(user, dialog, null);
 
     expect(api.uploadSkillFile).toHaveBeenCalledWith(file, {});
+  });
+});
+
+describe('SkillsView: the Create skill menu and Add a Skill form', () => {
+  it('lists Write Skill Instructions first, then the other options in order', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+
+    await user.click(screen.getByRole('button', { name: /Create skill/i }));
+    const items = await screen.findAllByRole('menuitem');
+
+    expect(items.map((item) => item.textContent.trim())).toEqual([
+      'Write Skill Instructions', 'Create With Cowork', 'Upload a skill',
+    ]);
+  });
+
+  it('labels the project choice Project, not Scope, and asks no org audience', async () => {
+    const user = userEvent.setup();
+    await renderPage([own]);
+
+    await user.click(screen.getByRole('button', { name: /Create skill/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /Write Skill Instructions/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    const project = within(dialog).getByRole('combobox', { name: 'Project' });
+    expect(project).toHaveTextContent('All projects');
+    expect(within(dialog).queryByRole('combobox', { name: 'Scope' })).toBeNull();
+    expect(within(dialog).queryByRole('group', { name: 'Who can use it' })).toBeNull();
+    expect(within(dialog).queryByRole('checkbox', { name: 'Specific people' })).toBeNull();
   });
 });

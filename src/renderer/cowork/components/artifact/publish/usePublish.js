@@ -30,6 +30,8 @@ import {
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
 import { OWNED_BY_OTHER_USER_MESSAGE, isOwnedByOtherUserError } from './publishErrors';
+import { useHubTeams, useSharingCapabilities } from '../../../hooks/useOrgSharing';
+import { accessAllowedTeamIds, accessAllowedUserIds, accessOrgAllowed } from '../../../lib/orgSharing';
 
 // Map the publish failures a user can act on (a missing Minds API key, an
 // artifact another account published) to a clear message; everything else
@@ -39,6 +41,21 @@ function friendlyPublishError(e) {
   const msg = e?.message || String(e);
   if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to share.';
   return `Sharing failed: ${msg}`;
+}
+
+// Whether a publish answer says which teams or people in the org it let in
+// (even none), and whether it says if the org is in. Otherwise the request
+// stands in for it.
+function hasTeamField(r) {
+  return Array.isArray(r?.allowed_team_ids) || Array.isArray(r?.allowedTeamIds);
+}
+
+function hasUserField(r) {
+  return Array.isArray(r?.allowed_user_ids) || Array.isArray(r?.allowedUserIds);
+}
+
+function hasOrgField(r) {
+  return r?.org_allowed != null || r?.orgAllowed != null || r?.org_wide != null || r?.orgWide != null;
 }
 
 function modeFromArtifact(a) {
@@ -64,6 +81,10 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [accessEmails, setAccessEmails] = useState(artifact?.accessEmails || []);
   const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
   const [ownerOnly, setOwnerOnly] = useState(!!artifact?.ownerOnly);
+  // Teams and people in the org the restricted access names (ENG-3787);
+  // org mode only.
+  const [teamIds, setTeamIds] = useState(artifact?.allowedTeamIds || []);
+  const [userIds, setUserIds] = useState(artifact?.allowedUserIds || []);
   // Have we synced the *real* access list from the server (or a publish
   // response) for this artifact yet? Seeded from the prop's own knowledge:
   // grid/rail objects carry `accessMode` from the listing (so the list they
@@ -95,6 +116,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setAccessEmails(artifact?.accessEmails || []);
     setOrgAllowed(!!artifact?.orgAllowed);
     setOwnerOnly(!!artifact?.ownerOnly);
+    setTeamIds(artifact?.allowedTeamIds || []);
+    setUserIds(artifact?.allowedUserIds || []);
     // A refresh learns the key from the server, but its report back to the
     // parent doesn't carry it, so an access change in that report would reset
     // it to the prop's empty one. Keep it until the artifact itself changes.
@@ -115,6 +138,11 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // answer 4xx, so the menu hides them instead. Content stays in sync there
   // anyway: autopublish re-publishes on the turn that changes the artifact.
   const supportsPublishRoutes = !orgMode;
+  // Org sharing (ENG-3787): teams and "Everyone at ‹org›" in the restricted
+  // choice. Asked only on an org deployment with the panel open.
+  const capabilities = useSharingCapabilities(orgMode && enabled);
+  const teams = useHubTeams(orgMode && enabled && capabilities.enabled);
+  const orgSharing = { enabled: capabilities.enabled, orgName: capabilities.org_name, teams };
   // Names the artifact a refresh() response belongs to. Written during render
   // so a switch is seen before any response from the previous artifact lands.
   const identityKey = orgMode
@@ -125,6 +153,9 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const refreshRequestRef = useRef(0);
   const busy = phase !== 'idle';
 
+  // `access` is the payload `buildAccessPayload` makes, sent as is, so its
+  // `notify` (the newly added people to email, ENG-3787) reaches the
+  // server whichever route carries it.
   const publish = useCallback(async (access) => {
     if (phase !== 'idle' || !canAct) return false;
     const wasPublished = !!publishedUrl;
@@ -146,8 +177,16 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         accessMode: m,
         accessProtected: m === 'password',
         accessPassword: m === 'password' ? (access?.password || '') : '',
-        accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
-        orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
+        // The request's outside emails: `allowed_emails` with org sharing,
+        // `emails` without it.
+        accessEmails: m === 'restricted' ? (r.accessEmails || r.allowed_emails || access?.allowed_emails || access?.emails || []) : [],
+        orgAllowed: m === 'restricted' ? (hasOrgField(r) ? accessOrgAllowed(r) : !!access?.org_allowed) : false,
+        allowedTeamIds: m === 'restricted'
+          ? (hasTeamField(r) ? accessAllowedTeamIds(r) : (access?.allowed_team_ids || []))
+          : [],
+        allowedUserIds: m === 'restricted'
+          ? (hasUserField(r) ? accessAllowedUserIds(r) : (access?.allowed_user_ids || []))
+          : [],
         ownerOnly: m === 'restricted' ? !!(r.ownerOnly ?? access?.owner_only) : false,
         artifactKey: r.artifactKey || artifact?.artifactKey || '',
         modified: false,
@@ -158,6 +197,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessEmails(next.accessEmails);
       setOrgAllowed(next.orgAllowed);
       setOwnerOnly(next.ownerOnly);
+      setTeamIds(next.allowedTeamIds);
+      setUserIds(next.allowedUserIds);
       setAccessLoaded(true);  // publish response is authoritative for the list
       setArtifactKey(next.artifactKey);
       setModified(false);
@@ -235,11 +276,16 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       try { a = await loadArtifactAccess(artifact); } catch { /* leave state as-is */ }
       if (!a || !isCurrent()) return;
       const nextMode = a.accessMode || 'public';
-      const nextEmails = Array.isArray(a.accessEmails) ? a.accessEmails : [];
-      const nextOrg = !!a.orgAllowed;
+      const nextEmails = Array.isArray(a.accessEmails) ? a.accessEmails
+        : (Array.isArray(a.allowed_emails) ? a.allowed_emails : []);
+      const nextOrg = accessOrgAllowed(a);
+      const nextTeams = accessAllowedTeamIds(a);
+      const nextUsers = accessAllowedUserIds(a);
       setAccessMode(nextMode);
       setAccessEmails(nextEmails);
       setOrgAllowed(nextOrg);
+      setTeamIds(nextTeams);
+      setUserIds(nextUsers);
       setOwnerOnly(!!a.ownerOnly);
       setAccessPassword(a.accessPassword || '');
       if (a.artifactKey) setArtifactKey(a.artifactKey);
@@ -252,7 +298,9 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         && !!artifact?.orgAllowed === nextOrg
         && !!artifact?.ownerOnly === !!a.ownerOnly
         && Array.isArray(artifact?.accessEmails)
-        && artifact.accessEmails.join(',') === nextEmails.join(',');
+        && artifact.accessEmails.join(',') === nextEmails.join(',')
+        && (artifact?.allowedTeamIds || []).join(',') === nextTeams.join(',')
+        && (artifact?.allowedUserIds || []).join(',') === nextUsers.join(',');
       if (propSame) return;
       onChange?.({
         ...artifact,
@@ -260,6 +308,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         accessEmails: nextEmails,
         orgAllowed: nextOrg,
         ownerOnly: !!a.ownerOnly,
+        allowedTeamIds: nextTeams,
+        allowedUserIds: nextUsers,
       });
       return;
     }
@@ -388,6 +438,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
 
   return {
     publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, ownerOnly, artifactKey, modified,
+    allowedTeamIds: teamIds, allowedUserIds: userIds, orgSharing,
     accessLoaded,
     phase, busy, error, setError,
     versions, versionsLoading,

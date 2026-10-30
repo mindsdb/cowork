@@ -35,8 +35,9 @@ describe('AccessChooser with the platform UI off and no shared publish token', (
     expect(screen.getByText('Anyone on the internet with the URL')).toBeInTheDocument();
   });
 
-  it('points an empty Specific people to "Only you"', () => {
+  it('asks for an email in an empty Specific people', () => {
     render(<AccessChooser value={{ ...newAccessDraft(), mode: 'restricted' }} onChange={() => {}} />);
-    expect(screen.getByText(/Add someone, or choose “Only you”/)).toBeInTheDocument();
+    expect(screen.getByTestId('recipient-summary')).toHaveTextContent('Add at least one email.');
+    expect(screen.getByRole('combobox', { name: 'Add people by email' })).toBeInTheDocument();
   });
 });
