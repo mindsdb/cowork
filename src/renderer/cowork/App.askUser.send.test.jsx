@@ -1445,6 +1445,13 @@ describe('new-session stream (send from home)', () => {
 });
 
 describe('the first message of a new task (analytics)', () => {
+  // This file does not clear its mocks between tests, and a failed assertion
+  // here must not leave upload calls or a queued result for the next one.
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
   it('is described to analytics once, before the session event, as the kind of start it was', async () => {
     // This file does not clear its mocks between tests, so count from here.
     trackNewTaskMessageSent.mockClear();
@@ -1489,8 +1496,6 @@ describe('the first message of a new task (analytics)', () => {
     await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({ attachments: 1 }));
-    // This file does not clear its mocks between tests; later ones count uploads from zero.
-    uploadAttachments.mockClear();
   });
 });
 
