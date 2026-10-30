@@ -51,9 +51,9 @@ describe('AccessChooser with the platform UI off and no publish-token tag', () =
     expect(screen.getByText('Anyone with the URL')).toBeInTheDocument();
   });
 
-  it('asks for someone without pointing to "Only you" when Specific people is empty', () => {
+  it('asks for an email without pointing to "Only you" when Specific people is empty', () => {
     render(<AccessChooser value={{ ...newAccessDraft(), mode: 'restricted' }} onChange={() => {}} />);
-    expect(screen.getByText(/^Add someone ·/)).toBeInTheDocument();
+    expect(screen.getByTestId('recipient-summary')).toHaveTextContent('Add at least one email.');
     expect(screen.queryByText(/Only you/)).toBeNull();
   });
 });

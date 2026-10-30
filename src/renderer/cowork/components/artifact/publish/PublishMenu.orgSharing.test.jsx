@@ -61,46 +61,113 @@ function makeController(overrides = {}) {
   };
 }
 
-async function openAccessChange(user) {
+async function openAccessChange(user, option = /^Specific teams and people/) {
   await user.click(screen.getByText('Share'));
   await user.click(screen.getByText('Change'));
-  await user.click(screen.getByRole('radio', { name: /Specific people/ }));
+  if (option) await user.click(screen.getByRole('radio', { name: option }));
 }
 
+async function openChange(user) {
+  await user.click(screen.getByText(/Shared/));
+  await user.click(screen.getByText('Change'));
+}
+
+const radio = (name) => screen.getByRole('radio', { name });
+const recipients = () => screen.getByRole('group', { name: 'Recipients' });
+
 describe('PublishMenu with org sharing', () => {
-  it('sends the picked teams and org_allowed with a restricted change', async () => {
+  it('offers Only you, Everyone at the org, Specific teams and people, Password, Public in that order', async () => {
+    const user = userEvent.setup();
+    render(<PublishMenu controller={makeController()} />);
+    await openAccessChange(user, null);
+
+    const names = screen.getAllByRole('radio').map((r) => r.textContent);
+    expect(names).toEqual([
+      'Only youNobody else can open this',
+      'Everyone at KinaxisAnyone in your organization',
+      'Specific teams and peoplePick teams, colleagues or outside emails',
+      expect.stringMatching(/^Password protected/),
+      expect.stringMatching(/^Public/),
+    ]);
+    // No nested checkboxes any more.
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('sends Everyone at the org as org_allowed with no lists', async () => {
     const user = userEvent.setup();
     const pub = makeController();
     render(<PublishMenu controller={pub} />);
-    await openAccessChange(user);
-
-    await user.click(screen.getByRole('checkbox', { name: 'Teams' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Supply Planning' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Everyone at Kinaxis' }));
+    await openAccessChange(user, /^Everyone at Kinaxis/);
     await user.click(screen.getByRole('button', { name: 'Update' }));
 
     expect(pub.publish).toHaveBeenCalledWith({
       mode: 'restricted',
       org_allowed: true,
-      allowed_team_ids: ['t-supply'],
+      allowed_team_ids: [],
       allowed_user_ids: [],
       allowed_emails: [],
       owner_only: false,
-      // The names cowork-server's publish still reads.
       emails: [],
+      team_ids: [],
+    });
+  });
+
+  it('unfolds the recipient field inside the Specific card, before Password protected', async () => {
+    const user = userEvent.setup();
+    render(<PublishMenu controller={makeController()} />);
+    await openAccessChange(user, null);
+    expect(screen.queryByTestId('specific-recipients')).toBeNull();
+
+    await user.click(radio(/^Specific teams and people/));
+    const editor = screen.getByTestId('specific-recipients');
+    expect(within(editor).getByRole('combobox', { name: 'Add teams, people or emails' })).toBeInTheDocument();
+    const follows = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(radio(/^Specific teams and people/), editor)).toBe(true);
+    expect(follows(editor, radio(/^Password protected/))).toBe(true);
+    // Directly under its own card, in the same wrapper.
+    expect(editor.parentElement).toContainElement(radio(/^Specific teams and people/));
+    expect(editor.parentElement).not.toContainElement(radio(/^Password protected/));
+  });
+
+  it('sends teams, people in the org and outside emails apart', async () => {
+    const user = userEvent.setup();
+    const pub = makeController();
+    render(<PublishMenu controller={pub} />);
+    await openAccessChange(user);
+
+    const field = screen.getByRole('combobox', { name: 'Add teams, people or emails' });
+    await user.click(field);
+    await user.click(screen.getByRole('option', { name: /Supply Planning/ }));
+    await user.type(field, 'ana');
+    await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
+    await user.type(field, 'Zed@Partner.io');
+    await user.click(await screen.findByRole('option', { name: /Invite zed@partner.io/ }));
+    expect(screen.getByTestId('recipient-summary')).toHaveTextContent('1 team · 1 person · 1 outside Kinaxis');
+
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    expect(pub.publish).toHaveBeenCalledWith({
+      mode: 'restricted',
+      org_allowed: false,
+      allowed_team_ids: ['t-supply'],
+      allowed_user_ids: ['u-ana'],
+      allowed_emails: ['zed@partner.io'],
+      owner_only: false,
+      // The names cowork-server's publish still reads.
+      emails: ['zed@partner.io'],
       team_ids: ['t-supply'],
     });
   });
 
-  it('accepts teams alone as a finished selection', async () => {
+  it('keeps Update disabled until Specific names someone', async () => {
     const user = userEvent.setup();
     const pub = makeController();
     render(<PublishMenu controller={pub} />);
     await openAccessChange(user);
 
     expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled();
-    await user.click(screen.getByRole('checkbox', { name: 'Teams' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Supply Planning' }));
+    expect(screen.getByTestId('recipient-summary')).toHaveTextContent('Add at least one team, person or email.');
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: /Supply Planning/ }));
     await user.click(screen.getByRole('button', { name: 'Update' }));
 
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
@@ -108,30 +175,68 @@ describe('PublishMenu with org sharing', () => {
     }));
   });
 
-  it('pre-fills the teams the access already names', async () => {
+  it('reads org_allowed with no lists as Everyone at the org', async () => {
     const user = userEvent.setup();
-    render(<PublishMenu controller={makeController({ allowedTeamIds: ['t-supply'], ownerOnly: false })} />);
-    await user.click(screen.getByText(/Shared/));
-    await user.click(screen.getByText('Change'));
-
-    expect(screen.getByRole('checkbox', { name: 'Supply Planning' })).toBeChecked();
+    render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false })} />);
+    expect(screen.getByText(/Shared/)).toBeInTheDocument();
+    await openChange(user);
+    expect(radio(/^Everyone at Kinaxis/)).toHaveAttribute('aria-checked', 'true');
   });
 
-  it("leaves the org's default team out and reads it as Everyone at the org", async () => {
+  it('reads stored lists as Specific teams and people, naming them as pills', async () => {
+    const user = userEvent.setup();
+    render(<PublishMenu controller={makeController({
+      allowedTeamIds: ['t-supply'], allowedUserIds: ['u-bo', 'u-gone'], accessEmails: ['zed@partner.io'], ownerOnly: false,
+    })} />);
+    await openChange(user);
+
+    expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true');
+    await waitFor(() => expect(recipients()).toHaveTextContent('Bo Chen'));
+    expect(recipients()).toHaveTextContent('Supply Planning');
+    expect(recipients()).toHaveTextContent('Unknown person');
+    expect(recipients()).toHaveTextContent('zed@partner.io');
+    expect(people.byIds).toHaveBeenCalledWith(['u-bo', 'u-gone']);
+  });
+
+  it("reads the org's default team as Everyone at the org, and never offers it as a team", async () => {
     const user = userEvent.setup();
     const withDefault = { ...TEAMS, teams: [{ id: 't-all', display_name: 'All members', is_default: true }, ...TEAMS.teams] };
     render(<PublishMenu controller={makeController({
       allowedTeamIds: ['t-all'], ownerOnly: false,
       orgSharing: { enabled: true, orgName: 'Kinaxis', teams: withDefault },
     })} />);
-    await user.click(screen.getByText(/Shared/));
-    await user.click(screen.getByText('Change'));
+    await openChange(user);
 
-    expect(screen.getByRole('checkbox', { name: 'Everyone at Kinaxis' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Teams' })).not.toBeChecked();
-    await user.click(screen.getByRole('checkbox', { name: 'Teams' }));
-    expect(screen.getByRole('checkbox', { name: 'Supply Planning' })).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: 'All members' })).toBeNull();
+    expect(radio(/^Everyone at Kinaxis/)).toHaveAttribute('aria-checked', 'true');
+    await user.click(radio(/^Specific teams and people/));
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('option', { name: /Supply Planning/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /All members/ })).toBeNull();
+  });
+
+  it('reads org_allowed with lists as Everyone, keeping the lists for Specific', async () => {
+    const user = userEvent.setup();
+    const pub = makeController({ orgAllowed: true, allowedTeamIds: ['t-supply'], ownerOnly: false });
+    render(<PublishMenu controller={pub} />);
+    await openChange(user);
+
+    expect(radio(/^Everyone at Kinaxis/)).toHaveAttribute('aria-checked', 'true');
+    await user.click(radio(/^Specific teams and people/));
+    expect(recipients()).toHaveTextContent('Supply Planning');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
+      org_allowed: false, allowed_team_ids: ['t-supply'],
+    }));
+  });
+
+  it('summarises Everyone at the org on the summary card', () => {
+    render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false })} />);
+    // The popover is closed; the summary is what opening it shows.
+    return userEvent.setup().click(screen.getByText(/Shared/)).then(() => {
+      expect(screen.getByText('Everyone at Kinaxis')).toBeInTheDocument();
+      expect(screen.getByText('Anyone in your organization')).toBeInTheDocument();
+    });
   });
 
   it('says when the teams could not be loaded', async () => {
@@ -140,123 +245,16 @@ describe('PublishMenu with org sharing', () => {
       orgSharing: { enabled: true, orgName: 'Kinaxis', teams: { status: 'ready', reachable: false, teams: [] } },
     })} />);
     await openAccessChange(user);
-    await user.click(screen.getByRole('checkbox', { name: 'Teams' }));
+    await user.click(screen.getByRole('combobox'));
 
     expect(screen.getByText("Couldn't load your teams. Try again later.")).toBeInTheDocument();
-  });
-
-  it('shows neither teams nor the org name without org sharing', async () => {
-    const user = userEvent.setup();
-    const pub = makeController({ orgSharing: { enabled: false, orgName: null, teams: TEAMS } });
-    render(<PublishMenu controller={pub} />);
-    await openAccessChange(user);
-
-    expect(screen.queryByRole('checkbox', { name: 'Supply Planning' })).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: 'Teams' })).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: /People in/ })).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: /People outside/ })).toBeNull();
-    expect(screen.queryByRole('combobox')).toBeNull();
-    const org = screen.getByRole('checkbox', { name: 'Everyone in my organization' });
-    await user.click(org);
-    await user.click(screen.getByRole('button', { name: 'Update' }));
-    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: [], org_allowed: true, owner_only: false });
-    expect(within(document.body).queryByText('Everyone at Kinaxis')).toBeNull();
-  });
-
-  it('offers Everyone, Teams, People in and People outside the org', async () => {
-    const user = userEvent.setup();
-    render(<PublishMenu controller={makeController()} />);
-    await openAccessChange(user);
-
-    for (const name of ['Everyone at Kinaxis', 'Teams', 'People in Kinaxis', 'People outside Kinaxis']) {
-      expect(screen.getByRole('checkbox', { name })).not.toBeChecked();
-    }
-  });
-
-  it('sends people in the org by user id and people outside by email', async () => {
-    const user = userEvent.setup();
-    const pub = makeController();
-    render(<PublishMenu controller={pub} />);
-    await openAccessChange(user);
-
-    await user.click(screen.getByRole('checkbox', { name: 'People in Kinaxis' }));
-    await user.type(screen.getByRole('combobox', { name: 'Search people' }), 'ana');
-    await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
-    expect(screen.getByRole('list', { name: 'Picked people' })).toHaveTextContent('Ana Ruiz (ana@kinaxis.com)');
-
-    await user.click(screen.getByRole('checkbox', { name: 'People outside Kinaxis' }));
-    const outside = screen.getByRole('textbox', { name: 'Add people outside by email' });
-    await user.type(outside, 'Zed@Partner.io{Enter}');
-    expect(screen.getByRole('list', { name: 'People outside' })).toHaveTextContent('zed@partner.io');
-
-    await user.click(screen.getByRole('button', { name: 'Update' }));
-    expect(pub.publish).toHaveBeenCalledWith({
-      mode: 'restricted',
-      org_allowed: false,
-      allowed_team_ids: [],
-      allowed_user_ids: ['u-ana'],
-      allowed_emails: ['zed@partner.io'],
-      owner_only: false,
-      emails: ['zed@partner.io'],
-      team_ids: [],
-    });
-  });
-
-  it('accepts people in the org alone as a finished selection', async () => {
-    const user = userEvent.setup();
-    const pub = makeController();
-    render(<PublishMenu controller={pub} />);
-    await openAccessChange(user);
-
-    await user.click(screen.getByRole('checkbox', { name: 'People in Kinaxis' }));
-    await user.type(screen.getByRole('combobox', { name: 'Search people' }), 'ana');
-    await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
-    await user.click(screen.getByRole('button', { name: 'Update' }));
-
-    expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
-      allowed_user_ids: ['u-ana'], allowed_emails: [], emails: [], owner_only: false,
-    }));
-  });
-
-  it('holds the update while an outside address is not an email', async () => {
-    const user = userEvent.setup();
-    render(<PublishMenu controller={makeController()} />);
-    await openAccessChange(user);
-
-    await user.click(screen.getByRole('checkbox', { name: 'People outside Kinaxis' }));
-    await user.type(screen.getByRole('textbox', { name: 'Add people outside by email' }), 'nope{Enter}');
-
-    expect(screen.getByRole('alert')).toHaveTextContent('Not an email: nope');
-    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled();
-  });
-
-  it('names the stored people in the org and keeps outside emails apart', async () => {
-    const user = userEvent.setup();
-    render(<PublishMenu controller={makeController({
-      allowedUserIds: ['u-bo', 'u-gone'], accessEmails: ['bo@kinaxis.com', 'zed@partner.io'], ownerOnly: false,
-    })} />);
-    await user.click(screen.getByText(/Shared/));
-    await user.click(screen.getByText('Change'));
-
-    expect(screen.getByRole('checkbox', { name: 'People in Kinaxis' })).toBeChecked();
-    const picked = screen.getByRole('list', { name: 'Picked people' });
-    await waitFor(() => expect(picked).toHaveTextContent('Bo Chen (bo@kinaxis.com)'));
-    expect(picked).toHaveTextContent('Unknown person');
-    expect(picked).not.toHaveTextContent('zed@partner.io');
-    expect(people.byIds).toHaveBeenCalledWith(['u-bo', 'u-gone']);
-    // allowed_emails are the people outside, whatever their domain.
-    expect(screen.getByRole('checkbox', { name: 'People outside Kinaxis' })).toBeChecked();
-    const outside = screen.getByRole('list', { name: 'People outside' });
-    expect(outside).toHaveTextContent('bo@kinaxis.com');
-    expect(outside).toHaveTextContent('zed@partner.io');
   });
 
   it('drops an Unknown person and sends the rest', async () => {
     const user = userEvent.setup();
     const pub = makeController({ allowedUserIds: ['u-bo', 'u-gone'], ownerOnly: false });
     render(<PublishMenu controller={pub} />);
-    await user.click(screen.getByText(/Shared/));
-    await user.click(screen.getByText('Change'));
+    await openChange(user);
 
     await user.click(await screen.findByRole('button', { name: 'Remove Unknown person' }));
     await user.click(screen.getByRole('button', { name: 'Update' }));
@@ -264,5 +262,25 @@ describe('PublishMenu with org sharing', () => {
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
       allowed_user_ids: ['u-bo'], allowed_emails: [], owner_only: false,
     }));
+  });
+
+  it('offers Specific people by email only without org sharing', async () => {
+    const user = userEvent.setup();
+    const pub = makeController({ orgSharing: { enabled: false, orgName: null, teams: TEAMS } });
+    render(<PublishMenu controller={pub} />);
+    await openAccessChange(user, /^Specific people/);
+
+    expect(screen.queryByRole('radio', { name: /^Everyone/ })).toBeNull();
+    expect(radio(/^Specific people/)).toHaveTextContent('Only the people you list');
+    const field = screen.getByRole('combobox', { name: 'Add people by email' });
+    await user.click(field);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled();
+
+    await user.type(field, 'Zed@Partner.io{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
+    expect(people.search).not.toHaveBeenCalled();
+    expect(within(document.body).queryByText(/Kinaxis/)).toBeNull();
   });
 });

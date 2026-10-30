@@ -21,6 +21,7 @@ import {
   Bot,
   Box,
   Brain,
+  Building2,
   CalendarClock,
   ChartColumn,
   Check,
@@ -170,6 +171,8 @@ const Ico = {
   key:      ico(KeyRound),
   lock:     ico(Lock),
   people:   ico(Users),
+  // Office block — "Everyone at ‹org›" when sharing.
+  building: ico(Building2),
   // A single person — "created by another member" marker (ENG-2979).
   // Not `people`: that one already means "Restricted" access.
   user:     ico(UserRound),

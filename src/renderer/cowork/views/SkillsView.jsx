@@ -181,7 +181,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
      the audience to the Share dialog. */
   const asksAudience = !!orgSharing?.enabled && !isEdit;
   const [access, setAccess] = useState(PRIVATE_ACCESS);
-  const [emailPending, setEmailPending] = useState(false);
+  const [audiencePending, setAudiencePending] = useState(false);
   // Set once the skill exists but sharing it failed: Create then retries
   // only the sharing, never a second create.
   const [createdSlug, setCreatedSlug] = useState(null);
@@ -201,7 +201,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
       setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
     }
     setAccess(PRIVATE_ACCESS);
-    setEmailPending(false);
+    setAudiencePending(false);
     setCreatedSlug(null);
     setInlineError('');
   }, [open]);
@@ -220,7 +220,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
     }
     const label = isEdit ? initial.label : draft.label.trim();
     if (!label || !draft.declarative.trim()) return;
-    if (asksAudience && emailPending) return;
+    if (asksAudience && audiencePending) return;
     const shareAfterCreate = asksAudience && !isPrivateAccess(access);
     setBusy(true);
     setInlineError('');
@@ -273,7 +273,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
     }
   };
 
-  const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy && !(asksAudience && emailPending);
+  const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy && !(asksAudience && audiencePending);
 
   return (
     <Modal
@@ -365,7 +365,7 @@ function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = 
                     capabilities={orgSharing}
                     // The creator can always edit their own new skill.
                     canEdit
-                    onPendingChange={setEmailPending}
+                    onPendingChange={setAudiencePending}
                   />
                 </div>
               </Field>

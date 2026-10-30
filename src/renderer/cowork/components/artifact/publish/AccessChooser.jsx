@@ -1,39 +1,31 @@
 // AccessChooser — the "Who can access your app" picker.
 //
 // One controlled component shared by every publish surface (the viewer's
-// inline publish popover and the Artifacts grid dialog) so the
-// Public / Password / Restricted logic — and its validation — lives in
-// exactly one place. Built on Base UI's RadioGroup/Radio for real
-// radiogroup semantics + arrow-key navigation; skinned inline with the
-// app's `--accent` / `--surface` / `--line` tokens so it stays
-// theme-aware without a bespoke stylesheet.
+// inline publish popover and the Artifacts grid dialog) so the access logic —
+// and its validation — lives in exactly one place. Built on Base UI's
+// RadioGroup/Radio for real radiogroup semantics + arrow-key navigation;
+// skinned with the app's `--accent` / `--surface` / `--line` tokens.
+//
+// The choices, private → public: Only you, Everyone at ‹org› (org sharing
+// only), Specific teams and people (or, without org sharing, Specific people
+// by email), Password protected, Public. "Specific …" unfolds its recipient
+// field right under its own card (ENG-3787).
 //
 // Controlled via a single `value` draft + `onChange`:
 //   const [draft, setDraft] = useState(accessDraftFromArtifact(artifact));
 //   <AccessChooser value={draft} onChange={setDraft} />
 //   // on confirm: publish(buildAccessPayload(draft))
 
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { RadioGroup } from '@base-ui/react/radio-group';
-import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
-import { Checkbox, Textarea, Tooltip } from '../../ui';
+import { Tooltip } from '../../ui';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
-import TeamPicker from '../../TeamPicker';
-import PeoplePicker from '../../PeoplePicker';
-import EmailChipsInput from '../../EmailChipsInput';
-import {
-  everyoneAtLabel,
-  namesDefaultTeam,
-  peopleInLabel,
-  peopleOutsideLabel,
-  withoutDefaultTeam,
-} from '../../../lib/orgSharing';
-import { useKnownPeople } from '../../../hooks/useOrgSharing';
-
-const FONT_MONO = "var(--font-mono)";
+import { AudienceOption } from '../../AudienceOption';
+import RecipientField from '../../RecipientField';
+import { everyoneAtLabel, namesDefaultTeam, withoutDefaultTeam } from '../../../lib/orgSharing';
 
 // Shared class strings for the bare-input shell (a bordered row wrapping an
 // unstyled <input>), so the password field and any future inputs stay in sync.
@@ -47,32 +39,42 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 // chooses who can open the link first: `isAccessDraftValid` refuses a draft
 // with no mode, which keeps Share disabled until then.
 export function newAccessDraft() {
-  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', orgAllowed: false, teamIds: [], userIds: [] };
+  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', teamIds: [], userIds: [] };
 }
 
 // Seed a draft from an artifact's current (owner-side) access state, so
 // re-opening the chooser pre-selects what's already live.
-// `ownerOnly` is a UI mode, not a server one: the wire format has three modes,
-// and "only me" is `restricted` with nothing selected. Deriving it here — and
-// collapsing it back in `buildAccessPayload` — is what lets the picker offer
-// "Only you" and "Specific people" as two visibly different choices instead of
-// one option whose meaning depends on whether a textarea happens to be empty.
-export function accessDraftFromArtifact(artifact) {
+//
+// The wire format has three modes; the chooser has more. "Only you" is
+// `restricted` with nothing selected, and with org sharing on (`orgSharing`)
+// "Everyone at ‹org›" (`org`) is `restricted` with `org_allowed` — or naming
+// the org's default team, which the server maps to org-wide (`teams` is what
+// `useHubTeams` returns, to know which team that is). Any other list is
+// "Specific teams and people" (`restricted`).
+//
+// An access that has `org_allowed` AND lists reads as Everyone: that is who
+// can open it. The lists stay on the draft, so switching to "Specific teams
+// and people" shows them, but Everyone sends `org_allowed` alone, so updating
+// as Everyone drops them.
+export function accessDraftFromArtifact(artifact, { orgSharing = false, teams = [] } = {}) {
   // Nothing is live on an unpublished artifact, so with the platform UI off it
   // starts from a new draft, whatever access an earlier publish left on it.
   if (!PLATFORM_UI && !artifact?.publishedUrl) return newAccessDraft();
   const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
-  const mode = serverMode === 'restricted' && isOwnerOnlySelection(artifact)
-    ? 'ownerOnly'
-    : serverMode;
+  const storedTeamIds = [...(artifact?.allowedTeamIds || [])];
+  let mode = serverMode;
+  if (serverMode === 'restricted') {
+    if (isOwnerOnlySelection(artifact)) mode = 'ownerOnly';
+    else if (orgSharing && (artifact?.orgAllowed || namesDefaultTeam(storedTeamIds, teams))) mode = 'org';
+  }
   return {
     mode,
     password: artifact?.accessPassword || '',
+    // People outside the org (or, without org sharing, everyone listed).
     emailsText: (artifact?.accessEmails || []).join(', '),
-    orgAllowed: !!artifact?.orgAllowed,
-    teamIds: [...(artifact?.allowedTeamIds || [])],
-    // People in the org, by hub user id (ENG-3787). `emailsText` is then the
-    // people outside it.
+    // The default team stands for "Everyone at ‹org›", never a team pill.
+    teamIds: withoutDefaultTeam(storedTeamIds, teams),
+    // People in the org, by hub user id (ENG-3787).
     userIds: [...(artifact?.allowedUserIds || [])],
   };
 }
@@ -102,41 +104,38 @@ export function parseEmailList(raw) {
   return { valid, invalid };
 }
 
-// Whether the draft can be submitted: public always, password needs a
-// non-empty secret, restricted needs input that isn't malformed. An empty
-// restricted selection is an explicit owner-only publish (ENG-1769); a
-// malformed address blocks submission rather than being dropped, which would
-// silently publish to the owner alone.
-export function isAccessDraftValid(draft) {
+// Whether the draft can be submitted: public, Only you and Everyone always;
+// password needs a non-empty secret; "Specific …" needs at least one
+// recipient (teams and people count only with org sharing, where the field
+// can show them) and no malformed address.
+export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
   if (!draft) return false;
   if (draft.mode === 'public') return true;
-  // Nothing to fill in — it is a complete selection on its own.
-  if (draft.mode === 'ownerOnly') return true;
+  // Nothing to fill in — each is a complete selection on its own.
+  if (draft.mode === 'ownerOnly' || draft.mode === 'org') return true;
   if (draft.mode === 'password') return (draft.password || '').trim().length > 0;
   if (draft.mode === 'restricted') {
     const { valid, invalid } = parseEmailList(draft.emailsText);
     if (invalid.length) return false;
-    // Text in the "People outside ‹org›" box that hasn't become a chip yet.
-    if (draft.emailsPending) return false;
-    // An empty "Specific people" used to be how you said "only me". It is a
-    // separate option now, so an empty list here is an unfinished selection
-    // rather than a silent private publish — block it instead of quietly
-    // doing something other than what the label says.
-    return valid.length > 0 || !!draft.orgAllowed || (draft.teamIds || []).length > 0
-      || (draft.userIds || []).length > 0;
+    // An empty list used to be how you said "only me". It is a separate
+    // option now, so an empty list here is an unfinished selection rather
+    // than a silent private publish.
+    return valid.length > 0 || (orgSharing
+      && ((draft.teamIds || []).length > 0 || (draft.userIds || []).length > 0));
   }
   return false;
 }
 
 // Turn a draft into the `access` payload `publishArtifact` expects. `owner_only`
-// is derived, never stored on the draft: the textarea is the source of truth.
+// is derived, never stored on the draft.
 // With org sharing on (ENG-3787) a restricted payload names its audience the
 // way skills do: `org_allowed`, `allowed_team_ids`, `allowed_user_ids` (people
 // in the org) and `allowed_emails` (people outside it). `emails` and
 // `team_ids` repeat the outside emails and the teams under the names
-// cowork-server's publish still reads.
+// cowork-server's publish still reads. Everyone at ‹org› sends `org_allowed`
+// and empty lists.
 export function buildAccessPayload(draft, { orgSharing = false } = {}) {
-  const payload = buildBaseAccessPayload(draft);
+  const payload = buildBaseAccessPayload(draft, { orgSharing });
   if (!orgSharing || payload.mode !== 'restricted') return payload;
   const restricted = draft?.mode === 'restricted';
   const teamIds = restricted ? [...(draft.teamIds || [])] : [];
@@ -151,7 +150,7 @@ export function buildAccessPayload(draft, { orgSharing = false } = {}) {
   };
 }
 
-function buildBaseAccessPayload(draft) {
+function buildBaseAccessPayload(draft, { orgSharing }) {
   if (draft?.mode === 'password') return { mode: 'password', password: (draft.password || '').trim() };
   // Collapse the UI mode back to the wire shape. `owner_only` is load-bearing:
   // `restricted` with neither emails nor an org would otherwise be read as an
@@ -159,14 +158,16 @@ function buildBaseAccessPayload(draft) {
   if (draft?.mode === 'ownerOnly') {
     return { mode: 'restricted', emails: [], org_allowed: false, owner_only: true };
   }
+  if (draft?.mode === 'org' && orgSharing) {
+    return { mode: 'restricted', emails: [], org_allowed: true, owner_only: false };
+  }
   if (draft?.mode === 'restricted') {
     const { valid } = parseEmailList(draft.emailsText);
-    const orgAllowed = !!draft.orgAllowed;
     return {
       mode: 'restricted',
       emails: valid,
-      org_allowed: orgAllowed,
-      owner_only: valid.length === 0 && !orgAllowed,
+      org_allowed: false,
+      owner_only: valid.length === 0,
     };
   }
   return { mode: 'public' };
@@ -195,64 +196,49 @@ export const ACCESS_LABELS = {
     title: 'Password protected',
     desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL and the password' : 'Anyone on the internet with the password',
   },
+  // Without org sharing: people by email.
   restricted: {
     icon: Ico.people,
     title: 'Specific people',
-    desc: 'Only the people you list — or your whole org',
+    desc: 'Only the people you list',
   },
+  // With org sharing (ENG-3787).
+  specific: {
+    icon: Ico.people,
+    title: 'Specific teams and people',
+    desc: 'Pick teams, colleagues or outside emails',
+  },
+  org: { icon: Ico.building, title: everyoneAtLabel(null), desc: 'Anyone in your organization' },
   ownerOnly: { icon: Ico.lock, title: 'Only you', desc: 'Nobody else can open this' },
 };
 
-function OptionCard({ value, active, icon, title, desc }) {
-  return (
-    <Radio.Root
-      value={value}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-        textAlign: 'left', cursor: 'pointer',
-        padding: '10px 12px', borderRadius: 'var(--card-radius)',
-        background: active ? 'var(--accent-bg)' : 'var(--surface-2)',
-        border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-        transition: 'background var(--dur-hover) ease, border-color var(--dur-hover) ease',
-      }}
-    >
-      <span
-        className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-card-row bg-surface border border-solid border-line"
-        style={{ color: active ? 'var(--accent)' : 'var(--ink-3)' }}
-      >{icon}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-body font-semibold text-[13px] text-ink">{title}</span>
-        <span className="block font-body text-[11.5px] text-ink-3 mt-px">{desc}</span>
-      </span>
-      {/* Radio dot — driven by the controlled `active` so its border color
-          stays a plain inline style (no data-attribute stylesheet). */}
-      <span
-        className="shrink-0 w-[16px] h-[16px] rounded-full inline-grid place-items-center"
-        style={{
-          border: `1.5px solid ${active ? 'var(--accent)' : 'var(--ink-4)'}`,
-          transition: 'border-color var(--dur-hover) ease',
-        }}
-      >
-        {active && <span className="w-[8px] h-[8px] rounded-full bg-accent" />}
-      </span>
-    </Radio.Root>
-  );
+/** The label for an access as the summary card shows it. */
+export function accessSummaryLabel({ mode, ownerOnly, orgAllowed, allowedTeamIds, allowedUserIds, accessEmails } = {}, { orgSharing = false, orgName = null } = {}) {
+  if (mode !== 'restricted') return ACCESS_LABELS[mode] || ACCESS_LABELS.public;
+  // A restricted publish with no recipients and no org grants access to the
+  // owner alone — saying "people you list" there would be a lie (ENG-1769).
+  if (ownerOnly) return ACCESS_LABELS.ownerOnly;
+  if (!orgSharing) return ACCESS_LABELS.restricted;
+  const lists = (allowedTeamIds || []).length + (allowedUserIds || []).length + (accessEmails || []).length;
+  if (orgAllowed && lists === 0) return { ...ACCESS_LABELS.org, title: everyoneAtLabel(orgName) };
+  return ACCESS_LABELS.specific;
 }
 
 // Order runs private → public, so the least exposing choice is the one the
 // eye lands on first. A shared-token deployment offers no "Only you": a
 // publisher reached with one shared publish token (cowork-server's
 // COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
-// upload with a 400.
+// upload with a 400. `org` shows only with org sharing on.
 const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
-  ? ['restricted', 'password', 'public']
-  : ['ownerOnly', 'restricted', 'password', 'public'];
+  ? ['org', 'restricted', 'password', 'public']
+  : ['ownerOnly', 'org', 'restricted', 'password', 'public'];
 
 // `modes` lets a caller restrict the offered set (e.g. ['public','password']);
 // defaults to every mode this build offers. `value`/`onChange` are the
 // controlled draft.
 // `sharing` turns on org sharing (ENG-3787): `{ enabled, orgName, teams }`,
-// where `teams` is what `useHubTeams` returns. Off, the chooser is as it was.
+// where `teams` is what `useHubTeams` returns. Off, there is no "Everyone",
+// and "Specific people" takes emails only.
 export function AccessChooser({
   value,
   onChange,
@@ -261,18 +247,35 @@ export function AccessChooser({
   sharing = null,
 }) {
   const draft = value;
-  // Several patches can land in one event (a chip added, then the box
-  // emptied), so each builds on the last rather than on this render's draft.
+  // Several patches can land in one event, so each builds on the last rather
+  // than on this render's draft.
   const latest = useRef(draft);
   latest.current = draft;
   const set = (patch) => {
     latest.current = { ...latest.current, ...patch };
     onChange?.(latest.current);
   };
-  const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(draft.emailsText);
   const orgSharing = sharing?.enabled === true;
-  const teamIds = draft.teamIds || [];
-  const orgLabel = 'Everyone in my organization';
+  const orgName = orgSharing ? sharing.orgName || null : null;
+  const specific = orgSharing ? ACCESS_LABELS.specific : ACCESS_LABELS.restricted;
+
+  const recipients = {
+    teamIds: orgSharing ? draft.teamIds || [] : [],
+    userIds: orgSharing ? draft.userIds || [] : [],
+    emails: parseEmailList(draft.emailsText).valid,
+  };
+  const editor = (
+    <RecipientField
+      value={recipients}
+      onChange={(next) => set(orgSharing
+        ? { teamIds: next.teamIds, userIds: next.userIds, emailsText: next.emails.join(', ') }
+        : { emailsText: next.emails.join(', ') })}
+      allowExternal
+      emailsOnly={!orgSharing}
+      orgName={orgName}
+      teamsState={orgSharing ? sharing.teams || null : null}
+    />
+  );
 
   return (
     <div>
@@ -287,19 +290,24 @@ export function AccessChooser({
             textarea below it happened to be blank — so the choice a person had
             made was not visible in the choice they had selected. */}
         {modes.includes('ownerOnly') && (
-          <OptionCard value="ownerOnly" active={draft.mode === 'ownerOnly'} icon={Ico.lock(16)}
+          <AudienceOption value="ownerOnly" active={draft.mode === 'ownerOnly'} icon={Ico.lock(16)}
             title={ACCESS_LABELS.ownerOnly.title} desc={ACCESS_LABELS.ownerOnly.desc} />
         )}
+        {orgSharing && modes.includes('org') && (
+          <AudienceOption value="org" active={draft.mode === 'org'} icon={Ico.building(16)}
+            title={everyoneAtLabel(orgName)} desc={ACCESS_LABELS.org.desc} />
+        )}
         {modes.includes('restricted') && (
-          <OptionCard value="restricted" active={draft.mode === 'restricted'} icon={Ico.people(16)}
-            title={ACCESS_LABELS.restricted.title} desc={ACCESS_LABELS.restricted.desc} />
+          <AudienceOption value="restricted" active={draft.mode === 'restricted'} icon={Ico.people(16)}
+            title={specific.title} desc={specific.desc}
+            editor={editor} editorTestId="specific-recipients" />
         )}
         {modes.includes('password') && (
-          <OptionCard value="password" active={draft.mode === 'password'} icon={Ico.lock(16)}
+          <AudienceOption value="password" active={draft.mode === 'password'} icon={Ico.lock(16)}
             title={ACCESS_LABELS.password.title} desc={ACCESS_LABELS.password.desc} />
         )}
         {modes.includes('public') && (
-          <OptionCard value="public" active={draft.mode === 'public'} icon={Ico.globe(16)}
+          <AudienceOption value="public" active={draft.mode === 'public'} icon={Ico.globe(16)}
             title={ACCESS_LABELS.public.title} desc={ACCESS_LABELS.public.desc} />
         )}
       </RadioGroup>
@@ -324,137 +332,6 @@ export function AccessChooser({
               </button>
             </Tooltip>
           </div>
-        </div>
-      )}
-
-      {draft.mode === 'restricted' && orgSharing && (
-        <OrgRestrictedFields draft={draft} set={set} sharing={sharing} modes={modes} />
-      )}
-
-      {draft.mode === 'restricted' && !orgSharing && (
-        <div className="mt-2">
-          <Textarea
-            value={draft.emailsText}
-            onChange={(v) => set({ emailsText: v })}
-            autoFocus
-            rows={3}
-            placeholder="alice@acme.com, bob@acme.com"
-            style={{
-              width: '100%', boxSizing: 'border-box', resize: 'vertical',
-              background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8,
-              color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
-            }}
-          />
-          <div className="font-body text-xs text-ink-4 mt-[6px]">
-            {invalidEmails.length
-              ? `${invalidEmails.length} invalid — fix to publish: ${invalidEmails.join(', ')}`
-              : (parsedEmails.length === 0 && !draft.orgAllowed && teamIds.length === 0
-                // Not "only you will have access": that is now a choice of its
-                // own, so arriving here means the selection is simply unfinished.
-                ? (modes.includes('ownerOnly') ? 'Add someone, or choose “Only you”' : 'Add someone')
-                : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
-            {' '}· comma- or newline-separated.
-          </div>
-          <label className="flex items-center gap-2 mt-2 cursor-pointer font-body text-sm text-ink">
-            <Checkbox checked={draft.orgAllowed}
-              onCheckedChange={(v) => set({ orgAllowed: v })} />
-            {orgLabel}
-          </label>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SharingRow({ label, checked, onCheckedChange, children }) {
-  return (
-    <div className="flex flex-col gap-2 rounded-card border border-solid border-line bg-surface-2 py-[10px] px-3">
-      <label className="flex items-center gap-[10px] cursor-pointer font-body text-[13px] font-semibold text-ink">
-        <Checkbox checked={checked} onCheckedChange={onCheckedChange} />
-        {label}
-      </label>
-      {checked && children && <div className="pl-[26px]">{children}</div>}
-    </div>
-  );
-}
-
-// The restricted choice with org sharing on (ENG-3787): everyone at the org,
-// teams, people picked from the org's directory (by user id, `userIds`), and
-// people outside it by email (`emailsText`, so validation and the payload
-// read it as before).
-function OrgRestrictedFields({ draft, set, sharing, modes }) {
-  const teamIds = draft.teamIds || [];
-  const userIds = draft.userIds || [];
-  const { valid: outsideEmails } = parseEmailList(draft.emailsText);
-  // The picked people's names, looked up by id.
-  const people = useKnownPeople(userIds);
-  const [showTeams, setShowTeams] = useState(false);
-  const [showInside, setShowInside] = useState(false);
-  const [showOutside, setShowOutside] = useState(false);
-
-  // The org's default team is "Everyone at ‹org›", not one of the Teams.
-  const hubTeams = sharing.teams?.teams || [];
-  const orgOn = !!draft.orgAllowed || namesDefaultTeam(teamIds, hubTeams);
-  const pickedTeamIds = withoutDefaultTeam(teamIds, hubTeams);
-  const teamsOn = showTeams || pickedTeamIds.length > 0;
-  const insideOn = showInside || userIds.length > 0;
-  const outsideOn = showOutside || outsideEmails.length > 0;
-  const nothing = outsideEmails.length === 0 && userIds.length === 0 && !draft.orgAllowed && teamIds.length === 0;
-
-  return (
-    <div className="mt-2 flex flex-col gap-2">
-      <SharingRow
-        label={everyoneAtLabel(sharing.orgName)}
-        checked={orgOn}
-        onCheckedChange={(v) => set(v
-          ? { orgAllowed: true }
-          : { orgAllowed: false, teamIds: withoutDefaultTeam(teamIds, hubTeams) })}
-      />
-      <SharingRow
-        label="Teams"
-        checked={teamsOn}
-        onCheckedChange={(v) => {
-          setShowTeams(v);
-          if (!v) set({ teamIds: teamIds.filter((id) => !pickedTeamIds.includes(id)) });
-        }}
-      >
-        <TeamPicker teamsState={sharing.teams} teamIds={teamIds} onChange={(next) => set({ teamIds: next })} />
-      </SharingRow>
-      <SharingRow
-        label={peopleInLabel(sharing.orgName)}
-        checked={insideOn}
-        onCheckedChange={(v) => { setShowInside(v); if (!v) set({ userIds: [] }); }}
-      >
-        <PeoplePicker
-          value={people.people}
-          onChange={(next) => {
-            people.remember(next);
-            set({ userIds: next.map((person) => person.id) });
-          }}
-        />
-        {people.unreachable && (
-          <span className="mt-1 block font-body text-xs text-ink-3" role="note">Couldn't load some names from your organization.</span>
-        )}
-      </SharingRow>
-      <SharingRow
-        label={peopleOutsideLabel(sharing.orgName)}
-        checked={outsideOn}
-        onCheckedChange={(v) => {
-          setShowOutside(v);
-          if (!v) set({ emailsText: '', emailsPending: false });
-        }}
-      >
-        <EmailChipsInput
-          emails={outsideEmails}
-          onChange={(outside) => set({ emailsText: outside.join(', ') })}
-          onPendingChange={(pending) => set({ emailsPending: pending })}
-          inputLabel="Add people outside by email"
-          listLabel="People outside"
-        />
-      </SharingRow>
-      {nothing && (
-        <div className="font-body text-xs text-ink-4">
-          {modes.includes('ownerOnly') ? 'Add someone, or choose “Only you”' : 'Add someone'}
         </div>
       )}
     </div>

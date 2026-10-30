@@ -79,7 +79,7 @@ describe('fetchHubTeams', () => {
       reachable: true, teams: [{ id: 't1', display_name: 'Supply Planning' }, { bad: true }],
     }));
 
-    expect(await fetchHubTeams()).toEqual({ reachable: true, teams: [{ id: 't1', display_name: 'Supply Planning', is_default: false }] });
+    expect(await fetchHubTeams()).toEqual({ reachable: true, teams: [{ id: 't1', display_name: 'Supply Planning', is_default: false, member_count: null }] });
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/teams/');
     expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer kc-token');
@@ -91,9 +91,17 @@ describe('fetchHubTeams', () => {
     }));
 
     expect((await fetchHubTeams()).teams).toEqual([
-      { id: 't1', display_name: 'Supply Planning', is_default: false },
-      { id: 't2', display_name: 'Finance', is_default: false },
+      { id: 't1', display_name: 'Supply Planning', is_default: false, member_count: null },
+      { id: 't2', display_name: 'Finance', is_default: false, member_count: null },
     ]);
+  });
+
+  it('keeps the member count when the hub sends one', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      reachable: true, teams: [{ id: 't1', displayName: 'Supply', memberCount: 12 }, { id: 't2', display_name: 'Ops', member_count: 'x' }],
+    }));
+
+    expect((await fetchHubTeams()).teams.map((t) => t.member_count)).toEqual([12, null]);
   });
 
   it('keeps which team is the org default, in either spelling', async () => {

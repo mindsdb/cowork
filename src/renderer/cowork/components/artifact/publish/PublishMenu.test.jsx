@@ -86,16 +86,16 @@ describe('PublishMenu — restricted access change guard (ENG-931)', () => {
     fireEvent.click(screen.getByText('Change'));
 
     // Draft seeded empty (list not loaded yet).
-    const ta = screen.getByPlaceholderText('alice@acme.com, bob@acme.com');
-    expect(ta.value).toBe('');
+    const recipients = () => screen.getByRole('group', { name: 'Recipients' });
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
 
     // Server list lands → draft re-seeds (user hasn't edited), so an empty
     // list can never be what "Update" would submit.
     rerender(<PublishMenu controller={makeController({
       ...base, accessEmails: ['alice@x.com', 'bob@x.com'], accessLoaded: true,
     })} />);
-    expect(screen.getByPlaceholderText('alice@acme.com, bob@acme.com').value)
-      .toBe('alice@x.com, bob@x.com');
+    expect(recipients()).toHaveTextContent('alice@x.com');
+    expect(recipients()).toHaveTextContent('bob@x.com');
   });
 });
 

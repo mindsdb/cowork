@@ -1,23 +1,26 @@
-// `<SkillAudienceFields>` — the audience controls for a skill inside a hosted
-// org (ENG-3787): Only me, people in the org, teams, everyone at the org, and the
-// "Always include in every task" switch once the org or a team is picked.
-// People are picked from the org's directory (`<PeoplePicker>`); a skill
-// can't be shared with anyone outside the org, and the server refuses it.
-// Shared by the Share dialog and the Add a Skill dialog. The three audiences
-// combine; "Only me" is the state with none of them, and picking it clears the
-// rest.
+// `<SkillAudienceFields>` — who can use a skill inside a hosted org
+// (ENG-3787), picked from three cards: Only me, Everyone at ‹org›, or
+// Specific teams and people. The last unfolds a `<RecipientField>` under
+// itself; a skill reaches only people in the org, so it takes no outside
+// emails (the server refuses them). "Always include in every task" shows once
+// the org or a team is picked.
+// Shared by the Share dialog and the Add a Skill dialog.
 //
 // Controlled: `value` is the skill's access, `{ orgAllowed, allowedTeamIds,
-// allowedUserIds, alwaysOn }`, and `onChange` gets the next one. People are
-// kept by user id; `useKnownPeople` names them for their chips. Which rows are open is kept here, seeded from `value` on
-// mount, so a parent that loads a different skill remounts it with a `key`.
+// allowedUserIds, alwaysOn }`, and `onChange` gets the next one. Which card
+// is picked, and the teams and people picked under "Specific", are kept here,
+// seeded from `value` on mount, so a parent that loads a different skill
+// remounts it with a `key`. Everyone at ‹org› sends `orgAllowed` with no
+// lists; the lists stay here, so switching back to "Specific" shows them.
 
 import { useEffect, useRef, useState } from 'react';
-import { Checkbox, Tooltip } from './ui';
+import { RadioGroup } from '@base-ui/react/radio-group';
+import Ico from './Icons';
+import { Tooltip } from './ui';
 import { Switch } from './ui/Switch';
-import { useHubTeams, useKnownPeople } from '../hooks/useOrgSharing';
-import TeamPicker from './TeamPicker';
-import PeoplePicker from './PeoplePicker';
+import { useHubTeams } from '../hooks/useOrgSharing';
+import { AudienceOption } from './AudienceOption';
+import RecipientField from './RecipientField';
 import {
   ALWAYS_ON_HELP,
   ALWAYS_ON_LABEL,
@@ -27,9 +30,7 @@ import {
   alwaysOnLockReason,
   canBeAlwaysOn,
   everyoneAtLabel,
-  isPrivateAccess,
   namesDefaultTeam,
-  peopleInLabel,
   withoutDefaultTeam,
 } from '../lib/orgSharing';
 
@@ -62,19 +63,11 @@ function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
   );
 }
 
-function OptionRow({ label, description, checked, onCheckedChange, disabled = false, children }) {
-  return (
-    <div className="flex flex-col gap-2 rounded-card border border-solid border-line bg-surface-2 py-[10px] px-3">
-      <div>
-        <label className={`flex items-center gap-[10px] font-body text-[13px] font-semibold text-ink ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-          <Checkbox checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
-          {label}
-        </label>
-        {description && <span className="block pl-[26px] font-body text-[11.5px] text-ink-3 mt-px">{description}</span>}
-      </div>
-      {checked && children && <div className="pl-[26px]">{children}</div>}
-    </div>
-  );
+/** Which card an access reads as. The org's default team is everyone. */
+export function skillAudienceMode(access, teams = []) {
+  if (access.orgAllowed || namesDefaultTeam(access.allowedTeamIds, teams)) return 'org';
+  if (access.allowedTeamIds.length > 0 || access.allowedUserIds.length > 0) return 'specific';
+  return 'private';
 }
 
 /**
@@ -88,113 +81,116 @@ function OptionRow({ label, description, checked, onCheckedChange, disabled = fa
  */
 export function SkillAudienceFields({ value, onChange, capabilities, canEdit, onPendingChange = () => {} }) {
   const access = value;
-  // Which audience rows are open, apart from whether they name anyone yet,
-  // so ticking "Teams" shows the list before a team is picked.
-  const [showPeople, setShowPeople] = useState(() => access.allowedUserIds.length > 0);
-  const [showTeams, setShowTeams] = useState(() => access.allowedTeamIds.length > 0);
-  // The picked people's names, looked up by id.
-  const people = useKnownPeople(access.allowedUserIds);
   // Teams load only while the fields are shown.
   const teamsState = useHubTeams(true);
   const teams = teamsState.teams;
-  // The org's default team is "Everyone at ‹org›", not one of the Teams.
-  const sharedWithDefaultTeam = namesDefaultTeam(access.allowedTeamIds, teams);
-  const pickedTeamIds = withoutDefaultTeam(access.allowedTeamIds, teams);
-  // Once the teams are known, a skill shared only with the default team
-  // doesn't open the Teams row.
-  const settledTeamsRow = useRef(false);
+  const [mode, setMode] = useState(() => skillAudienceMode(access, teams));
+  // The teams and people under "Specific", the default team left out.
+  const [lists, setLists] = useState(() => ({
+    teamIds: withoutDefaultTeam(access.allowedTeamIds, teams),
+    userIds: [...access.allowedUserIds],
+  }));
+  // Until the person picks, a skill shared only with the default team reads
+  // as Everyone once the teams are known.
+  const touched = useRef(false);
+  const settled = useRef(false);
   useEffect(() => {
-    if (settledTeamsRow.current || teamsState.status !== 'ready') return;
-    settledTeamsRow.current = true;
-    if (access.allowedTeamIds.length > 0 && pickedTeamIds.length === 0) setShowTeams(false);
+    if (settled.current || teamsState.status !== 'ready') return;
+    settled.current = true;
+    if (touched.current) return;
+    setMode(skillAudienceMode(access, teams));
+    setLists((current) => ({ ...current, teamIds: withoutDefaultTeam(current.teamIds, teams) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamsState.status]);
 
   const orgName = capabilities?.org_name ?? null;
   const canShareOrg = capabilities?.can_share_org === true;
-  // Always on resets to off once neither the org nor a team is picked.
-  const set = (patch) => {
-    const next = { ...access, ...patch };
-    onChange(canBeAlwaysOn(next) ? next : { ...next, alwaysOn: false });
-  };
-  const showAlwaysOn = canBeAlwaysOn(access);
-  const onlyMe = isPrivateAccess(access) && !showPeople && !showTeams;
 
-  const orgRow = (
-    <OptionRow
-      label={everyoneAtLabel(orgName)}
-      description="Everyone in the organization can use it."
-      checked={access.orgAllowed || sharedWithDefaultTeam}
+  // The audience each card stands for.
+  const audienceFor = (nextMode, nextLists, alwaysOn) => {
+    const next = nextMode === 'org'
+      ? { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] }
+      : nextMode === 'specific'
+        ? { orgAllowed: false, allowedTeamIds: [...nextLists.teamIds], allowedUserIds: [...nextLists.userIds] }
+        : { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] };
+    // Always on resets to off once neither the org nor a team is picked.
+    return { ...next, alwaysOn: canBeAlwaysOn(next) ? !!alwaysOn : false };
+  };
+  // What is shown: the card picked, and its audience. Until the person picks,
+  // the value as given (the default team included) is what a save sends.
+  const shown = audienceFor(mode, lists, access.alwaysOn);
+
+  const emit = (nextMode, nextLists, alwaysOn = access.alwaysOn) => {
+    touched.current = true;
+    onChange(audienceFor(nextMode, nextLists, alwaysOn));
+  };
+
+  // "Specific" with nobody in it is unfinished; Save waits for a pick.
+  const empty = mode === 'specific' && lists.teamIds.length === 0 && lists.userIds.length === 0;
+  useEffect(() => {
+    onPendingChange(empty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empty]);
+
+  const showAlwaysOn = mode === 'org' || (mode === 'specific' && lists.teamIds.length > 0);
+
+  const orgCard = (
+    <AudienceOption
+      value="org"
+      active={mode === 'org'}
       disabled={!canShareOrg}
-      onCheckedChange={(next) => set(next
-        ? { orgAllowed: true }
-        : { orgAllowed: false, allowedTeamIds: withoutDefaultTeam(access.allowedTeamIds, teams) })}
+      icon={Ico.building(16)}
+      title={everyoneAtLabel(orgName)}
+      desc="Anyone in your organization"
     />
   );
 
   return (
-    <div className="flex flex-col gap-2">
-      <OptionRow
-        label="Only me"
-        description="Nobody else can use it."
-        checked={onlyMe}
-        disabled={onlyMe}
-        onCheckedChange={(next) => {
-          if (!next) return;
-          onChange({ ...PRIVATE_ACCESS, allowedTeamIds: [], allowedUserIds: [] });
-          setShowPeople(false);
-          setShowTeams(false);
-          onPendingChange(false);
+    <div className="flex min-w-0 flex-col gap-2">
+      <RadioGroup
+        value={mode}
+        onValueChange={(next) => {
+          setMode(next);
+          emit(next, lists);
         }}
-      />
-      <OptionRow
-        label={peopleInLabel(orgName)}
-        description="People you pick from your organization."
-        checked={showPeople}
-        onCheckedChange={(next) => {
-          setShowPeople(next);
-          if (!next) set({ allowedUserIds: [] });
-          onPendingChange(false);
-        }}
+        className="flex min-w-0 flex-col gap-2"
+        aria-label="Who can use this skill"
       >
-        <PeoplePicker
-          value={people.people}
-          onChange={(next) => {
-            people.remember(next);
-            set({ allowedUserIds: next.map((person) => person.id) });
-          }}
-        />
-        {people.unreachable && (
-          <span className="mt-1 block font-body text-xs text-ink-3" role="note">Couldn't load some names from your organization.</span>
+        <AudienceOption value="private" active={mode === 'private'} icon={Ico.lock(16)}
+          title="Only me" desc="Nobody else can use it" />
+        {canShareOrg ? orgCard : (
+          // A disabled control fires no hover of its own, so the hint hangs
+          // off a wrapper.
+          <Tooltip content={ORG_ADMIN_ONLY_HINT}>
+            <div data-testid="org-option-locked">{orgCard}</div>
+          </Tooltip>
         )}
-      </OptionRow>
-      <OptionRow
-        label="Teams"
-        description="Everyone in the teams you pick."
-        checked={showTeams}
-        onCheckedChange={(next) => {
-          setShowTeams(next);
-          // The default team stands for the org row, so it stays.
-          if (!next) set({ allowedTeamIds: access.allowedTeamIds.filter((id) => !pickedTeamIds.includes(id)) });
-        }}
-      >
-        <TeamPicker
-          teamsState={teamsState}
-          teamIds={access.allowedTeamIds}
-          onChange={(allowedTeamIds) => set({ allowedTeamIds })}
+        <AudienceOption
+          value="specific"
+          active={mode === 'specific'}
+          icon={Ico.people(16)}
+          title="Specific teams and people"
+          desc="Pick teams or colleagues"
+          editorTestId="specific-recipients"
+          editor={(
+            <RecipientField
+              value={{ teamIds: lists.teamIds, userIds: lists.userIds, emails: [] }}
+              onChange={(next) => {
+                const nextLists = { teamIds: next.teamIds, userIds: next.userIds };
+                setLists(nextLists);
+                emit('specific', nextLists);
+              }}
+              orgName={orgName}
+              teamsState={teamsState}
+            />
+          )}
         />
-      </OptionRow>
-      {canShareOrg ? orgRow : (
-        // A disabled control fires no hover of its own, so the hint hangs
-        // off a wrapper.
-        <Tooltip content={ORG_ADMIN_ONLY_HINT}>
-          <div data-testid="org-option-locked">{orgRow}</div>
-        </Tooltip>
-      )}
+      </RadioGroup>
       {showAlwaysOn && (
         <AlwaysOnRow
-          checked={access.alwaysOn}
-          onCheckedChange={(next) => set({ alwaysOn: next })}
-          lockReason={alwaysOnLockReason(access, { canShareOrg, canEdit })}
+          checked={shown.alwaysOn}
+          onCheckedChange={(next) => emit(mode, lists, next)}
+          lockReason={alwaysOnLockReason(shown, { canShareOrg, canEdit })}
         />
       )}
       <p className="m-0 mt-1 font-body text-xs text-ink-3" role="note">{SHARING_NOTE}</p>

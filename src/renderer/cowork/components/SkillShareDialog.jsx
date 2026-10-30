@@ -1,5 +1,5 @@
 // `<SkillShareDialog>` — who a skill reaches inside a hosted org (ENG-3787):
-// only the caller, specific people, teams, or everyone at the org. A skill
+// only the caller, everyone at the org, or specific teams and people. A skill
 // reaching the whole org or a team can also be made "always on": part of
 // every task for everyone it reaches, instead of being recalled when it's
 // relevant. The controls themselves are `<SkillAudienceFields>`, shared with
@@ -22,8 +22,8 @@ import { canEditSkill, skillAccess, skillAccessPayload } from '../lib/orgSharing
 export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
   const open = !!skill;
   const [access, setAccess] = useState(() => skillAccess(skill));
-  // Text in the email box that hasn't become a chip, so Save waits for it.
-  const [emailPending, setEmailPending] = useState(false);
+  // "Specific teams and people" picked with nobody in it: Save waits.
+  const [audiencePending, setAudiencePending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // Bumped on each open so the fields re-seed which rows are open.
@@ -32,14 +32,14 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
   useEffect(() => {
     if (!open) return;
     setAccess(skillAccess(skill));
-    setEmailPending(false);
+    setAudiencePending(false);
     setBusy(false);
     setError('');
     setGeneration((g) => g + 1);
   }, [open, skill?.label]);
 
   const save = async () => {
-    if (busy || emailPending) return;
+    if (busy || audiencePending) return;
     setBusy(true);
     setError('');
     try {
@@ -68,7 +68,7 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
               onChange={setAccess}
               capabilities={capabilities}
               canEdit={canEditSkill(skill)}
-              onPendingChange={setEmailPending}
+              onPendingChange={setAudiencePending}
             />
           )}
           {error && <Alert variant="danger">{error}</Alert>}
@@ -76,7 +76,7 @@ export function SkillShareDialog({ skill, capabilities, onClose, onSave }) {
       </ModalBody>
       <ModalFooter>
         <Button variant="subtle" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={save} disabled={busy || emailPending}>
+        <Button variant="primary" onClick={save} disabled={busy || audiencePending}>
           {busy && <Spinner style={{ color: 'currentColor' }} />}
           {busy ? 'Saving…' : 'Save'}
         </Button>

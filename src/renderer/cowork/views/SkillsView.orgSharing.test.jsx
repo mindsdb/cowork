@@ -63,6 +63,17 @@ async function renderPage(skills, capabilities = { enabled: true, can_share_org:
 }
 
 const section = (name) => screen.queryByRole('region', { name });
+const RECIPIENTS = 'Add teams or people';
+async function pickSpecificTeam(user, dialog, team = /Supply Planning/) {
+  await user.click(within(dialog).getByRole('radio', { name: /^Specific teams and people/ }));
+  await user.click(within(dialog).getByRole('combobox', { name: RECIPIENTS }));
+  await user.click(await within(dialog).findByRole('option', { name: team }));
+}
+async function pickSpecificPerson(user, dialog, query, person) {
+  await user.click(within(dialog).getByRole('radio', { name: /^Specific teams and people/ }));
+  await user.type(within(dialog).getByRole('combobox', { name: RECIPIENTS }), query);
+  await user.click(await within(dialog).findByRole('option', { name: person }));
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -160,7 +171,9 @@ describe('SkillsView with org sharing', () => {
     await user.click(screen.getByText('weekly-report'));
     await user.click(screen.getByRole('button', { name: 'Share' }));
     const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Supply Planning' }));
+    // Shared with a team: Specific, with its pill.
+    expect(within(dialog).getByRole('radio', { name: /^Specific teams and people/ })).toHaveAttribute('aria-checked', 'true');
+    await user.click(within(dialog).getByRole('radio', { name: /^Only me/ }));
     const loads = api.fetchSkills.mock.calls.length;
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
@@ -194,7 +207,7 @@ describe('SkillsView with org sharing', () => {
       }
       expect(within(side).getByRole('combobox', { name: 'Project' })).toBeInTheDocument();
       const group = within(side).getByRole('group', { name: 'Who can use it' });
-      expect(within(group).getByRole('checkbox', { name: 'Only me' })).toBeChecked();
+      expect(within(group).getByRole('radio', { name: /^Only me/ })).toHaveAttribute('aria-checked', 'true');
       expect(within(main).queryByRole('group', { name: 'Who can use it' })).toBeNull();
       expect(within(dialog).queryByRole('combobox', { name: 'Who can use it' })).toBeNull();
       // Main column first, so a narrow window stacks it above the settings.
@@ -220,7 +233,7 @@ describe('SkillsView with org sharing', () => {
       const user = userEvent.setup();
       const dialog = await openWriteForm(user);
 
-      expect(within(dialog).getByRole('checkbox', { name: 'Everyone at Kinaxis' })).toHaveAttribute('aria-disabled', 'true');
+      expect(within(dialog).getByRole('radio', { name: /^Everyone at Kinaxis/ })).toHaveAttribute('aria-disabled', 'true');
       expect(within(dialog).getByTestId('org-option-locked')).toBeInTheDocument();
     });
 
@@ -243,7 +256,7 @@ describe('SkillsView with org sharing', () => {
       api.setSkillAccess.mockResolvedValue({});
       const dialog = await openWriteForm(user, [mine], ADMIN_CAPS);
 
-      await user.click(within(dialog).getByRole('checkbox', { name: 'Everyone at Kinaxis' }));
+      await user.click(within(dialog).getByRole('radio', { name: /^Everyone at Kinaxis/ }));
       await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
       await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
@@ -260,8 +273,7 @@ describe('SkillsView with org sharing', () => {
       api.setSkillAccess.mockResolvedValue({});
       const dialog = await openWriteForm(user);
 
-      await user.click(within(dialog).getByRole('checkbox', { name: 'Teams' }));
-      await user.click(await within(dialog).findByRole('checkbox', { name: 'Supply Planning' }));
+      await pickSpecificTeam(user, dialog);
       const alwaysOn = within(dialog).getByRole('switch', { name: 'Always include in every task' });
       expect(alwaysOn).not.toBeDisabled();
       await user.click(alwaysOn);
@@ -279,10 +291,7 @@ describe('SkillsView with org sharing', () => {
       api.searchHubPeople.mockResolvedValue({ reachable: true, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
       const dialog = await openWriteForm(user);
 
-      expect(within(dialog).queryByRole('checkbox', { name: 'Specific people' })).toBeNull();
-      await user.click(within(dialog).getByRole('checkbox', { name: 'People in Kinaxis' }));
-      await user.type(within(dialog).getByRole('combobox', { name: 'Search people' }), 'ana');
-      await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
+      await pickSpecificPerson(user, dialog, 'ana', /Ana Ruiz/);
       await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
       await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith(
@@ -299,9 +308,7 @@ describe('SkillsView with org sharing', () => {
       api.searchHubPeople.mockResolvedValue({ reachable: true, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@kinaxis.com' }] });
       const dialog = await openWriteForm(user);
 
-      await user.click(within(dialog).getByRole('checkbox', { name: 'People in Kinaxis' }));
-      await user.type(within(dialog).getByRole('combobox', { name: 'Search people' }), 'ana');
-      await user.click(await within(dialog).findByRole('option', { name: /Ana Ruiz/ }));
+      await pickSpecificPerson(user, dialog, 'ana', /Ana Ruiz/);
       await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 
       expect(await within(dialog).findByText(/Skills can only be shared with people in your organization: ana@kinaxis.com/))
@@ -314,8 +321,7 @@ describe('SkillsView with org sharing', () => {
       api.setSkillAccess.mockRejectedValueOnce(new Error('Team not found'));
       const dialog = await openWriteForm(user);
 
-      await user.click(within(dialog).getByRole('checkbox', { name: 'Teams' }));
-      await user.click(await within(dialog).findByRole('checkbox', { name: 'Supply Planning' }));
+      await pickSpecificTeam(user, dialog);
       const loads = api.fetchSkills.mock.calls.length;
       await user.click(within(dialog).getByRole('button', { name: 'Create' }));
 

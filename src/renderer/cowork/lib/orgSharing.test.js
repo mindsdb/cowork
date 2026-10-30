@@ -21,6 +21,9 @@ import {
   shareableTeams,
   namesDefaultTeam,
   withoutDefaultTeam,
+  filterTeams,
+  personInitials,
+  recipientSummary,
 } from './orgSharing';
 
 const skill = (label, extra = {}) => ({ label, isBuiltin: false, ...extra });
@@ -179,5 +182,42 @@ describe('personLabel', () => {
     expect(personLabel({ id: 'u1', name: null, email: 'ana@kinaxis.com' })).toBe('ana@kinaxis.com');
     expect(personLabel({ id: 'u1', pending: true })).toBe('Loading…');
     expect(personLabel({ id: 'u1', name: null, email: null })).toBe('Unknown person');
+  });
+});
+
+describe('filterTeams', () => {
+  const teams = [
+    { id: 't1', display_name: 'Supply Planning' },
+    { id: 't2', display_name: 'Finance' },
+    { id: 't3', display_name: 'Supply Chain Ops' },
+  ];
+  it('returns every team for an empty query', () => {
+    expect(filterTeams(teams, '  ')).toEqual(teams);
+  });
+  it('matches names case-insensitively', () => {
+    expect(filterTeams(teams, 'supply').map((t) => t.id)).toEqual(['t1', 't3']);
+  });
+  it('keeps the given ids listed', () => {
+    expect(filterTeams(teams, 'supply', ['t2']).map((t) => t.id)).toEqual(['t1', 't2', 't3']);
+  });
+});
+
+describe('recipient field helpers', () => {
+  it('takes initials from the name, else the email', () => {
+    expect(personInitials({ name: 'Ana Maria Ruiz' })).toBe('AR');
+    expect(personInitials({ name: 'bo' })).toBe('BO');
+    expect(personInitials({ email: 'zed@x.io' })).toBe('Z');
+    expect(personInitials(null)).toBe('?');
+  });
+
+  it('summarises what was added, leaving out empty parts', () => {
+    expect(recipientSummary({ teamIds: ['a', 'b'], userIds: ['u'], emails: ['z@x.io'] }, { orgName: 'Kinaxis' }))
+      .toBe('2 teams · 1 person · 1 outside Kinaxis');
+    expect(recipientSummary({ userIds: ['u', 'v'] }, {})).toBe('2 people');
+    expect(recipientSummary({ emails: ['z@x.io'] }, {})).toBe('1 outside your organization');
+    expect(recipientSummary({}, {})).toBe('Add at least one team, person or email.');
+    expect(recipientSummary({}, { allowExternal: false })).toBe('Add at least one team or person.');
+    expect(recipientSummary({ emails: ['a@x.io', 'b@x.io'] }, { emailsOnly: true })).toBe('2 people');
+    expect(recipientSummary({}, { emailsOnly: true })).toBe('Add at least one email.');
   });
 });

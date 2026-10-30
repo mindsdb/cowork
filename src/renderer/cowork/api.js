@@ -2016,6 +2016,8 @@ export async function fetchHubTeams() {
           // The org's default "All members" team, which the server maps to
           // org-wide: the pickers leave it out for "Everyone at ‹org›".
           is_default: (team.isDefault ?? team.is_default) === true,
+          // How many people the team has, when the hub says; null otherwise.
+          member_count: hubTeamMemberCount(team),
         }))
       : [];
     return { reachable: data?.reachable !== false, teams };
@@ -2027,6 +2029,11 @@ export async function fetchHubTeams() {
 /* A team's name to show. cowork-server sends `displayName` (camelCase);
    older builds sent `display_name`. A raw id is never shown. */
 export const UNNAMED_TEAM = 'Unnamed team';
+
+function hubTeamMemberCount(team) {
+  const count = team.memberCount ?? team.member_count ?? team.membersCount ?? team.members_count;
+  return Number.isInteger(count) && count >= 0 ? count : null;
+}
 
 function hubTeamName(team) {
   for (const candidate of [team.displayName, team.display_name, team.name]) {

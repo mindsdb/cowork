@@ -86,9 +86,9 @@ export function useHubTeams(active) {
 
 /**
  * The people an audience names by user id (`allowed_user_ids`), as the
- * `<PeoplePicker>` shows them: `{ id, name, email }` once the hub has named
+ * `<RecipientField>` shows them: `{ id, name, email }` once the hub has named
  * them, `{ id, pending: true }` while it's being asked, and `{ id, name: null,
- * email: null }` for an id it doesn't know (an "Unknown person" chip).
+ * email: null }` for an id it doesn't know (an "Unknown person" pill).
  *
  * Ids are asked once each (`fetchHubPeopleByIds`); `remember` records people
  * the picker found, so a pick is never looked up again. `unreachable` is true

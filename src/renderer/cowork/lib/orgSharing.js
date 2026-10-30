@@ -92,6 +92,47 @@ export function withoutDefaultTeam(teamIds, teams) {
   return (teamIds || []).filter((id) => !ids.includes(id));
 }
 
+/**
+ * The teams whose name matches `query` (case-insensitive substring). An empty
+ * query returns every team. Ids in `keepIds` stay listed whatever the query.
+ */
+export function filterTeams(teams, query, keepIds = []) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return teams;
+  return teams.filter((team) => keepIds.includes(team.id)
+    || (team.display_name || '').toLowerCase().includes(q));
+}
+
+/** Up to two initials for a person's avatar: from the name, else the email. */
+export function personInitials(person) {
+  const name = (person?.name || '').trim();
+  if (name) {
+    const words = name.split(/\s+/).filter(Boolean);
+    const letters = words.length > 1 ? words[0][0] + words[words.length - 1][0] : words[0].slice(0, 2);
+    return letters.toUpperCase();
+  }
+  const email = (person?.email || '').trim();
+  return email ? email[0].toUpperCase() : '?';
+}
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The line under a recipient field: "2 teams · 1 person · 1 outside Kinaxis",
+ * zero parts left out. `emailsOnly` (no org) counts addresses as people.
+ */
+export function recipientSummary({ teamIds = [], userIds = [], emails = [] } = {}, { orgName = null, emailsOnly = false, allowExternal = true } = {}) {
+  if (emailsOnly) {
+    return emails.length ? plural(emails.length, 'person', 'people') : 'Add at least one email.';
+  }
+  const parts = [];
+  if (teamIds.length) parts.push(plural(teamIds.length, 'team', 'teams'));
+  if (userIds.length) parts.push(plural(userIds.length, 'person', 'people'));
+  if (emails.length) parts.push(`${emails.length} outside ${orgNameOrGeneric(orgName)}`);
+  if (parts.length) return parts.join(' · ');
+  return allowExternal ? 'Add at least one team, person or email.' : 'Add at least one team or person.';
+}
+
 function stringList(value) {
   return Array.isArray(value) ? value.filter((v) => typeof v === 'string' && v) : [];
 }

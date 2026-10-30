@@ -22,8 +22,8 @@ import { Alert, Button, OutsidePressLayer, Spinner, Tooltip } from '../../ui';
 import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
-  ACCESS_LABELS,
   accessDraftFromArtifact,
+  accessSummaryLabel,
   buildAccessPayload,
   isAccessDraftValid,
   isOwnerOnlySelection,
@@ -46,7 +46,7 @@ function draftDiffers(draft, current) {
     const a = parseEmailList(draft.emailsText).valid.join(',');
     const b = parseEmailList(current.emailsText).valid.join(',');
     const ids = (list) => [...(list || [])].sort().join(',');
-    return a !== b || !!draft.orgAllowed !== !!current.orgAllowed
+    return a !== b
       || ids(draft.teamIds) !== ids(current.teamIds)
       || ids(draft.userIds) !== ids(current.userIds);
   }
@@ -128,12 +128,8 @@ function UrlField({ url }) {
 }
 
 // Read-only "current access" card (summary view).
-function AccessSummaryCard({ mode, ownerOnly }) {
-  // A restricted publish with no recipients and no org grants access to the
-  // owner alone — saying "people you list" there would be a lie (ENG-1769).
-  const m = (mode === 'restricted' && ownerOnly)
-    ? ACCESS_LABELS.ownerOnly
-    : (ACCESS_LABELS[mode] || ACCESS_LABELS.public);
+function AccessSummaryCard({ pub, sharing }) {
+  const m = accessSummaryLabel({ ...pub, mode: pub.accessMode }, { orgSharing: !!sharing, orgName: sharing?.orgName });
   return (
     <div className="flex items-center gap-[10px] py-[10px] px-3 rounded-card bg-surface-2 border border-solid border-line">
       <span className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-card-row bg-surface border border-solid border-line text-ink-3">{m.icon(16)}</span>
@@ -217,8 +213,13 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   const [open, setOpen] = useState(false);
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
+  // Teams and "Everyone at ‹org›" (ENG-3787).
+  const sharing = pub.orgSharing?.enabled ? pub.orgSharing : null;
+  const draftOptions = { orgSharing: !!sharing, teams: sharing?.teams?.teams || [] };
+  // The draft the live access reads as.
+  const seedDraft = () => accessDraftFromArtifact(pub, draftOptions);
   // Editable access draft for the publish + change-access flows.
-  const [draft, setDraft] = useState(() => (isPublished ? accessDraftFromArtifact(pub) : newAccessDraft()));
+  const [draft, setDraft] = useState(() => (isPublished ? seedDraft() : newAccessDraft()));
   // Has the user touched the access draft? Gates the late-arrival re-seed below
   // so we never clobber edits-in-progress when the server list lands (ENG-931).
   const [draftDirty, setDraftDirty] = useState(false);
@@ -234,7 +235,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     setDraftDirty(false);
     if (isPublished) {
       setView('summary');
-      setDraft(accessDraftFromArtifact(pub));
+      setDraft(seedDraft());
       pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
@@ -250,17 +251,16 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   // loaded access changes — but never over edits the user already started.
   useEffect(() => {
     if (!open || view !== 'access' || draftDirty) return;
-    setDraft(accessDraftFromArtifact(pub));
+    setDraft(seedDraft());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(','), (pub.allowedTeamIds || []).join(','), (pub.allowedUserIds || []).join(',')]);
+  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(','), (pub.allowedTeamIds || []).join(','), (pub.allowedUserIds || []).join(','), sharing?.teams?.status]);
 
-  const current = accessDraftFromArtifact(pub);
-  // Teams and "Everyone at ‹org›" in the restricted choice (ENG-3787).
-  const sharing = pub.orgSharing?.enabled ? pub.orgSharing : null;
+  const current = seedDraft();
+  const draftValid = (d) => isAccessDraftValid(d, { orgSharing: !!sharing });
   const accessPayload = (d) => buildAccessPayload(d, { orgSharing: !!sharing });
 
   const doPublish = async () => {
-    if (!isAccessDraftValid(draft)) return;
+    if (!draftValid(draft)) return;
     const ok = await pub.publish(accessPayload(draft));
     if (ok) setView('summary');
   };
@@ -269,7 +269,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     // that's exactly the silent-wipe path (ENG-931). Belt-and-suspenders with
     // the disabled "Update" button below.
     if (!pub.accessLoaded) return;
-    if (!isAccessDraftValid(draft) || !draftDiffers(draft, current)) return;
+    if (!draftValid(draft) || !draftDiffers(draft, current)) return;
     const ok = await pub.publish(accessPayload(draft));
     if (ok) setView('summary');
   };
@@ -346,7 +346,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <ErrorRow message={pub.error} />
                   <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                     <FooterButton primary onClick={doPublish}
-                      disabled={pub.busy || !isAccessDraftValid(draft)}
+                      disabled={pub.busy || !draftValid(draft)}
                       busy={pub.phase === 'publishing'} busyLabel="Sharing">
                       Share
                     </FooterButton>
@@ -367,10 +367,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <div className="py-3 px-4">
                     {view === 'summary' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(accessDraftFromArtifact(pub)); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
-                        <AccessSummaryCard mode={pub.accessMode} ownerOnly={pub.ownerOnly} />
+                        <AccessSummaryCard pub={pub} sharing={sharing} />
                         {pub.accessMode === 'password' && (
                           <div className="mt-2 flex justify-end">
                             <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
@@ -386,7 +386,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                     {view === 'access' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(accessDraftFromArtifact(pub)); setDraftDirty(false); setView('summary'); }}>Dismiss</LinkButton>}>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('summary'); }}>Dismiss</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
                         <AccessChooser value={draft} onChange={(d) => { setDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
@@ -467,7 +467,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         </FooterButton>
                       ) : (draftDiffers(draft, current) || pub.modified) ? (
                         <FooterButton primary onClick={doApplyAccess}
-                          disabled={pub.busy || !isAccessDraftValid(draft)}
+                          disabled={pub.busy || !draftValid(draft)}
                           busy={pub.phase === 'publishing'} busyLabel="Updating…">
                           Update
                         </FooterButton>
