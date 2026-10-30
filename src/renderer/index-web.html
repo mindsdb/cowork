@@ -20,23 +20,26 @@
          the OS browser instead, so index.html needs none of them.
          Tighten per-deployment via reverse-proxy headers if needed.
 
-         cdn.jsdelivr.net is TEMPORARY and is not for this app's own code — it
-         is for artifact previews (ENG-2818). On web an artifact is rendered
-         into the preview iframe via `srcdoc`, and a srcdoc document inherits
-         this policy, so the chart library anton's own skill mandates
-         (build-html-dashboard/SKILL.md: "ALWAYS use Apache ECharts… via CDN"
-         from exactly this host) is blocked and every chart renders blank while
-         the rest of the page looks fine.
+         The hosted build (web with the platform UI on) appends the draft
+         hosts to frame-src/child-src at build time: vite.config.ts applies
+         withDraftLinkFrameSources (shared/draft-link-origins.ts). A draft
+         preview frame loads a signed draft link there, and the draft then
+         follows that host's own policy, not this one. Production, staging and
+         dev all go in because one build serves every environment. This
+         template lists none of them because self-hosted and white-label
+         builds serve it too, and their pages must not name those hosts.
+         Published artifact hosts are never listed: this shell never frames
+         them.
 
-         One host, not an allowlist to grow: that skill requires CSS, JS and
-         data inlined, and images as data: URIs or sibling files, so this is
-         the single deliberate remote reference. Desktop does not need it —
-         ENG-2818 made Desktop navigate the iframe, so artifacts there no
-         longer inherit anything, which is why index.html is untouched.
-
-         Remove this when ENG-2822 gives web the same treatment. Until then a
-         web artifact still inherits the rest of this policy, so remote images
-         and web fonts stay blocked — this fixes charts, not the class. -->
+         cdn.jsdelivr.net is not for this app's own code. It is for previews
+         that still render through `srcdoc`, which inherits this policy: the
+         visual editor, the revision comparison, and every preview on a
+         deployment that issues no draft links, self-hosted installs among
+         them. anton's dashboards load Tailwind and ECharts from this host, so
+         without it their charts and styles render blank. It comes out when
+         nothing renders through srcdoc any more. Desktop navigates its
+         preview frame to its loopback server, so index.html needs neither
+         the CDN nor the draft hosts. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://app1.view.localhost:* http://app2.view.localhost:* http://app3.view.localhost:* http://app4.view.localhost:* http://app5.view.localhost:* http://app6.view.localhost:* http://app7.view.localhost:* http://app8.view.localhost:* http://app9.view.localhost:* http://app10.view.localhost:* http://app11.view.localhost:* http://app12.view.localhost:* http://app13.view.localhost:* http://app14.view.localhost:* http://app15.view.localhost:* http://app16.view.localhost:* http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com; child-src 'self' http://app1.view.localhost:* http://app2.view.localhost:* http://app3.view.localhost:* http://app4.view.localhost:* http://app5.view.localhost:* http://app6.view.localhost:* http://app7.view.localhost:* http://app8.view.localhost:* http://app9.view.localhost:* http://app10.view.localhost:* http://app11.view.localhost:* http://app12.view.localhost:* http://app13.view.localhost:* http://app14.view.localhost:* http://app15.view.localhost:* http://app16.view.localhost:* http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com" />
     <title>MindsHub Cowork</title>
     <!-- Brand favicon: the same MindsHub "minds" mark as the desktop app icon,

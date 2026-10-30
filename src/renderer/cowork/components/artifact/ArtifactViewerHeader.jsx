@@ -42,6 +42,7 @@ export function ArtifactViewerHeader({
     canOpenLocalFile,
     isBackendArtifact,
     isLiveApp,
+    opensDraftLinkInTab,
     backendPort,
     artifact,
     deleteBusy,
@@ -60,8 +61,10 @@ export function ArtifactViewerHeader({
      can load without the bearer, so there a tab opens only the shared page,
      as Live Artifacts' arrow does. A published artifact opens its shared
      page, which a tab always shows. A live app opens at the address where it
-     runs, which is a page in every mode, not a file a tab could save. */
-  const canOpenAsTab = isLiveApp || (orgMode
+     runs, which is a page in every mode, not a file a tab could save. With
+     draft links on, an unshared draft the preview opens by a signed link
+     opens one in the tab too, which needs no bearer. */
+  const canOpenAsTab = isLiveApp || opensDraftLinkInTab || (orgMode
     ? isPublished
     : (!host.isWeb || isPublished || canShowInBrowserTab(artifact)));
   const exportFormats = artifactExportFormats(workspace, artifact);

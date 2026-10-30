@@ -5,7 +5,7 @@
  * controls open it; with live apps off it previews and opens as before.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: true,
@@ -45,9 +45,13 @@ vi.mock('../../lib/artifactsStore', () => ({
   deleteArtifactAndSync: vi.fn(async () => undefined),
 }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
-vi.mock('../../lib/artifactWorkspaceApi', () => ({
+const createDraftLink = vi.hoisted(() => vi.fn());
+// The real artifactRef: only a card with a full identity can ask for a link.
+vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
+  artifactRef: (await importOriginal()).artifactRef,
   loadArtifactDraftText: vi.fn(),
   loadArtifactDraftDocument: vi.fn(),
+  createDraftLink,
 }));
 const host = vi.hoisted(() => ({
   isElectron: false,
@@ -92,6 +96,7 @@ vi.mock('./ArtifactViewerBody', () => ({
   ArtifactViewerBody: ({ preview }) => (
     <div>
       <div data-testid="body">{preview.liveApp ? preview.liveApp.notice?.text ?? 'loading' : 'preview'}</div>
+      <div data-testid="viewer-error">{preview.error}</div>
       {preview.liveApp?.notice?.canLaunch && preview.liveApp.onLaunch && (
         <button type="button" onClick={preview.liveApp.onLaunch}>launch</button>
       )}
@@ -104,6 +109,7 @@ vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
 import { setLiveApps } from '../../../lib/liveApps';
+import { setDraftLinks } from '../../../lib/draftLinks';
 import { liveAppKey, liveAppStatesFrom } from '../../lib/liveAppState';
 
 const SERVE_URL = '/api/v1/artifacts/serve/general/server-time-a440c451/static/index.html';
@@ -132,8 +138,14 @@ describe("the viewer's preview and open controls on a live app", () => {
     api.mountArtifactPreview.mockReset().mockResolvedValue({ kind: 'static', url: 'http://cowork.localhost:8080/preview' });
     api.fetchMyLiveApps.mockReset().mockResolvedValue(liveAppStatesFrom([launch]));
     host.openExternal.mockClear();
+    createDraftLink.mockReset();
   });
-  afterEach(() => setLiveApps(false));
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    setLiveApps(false);
+    setDraftLinks(false);
+  });
 
   it('names a running app instead of asking for the preview, and the open control opens its address', async () => {
     setLiveApps(true);
@@ -168,6 +180,21 @@ describe("the viewer's preview and open controls on a live app", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('keeps the viewer open with a cause-neutral message when no turn starts', async () => {
+    setLiveApps(true);
+    api.fetchMyLiveApps.mockResolvedValue(liveAppStatesFrom([{ ...launch, state: 'stopped', stoppedAt: '', stopReasonText: '' }]));
+    const onClose = vi.fn();
+    render(<ArtifactViewer open artifact={app} onClose={onClose} onAddressWithAgent={vi.fn(async () => false)} />);
+    await act(async () => {});
+
+    await act(async () => { fireEvent.click(screen.getByText('launch')); });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('viewer-error')).toHaveTextContent(
+      "The agent couldn't launch this app. Check that an agent provider is connected and that you can run tasks in this project, then try again.",
+    );
+  });
+
   it('offers no Launch while the app runs, or with no agent to ask', async () => {
     setLiveApps(true);
     render(<ArtifactViewer open artifact={app} onClose={vi.fn()} onAddressWithAgent={vi.fn()} />);
@@ -184,6 +211,31 @@ describe("the viewer's preview and open controls on a live app", () => {
     api.fetchMyLiveApps.mockResolvedValue(new Map([[liveAppKey('p2', app.slug), { ...launch, projectId: 'p2' }]]));
     await openViewer();
     expect(screen.getByTestId('body').textContent).toBe("This live app isn't running. Ask your agent to launch it.");
+  });
+
+  /*
+   * With draft links on too, an unpublished draft opens by a signed link, but a
+   * running live app still opens where it runs. A card whose path is disabled
+   * has no action path, which alone would send it down the link route to a
+   * static copy of its page.
+   */
+  it.each([
+    ['a card with its path', app],
+    ['a card whose path is disabled', {
+      ...app,
+      actionDisabledReason: 'This app is not in the working folder.',
+      draftUrl: `/api/v1/artifacts/drafts/p1/${app.id}/static/index.html`,
+    }],
+  ])('opens a running app at its address, never by a draft link, for %s', async (_label, card) => {
+    setLiveApps(true);
+    setDraftLinks(true);
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+    await openViewer(card);
+    fireEvent.click(screen.getByText('tab'));
+    await act(async () => {});
+    expect(host.openExternal.mock.calls).toEqual([[ADDRESS]]);
+    expect(opened).not.toHaveBeenCalled();
+    expect(createDraftLink).not.toHaveBeenCalled();
   });
 
   it('previews and opens the served page as before with live apps off', async () => {

@@ -26,6 +26,7 @@ import { FirstTake } from '../components/thinking/FirstTake';
 import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText, trimCopiedSelection } from '../lib/clipboard';
+import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
@@ -442,6 +443,8 @@ const INCOMPLETE_REASON_TEXT = {
   handback_verifier_failure: "Stopped early: the agent couldn't confirm the task was done.",
   handback_stuck: 'Stopped early: the agent judged the task stuck.',
   retry_exhausted: 'Stopped early: the task kept failing.',
+  question_unanswered: 'Stopped early: a question went unanswered.',
+  content_filter: "Stopped early: the model's content filter blocked a reply.",
 };
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
@@ -1888,6 +1891,10 @@ export function redirectForTask(redirects, taskId) {
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
+  // The last /health snapshot, for the diagnostics a user copies off a failed
+  // turn. Read from App rather than re-fetched at click time: the turn may
+  // have failed because the server is the thing that went away.
+  health,
   onSend,
   onSwitchToAirAndResend,
   onBack,
@@ -1913,6 +1920,7 @@ export default function ChatView({
   onAttachFiles,
   onAddGoogleDriveFiles,
   onAddGoogleDriveProjectFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
@@ -3010,6 +3018,28 @@ export default function ChatView({
                     />
                   );
                 }
+                /* The server stopped while the turn ran (`turn_lost`): a
+                 * shutdown or a crash. The answer above ends where it was cut
+                 * off, and nothing about the question failed, so Try again
+                 * sends it again. A proxy that outlives a crash sends this
+                 * code live; boot recovery saves it for a reload. */
+                if (m.code === 'turn_lost') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The answer was cut off"
+                      body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        : []}
+                    />
+                  );
+                }
                 /* The UI heard nothing from the turn for its idle window
                  * (`stalled`). The tab ends only its own reader and sends no
                  * cancel, so the turn may still be running on the server. A
@@ -3090,6 +3120,29 @@ export default function ChatView({
                     />
                   );
                 }
+                /* A proxy in front of the server refused the question with a
+                   503 `cowork_unavailable`: it could open no connection to the
+                   server, as while the server starts again after a crash.
+                   Nothing reached the server, so waiting is the fix, with the
+                   same Retry gate counted down to the proxy's Retry-After. */
+                if (m.code === 'cowork_unavailable') {
+                  const unavailableResend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Server"
+                      title="The server isn't answering"
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={unavailableResend
+                        ? () => onSend?.(unavailableResend.text, unavailableResend.attachments)
+                        : undefined}
+                    />
+                  );
+                }
                 // `anton_error` and anything unmapped: a deliberately generic
                 // bucket with no known next step, so no card — but still a
                 // failure, rendered as a danger alert so it never reads as a
@@ -3112,8 +3165,16 @@ export default function ChatView({
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
-                        <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Reference: {m.requestId}
+                        <div
+                          className="mt-1 text-xs flex items-center gap-2 flex-wrap"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          <span>Reference: {m.requestId}</span>
+                          <CopyDiagnosticsButton
+                            requestId={m.requestId}
+                            code={m.code}
+                            health={health}
+                          />
                         </div>
                       )}
                     </Alert>
@@ -3346,6 +3407,7 @@ export default function ChatView({
             onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
             onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+            onAddSharePointFiles={onAddSharePointFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
@@ -3442,6 +3504,7 @@ export default function ChatView({
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
           onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+          onAddSharePointFiles={onAddSharePointFiles}
           onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />

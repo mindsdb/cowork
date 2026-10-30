@@ -256,6 +256,7 @@ function ProjectDetail({
   onAttachFiles,
   onAddGoogleDriveFiles,
   onAddGoogleDriveProjectFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
   onRemoveAttachment,
@@ -447,6 +448,7 @@ function ProjectDetail({
                 onNavigateToConnectors={onNavigateToConnectors}
                 onAttachFiles={onAttachFiles}
                 onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+                onAddSharePointFiles={onAddSharePointFiles}
                 onRemoveAttachment={onRemoveAttachment}
                 disabledConnections={disabledConnections}
                 onUpdateConnectorMute={onUpdateConnectorMute}
@@ -469,6 +471,7 @@ function ProjectDetail({
                 <ContextBox
                   project={project}
                   onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+                  onAddSharePointFiles={onAddSharePointFiles}
                   onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
                   onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
                 />
@@ -507,6 +510,7 @@ function ProjectDetail({
             projects={projects}
             project={project}
             onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+            onAddSharePointFiles={onAddSharePointFiles}
             onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
             onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
           />
@@ -552,6 +556,7 @@ export default function ProjectsView({
   onAttachFiles,
   onAddGoogleDriveFiles,
   onAddGoogleDriveProjectFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
   onRemoveAttachment,
@@ -781,6 +786,7 @@ export default function ProjectsView({
         onNavigateToConnectors={onNavigateToConnectors}
         onAttachFiles={onAttachFiles}
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+        onAddSharePointFiles={onAddSharePointFiles}
         onAddGoogleDriveProjectFiles={onAddGoogleDriveProjectFiles}
         onFetchGoogleDriveProjectFiles={onFetchGoogleDriveProjectFiles}
         onRemoveGoogleDriveProjectFile={onRemoveGoogleDriveProjectFile}

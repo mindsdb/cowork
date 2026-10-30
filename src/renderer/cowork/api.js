@@ -20,6 +20,7 @@ import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
+import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
 import {
   expectedOrganizationHeaders,
@@ -383,12 +384,15 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
   // the replay at the api boundary so the rest of the app sees a
   // consistent message shape regardless of whether the data came from
   // a fresh stream or a server reload.
+  // The server does not store a chat's mutes, so the field is normally absent.
+  // Leave it undefined then: an empty list would read as "no mutes" and wipe
+  // the ones the chat's last send recorded locally.
   const rawDisabled = conv.disabled_connections ?? conv.disabledConnections;
   const disabledConnections = Array.isArray(rawDisabled)
     ? rawDisabled
       .filter((x) => x && typeof x.engine === 'string' && typeof x.name === 'string')
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
-    : [];
+    : undefined;
 
   return {
     id: conv.id,
@@ -626,12 +630,16 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
  * treated as an empty conversation on a 404 (the one benign case); any other
  * items failure is 'unavailable' so a real transcript is never silently blanked.
  *
+ * A `timeoutMs` that elapses aborts both requests and reads as 'unavailable'.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
  * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
  */
-export async function fetchSessionResult(id) {
+export async function fetchSessionResult(id, { timeoutMs } = {}) {
   const [metaRes, msgsRes] = await Promise.allSettled([
-    req(`/conversations/${encodeURIComponent(id)}`),
-    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT })),
+    req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }),
   ]);
   if (metaRes.status === 'rejected') {
     const err = metaRes.reason;
@@ -2044,6 +2052,78 @@ export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 // name, the two are deliberately distinct and must not be conflated.
 export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 
+// ─── SharePoint ─────────────────────────────────────────────────────
+//
+// SharePoint connections are created and edited only through these routes,
+// never the generic connector save: the server checks the key with
+// Microsoft before it stores anything.
+
+export const SHAREPOINT_UNAVAILABLE_MESSAGE = 'Update Cowork to use SharePoint.';
+
+/* A server older than the SharePoint routes answers with FastAPI's own
+   "Not Found" or a 405. The routes' own 404s carry their own detail
+   ("Connection not found.") and pass through unchanged. */
+async function sharePointReq(path, options) {
+  try {
+    return await req(path, options);
+  } catch (err) {
+    if (err?.status === 405 || (err?.status === 404 && err.message === 'Not Found')) {
+      const unavailable = /** @type {RefusalError} */ (new Error(SHAREPOINT_UNAVAILABLE_MESSAGE));
+      unavailable.status = err.status;
+      unavailable.code = 'sharepoint_unavailable';
+      throw unavailable;
+    }
+    throw err;
+  }
+}
+
+/**
+ * The key fields a SharePoint create or edit sends, in the routes' names.
+ * An empty label is left out: the server then keeps the label it has.
+ */
+function sharePointKeyBody({ userLabel, tenantId, clientId, clientSecret, siteUrls }) {
+  const body = { tenant_id: tenantId, client_id: clientId, client_secret: clientSecret, site_urls: siteUrls };
+  if (userLabel) body.user_label = userLabel;
+  return body;
+}
+
+/** Create a SharePoint connection; the server checks the key with Microsoft before saving. */
+export function createSharePointConnection({ name, ...key }) {
+  return sharePointReq('/connectors/sharepoint/connections', {
+    method: 'POST',
+    body: JSON.stringify({ name, ...sharePointKeyBody(key) }),
+  });
+}
+
+/** Replace a SharePoint connection's key and sites; `clientSecret` is CONNECTIONS_VAULT_KEEP to keep the stored one. */
+export function editSharePointConnection(name, key) {
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify(sharePointKeyBody(key)),
+  });
+}
+
+/** The document libraries of one site the connection names. */
+export function listSharePointLibraries(name, site) {
+  const query = new URLSearchParams({ site });
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/libraries?${query}`);
+}
+
+/** One page of a folder's items; pass the previous page's `cursor` for the next one. */
+export function listSharePointChildren(name, { site, driveId, itemId = 'root', cursor = null }) {
+  const query = new URLSearchParams({ site, drive_id: driveId, item_id: itemId });
+  if (cursor) query.set('cursor', cursor);
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/children?${query}`);
+}
+
+/** Import picked items into a project's root in one request; it can run for minutes, so no timeout. */
+export function importSharePointFiles(projectName, { connection, site, driveId, folder = '', itemIds }) {
+  return sharePointReq(`/projects/${encodeURIComponent(projectName)}/files/import/sharepoint`, {
+    method: 'POST',
+    body: JSON.stringify({ connection, site, drive_id: driveId, folder, item_ids: itemIds }),
+  });
+}
+
 // ─── Connector registry ─────────────────────────────────────────────
 //
 // Predefined JSON specs in server/connectors/. Three calls:
@@ -2073,6 +2153,18 @@ export async function fetchConnectors({ includeUnavailable = false } = {}) {
 
 export async function fetchConnector(id) {
   return req(`/connectors/specs/${encodeURIComponent(id)}`);
+}
+
+// Whether the caller can build a custom connector that is kept for reuse: only
+// in one person's own scope. A server without the route (404) keeps the old
+// answer, yes; any other failure says no, since the server would refuse the save.
+export async function fetchCanBuildCustomConnector() {
+  try {
+    const data = await req('/connectors/specs/custom-availability');
+    return data?.can_build !== false;
+  } catch (err) {
+    return err?.status === 404;
+  }
 }
 
 export async function matchConnector(query, maxCandidates = 3) {
@@ -2354,6 +2446,19 @@ export function revokeLiveAppPreview(id) {
 export async function revokeLiveAppPreviews() {
   try { await req('/live-apps/previews', { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS }); }
   catch (error) { if (error.status !== 404) throw error; }
+}
+
+/** Availability is advisory; a subsequent launch still needs admission. */
+export async function fetchLiveAppAvailability() {
+  return liveAppAvailabilityFrom(await req('/live-apps/availability', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, cache: 'no-store' }));
+}
+
+/** Called only after a visible toast has displayed this durable notice. */
+export async function acknowledgeLiveAppAvailability(noticeId) {
+  return req(`/live-apps/availability/${encodeURIComponent(noticeId)}/ack`, {
+    method: 'POST',
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
 }
 
 /*

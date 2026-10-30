@@ -49,6 +49,8 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
+import { OWN_WORK_PROMPT } from './onboarding/steps';
+import { reset as resetOnboarding } from './onboarding/onboardingStore';
 
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
@@ -589,5 +591,27 @@ describe('Sidebar — says why other work is missing (ENG-2169)', () => {
     failed.unmount();
     render(<Sidebar {...baseProps} serverOnline tasksStatus="ready" tasks={[{ id: 't1', title: 'Real task', messages: [] }]} />);
     expect(screen.queryByText(/stay there/)).toBeNull();
+  });
+});
+
+describe('Sidebar — onboarding checklist rows', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetOnboarding();
+    hostMock.isWeb = true;
+  });
+
+  it('starts a chat from the first step and opens Home from the example row', async () => {
+    const onStartChat = vi.fn().mockResolvedValue(true);
+    const onOpenExamples = vi.fn();
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} />);
+
+    await user.click(screen.getByText('Try an example'));
+    expect(onOpenExamples).toHaveBeenCalledTimes(1);
+    expect(onStartChat).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('Start with your own work'));
+    expect(onStartChat).toHaveBeenCalledWith(OWN_WORK_PROMPT);
   });
 });
