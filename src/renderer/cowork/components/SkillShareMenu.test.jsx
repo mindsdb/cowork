@@ -87,14 +87,12 @@ describe('SkillShareMenu', () => {
     expect(within(dialog).queryByRole('checkbox')).toBeNull();
   });
 
-  it('starts on Only me for a private skill and says shared skills are used when relevant', async () => {
+  it('starts on Only me for a private skill, with no extra note under the options', async () => {
     const { dialog } = await renderDialog();
 
     checked(radio(dialog, ONLY_ME));
     expect(within(dialog).queryByRole('combobox')).toBeNull();
-    const note = within(dialog).getByRole('note');
-    expect(note).toHaveTextContent("Anton uses a shared skill when it's relevant to the task");
-    expect(note).not.toHaveTextContent('automatically');
+    expect(within(dialog).queryByRole('note')).toBeNull();
   });
 
   it('disables Everyone at the org without can_share_org, with the admin hint', async () => {
@@ -301,8 +299,10 @@ describe('SkillShareMenu', () => {
 
       await addTeam(user, dialog, 'Supply Planning');
       expect(alwaysOn(dialog)).not.toBeChecked();
-      expect(within(dialog).getByText("Off: Anton uses it when it's relevant. On: it's part of every task for everyone it's shared with."))
-        .toBeInTheDocument();
+      expect(within(dialog).getByText("Anton will use this skill only when it's relevant.")).toBeInTheDocument();
+      await user.click(alwaysOn(dialog));
+      expect(within(dialog).getByText('Anton will include this skill in every task.')).toBeInTheDocument();
+      await user.click(alwaysOn(dialog));
 
       await user.click(within(dialog).getByRole('button', { name: 'Remove Supply Planning' }));
       expect(alwaysOn(dialog)).toBeNull();

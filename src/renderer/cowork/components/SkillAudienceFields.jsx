@@ -20,11 +20,10 @@ import { Switch } from './ui/Switch';
 import { useHubTeams } from '../hooks/useOrgSharing';
 import AudiencePanel from './AudiencePanel';
 import {
-  ALWAYS_ON_HELP,
+  alwaysOnHelp,
   ALWAYS_ON_LABEL,
   ORG_ADMIN_ONLY_HINT,
   PRIVATE_ACCESS,
-  SHARING_NOTE,
   alwaysOnLockReason,
   canBeAlwaysOn,
   everyoneAtLabel,
@@ -56,7 +55,7 @@ function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
           <div data-testid="always-on-locked">{control}</div>
         </Tooltip>
       ) : control}
-      <span className="font-body text-[11.5px] text-ink-3">{ALWAYS_ON_HELP}</span>
+      <span className="font-body text-[11.5px] text-ink-3">{alwaysOnHelp(checked)}</span>
     </div>
   );
 }
@@ -174,7 +173,6 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
           lockReason={alwaysOnLockReason(shown, { canShareOrg, canEdit })}
         />
       )}
-      <p className="m-0 mt-1 font-body text-xs text-ink-3" role="note">{SHARING_NOTE}</p>
     </AudiencePanel>
   );
 }

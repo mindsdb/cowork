@@ -21,9 +21,10 @@ export const ORG_ADMIN_ONLY_HINT = 'Only admins can share with the whole organiz
 /* A skill shared with teams or the whole org is recalled when it's relevant
    to a task. Someone allowed to may make it "always on": part of every task
    for everyone it reaches. The server enforces who may; these mirror it. */
-export const SHARING_NOTE = 'Anton uses a shared skill when it\'s relevant to the task, unless it\'s set to always on.';
 export const ALWAYS_ON_LABEL = 'Always include in every task';
-export const ALWAYS_ON_HELP = "Off: Anton uses it when it's relevant. On: it's part of every task for everyone it's shared with.";
+export const ALWAYS_ON_HELP_OFF = "Anton will use this skill only when it's relevant.";
+export const ALWAYS_ON_HELP_ON = 'Anton will include this skill in every task.';
+export const alwaysOnHelp = (on) => (on ? ALWAYS_ON_HELP_ON : ALWAYS_ON_HELP_OFF);
 export const ALWAYS_ON_ORG_ADMIN_HINT = 'Only admins can make an organization-wide skill always on';
 export const ALWAYS_ON_EDITOR_HINT = 'Only people who can edit this skill can change this';
 export const ALWAYS_ON_BADGE = 'Always on';
