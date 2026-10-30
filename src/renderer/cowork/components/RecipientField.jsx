@@ -33,6 +33,8 @@ import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Spinner } from './ui';
 import { searchHubPeople } from '../api';
+import { openExternal } from '../../platform/host';
+import { MINDS_MEMBERS_URL } from '../../lib/mindsUrls';
 import { isEmailShaped } from '../lib/emailAddress';
 import {
   filterPeople,
@@ -266,7 +268,7 @@ export function RecipientField({
     setNotAdded([]);
   };
 
-  const add = (option) => {
+  const add = (option, { close = false } = {}) => {
     if (!option) return;
     if (option.kind === 'team') {
       if (!latest.current.teamIds.includes(option.team.id)) emit({ teamIds: [...latest.current.teamIds, option.team.id] });
@@ -277,6 +279,10 @@ export function RecipientField({
       if (!latest.current.emails.includes(option.email)) emit({ emails: [...latest.current.emails, option.email] });
     }
     resetInput();
+    // A click closes the menu so the recipient just added is in view (typing
+    // or a click on the input opens it again). Enter keeps it open, so the
+    // keyboard can add several in a row.
+    if (close) setOpen(false);
   };
 
   // Each typed or pasted address becomes a person when the org has that
@@ -436,7 +442,7 @@ export function RecipientField({
       role: 'option',
       'aria-selected': selected,
       // mousedown, not click: the input's blur would close the list first.
-      onMouseDown: (e) => { e.preventDefault(); add(option); },
+      onMouseDown: (e) => { e.preventDefault(); add(option, { close: true }); },
       onMouseMove: () => { if (active !== i) setActive(i); },
       className: `flex min-w-0 cursor-pointer items-center gap-2.5 rounded-[8px] py-[6px] px-2 font-body ${selected ? 'bg-surface-2' : ''}`,
     };
@@ -493,13 +499,22 @@ export function RecipientField({
   if (directoryLoading) listChildren.push(...skeletons('sp', `People in ${org}`, ['42%', '30%', '36%']));
   // The directory answered but offers nobody: say so under its title rather
   // than drop the group, which reads as "people aren't supported here".
-  if (!emailsOnly && !query && directoryReady && peopleOptions.length === 0) {
+  const peopleEmpty = !emailsOnly && !query && directoryReady && peopleOptions.length === 0;
+  if (peopleEmpty) {
     listChildren.push(groupHeader('h-person-empty', `People in ${org}`));
     listChildren.push(
       <li key="person-empty" role="presentation" className="px-2 py-1.5 font-body text-xs text-ink-3">
-        {directoryPeople.length === 0
-          ? `No one else is in ${org} yet. Invite people from the organization settings.`
-          : `Everyone in ${org} is already added.`}
+        {directoryPeople.length === 0 ? (
+          <>
+            {`No one else is in ${org} yet. `}
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { openExternal(MINDS_MEMBERS_URL); }}
+              className="bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
+            >Invite people ↗</button>
+          </>
+        ) : `Everyone in ${org} is already added.`}
       </li>,
     );
   }
@@ -523,7 +538,7 @@ export function RecipientField({
     ? <span className="inline-flex items-center gap-2"><Spinner /> Searching everyone in {org}…</span>
     : showOrgOnlyHint ? `Only people in ${org}`
     : nothingFound ? 'No matches'
-      : (!query && !directoryLoading && !teamsLoading && options.length === 0 && directory.status !== 'error' && !teamsUnreachable)
+      : (!query && !peopleEmpty && !directoryLoading && !teamsLoading && options.length === 0 && directory.status !== 'error' && !teamsUnreachable)
         ? 'Everyone you can add is already added.'
         : null;
   const truncatedNote = !emailsOnly && directoryReady && directory.truncated

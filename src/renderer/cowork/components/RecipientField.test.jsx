@@ -94,6 +94,8 @@ describe('<RecipientField>', () => {
     const listbox = await screen.findByRole('listbox');
     await waitFor(() => expect(listbox).toHaveTextContent('No one else is in Kinaxis yet.'));
     expect(listbox).toHaveTextContent('People in Kinaxis');
+    expect(within(listbox).getByRole('button', { name: /Invite people/ })).toBeTruthy();
+    expect(screen.queryByText('Everyone you can add is already added.')).toBeNull();
   });
 
   it('says everyone is already added once every person is picked', async () => {
@@ -263,10 +265,15 @@ describe('<RecipientField>', () => {
     await user.type(input(), 'ana');
     await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
     expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] });
+    // A click closes the menu so the new row is in view.
+    expect(screen.queryByRole('listbox')).toBeNull();
 
-    await user.click(screen.getByRole('option', { name: /Finance/ }));
+    await user.click(input());
+    await user.click(await screen.findByRole('option', { name: /Finance/ }));
     expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-finance'], userIds: ['u-ana'], emails: [] });
     expect(rows()).toEqual([['Finance', 'Team'], ['Ana Ruiz', 'ana@kinaxis.com']]);
+    await user.click(input());
+    await screen.findByRole('listbox');
     expect(options()).not.toContain('FinanceTeam');
     expect(summary()).toBe('1 team · 1 person');
   });
