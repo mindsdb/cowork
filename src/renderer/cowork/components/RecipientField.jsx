@@ -27,7 +27,10 @@ import { searchHubPeople } from '../api';
 import { isEmailShaped } from '../lib/emailAddress';
 import {
   UNKNOWN_PERSON,
+  everyoneAtLabel,
   filterTeams,
+  namesDefaultTeam,
+  withoutDefaultTeam,
   orgNameOrGeneric,
   personInitials,
   recipientSummary,
@@ -42,6 +45,8 @@ export const UNKNOWN_TEAM = 'Unknown team';
 
 const EMPTY_VALUE = Object.freeze({ teamIds: [], userIds: [], emails: [] });
 
+/* A recipient pill. Without `onRemove` it is read-only: no remove button,
+   as `<AudiencePills>` shows an audience in the skill detail. */
 function PillShell({ tone = 'default', children, onRemove, removeLabel }) {
   const toneClass = tone === 'outside'
     ? 'bg-warning-bg border-warning-border text-warning-text'
@@ -49,17 +54,17 @@ function PillShell({ tone = 'default', children, onRemove, removeLabel }) {
   return (
     <span
       data-recipient-pill=""
-      className={`inline-flex min-w-0 max-w-full items-center gap-[5px] rounded-full border border-solid py-[1px] pl-[3px] pr-[2px] font-body text-[12px] leading-[20px] ${toneClass}`}
+      className={`inline-flex min-w-0 max-w-full items-center gap-[5px] rounded-full border border-solid py-[1px] pl-[3px] ${onRemove ? 'pr-[2px]' : 'pr-[8px]'} font-body text-[12px] leading-[20px] ${toneClass}`}
     >
       {children}
-      <button
+      {onRemove && <button
         type="button"
         aria-label={removeLabel}
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         // Keeps the focus where it was when the pill goes.
         onMouseDown={(e) => e.preventDefault()}
         className="inline-flex shrink-0 rounded-full bg-transparent border-0 cursor-pointer p-[2px] text-current opacity-60 hover:opacity-100"
-      >{Ico.close(12)}</button>
+      >{Ico.close(12)}</button>}
     </span>
   );
 }
@@ -85,6 +90,79 @@ function Avatar({ person, size = 18 }) {
       className="inline-grid shrink-0 place-items-center rounded-full bg-accent-bg text-accent font-body font-semibold"
       style={{ width: size, height: size, fontSize: size <= 18 ? 9.5 : 11 }}
     >{person && (person.name || person.email) ? personInitials(person) : '?'}</span>
+  );
+}
+
+/**
+ * Who a skill reaches, read-only, as the recipient field's pills: Everyone
+ * at ‹org› (org-wide or the default team), then each team and person; "Only
+ * you" when it names nobody. People are named through useKnownPeople.
+ *
+ * @param {{
+ *   orgAllowed?: boolean,
+ *   teamIds?: string[],
+ *   userIds?: string[],
+ *   orgName?: string | null,
+ *   teamsState?: { status: string, teams: Array<{ id: string, display_name: string, is_default?: boolean }> } | null,
+ *   label?: string,
+ * }} props
+ */
+export function AudiencePills({
+  orgAllowed = false, teamIds = EMPTY_VALUE.teamIds, userIds = EMPTY_VALUE.userIds,
+  orgName = null, teamsState: teamsProp = null, label = 'Who can use it',
+}) {
+  const ownTeams = useHubTeams(!teamsProp);
+  const teamsState = teamsProp || ownTeams;
+  const known = useKnownPeople(userIds);
+  const teams = teamsState.teams || [];
+  const everyone = orgAllowed || namesDefaultTeam(teamIds, teams);
+  const shownTeams = withoutDefaultTeam(teamIds, teams);
+  const peopleById = new Map(known.people.map((p) => [p.id, p]));
+  const teamName = (id) => {
+    const team = teams.find((t) => t.id === id);
+    if (team) return team.display_name;
+    return teamsState.status === 'ready' ? UNKNOWN_TEAM : 'Loading…';
+  };
+  const pills = [];
+  if (everyone) {
+    pills.push(
+      <PillShell key="org">
+        <IconTile>{Ico.building(12)}</IconTile>
+        <PillLabel text={everyoneAtLabel(orgName)} />
+      </PillShell>,
+    );
+  }
+  for (const id of shownTeams) {
+    const name = teamName(id);
+    pills.push(
+      <PillShell key={`t:${id}`}>
+        <IconTile>{Ico.people(12)}</IconTile>
+        <PillLabel text={name} />
+      </PillShell>,
+    );
+  }
+  for (const id of userIds) {
+    const person = peopleById.get(id);
+    const name = person?.pending ? 'Loading…' : (person?.name || person?.email || UNKNOWN_PERSON);
+    pills.push(
+      <PillShell key={`u:${id}`}>
+        <Avatar person={person} />
+        <PillLabel text={name} tip={person?.email || name} />
+      </PillShell>,
+    );
+  }
+  if (pills.length === 0) {
+    pills.push(
+      <PillShell key="me">
+        <IconTile>{Ico.lock(12)}</IconTile>
+        <PillLabel text="Only you" />
+      </PillShell>,
+    );
+  }
+  return (
+    <ul aria-label={label} data-testid="audience-pills" className="m-0 flex list-none flex-wrap items-center gap-1.5 p-0">
+      {pills.map((pill) => <li key={pill.key} className="inline-flex min-w-0 max-w-full">{pill}</li>)}
+    </ul>
   );
 }
 

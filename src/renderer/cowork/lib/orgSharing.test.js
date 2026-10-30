@@ -37,7 +37,7 @@ describe('groupSkillsBySection', () => {
       skill('creator', { isBuiltin: true }),
     ], { orgName: 'Kinaxis' });
 
-    expect(groups.map((g) => g.title)).toEqual(['Only me', 'My teams', 'Everyone at Kinaxis', 'Built-in']);
+    expect(groups.map((g) => g.title)).toEqual(['Yours', 'My teams', 'Everyone at Kinaxis', 'Built-in']);
     // Sections no longer claim their skills are applied to every task.
     expect(groups.every((g) => !('hint' in g))).toBe(true);
   });
@@ -45,7 +45,7 @@ describe('groupSkillsBySection', () => {
   it('puts a skill without a section with the caller\'s own, and names an unnamed org generically', () => {
     const groups = groupSkillsBySection([skill('legacy'), skill('o', { section: 'org' })]);
     expect(groups.map((g) => [g.title, g.skills.map((s) => s.label)])).toEqual([
-      ['Only me', ['legacy']],
+      ['Yours', ['legacy']],
       ['Everyone in your organization', ['o']],
     ]);
   });
@@ -222,11 +222,10 @@ describe('recipient field helpers', () => {
   });
 });
 
-describe('groupSkillsBySection keepEmpty', () => {
-  it('keeps the four audience sections, and Built-in only when there is one', () => {
-    const groups = groupSkillsBySection([{ label: 'a', isBuiltin: false }], { orgName: 'Kinaxis', keepEmpty: true });
-    expect(groups.map((g) => [g.id, g.skills.length])).toEqual([
-      ['mine', 1], ['shared_with_me', 0], ['team', 0], ['org', 0],
-    ]);
+describe('groupSkillsBySection with empty sections', () => {
+  it('shows only the sections that hold a skill', () => {
+    const groups = groupSkillsBySection([{ label: 'a', isBuiltin: false }], { orgName: 'Kinaxis' });
+    expect(groups.map((g) => [g.id, g.skills.length])).toEqual([['mine', 1]]);
+    expect(groupSkillsBySection([], { orgName: 'Kinaxis' })).toEqual([]);
   });
 });

@@ -238,21 +238,23 @@ export function skillAudienceBadge(skill, { teams = [], orgName = null } = {}) {
   return parts.length ? parts.join(' · ') : null;
 }
 
+/* Sections follow who a skill reaches, the caller's own included (the
+   server's `section`): org-wide, else a team, else "Yours" (the caller's own,
+   shared with nobody or only with people), else "Shared with me". */
 const SECTION_TITLES = {
-  mine: () => 'Only me',
+  mine: () => 'Yours',
   shared_with_me: () => 'Shared with me',
   team: () => 'My teams',
   org: (orgName) => everyoneAtLabel(orgName),
 };
 
 /**
- * The Skills page's groups, in page order, empty ones left out unless
- * `keepEmpty`. Built-ins
+ * The Skills page's groups, in page order, empty ones left out. Built-ins
  * carry no audience, so they keep a group of their own at the end.
  *
  * @returns {Array<{ id: string, title: string, skills: object[] }>}
  */
-export function groupSkillsBySection(skills, { orgName = null, keepEmpty = false } = {}) {
+export function groupSkillsBySection(skills, { orgName = null } = {}) {
   const buckets = { mine: [], shared_with_me: [], team: [], org: [], builtin: [] };
   for (const skill of skills || []) {
     if (skill?.isBuiltin) buckets.builtin.push(skill);
@@ -264,9 +266,7 @@ export function groupSkillsBySection(skills, { orgName = null, keepEmpty = false
     skills: buckets[id],
   }));
   groups.push({ id: 'builtin', title: 'Built-in', skills: buckets.builtin });
-  // `keepEmpty` keeps the four audience sections, so each can say what would
-  // go there; Built-in still shows only when there is one.
-  return groups.filter((group) => group.skills.length > 0 || (keepEmpty && group.id !== 'builtin'));
+  return groups.filter((group) => group.skills.length > 0);
 }
 
 /**

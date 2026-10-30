@@ -3,14 +3,13 @@ import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
   PageHeader, SearchInput, SortPill, CollectionState,
-  ListGroup, ListItem, ListNotice,
+  ListGroup, ListItem,
 } from '../components/collection';
 import { Alert, Menu, Badge, Button, Field, Select, Input, Textarea, Tooltip } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
-import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, uploadSkillFile } from '../api';
 import {
@@ -19,6 +18,7 @@ import {
 import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
 import SkillShareMenu from '../components/SkillShareMenu';
 import SkillAudienceFields from '../components/SkillAudienceFields';
+import SkillDetail from '../components/SkillDetail';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
@@ -27,7 +27,6 @@ import {
   isPrivateAccess,
   PRIVATE_ACCESS,
   isSkillAlwaysOn,
-  skillAccess,
   skillAccessPayload,
   skillAudienceBadge,
   skillOwnerEmail,
@@ -212,15 +211,6 @@ const SECTION_ICONS = {
   org: Ico.building,
   builtin: Ico.cube,
 };
-
-// What an empty section would hold.
-function emptySectionNote(id, orgName) {
-  if (id === 'mine') return 'Skills only you can use show up here. Create one to get started.';
-  if (id === 'shared_with_me') return 'Nobody has shared a skill with you yet.';
-  if (id === 'team') return 'No skills are shared with your teams yet.';
-  if (id === 'org') return `No skills are shared with everyone at ${orgName || 'your organization'} yet.`;
-  return 'Nothing here yet.';
-}
 
 // Page margin of the row group, shared with its loading skeleton so loading
 // does not shift the layout.
@@ -866,7 +856,16 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <PageHeader
             crumbs={[{ label: 'Skills', onClick: () => setSelected(null) }]}
             current={selected.label}
-            actions={
+          />
+          <SkillDetail
+            skill={selected}
+            projects={projects}
+            orgSharing={orgSharing}
+            teamsState={orgSharingOn ? teamsState : null}
+            enabled={isEnabled(selected)}
+            canEdit={!hidesOwnerActions(selected) && canUseSharedResource(selected, 'canEdit')}
+            onEdit={() => startEdit(selected)}
+            actions={(
               <>
                 {canOpenShare(selected) && shareMenu(selected, (
                   <Button variant="default">
@@ -874,59 +873,38 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                     Share
                   </Button>
                 ))}
+                {!hidesOwnerActions(selected) && canUseSharedResource(selected, 'canEdit') && (
+                  <Button variant="default" onClick={() => startEdit(selected)} aria-label={`Edit ${selected.label}`} title="Edit">
+                    {Ico.edit(14)}
+                    Edit
+                  </Button>
+                )}
                 {enabledControl(selected, 'md')}
                 <OverflowMenu items={skillMenuItems(selected)} />
               </>
-            }
-          />
-          <div className="pt-6 px-8 pb-8">
-
-          {!orgSharingOn && (
-            <SharedResourceAttribution
-              resource={selected}
-              className={canUseSharedResource(selected, 'canEdit') && !isOwnSharedSkill(selected) ? 'mb-4' : 'mb-2'}
-            />
-          )}
-          {orgSharingOn && !canEditSkill(selected) && !selected.isBuiltin && (
-            <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
-              {skillOwnerEmail(selected) ? `Shared by ${skillOwnerEmail(selected)}. ` : ''}
-              {alwaysApplied(selected) && isSkillAlwaysOn(selected) ? ALWAYS_ON_DETAIL : "You can use it but can't change it."}
-            </p>
-          )}
-          {!orgSharingOn && !canUseSharedResource(selected, 'canEdit') && (
-            <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
-              {readOnlyNote(selected)}
-            </p>
-          )}
-          {!orgSharingOn && isOwnSharedSkill(selected) && (
-            <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
-              {OWN_SHARED_CHANGE_NOTE}
-            </p>
-          )}
-
-          {/* Scope */}
-          <div className="mb-4">
-            <h3 className="s-h3 mt-0 mb-1">Scope</h3>
-            <p className="m-0 text-[13.5px] text-ink leading-[1.5] select-text">
-              {projectLabelByName(projects, selected.projects?.[0]) || 'All projects'}
-            </p>
-          </div>
-
-          {/* Who can use it: only on the caller's own skill, where the server
-              lets them share it. */}
-          {canOpenShare(selected) && (
-            <div className="mb-4">
-              <h3 className="s-h3 mt-0 mb-1">{SKILL_SHARING_LABEL}</h3>
-              <p className="m-0 text-[13.5px] text-ink leading-[1.5]">
-                {isPrivateAccess(skillAccess(selected))
-                  ? 'Only me'
-                  : skillAudienceBadge(selected, orgSharing)}
-              </p>
-            </div>
-          )}
-          {!orgSharingOn && canShareSkill(selected) && (
-            <div className="mb-4">
-              <h3 className="s-h3 mt-0 mb-1">{SKILL_SHARING_LABEL}</h3>
+            )}
+            notes={(
+              <div className="flex flex-col gap-2 empty:hidden">
+                {!orgSharingOn && <SharedResourceAttribution resource={selected} />}
+                {orgSharingOn && !canEditSkill(selected) && !selected.isBuiltin && (
+                  <p className="m-0 text-[12px] text-ink-3" role="note">
+                    {skillOwnerEmail(selected) ? `Shared by ${skillOwnerEmail(selected)}. ` : ''}
+                    {alwaysApplied(selected) && isSkillAlwaysOn(selected) ? ALWAYS_ON_DETAIL : "You can use it but can't change it."}
+                  </p>
+                )}
+                {!orgSharingOn && !canUseSharedResource(selected, 'canEdit') && (
+                  <p className="m-0 text-[12px] text-ink-3" role="note">
+                    {readOnlyNote(selected)}
+                  </p>
+                )}
+                {!orgSharingOn && isOwnSharedSkill(selected) && (
+                  <p className="m-0 text-[12px] text-ink-3" role="note">
+                    {OWN_SHARED_CHANGE_NOTE}
+                  </p>
+                )}
+              </div>
+            )}
+            sharingControl={!orgSharingOn && canShareSkill(selected) ? (
               <Select
                 ariaLabel={SKILL_SHARING_LABEL}
                 options={SKILL_SHARING_OPTIONS}
@@ -937,29 +915,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                 width={260}
                 menuMinWidth={300}
               />
-            </div>
-          )}
-
-          {/* Description */}
-          {selected.description && (
-            <div className="mb-4">
-              <h3 className="s-h3 mt-0 mb-1">Description</h3>
-              <p className="m-0 text-[13.5px] text-ink leading-[1.5] select-text">
-                {selected.description}
-              </p>
-            </div>
-          )}
-
-          {/* Content card */}
-          <div className="rounded-[20px] border border-solid border-line p-6 flex flex-col gap-4 bg-surface select-text">
-            <MarkdownContent
-              text={selected.declarative || ''}
-              id={`skill-${selected.label}`}
-              complete
-              dense
-            />
-          </div>
-        </div>
+            ) : null}
+          />
         </>
       ) : (
         // ── List ───────────────────────────────────────────────────────────
@@ -992,9 +949,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           >
             {orgSharing ? (
               <div className={`${LIST_CLASS} flex flex-col gap-6`}>
-                {/* Every audience section shows, so an empty one can say what
-                    would go there; a search shows only the sections it hits. */}
-                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName, keepEmpty: !search }).map((group) => (
+                {/* Only the sections that hold a skill; an empty list keeps
+                    CollectionState's one empty state. */}
+                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName }).map((group) => (
                   <ListGroup
                     key={group.id}
                     aria-label={group.title}
@@ -1006,9 +963,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                     )}
                     description={<span data-testid="section-count">{group.skills.length}</span>}
                   >
-                    {group.skills.length === 0 ? (
-                      <ListNotice className="font-body text-sm text-ink-4">{emptySectionNote(group.id, orgSharing.orgName)}</ListNotice>
-                    ) : group.skills.map((skill) => (
+                    {group.skills.map((skill) => (
                       <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} orgSharing={orgSharing} actions={rowActions(skill)} />
                     ))}
                   </ListGroup>

@@ -260,10 +260,10 @@ describe('SkillsView shared-resource permissions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Skills' }));
     await user.click(screen.getByText(second.label));
-    expect(screen.getByText(second.label)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: second.label })).toBeInTheDocument();
 
     await act(async () => resolveDelete({ status: 'deleted' }));
-    expect(screen.getByText(second.label)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: second.label })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /^Turn (on|off):/ })).toBeInTheDocument();
   });
 
@@ -309,7 +309,7 @@ describe('SkillsView shared-resource permissions', () => {
         }
         await Promise.resolve();
       });
-      expect(screen.getByText(second.label)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: second.label })).toBeInTheDocument();
       expect(screen.getByRole('switch', { name: /^Turn (on|off):/ }))
         .toHaveAttribute('aria-checked', 'true');
     },
