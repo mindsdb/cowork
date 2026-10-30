@@ -491,6 +491,18 @@ export function RecipientField({
   ];
   if (teamsLoading && !query) listChildren.unshift(...skeletons('st', 'Teams', ['38%']));
   if (directoryLoading) listChildren.push(...skeletons('sp', `People in ${org}`, ['42%', '30%', '36%']));
+  // The directory answered but offers nobody: say so under its title rather
+  // than drop the group, which reads as "people aren't supported here".
+  if (!emailsOnly && !query && directoryReady && peopleOptions.length === 0) {
+    listChildren.push(groupHeader('h-person-empty', `People in ${org}`));
+    listChildren.push(
+      <li key="person-empty" role="presentation" className="px-2 py-1.5 font-body text-xs text-ink-3">
+        {directoryPeople.length === 0
+          ? `No one else is in ${org} yet. Invite people from the organization settings.`
+          : `Everyone in ${org} is already added.`}
+      </li>,
+    );
+  }
 
   let footer = null;
   if (!emailsOnly && directory.status === 'error') {

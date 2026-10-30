@@ -85,6 +85,25 @@ describe('<RecipientField>', () => {
     expect(api.search).not.toHaveBeenCalled();
   });
 
+  it('says so when nobody else is in the org, instead of dropping the people group', async () => {
+    api.directory.mockImplementation(async () => directoryAnswer({ people: [] }));
+    const user = userEvent.setup();
+    render(<Harness allowExternal />);
+    await user.click(input());
+
+    const listbox = await screen.findByRole('listbox');
+    await waitFor(() => expect(listbox).toHaveTextContent('No one else is in Kinaxis yet.'));
+    expect(listbox).toHaveTextContent('People in Kinaxis');
+  });
+
+  it('says everyone is already added once every person is picked', async () => {
+    const user = userEvent.setup();
+    render(<Harness allowExternal initial={{ userIds: DIRECTORY.map((p) => p.id) }} />);
+    await user.click(input());
+
+    await waitFor(() => expect(screen.getByRole('listbox')).toHaveTextContent('Everyone in Kinaxis is already added.'));
+  });
+
   it('floats the dropdown over the page, under the input, rather than inside the field', async () => {
     const user = userEvent.setup();
     const { container } = render(<Harness allowExternal />);
