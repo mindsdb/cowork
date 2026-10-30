@@ -274,11 +274,12 @@ export default function HomeView({
   // Selected task mode (ENG-1594). Null = default view (pill row visible).
   // Owns the composer placeholder, the toolbar chip, and the sample list.
   const [taskMode, setTaskMode] = useState(null);
-  // The example picked from the list under the composer, kept apart from the
-  // text so editing it does not change what kind of message it is.
+  // The example picked from the list under the composer, or placed by a console
+  // link, kept apart from the text so editing it does not change what kind of
+  // message it is. It is dropped when the mode is left.
   const [pickedSample, setPickedSample] = useState(null);
   useEffect(() => {
-    setPickedSample(null);
+    if (!taskMode) setPickedSample(null);
   }, [taskMode]);
   // Shown under the composer while a sample from a console link is in it.
   // Leaving that mode (send, or removing the chip) retires it for good, so it
@@ -446,6 +447,7 @@ export default function HomeView({
     if (prefilled) {
       if (sample) {
         setTaskMode(handoff.mode);
+        setPickedSample(sample);
         setHandoffHint(true);
       }
       onPrefill(placed);
