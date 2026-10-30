@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
-  PageHeader, SearchInput, SortPill, CollectionState,
-  ListGroup, ListItem,
+  PageHeader, FilterRow, SearchInput, SortPill, CollectionState,
+  ListGroup, ListItem, useCollectionShortcut,
 } from '../components/collection';
 import { Alert, Menu, Badge, Button, Field, Select, Input, Textarea, Tooltip } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -629,6 +629,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
      held, rather than the list's older one. */
   const [pendingSharing, setPendingSharing] = useState(() => new Map());
   const searchRef = useRef(null);
+  useCollectionShortcut(searchRef);
   /* Org sharing (ENG-3787) groups the list by who each skill reaches and
      replaces the "Who can use it" select with the Share dialog. Off on every
      other build, where the page is as it was. */
@@ -933,16 +934,20 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       ) : (
         // ── List ───────────────────────────────────────────────────────────
         <>
-          {/* Search and sort sit on the Create button's line. */}
+          {/* Same header as Projects, Tasks and Artifacts: title, subtitle
+              and the primary action, then the search/sort toolbar. */}
           <PageHeader
             title="Skills"
             subtitle="Extend Cowork's capabilities with task-specific skills"
-            actions={(
-              <div className="flex max-w-full flex-wrap items-center justify-end gap-2" data-testid="skills-toolbar">
-                <SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />
-                <SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />
-                <CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />
-              </div>
+            actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />}
+          />
+          <FilterRow
+            search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" />}
+            sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
+            counts={skills === null || skills.length === 0 ? null : (
+              search.trim()
+                ? `${sorted.length} of ${skills.length} skills`
+                : `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`
             )}
           />
           <CollectionState

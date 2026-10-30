@@ -133,11 +133,37 @@ describe('SkillsView with org sharing', () => {
     expect(section('Shared with me')).toBeNull();
   });
 
-  it('puts the search box on the Create button line', async () => {
+  it('uses the shared collection header: title, subtitle and Create skill, then a search and sort row', async () => {
+    const user = userEvent.setup();
+    await renderPage([mine, fromColleague]);
+    await waitFor(() => expect(section('Shared with me')).toBeInTheDocument());
+
+    const title = screen.getByRole('heading', { level: 1, name: 'Skills' });
+    const titleRow = title.parentElement.parentElement;
+    expect(screen.getByText("Extend Cowork's capabilities with task-specific skills")).toBeInTheDocument();
+    // Create skill is the header's primary action, on the title's line.
+    const create = within(titleRow).getByRole('button', { name: /Create skill/ });
+    // Search and sort sit in the toolbar row below, not in the header.
+    const search = screen.getByRole('textbox', { name: 'Search skills' });
+    expect(titleRow.contains(search)).toBe(false);
+    expect(title.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('⌘K')).toBeInTheDocument();
+    expect(screen.getByText('2 skills')).toBeInTheDocument();
+
+    await user.type(search, 'weekly');
+    expect(screen.getByText('1 of 2 skills')).toBeInTheDocument();
+
+    // The create menu keeps Write Skill Instructions first.
+    await user.click(create);
+    const items = await screen.findAllByRole('menuitem');
+    expect(items[0]).toHaveTextContent('Write Skill Instructions');
+  });
+
+  it('focuses the search with ⌘K', async () => {
+    const user = userEvent.setup();
     await renderPage([mine]);
-    const toolbar = screen.getByTestId('skills-toolbar');
-    expect(within(toolbar).getByRole('textbox', { name: 'Search skills' })).toBeInTheDocument();
-    expect(within(toolbar).getByRole('button', { name: /Create skill/ })).toBeInTheDocument();
+    await user.keyboard('{Meta>}k{/Meta}');
+    expect(screen.getByRole('textbox', { name: 'Search skills' })).toHaveFocus();
   });
 
   it('gives each row its switch, Share and menu, with Share and the menu revealed on hover or focus', async () => {
