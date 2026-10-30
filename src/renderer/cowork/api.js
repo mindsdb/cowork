@@ -1974,9 +1974,13 @@ export async function fetchSkillSharingCapabilities() {
     if (!data || typeof data !== 'object') return SHARING_OFF;
     return {
       enabled: data.enabled === true,
-      can_share_org: data.can_share_org === true,
-      can_write_org: data.can_write_org === true,
-      org_name: typeof data.org_name === 'string' && data.org_name.trim() ? data.org_name.trim() : null,
+      // The server serializes camelCase; snake_case is accepted too.
+      can_share_org: (data.canShareOrg ?? data.can_share_org) === true,
+      can_write_org: (data.canWriteOrg ?? data.can_write_org) === true,
+      org_name: (() => {
+        const name = data.orgName ?? data.org_name;
+        return typeof name === 'string' && name.trim() ? name.trim() : null;
+      })(),
     };
   } catch (err) {
     if (err?.status === 404) return SHARING_OFF;
@@ -2047,7 +2051,10 @@ function hubTeamName(team) {
 function hubPerson(person) {
   if (!person || typeof person.id !== 'string' || !person.id) return null;
   const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
-  const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
+  // The server may serialize camelCase (`displayName`, `fullName`).
+  const rawName = [person.name, person.displayName, person.display_name, person.fullName, person.full_name]
+    .find((candidate) => typeof candidate === 'string' && candidate.trim());
+  const name = rawName ? rawName.trim() : null;
   return { id: person.id, name, email };
 }
 

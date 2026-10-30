@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 
 describe('SkillsView with org sharing', () => {
-  it('groups skills by section and leaves empty sections out', async () => {
+  it('groups skills by section with counts, and says what an empty section would hold', async () => {
     await renderPage([mine, fromColleague, orgWide, builtin]);
 
     await waitFor(() => expect(section('Only me')).toBeInTheDocument());
@@ -88,7 +88,67 @@ describe('SkillsView with org sharing', () => {
     expect(within(section('Shared with me')).getByText('forecast-review')).toBeInTheDocument();
     expect(within(section('Everyone at Kinaxis')).getByText('brand-voice')).toBeInTheDocument();
     expect(within(section('Built-in')).getByText('skill-creator')).toBeInTheDocument();
+    expect(within(section('Only me')).getByTestId('section-count')).toHaveTextContent('1');
+    expect(within(section('My teams')).getByTestId('section-count')).toHaveTextContent('0');
+    expect(within(section('My teams')).getByText('No skills are shared with your teams yet.')).toBeInTheDocument();
+    const order = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    expect(order).toEqual(['Only me', 'Shared with me', 'My teams', 'Everyone at Kinaxis', 'Built-in']);
+  });
+
+  it('leaves empty sections out while searching', async () => {
+    const user = userEvent.setup();
+    await renderPage([mine, fromColleague]);
+    await waitFor(() => expect(section('My teams')).toBeInTheDocument());
+
+    await user.type(screen.getByRole('textbox', { name: 'Search skills' }), 'weekly');
+    expect(section('Only me')).toBeInTheDocument();
     expect(section('My teams')).toBeNull();
+    expect(section('Shared with me')).toBeNull();
+  });
+
+  it('puts the search box on the Create button line', async () => {
+    await renderPage([mine]);
+    const toolbar = screen.getByTestId('skills-toolbar');
+    expect(within(toolbar).getByRole('textbox', { name: 'Search skills' })).toBeInTheDocument();
+    expect(within(toolbar).getByRole('button', { name: /Create skill/ })).toBeInTheDocument();
+  });
+
+  it('gives each row its switch, Share and menu, with Share and the menu revealed on hover or focus', async () => {
+    await renderPage([mine, teamSkill]);
+    const row = await screen.findByRole('article', { name: 'weekly-report' });
+
+    const toggle = within(row).getByRole('switch', { name: "Turn off: Anton won't use this skill" });
+    expect(toggle).toHaveAttribute('title', "Turn off: Anton won't use this skill");
+    expect(within(row).getByRole('button', { name: 'Share weekly-report' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'More actions for weekly-report' })).toBeInTheDocument();
+    const reveal = within(row).getByTestId('skill-row-actions').className;
+    expect(reveal).toContain('opacity-0');
+    expect(reveal).toContain('group-hover/item:opacity-100');
+    expect(reveal).toContain('group-focus-within/item:opacity-100');
+    expect(reveal).toContain('[@media(hover:none)]:opacity-100');
+
+    // A team skill someone else owns has no switch; the lock says why.
+    const team = screen.getByRole('article', { name: 'team-playbook' });
+    expect(within(team).queryByRole('switch')).toBeNull();
+    expect(within(team).getByTestId('skill-switch-locked'))
+      .toHaveAttribute('title', "Part of every task for everyone it's shared with. Only lead@kinaxis.com can change it.");
+    expect(within(team).queryByRole('button', { name: /^Share/ })).toBeNull();
+  });
+
+  it('turns a skill off from its row, and says Turn on after', async () => {
+    const user = userEvent.setup();
+    await renderPage([mine]);
+    // Held in flight, so the switch shows the value asked for.
+    api.saveSkill.mockReturnValue(new Promise(() => {}));
+    const row = await screen.findByRole('article', { name: 'weekly-report' });
+
+    await user.click(within(row).getByRole('switch', { name: /^Turn off/ }));
+    await waitFor(() => expect(api.saveSkill).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'weekly-report', enabled: false }), true,
+    ));
+    expect(within(row).getByRole('switch', { name: 'Turn on: Anton can use this skill' })).toBeInTheDocument();
+    // The row stays a row: the switch never opens the skill.
+    expect(screen.queryByRole('heading', { name: 'Scope' })).toBeNull();
   });
 
   it('no longer says team and org-wide sections are applied to every task', async () => {
@@ -147,7 +207,7 @@ describe('SkillsView with org sharing', () => {
     expect(screen.queryByRole('menuitem', { name: /Uninstall/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
     // An org skill someone else owns has no switch to turn it off.
-    expect(screen.queryByRole('switch', { name: 'Skill enabled' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /^Turn (on|off):/ })).toBeNull();
     expect(screen.getByRole('note')).toHaveTextContent("Shared by admin@kinaxis.com. You can use it but can't change it.");
   });
 
@@ -158,7 +218,7 @@ describe('SkillsView with org sharing', () => {
 
     await user.click(screen.getByText('team-playbook'));
 
-    expect(screen.queryByRole('switch', { name: 'Skill enabled' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /^Turn (on|off):/ })).toBeNull();
     expect(screen.getByRole('note')).toHaveTextContent("It's part of every task, and only its owner can change it.");
   });
 
@@ -171,11 +231,13 @@ describe('SkillsView with org sharing', () => {
     await user.click(screen.getByText('weekly-report'));
     await user.click(screen.getByRole('button', { name: 'Share' }));
     const dialog = await screen.findByRole('dialog');
+    // An anchored dropdown, not a modal.
+    expect(within(dialog).getByText('Who can use this skill')).toBeInTheDocument();
     // Shared with a team: Specific, with its pill.
     expect(within(dialog).getByRole('radio', { name: /^Specific teams and people/ })).toHaveAttribute('aria-checked', 'true');
     await user.click(within(dialog).getByRole('radio', { name: /^Only me/ }));
     const loads = api.fetchSkills.mock.calls.length;
-    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Update' }));
 
     await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('weekly-report', { org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

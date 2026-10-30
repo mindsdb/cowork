@@ -246,12 +246,13 @@ const SECTION_TITLES = {
 };
 
 /**
- * The Skills page's groups, in page order, empty ones left out. Built-ins
+ * The Skills page's groups, in page order, empty ones left out unless
+ * `keepEmpty`. Built-ins
  * carry no audience, so they keep a group of their own at the end.
  *
  * @returns {Array<{ id: string, title: string, skills: object[] }>}
  */
-export function groupSkillsBySection(skills, { orgName = null } = {}) {
+export function groupSkillsBySection(skills, { orgName = null, keepEmpty = false } = {}) {
   const buckets = { mine: [], shared_with_me: [], team: [], org: [], builtin: [] };
   for (const skill of skills || []) {
     if (skill?.isBuiltin) buckets.builtin.push(skill);
@@ -263,7 +264,9 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
     skills: buckets[id],
   }));
   groups.push({ id: 'builtin', title: 'Built-in', skills: buckets.builtin });
-  return groups.filter((group) => group.skills.length > 0);
+  // `keepEmpty` keeps the four audience sections, so each can say what would
+  // go there; Built-in still shows only when there is one.
+  return groups.filter((group) => group.skills.length > 0 || (keepEmpty && group.id !== 'builtin'));
 }
 
 /**

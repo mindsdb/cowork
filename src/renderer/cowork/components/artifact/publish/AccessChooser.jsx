@@ -17,14 +17,12 @@
 //   // on confirm: publish(buildAccessPayload(draft))
 
 import { useRef } from 'react';
-import { RadioGroup } from '@base-ui/react/radio-group';
 import Ico from '../../Icons';
 import { Tooltip } from '../../ui';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
-import { AudienceOption } from '../../AudienceOption';
-import RecipientField from '../../RecipientField';
+import AudiencePanel from '../../AudiencePanel';
 import { everyoneAtLabel, namesDefaultTeam, withoutDefaultTeam } from '../../../lib/orgSharing';
 
 // Shared class strings for the bare-input shell (a bordered row wrapping an
@@ -260,81 +258,62 @@ export function AccessChooser({
   const specific = orgSharing ? ACCESS_LABELS.specific : ACCESS_LABELS.restricted;
 
   const recipients = {
-    teamIds: orgSharing ? draft.teamIds || [] : [],
-    userIds: orgSharing ? draft.userIds || [] : [],
-    emails: parseEmailList(draft.emailsText).valid,
+    value: {
+      teamIds: orgSharing ? draft.teamIds || [] : [],
+      userIds: orgSharing ? draft.userIds || [] : [],
+      emails: parseEmailList(draft.emailsText).valid,
+    },
+    onChange: (next) => set(orgSharing
+      ? { teamIds: next.teamIds, userIds: next.userIds, emailsText: next.emails.join(', ') }
+      : { emailsText: next.emails.join(', ') }),
+    allowExternal: true,
+    emailsOnly: !orgSharing,
+    orgName,
+    teamsState: orgSharing ? sharing.teams || null : null,
   };
-  const editor = (
-    <RecipientField
-      value={recipients}
-      onChange={(next) => set(orgSharing
-        ? { teamIds: next.teamIds, userIds: next.userIds, emailsText: next.emails.join(', ') }
-        : { emailsText: next.emails.join(', ') })}
-      allowExternal
-      emailsOnly={!orgSharing}
-      orgName={orgName}
-      teamsState={orgSharing ? sharing.teams || null : null}
-    />
-  );
+
+  // "Only you" is its own option rather than an empty "Specific people". The
+  // two used to be the same radio, distinguished only by whether the textarea
+  // below it happened to be blank — so the choice a person had made was not
+  // visible in the choice they had selected.
+  const options = [
+    modes.includes('ownerOnly') && { value: 'ownerOnly', icon: Ico.lock(16), title: ACCESS_LABELS.ownerOnly.title, desc: ACCESS_LABELS.ownerOnly.desc },
+    orgSharing && modes.includes('org') && { value: 'org', icon: Ico.building(16), title: everyoneAtLabel(orgName), desc: ACCESS_LABELS.org.desc },
+    modes.includes('restricted') && { value: 'restricted', icon: Ico.people(16), title: specific.title, desc: specific.desc },
+    modes.includes('password') && { value: 'password', icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc },
+    modes.includes('public') && { value: 'public', icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
+  ].filter(Boolean);
 
   return (
-    <div>
-      <RadioGroup
-        value={draft.mode}
-        onValueChange={(m) => set({ mode: m })}
-        className="flex flex-col gap-2"
-        aria-label="Who can access your app"
-      >
-        {/* "Only you" is its own option rather than an empty "Specific people".
-            The two used to be the same radio, distinguished only by whether the
-            textarea below it happened to be blank — so the choice a person had
-            made was not visible in the choice they had selected. */}
-        {modes.includes('ownerOnly') && (
-          <AudienceOption value="ownerOnly" active={draft.mode === 'ownerOnly'} icon={Ico.lock(16)}
-            title={ACCESS_LABELS.ownerOnly.title} desc={ACCESS_LABELS.ownerOnly.desc} />
-        )}
-        {orgSharing && modes.includes('org') && (
-          <AudienceOption value="org" active={draft.mode === 'org'} icon={Ico.building(16)}
-            title={everyoneAtLabel(orgName)} desc={ACCESS_LABELS.org.desc} />
-        )}
-        {modes.includes('restricted') && (
-          <AudienceOption value="restricted" active={draft.mode === 'restricted'} icon={Ico.people(16)}
-            title={specific.title} desc={specific.desc}
-            editor={editor} editorTestId="specific-recipients" />
-        )}
-        {modes.includes('password') && (
-          <AudienceOption value="password" active={draft.mode === 'password'} icon={Ico.lock(16)}
-            title={ACCESS_LABELS.password.title} desc={ACCESS_LABELS.password.desc} />
-        )}
-        {modes.includes('public') && (
-          <AudienceOption value="public" active={draft.mode === 'public'} icon={Ico.globe(16)}
-            title={ACCESS_LABELS.public.title} desc={ACCESS_LABELS.public.desc} />
-        )}
-      </RadioGroup>
-
+    <AudiencePanel
+      ariaLabel="Who can access your app"
+      value={draft.mode}
+      onValueChange={(m) => set({ mode: m })}
+      options={options}
+      specificValue="restricted"
+      recipients={recipients}
+    >
       {draft.mode === 'password' && (
-        <div className="mt-2">
-          <div className={INPUT_SHELL}>
-            <input
-              type={draft._reveal ? 'text' : 'password'}
-              value={draft.password}
-              onChange={(e) => set({ password: e.target.value })}
-              onKeyDown={(e) => { if (e.key === 'Enter' && isAccessDraftValid(draft)) onSubmit?.(); }}
-              autoFocus
-              placeholder="Add a password"
-              className={BARE_INPUT}
-            />
-            <Tooltip content={draft._reveal ? 'Hide' : 'Show'}>
-              <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
-                aria-label={draft._reveal ? 'Hide password' : 'Show password'}
-                className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
-                {draft._reveal ? Ico.eyeOff(16) : Ico.eye(16)}
-              </button>
-            </Tooltip>
-          </div>
+        <div className={INPUT_SHELL}>
+          <input
+            type={draft._reveal ? 'text' : 'password'}
+            value={draft.password}
+            onChange={(e) => set({ password: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter' && isAccessDraftValid(draft)) onSubmit?.(); }}
+            autoFocus
+            placeholder="Add a password"
+            className={BARE_INPUT}
+          />
+          <Tooltip content={draft._reveal ? 'Hide' : 'Show'}>
+            <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
+              aria-label={draft._reveal ? 'Hide password' : 'Show password'}
+              className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
+              {draft._reveal ? Ico.eyeOff(16) : Ico.eye(16)}
+            </button>
+          </Tooltip>
         </div>
       )}
-    </div>
+    </AudiencePanel>
   );
 }
 

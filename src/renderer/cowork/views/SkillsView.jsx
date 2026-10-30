@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
-  PageHeader, FilterRow, SearchInput, SortPill, CollectionState,
-  ListGroup, ListItem,
+  PageHeader, SearchInput, SortPill, CollectionState,
+  ListGroup, ListItem, ListNotice,
 } from '../components/collection';
 import { Alert, Menu, Badge, Button, Field, Select, Input, Textarea, Tooltip } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -17,7 +17,7 @@ import {
   useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync, setSkillAccessAndSync,
 } from '../lib/skillsStore';
 import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
-import SkillShareDialog from '../components/SkillShareDialog';
+import SkillShareMenu from '../components/SkillShareMenu';
 import SkillAudienceFields from '../components/SkillAudienceFields';
 import {
   ALWAYS_ON_BADGE,
@@ -97,9 +97,58 @@ function readOnlyNote(skill) {
   return 'Read only — only the creator or an organization admin can change this skill.';
 }
 
-// A kit row: name, description, and inline meta (project, stable creator,
-// last update).
-function SkillRow({ skill, onClick, projects = [], orgSharing = null }) {
+/* The on/off switch, on a row and in the detail header. Its label and
+   tooltip say what flipping it does; where it is locked, the tooltip says
+   why. A team or org-wide skill someone else owns has no switch at all, only
+   the reason. */
+export const TURN_ON_LABEL = 'Turn on: Anton can use this skill';
+export const TURN_OFF_LABEL = "Turn off: Anton won't use this skill";
+const NO_PERMISSION_SWITCH_HINT = 'You do not have permission to enable or disable this skill.';
+
+function SkillEnabledControl({ skill, checked, hiddenReason = null, onChange, size = 'sm' }) {
+  if (hiddenReason) {
+    return (
+      <span
+        role="img"
+        aria-label={hiddenReason}
+        title={hiddenReason}
+        data-testid="skill-switch-locked"
+        className="inline-grid w-[32px] place-items-center text-ink-4"
+      >{Ico.lock(14)}</span>
+    );
+  }
+  const canDisable = canUseSharedResource(skill, 'canDisable');
+  const label = checked ? TURN_OFF_LABEL : TURN_ON_LABEL;
+  const title = !canDisable
+    ? NO_PERMISSION_SWITCH_HINT
+    : isOwnSharedSkill(skill) ? `${label}. ${OWN_SHARED_SWITCH_HINT}` : label;
+  return (
+    <Switch
+      size={size}
+      checked={checked}
+      aria-label={label}
+      title={title}
+      disabled={!canDisable}
+      onCheckedChange={(next) => { if (canDisable) onChange(next); }}
+    />
+  );
+}
+
+// The small tile before a skill's name.
+function SkillTile({ skill }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-grid h-6 w-6 shrink-0 place-items-center rounded-[6px] border border-solid border-line bg-surface-2 font-mono text-[12px] font-semibold text-ink-3"
+    >{skill.isBuiltin ? Ico.cube(12) : '/'}</span>
+  );
+}
+
+// A kit row: tile, name, one line of description, then a row of badges (who
+// it reaches, Always on, who shared it). Project and last update sit at the
+// right; the switch, Share and the overflow menu after them. Share and the
+// menu show on hover or focus, and always on a touch screen.
+function SkillRow({ skill, onClick, projects = [], orgSharing = null, actions = null }) {
   const age = relativeAge(skill.updatedAt);
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
@@ -112,25 +161,13 @@ function SkillRow({ skill, onClick, projects = [], orgSharing = null }) {
   const shared = !orgSharing && isSharedSkill(skill);
   const audience = orgSharing ? skillAudienceBadge(skill, orgSharing) : null;
   const alwaysOn = !!orgSharing && isSkillAlwaysOn(skill);
+  const hasBadges = skill.enabled === false || skill.isBuiltin || shared || audience || alwaysOn || sharedBy;
   return (
     <ListItem
       as="article"
       aria-label={skill.label}
-      leading={<span className="font-mono text-sm font-medium">/</span>}
+      leading={<SkillTile skill={skill} />}
       title={skill.label}
-      badges={(skill.enabled === false || skill.isBuiltin || shared || audience) && (
-        <>
-          {skill.enabled === false && <Badge variant="muted" size="sm">Disabled</Badge>}
-          {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
-          {shared && <Badge variant="muted" size="sm">Shared</Badge>}
-          {audience && <Badge variant="muted" size="sm">{audience}</Badge>}
-          {alwaysOn && (
-            <Tooltip content={ALWAYS_ON_BADGE_HINT}>
-              <span className="inline-flex"><Badge variant="muted" size="sm">{ALWAYS_ON_BADGE}</Badge></span>
-            </Tooltip>
-          )}
-        </>
-      )}
       description={skill.description || skill.declarative?.slice(0, 120) || '—'}
       onActivate={() => onClick(skill)}
       meta={(
@@ -140,12 +177,49 @@ function SkillRow({ skill, onClick, projects = [], orgSharing = null }) {
             <span className="truncate">{project || 'All projects'}</span>
           </span>
           {author && <span className="max-w-[160px] truncate" title={author}>{author}</span>}
-          {sharedBy && <span className="max-w-[220px] truncate" title={sharedBy}>Shared by {sharedBy}</span>}
           {age && <span className="whitespace-nowrap">Updated {age}</span>}
         </>
       )}
-    />
+      actions={actions}
+    >
+      {hasBadges && (
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5" data-testid="skill-badges">
+          {skill.enabled === false && <Badge variant="muted" size="sm">Disabled</Badge>}
+          {skill.isBuiltin && <Badge variant="muted" size="sm">Built-in</Badge>}
+          {shared && <Badge variant="muted" size="sm">Shared</Badge>}
+          {audience && <Badge variant="default" size="sm">{audience}</Badge>}
+          {alwaysOn && (
+            <Tooltip content={ALWAYS_ON_BADGE_HINT}>
+              <span className="relative z-10 inline-flex"><Badge variant="accent" size="sm">{ALWAYS_ON_BADGE}</Badge></span>
+            </Tooltip>
+          )}
+          {sharedBy && <span className="max-w-[240px] truncate font-body text-xs text-ink-4" title={sharedBy}>Shared by {sharedBy}</span>}
+        </div>
+      )}
+    </ListItem>
   );
+}
+
+// Share and the overflow menu: shown on hover or keyboard focus within the
+// row, and always where there is no hover (touch).
+const REVEAL_ACTIONS = 'flex items-center gap-1 opacity-0 transition-opacity duration-hover group-hover/item:opacity-100 group-focus-within/item:opacity-100 [@media(hover:none)]:opacity-100';
+
+// Section headers: an icon, the title and how many skills it holds.
+const SECTION_ICONS = {
+  mine: Ico.lock,
+  shared_with_me: Ico.user,
+  team: Ico.people,
+  org: Ico.building,
+  builtin: Ico.cube,
+};
+
+// What an empty section would hold.
+function emptySectionNote(id, orgName) {
+  if (id === 'mine') return 'Skills only you can use show up here. Create one to get started.';
+  if (id === 'shared_with_me') return 'Nobody has shared a skill with you yet.';
+  if (id === 'team') return 'No skills are shared with your teams yet.';
+  if (id === 'org') return `No skills are shared with everyone at ${orgName || 'your organization'} yet.`;
+  return 'Nothing here yet.';
 }
 
 // Page margin of the row group, shared with its loading skeleton so loading
@@ -572,7 +646,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const orgSharing = orgSharingOn
     ? { teams: teamsState.teams, orgName: sharingCapabilities.org_name }
     : null;
-  const [sharingSkill, setSharingSkill] = useState(null);
+  /* On/off changes in flight: skill label → the value asked for, so a row's
+     switch moves at once and moves back on a refusal. */
+  const [enabledPending, setEnabledPending] = useState(() => new Map());
 
   // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
   const showToast = (msg, type = 'error') => toastManager.add({ title: msg, type: type === 'error' ? 'danger' : type });
@@ -659,14 +735,39 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     }
   };
 
-  const saveAccess = async (access) => {
-    const skill = sharingSkill;
-    if (!skill) return;
-    // Throws on a refusal, which the dialog shows in place.
+  const saveAccess = async (skill, access) => {
+    // Throws on a refusal, which the Share dropdown shows in place.
     await setSkillAccessAndSync(skill.slug || skill.label, access);
-    setSharingSkill(null);
     showToast(`Updated who can use ${skill.label}.`, 'success');
   };
+
+  /* Turns a skill on or off from its row or the detail header. The switch
+     moves at once; a refusal moves it back and shows the server's sentence.
+     The reload inside the save re-points the open skill through the effect
+     above; adopting the response here would trade the catalogue entry for a
+     serializer that need not carry capabilities. */
+  const setSkillEnabled = async (skill, next) => {
+    if (!canUseSharedResource(skill, 'canDisable')) return;
+    const targetLabel = skill.label;
+    const setOpen = (value) => setSelected((current) => (
+      current?.label === targetLabel ? { ...current, enabled: value } : current
+    ));
+    setEnabledPending((current) => new Map(current).set(targetLabel, next));
+    setOpen(next);
+    try {
+      await saveSkillAndSync({ label: targetLabel, enabled: next }, true);
+    } catch (err) {
+      setOpen(!next);
+      showToast(err.message || 'Could not update skill.');
+    } finally {
+      setEnabledPending((current) => {
+        const copy = new Map(current);
+        copy.delete(targetLabel);
+        return copy;
+      });
+    }
+  };
+  const isEnabled = (skill) => enabledPending.get(skill.label) ?? skill.enabled ?? true;
 
   /* Whether the open skill offers Share: the caller's own, on an org. */
   const canOpenShare = (skill) => orgSharingOn && !skill.isBuiltin && canEditSkill(skill);
@@ -675,6 +776,63 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   /* Team and org-wide skills someone else owns offer no on/off switch. */
   const alwaysApplied = (skill) => orgSharingOn && !canEditSkill(skill)
     && (skillSection(skill) === 'team' || skillSection(skill) === 'org');
+  /* Why such a skill has no switch. */
+  const switchHiddenReason = (skill) => {
+    if (!alwaysApplied(skill)) return null;
+    const owner = skillOwnerEmail(skill);
+    return isSkillAlwaysOn(skill)
+      ? `Part of every task for everyone it's shared with. Only ${owner || 'its owner'} can change it.`
+      : `Shared with your ${skillSection(skill) === 'team' ? 'team' : 'organization'}. Only ${owner || 'its owner'} can turn it off.`;
+  };
+  const enabledControl = (skill, size) => (
+    <SkillEnabledControl
+      size={size}
+      skill={skill}
+      checked={isEnabled(skill)}
+      hiddenReason={switchHiddenReason(skill)}
+      onChange={(next) => setSkillEnabled(skill, next)}
+    />
+  );
+  /* The skill's menu: Try in chat, then Edit and Uninstall where they apply. */
+  const skillMenuItems = (skill) => [
+    { id: 'try', label: 'Try in chat', icon: Ico.chats(14), onClick: () => onTryInChat?.(`/${skill.label}`, skill.projects?.[0]) },
+    ...(hidesOwnerActions(skill) ? [] : [{
+      id: 'edit', label: 'Edit', icon: Ico.edit(14),
+      disabled: !canUseSharedResource(skill, 'canEdit'),
+      hint: !canUseSharedResource(skill, 'canEdit') ? lockedActionHint(skill) : undefined,
+      title: !canUseSharedResource(skill, 'canEdit') ? 'You do not have permission to edit this skill.' : undefined,
+      onClick: () => startEdit(skill),
+    },
+    { divider: true },
+    {
+      id: 'uninstall', label: 'Uninstall', icon: Ico.trash(14), danger: true,
+      disabled: !canUseSharedResource(skill, 'canDelete'),
+      hint: !canUseSharedResource(skill, 'canDelete') ? lockedActionHint(skill) : undefined,
+      title: !canUseSharedResource(skill, 'canDelete') ? 'You do not have permission to uninstall this skill.' : undefined,
+      onClick: () => remove(skill),
+    }]),
+  ];
+  const shareMenu = (skill, trigger) => (
+    <SkillShareMenu
+      skill={skill}
+      capabilities={sharingCapabilities}
+      onSave={(access) => saveAccess(skill, access)}
+      trigger={trigger}
+    />
+  );
+  const rowActions = (skill) => (
+    <>
+      {enabledControl(skill)}
+      <div className={REVEAL_ACTIONS} data-testid="skill-row-actions">
+        {canOpenShare(skill) && shareMenu(skill, (
+          <Button icon size="xxs" variant="subtle" aria-label={`Share ${skill.label}`} title="Share">
+            {Ico.people(14)}
+          </Button>
+        ))}
+        <OverflowMenu label={`More actions for ${skill.label}`} title="More actions" items={skillMenuItems(skill)} />
+      </div>
+    </>
+  );
 
   const startNew  = () => setModalSkill(undefined);
   const startEdit = (skill) => {
@@ -710,67 +868,14 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             current={selected.label}
             actions={
               <>
-                {canOpenShare(selected) && (
-                  <Button variant="default" onClick={() => setSharingSkill(selected)}>
+                {canOpenShare(selected) && shareMenu(selected, (
+                  <Button variant="default">
                     {Ico.people(14)}
                     Share
                   </Button>
-                )}
-                {!alwaysApplied(selected) && <Switch
-                  checked={selected.enabled ?? true}
-                  aria-label="Skill enabled"
-                  disabled={!canUseSharedResource(selected, 'canDisable')}
-                  title={!canUseSharedResource(selected, 'canDisable')
-                    ? 'You do not have permission to enable or disable this skill.'
-                    : isOwnSharedSkill(selected) ? OWN_SHARED_SWITCH_HINT : undefined}
-                  onCheckedChange={async (next) => {
-                    if (!canUseSharedResource(selected, 'canDisable')) return;
-                    const targetLabel = selected.label;
-                    setSelected((current) => (
-                      current?.label === targetLabel
-                        ? { ...current, enabled: next }
-                        : current
-                    ));
-                    try {
-                      /* The reload inside the save re-points the open skill
-                         through the effect above; adopting the response here
-                         would trade the catalogue entry for a serializer that
-                         need not carry capabilities. */
-                      await saveSkillAndSync({ label: targetLabel, enabled: next }, true);
-                    } catch (err) {
-                      setSelected((current) => (
-                        current?.label === targetLabel
-                          ? { ...current, enabled: !next }
-                          : current
-                      ));
-                      showToast(err.message || 'Could not update skill.');
-                    }
-                  }}
-                />}
-                <OverflowMenu
-                  items={[
-                    { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
-                    ...(hidesOwnerActions(selected) ? [] : [{
-                      id: 'edit', label: 'Edit', icon: Ico.edit(14),
-                      disabled: !canUseSharedResource(selected, 'canEdit'),
-                      hint: !canUseSharedResource(selected, 'canEdit')
-                        ? lockedActionHint(selected)
-                        : undefined,
-                      title: !canUseSharedResource(selected, 'canEdit') ? 'You do not have permission to edit this skill.' : undefined,
-                      onClick: () => startEdit(selected),
-                    },
-                    { divider: true },
-                    {
-                      id: 'uninstall', label: 'Uninstall', icon: Ico.trash(14), danger: true,
-                      disabled: !canUseSharedResource(selected, 'canDelete'),
-                      hint: !canUseSharedResource(selected, 'canDelete')
-                        ? lockedActionHint(selected)
-                        : undefined,
-                      title: !canUseSharedResource(selected, 'canDelete') ? 'You do not have permission to uninstall this skill.' : undefined,
-                      onClick: () => remove(selected),
-                    }]),
-                  ]}
-                />
+                ))}
+                {enabledControl(selected, 'md')}
+                <OverflowMenu items={skillMenuItems(selected)} />
               </>
             }
           />
@@ -859,15 +964,17 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       ) : (
         // ── List ───────────────────────────────────────────────────────────
         <>
+          {/* Search and sort sit on the Create button's line. */}
           <PageHeader
             title="Skills"
             subtitle="Extend Cowork's capabilities with task-specific skills"
-            actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />}
-          />
-
-          <FilterRow
-            search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
-            sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
+            actions={(
+              <div className="flex max-w-full flex-wrap items-center justify-end gap-2" data-testid="skills-toolbar">
+                <SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />
+                <SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />
+                <CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />
+              </div>
+            )}
           />
           <CollectionState
             loading={skills === null}
@@ -885,14 +992,24 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           >
             {orgSharing ? (
               <div className={`${LIST_CLASS} flex flex-col gap-6`}>
-                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName }).map((group) => (
+                {/* Every audience section shows, so an empty one can say what
+                    would go there; a search shows only the sections it hits. */}
+                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName, keepEmpty: !search }).map((group) => (
                   <ListGroup
                     key={group.id}
                     aria-label={group.title}
-                    title={<h2>{group.title}</h2>}
+                    title={(
+                      <h2 className="flex items-center gap-2">
+                        <span className="inline-flex text-ink-4" aria-hidden="true">{SECTION_ICONS[group.id](14)}</span>
+                        {group.title}
+                      </h2>
+                    )}
+                    description={<span data-testid="section-count">{group.skills.length}</span>}
                   >
-                    {group.skills.map((skill) => (
-                      <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} orgSharing={orgSharing} />
+                    {group.skills.length === 0 ? (
+                      <ListNotice className="font-body text-sm text-ink-4">{emptySectionNote(group.id, orgSharing.orgName)}</ListNotice>
+                    ) : group.skills.map((skill) => (
+                      <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} orgSharing={orgSharing} actions={rowActions(skill)} />
                     ))}
                   </ListGroup>
                 ))}
@@ -900,7 +1017,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             ) : (
               <ListGroup className={LIST_CLASS}>
                 {sorted.map((skill) => (
-                  <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} />
+                  <SkillRow key={skill.label} skill={skill} onClick={setSelected} projects={projects} actions={rowActions(skill)} />
                 ))}
               </ListGroup>
             )}
@@ -923,14 +1040,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         onClose={() => setRemoving(null)}
         onConfirm={() => { const skill = removing; setRemoving(null); if (skill) confirmRemove(skill); }}
       />
-      {orgSharingOn && (
-        <SkillShareDialog
-          skill={sharingSkill}
-          capabilities={sharingCapabilities}
-          onClose={() => setSharingSkill(null)}
-          onSave={saveAccess}
-        />
-      )}
       <SkillModal
         open={modalSkill !== null}
         onClose={closeModal}

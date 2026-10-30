@@ -65,7 +65,7 @@ describe('SkillsView shared-resource permissions', () => {
 
     fireEvent.click(screen.getByText('locked-skill'));
 
-    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ }))
       .toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText(/Created by creator@example.com/)).toBeInTheDocument();
 
@@ -96,7 +96,7 @@ describe('SkillsView shared-resource permissions', () => {
 
     fireEvent.click(screen.getByText('operator-skill'));
 
-    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ }))
       .toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('note')).toHaveTextContent('Built-in skills are read only.');
     expect(screen.queryByText(/Created by/)).not.toBeInTheDocument();
@@ -184,7 +184,7 @@ describe('SkillsView shared-resource permissions', () => {
       settleReload({ ok: true, skills: [uploaded] });
     });
 
-    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ }))
       .not.toHaveAttribute('aria-disabled', 'true');
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     expect(await screen.findByRole('menuitem', { name: /Edit/ }))
@@ -208,7 +208,7 @@ describe('SkillsView shared-resource permissions', () => {
     await user.click(await screen.findByRole('button', { name: 'Save' }));
     await waitFor(() => expect(mocks.saveSkillAndSync).toHaveBeenCalledTimes(1));
 
-    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ }))
       .not.toHaveAttribute('aria-disabled', 'true');
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     expect(await screen.findByRole('menuitem', { name: /Edit/ }))
@@ -228,7 +228,7 @@ describe('SkillsView shared-resource permissions', () => {
 
     expect(mocks.deleteSkillAndSync).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Skill enabled' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ })).toBeInTheDocument();
   });
 
   it('does not clear a newer skill selection when an older delete settles', async () => {
@@ -264,7 +264,7 @@ describe('SkillsView shared-resource permissions', () => {
 
     await act(async () => resolveDelete({ status: 'deleted' }));
     expect(screen.getByText(second.label)).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Skill enabled' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ })).toBeInTheDocument();
   });
 
   it.each(['success', 'failure'])(
@@ -293,7 +293,7 @@ describe('SkillsView shared-resource permissions', () => {
 
       render(<SkillsView />);
       await user.click(screen.getByText(first.label));
-      await user.click(screen.getByRole('switch', { name: 'Skill enabled' }));
+      await user.click(screen.getByRole('switch', { name: /^Turn (on|off):/ }));
       await waitFor(() => expect(mocks.saveSkillAndSync).toHaveBeenCalled());
       await user.click(screen.getByRole('button', { name: 'Skills' }));
       await user.click(screen.getByText(second.label));
@@ -310,7 +310,7 @@ describe('SkillsView shared-resource permissions', () => {
         await Promise.resolve();
       });
       expect(screen.getByText(second.label)).toBeInTheDocument();
-      expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+      expect(screen.getByRole('switch', { name: /^Turn (on|off):/ }))
         .toHaveAttribute('aria-checked', 'true');
     },
   );
@@ -354,7 +354,7 @@ describe('SkillsView shared skills', () => {
     expect(rowBadges.shared).toBe(true);
     expect(rowBadges.builtin).toBe(false);
     expect(screen.getByRole('note')).toHaveTextContent(SHARED_NOTE);
-    expect(screen.getByRole('switch', { name: 'Skill enabled' }))
+    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ }))
       .toHaveAttribute('aria-disabled', 'true');
     expect(edit).toHaveAttribute('data-disabled');
     expect(edit).toHaveTextContent('Shared with you');
@@ -373,10 +373,11 @@ describe('SkillsView shared skills', () => {
 
     expect(rowBadges.shared).toBe(true);
     expect(screen.getByRole('note')).toHaveTextContent(SHARED_NOTE);
-    const toggle = screen.getByRole('switch', { name: 'Skill enabled' });
+    const toggle = screen.getByRole('switch', { name: /^Turn (on|off):/ });
     expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
-    // Only the creator's switch reaches everyone, so a reader's gets no hint.
-    expect(toggle).not.toHaveAttribute('title');
+    // Only the creator's switch reaches everyone, so a reader's says only
+    // what flipping it does.
+    expect(toggle).toHaveAttribute('title', "Turn off: Anton won't use this skill");
     expect(edit).toHaveAttribute('data-disabled');
     expect(edit).toHaveTextContent('Shared with you');
     expect(uninstall).toHaveAttribute('data-disabled');
@@ -390,9 +391,9 @@ describe('SkillsView shared skills', () => {
     expect(rowBadges.shared).toBe(true);
     // A visible line, not only the switch's hover hint, says changes reach everyone.
     expect(screen.getByRole('note')).toHaveTextContent(CHANGE_NOTE);
-    const toggle = screen.getByRole('switch', { name: 'Skill enabled' });
+    const toggle = screen.getByRole('switch', { name: /^Turn (on|off):/ });
     expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
-    expect(toggle).toHaveAttribute('title', SWITCH_HINT);
+    expect(toggle).toHaveAttribute('title', `Turn off: Anton won't use this skill. ${SWITCH_HINT}`);
     expect(edit).not.toHaveAttribute('data-disabled');
     expect(edit).not.toHaveTextContent('Shared with you');
     expect(uninstall).not.toHaveAttribute('data-disabled');
@@ -430,7 +431,7 @@ describe('SkillsView shared skills', () => {
     expect(rowBadges.shared).toBe(false);
     expect(rowBadges.builtin).toBe(false);
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Skill enabled' })).not.toHaveAttribute('title');
+    expect(screen.getByRole('switch', { name: /^Turn (on|off):/ })).toHaveAttribute('title', "Turn off: Anton won't use this skill");
     expect(edit).not.toHaveAttribute('data-disabled');
     expect(uninstall).not.toHaveAttribute('data-disabled');
 

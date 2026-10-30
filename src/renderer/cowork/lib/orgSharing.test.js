@@ -221,3 +221,12 @@ describe('recipient field helpers', () => {
     expect(recipientSummary({}, { emailsOnly: true })).toBe('Add at least one email.');
   });
 });
+
+describe('groupSkillsBySection keepEmpty', () => {
+  it('keeps the four audience sections, and Built-in only when there is one', () => {
+    const groups = groupSkillsBySection([{ label: 'a', isBuiltin: false }], { orgName: 'Kinaxis', keepEmpty: true });
+    expect(groups.map((g) => [g.id, g.skills.length])).toEqual([
+      ['mine', 1], ['shared_with_me', 0], ['team', 0], ['org', 0],
+    ]);
+  });
+});

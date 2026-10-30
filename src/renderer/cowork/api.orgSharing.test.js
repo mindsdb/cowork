@@ -30,6 +30,26 @@ describe('fetchSkillSharingCapabilities', () => {
     expect(fetch.mock.calls[0][0]).toBe('http://127.0.0.1:26866/api/v1/skills/sharing-capabilities');
   });
 
+  it('reads the camelCase capabilities the server sends', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      enabled: true, canShareOrg: true, canWriteOrg: true, orgName: ' Kinaxis ',
+    }));
+
+    expect(await fetchSkillSharingCapabilities()).toEqual({
+      enabled: true, can_share_org: true, can_write_org: true, org_name: 'Kinaxis',
+    });
+  });
+
+  it('reads camelCase false as false', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      enabled: true, canShareOrg: false, canWriteOrg: false, orgName: null,
+    }));
+
+    expect(await fetchSkillSharingCapabilities()).toEqual({
+      enabled: true, can_share_org: false, can_write_org: false, org_name: null,
+    });
+  });
+
   it('reads a server without the route as sharing off', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ detail: 'Not Found' }, 404));
 
@@ -137,6 +157,15 @@ describe('fetchHubTeams', () => {
 });
 
 describe('searchHubPeople', () => {
+  it('reads a camelCase display name', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      reachable: true,
+      people: [{ id: 'u1', displayName: 'Ana Ruiz', email: 'ana@kinaxis.com' }, { id: 'u2', fullName: 'Bo Chen', email: 'bo@kinaxis.com' }],
+    }));
+
+    expect((await searchHubPeople('an')).people.map((p) => p.name)).toEqual(['Ana Ruiz', 'Bo Chen']);
+  });
+
   it('asks the people route with the query, limit and MindsHub credential', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
       reachable: true,

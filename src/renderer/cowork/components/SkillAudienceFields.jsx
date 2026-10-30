@@ -14,13 +14,11 @@
 // lists; the lists stay here, so switching back to "Specific" shows them.
 
 import { useEffect, useRef, useState } from 'react';
-import { RadioGroup } from '@base-ui/react/radio-group';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import { Switch } from './ui/Switch';
 import { useHubTeams } from '../hooks/useOrgSharing';
-import { AudienceOption } from './AudienceOption';
-import RecipientField from './RecipientField';
+import AudiencePanel from './AudiencePanel';
 import {
   ALWAYS_ON_HELP,
   ALWAYS_ON_LABEL,
@@ -134,58 +132,41 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
 
   const showAlwaysOn = mode === 'org' || (mode === 'specific' && lists.teamIds.length > 0);
 
-  const orgCard = (
-    <AudienceOption
-      value="org"
-      active={mode === 'org'}
-      disabled={!canShareOrg}
-      icon={Ico.building(16)}
-      title={everyoneAtLabel(orgName)}
-      desc="Anyone in your organization"
-    />
-  );
+  const options = [
+    { value: 'private', icon: Ico.lock(16), title: 'Only me', desc: 'Nobody else can use it' },
+    {
+      value: 'org',
+      icon: Ico.building(16),
+      title: everyoneAtLabel(orgName),
+      desc: 'Anyone in your organization',
+      disabled: !canShareOrg,
+      disabledHint: ORG_ADMIN_ONLY_HINT,
+      disabledTestId: 'org-option-locked',
+    },
+    { value: 'specific', icon: Ico.people(16), title: 'Specific teams and people', desc: 'Pick teams or colleagues' },
+  ];
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <RadioGroup
-        value={mode}
-        onValueChange={(next) => {
-          setMode(next);
-          emit(next, lists);
-        }}
-        className="flex min-w-0 flex-col gap-2"
-        aria-label="Who can use this skill"
-      >
-        <AudienceOption value="private" active={mode === 'private'} icon={Ico.lock(16)}
-          title="Only me" desc="Nobody else can use it" />
-        {canShareOrg ? orgCard : (
-          // A disabled control fires no hover of its own, so the hint hangs
-          // off a wrapper.
-          <Tooltip content={ORG_ADMIN_ONLY_HINT}>
-            <div data-testid="org-option-locked">{orgCard}</div>
-          </Tooltip>
-        )}
-        <AudienceOption
-          value="specific"
-          active={mode === 'specific'}
-          icon={Ico.people(16)}
-          title="Specific teams and people"
-          desc="Pick teams or colleagues"
-          editorTestId="specific-recipients"
-          editor={(
-            <RecipientField
-              value={{ teamIds: lists.teamIds, userIds: lists.userIds, emails: [] }}
-              onChange={(next) => {
-                const nextLists = { teamIds: next.teamIds, userIds: next.userIds };
-                setLists(nextLists);
-                emit('specific', nextLists);
-              }}
-              orgName={orgName}
-              teamsState={teamsState}
-            />
-          )}
-        />
-      </RadioGroup>
+    <AudiencePanel
+      ariaLabel="Who can use this skill"
+      value={mode}
+      onValueChange={(next) => {
+        setMode(next);
+        emit(next, lists);
+      }}
+      options={options}
+      specificValue="specific"
+      recipients={{
+        value: { teamIds: lists.teamIds, userIds: lists.userIds, emails: [] },
+        onChange: (next) => {
+          const nextLists = { teamIds: next.teamIds, userIds: next.userIds };
+          setLists(nextLists);
+          emit('specific', nextLists);
+        },
+        orgName,
+        teamsState,
+      }}
+    >
       {showAlwaysOn && (
         <AlwaysOnRow
           checked={shown.alwaysOn}
@@ -194,7 +175,7 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
         />
       )}
       <p className="m-0 mt-1 font-body text-xs text-ink-3" role="note">{SHARING_NOTE}</p>
-    </div>
+    </AudiencePanel>
   );
 }
 
