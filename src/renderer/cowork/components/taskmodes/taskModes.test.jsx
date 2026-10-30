@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Ico from '../Icons';
-import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage } from './taskModes';
+import { TASK_MODES, FEATURED_EXAMPLES_MODE, composeModeMessage, resemblesSample } from './taskModes';
 import { sampleId } from '../../lib/consoleHandoff';
 import { HABIT_TRACKER_PROMPT } from '../onboarding/steps';
 import TaskModePills from './TaskModePills';
@@ -85,6 +85,15 @@ describe('TASK_MODES data', () => {
     expect(composeModeMessage(mode, middle)).toBe(`${middle}\n\n${mode.instruction}`);
     const other = TASK_MODES.find((m) => m !== mode && m.samples.some((x) => x.plain)).samples.find((x) => x.plain);
     expect(composeModeMessage(mode, middle, other)).toBe(`${middle}\n\n${mode.instruction}`);
+  });
+
+  it('stops treating a picked plain example as one once the text is something else', () => {
+    const mode = TASK_MODES.find((m) => m.instruction && m.samples.some((x) => x.plain));
+    const sample = mode.samples.find((x) => x.plain);
+    expect(resemblesSample(sample, sample.prompt.replace(/\b\w{4,}\b/, 'changed'))).toBe(true);
+    expect(resemblesSample(sample, 'AI in 2026')).toBe(false);
+    expect(resemblesSample(sample, '')).toBe(false);
+    expect(composeModeMessage(mode, 'AI in 2026', sample)).toBe(`AI in 2026\n\n${mode.instruction}`);
   });
 
   it('composeModeMessage APPENDS the instruction (titles derive from the message head)', () => {

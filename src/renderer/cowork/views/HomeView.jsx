@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import TaskModePills from '../components/taskmodes/TaskModePills';
 import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
-import { composeModeMessage, findSampleByPrompt, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
+import { composeModeMessage, findSampleByPrompt, resemblesSample, FEATURED_EXAMPLES_MODE } from '../components/taskmodes/taskModes';
 import { completeStepTracked } from '../components/onboarding/track';
 import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
 import { stepsCompletedBySend } from '../components/onboarding/completion';
@@ -309,7 +309,7 @@ export default function HomeView({
     if (result) {
       const done = stepsCompletedBySend(text);
       // An example the person picked and then edited still counts as tried.
-      if (pickedSample) done.push('see-it-work');
+      if (pickedSample && resemblesSample(pickedSample, text)) done.push('see-it-work');
       done.forEach((id) => completeStepTracked(id, 'composer'));
     }
     setTaskMode(null);

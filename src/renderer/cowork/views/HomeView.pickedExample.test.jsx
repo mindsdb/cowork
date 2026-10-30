@@ -74,6 +74,32 @@ describe('an example picked and then edited', () => {
     expect(onSend.mock.calls[0][0]).toBe(`${edited}\n\n${mode.instruction}`);
   });
 
+  it('treats text that replaces the example as an ordinary message: instruction added, nothing ticked', async () => {
+    const onSend = vi.fn(async () => true);
+    renderHome(onSend);
+
+    await pickThenSend(userEvent.setup(), plain, 'AI in 2026');
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][0]).toBe(`AI in 2026\n\n${mode.instruction}`);
+    expect(getSnapshot().completed.has('see-it-work')).toBe(false);
+  });
+
+  it('forgets the picked example when the mode chip is removed', async () => {
+    const onSend = vi.fn(async () => true);
+    renderHome(onSend);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: mode.pillLabel }));
+    await user.click(await screen.findByRole('button', { name: plain.label }));
+    await user.click(screen.getByRole('button', { name: `Remove ${mode.chipLabel} mode` }));
+    await user.click(screen.getByRole('textbox'));
+    await user.paste(plain.prompt.replace(/\b\w{4,}\b/, 'changed'));
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(getSnapshot().completed.has('see-it-work')).toBe(false);
+  });
+
   it('does not count the example as tried when the send does not go out', async () => {
     const onSend = vi.fn(async () => false);
     renderHome(onSend);

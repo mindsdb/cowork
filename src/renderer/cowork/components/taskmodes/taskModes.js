@@ -275,10 +275,21 @@ export const TASK_MODES = [
     line. Appended (not prepended) because the task title, sidebar preview, and
     search index all derive from the message HEAD — a leading instruction would
     make every task of a mode read identically and bury the user's actual ask. */
+const wordsOf = (text) => new Set(String(text).toLowerCase().match(/[a-z0-9']+/g) || []);
+
+// Whether the text is still the picked example, however it was edited: most of
+// the example's words are still in it. Wiping the box and typing something else
+// is not an edit of the example.
+export function resemblesSample(sample, text) {
+  const have = wordsOf(text);
+  const want = [...wordsOf(sample.prompt)];
+  return want.length > 0 && want.filter((w) => have.has(w)).length / want.length >= 0.5;
+}
+
 export function composeModeMessage(mode, text, pickedSample) {
   if (!mode || !mode.instruction) return text;
   // A plain example the person picked keeps its own wording however they edit it.
-  if (pickedSample?.plain && mode.samples.includes(pickedSample)) return text;
+  if (pickedSample?.plain && mode.samples.includes(pickedSample) && resemblesSample(pickedSample, text)) return text;
   const sent = text.trim();
   // A picked sample is already a full prompt — appending the instruction
   // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").
