@@ -274,6 +274,12 @@ export default function HomeView({
   // Selected task mode (ENG-1594). Null = default view (pill row visible).
   // Owns the composer placeholder, the toolbar chip, and the sample list.
   const [taskMode, setTaskMode] = useState(null);
+  // The example picked from the list under the composer, kept apart from the
+  // text so editing it does not change what kind of message it is.
+  const [pickedSample, setPickedSample] = useState(null);
+  useEffect(() => {
+    setPickedSample(null);
+  }, [taskMode]);
   // Shown under the composer while a sample from a console link is in it.
   // Leaving that mode (send, or removing the chip) retires it for good, so it
   // cannot reappear over a different mode picked afterwards.
@@ -299,9 +305,15 @@ export default function HomeView({
   // clears itself after a successful send. `meta` (harness/model,
   // ENG-1656) passes through untouched.
   const sendTracked = async (text, meta) => {
-    const result = await onSend(composeModeMessage(taskMode, text), meta);
-    if (result) stepsCompletedBySend(text).forEach((id) => completeStepTracked(id, 'composer'));
+    const result = await onSend(composeModeMessage(taskMode, text, pickedSample), meta);
+    if (result) {
+      const done = stepsCompletedBySend(text);
+      // An example the person picked and then edited still counts as tried.
+      if (pickedSample) done.push('see-it-work');
+      done.forEach((id) => completeStepTracked(id, 'composer'));
+    }
     setTaskMode(null);
+    setPickedSample(null);
     return result;
   };
 
@@ -656,6 +668,7 @@ export default function HomeView({
                     mode={taskMode}
                     onPick={(prompt) => {
                       const hit = findSampleByPrompt(prompt);
+                      setPickedSample(hit?.sample ?? null);
                       if (hit) trackExamplePicked(sampleId(hit.sample.label), taskMode.id);
                       onPrefill(prompt);
                     }}

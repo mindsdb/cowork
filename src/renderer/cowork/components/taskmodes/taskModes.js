@@ -275,8 +275,10 @@ export const TASK_MODES = [
     line. Appended (not prepended) because the task title, sidebar preview, and
     search index all derive from the message HEAD — a leading instruction would
     make every task of a mode read identically and bury the user's actual ask. */
-export function composeModeMessage(mode, text) {
+export function composeModeMessage(mode, text, pickedSample) {
   if (!mode || !mode.instruction) return text;
+  // A plain example the person picked keeps its own wording however they edit it.
+  if (pickedSample?.plain && mode.samples.includes(pickedSample)) return text;
   const sent = text.trim();
   // A picked sample is already a full prompt — appending the instruction
   // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").

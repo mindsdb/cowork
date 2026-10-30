@@ -75,6 +75,18 @@ describe('TASK_MODES data', () => {
     expect(composeModeMessage(FEATURED_EXAMPLES_MODE, 'my own task')).toBe('my own task');
   });
 
+  it('sends a picked plain example as written, wherever the person edited it', () => {
+    const mode = TASK_MODES.find((m) => m.instruction && m.samples.some((x) => x.plain));
+    const sample = mode.samples.find((x) => x.plain);
+    const middle = sample.prompt.replace(/\b\w{4,}\b/, 'changed');
+    expect(middle).not.toBe(sample.prompt);
+    expect(composeModeMessage(mode, middle, sample)).toBe(middle);
+    // Without the pick, or for another mode's example, the instruction is still added.
+    expect(composeModeMessage(mode, middle)).toBe(`${middle}\n\n${mode.instruction}`);
+    const other = TASK_MODES.find((m) => m !== mode && m.samples.some((x) => x.plain)).samples.find((x) => x.plain);
+    expect(composeModeMessage(mode, middle, other)).toBe(`${middle}\n\n${mode.instruction}`);
+  });
+
   it('composeModeMessage APPENDS the instruction (titles derive from the message head)', () => {
     const slides = TASK_MODES[0];
     expect(composeModeMessage(slides, 'AI in 2026')).toBe('AI in 2026\n\nCreate a slide presentation.');
