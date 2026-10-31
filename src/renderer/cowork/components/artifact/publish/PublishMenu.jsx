@@ -530,7 +530,9 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
               {/* PUBLISHED */}
               {isPublished && (
                 <>
-                  <PanelHeader title="Shared" />
+                  {/* The same claim as the trigger: an owner-only artifact
+                      is published but not shared. */}
+                  <PanelHeader title={isSharedWithSomeone ? 'Shared' : 'Share'} />
   
                   <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
                     <SectionLabel>Website URL</SectionLabel>

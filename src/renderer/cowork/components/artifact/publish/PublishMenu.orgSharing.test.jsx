@@ -694,4 +694,28 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     expect(workspace.load).toHaveBeenCalledTimes(2);
     expect(workspace.save).not.toHaveBeenCalled();
   });
+
+  /* An org artifact stays published after a save narrows it to Only you, so
+     the panel stays open on its summary. Its title must stop saying "Shared"
+     then, like the trigger. */
+  it('titles the panel "Share" once a save narrows a shared artifact to Only you', async () => {
+    const user = userEvent.setup();
+    workspace.load.mockResolvedValue(SHARED_WITH_PLATFORM);
+    workspace.save.mockResolvedValue({
+      url: 'https://share/abc', accessMode: 'restricted', accessEmails: [],
+      orgAllowed: false, ownerOnly: true, allowedTeamIds: [], allowedUserIds: [],
+    });
+    render(<OrgPanel />);
+    await openChange(user);
+    await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
+    const panel = screen.getByRole('dialog');
+    expect(within(panel).getByText('Shared')).toBeInTheDocument();
+
+    await user.click(radio(/^Only you/));
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => expect(within(panel).getByTestId('access-summary')).toHaveTextContent('Only you'));
+    expect(within(panel).getByText('Share')).toBeInTheDocument();
+    expect(screen.queryByText('Shared')).toBeNull();
+  });
 });
