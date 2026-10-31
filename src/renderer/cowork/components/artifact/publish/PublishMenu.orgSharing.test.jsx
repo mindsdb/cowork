@@ -1,4 +1,4 @@
-// Teams and "Everyone at ‹org›" in the restricted choice (ENG-3787).
+// Teams and "Everyone at ‹org›" in the restricted choice.
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -8,8 +8,8 @@ const people = vi.hoisted(() => ({ byIds: vi.fn(), directory: vi.fn() }));
 const sharingRead = vi.hoisted(() => vi.fn());
 vi.mock('../../../api', async (importOriginal) => ({
   ...(await importOriginal()),
-  fetchHubPeopleByIds: people.byIds,
-  fetchHubDirectory: people.directory,
+  fetchMindsHubPeopleByIds: people.byIds,
+  fetchMindsHubDirectory: people.directory,
   fetchSkillSharingCapabilities: sharingRead,
 }));
 // The access route, for the panel driven by the real usePublish.
@@ -44,12 +44,13 @@ beforeEach(() => {
 });
 
 const TEAMS = { status: 'ready', reachable: true, teams: [{ id: 't-platform', display_name: 'Platform' }] };
-// What usePublish hands an org deployment's panel once the capabilities read
+// What usePublish hands a MindsHub mode panel once the capabilities read
 // answered: useSharingCapabilities' `status`, `capabilities` (here an
-// admin's) and `retry`, with the caller's `teams`.
-const ADMIN_CAPABILITIES = { enabled: true, can_share_org: true, can_write_org: false, org_name: 'Acme' };
+// admin's) and `retry`, with the caller's `teams` and the organization's
+// name from the app's organization list (`orgName`, useSharingOrgName).
+const ADMIN_CAPABILITIES = { enabled: true, canShareArtifactsOrg: true, canWriteSkillsOrg: false };
 const orgSharing = ({ capabilities = {}, ...over } = {}) => ({
-  status: 'ready', retry: vi.fn(), capabilities: { ...ADMIN_CAPABILITIES, ...capabilities }, teams: TEAMS, ...over,
+  status: 'ready', retry: vi.fn(), capabilities: { ...ADMIN_CAPABILITIES, ...capabilities }, teams: TEAMS, orgName: 'Acme', ...over,
 });
 
 function makeController(overrides = {}) {
@@ -86,30 +87,43 @@ async function openAccessChange(user, option = /^Specific teams and people/) {
   if (option) await user.click(screen.getByRole('radio', { name: option }));
 }
 
+// The Share trigger, whatever it reads: on an org card it says "Share" until
+// the access route answers.
+const trigger = () => screen.getByRole('button', { name: /^Share/ });
+
 async function openChange(user) {
-  await user.click(screen.getByText(/Shared/));
+  await user.click(trigger());
   await user.click(screen.getByText('Change'));
 }
 
 const radio = (name) => screen.getByRole('radio', { name });
 const recipients = () => screen.getByRole('list', { name: 'Recipients' });
 
-describe('PublishMenu with org sharing', () => {
-  it('offers Only you, Everyone at the org, Specific teams and people, Password, Public in that order', async () => {
+describe('PublishMenu with sharing in MindsHub mode', () => {
+  it('offers Only me, Everyone at the org, Specific teams and people, Password, Public in that order', async () => {
     const user = userEvent.setup();
     render(<PublishMenu controller={makeController()} />);
     await openAccessChange(user, null);
 
     const names = screen.getAllByRole('radio').map((r) => r.textContent);
     expect(names).toEqual([
-      'Only youNobody else can open this',
+      'Only meNobody else can open this',
       'Everyone at AcmeAnyone in your organization',
       'Specific teams and peoplePick teams, colleagues or outside emails',
       expect.stringMatching(/^Password protected/),
       expect.stringMatching(/^Public/),
     ]);
-    // No nested checkboxes any more.
+    // No nested checkboxes.
     expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('says Everyone in the organization when no org name is known', async () => {
+    const user = userEvent.setup();
+    render(<PublishMenu controller={makeController({ orgSharing: orgSharing({ orgName: null }) })} />);
+    await openAccessChange(user, null);
+
+    expect(radio(/^Everyone in the organization/)).toBeInTheDocument();
+    expect(screen.queryByText(/Everyone at/)).toBeNull();
   });
 
   it('sends Everyone at the org as org_allowed with no lists', async () => {
@@ -130,15 +144,15 @@ describe('PublishMenu with org sharing', () => {
   });
 
   describe('who may share with everyone at the org', () => {
-    it('disables Everyone at the org for a member, with the admin hint, and saves nothing org-wide', async () => {
+    it('disables Everyone at the org for a member, with the admin hint, and shares nothing with everyone', async () => {
       const user = userEvent.setup();
-      const pub = makeController({ orgSharing: orgSharing({ capabilities: { can_share_org: false } }) });
+      const pub = makeController({ orgSharing: orgSharing({ capabilities: { canShareArtifactsOrg: false } }) });
       render(<PublishMenu controller={pub} />);
       await openAccessChange(user, null);
 
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
       await user.hover(screen.getByTestId('org-option-locked'));
-      expect(await screen.findByText('Only admins can share with the whole organization')).toBeInTheDocument();
+      expect(await screen.findByText('Only admins can share with everyone in the organization')).toBeInTheDocument();
       await user.click(radio(/^Everyone at Acme/));
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-checked', 'false');
       expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
@@ -147,13 +161,46 @@ describe('PublishMenu with org sharing', () => {
 
     it('lets an admin pick it', async () => {
       const user = userEvent.setup();
-      const pub = makeController({ orgSharing: orgSharing({ capabilities: { can_share_org: true } }) });
+      const pub = makeController({ orgSharing: orgSharing({ capabilities: { canShareArtifactsOrg: true } }) });
       render(<PublishMenu controller={pub} />);
       await openAccessChange(user, /^Everyone at Acme/);
 
       expect(screen.queryByTestId('org-option-locked')).toBeNull();
       await user.click(screen.getByRole('button', { name: 'Update' }));
       expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ org_allowed: true, owner_only: false }));
+    });
+
+    // artifacts.share_org decides it, not skills.share_org.
+    it('reads the artifact capability, never the skill one', async () => {
+      const user = userEvent.setup();
+      const pub = makeController({
+        orgSharing: orgSharing({ capabilities: { canShareArtifactsOrg: false, canShareSkillsOrg: true } }),
+      });
+      render(<PublishMenu controller={pub} />);
+      await openAccessChange(user, null);
+
+      expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    /* With MindsHub unreachable the capabilities read false, and "only admins"
+       would blame the caller for an outage. The lock says what happened and
+       the panel offers Retry. */
+    it("says MindsHub couldn't be reached instead of the admin hint, with Retry", async () => {
+      const user = userEvent.setup();
+      const retry = vi.fn();
+      const pub = makeController({
+        orgSharing: orgSharing({ retry, capabilities: { canShareArtifactsOrg: false, permissionsKnown: false } }),
+      });
+      render(<PublishMenu controller={pub} />);
+      await openAccessChange(user, null);
+
+      expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
+      await user.hover(screen.getByTestId('org-option-locked'));
+      expect(await screen.findByText("Couldn't reach MindsHub")).toBeInTheDocument();
+      expect(screen.queryByText('Only admins can share with everyone in the organization')).toBeNull();
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't reach MindsHub to check what you can share.");
+      await user.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(retry).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -277,7 +324,7 @@ describe('PublishMenu with org sharing', () => {
     }));
   });
 
-  it('summarises Everyone at the org on the summary card', () => {
+  it('summarizes Everyone at the org on the summary card', () => {
     render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false })} />);
     // The popover is closed; the summary is what opening it shows.
     return userEvent.setup().click(screen.getByText(/Shared/)).then(() => {
@@ -311,7 +358,7 @@ describe('PublishMenu with org sharing', () => {
     }));
   });
 
-  it('offers Specific people by email only without org sharing', async () => {
+  it('offers Specific people by email only without sharing in MindsHub mode', async () => {
     const user = userEvent.setup();
     const pub = makeController({ orgSharing: orgSharing({ capabilities: SHARING_OFF }) });
     render(<PublishMenu controller={pub} />);
@@ -329,7 +376,7 @@ describe('PublishMenu with org sharing', () => {
     expect(screen.getByTestId('notify-confirm')).toHaveTextContent('Let 1 new person know by email?');
     expect(screen.getByTestId('notify-confirm')).toHaveTextContent('zed@partner.io');
     await user.click(screen.getByRole('button', { name: "Don't notify" }));
-    // The org access route takes the org names whatever org sharing allows.
+    // The org access route takes the org names whatever sharing allows.
     expect(pub.publish).toHaveBeenCalledWith({
       mode: 'restricted', org_allowed: false, owner_only: false,
       allowed_emails: ['zed@partner.io'], allowed_team_ids: [], allowed_user_ids: [],
@@ -398,7 +445,7 @@ describe('PublishMenu with org sharing', () => {
       expect(pub.publish).not.toHaveBeenCalled();
     });
 
-    it('sends Only you under the org names, with no emails key, once they are known', async () => {
+    it('sends Only me under the org names, with no emails key, once they are known', async () => {
       const user = userEvent.setup();
       const pub = makeController({ allowedTeamIds: ['t-platform'], ownerOnly: false });
       const { rerender } = render(<PublishMenu controller={{ ...pub, orgSharing: orgSharing({ status: 'loading', capabilities: SHARING_OFF }) }} />);
@@ -406,7 +453,7 @@ describe('PublishMenu with org sharing', () => {
       expect(screen.queryByRole('radio')).toBeNull();
 
       rerender(<PublishMenu controller={pub} />);
-      await user.click(radio(/^Only you/));
+      await user.click(radio(/^Only me/));
       await user.click(update());
 
       expect(pub.publish).toHaveBeenCalledTimes(1);
@@ -460,7 +507,7 @@ describe('PublishMenu with org sharing', () => {
       expect(screen.queryByRole('list', { name: 'Shared with' })).toBeNull();
     });
 
-    it('lists the emails of Specific people without org sharing', async () => {
+    it('lists the emails of Specific people without sharing in MindsHub mode', async () => {
       const user = userEvent.setup();
       render(<PublishMenu controller={makeController({
         accessEmails: ['zed@partner.io', 'amy@partner.io'], ownerOnly: false,
@@ -581,9 +628,10 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     allowedTeamIds: [],
     allowedUserIds: [],
   };
+  // The access route's answer, camelCase as cowork-server sends it.
   const SHARED_WITH_PLATFORM = {
     accessMode: 'restricted', accessEmails: [], ownerOnly: false,
-    org_allowed: false, allowed_team_ids: ['t-platform'], allowed_user_ids: [],
+    orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [],
   };
 
   function OrgPanel() {
@@ -604,7 +652,7 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     const user = userEvent.setup();
     let answer;
     workspace.load.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
-    workspace.save.mockResolvedValue({ url: 'https://share/abc', ...SHARED_WITH_PLATFORM, allowed_user_ids: ['u-ana'] });
+    workspace.save.mockResolvedValue({ url: 'https://share/abc', ...SHARED_WITH_PLATFORM, allowedUserIds: ['u-ana'] });
     render(<OrgPanel />);
     await openChange(user);
 
@@ -639,7 +687,7 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
   it('keeps the stored audience when the list reloads mid-edit', async () => {
     const user = userEvent.setup();
     workspace.load.mockResolvedValue(SHARED_WITH_PLATFORM);
-    workspace.save.mockResolvedValue({ url: 'https://share/abc', ...SHARED_WITH_PLATFORM, allowed_user_ids: ['u-ana'] });
+    workspace.save.mockResolvedValue({ url: 'https://share/abc', ...SHARED_WITH_PLATFORM, allowedUserIds: ['u-ana'] });
     // Like the app: the parent keeps the card, takes the hook's reports, and
     // replaces the card when its artifacts list reloads after a turn.
     let reloadCard;
@@ -650,6 +698,8 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
       return <PublishMenu controller={pub} />;
     }
     render(<ReloadingPanel />);
+    // The trigger reads "Shared" once the access route has answered.
+    await waitFor(() => expect(trigger()).toHaveTextContent(/Shared/));
     await openChange(user);
     await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
 
@@ -677,9 +727,13 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     workspace.load.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { status: 503 }));
     workspace.load.mockResolvedValueOnce(SHARED_WITH_PLATFORM);
     render(<OrgPanel />);
-    await user.click(screen.getByText(/Shared/));
+    await user.click(trigger());
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the current access.");
+    // A failed read says nothing about who it reaches: neither the trigger nor
+    // the panel claims "Shared".
+    expect(trigger()).toHaveTextContent(/^Share$/);
+    expect(within(screen.getByRole('dialog')).queryByText('Shared')).toBeNull();
     expect(screen.queryByTestId('access-summary')).toBeNull();
     await user.click(screen.getByText('Change'));
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load the current access.");
@@ -695,10 +749,33 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     expect(workspace.save).not.toHaveBeenCalled();
   });
 
-  /* An org artifact stays published after a save narrows it to Only you, so
+  /* The card says restricted with `ownerOnly: false` and empty lists for
+     every org artifact, owner-only ones included. Until the access route
+     answers, nothing may claim the artifact is shared. */
+  it('claims "Shared" neither on the trigger nor in the panel until the access route answers', async () => {
+    const user = userEvent.setup();
+    let answer;
+    workspace.load.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<OrgPanel />);
+
+    expect(trigger()).toHaveTextContent(/^Share$/);
+    expect(trigger()).toHaveAttribute('data-share-state', 'unknown');
+    await user.hover(trigger());
+    expect(screen.queryByText(/^Shared with/)).toBeNull();
+    await user.click(trigger());
+    const panel = screen.getByRole('dialog');
+    expect(within(panel).queryByText('Shared')).toBeNull();
+    expect(within(panel).getByText('Share')).toBeInTheDocument();
+
+    await act(async () => { answer(SHARED_WITH_PLATFORM); });
+    await waitFor(() => expect(within(panel).getByText('Shared')).toBeInTheDocument());
+    expect(trigger()).toHaveTextContent(/Shared/);
+  });
+
+  /* An org artifact stays published after a save narrows it to Only me, so
      the panel stays open on its summary. Its title must stop saying "Shared"
      then, like the trigger. */
-  it('titles the panel "Share" once a save narrows a shared artifact to Only you', async () => {
+  it('titles the panel "Share" once a save narrows a shared artifact to Only me', async () => {
     const user = userEvent.setup();
     workspace.load.mockResolvedValue(SHARED_WITH_PLATFORM);
     workspace.save.mockResolvedValue({
@@ -706,15 +783,16 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
       orgAllowed: false, ownerOnly: true, allowedTeamIds: [], allowedUserIds: [],
     });
     render(<OrgPanel />);
+    await waitFor(() => expect(trigger()).toHaveTextContent(/Shared/));
     await openChange(user);
     await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
     const panel = screen.getByRole('dialog');
     expect(within(panel).getByText('Shared')).toBeInTheDocument();
 
-    await user.click(radio(/^Only you/));
+    await user.click(radio(/^Only me/));
     await user.click(screen.getByRole('button', { name: 'Update' }));
 
-    await waitFor(() => expect(within(panel).getByTestId('access-summary')).toHaveTextContent('Only you'));
+    await waitFor(() => expect(within(panel).getByTestId('access-summary')).toHaveTextContent('Only me'));
     expect(within(panel).getByText('Share')).toBeInTheDocument();
     expect(screen.queryByText('Shared')).toBeNull();
   });

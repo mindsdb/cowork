@@ -5,13 +5,13 @@ import userEvent from '@testing-library/user-event';
 const teams = vi.hoisted(() => ({ state: { status: 'ready', reachable: true, teams: [] } }));
 vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
   ...(await importOriginal()),
-  useHubTeams: () => teams.state,
+  useMindsHubTeams: () => teams.state,
 }));
 const people = vi.hoisted(() => ({ byIds: vi.fn(), directory: vi.fn() }));
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal()),
-  fetchHubPeopleByIds: people.byIds,
-  fetchHubDirectory: people.directory,
+  fetchMindsHubPeopleByIds: people.byIds,
+  fetchMindsHubDirectory: people.directory,
 }));
 
 import SkillShareMenu from './SkillShareMenu';
@@ -22,11 +22,13 @@ const FINANCE = { id: 't-finance', display_name: 'Finance' };
 const ALL_MEMBERS = { id: 't-all', display_name: 'All members', is_default: true };
 
 const skill = (access, extra = {}) => ({ label: 'weekly-report', slug: 'weekly-report', canEdit: true, access, ...extra });
-const ADMIN = { enabled: true, can_share_org: true, org_name: 'Acme' };
-const MEMBER = { enabled: true, can_share_org: false, org_name: 'Acme' };
+const ADMIN = { enabled: true, canShareSkillsOrg: true };
+const MEMBER = { enabled: true, canShareSkillsOrg: false };
 
-async function renderDialog({ access = { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }, capabilities = MEMBER, extra = {}, onSave = vi.fn(async () => {}) } = {}) {
-  render(<SkillShareMenu skill={skill(access, extra)} capabilities={capabilities} onSave={onSave} trigger={<button type="button">Share</button>} />);
+/* `orgName` is what the Skills page reads from the app's organization list
+   (useSharingOrgName). */
+async function renderDialog({ access = { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }, capabilities = MEMBER, orgName = 'Acme', extra = {}, onSave = vi.fn(async () => {}) } = {}) {
+  render(<SkillShareMenu skill={skill(access, extra)} capabilities={capabilities} orgName={orgName} onSave={onSave} trigger={<button type="button">Share</button>} />);
   fireEvent.click(screen.getByRole('button', { name: 'Share' }));
   const dialog = await screen.findByRole('dialog');
   return { onSave, dialog };
@@ -86,16 +88,34 @@ describe('SkillShareMenu', () => {
     expect(within(dialog).queryByRole('note')).toBeNull();
   });
 
-  it('disables Everyone at the org without can_share_org, with the admin hint', async () => {
+  it('disables Everyone at the org without canShareSkillsOrg, with the admin hint', async () => {
     const user = userEvent.setup();
     const { dialog } = await renderDialog({ capabilities: MEMBER });
 
     expect(radio(dialog, EVERYONE)).toHaveAttribute('aria-disabled', 'true');
     await user.hover(screen.getByTestId('org-option-locked'));
-    expect(await screen.findByText('Only admins can share with the whole organization')).toBeInTheDocument();
+    expect(await screen.findByText('Only admins can share with everyone in the organization')).toBeInTheDocument();
   });
 
-  it('shares with the whole org when can_share_org allows it', async () => {
+  // With MindsHub unreachable "no" means "couldn't ask", never "only admins".
+  it("locks Everyone at the org as MindsHub unreachable while it couldn't be asked", async () => {
+    const user = userEvent.setup();
+    const { dialog } = await renderDialog({ capabilities: { ...MEMBER, permissionsKnown: false } });
+
+    expect(radio(dialog, EVERYONE)).toHaveAttribute('aria-disabled', 'true');
+    await user.hover(screen.getByTestId('org-option-locked'));
+    expect(await screen.findByText("Couldn't reach MindsHub")).toBeInTheDocument();
+    expect(screen.queryByText('Only admins can share with everyone in the organization')).toBeNull();
+  });
+
+  // skills.share_org decides it, not artifacts.share_org.
+  it('reads the skill capability, never the artifact one', async () => {
+    const { dialog } = await renderDialog({ capabilities: { ...MEMBER, canShareArtifactsOrg: true } });
+
+    expect(radio(dialog, EVERYONE)).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('shares with everyone when canShareSkillsOrg allows it', async () => {
     const user = userEvent.setup();
     const { dialog, onSave } = await renderDialog({ capabilities: ADMIN });
 
@@ -105,9 +125,10 @@ describe('SkillShareMenu', () => {
     expect(onSave).toHaveBeenCalledWith({ org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
   });
 
-  it('falls back to a generic org label without an org name', async () => {
-    const { dialog } = await renderDialog({ capabilities: { ...ADMIN, org_name: null } });
-    expect(radio(dialog, /^Everyone in your organization/)).toBeInTheDocument();
+  it('says Everyone in the organization when no org name is known', async () => {
+    const { dialog } = await renderDialog({ capabilities: ADMIN, orgName: null });
+    expect(radio(dialog, /^Everyone in the organization/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Everyone at/)).toBeNull();
   });
 
   it('unfolds the recipient field under Specific, and saves the picked teams', async () => {
@@ -198,7 +219,7 @@ describe('SkillShareMenu', () => {
     expect(within(dialog).queryByRole('button', { name: /^Remove / })).toBeNull();
   });
 
-  it("shows a stored id the hub doesn't know as Unknown person, which can be removed", async () => {
+  it("shows a stored id MindsHub doesn't know as Unknown person, which can be removed", async () => {
     const user = userEvent.setup();
     const { dialog, onSave } = await renderDialog({
       access: { orgAllowed: false, allowedTeamIds: [], allowedUserIds: ['u-bo', 'u-gone'] },
@@ -241,7 +262,7 @@ describe('SkillShareMenu', () => {
     checked(radio(dialog, SPECIFIC));
     const picked = within(dialog).getByRole('list', { name: 'Recipients' });
     expect(picked).toHaveTextContent('Finance');
-    // The stored id is named once the hub answers.
+    // The stored id is named once MindsHub answers.
     await waitFor(() => expect(picked).toHaveTextContent('Bo Chen'));
 
     await user.click(radio(dialog, ONLY_ME));
@@ -249,7 +270,7 @@ describe('SkillShareMenu', () => {
     expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
   });
 
-  it('reads org-wide access with lists as Everyone, keeping the lists for Specific', async () => {
+  it('reads access shared with everyone, with lists, as Everyone, keeping the lists for Specific', async () => {
     const user = userEvent.setup();
     const { dialog, onSave } = await renderDialog({
       capabilities: ADMIN,
@@ -265,14 +286,14 @@ describe('SkillShareMenu', () => {
 
   it("shows the server's refusal in place", async () => {
     const user = userEvent.setup();
-    const refusal = Object.assign(new Error('Only admins can share skills with the whole organization.'), { status: 403 });
+    const refusal = Object.assign(new Error("Sharing a skill with everyone in the organization requires the skills.share_org permission and being the skill's owner, or an organization admin."), { status: 403 });
     const { dialog } = await renderDialog({ capabilities: ADMIN, onSave: vi.fn(async () => { throw refusal; }) });
 
     await user.click(radio(dialog, EVERYONE));
     await user.click(save(dialog));
 
     await waitFor(() => expect(within(dialog).getByRole('alert'))
-      .toHaveTextContent('Only admins can share skills with the whole organization.'));
+      .toHaveTextContent("Sharing a skill with everyone in the organization requires the skills.share_org permission and being the skill's owner, or an organization admin."));
   });
 
   describe('Always include in every task', () => {
@@ -315,7 +336,7 @@ describe('SkillShareMenu', () => {
       expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: ['t-finance'], allowed_user_ids: [], always_on: true });
     });
 
-    it('pre-fills it from access.alwaysOn and sends it for an org-wide skill', async () => {
+    it('pre-fills it from access.alwaysOn and sends it for a skill shared with everyone', async () => {
       const user = userEvent.setup();
       const { dialog, onSave } = await renderDialog({
         capabilities: ADMIN,
@@ -363,7 +384,7 @@ describe('SkillShareMenu', () => {
       expect(onSave).toHaveBeenCalledWith({ org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false });
     });
 
-    it('is locked for an org-wide skill without can_share_org, with the admin hint', async () => {
+    it('is locked for a skill shared with everyone without canShareSkillsOrg, with the admin hint', async () => {
       const user = userEvent.setup();
       const { dialog } = await renderDialog({
         capabilities: MEMBER,
@@ -373,7 +394,19 @@ describe('SkillShareMenu', () => {
       expect(alwaysOn(dialog)).toHaveAttribute('aria-disabled', 'true');
       expect(alwaysOn(dialog)).toBeChecked();
       await user.hover(screen.getByTestId('always-on-locked'));
-      expect(await screen.findByText('Only admins can make an organization-wide skill always on')).toBeInTheDocument();
+      expect(await screen.findByText('Only admins can make a skill shared with everyone always on')).toBeInTheDocument();
+    });
+
+    it("is locked for a skill shared with everyone as MindsHub unreachable while it couldn't be asked", async () => {
+      const user = userEvent.setup();
+      const { dialog } = await renderDialog({
+        capabilities: { ...MEMBER, permissionsKnown: false },
+        access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [], alwaysOn: true },
+      });
+
+      expect(alwaysOn(dialog)).toHaveAttribute('aria-disabled', 'true');
+      await user.hover(screen.getByTestId('always-on-locked'));
+      expect(await screen.findByText("Couldn't reach MindsHub")).toBeInTheDocument();
     });
 
     it('is locked for a team skill the caller cannot edit, with the editor hint', async () => {
@@ -414,7 +447,7 @@ describe('SkillShareMenu', () => {
       expect(onSave).toHaveBeenCalledWith({ always_on: true });
     });
 
-    it('stays locked for such a member on an org-wide skill without can_share_org', async () => {
+    it('stays locked for such a member on a skill shared with everyone without canShareSkillsOrg', async () => {
       const { dialog } = await renderDialog({
         capabilities: MEMBER,
         access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [], alwaysOn: true },
@@ -450,12 +483,13 @@ describe('SkillShareMenu as a dropdown', () => {
 
   it('stays open on a refusal and shows it in place', async () => {
     const user = userEvent.setup();
-    const refusal = Object.assign(new Error('Only admins can share skills with the whole organization.'), { status: 403 });
+    const refusal = Object.assign(new Error("Sharing a skill with everyone in the organization requires the skills.share_org permission and being the skill's owner, or an organization admin."), { status: 403 });
     const { dialog } = await renderDialog({ capabilities: ADMIN, onSave: vi.fn(async () => { throw refusal; }) });
 
     await user.click(radio(dialog, EVERYONE));
     await user.click(save(dialog));
-    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('Only admins can share'));
+    await waitFor(() => expect(within(dialog).getByRole('alert'))
+      .toHaveTextContent('Sharing a skill with everyone in the organization requires the skills.share_org permission'));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

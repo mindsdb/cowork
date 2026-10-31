@@ -1,5 +1,5 @@
 /*
- * Which organization a person lands in on cloud (ENG-3787): the one they
+ * Which organization a person lands in with MindsHub UI on: the one they
  * used last. That is the last one they picked from the menu, personal
  * included, or a company organization they were in since. Someone with no
  * such record starts in the first company organization listed rather than

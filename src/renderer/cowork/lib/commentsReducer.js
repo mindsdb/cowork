@@ -1,4 +1,4 @@
-// Pure realtime-merge logic for artifact comment threads (Plan 5).
+// Pure realtime-merge logic for artifact comment threads.
 //
 // A thread is the inference row: { id, selector, status, version, updated_at,
 // payload: { author:{email}, text, replies:[{author:{email}, text, created_at}] } }.

@@ -1,15 +1,16 @@
 // AccessChooser — the "Who can access your app" picker.
 //
 // One controlled component shared by every publish surface (the viewer's
-// inline publish popover and the Artifacts grid dialog) so the access logic —
-// and its validation — lives in exactly one place. Built on Base UI's
+// inline publish popover and the Artifacts grid dialog) so the access logic,
+// and its validation, lives in exactly one place. Built on Base UI's
 // RadioGroup/Radio for real radiogroup semantics + arrow-key navigation;
 // skinned with the app's `--accent` / `--surface` / `--line` tokens.
 //
-// The choices, private → public: Only you, Everyone at ‹org› (org sharing
-// only), Specific teams and people (or, without org sharing, Specific people
-// by email), Password protected, Public. "Specific …" unfolds its recipient
-// field right under its own card (ENG-3787).
+// The choices, private → public (AUDIENCE_CHOICE, the same values a skill's
+// audience uses): Only me, Everyone at ‹org› (sharing in MindsHub mode
+// only), Specific teams and people (or, without it, Specific people by
+// email), Password protected, Public. "Specific …" unfolds its recipient field right
+// under its own card.
 //
 // Controlled via a single `value` draft + `onChange`:
 //   const [draft, setDraft] = useState(accessDraftFromArtifact(artifact));
@@ -22,8 +23,28 @@ import { Tooltip } from '../../ui';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
-import AudiencePanel, { everyoneOption } from '../../AudiencePanel';
-import { EVERYONE_AT_DESC, everyoneAtLabel, namesDefaultTeam, withoutDefaultTeam } from '../../../lib/orgSharing';
+import AudiencePanel, { everyoneOption, onlyMeOption, specificOption } from '../../AudiencePanel';
+import {
+  AUDIENCE_CHOICE,
+  EVERYONE_AT_DESC,
+  ONLY_ME_DESC,
+  ONLY_ME_TITLE,
+  SHARED_KIND,
+  SPECIFIC_DESC,
+  SPECIFIC_TITLE,
+  everyoneAtLabel,
+  isOrgSharingOn,
+  isOwnerOnlyAccess,
+  namesDefaultTeam,
+  orgShareLockReason,
+  withoutDefaultTeam,
+} from '../../../lib/orgSharing';
+import {
+  desktopRestrictedAccessRequest,
+  orgRestrictedAccessRequest,
+  readArtifactAudience,
+  withNotifyRequest,
+} from '../../../lib/sharingContract';
 
 // Shared class strings for the bare-input shell (a bordered row wrapping an
 // unstyled <input>), so the password field and any future inputs stay in sync.
@@ -32,59 +53,51 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 
 // ── Access-draft helpers (the contract between UI and the publish API) ──
 
-// The draft a first share starts from. With the platform UI on it starts on
+// The draft a first share starts from. With MindsHub UI on it starts on
 // Public, as it always has. With it off nothing is picked, so the person
 // chooses who can open the link first: `isAccessDraftValid` refuses a draft
 // with no mode, which keeps Share disabled until then.
 export function newAccessDraft() {
-  return { mode: PLATFORM_UI ? 'public' : '', password: '', emailsText: '', teamIds: [], userIds: [] };
+  return { mode: PLATFORM_UI ? AUDIENCE_CHOICE.PUBLIC : '', password: '', emailsText: '', teamIds: [], userIds: [] };
 }
 
 // Seed a draft from an artifact's current (owner-side) access state, so
 // re-opening the chooser pre-selects what's already live.
 //
-// The wire format has three modes; the chooser has more. "Only you" is
-// `restricted` with nothing selected, and with org sharing on (`orgSharing`)
-// "Everyone at ‹org›" (`org`) is `restricted` with `org_allowed` — or naming
-// the org's default team, which the server maps to org-wide (`teams` is what
-// `useHubTeams` returns, to know which team that is). Any other list is
-// "Specific teams and people" (`restricted`).
+// The wire format has three modes; the chooser has more. "Only me" is
+// `restricted` with nothing selected, and with sharing on (`orgSharing`)
+// "Everyone at ‹org›" is `restricted` with `org_allowed`, or naming the
+// org's default team, which the server maps to everyone (`teams` is what
+// `useMindsHubTeams` returns, to know which team that is). Any other list is
+// "Specific teams and people".
 //
 // An access that has `org_allowed` AND lists reads as Everyone: that is who
 // can open it. The lists stay on the draft, so switching to "Specific teams
 // and people" shows them, but Everyone sends `org_allowed` alone, so updating
 // as Everyone drops them.
 export function accessDraftFromArtifact(artifact, { orgSharing = false, teams = [] } = {}) {
-  // Nothing is live on an unpublished artifact, so with the platform UI off it
+  // Nothing is live on an unpublished artifact, so with MindsHub UI off it
   // starts from a new draft, whatever access an earlier publish left on it.
   if (!PLATFORM_UI && !artifact?.publishedUrl) return newAccessDraft();
   const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
-  const storedTeamIds = [...(artifact?.allowedTeamIds || [])];
+  const audience = readArtifactAudience(artifact);
   let mode = serverMode;
   if (serverMode === 'restricted') {
-    if (isOwnerOnlySelection(artifact)) mode = 'ownerOnly';
-    else if (orgSharing && (artifact?.orgAllowed || namesDefaultTeam(storedTeamIds, teams))) mode = 'org';
+    if (isOwnerOnlyAccess(artifact)) mode = AUDIENCE_CHOICE.PRIVATE;
+    else if (orgSharing && (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams))) mode = AUDIENCE_CHOICE.ORG;
+    else mode = AUDIENCE_CHOICE.SPECIFIC;
   }
   return {
     mode,
     password: artifact?.accessPassword || '',
-    // People outside the org (or, without org sharing, everyone listed).
-    emailsText: (artifact?.accessEmails || []).join(', '),
+    // People outside the org (or, without sharing in MindsHub mode, everyone
+    // listed).
+    emailsText: audience.emails.join(', '),
     // The default team stands for "Everyone at ‹org›", never a team row.
-    teamIds: withoutDefaultTeam(storedTeamIds, teams),
-    // People in the org, by hub user id (ENG-3787).
-    userIds: [...(artifact?.allowedUserIds || [])],
+    teamIds: withoutDefaultTeam(audience.teamIds, teams),
+    // People in the org, by MindsHub user id.
+    userIds: audience.userIds,
   };
-}
-
-// "Only me" on the wire is `restricted` with no recipients and no org. The
-// server also sends an explicit `ownerOnly`; prefer it, and fall back to the
-// derivation for a record written before that flag existed.
-export function isOwnerOnlySelection(artifact) {
-  if (artifact?.ownerOnly != null) return !!artifact.ownerOnly;
-  return (artifact?.accessEmails || []).length === 0 && !artifact?.orgAllowed
-    && (artifact?.allowedTeamIds || []).length === 0
-    && (artifact?.allowedUserIds || []).length === 0;
 }
 
 // Loose-but-practical email shape check. Splits on whitespace, commas and
@@ -102,62 +115,56 @@ export function parseEmailList(raw) {
   return { valid, invalid };
 }
 
-// Whether the draft can be submitted: public, Only you and Everyone always;
+// Whether the draft can be submitted: public, Only me and Everyone always;
 // password needs a non-empty secret; "Specific …" needs at least one
-// recipient (teams and people count only with org sharing, where the field
-// can show them) and no malformed address.
+// recipient (teams and people count only with sharing in MindsHub mode,
+// where the field can show them) and no malformed address.
 export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
   if (!draft) return false;
-  if (draft.mode === 'public') return true;
-  // Nothing to fill in — each is a complete selection on its own.
-  if (draft.mode === 'ownerOnly' || draft.mode === 'org') return true;
-  if (draft.mode === 'password') return (draft.password || '').trim().length > 0;
-  if (draft.mode === 'restricted') {
+  if (draft.mode === AUDIENCE_CHOICE.PUBLIC) return true;
+  // Nothing to fill in: each is a complete selection on its own.
+  if (draft.mode === AUDIENCE_CHOICE.PRIVATE || draft.mode === AUDIENCE_CHOICE.ORG) return true;
+  if (draft.mode === AUDIENCE_CHOICE.PASSWORD) return (draft.password || '').trim().length > 0;
+  if (draft.mode === AUDIENCE_CHOICE.SPECIFIC) {
     const { valid, invalid } = parseEmailList(draft.emailsText);
     if (invalid.length) return false;
-    // An empty list used to be how you said "only me". It is a separate
-    // option now, so an empty list here is an unfinished selection rather
-    // than a silent private publish.
+    // An empty list is an unfinished selection rather than a silent private
+    // publish: "Only me" is its own option.
     return valid.length > 0 || (orgSharing
       && ((draft.teamIds || []).length > 0 || (draft.userIds || []).length > 0));
   }
   return false;
 }
 
-// Turn a draft into the `access` payload `publishArtifact` expects. `owner_only`
-// is derived, never stored on the draft.
-// On an org deployment (`orgMode`, ENG-3787) the access route reads a
-// restricted audience the way skills name it, and only so: `org_allowed`,
-// `allowed_team_ids`, `allowed_user_ids` (people in the org) and
-// `allowed_emails` (people outside it). It refuses `emails` with a 400, so
-// every org-mode save sends these names, whatever org sharing allows.
-// Everyone at ‹org› sends `org_allowed` and empty lists. Desktop's `/publish`
-// reads outside emails as `emails`.
+// Turn a draft into the `access` payload a save sends (lib/sharingContract's
+// ArtifactAccessPayload). `owner_only` is derived, never stored on the draft.
+//
+// In MindsHub mode (`orgMode`) the access route reads a restricted audience
+// the way skills name it, and only so: `org_allowed`, `allowed_team_ids`,
+// `allowed_user_ids` (people in the org) and `allowed_emails` (people outside
+// it). It refuses `emails` with a 400, so every MindsHub mode save sends these
+// names, whatever sharing allows. Everyone at ‹org› sends `org_allowed`
+// and empty lists. Desktop's `/publish` reads outside emails as `emails`.
 //
 // `notify` (`{ userIds, emails }`, when given) becomes `notify: { user_ids,
 // emails }` on a restricted payload: exactly the individuals this save adds,
 // whom the person chose to tell by email. Absent when they chose not to, or
-// were never asked; the server forwards it to the auth service, which emails
-// those listed.
+// were never asked; the server forwards it to MindsHub, which emails those
+// listed.
+//
+// A mode this chooser doesn't know saves as Only me, never as Public: an
+// unexpected value must not widen who can open the link.
 export function buildAccessPayload(draft, { orgMode = false, notify } = {}) {
-  return withNotify(orgMode ? buildOrgAccessPayload(draft) : buildBaseAccessPayload(draft), notify);
-}
-
-function withNotify(payload, notify) {
-  if (!notify || payload.mode !== 'restricted') return payload;
-  const userIds = [...new Set(notify.userIds || [])];
-  const emails = [...new Set(notify.emails || [])];
-  if (userIds.length + emails.length === 0) return payload;
-  return { ...payload, notify: { user_ids: userIds, emails } };
+  return withNotifyRequest(orgMode ? buildOrgAccessPayload(draft) : buildBaseAccessPayload(draft), notify);
 }
 
 /**
  * The individuals a draft lists that the saved access doesn't: people in the
- * org (`userIds`, org sharing only) and emails. Teams, the whole org, a
- * password and public never count. Only a "Specific …" draft adds anyone.
+ * org (`userIds`, sharing in MindsHub mode only) and emails. Teams,
+ * everyone at the org, a password and public never count. Only a "Specific …" draft adds anyone.
  */
 export function addedIndividuals(draft, saved, { orgSharing = false } = {}) {
-  if (draft?.mode !== 'restricted') return { userIds: [], emails: [] };
+  if (draft?.mode !== AUDIENCE_CHOICE.SPECIFIC) return { userIds: [], emails: [] };
   const savedEmails = new Set(parseEmailList(saved?.emailsText).valid);
   const savedUsers = new Set(saved?.userIds || []);
   return {
@@ -166,43 +173,55 @@ export function addedIndividuals(draft, saved, { orgSharing = false } = {}) {
   };
 }
 
+function passwordPayload(draft) {
+  return { mode: 'password', password: (draft.password || '').trim() };
+}
+
+const NOBODY = Object.freeze({ orgAllowed: false, teamIds: [], userIds: [], emails: [] });
+
 function buildOrgAccessPayload(draft) {
-  if (draft?.mode === 'org') {
-    return { mode: 'restricted', org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], allowed_emails: [], owner_only: false };
+  switch (draft?.mode) {
+    case AUDIENCE_CHOICE.PUBLIC:
+      return { mode: 'public' };
+    case AUDIENCE_CHOICE.PASSWORD:
+      return passwordPayload(draft);
+    case AUDIENCE_CHOICE.ORG:
+      return orgRestrictedAccessRequest({ ...NOBODY, orgAllowed: true, ownerOnly: false });
+    case AUDIENCE_CHOICE.SPECIFIC: {
+      const { valid } = parseEmailList(draft.emailsText);
+      const teamIds = [...(draft.teamIds || [])];
+      const userIds = [...new Set(draft.userIds || [])];
+      return orgRestrictedAccessRequest({
+        orgAllowed: false,
+        teamIds,
+        userIds,
+        emails: valid,
+        ownerOnly: valid.length + teamIds.length + userIds.length === 0,
+      });
+    }
+    // Only me, and any mode this chooser doesn't know.
+    default:
+      return orgRestrictedAccessRequest({ ...NOBODY, ownerOnly: true });
   }
-  const payload = buildBaseAccessPayload(draft);
-  if (payload.mode !== 'restricted') return payload;
-  const restricted = draft?.mode === 'restricted';
-  const teamIds = restricted ? [...(draft.teamIds || [])] : [];
-  const userIds = restricted ? [...new Set(draft.userIds || [])] : [];
-  const { emails, ...rest } = payload;
-  return {
-    ...rest,
-    allowed_emails: [...emails],
-    allowed_team_ids: teamIds,
-    allowed_user_ids: userIds,
-    owner_only: payload.owner_only && teamIds.length === 0 && userIds.length === 0,
-  };
 }
 
 function buildBaseAccessPayload(draft) {
-  if (draft?.mode === 'password') return { mode: 'password', password: (draft.password || '').trim() };
-  // Collapse the UI mode back to the wire shape. `owner_only` is load-bearing:
-  // `restricted` with neither emails nor an org would otherwise be read as an
-  // empty selection and degrade to public — the exact opposite of the choice.
-  if (draft?.mode === 'ownerOnly') {
-    return { mode: 'restricted', emails: [], org_allowed: false, owner_only: true };
+  switch (draft?.mode) {
+    case AUDIENCE_CHOICE.PUBLIC:
+      return { mode: 'public' };
+    case AUDIENCE_CHOICE.PASSWORD:
+      return passwordPayload(draft);
+    case AUDIENCE_CHOICE.SPECIFIC: {
+      const { valid } = parseEmailList(draft.emailsText);
+      return desktopRestrictedAccessRequest({ emails: valid, ownerOnly: valid.length === 0 });
+    }
+    // Only me, and any mode this chooser doesn't know (Everyone at ‹org›
+    // included, which desktop never offers). `owner_only` is load-bearing:
+    // `restricted` with neither emails nor an org would otherwise be read as
+    // an empty selection and degrade to public.
+    default:
+      return desktopRestrictedAccessRequest({ emails: [], ownerOnly: true });
   }
-  if (draft?.mode === 'restricted') {
-    const { valid } = parseEmailList(draft.emailsText);
-    return {
-      mode: 'restricted',
-      emails: valid,
-      org_allowed: false,
-      owner_only: valid.length === 0,
-    };
-  }
-  return { mode: 'public' };
 }
 
 // ── Presentation ───────────────────────────────────────────────────────
@@ -228,52 +247,51 @@ export const ACCESS_LABELS = {
     title: 'Password protected',
     desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL and the password' : 'Anyone on the internet with the password',
   },
-  // Without org sharing: people by email.
-  restricted: {
+  // Without sharing in MindsHub mode: people by email.
+  specificPeople: {
     icon: Ico.people,
     title: 'Specific people',
     desc: 'Only the people you list',
   },
-  // With org sharing (ENG-3787).
-  specific: {
-    icon: Ico.people,
-    title: 'Specific teams and people',
-    desc: 'Pick teams, colleagues or outside emails',
-  },
+  // With sharing in MindsHub mode.
+  specific: { icon: Ico.people, title: SPECIFIC_TITLE, desc: SPECIFIC_DESC[SHARED_KIND.ARTIFACT] },
   org: { icon: Ico.building, title: everyoneAtLabel(null), desc: EVERYONE_AT_DESC },
-  ownerOnly: { icon: Ico.lock, title: 'Only you', desc: 'Nobody else can open this' },
+  private: { icon: Ico.lock, title: ONLY_ME_TITLE, desc: ONLY_ME_DESC[SHARED_KIND.ARTIFACT] },
 };
 
-/** The label for an access as the summary card shows it. */
-export function accessSummaryLabel({ mode, ownerOnly, orgAllowed, allowedTeamIds, allowedUserIds, accessEmails } = {}, { orgSharing = false, orgName = null } = {}) {
+/** The label for an artifact's access as the summary card shows it. */
+export function accessSummaryLabel(artifact, { orgSharing = false, orgName = null } = {}) {
+  const mode = artifact?.accessMode;
   if (mode !== 'restricted') return ACCESS_LABELS[mode] || ACCESS_LABELS.public;
   // A restricted publish with no recipients and no org grants access to the
-  // owner alone — saying "people you list" there would be a lie (ENG-1769).
-  if (ownerOnly) return ACCESS_LABELS.ownerOnly;
-  if (!orgSharing) return ACCESS_LABELS.restricted;
-  const lists = (allowedTeamIds || []).length + (allowedUserIds || []).length + (accessEmails || []).length;
-  if (orgAllowed && lists === 0) return { ...ACCESS_LABELS.org, title: everyoneAtLabel(orgName) };
+  // owner alone; saying "people you list" there would be a lie.
+  if (artifact.ownerOnly) return ACCESS_LABELS.private;
+  if (!orgSharing) return ACCESS_LABELS.specificPeople;
+  const audience = readArtifactAudience(artifact);
+  const lists = audience.teamIds.length + audience.userIds.length + audience.emails.length;
+  if (audience.orgAllowed && lists === 0) return { ...ACCESS_LABELS.org, title: everyoneAtLabel(orgName) };
   return ACCESS_LABELS.specific;
 }
 
 // Order runs private → public, so the least exposing choice is the one the
-// eye lands on first. A shared-token deployment offers no "Only you": a
+// eye lands on first. A shared-token deployment offers no "Only me": a
 // publisher reached with one shared publish token (cowork-server's
 // COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
-// upload with a 400. `org` shows only with org sharing on.
+// upload with a 400. Everyone at ‹org› shows only with sharing on.
 const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
-  ? ['org', 'restricted', 'password', 'public']
-  : ['ownerOnly', 'org', 'restricted', 'password', 'public'];
+  ? [AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC]
+  : [AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC];
 
-// `modes` lets a caller restrict the offered set (e.g. ['public','password']);
+// `modes` lets a caller restrict the offered set (e.g. [PASSWORD, PUBLIC]);
 // defaults to every mode this build offers. `value`/`onChange` are the
 // controlled draft.
-// `sharing` turns on org sharing (ENG-3787) when its `capabilities.enabled`
-// is true: `{ capabilities, teams }`, where `capabilities` is what
-// `useSharingCapabilities` reads and `teams` is what `useHubTeams` returns.
-// Off, there is no "Everyone", and "Specific people" takes emails only.
-// Without `capabilities.can_share_org` (admins only) "Everyone" is greyed
-// with the admin hint, as on a skill.
+// `sharing` turns on sharing in MindsHub mode when its capabilities say so:
+// `{ capabilities, teams, orgName }`, where `capabilities` is what
+// `useSharingCapabilities` reads, `teams` is what `useMindsHubTeams`
+// returns and `orgName` is what `useSharingOrgName` returns. Off, there is
+// no "Everyone", and "Specific people" takes emails only. Without
+// `canShareArtifactsOrg` "Everyone" is grayed with the admin hint, or with
+// "Couldn't reach MindsHub" while MindsHub couldn't be asked.
 export function AccessChooser({
   value,
   onChange,
@@ -290,9 +308,9 @@ export function AccessChooser({
     latest.current = { ...latest.current, ...patch };
     onChange?.(latest.current);
   };
-  const orgSharing = sharing?.capabilities?.enabled === true;
-  const orgName = orgSharing ? sharing.capabilities.org_name || null : null;
-  const specific = orgSharing ? ACCESS_LABELS.specific : ACCESS_LABELS.restricted;
+  const capabilities = sharing?.capabilities ?? null;
+  const orgSharing = isOrgSharingOn(capabilities);
+  const orgName = orgSharing ? sharing.orgName ?? null : null;
 
   const recipients = {
     value: {
@@ -309,16 +327,18 @@ export function AccessChooser({
     teamsState: orgSharing ? sharing.teams || null : null,
   };
 
-  // "Only you" is its own option rather than an empty "Specific people". The
-  // two used to be the same radio, distinguished only by whether the textarea
-  // below it happened to be blank — so the choice a person had made was not
-  // visible in the choice they had selected.
+  const specificPeople = ACCESS_LABELS.specificPeople;
+  // "Only me" is its own option rather than an empty "Specific people", so
+  // the choice a person made is the choice they see selected.
   const options = [
-    modes.includes('ownerOnly') && { value: 'ownerOnly', icon: Ico.lock(16), title: ACCESS_LABELS.ownerOnly.title, desc: ACCESS_LABELS.ownerOnly.desc },
-    orgSharing && modes.includes('org') && everyoneOption({ orgName, canShareOrg: sharing.capabilities.can_share_org === true }),
-    modes.includes('restricted') && { value: 'restricted', icon: Ico.people(16), title: specific.title, desc: specific.desc },
-    modes.includes('password') && { value: 'password', icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc },
-    modes.includes('public') && { value: 'public', icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
+    modes.includes(AUDIENCE_CHOICE.PRIVATE) && onlyMeOption(SHARED_KIND.ARTIFACT),
+    orgSharing && modes.includes(AUDIENCE_CHOICE.ORG)
+      && everyoneOption({ orgName, lockReason: orgShareLockReason(capabilities, SHARED_KIND.ARTIFACT) }),
+    modes.includes(AUDIENCE_CHOICE.SPECIFIC) && (orgSharing
+      ? specificOption(SHARED_KIND.ARTIFACT)
+      : { value: AUDIENCE_CHOICE.SPECIFIC, icon: specificPeople.icon(16), title: specificPeople.title, desc: specificPeople.desc }),
+    modes.includes(AUDIENCE_CHOICE.PASSWORD) && { value: AUDIENCE_CHOICE.PASSWORD, icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc },
+    modes.includes(AUDIENCE_CHOICE.PUBLIC) && { value: AUDIENCE_CHOICE.PUBLIC, icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
   ].filter(Boolean);
 
   return (
@@ -327,10 +347,10 @@ export function AccessChooser({
       value={draft.mode}
       onValueChange={(m) => set({ mode: m })}
       options={options}
-      specificValue="restricted"
+      specificValue={AUDIENCE_CHOICE.SPECIFIC}
       recipients={recipients}
     >
-      {draft.mode === 'password' && (
+      {draft.mode === AUDIENCE_CHOICE.PASSWORD && (
         <div className={INPUT_SHELL}>
           <input
             type={draft._reveal ? 'text' : 'password'}

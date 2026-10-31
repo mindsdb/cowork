@@ -1,6 +1,6 @@
-// What a Share button shows (ENG-3787): "Share" while only the owner has
-// access, "Shared" once anyone else does, with an icon for how it's shared
-// (the whole org, specific teams and people, a public link, a password).
+// What a Share button shows: "Share" while only the owner has access,
+// "Shared" once anyone else does, with an icon for how it's shared
+// (everyone at the org, specific teams and people, a public link, a password).
 // The state comes from `skillShareState` / `artifactShareState` in
 // lib/orgSharing; the tooltip saying who is the caller's, from `hint`.
 

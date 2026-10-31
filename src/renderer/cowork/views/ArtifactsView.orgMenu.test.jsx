@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 vi.mock('../api', () => ({
   revealArtifact: vi.fn(),
@@ -98,6 +99,30 @@ function openKebab() {
 afterEach(() => {
   localStorage.clear();
   setOrgMode(false);
+});
+
+/* The status badge's hint is read at two sites too, the grid card and the
+   list row. A MindsHub mode card names no audience, so neither may claim
+   one. */
+describe.each([
+  ['grid', 'grid'],
+  ['list', 'list'],
+])('%s view status hint in MindsHub mode', (_name, view) => {
+  beforeEach(() => {
+    localStorage.setItem('anton:artifacts-view', view);
+    setOrgMode(true);
+  });
+
+  it('names no audience for a restricted card', async () => {
+    const card = {
+      ...published, accessMode: 'restricted', ownerOnly: false, orgAllowed: false,
+      allowedTeamIds: [], allowedUserIds: [], accessEmails: [],
+    };
+    render(<ArtifactsView artifacts={[card]} />);
+    await userEvent.hover(screen.getByText('Restricted'));
+    expect(await screen.findByText('Restricted. Open Share to see who can open the link.')).toBeInTheDocument();
+    expect(screen.queryByText(/the people you chose/)).toBeNull();
+  });
 });
 
 describe.each([

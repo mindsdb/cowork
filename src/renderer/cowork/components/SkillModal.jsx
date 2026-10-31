@@ -1,7 +1,7 @@
-// `<SkillModal>` — Add a Skill / Edit Skill on the Skills page: the label,
+// `<SkillModal>`: Add a Skill / Edit Skill on the Skills page: the label,
 // description and instructions on the left; the project and, where sharing
 // exists, who can use it on the right. Saving the skill and then applying
-// its audience (org sharing, ENG-3787) or its "Who can use it" choice both
+// its audience (sharing inside the org) or its "Who can use it" choice both
 // happen here; SkillsView only opens it and reacts to the result.
 
 import { useEffect, useState } from 'react';
@@ -17,6 +17,7 @@ import {
   PRIVATE_ACCESS,
   canChangeSkillAudience,
   canEditSkill,
+  isOrgSharingOn,
   isPrivateAccess,
   sameSkillAccessPayload,
   skillAccess,
@@ -38,8 +39,8 @@ import {
 // be a non-empty string: Base UI's <Select.Value> treats an empty-string value
 // as "nothing selected" and shows the placeholder, so an option with value ''
 // would render as the "Select…" placeholder on the closed control even though
-// its item still carries a checkmark (ENG-1246). This value never reaches
-// storage — `submit` maps it back to an empty `projects` array, and it can't
+// its item still carries a checkmark. This value never reaches
+// storage: `submit` maps it back to an empty `projects` array, and it can't
 // collide with a real project name.
 const ALL_PROJECTS = '__all_projects__';
 
@@ -69,17 +70,17 @@ export const skillFieldStyle = {
 const SKILL_MODAL_WIDTH = 'min(960px, 94vw)';
 const SKILL_MODAL_HEIGHT = 'min(680px, 88vh)';
 
-export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = null, projects = [], canShare = false, capabilities = null }) {
+export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, initial = null, projects = [], canShare = false, capabilities = null, orgName = null }) {
   const isEdit = initial !== null;
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS, sharing: SKILL_SHARING_PRIVATE });
   const [busy, setBusy] = useState(false);
-  /* Org sharing (ENG-3787): both a create and an edit show who can use the
+  /* Sharing inside the org: both a create and an edit show who can use the
      skill with the Share dialog's audience controls, and apply the answer
      through PUT /skills/{slug}/sharing once the skill is saved: a create's
      when it isn't Only me, an edit's only when it changed. An edit opens at
      the skill's audience, and only someone the Share dropdown would let
      change it (its owner or an admin) may; anyone else reads it. */
-  const asksAudience = capabilities?.enabled === true;
+  const asksAudience = isOrgSharingOn(capabilities);
   const canChangeAudience = !isEdit || canChangeSkillAudience(initial);
   const editsAudience = asksAudience && canChangeAudience;
   const savedAccess = isEdit ? skillAccess(initial) : PRIVATE_ACCESS;
@@ -94,8 +95,8 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
   /* Who can use the skill: a create asks where the list grants sharing, the
      creator's own edit where this skill's own capabilities do. A create sends
      the answer as `shared`; an edit applies a changed choice through the
-     sharing route after the save, and surfaces its refusal. Org sharing
-     replaces this select. */
+     sharing route after the save, and surfaces its refusal. Sharing in
+     MindsHub mode replaces this select. */
   const asksSharing = !asksAudience && (isEdit ? canShareSkill(initial) : canShare);
 
   useEffect(() => {
@@ -258,7 +259,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
                 onValueChange={(v) => setField('project', v)}
                 style={{ ...skillFieldStyle, height: 34 }}
                 options={[
-                  // The global scope is a mode, not a project — set it apart from
+                  // The global scope is a mode, not a project; set it apart from
                   // the real projects (which map 1:1 to the projects page) with a
                   // leading icon and a divider.
                   { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
@@ -278,6 +279,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
                       value={access}
                       onChange={setAccess}
                       capabilities={capabilities}
+                      orgName={orgName}
                       // The creator can always edit their own new skill.
                       canEdit={!isEdit || canEditSkill(initial)}
                       onPendingChange={setAudiencePending}
@@ -288,7 +290,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
                         orgAllowed={savedAccess.orgAllowed}
                         teamIds={savedAccess.allowedTeamIds}
                         userIds={savedAccess.allowedUserIds}
-                        orgName={capabilities.org_name ?? null}
+                        orgName={orgName}
                         label={SKILL_SHARING_LABEL}
                       />
                       {savedAccess.alwaysOn && (

@@ -1,6 +1,7 @@
-// Teams, people in the org and org-wide access on Cloud (ENG-3787): the
-// access route answers `allowed_team_ids`, `allowed_user_ids` and
-// `org_allowed`, and the hook carries them both ways.
+// Teams, people in the org and access for everyone in MindsHub mode: the access
+// route answers `allowedTeamIds`, `allowedUserIds` and `orgAllowed`, a save
+// sends `allowed_team_ids`, `allowed_user_ids` and `org_allowed`, and the hook
+// carries them both ways.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { setOrgMode } from '../../../../lib/orgMode';
@@ -18,7 +19,8 @@ vi.mock('../../../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
 
 const sharing = vi.hoisted(() => ({
   useSharingCapabilities: vi.fn(),
-  useHubTeams: vi.fn(),
+  useMindsHubTeams: vi.fn(),
+  useSharingOrgName: vi.fn(),
 }));
 vi.mock('../../../hooks/useOrgSharing', () => sharing);
 
@@ -45,20 +47,21 @@ beforeEach(() => {
   vi.clearAllMocks();
   sharing.useSharingCapabilities.mockReturnValue({
     status: 'ready',
-    capabilities: { enabled: true, can_share_org: false, org_name: 'Acme' },
+    capabilities: { enabled: true, canShareArtifactsOrg: false },
     retry: retryCapabilities,
   });
-  sharing.useHubTeams.mockReturnValue(TEAMS);
+  sharing.useMindsHubTeams.mockReturnValue(TEAMS);
+  sharing.useSharingOrgName.mockReturnValue('Acme');
   setOrgMode(true);
 });
 
 afterEach(() => setOrgMode(false));
 
-describe('usePublish with org sharing', () => {
+describe('usePublish with sharing in MindsHub mode', () => {
   it('reads the teams, people in the org and org flag from the access route', async () => {
     wsMock.loadArtifactAccess.mockResolvedValue({
       accessMode: 'restricted', accessEmails: ['zed@partner.io'], ownerOnly: false,
-      allowed_team_ids: ['t-platform'], allowed_user_ids: ['u-ana'], org_allowed: true,
+      allowedTeamIds: ['t-platform'], allowedUserIds: ['u-ana'], orgAllowed: true,
     });
     const onChange = vi.fn();
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true, onChange }));
@@ -120,22 +123,34 @@ describe('usePublish with org sharing', () => {
     expect(result.current.allowedUserIds).toEqual(['u-ana']);
   });
 
-  // One spelling of what org sharing allows: the capabilities object as
+  // One spelling of what sharing allows: the capabilities object as
   // useSharingCapabilities reads it, never a renamed copy of its fields.
-  it('hands the panel the capabilities read as it answered, with the teams', () => {
+  it('hands the panel the capabilities read as it answered, with the teams and the org name', () => {
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
     expect(result.current.orgMode).toBe(true);
     expect(result.current.orgSharing).toEqual({
       status: 'ready',
-      capabilities: { enabled: true, can_share_org: false, org_name: 'Acme' },
+      capabilities: { enabled: true, canShareArtifactsOrg: false },
       retry: retryCapabilities,
       teams: TEAMS,
+      orgName: 'Acme',
     });
+  });
+
+  /* The org name is read from the app's organization list only while the
+     panel is open on sharing in MindsHub mode. */
+  it('asks for the org name only while sharing is on with the panel open', () => {
+    renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
+    expect(sharing.useSharingOrgName).toHaveBeenLastCalledWith(true);
+
+    sharing.useSharingOrgName.mockClear();
+    renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
+    expect(sharing.useSharingOrgName).toHaveBeenLastCalledWith(false);
   });
 
   it('passes on a capabilities read still loading or failed', () => {
     sharing.useSharingCapabilities.mockReturnValue({
-      status: 'error', capabilities: { enabled: false, can_share_org: false, org_name: null }, retry: retryCapabilities,
+      status: 'error', capabilities: { enabled: false, canShareArtifactsOrg: false }, retry: retryCapabilities,
     });
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
     expect(result.current.orgSharing).toEqual(expect.objectContaining({
@@ -143,16 +158,17 @@ describe('usePublish with org sharing', () => {
     }));
   });
 
-  it('says it is not org mode, and never asks what org sharing allows, outside it', () => {
+  it('says it is not MindsHub mode, and never asks what sharing allows, outside it', () => {
     setOrgMode(false);
     sharing.useSharingCapabilities.mockReturnValue({
-      status: 'idle', capabilities: { enabled: false, can_share_org: false, org_name: null }, retry: retryCapabilities,
+      status: 'idle', capabilities: { enabled: false, canShareArtifactsOrg: false }, retry: retryCapabilities,
     });
     const { result } = renderHook(() => usePublish({ ...ORG_ARTIFACT, path: '/w/a.html' }, { enabled: true }));
     expect(result.current.orgMode).toBe(false);
     expect(sharing.useSharingCapabilities).toHaveBeenCalledWith(false);
+    expect(sharing.useSharingOrgName).toHaveBeenCalledWith(false);
     expect(result.current.orgSharing).toEqual(expect.objectContaining({
-      status: 'idle', capabilities: { enabled: false, can_share_org: false, org_name: null },
+      status: 'idle', capabilities: { enabled: false, canShareArtifactsOrg: false },
     }));
   });
 

@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-/* ENG-3787: the switch "just for me", "Disable/Enable for everyone", the
+/* The switch "just for me", "Disable/Enable for everyone", the
    folded Built-in section and the Edit dialog's "Who can use it", through
    the real skills store; only HTTP is mocked. */
 const api = vi.hoisted(() => ({
@@ -15,15 +15,21 @@ const api = vi.hoisted(() => ({
   setSkillEnabledForMe: vi.fn(),
   uploadSkillFile: vi.fn(),
   fetchSkillSharingCapabilities: vi.fn(),
-  fetchHubTeams: vi.fn(),
-  fetchHubPeopleByIds: vi.fn(async () => ({ reachable: true, people: [] })),
-  fetchHubDirectory: vi.fn(async () => ({ reachable: true, people: [], truncated: false })),
+  fetchMindsHubTeams: vi.fn(),
+  fetchMindsHubPeopleByIds: vi.fn(async () => ({ reachable: true, people: [] })),
+  fetchMindsHubDirectory: vi.fn(async () => ({ reachable: true, people: [], truncated: false })),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
 
 vi.mock('../api', () => api);
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => toast }));
 vi.mock('../../platform/host', () => ({ host: { isWeb: true }, getAccessToken: async () => null }));
+/* The organization's name comes from the app's own organization list
+   (useMindsOrgs' active organization), never from the capabilities. */
+const orgs = vi.hoisted(() => ({ activeOrg: { id: 'org-acme', name: 'acme', displayName: 'Acme', isPersonal: false } }));
+vi.mock('../hooks/useMindsOrgs', () => ({
+  useMindsOrgs: () => ({ orgs: orgs.activeOrg ? [orgs.activeOrg] : [], activeOrg: orgs.activeOrg }),
+}));
 
 const OWNER_CAPS = { canEdit: true, canDelete: true, canDisable: true, canShare: true };
 // A team member who edits a team skill they don't own: no say in its audience.
@@ -66,7 +72,7 @@ const teamSkill = {
   access: { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [] }, capabilities: READER_CAPS,
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
-const orgWide = {
+const sharedWithEveryone = {
   label: 'brand-voice', slug: 'brand-voice', description: 'Org.', isBuiltin: false, enabled: true,
   section: 'org', canEdit: false, owner: { id: 'u3', email: 'admin@acme.com' },
   access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] }, capabilities: READER_CAPS,
@@ -77,19 +83,19 @@ const builtin = {
   capabilities: READER_CAPS, enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
 
-const CAPS = { enabled: true, can_share_org: false, org_name: 'Acme' };
+const CAPS = { enabled: true, canShareSkillsOrg: false };
 
 async function renderPage(skills, capabilities = CAPS) {
   vi.resetModules();
   api.fetchSkills.mockResolvedValue({ skills, canShare: false });
   api.fetchSkillSharingCapabilities.mockResolvedValue(capabilities);
-  api.fetchHubTeams.mockResolvedValue({ reachable: true, teams: [PLATFORM] });
+  api.fetchMindsHubTeams.mockResolvedValue({ reachable: true, teams: [PLATFORM] });
   const { default: SkillsView } = await import('./SkillsView');
   const view = render(<SkillsView />);
   await screen.findByRole('heading', { name: 'Skills' });
   await waitFor(() => expect(api.fetchSkills).toHaveBeenCalled());
-  // With org sharing the list regroups by section once its capabilities
-  // land; wait for that so a row isn't replaced under a click.
+  // With sharing in MindsHub mode the list regroups by section once its
+  // capabilities land; wait for that so a row isn't replaced under a click.
   if (capabilities.enabled) {
     await waitFor(() => expect(
       screen.queryAllByRole('region').some((r) => r.getAttribute('aria-label') !== 'Built-in'),
@@ -100,6 +106,14 @@ async function renderPage(skills, capabilities = CAPS) {
 
 const row = (label) => screen.getByRole('article', { name: label });
 const builtinToggle = () => screen.getByRole('button', { name: /^Built-in/ });
+
+/* The first import of SkillsView transforms its whole module graph, which
+   takes seconds on a loaded machine; each test then imports it again after
+   vi.resetModules, which is quick once transformed. Importing it once here
+   keeps that cost out of the first test's timeout. */
+beforeAll(async () => {
+  await import('./SkillsView');
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -114,7 +128,7 @@ describe('the switch just for me', () => {
   it.each([
     ['a skill shared with the caller', fromColleague],
     ['a team skill', teamSkill],
-    ['an org-wide skill', orgWide],
+    ['a skill shared with everyone', sharedWithEveryone],
     ["the caller's own shared skill", ownShared],
   ])('turns %s off for the caller alone', async (_, skill) => {
     const user = userEvent.setup();
@@ -186,7 +200,7 @@ describe('the switch just for me', () => {
 
   it('rolls the detail header switch back too', async () => {
     const user = userEvent.setup();
-    await renderPage([orgWide]);
+    await renderPage([sharedWithEveryone]);
     api.setSkillEnabledForMe.mockRejectedValue(new Error('Nope'));
 
     await user.click(await screen.findByText('brand-voice'));
@@ -347,7 +361,7 @@ describe('the ⋯ menu: Disable or Enable for everyone', () => {
     expect(api.setSkillEnabledForMe).not.toHaveBeenCalled();
   });
 
-  it('turns nothing off when the confirmation is cancelled', async () => {
+  it('turns nothing off when the confirmation is canceled', async () => {
     const user = userEvent.setup();
     await renderPage([teamEdited]);
 
@@ -458,7 +472,7 @@ describe('the Edit dialog: who can use it', () => {
 
   it('shows Project then Who can use it in the side column, at the skill\'s audience', async () => {
     const user = userEvent.setup();
-    api.fetchHubPeopleByIds.mockResolvedValue({ reachable: true, people: [{ id: 'u5', name: 'Bea Ortiz', email: 'bea@acme.com' }] });
+    api.fetchMindsHubPeopleByIds.mockResolvedValue({ reachable: true, people: [{ id: 'u5', name: 'Bea Ortiz', email: 'bea@acme.com' }] });
     const dialog = await openEdit(user, ownShared);
 
     const column = side(dialog);
@@ -535,7 +549,7 @@ describe('the Edit dialog: who can use it', () => {
   it('reads Everyone at the org read-only', async () => {
     const user = userEvent.setup();
     const orgEdited = { ...teamEdited, section: 'org', access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] } };
-    const dialog = await openEdit(user, orgEdited, { ...CAPS, can_write_org: true });
+    const dialog = await openEdit(user, orgEdited, { ...CAPS, canWriteSkillsOrg: true });
 
     expect(within(side(dialog)).getByText('Everyone at Acme')).toBeInTheDocument();
     expect(within(side(dialog)).getByText('Only the owner can change who can use it')).toBeInTheDocument();
@@ -545,7 +559,7 @@ describe('the Edit dialog: who can use it', () => {
     const user = userEvent.setup();
     // The server folds "owner or admin" into the skill's own canShare.
     const asAdmin = { ...teamEdited, capabilities: { ...teamEdited.capabilities, canShare: true } };
-    const dialog = await openEdit(user, asAdmin, { ...CAPS, can_share_org: true });
+    const dialog = await openEdit(user, asAdmin, { ...CAPS, canShareSkillsOrg: true });
 
     expect(within(side(dialog)).getByRole('radio', { name: /^Everyone at Acme/ })).not.toHaveAttribute('aria-disabled', 'true');
     expect(within(side(dialog)).queryByText('Only the owner can change who can use it')).toBeNull();

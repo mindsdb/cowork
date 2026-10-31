@@ -5,7 +5,7 @@
 // hook addresses the artifact by identity and re-publishes through the
 // owner-gated workspace route instead.
 //
-// The reads matter as much as the writes. In org mode an artifact CARD carries
+// The reads matter as much as the writes. In MindsHub mode an artifact CARD carries
 // no audience and no `accessPassword`. One artifacts root is shared by the whole
 // organization, so a card cannot tell owner from co-member. The owner-only
 // access route is the only way the audience reaches this client.
@@ -205,7 +205,7 @@ describe('usePublish on Cloud', () => {
     await act(async () => {
       save.resolve({
         url: 'https://share/a-moved', accessMode: 'restricted', accessEmails: ['carol@x.com'],
-        orgAllowed: true, ownerOnly: false, allowed_team_ids: ['t-platform'],
+        orgAllowed: true, ownerOnly: false, allowedTeamIds: ['t-platform'],
       });
       ok = await saved;
     });
@@ -252,6 +252,43 @@ describe('usePublish on Cloud', () => {
     expect(result.current.accessEmails).toEqual(['carol@x.com']);
   });
 
+  /* The open-time read is still out when the person saves (Change password
+     shows before the access loads). The save drops that read, so its answer
+     can't undo the save; a save that then fails must ask again, or the panel
+     waits on "Loading current access…" for a read nobody sends. */
+  it('reads the access again when a save fails while the open read was out', async () => {
+    const openRead = deferred();
+    wsMock.loadArtifactAccess
+      .mockReturnValueOnce(openRead.promise)
+      .mockResolvedValue({ accessMode: 'password', accessPassword: 'old', ownerOnly: false });
+    wsMock.setArtifactAccess.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
+    const card = { ...ORG_ARTIFACT, accessMode: 'password' };
+    const { result } = renderHook(() => usePublish(card, { enabled: true }));
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1));
+    expect(result.current.accessLoaded).toBe(false);
+
+    await act(async () => {
+      expect(await result.current.publish({ mode: 'password', password: 'new' })).toBe(false);
+    });
+    // The dropped read's late answer is ignored either way.
+    await act(async () => { openRead.resolve({ accessMode: 'password', accessPassword: 'stale', ownerOnly: false }); });
+
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+    expect(result.current.accessPassword).toBe('old');
+    expect(result.current.error).toMatch(/boom/);
+  });
+
+  it('asks nothing again when a save fails after the access had loaded', async () => {
+    wsMock.setArtifactAccess.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+
+    expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps a save's failure off the artifact the viewer moved to", async () => {
     const B = { ...ORG_ARTIFACT, id: 'b2c3d4e5f6a70b1c2d3e4f5a6b7c8d9e' };
     let rejectSave;
@@ -286,7 +323,7 @@ describe('usePublish on Cloud', () => {
     expect(result.current.accessLoadFailed).toBe(true);
 
     wsMock.loadArtifactAccess.mockResolvedValue({
-      accessMode: 'restricted', accessEmails: [], ownerOnly: false, allowed_team_ids: ['t-platform'],
+      accessMode: 'restricted', accessEmails: [], ownerOnly: false, allowedTeamIds: ['t-platform'],
     });
     await act(async () => { await result.current.refresh(); });
 
@@ -309,7 +346,7 @@ describe('usePublish on Cloud', () => {
     expect(result.current.accessLoaded).toBe(false);
 
     await act(async () => {
-      read.resolve({ accessMode: 'restricted', accessEmails: [], ownerOnly: false, allowed_team_ids: ['t-platform'] });
+      read.resolve({ accessMode: 'restricted', accessEmails: [], ownerOnly: false, allowedTeamIds: ['t-platform'] });
     });
 
     expect(result.current.accessLoaded).toBe(true);
@@ -353,7 +390,7 @@ describe('usePublish on Cloud', () => {
     // flipped by an edit autopublish has not caught up with yet.
     wsMock.loadArtifactAccess.mockResolvedValue({
       accessMode: 'restricted', accessEmails: ['alice@x.com'], ownerOnly: false,
-      org_allowed: false, allowed_team_ids: ['t-platform'], allowed_user_ids: ['u-ana'],
+      orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: ['u-ana'],
     });
     const card = { ...ORG_ARTIFACT, ownerOnly: false, orgAllowed: false, allowedTeamIds: [], allowedUserIds: [], modified: false };
     const { result, rerender } = renderHook(

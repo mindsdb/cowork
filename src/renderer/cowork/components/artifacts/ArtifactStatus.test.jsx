@@ -152,6 +152,36 @@ describe('ArtifactStatus hints (ENG-2177)', () => {
   });
 });
 
+/* A MindsHub mode card carries no audience: it says restricted with
+   `ownerOnly: false` and empty lists for every restricted artifact, owner-only
+   ones included. The list never reads the access route, so its hint must name
+   no audience. */
+describe('ArtifactStatus hints in MindsHub mode', () => {
+  const card = {
+    publishedUrl: 'https://x.test/a', accessMode: 'restricted', ownerOnly: false, orgAllowed: false,
+    allowedTeamIds: [], allowedUserIds: [], accessEmails: [],
+  };
+
+  it('names no audience for a restricted card, and points at Share', () => {
+    expect(artifactStatusHint(card, true, { orgMode: true }))
+      .toBe('Restricted. Open Share to see who can open the link.');
+    expect(artifactStatusHint({ ...card, ownerOnly: true }, true, { orgMode: true }))
+      .toBe('Restricted. Open Share to see who can open the link.');
+  });
+
+  it('keeps the desktop hints, which read a card that carries its audience', () => {
+    expect(artifactStatusHint(card, true)).toBe('Shared. Only the people you chose can open the link.');
+    expect(artifactStatusHint({ ...card, ownerOnly: true }, true)).toBe('Shared, but only you can open the link.');
+  });
+
+  it('shows it on hover', async () => {
+    render(<ArtifactStatus artifact={card} orgMode />);
+    await userEvent.hover(screen.getByText('Restricted'));
+    expect(await screen.findByText('Restricted. Open Share to see who can open the link.')).toBeInTheDocument();
+    expect(screen.queryByText(/the people you chose/)).toBeNull();
+  });
+});
+
 // ENG-2979: the "Another member" tag rides in the status row. As a sibling of
 // ArtifactStatus it wrapped to a second line on every published card, because
 // the published row is `w-full`. `authorship` replaced the generic `extra`

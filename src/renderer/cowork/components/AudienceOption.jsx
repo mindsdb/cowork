@@ -1,5 +1,5 @@
-// The radio cards "who can open / use this" is picked from (ENG-3787): the
-// artifact Share panel's "Who can access your app" and the skill audience.
+// The radio cards "who can open / use this" is picked from: the artifact
+// Share panel's "Who can access your app" and the skill audience.
 // Each card is an icon tile, a title, a subtitle and a radio dot. A card
 // whose choice needs more (picking teams and people) unfolds its editor right
 // under itself, joined to it, rather than at the bottom of the list.
@@ -39,7 +39,7 @@ export function AudienceOptionCard({ value, active, icon, title, desc, disabled 
         <span className="block font-body font-semibold text-[13px] text-ink">{title}</span>
         <span className="block font-body text-[11.5px] text-ink-3 mt-px">{desc}</span>
       </span>
-      {/* Radio dot — driven by the controlled `active` so its border color
+      {/* Radio dot, driven by the controlled `active` so its border color
           stays a plain inline style (no data-attribute stylesheet). */}
       <span
         className="shrink-0 w-[16px] h-[16px] rounded-full inline-grid place-items-center"

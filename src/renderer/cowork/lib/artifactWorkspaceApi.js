@@ -274,8 +274,8 @@ export function loadArtifactAccess(artifact) {
 // Setting an audience is a re-publish server-side: the target stores access
 // alongside the bundle and reuses the existing report_id, so the shared URL
 // survives the change and nothing has to be unpublished first. `access` goes
-// as given, `notify` included: the people this change newly adds whom the
-// auth service emails (ENG-3787).
+// as given, `notify` included: the people this change newly adds whom
+// MindsHub emails.
 export function setArtifactAccess(artifact, access) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

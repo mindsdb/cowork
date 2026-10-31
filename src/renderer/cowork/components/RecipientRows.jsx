@@ -1,7 +1,7 @@
-// Recipient rows (ENG-3787): who something is shared with, one full-width row
-// each, the way a Google Docs share dialog lists people. A row is a leading
-// tile (team icon, a person's initials, a mail icon for an outside email, a
-// muted "?" for someone the hub doesn't know or couldn't name), a name and a
+// Recipient rows: who something is shared with, one full-width row each, the
+// way a Google Docs share dialog lists people. A row is a leading tile (team
+// icon, a person's initials, a mail icon for an outside email, a muted "?"
+// for someone MindsHub doesn't know or couldn't name), a name and a
 // second line ("Team", the person's email, "Outside ‹org›"), and, where the
 // list is editable, a remove ×.
 //
@@ -15,6 +15,9 @@ import Ico from './Icons';
 import { Tooltip } from './ui';
 import {
   EVERYONE_AT_DESC,
+  ONLY_ME_DESC,
+  ONLY_ME_TITLE,
+  SHARED_KIND,
   UNKNOWN_PERSON,
   everyoneAtLabel,
   namesDefaultTeam,
@@ -22,7 +25,8 @@ import {
   personInitials,
   withoutDefaultTeam,
 } from '../lib/orgSharing';
-import { useHubTeams, useKnownPeople } from '../hooks/useOrgSharing';
+import { useKnownPeople, useMindsHubTeams } from '../hooks/useOrgSharing';
+import { LOAD_STATUS } from '../lib/sharingContract';
 
 export const UNKNOWN_TEAM = 'Unknown team';
 export const PERSON_NOT_LOADED = "Couldn't load name";
@@ -50,7 +54,7 @@ export function recipientItems({ teamIds = NONE, userIds = NONE, emails = NONE }
     const team = teams.find((t) => t.id === id);
     let primary;
     if (team) primary = team.display_name;
-    else primary = teamsState?.status === 'ready' ? UNKNOWN_TEAM : 'Loading…';
+    else primary = teamsState?.status === LOAD_STATUS.READY ? UNKNOWN_TEAM : 'Loading…';
     items.push({
       key: `t:${id}`,
       kind: 'team',
@@ -66,7 +70,7 @@ export function recipientItems({ teamIds = NONE, userIds = NONE, emails = NONE }
       items.push({ key: `u:${id}`, kind: 'person', primary: 'Loading…', secondary: null, removeLabel: 'Remove person', person, muted: true });
       continue;
     }
-    // The hub couldn't be asked: not known to be missing, so never "Unknown".
+    // MindsHub couldn't be asked: not known to be missing, so never "Unknown".
     if (person?.failed) {
       items.push({ key: `u:${id}`, kind: 'person', primary: PERSON_NOT_LOADED, secondary: null, removeLabel: 'Remove person', person, muted: true });
       continue;
@@ -188,7 +192,7 @@ export function ReadOnlyRecipientRows({ items, label, limit = 4, testId, classNa
 export function useRecipientItems({ teamIds = NONE, userIds = NONE, emails = NONE }, {
   teamsState: teamsProp = null, orgName = null, emailsOnly = false,
 } = {}) {
-  const ownTeams = useHubTeams(!emailsOnly && !teamsProp && teamIds.length > 0);
+  const ownTeams = useMindsHubTeams(!emailsOnly && !teamsProp && teamIds.length > 0);
   const teamsState = teamsProp || ownTeams;
   const known = useKnownPeople(emailsOnly ? NONE : userIds);
   return recipientItems({ teamIds, userIds, emails }, { teamsState, people: known.people, orgName, emailsOnly });
@@ -205,8 +209,9 @@ export function SharedWithList({ teamIds = NONE, userIds = NONE, emails = NONE, 
 }
 
 /**
- * Who a skill reaches, read-only: Everyone at ‹org› (org-wide or the
- * default team), then each team and person; "Only you" when it names nobody.
+ * Who a skill reaches, read-only: Everyone at ‹org› (shared with everyone,
+ * or with the default team), then each team and person; "Only me" when it
+ * names nobody.
  *
  * @param {{
  *   orgAllowed?: boolean,
@@ -223,7 +228,7 @@ export function AudienceList({
   orgAllowed = false, teamIds = NONE, userIds = NONE,
   orgName = null, teamsState: teamsProp = null, label = 'Who can use it', limit = 6, flush = true,
 }) {
-  const ownTeams = useHubTeams(!teamsProp);
+  const ownTeams = useMindsHubTeams(!teamsProp);
   const teamsState = teamsProp || ownTeams;
   const teams = teamsState.teams || NONE;
   const everyone = orgAllowed || namesDefaultTeam(teamIds, teams);
@@ -237,7 +242,7 @@ export function AudienceList({
   }
   items.push(...listed);
   if (items.length === 0) {
-    items.push({ key: 'me', kind: 'private', primary: 'Only you', secondary: 'Nobody else can use it' });
+    items.push({ key: 'me', kind: 'private', primary: ONLY_ME_TITLE, secondary: ONLY_ME_DESC[SHARED_KIND.SKILL] });
   }
   // `flush`: pulled out by the rows' own padding, so names line up with the
   // text around them.

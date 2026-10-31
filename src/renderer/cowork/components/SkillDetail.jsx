@@ -1,4 +1,4 @@
-// `<SkillDetail>` — one skill, opened from a row on the Skills page, laid out
+// `<SkillDetail>`: one skill, opened from a row on the Skills page, laid out
 // like a document: the name as the title with the description under it and
 // the actions at the right; one quiet line of properties (Project, Shared
 // with, Always on, Owner, Updated), small muted labels before their values,
@@ -6,12 +6,12 @@
 // width, the way chat renders it, with no card around them.
 //
 // The audience is said once, in the properties line: "Everyone at ‹org›",
-// "Only you", or for a list a compact "Platform, Ana López +2" that
+// "Only me", or for a list a compact "Platform, Ana López +2" that
 // opens the full list.
 //
 // SkillsView owns every action and permission: it passes the actions, the
-// notes and the non-org sharing control in as slots, so this file only lays
-// them out.
+// notes and, outside MindsHub mode, the sharing control in as slots, so this
+// file only lays them out.
 
 import { Popover } from '@base-ui/react/popover';
 import Ico from './Icons';
@@ -23,15 +23,17 @@ import { relativeAge } from '../lib/formatTime';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
+  ONLY_ME_TITLE,
   canEditSkill,
   everyoneAtLabel,
+  isOrgSharingOn,
   isSkillAlwaysOn,
   namesDefaultTeam,
   skillAccess,
   skillOwnerEmail,
   withoutDefaultTeam,
 } from '../lib/orgSharing';
-import { useHubTeams, useKnownPeople } from '../hooks/useOrgSharing';
+import { useKnownPeople, useMindsHubTeams } from '../hooks/useOrgSharing';
 import { isSharedSkill } from '../lib/skillSharing';
 
 const NO_IDS = [];
@@ -68,11 +70,11 @@ function OwnerValue({ skill }) {
 
 /**
  * Who a skill reaches, said once and briefly: "Everyone at ‹org›", "Only
- * you", or the first names of a list with "+N", which opens the whole list.
+ * me", or the first names of a list with "+N", which opens the whole list.
  */
 function AudienceValue({ skill, orgName, teamsState: teamsProp }) {
   const access = skillAccess(skill);
-  const ownTeams = useHubTeams(!teamsProp);
+  const ownTeams = useMindsHubTeams(!teamsProp);
   const teamsState = teamsProp || ownTeams;
   const teams = teamsState.teams || NO_IDS;
   const everyone = access.orgAllowed || namesDefaultTeam(access.allowedTeamIds, teams);
@@ -84,7 +86,7 @@ function AudienceValue({ skill, orgName, teamsState: teamsProp }) {
   );
 
   if (everyone) return <span className="truncate">{everyoneAtLabel(orgName)}</span>;
-  if (teamIds.length === 0 && access.allowedUserIds.length === 0) return <span>Only you</span>;
+  if (teamIds.length === 0 && access.allowedUserIds.length === 0) return <span>{ONLY_ME_TITLE}</span>;
 
   const names = listed.map((item) => item.primary);
   const rest = names.length - NAMES_SHOWN;
@@ -141,7 +143,8 @@ function formatDate(iso) {
  * @param {{
  *   skill: object,
  *   projects?: Array<object>,
- *   capabilities?: { enabled: boolean, org_name?: string | null } | null,
+ *   capabilities?: import('../lib/sharingContract').SharingCapabilities | null,
+ *   orgName?: string | null,
  *   teamsState?: object | null,
  *   enabled: boolean,
  *   disabledForEveryone?: boolean,
@@ -153,19 +156,19 @@ function formatDate(iso) {
  * }} props
  */
 export default function SkillDetail({
-  skill, projects = [], capabilities = null, teamsState = null, enabled = true, disabledForEveryone = false,
+  skill, projects = [], capabilities = null, orgName = null, teamsState = null, enabled = true, disabledForEveryone = false,
   actions = null, notes = null, sharingControl = null, canEdit = false, onEdit,
 }) {
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project) || 'All projects';
-  // Org sharing is on where `capabilities` (useSharingCapabilities' answer)
-  // says so.
-  const orgSharingOn = capabilities?.enabled === true;
+  // Sharing in MindsHub mode is on where `capabilities`
+  // (useSharingCapabilities' answer) says so.
+  const orgSharingOn = isOrgSharingOn(capabilities);
   const alwaysOn = orgSharingOn && isSkillAlwaysOn(skill);
   const age = relativeAge(skill.updatedAt);
   const updated = formatDate(skill.updatedAt);
   const showAudience = orgSharingOn && !skill.isBuiltin;
-  // Without org sharing a skill is shared with everyone or nobody; one that
-  // offers no control (someone else's) still says so.
+  // Without sharing in MindsHub mode a skill is shared with everyone or
+  // nobody; one that offers no control (someone else's) still says so.
   const sharedWithEveryone = !orgSharingOn && !sharingControl && isSharedSkill(skill);
   const showOwner = orgSharingOn && !skill.isBuiltin && (skillOwnerEmail(skill) || skill.owner?.id);
   const instructions = (skill.declarative || '').trim();
@@ -203,7 +206,7 @@ export default function SkillDetail({
         </Property>
         {showAudience && (
           <Property label={SHARED_WITH_LABEL} testId="skill-meta-audience">
-            <AudienceValue skill={skill} orgName={capabilities.org_name} teamsState={teamsState} />
+            <AudienceValue skill={skill} orgName={orgName} teamsState={teamsState} />
           </Property>
         )}
         {sharingControl && (
