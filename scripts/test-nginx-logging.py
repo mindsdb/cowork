@@ -25,6 +25,8 @@ class NginxLoggingTests(unittest.TestCase):
                 (base / 'www/index.html').write_text('ready')
                 (base / 'www/index-web.html').write_text('ready')
                 (base / 'www/asset.txt').write_text('ordinary success')
+                (base / 'www/brand').mkdir()
+                (base / 'www/brand/brand.js').write_text('window.COWORK_DEPLOYMENT_BRAND = {};')
                 (base / 'diagnostic-logging.conf.template').write_text((ROOT / 'scripts/nginx-logging.conf.template').read_text())
                 wrapper = (ROOT / 'scripts/nginx-diagnostics.sh').read_text().replace('/etc/nginx', str(base))
                 (base / 'run.sh').write_text(wrapper)
@@ -64,16 +66,22 @@ class NginxLoggingTests(unittest.TestCase):
                                     break
                             except OSError:
                                 time.sleep(.05)
-                        def get(target):
+                        def fetch(target):
                             connection = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
                             connection.request('GET', target)
                             response = connection.getresponse()
                             response.read()
-                            status = response.status
                             connection.close()
-                            return status
+                            return response
+                        def get(target):
+                            return fetch(target).status
                         self.assertEqual(get('/healthz?code=private-query'), 200)
                         self.assertEqual(get('/asset.txt?code=private-query'), 200)
+                        # A deployment swaps the brand's files without a new
+                        # image, so they revalidate, and a missing one is no shell.
+                        brand = fetch('/brand/brand.js?v=private-query')
+                        self.assertEqual((brand.status, brand.getheader('Cache-Control')), (200, 'no-cache'))
+                        self.assertEqual(get('/brand/icon.png?v=private-query'), 404)
                         self.assertEqual(get('/diagnostic-upstream?token=private-query'), 502)
                         (base / 'www/index.html').unlink()
                         (base / 'www/index-web.html').unlink()
@@ -85,7 +93,7 @@ class NginxLoggingTests(unittest.TestCase):
                 self.assertNotIn('private-query', raw)
                 events = [json.loads(line) for line in raw.splitlines()]
                 accesses = [event for event in events if event['logger'] == 'nginx.access']
-                self.assertEqual([event['status_code'] for event in accesses], [502, 503] if mode == 'errors' else [200, 502, 503])
+                self.assertEqual([event['status_code'] for event in accesses], [404, 502, 503] if mode == 'errors' else [200, 200, 404, 502, 503])
                 self.assertEqual(accesses[-1]['log_level'], 'ERROR')
                 self.assertTrue(any(event.get('reason') == 'upstream_connect_failed' for event in events))
                 self.assertTrue(all(event['event'] for event in events))

@@ -143,6 +143,8 @@ interface ShellAutoUpdateSnapshot {
 
 declare global {
   const __PLATFORM_UI__: boolean;
+  /** True for the web build (BUILD_TARGET=web), false for desktop. */
+  const __WEB_BUILD__: boolean;
   /** App display version injected by Vite at build time. */
   const __APP_VERSION__: string;
   /** Short git commit hash at build time, or '' outside a repo. */
@@ -151,7 +153,7 @@ declare global {
   const __BUILD_TIME__: string;
   interface Window {
     antontron: AntonTronAPI;
-    /** A deployment brand's config, set by /brand/brand.js on web builds with the platform UI off. */
+    /** A deployment brand's config, set by /brand/brand.js on web builds. */
     COWORK_DEPLOYMENT_BRAND?: unknown;
   }
 

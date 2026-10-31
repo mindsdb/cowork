@@ -51,9 +51,9 @@ export const SKINS: Skin[] = BRAND_SKIN ? [BRAND_SKIN, ...STOCK_SKINS] : STOCK_S
 export const DEFAULT_SKIN = SKINS[0].id;
 
 /**
- * A loaded brand with skinLocked keeps every browser on DEFAULT_SKIN. Hosted
- * web and desktop load no brand, and a brand that failed to load sets nothing,
- * so it is false there.
+ * A loaded brand with skinLocked keeps every browser on DEFAULT_SKIN. Desktop
+ * loads no brand, and a brand that failed to load sets nothing, so it is false
+ * there.
  */
 export const SKIN_LOCKED = DEPLOYMENT_BRAND?.skinLocked === true;
 

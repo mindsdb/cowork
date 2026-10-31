@@ -281,11 +281,12 @@ this control, and the browser's home-screen icon is unchanged.
 
 ### Deployment brand
 
-A web build with the platform UI off (`BUILD_TARGET=web` and
-`VITE_PLATFORM_UI` not `true`) reads an optional brand from its own origin
-when the page loads. One build then serves any number of deployments, and a
-deployment changes its brand by serving different files, with no rebuild.
-Hosted web and desktop never load a brand: their HTML has no reference to it.
+Every web build (`BUILD_TARGET=web`) reads an optional brand from its own
+origin when the page loads, with the platform UI on or off. One build then
+serves any number of deployments, and a deployment changes its brand by
+serving different files, with no rebuild. That includes a hosted deployment
+that serves its own brand. Desktop never loads a brand: its HTML has no
+reference to it.
 
 | Path | What it is |
 |---|---|
@@ -297,19 +298,28 @@ The build marks the stock title, favicon comment and icon links with
 `<!-- cowork-deployment-brand:start -->` and `<!-- cowork-deployment-brand:end -->`.
 A deployment server can replace that entire region with its escaped title and
 literal icon links before sending the page. The markers appear only in web
-builds with the platform UI off. Without a replacement, the stock content stays.
+builds. Without a replacement, the stock content stays.
 
 The blocking brand script and title line follow this region, before the app's
 bundle, so the first render already has the brand. The script must never be
 `async` or `defer`. The stylesheet goes last in `<head>`. Cowork ships empty
 stock files in `src/renderer/public/brand/`, and `scripts/spa_wrapper.py`
-serves them, so a deployment that serves nothing of its own looks stock.
+and the frontend image's nginx (`scripts/nginx-frontend.conf`) serve them, so
+a deployment that serves nothing of its own looks stock. A hosted deployment
+that serves its own brand mounts its files over the image's `/brand/` folder.
+nginx sends them with `Cache-Control: no-cache` and an ETag, and answers a
+missing one with a 404.
 
-The wrapper identifies its HTML shell responses with `X-Cowork-Spa-Shell: 1`,
+`scripts/spa_wrapper.py` marks its HTML shell responses with `X-Cowork-Spa-Shell: 1`,
 including `/`, `/index-web.html` and deep client routes. Assets, API responses
 and redirects have no such header. A deployment proxy can use the header to
 distinguish the shell from other HTML. The build rejects missing, duplicate or
 reordered title and icon anchors, and markers already present in the source.
+
+The hosted build adds the draft hosts to the page's CSP meta tag as well.
+That tag allows same-origin scripts, inline scripts, styles and images, so the
+brand's script, its title line, its stylesheet and its images load there too.
+Both changes are made at build time, and either order gives the same page.
 
 Every field is optional. A field that breaks its rule is ignored, with one
 console warning, and the rest still apply. Unknown keys are ignored, so the
