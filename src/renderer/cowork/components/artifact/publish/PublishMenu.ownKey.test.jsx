@@ -38,23 +38,23 @@ function shareButton() {
 }
 
 describe('PublishMenu with the platform UI off and no shared publish token', () => {
-  it('opens an unpublished artifact with nothing picked and "Only you" offered', () => {
+  it('opens an unpublished artifact with nothing picked and "Only me" offered', () => {
     const ctrl = makeController();
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Share'));
 
     for (const radio of screen.getAllByRole('radio')) expect(radio).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('radio', { name: /Only you/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Only me/ })).toBeInTheDocument();
     expect(screen.getByText('Anyone on the internet with the URL')).toBeInTheDocument();
     expect(shareButton()).toBeDisabled();
   });
 
-  it('shares as owner-only once "Only you" is picked', () => {
+  it('shares as owner-only once "Only me" is picked', () => {
     const ctrl = makeController();
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Share'));
 
-    fireEvent.click(screen.getByRole('radio', { name: /Only you/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /Only me/ }));
     fireEvent.click(shareButton());
     expect(ctrl.publish).toHaveBeenCalledWith({
       mode: 'restricted', emails: [], org_allowed: false, owner_only: true,

@@ -30,8 +30,9 @@ import {
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
 import { OWNED_BY_OTHER_USER_MESSAGE, isOwnedByOtherUserError } from './publishErrors';
-import { useHubTeams, useSharingCapabilities } from '../../../hooks/useOrgSharing';
-import { accessAllowedTeamIds, accessAllowedUserIds, accessOrgAllowed } from '../../../lib/orgSharing';
+import { useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../../../hooks/useOrgSharing';
+import { isOrgSharingOn } from '../../../lib/orgSharing';
+import { readArtifactAudience, readAudienceAnswer, readAudienceRequest } from '../../../lib/sharingContract';
 
 // Map the publish failures a user can act on (a missing Minds API key, an
 // artifact another account published) to a clear message; everything else
@@ -41,21 +42,6 @@ function friendlyPublishError(e) {
   const msg = e?.message || String(e);
   if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to share.';
   return `Sharing failed: ${msg}`;
-}
-
-// Whether a publish answer says which teams or people in the org it let in
-// (even none), and whether it says if the org is in. Otherwise the request
-// stands in for it.
-function hasTeamField(r) {
-  return Array.isArray(r?.allowed_team_ids) || Array.isArray(r?.allowedTeamIds);
-}
-
-function hasUserField(r) {
-  return Array.isArray(r?.allowed_user_ids) || Array.isArray(r?.allowedUserIds);
-}
-
-function hasOrgField(r) {
-  return r?.org_allowed != null || r?.orgAllowed != null || r?.org_wide != null || r?.orgWide != null;
 }
 
 function modeFromArtifact(a) {
@@ -81,8 +67,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [accessEmails, setAccessEmails] = useState(artifact?.accessEmails || []);
   const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
   const [ownerOnly, setOwnerOnly] = useState(!!artifact?.ownerOnly);
-  // Teams and people in the org the restricted access names (ENG-3787);
-  // org mode only.
+  // Teams and people in the org the restricted access names; MindsHub mode
+  // only.
   const [teamIds, setTeamIds] = useState(artifact?.allowedTeamIds || []);
   const [userIds, setUserIds] = useState(artifact?.allowedUserIds || []);
   // Have we synced the *real* access list from the server (or a publish
@@ -90,10 +76,19 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // grid/rail objects carry `accessMode` from the listing (so the list they
   // hold is authoritative → usable immediately), but a synthesized chat-bubble
   // object has no `accessMode`, so we must not trust its empty list until a
-  // fetch lands. Guards the "Update" button against overwriting the server's
-  // list with a never-loaded empty one (ENG-931). Reset per-artifact by the
-  // open effect below (keyed on targetPath), NOT by the broad re-sync effect.
-  const [accessLoaded, setAccessLoaded] = useState(hasServerAccess(artifact));
+  // fetch lands. An org card never counts: it carries `accessMode` but no
+  // audience, so only the access route's answer does. Guards the "Update"
+  // button against overwriting the server's list with a never-loaded empty
+  // one. Reset per-artifact by the open effect below (keyed on the
+  // artifact's identity), NOT by the broad re-sync effect.
+  const [accessLoaded, setAccessLoaded] = useState(!orgMode && hasServerAccess(artifact));
+  // The same, for a callback that must not take `accessLoaded` as a dependency.
+  const accessLoadedRef = useRef(accessLoaded);
+  accessLoadedRef.current = accessLoaded;
+  // Whether the access route's last read failed (MindsHub mode). Until an answer
+  // has landed, the panel then offers Retry instead of the card's empty
+  // audience.
+  const [accessLoadFailed, setAccessLoadFailed] = useState(false);
   const [artifactKey, setArtifactKey] = useState(artifact?.artifactKey || '');
   const [modified, setModified] = useState(!!artifact?.modified);
   const [phase, setPhase] = useState('idle'); // idle | publishing | updating | unpublishing | activating
@@ -104,61 +99,93 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [versions, setVersions] = useState([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
 
-  const seededPathRef = useRef(artifact?.path);
+  const targetPath = publishTargetPath(artifact);
+  // Names the artifact on screen: its path on desktop, project and id in org
+  // mode. The ref is written during render so a switch is seen before any
+  // refresh() response from the previous artifact lands.
+  const identityKey = orgMode
+    ? `${artifact?.projectId || ''}/${artifact?.id || ''}`
+    : targetPath;
+  const identityKeyRef = useRef(identityKey);
+  identityKeyRef.current = identityKey;
+
+  const seededIdentityRef = useRef(identityKey);
   // Re-sync when the artifact identity changes (opening a different one
   // without unmounting) or the server pushed fresh state via the parent.
   useEffect(() => {
-    const samePath = seededPathRef.current === artifact?.path;
-    seededPathRef.current = artifact?.path;
+    const sameArtifact = seededIdentityRef.current === identityKey;
+    seededIdentityRef.current = identityKey;
     setPublishedUrl(artifact?.publishedUrl || '');
     setAccessMode(modeFromArtifact(artifact));
-    setAccessPassword(artifact?.accessPassword || '');
-    setAccessEmails(artifact?.accessEmails || []);
-    setOrgAllowed(!!artifact?.orgAllowed);
-    setOwnerOnly(!!artifact?.ownerOnly);
-    setTeamIds(artifact?.allowedTeamIds || []);
-    setUserIds(artifact?.allowedUserIds || []);
+    // An org card carries no audience and no password, and the parent hands
+    // over a fresh card on every list reload. So in MindsHub mode the audience
+    // loaded for this artifact stays; a different artifact starts from its
+    // card while the open effect below waits for the access route again.
+    if (!orgMode || !sameArtifact) {
+      setAccessPassword(artifact?.accessPassword || '');
+      setAccessEmails(artifact?.accessEmails || []);
+      setOrgAllowed(!!artifact?.orgAllowed);
+      setOwnerOnly(!!artifact?.ownerOnly);
+      setTeamIds(artifact?.allowedTeamIds || []);
+      setUserIds(artifact?.allowedUserIds || []);
+    }
     // A refresh learns the key from the server, but its report back to the
     // parent doesn't carry it, so an access change in that report would reset
     // it to the prop's empty one. Keep it until the artifact itself changes.
-    setArtifactKey((cur) => artifact?.artifactKey || (samePath ? cur : ''));
+    setArtifactKey((cur) => artifact?.artifactKey || (sameArtifact ? cur : ''));
     setModified(!!artifact?.modified);
     setError('');
     setVersions([]);  // stale history must never carry across artifacts
-  }, [artifact?.path, artifact?.publishedUrl, artifact?.accessMode, artifact?.accessProtected, artifact?.modified]);
+  }, [identityKey, artifact?.path, artifact?.publishedUrl, artifact?.accessMode, artifact?.accessProtected, artifact?.modified]);
 
-  const targetPath = publishTargetPath(artifact);
   // Desktop addresses an artifact by absolute path; org mode by
   // project + artifact id, because there is no path the client can name. Every
   // guard below asks `canAct` rather than `targetPath` so the org path isn't
   // refused by a check that only desktop can satisfy.
   const canAct = orgMode ? canUseArtifactWorkspace(artifact) : !!targetPath;
   // Update / stop-sharing / version history all live on `/publish`, which is
-  // local-only server-side. Offering them on Cloud would mean buttons that
-  // answer 4xx, so the menu hides them instead. Content stays in sync there
-  // anyway: autopublish re-publishes on the turn that changes the artifact.
-  const supportsPublishRoutes = !orgMode;
-  // Org sharing (ENG-3787): teams and "Everyone at ‹org›" in the restricted
-  // choice. Asked only on an org deployment with the panel open.
-  const capabilities = useSharingCapabilities(orgMode && enabled);
-  const teams = useHubTeams(orgMode && enabled && capabilities.enabled);
-  const orgSharing = { enabled: capabilities.enabled, orgName: capabilities.org_name, teams };
-  // Names the artifact a refresh() response belongs to. Written during render
-  // so a switch is seen before any response from the previous artifact lands.
-  const identityKey = orgMode
-    ? `${artifact?.projectId || ''}/${artifact?.id || ''}`
-    : targetPath;
-  const identityKeyRef = useRef(identityKey);
-  identityKeyRef.current = identityKey;
+  // local-only server-side. In MindsHub mode (`orgMode`, which the menu is
+  // handed) they would answer 4xx, so update, unpublish, loadVersions and
+  // activate do nothing there and the menu hides them. Content stays in sync
+  // there anyway: autopublish re-publishes on the turn that changes the
+  // artifact.
+  // Sharing in MindsHub mode: teams and "Everyone at ‹org›" in the
+  // restricted choice. `orgSharing` is useSharingCapabilities' answer as it
+  // comes (`status`, `capabilities`, `retry`) plus the caller's `teams` and
+  // the organization's name (`orgName`, useSharingOrgName). It is asked only
+  // in MindsHub mode with the panel open; anywhere else it reads as off,
+  // `status` idle. In MindsHub mode the panel saves nothing until `status` is
+  // ready.
+  const sharing = useSharingCapabilities(orgMode && enabled);
+  const sharingOn = orgMode && enabled && isOrgSharingOn(sharing.capabilities);
+  const teams = useMindsHubTeams(sharingOn);
+  const orgName = useSharingOrgName(sharingOn);
+  const orgSharing = { ...sharing, teams, orgName };
   const refreshRequestRef = useRef(0);
   const busy = phase !== 'idle';
+  /* Whether the open-time access read still has to run: set when the
+     artifact on screen changes during a save (refresh() does nothing while
+     one runs), and when a save that dropped that read fails. The effect on
+     `busy` below runs it once the phase is idle again; `readAgain` wakes that
+     effect for a failed save, whose phase may never render as busy. */
+  const openReadPendingRef = useRef(false);
+  const [readAgain, setReadAgain] = useState(0);
 
   // `access` is the payload `buildAccessPayload` makes, sent as is, so its
-  // `notify` (the newly added people to email, ENG-3787) reaches the
-  // server whichever route carries it.
+  // `notify` (the newly added people to email) reaches the server whichever
+  // route carries it.
   const publish = useCallback(async (access) => {
     if (phase !== 'idle' || !canAct) return false;
+    /* A read already in flight answers with the access from before this save,
+       so it must not land after the save's answer and undo it. */
+    ++refreshRequestRef.current;
     const wasPublished = !!publishedUrl;
+    /* The answer is applied only if the artifact it saved is still on screen.
+       Without this, A's answer landing after the viewer moved to B writes A's
+       audience into B's state and marks B's access as loaded before B's own
+       read answers (the same check as refresh()). */
+    const identity = identityKey;
+    const isCurrent = () => identity === identityKeyRef.current;
     setPhase('publishing');
     setError('');
     try {
@@ -172,22 +199,27 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       // Server is authoritative (it degrades an empty restricted/password
       // selection back to public); fall back to the requested access.
       const m = r.accessMode || access?.mode || 'public';
+      /* Only count the analytics event on the transition to published, not
+         on every in-place access change. The save happened even when the
+         viewer has since moved on, so it counts either way. */
+      if (!wasPublished) trackArtifactPublished(r.report_id || r.reportId || artifact?.id || '', m);
+      // False, so the panel now on screen does not act on another artifact's save.
+      if (!isCurrent()) return false;
+      // What the answer says about the audience; a field it leaves out is
+      // taken from the request that was sent.
+      const restricted = m === 'restricted';
+      const said = readAudienceAnswer(r);
+      const asked = readAudienceRequest(access);
       const next = {
         publishedUrl: r.url,
         accessMode: m,
         accessProtected: m === 'password',
         accessPassword: m === 'password' ? (access?.password || '') : '',
-        // The request's outside emails: `allowed_emails` with org sharing,
-        // `emails` without it.
-        accessEmails: m === 'restricted' ? (r.accessEmails || r.allowed_emails || access?.allowed_emails || access?.emails || []) : [],
-        orgAllowed: m === 'restricted' ? (hasOrgField(r) ? accessOrgAllowed(r) : !!access?.org_allowed) : false,
-        allowedTeamIds: m === 'restricted'
-          ? (hasTeamField(r) ? accessAllowedTeamIds(r) : (access?.allowed_team_ids || []))
-          : [],
-        allowedUserIds: m === 'restricted'
-          ? (hasUserField(r) ? accessAllowedUserIds(r) : (access?.allowed_user_ids || []))
-          : [],
-        ownerOnly: m === 'restricted' ? !!(r.ownerOnly ?? access?.owner_only) : false,
+        accessEmails: restricted ? (said.emails ?? asked.emails) : [],
+        orgAllowed: restricted ? (said.orgAllowed ?? asked.orgAllowed) : false,
+        allowedTeamIds: restricted ? (said.teamIds ?? asked.teamIds) : [],
+        allowedUserIds: restricted ? (said.userIds ?? asked.userIds) : [],
+        ownerOnly: restricted ? (said.ownerOnly ?? asked.ownerOnly) : false,
         artifactKey: r.artifactKey || artifact?.artifactKey || '',
         modified: false,
       };
@@ -202,21 +234,27 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessLoaded(true);  // publish response is authoritative for the list
       setArtifactKey(next.artifactKey);
       setModified(false);
-      // Only count the analytics event on the transition to published,
-      // not on every in-place access change.
-      if (!wasPublished) trackArtifactPublished(r.report_id || r.reportId || artifact?.id || '', m);
       onChange?.({ ...artifact, ...next });
       return true;
     } catch (e) {
-      setError(friendlyPublishError(e));
+      if (isCurrent()) {
+        setError(friendlyPublishError(e));
+        // The save dropped the open-time read above; with the access still
+        // unread, that read runs again once the phase is idle, so the panel
+        // doesn't wait on "Loading current access…" for a read never sent.
+        if (orgMode && !accessLoadedRef.current) {
+          openReadPendingRef.current = true;
+          setReadAgain((n) => n + 1);
+        }
+      }
       return false;
     } finally {
       setPhase('idle');
     }
-  }, [phase, canAct, orgMode, targetPath, publishedUrl, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, identityKey, publishedUrl, artifact, onChange]);
 
   const update = useCallback(async () => {
-    if (phase !== 'idle' || !supportsPublishRoutes || !targetPath) return false;
+    if (phase !== 'idle' || orgMode || !targetPath) return false;
     setPhase('updating');
     setError('');
     try {
@@ -232,10 +270,10 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, supportsPublishRoutes, targetPath, publishedUrl, artifact, onChange]);
+  }, [phase, orgMode, targetPath, publishedUrl, artifact, onChange]);
 
   const unpublish = useCallback(async () => {
-    if (phase !== 'idle' || !supportsPublishRoutes || !targetPath) return false;
+    if (phase !== 'idle' || orgMode || !targetPath) return false;
     setPhase('unpublishing');
     setError('');
     try {
@@ -249,7 +287,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, supportsPublishRoutes, targetPath, artifact, onChange]);
+  }, [phase, orgMode, targetPath, artifact, onChange]);
 
   // Cheap re-check of the server's published/modified status — lights up
   // "Update" when the artifact changes underneath an open preview, without a
@@ -265,38 +303,41 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     const isCurrent = () => request === refreshRequestRef.current
       && identity === identityKeyRef.current;
     // Org mode reads the owner-only access route instead of the path-addressed
-    // status endpoint. It is the ONLY way the real email list reaches this
-    // client: the artifact card withholds `accessEmails`/`accessPassword` on a
+    // status endpoint. It is the ONLY way the audience reaches this client:
+    // the artifact card carries none, and no `accessPassword`, on a
     // deployment whose artifacts root is shared by the whole organization,
     // because a card cannot tell owner from co-member. `publishedUrl` and
     // `modified` are not this route's to answer — autopublish owns both — so
     // they are left as the parent supplied them.
     if (orgMode) {
+      setAccessLoadFailed(false);
       let a = null;
-      try { a = await loadArtifactAccess(artifact); } catch { /* leave state as-is */ }
-      if (!a || !isCurrent()) return;
+      try { a = await loadArtifactAccess(artifact); } catch { /* reported below */ }
+      if (!isCurrent()) return;
+      // A failure keeps whatever access is already loaded.
+      if (!a) { setAccessLoadFailed(true); return; }
       const nextMode = a.accessMode || 'public';
-      const nextEmails = Array.isArray(a.accessEmails) ? a.accessEmails
-        : (Array.isArray(a.allowed_emails) ? a.allowed_emails : []);
-      const nextOrg = accessOrgAllowed(a);
-      const nextTeams = accessAllowedTeamIds(a);
-      const nextUsers = accessAllowedUserIds(a);
+      const audience = readArtifactAudience(a);
+      const nextEmails = audience.emails;
+      const nextOrg = audience.orgAllowed;
+      const nextTeams = audience.teamIds;
+      const nextUsers = audience.userIds;
+      const nextOwnerOnly = audience.ownerOnly === true;
       setAccessMode(nextMode);
       setAccessEmails(nextEmails);
       setOrgAllowed(nextOrg);
       setTeamIds(nextTeams);
       setUserIds(nextUsers);
-      setOwnerOnly(!!a.ownerOnly);
+      setOwnerOnly(nextOwnerOnly);
       setAccessPassword(a.accessPassword || '');
       if (a.artifactKey) setArtifactKey(a.artifactKey);
       setAccessLoaded(true);
-      // Same self-clobber hazard as the desktop branch below: the broad re-sync
-      // effect re-seeds from the prop, so the loaded list has to go back into it.
-      // Once the prop already carries it, a repeat report only churns the
-      // parent — and this runs on every open and window focus (ENG-3070).
+      // The parent keeps its own copy of the artifact, so the loaded audience
+      // goes back to it. Once the prop already carries it, a repeat report only
+      // churns the parent, and this runs on every open and window focus.
       const propSame = modeFromArtifact(artifact) === nextMode
         && !!artifact?.orgAllowed === nextOrg
-        && !!artifact?.ownerOnly === !!a.ownerOnly
+        && !!artifact?.ownerOnly === nextOwnerOnly
         && Array.isArray(artifact?.accessEmails)
         && artifact.accessEmails.join(',') === nextEmails.join(',')
         && (artifact?.allowedTeamIds || []).join(',') === nextTeams.join(',')
@@ -307,7 +348,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         accessMode: nextMode,
         accessEmails: nextEmails,
         orgAllowed: nextOrg,
-        ownerOnly: !!a.ownerOnly,
+        ownerOnly: nextOwnerOnly,
         allowedTeamIds: nextTeams,
         allowedUserIds: nextUsers,
       });
@@ -364,7 +405,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // when it opens, not on every render. Any error (404 / older server / not
   // published) clears the list so the UI hides the version section.
   const loadVersions = useCallback(async () => {
-    if (!supportsPublishRoutes || !targetPath || !publishedUrl) { setVersions([]); return; }
+    if (orgMode || !targetPath || !publishedUrl) { setVersions([]); return; }
     setVersionsLoading(true);
     try {
       const r = await listArtifactVersions(targetPath);
@@ -374,13 +415,13 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setVersionsLoading(false);
     }
-  }, [supportsPublishRoutes, targetPath, publishedUrl]);
+  }, [orgMode, targetPath, publishedUrl]);
 
   // Roll the live URL back to an older version. The public URL is stable, so
   // afterwards we just re-sync status (the `modified` badge lights up — the
   // on-disk workspace now differs from the older live version) and the list.
   const activate = useCallback(async (md5) => {
-    if (phase !== 'idle' || !supportsPublishRoutes || !targetPath || !md5) return false;
+    if (phase !== 'idle' || orgMode || !targetPath || !md5) return false;
     setPhase('activating');
     setError('');
     try {
@@ -395,7 +436,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       refresh();
       loadVersions();
     }
-  }, [phase, targetPath, refresh, loadVersions]);
+  }, [phase, orgMode, targetPath, refresh, loadVersions]);
 
   // Hold the latest `refresh` in a ref so the listener effect below doesn't
   // re-subscribe every time `refresh`'s identity changes (it depends on
@@ -408,18 +449,32 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // (or switches artifacts without unmounting). This is what makes a
   // synthesized chat-bubble object — or a stale prop — show the *real* list
   // before it can be edited, and it works for every artifact type (unlike the
-  // mount payload, which text/.md previews bypass). Keyed on targetPath so the
+  // mount payload, which text/.md previews bypass). Keyed on the artifact's
+  // identity (its path on desktop, project and id in MindsHub mode) so the
   // onChange-driven prop churn from refresh() itself doesn't re-fire it, and so
   // the accessLoaded reset is per-artifact-identity (never stuck — ENG-931).
   useEffect(() => {
     if (!enabled || !canAct) return;
     // Reset readiness from the prop's own knowledge first, then confirm via the
-    // fetch: grid/rail (carry accessMode) stay usable immediately, chat-bubble
-    // (no accessMode) is guarded until the fetch lands.
-    setAccessLoaded(hasServerAccess(artifact));
+    // fetch: grid/rail (carry accessMode) stay usable immediately on desktop;
+    // a chat-bubble (no accessMode) and every org card are guarded until the
+    // fetch lands.
+    setAccessLoaded(!orgMode && hasServerAccess(artifact));
+    setAccessLoadFailed(false);
+    openReadPendingRef.current = busy;
     refreshRef.current?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, canAct, targetPath]);
+  }, [enabled, canAct, identityKey]);
+
+  /* refresh() does nothing while an action is in flight. A switch made during
+     a save on the previous artifact therefore reads the new artifact's access
+     once that save settles, and so does a failed save that dropped the open
+     read; otherwise its panel would wait for a read that never starts. */
+  useEffect(() => {
+    if (busy || !openReadPendingRef.current) return;
+    openReadPendingRef.current = false;
+    if (enabled && canAct) refreshRef.current?.();
+  }, [busy, enabled, canAct, readAgain]);
 
   // Refresh when the user returns to the window / tab — catches external
   // edits (files changed on disk) that don't flow through the parent's
@@ -439,10 +494,10 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   return {
     publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, ownerOnly, artifactKey, modified,
     allowedTeamIds: teamIds, allowedUserIds: userIds, orgSharing,
-    accessLoaded,
+    accessLoaded, accessLoadFailed,
     phase, busy, error, setError,
     versions, versionsLoading,
-    supportsPublishRoutes,
+    orgMode,
     publish, update, unpublish, refresh, loadVersions, activate,
   };
 }

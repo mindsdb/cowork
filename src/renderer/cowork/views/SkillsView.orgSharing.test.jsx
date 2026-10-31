@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-/* Org sharing (ENG-3787) through the real skills store; only HTTP is mocked. */
+/* Sharing in MindsHub mode through the real skills store; only HTTP is mocked. */
 const api = vi.hoisted(() => ({
   fetchProjects: vi.fn(async () => []),
   fetchSkills: vi.fn(),
@@ -13,15 +13,21 @@ const api = vi.hoisted(() => ({
   setSkillEnabledForMe: vi.fn(),
   uploadSkillFile: vi.fn(),
   fetchSkillSharingCapabilities: vi.fn(),
-  fetchHubTeams: vi.fn(),
-  fetchHubPeopleByIds: vi.fn(async () => ({ reachable: true, people: [] })),
-  fetchHubDirectory: vi.fn(async () => ({ reachable: true, people: [], truncated: false })),
+  fetchMindsHubTeams: vi.fn(),
+  fetchMindsHubPeopleByIds: vi.fn(async () => ({ reachable: true, people: [] })),
+  fetchMindsHubDirectory: vi.fn(async () => ({ reachable: true, people: [], truncated: false })),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
 
 vi.mock('../api', () => api);
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => toast }));
-vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
+vi.mock('../../platform/host', () => ({ host: { isWeb: true }, getAccessToken: async () => null }));
+/* The organization's name comes from the app's own organization list
+   (useMindsOrgs' active organization), never from the capabilities. */
+const orgs = vi.hoisted(() => ({ activeOrg: null }));
+vi.mock('../hooks/useMindsOrgs', () => ({
+  useMindsOrgs: () => ({ orgs: orgs.activeOrg ? [orgs.activeOrg] : [], activeOrg: orgs.activeOrg }),
+}));
 
 const OWNER_CAPS = { canEdit: true, canDelete: true, canDisable: true };
 const READER_CAPS = { canEdit: false, canDelete: false, canDisable: false };
@@ -47,7 +53,7 @@ const fromColleague = {
   capabilities: READER_CAPS,
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
-const orgWide = {
+const sharedWithEveryone = {
   label: 'brand-voice', slug: 'brand-voice', description: 'Org.', isBuiltin: false, enabled: true,
   section: 'org', canEdit: false, owner: { id: 'u3', email: 'admin@acme.com' },
   access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] }, capabilities: READER_CAPS,
@@ -65,11 +71,11 @@ const builtin = {
   enabledForMe: true, canDisableForEveryone: false, visibleToOthers: true,
 };
 
-async function renderPage(skills, capabilities = { enabled: true, can_share_org: false, org_name: 'Acme' }) {
+async function renderPage(skills, capabilities = { enabled: true, canShareSkillsOrg: false }) {
   vi.resetModules();
   api.fetchSkills.mockResolvedValue({ skills, canShare: false });
   api.fetchSkillSharingCapabilities.mockResolvedValue(capabilities);
-  api.fetchHubTeams.mockResolvedValue({ reachable: true, teams: [PLATFORM] });
+  api.fetchMindsHubTeams.mockResolvedValue({ reachable: true, teams: [PLATFORM] });
   const { default: SkillsView } = await import('./SkillsView');
   render(<SkillsView />);
   await screen.findByText(skills[0].label);
@@ -89,14 +95,25 @@ async function pickSpecificPerson(user, dialog, query, person) {
   await user.click(await screen.findByRole('option', { name: person }));
 }
 
+/* The first import of SkillsView transforms its whole module graph, which
+   takes seconds on a loaded machine; each test then imports it again after
+   vi.resetModules, which is quick once transformed. Importing it once here
+   keeps that cost out of the first test's timeout. */
+beforeAll(async () => {
+  await import('./SkillsView');
+});
+
+const ACME = { id: 'org-acme', name: 'acme', displayName: 'Acme', isPersonal: false };
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.removeItem('anton:skills-builtin-open');
+  orgs.activeOrg = ACME;
 });
 
-describe('SkillsView with org sharing', () => {
+describe('SkillsView with sharing in MindsHub mode', () => {
   it('groups skills by section with counts, in page order', async () => {
-    await renderPage([yours, mine, fromColleague, orgWide, builtin]);
+    await renderPage([yours, mine, fromColleague, sharedWithEveryone, builtin]);
 
     await waitFor(() => expect(section('Yours')).toBeInTheDocument());
     expect(within(section('Yours')).getByText('daily-notes')).toBeInTheDocument();
@@ -113,6 +130,15 @@ describe('SkillsView with org sharing', () => {
     expect(order).toEqual(['Yours', 'Shared with me', 'My teams', 'Everyone at Acme', 'Built-in']);
   });
 
+  it('names the everyone section Everyone in the organization when no org name is known', async () => {
+    orgs.activeOrg = null;
+    await renderPage([yours, sharedWithEveryone]);
+
+    await waitFor(() => expect(section('Everyone in the organization')).toBeInTheDocument());
+    expect(within(section('Everyone in the organization')).getByText('brand-voice')).toBeInTheDocument();
+    expect(screen.queryByText(/Everyone at/)).toBeNull();
+  });
+
   it('shows only the sections that hold a skill', async () => {
     await renderPage([yours]);
 
@@ -121,11 +147,113 @@ describe('SkillsView with org sharing', () => {
     expect(screen.queryByText(/No skills are shared/)).toBeNull();
   });
 
+  /* In MindsHub mode the page's layout hangs on the sharing settings. A read
+     that fails must say so, with Retry, rather than show the flat list a
+     build without sharing shows, as if sharing were off. */
+  describe('the sharing settings read, in MindsHub mode', () => {
+    async function renderInMindsHubMode(skills, { orgMode = true } = {}) {
+      vi.resetModules();
+      // The module instance SkillsView is about to import.
+      const { setOrgMode } = await import('../../lib/orgMode');
+      setOrgMode(orgMode);
+      api.fetchSkills.mockResolvedValue({ skills, canShare: false });
+      api.fetchMindsHubTeams.mockResolvedValue({ reachable: true, teams: [PLATFORM] });
+      const { default: SkillsView } = await import('./SkillsView');
+      render(<SkillsView />);
+      return setOrgMode;
+    }
+
+    it('says a failed read failed, offers Retry, and shows the sections once it answers', async () => {
+      const user = userEvent.setup();
+      api.fetchSkillSharingCapabilities.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
+      api.fetchSkillSharingCapabilities.mockResolvedValue({ enabled: true, canShareSkillsOrg: false });
+      const setOrgMode = await renderInMindsHubMode([yours, mine]);
+      try {
+        expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the sharing settings.");
+        // Not the flat list a build without sharing shows.
+        expect(screen.queryByText('daily-notes')).toBeNull();
+
+        await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+        await waitFor(() => expect(section('Yours')).toBeInTheDocument());
+        expect(within(section('My teams')).getByText('weekly-report')).toBeInTheDocument();
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(api.fetchSkillSharingCapabilities).toHaveBeenCalledTimes(2);
+      } finally {
+        setOrgMode(false);
+      }
+    });
+
+    it('waits for the read before it lays out the list', async () => {
+      let answer;
+      api.fetchSkillSharingCapabilities.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+      const setOrgMode = await renderInMindsHubMode([yours]);
+      try {
+        await waitFor(() => expect(api.fetchSkills).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(screen.queryByText('daily-notes')).toBeNull();
+
+        answer({ enabled: true, canShareSkillsOrg: false });
+        await waitFor(() => expect(section('Yours')).toBeInTheDocument());
+      } finally {
+        setOrgMode(false);
+      }
+    });
+
+    it('raises nothing on the desktop, where there is no sharing to miss', async () => {
+      api.fetchSkillSharingCapabilities.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
+      await renderInMindsHubMode([yours], { orgMode: false });
+
+      expect(await screen.findByText('daily-notes')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    /* The answer came back, but MindsHub couldn't give the caller's teams or
+       permissions: the list may lack their team skills, and "no" means
+       "couldn't ask". The page says so; Retry asks for both again. */
+    it.each([
+      ['teams', { teamsKnown: false }, "Couldn't reach MindsHub to load your teams, so skills shared with them aren't listed."],
+      ['permissions', { permissionsKnown: false }, "Couldn't reach MindsHub to check what you can share."],
+    ])("says MindsHub couldn't give the caller's %s, and Retry asks again", async (_, unknown, message) => {
+      const user = userEvent.setup();
+      api.fetchSkillSharingCapabilities.mockResolvedValueOnce({ enabled: true, canShareSkillsOrg: false, ...unknown });
+      api.fetchSkillSharingCapabilities.mockResolvedValue({ enabled: true, canShareSkillsOrg: false });
+      const setOrgMode = await renderInMindsHubMode([yours]);
+      try {
+        expect(await screen.findByRole('alert')).toHaveTextContent(message);
+        const loads = api.fetchSkills.mock.calls.length;
+
+        await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+        await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+        expect(api.fetchSkillSharingCapabilities).toHaveBeenCalledTimes(2);
+        await waitFor(() => expect(api.fetchSkills.mock.calls.length).toBeGreaterThan(loads));
+      } finally {
+        setOrgMode(false);
+      }
+    });
+
+    it("says the lock on a skill shared with everyone may be MindsHub not answering, not the caller's permission", async () => {
+      const user = userEvent.setup();
+      api.fetchSkillSharingCapabilities.mockResolvedValue({
+        enabled: true, canShareSkillsOrg: false, permissionsKnown: false,
+      });
+      const setOrgMode = await renderInMindsHubMode([{ ...sharedWithEveryone, access: { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] } }]);
+      try {
+        await user.click(await screen.findByText('brand-voice'));
+        expect(await screen.findByText(/Couldn't reach MindsHub to check whether you can change it\./)).toBeInTheDocument();
+        expect(screen.queryByText(/You can use it but can't change it/)).toBeNull();
+      } finally {
+        setOrgMode(false);
+      }
+    });
+  });
+
   it('keeps one empty state when there are no skills', async () => {
     vi.resetModules();
     api.fetchSkills.mockResolvedValue({ skills: [], canShare: false });
-    api.fetchSkillSharingCapabilities.mockResolvedValue({ enabled: true, can_share_org: false, org_name: 'Acme' });
-    api.fetchHubTeams.mockResolvedValue({ reachable: true, teams: [PLATFORM] });
+    api.fetchSkillSharingCapabilities.mockResolvedValue({ enabled: true, canShareSkillsOrg: false });
+    api.fetchMindsHubTeams.mockResolvedValue({ reachable: true, teams: [PLATFORM] });
     const { default: SkillsView } = await import('./SkillsView');
     render(<SkillsView />);
 
@@ -216,8 +344,8 @@ describe('SkillsView with org sharing', () => {
     expect(screen.queryByTestId('skill-detail-header')).toBeNull();
   });
 
-  it('no longer says team and org-wide sections are applied to every task', async () => {
-    await renderPage([mine, orgWide, teamSkill]);
+  it("doesn't say the team and everyone sections are applied to every task", async () => {
+    await renderPage([mine, sharedWithEveryone, teamSkill]);
 
     await waitFor(() => expect(section('Everyone at Acme')).toBeInTheDocument());
     expect(screen.queryByText('Applied to every task')).toBeNull();
@@ -226,7 +354,7 @@ describe('SkillsView with org sharing', () => {
 
   it('badges only always-on skills as Always on, with a tooltip', async () => {
     const user = userEvent.setup();
-    await renderPage([mine, orgWide, teamSkill, { ...orgWide, label: 'legal-checks', slug: 'legal-checks', access: { orgAllowed: true, alwaysOn: true } }]);
+    await renderPage([mine, sharedWithEveryone, teamSkill, { ...sharedWithEveryone, label: 'legal-checks', slug: 'legal-checks', access: { orgAllowed: true, alwaysOn: true } }]);
 
     const row = (label) => screen.getByRole('article', { name: label });
     await waitFor(() => expect(within(row('team-playbook')).getByText('Always on')).toBeInTheDocument());
@@ -241,7 +369,7 @@ describe('SkillsView with org sharing', () => {
   });
 
   it('badges each row with its audience and names the owner of a skill shared with the caller', async () => {
-    await renderPage([mine, fromColleague, orgWide]);
+    await renderPage([mine, fromColleague, sharedWithEveryone]);
 
     const row = (label) => screen.getByRole('article', { name: label });
     await waitFor(() => expect(within(row('weekly-report')).getByText('Team: Platform')).toBeInTheDocument());
@@ -261,7 +389,7 @@ describe('SkillsView with org sharing', () => {
 
   it('offers no Share, Edit or Uninstall on a skill the caller cannot edit', async () => {
     const user = userEvent.setup();
-    await renderPage([orgWide]);
+    await renderPage([sharedWithEveryone]);
     await waitFor(() => expect(section('Everyone at Acme')).toBeInTheDocument());
 
     await user.click(screen.getByText('brand-voice'));
@@ -289,6 +417,88 @@ describe('SkillsView with org sharing', () => {
     expect(screen.getByRole('note')).toHaveTextContent("It's part of every task, and only its owner can change it.");
   });
 
+  describe('always on, for a member of a team the skill is shared with', () => {
+    // The server lets a teammate edit a team skill, and switch always on,
+    // but only its owner or an admin changes who it reaches.
+    const teammate = {
+      ...teamSkill, canEdit: true, capabilities: { ...OWNER_CAPS, canShare: false },
+      access: { ...teamSkill.access, alwaysOn: false },
+    };
+
+    it('offers the switch, which saves always_on alone', async () => {
+      const user = userEvent.setup();
+      await renderPage([teammate]);
+      await waitFor(() => expect(section('My teams')).toBeInTheDocument());
+      api.setSkillAccess.mockResolvedValue({ ...teammate, access: { ...teammate.access, alwaysOn: true } });
+
+      await user.click(screen.getByText('team-playbook'));
+      await user.click(screen.getByRole('button', { name: 'Shared' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).queryByRole('radio')).toBeNull();
+      await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+      await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('team-playbook', { always_on: true }));
+      // Who can use it did not change, so the toast doesn't say it did.
+      await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+        title: 'Anton will include team-playbook in every task.', type: 'success',
+      }));
+      expect(toast.add).not.toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringMatching(/^Updated who can use/) }));
+    });
+
+    it('says so when the switch is turned off', async () => {
+      const user = userEvent.setup();
+      const on = { ...teammate, access: { ...teammate.access, alwaysOn: true } };
+      await renderPage([on]);
+      await waitFor(() => expect(section('My teams')).toBeInTheDocument());
+      api.setSkillAccess.mockResolvedValue(teammate);
+
+      await user.click(screen.getByText('team-playbook'));
+      await user.click(screen.getByRole('button', { name: 'Shared' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+      await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('team-playbook', { always_on: false }));
+      await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+        title: "Anton will use team-playbook only when it's relevant.", type: 'success',
+      }));
+    });
+
+    it('offers nothing on a skill shared with everyone without canShareSkillsOrg', async () => {
+      const user = userEvent.setup();
+      await renderPage([{
+        ...sharedWithEveryone, canEdit: true, capabilities: { ...OWNER_CAPS, canShare: false },
+      }]);
+      await waitFor(() => expect(section('Everyone at Acme')).toBeInTheDocument());
+
+      await user.click(screen.getByText('brand-voice'));
+      expect(screen.queryByRole('button', { name: /^Share/ })).toBeNull();
+    });
+  });
+
+  it("says what always on does when the owner's save changes only that", async () => {
+    // The owner's Share sends the whole audience; only always_on differs.
+    const user = userEvent.setup();
+    await renderPage([mine]);
+    await waitFor(() => expect(section('My teams')).toBeInTheDocument());
+    api.setSkillAccess.mockResolvedValue({ ...mine, access: { ...mine.access, alwaysOn: true } });
+
+    await user.click(screen.getByText('weekly-report'));
+    await user.click(screen.getByRole('button', { name: 'Shared' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('switch', { name: 'Always include in every task' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('weekly-report', {
+      org_allowed: false, allowed_team_ids: ['t-platform'], allowed_user_ids: [], always_on: true,
+    }));
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({
+      title: 'Anton will include weekly-report in every task.', type: 'success',
+    }));
+    expect(toast.add).not.toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringMatching(/^Updated who can use/) }));
+  });
+
   it('shares the caller\'s own skill through the dialog and moves it to Yours', async () => {
     const user = userEvent.setup();
     await renderPage([mine]);
@@ -310,9 +520,10 @@ describe('SkillsView with org sharing', () => {
 
     await waitFor(() => expect(api.setSkillAccess).toHaveBeenCalledWith('weekly-report', { org_allowed: false, allowed_team_ids: [], allowed_user_ids: [], always_on: false }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(toast.add).toHaveBeenCalledWith({ title: 'Updated who can use weekly-report.', type: 'success' });
     expect(api.fetchSkills.mock.calls.length).toBe(loads + 1);
-    // The detail reads Only you, and back on the list it sits under Yours.
-    await waitFor(() => expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Shared withOnly you'));
+    // The detail reads Only me, and back on the list it sits under Yours.
+    await waitFor(() => expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Shared withOnly me'));
     expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Skills' }));
     expect(within(section('Yours')).getByText('weekly-report')).toBeInTheDocument();
@@ -324,7 +535,7 @@ describe('SkillsView with org sharing', () => {
     ['a team', 'team', { orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: [] }, 'My teams'],
   ])("moves the caller's own skill to its section as soon as it's shared with %s", async (_, newSection, access, title) => {
     const user = userEvent.setup();
-    await renderPage([yours], { enabled: true, can_share_org: true, org_name: 'Acme' });
+    await renderPage([yours], { enabled: true, canShareSkillsOrg: true });
     await waitFor(() => expect(section('Yours')).toBeInTheDocument());
     // The PUT answers the new section; the reload after it never lands, so
     // only the answer can move the row.
@@ -370,7 +581,7 @@ describe('SkillsView with org sharing', () => {
       const actions = screen.getByRole('group', { name: 'Skill actions' });
       expect(within(actions).getByRole('button', { name: 'Share' })).toBeInTheDocument();
       expect(within(actions).queryByRole('button', { name: 'Shared' })).toBeNull();
-      expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Only you');
+      expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Only me');
     });
 
     it('lays the properties out on one borderless line: project, audience, owner, update', async () => {
@@ -391,7 +602,7 @@ describe('SkillsView with org sharing', () => {
 
     it('says a list audience compactly, and opens the whole list on click', async () => {
       const user = userEvent.setup();
-      api.fetchHubPeopleByIds.mockResolvedValue({ reachable: true, people: [
+      api.fetchMindsHubPeopleByIds.mockResolvedValue({ reachable: true, people: [
         { id: 'u7', name: 'Ana López', email: 'ana@acme.com' },
         { id: 'u8', name: 'Bo Chen', email: 'bo@acme.com' },
         { id: 'u9', name: 'Cy Diaz', email: 'cy@acme.com' },
@@ -412,7 +623,7 @@ describe('SkillsView with org sharing', () => {
 
     it('names the owner of a skill shared with the caller, says Everyone at the org once, and offers no Edit', async () => {
       const user = userEvent.setup();
-      await renderPage([orgWide]);
+      await renderPage([sharedWithEveryone]);
       await user.click(screen.getByText('brand-voice'));
 
       expect(screen.getByTestId('skill-meta-audience')).toHaveTextContent('Shared withEveryone at Acme');
@@ -465,7 +676,7 @@ describe('SkillsView with org sharing', () => {
       await user.type(within(dialog).getByRole('textbox', { name: 'Instructions' }), 'Do it.');
       return dialog;
     }
-    const ADMIN_CAPS = { enabled: true, can_share_org: true, org_name: 'Acme' };
+    const ADMIN_CAPS = { enabled: true, canShareSkillsOrg: true };
 
     it('puts the form on the left and Project and Who can use it in the side column', async () => {
       const user = userEvent.setup();
@@ -489,10 +700,10 @@ describe('SkillsView with org sharing', () => {
     });
 
     it('badges a skill shared with the default team as Everyone at the org', async () => {
-      api.fetchHubTeams.mockResolvedValue({ reachable: true, teams: [{ id: 't-all', display_name: 'All members', is_default: true }, PLATFORM] });
+      api.fetchMindsHubTeams.mockResolvedValue({ reachable: true, teams: [{ id: 't-all', display_name: 'All members', is_default: true }, PLATFORM] });
       vi.resetModules();
       api.fetchSkills.mockResolvedValue({ skills: [{ ...mine, access: { orgAllowed: false, allowedTeamIds: ['t-all'], allowedUserIds: [] } }], canShare: false });
-      api.fetchSkillSharingCapabilities.mockResolvedValue({ enabled: true, can_share_org: false, org_name: 'Acme' });
+      api.fetchSkillSharingCapabilities.mockResolvedValue({ enabled: true, canShareSkillsOrg: false });
       const { default: SkillsView } = await import('./SkillsView');
       render(<SkillsView />);
       const row = () => screen.getByRole('article', { name: 'weekly-report' });
@@ -501,7 +712,7 @@ describe('SkillsView with org sharing', () => {
       expect(within(row()).queryByText('1 team')).toBeNull();
     });
 
-    it('disables Everyone at the org without can_share_org', async () => {
+    it('disables Everyone at the org without canShareSkillsOrg', async () => {
       const user = userEvent.setup();
       const dialog = await openWriteForm(user);
 
@@ -560,7 +771,7 @@ describe('SkillsView with org sharing', () => {
       const user = userEvent.setup();
       api.saveSkill.mockResolvedValue({ label: 'new-skill', slug: 'new-skill' });
       api.setSkillAccess.mockResolvedValue({});
-      api.fetchHubDirectory.mockResolvedValue({ reachable: true, truncated: false, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@acme.com' }] });
+      api.fetchMindsHubDirectory.mockResolvedValue({ reachable: true, truncated: false, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@acme.com' }] });
       const dialog = await openWriteForm(user);
 
       await pickSpecificPerson(user, dialog, 'ana', /Ana Ruiz/);
@@ -577,7 +788,7 @@ describe('SkillsView with org sharing', () => {
       api.setSkillAccess.mockRejectedValueOnce(Object.assign(
         new Error('Skills can only be shared with people in your organization: ana@acme.com'), { status: 400 },
       ));
-      api.fetchHubDirectory.mockResolvedValue({ reachable: true, truncated: false, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@acme.com' }] });
+      api.fetchMindsHubDirectory.mockResolvedValue({ reachable: true, truncated: false, people: [{ id: 'u2', name: 'Ana Ruiz', email: 'ana@acme.com' }] });
       const dialog = await openWriteForm(user);
 
       await pickSpecificPerson(user, dialog, 'ana', /Ana Ruiz/);

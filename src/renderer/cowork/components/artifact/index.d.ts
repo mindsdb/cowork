@@ -59,10 +59,10 @@ export interface ArtifactViewerArtifact {
   modified?: boolean;
   publishedUrl?: string;
   accessMode?: string;
-  /** Restricted access: people outside the org by email in org mode
+  /** Restricted access: people outside the org by email in MindsHub mode
    *  (`allowed_emails`), everyone named on desktop. */
   accessEmails?: string[];
-  /** Org mode (ENG-3787): teams and people in the org (hub user ids). */
+  /** MindsHub mode: teams and people in the org (MindsHub user ids). */
   allowedTeamIds?: string[];
   allowedUserIds?: string[];
   updated?: string;

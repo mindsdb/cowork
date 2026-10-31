@@ -41,7 +41,7 @@ const hubWorkspacesMock = vi.hoisted(() => ({
 // group has its own test file.
 vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
 
-// The selector ships hidden (ENG-3787). The placement tests below turn it on
+// The selector ships hidden. The placement tests below turn it on
 // to keep covering the code that stays behind the flag.
 const workspaceFlag = vi.hoisted(() => ({ WORKSPACE_SELECTOR_ENABLED: false }));
 vi.mock('../lib/workspaceSelectorFlag', () => workspaceFlag);
@@ -468,7 +468,7 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
     });
   });
 
-  it('draws nothing while the selector is switched off (ENG-3787)', async () => {
+  it('draws nothing while the selector is switched off', async () => {
     workspaceFlag.WORKSPACE_SELECTOR_ENABLED = false;
     withWorkspaces([DEFAULT_WS, CLIENT_A]);
     const { container } = render(<Sidebar {...baseProps} serverOnline />);

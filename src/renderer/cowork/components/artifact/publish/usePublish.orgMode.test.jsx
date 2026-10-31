@@ -5,11 +5,10 @@
 // hook addresses the artifact by identity and re-publishes through the
 // owner-gated workspace route instead.
 //
-// The reads matter as much as the writes. An artifact CARD withholds
-// `accessEmails`/`accessPassword` in org mode — one artifacts root is shared by
-// the whole organization, so a card cannot tell owner from co-member — which
-// means the owner-only access route is the only way the real recipient list
-// reaches this client.
+// The reads matter as much as the writes. In MindsHub mode an artifact CARD carries
+// no audience and no `accessPassword`. One artifacts root is shared by the whole
+// organization, so a card cannot tell owner from co-member. The owner-only
+// access route is the only way the audience reaches this client.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
@@ -128,14 +127,12 @@ describe('usePublish on Cloud', () => {
     const onChange = vi.fn();
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { onChange, enabled: true }));
 
-    // Not `accessLoaded`: it is seeded true from the prop's own accessMode, so
-    // waiting on it would return before the fetch landed and assert nothing.
-    await waitFor(() => expect(result.current.accessEmails).toEqual(['alice@x.com']));
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
 
+    expect(result.current.accessEmails).toEqual(['alice@x.com']);
     expect(wsMock.loadArtifactAccess).toHaveBeenCalledWith(ORG_ARTIFACT);
     expect(apiMock.fetchArtifactStatus).not.toHaveBeenCalled();
-    // Fed back into the prop, or the broad re-sync effect re-seeds the stale
-    // empty list straight over it (the ENG-931 self-clobber).
+    // Reported to the parent, which keeps its own copy of the artifact.
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ accessEmails: ['alice@x.com'] }),
     );
@@ -182,7 +179,138 @@ describe('usePublish on Cloud', () => {
     expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ accessEmails: ['alice@x.com'] }));
   });
 
-  it('survives an access read that fails', async () => {
+  it("drops a save's answer that lands after the viewer moved to another artifact", async () => {
+    // Save on A, move to B, then A's answer arrives. It belongs to A: B keeps
+    // its own card and waits for its own access read.
+    const B = { ...ORG_ARTIFACT, id: 'b2c3d4e5f6a70b1c2d3e4f5a6b7c8d9e' };
+    const save = deferred();
+    const readB = deferred();
+    wsMock.setArtifactAccess.mockReturnValue(save.promise);
+    wsMock.loadArtifactAccess.mockImplementation((a) => (a.id === B.id
+      ? readB.promise
+      : Promise.resolve({ accessMode: 'restricted', accessEmails: ['alice@x.com'], ownerOnly: false })));
+    const onChange = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ artifact }) => usePublish(artifact, { onChange, enabled: true }),
+      { initialProps: { artifact: ORG_ARTIFACT } },
+    );
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    let saved;
+    act(() => {
+      saved = result.current.publish({ mode: 'restricted', allowed_emails: ['carol@x.com'], org_allowed: true });
+    });
+    rerender({ artifact: B });
+    let ok;
+    await act(async () => {
+      save.resolve({
+        url: 'https://share/a-moved', accessMode: 'restricted', accessEmails: ['carol@x.com'],
+        orgAllowed: true, ownerOnly: false, allowedTeamIds: ['t-platform'],
+      });
+      ok = await saved;
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.publishedUrl).toBe('https://share/abc');
+    expect(result.current.accessEmails).toEqual([]);
+    expect(result.current.orgAllowed).toBe(false);
+    expect(result.current.allowedTeamIds).toEqual([]);
+    expect(result.current.accessLoaded).toBe(false);
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ accessEmails: ['carol@x.com'] }));
+
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledWith(B));
+    await act(async () => {
+      readB.resolve({ accessMode: 'restricted', accessEmails: ['bob@x.com'], ownerOnly: false });
+    });
+    expect(result.current.accessLoaded).toBe(true);
+    expect(result.current.accessEmails).toEqual(['bob@x.com']);
+  });
+
+  it('keeps a save when an older access read answers after it', async () => {
+    // A focus read starts, the person saves, the save answers first, then the
+    // read answers with the access from before the save.
+    const staleRead = deferred();
+    wsMock.loadArtifactAccess
+      .mockResolvedValueOnce({ accessMode: 'restricted', accessEmails: ['alice@x.com'], ownerOnly: false })
+      .mockReturnValueOnce(staleRead.promise);
+    wsMock.setArtifactAccess.mockResolvedValue({
+      url: 'https://share/abc', accessMode: 'restricted', accessEmails: ['carol@x.com'], ownerOnly: false,
+    });
+    const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    act(() => { result.current.refresh(); });
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await result.current.publish({ mode: 'restricted', allowed_emails: ['carol@x.com'] });
+    });
+    expect(result.current.accessEmails).toEqual(['carol@x.com']);
+
+    await act(async () => {
+      staleRead.resolve({ accessMode: 'restricted', accessEmails: ['alice@x.com'], ownerOnly: false });
+    });
+    expect(result.current.accessEmails).toEqual(['carol@x.com']);
+  });
+
+  /* The open-time read is still out when the person saves (Change password
+     shows before the access loads). The save drops that read, so its answer
+     can't undo the save; a save that then fails must ask again, or the panel
+     waits on "Loading current access…" for a read nobody sends. */
+  it('reads the access again when a save fails while the open read was out', async () => {
+    const openRead = deferred();
+    wsMock.loadArtifactAccess
+      .mockReturnValueOnce(openRead.promise)
+      .mockResolvedValue({ accessMode: 'password', accessPassword: 'old', ownerOnly: false });
+    wsMock.setArtifactAccess.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
+    const card = { ...ORG_ARTIFACT, accessMode: 'password' };
+    const { result } = renderHook(() => usePublish(card, { enabled: true }));
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1));
+    expect(result.current.accessLoaded).toBe(false);
+
+    await act(async () => {
+      expect(await result.current.publish({ mode: 'password', password: 'new' })).toBe(false);
+    });
+    // The dropped read's late answer is ignored either way.
+    await act(async () => { openRead.resolve({ accessMode: 'password', accessPassword: 'stale', ownerOnly: false }); });
+
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+    expect(result.current.accessPassword).toBe('old');
+    expect(result.current.error).toMatch(/boom/);
+  });
+
+  it('asks nothing again when a save fails after the access had loaded', async () => {
+    wsMock.setArtifactAccess.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+
+    expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a save's failure off the artifact the viewer moved to", async () => {
+    const B = { ...ORG_ARTIFACT, id: 'b2c3d4e5f6a70b1c2d3e4f5a6b7c8d9e' };
+    let rejectSave;
+    wsMock.setArtifactAccess.mockReturnValue(new Promise((_, reject) => { rejectSave = reject; }));
+    const { result, rerender } = renderHook(
+      ({ artifact }) => usePublish(artifact, { enabled: true }),
+      { initialProps: { artifact: ORG_ARTIFACT } },
+    );
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    let saved;
+    act(() => { saved = result.current.publish({ mode: 'public' }); });
+    rerender({ artifact: B });
+    await act(async () => {
+      rejectSave(new Error('boom'));
+      await saved;
+    });
+
+    expect(result.current.error).toBe('');
+  });
+
+  it('survives an access read that fails, and says so until a retry answers', async () => {
     wsMock.loadArtifactAccess.mockRejectedValue(new Error('boom'));
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
 
@@ -190,12 +318,101 @@ describe('usePublish on Cloud', () => {
 
     expect(result.current.error).toBe('');
     expect(result.current.accessMode).toBe('restricted');
+    // The card's empty audience is never taken for the loaded one.
+    expect(result.current.accessLoaded).toBe(false);
+    expect(result.current.accessLoadFailed).toBe(true);
+
+    wsMock.loadArtifactAccess.mockResolvedValue({
+      accessMode: 'restricted', accessEmails: [], ownerOnly: false, allowedTeamIds: ['t-platform'],
+    });
+    await act(async () => { await result.current.refresh(); });
+
+    expect(result.current.accessLoaded).toBe(true);
+    expect(result.current.accessLoadFailed).toBe(false);
+    expect(result.current.allowedTeamIds).toEqual(['t-platform']);
+  });
+
+  // An org card says `restricted` but carries no audience: cowork-server
+  // leaves its teams, people and org flag empty. Only the access route's
+  // answer is the access.
+  it('does not count an org card as loaded access until the access route answers', async () => {
+    const read = deferred();
+    wsMock.loadArtifactAccess.mockReturnValue(read.promise);
+    const card = { ...ORG_ARTIFACT, ownerOnly: false, orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] };
+    const { result } = renderHook(() => usePublish(card, { enabled: true }));
+
+    expect(result.current.accessLoaded).toBe(false);
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1));
+    expect(result.current.accessLoaded).toBe(false);
+
+    await act(async () => {
+      read.resolve({ accessMode: 'restricted', accessEmails: [], ownerOnly: false, allowedTeamIds: ['t-platform'] });
+    });
+
+    expect(result.current.accessLoaded).toBe(true);
+    expect(result.current.allowedTeamIds).toEqual(['t-platform']);
+  });
+
+  it('does not count an org card as loaded even before the panel opens', () => {
+    const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
+    expect(result.current.accessLoaded).toBe(false);
+  });
+
+  it('waits again for the access route when the viewer moves to another artifact', async () => {
+    // Org cards have no path, so the reset is keyed on project and id.
+    const B = { ...ORG_ARTIFACT, id: 'b2c3d4e5f6a70b1c2d3e4f5a6b7c8d9e' };
+    const readB = deferred();
+    wsMock.loadArtifactAccess.mockImplementation((a) => (a.id === B.id
+      ? readB.promise
+      : Promise.resolve({ accessMode: 'restricted', accessEmails: ['alice@x.com'], ownerOnly: false })));
+    const { result, rerender } = renderHook(
+      ({ artifact }) => usePublish(artifact, { enabled: true }),
+      { initialProps: { artifact: ORG_ARTIFACT } },
+    );
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    rerender({ artifact: B });
+
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledWith(B));
+    expect(result.current.accessLoaded).toBe(false);
+    // A's loaded audience never carries over to B.
+    expect(result.current.accessEmails).toEqual([]);
+    await act(async () => {
+      readB.resolve({ accessMode: 'restricted', accessEmails: ['bob@x.com'], ownerOnly: false });
+    });
+    expect(result.current.accessLoaded).toBe(true);
+    expect(result.current.accessEmails).toEqual(['bob@x.com']);
+  });
+
+  it('keeps the loaded audience when the parent hands over a reloaded card', async () => {
+    // The app reloads its artifacts list after every turn, and the viewer then
+    // gets a fresh card for the same artifact: no audience, and `modified`
+    // flipped by an edit autopublish has not caught up with yet.
+    wsMock.loadArtifactAccess.mockResolvedValue({
+      accessMode: 'restricted', accessEmails: ['alice@x.com'], ownerOnly: false,
+      orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: ['u-ana'],
+    });
+    const card = { ...ORG_ARTIFACT, ownerOnly: false, orgAllowed: false, allowedTeamIds: [], allowedUserIds: [], modified: false };
+    const { result, rerender } = renderHook(
+      ({ artifact }) => usePublish(artifact, { enabled: true }),
+      { initialProps: { artifact: card } },
+    );
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    rerender({ artifact: { ...card, modified: true } });
+
+    expect(result.current.modified).toBe(true);
+    expect(result.current.accessLoaded).toBe(true);
+    expect(result.current.allowedTeamIds).toEqual(['t-platform']);
+    expect(result.current.allowedUserIds).toEqual(['u-ana']);
+    expect(result.current.accessEmails).toEqual(['alice@x.com']);
+    expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1);
   });
 
   it('does not offer update, stop-sharing or version history', async () => {
     const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
 
-    expect(result.current.supportsPublishRoutes).toBe(false);
+    expect(result.current.orgMode).toBe(true);
 
     await act(async () => {
       expect(await result.current.update()).toBe(false);
@@ -221,7 +438,7 @@ describe('usePublish on desktop is unchanged', () => {
 
     expect(apiMock.publishArtifact).toHaveBeenCalledWith('/tmp/a/index.html', { mode: 'public' });
     expect(wsMock.setArtifactAccess).not.toHaveBeenCalled();
-    expect(result.current.supportsPublishRoutes).toBe(true);
+    expect(result.current.orgMode).toBe(false);
   });
 });
 

@@ -931,7 +931,7 @@ export default function Sidebar({
             container inside the organization, not the thing a reader starts a
             task from, and the top of the rail is where the first task begins.
             Renders nothing until the org has a second workspace to move to.
-            Hidden for now behind WORKSPACE_SELECTOR_ENABLED (ENG-3787). */}
+            Hidden for now behind WORKSPACE_SELECTOR_ENABLED. */}
         {WORKSPACE_SELECTOR_ENABLED && PLATFORM_UI && accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
 
         {/* Footer — the settings / backend-status controls stay

@@ -107,7 +107,7 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
     accessLoaded: true,
   };
 
-  it('summarises an owner-only publish as "Only you"', () => {
+  it('summarizes an owner-only publish as "Only me"', () => {
     render(<PublishMenu controller={makeController({
       ...PUBLISHED_RESTRICTED, accessEmails: [], orgAllowed: false, ownerOnly: true,
     })} />);
@@ -115,7 +115,7 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
     // share rather than claiming the artifact already is shared.
     fireEvent.click(screen.getByText('Share'));
 
-    expect(screen.getByText('Only you')).toBeInTheDocument();
+    expect(screen.getByText('Only me')).toBeInTheDocument();
     expect(screen.getByText('Nobody else can open this')).toBeInTheDocument();
   });
 
@@ -126,7 +126,7 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
     fireEvent.click(screen.getByText('Shared'));
 
     expect(screen.getByText('Specific people')).toBeInTheDocument();
-    expect(screen.queryByText('Only you')).toBeNull();
+    expect(screen.queryByText('Only me')).toBeNull();
   });
 
   // Published is not the same as shared. On Cloud every artifact is published
@@ -165,11 +165,16 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
       ['specific', { ...PUBLISHED_RESTRICTED, accessEmails: ['a@x.io', 'b@x.io'], ownerOnly: false }, 'Shared with 2 people'],
       ['org', {
         ...PUBLISHED_RESTRICTED, orgAllowed: true, ownerOnly: false,
-        orgSharing: { enabled: true, orgName: 'Acme', teams: { status: 'ready', reachable: true, teams: [] } },
+        orgSharing: { capabilities: { enabled: true }, teams: { status: 'ready', reachable: true, teams: [] }, orgName: 'Acme' },
       }, 'Shared with everyone at Acme'],
+      // No org name known: the organization, unnamed.
+      ['org', {
+        ...PUBLISHED_RESTRICTED, orgAllowed: true, ownerOnly: false,
+        orgSharing: { capabilities: { enabled: true }, teams: { status: 'ready', reachable: true, teams: [] }, orgName: null },
+      }, 'Shared with everyone in the organization'],
       ['specific', {
         ...PUBLISHED_RESTRICTED, ownerOnly: false, allowedTeamIds: ['t1', 't2'], allowedUserIds: ['u1', 'u2', 'u3'],
-        orgSharing: { enabled: true, orgName: 'Acme', teams: { status: 'ready', reachable: true, teams: [] } },
+        orgSharing: { capabilities: { enabled: true }, teams: { status: 'ready', reachable: true, teams: [] }, orgName: 'Acme' },
       }, 'Shared with 2 teams and 3 people'],
     ])('marks a %s share with its icon and says who in a tooltip', async (kind, over, hint) => {
       const user = userEvent.setup();
@@ -188,7 +193,7 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
       expect(trigger()).toHaveAttribute('data-share-state', 'private');
       await user.hover(trigger());
       await new Promise((r) => setTimeout(r, 50));
-      expect(screen.queryByText(/Only you can open it/)).toBeNull();
+      expect(screen.queryByText(/Nobody else can open this/)).toBeNull();
     });
   });
 });
@@ -200,6 +205,6 @@ describe('PublishMenu — a first share with the platform UI on', () => {
 
     expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('Anyone on the internet with the URL')).toBeInTheDocument();
-    expect(screen.getByText('Only you')).toBeInTheDocument();
+    expect(screen.getByText('Only me')).toBeInTheDocument();
   });
 });

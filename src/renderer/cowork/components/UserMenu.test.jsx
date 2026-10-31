@@ -34,6 +34,7 @@ import UserMenu from './UserMenu';
 import { PERSONAL_ORG_LABEL as PERSONAL_LABEL } from '../../../shared/minds-orgs';
 import ToastProvider from './ui/Toast';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
+import { readLastOrgId } from '../lib/orgLanding';
 import {
   MINDS_BILLING_URL,
   MINDS_GENERAL_URL,
@@ -301,6 +302,33 @@ describe('UserMenu — organization picker', () => {
     expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
   });
 
+  // MindsHub UI lands a company member in the company organization, but
+  // never over a pick from this menu, in this tab or a new one.
+  it('keeps a personal pick from here in a new tab, where landing would otherwise move it', async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    try {
+      withOrgs([ACME, PERSONAL], ACME);
+      const first = renderMenu(<UserMenu user={user} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+      await waitFor(() => expect(readLastOrgId(user.sub)).toBe('org-personal'));
+      first.unmount();
+
+      // The new tab: same browser storage, a fresh session, in Personal.
+      sessionStorage.clear();
+      orgsMock.switchOrg.mockClear();
+      withOrgs([ACME, PERSONAL], PERSONAL);
+      renderMenu(<UserMenu user={user} />);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(orgsMock.switchOrg).not.toHaveBeenCalled();
+    } finally {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+  });
+
   it('acknowledges the click on the row that was clicked, before the switch lands', async () => {
     // A desktop switch takes a second or more — a Keycloak round trip, a token
     // exchange and a sidecar restart — and the menu used to close on the click,
@@ -389,6 +417,43 @@ describe('UserMenu — organization picker', () => {
     // Nothing is applied optimistically, so the trigger still names the one
     // the app is actually working in.
     expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent).toContain('acme.example');
+  });
+
+  // The pick is remembered only once the switch went through, or may have:
+  // remembered before it, a refused switch would land the next session in the
+  // organization the person was refused.
+  it('keeps the last organization when the switch is refused', async () => {
+    localStorage.clear();
+    try {
+      withOrgs([ACME, PERSONAL], ACME);
+      orgsMock.switchOrg.mockResolvedValue({ ok: false, error: 'MindsHub would not switch. Nothing changed.' });
+      renderMenu(<UserMenu user={user} />);
+      // Landing records the company organization in use.
+      await waitFor(() => expect(readLastOrgId(user.sub)).toBe('org-acme'));
+
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+
+      expect(await screen.findByText('MindsHub would not switch. Nothing changed.')).toBeInTheDocument();
+      expect(readLastOrgId(user.sub)).toBe('org-acme');
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it('remembers a pick whose switch asks for a reload', async () => {
+    localStorage.clear();
+    try {
+      withOrgs([ACME, PERSONAL], ACME);
+      orgsMock.switchOrg.mockResolvedValue({ ok: false, reloadRequired: true });
+      renderMenu(<UserMenu user={user} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+
+      await waitFor(() => expect(readLastOrgId(user.sub)).toBe('org-personal'));
+    } finally {
+      localStorage.clear();
+    }
   });
 
   it('does not render a refusal while an indeterminate web switch reloads', async () => {

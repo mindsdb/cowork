@@ -5,13 +5,13 @@
 // flags + a transient `phase` the parent owns) — no internal state, so the
 // status can't get "stuck": whatever the parent passes is exactly what shows.
 //
-//   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable onRetry={…} />
+//   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable orgMode={orgMode} onRetry={…} />
 //
 // phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
 
 import Ico from '../Icons';
 import { Badge, Tooltip } from '../ui';
-import { isOwnerOnlySelection } from '../artifact/publish/AccessChooser';
+import { isOwnerOnlyAccess } from '../../lib/orgSharing';
 import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
 // One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
@@ -48,14 +48,21 @@ function accessBadge(artifact) {
   return mode ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
 }
 
+/** A restricted artifact's line in MindsHub mode, whose card names no audience. */
+export const ORG_RESTRICTED_HINT = 'Restricted. Open Share to see who can open the link.';
+
 /*
  * One line under each idle label saying what it means for who can open the
  * artifact (ENG-2177). "Draft" and "Restricted" were shown bare, and nothing
  * said which state can be shared. Public and Password name their own meaning,
  * so they get none. The unknown fallback says so rather than naming an
  * audience it cannot see, for the same fail-closed reason as its badge.
+ *
+ * In MindsHub mode (`orgMode`) a card carries no audience: only the owner's
+ * access route says who a restricted artifact reaches. Its line then names
+ * nobody and points at Share, which reads that route (ORG_RESTRICTED_HINT).
  */
-export function artifactStatusHint(artifact, publishable = true) {
+export function artifactStatusHint(artifact, publishable = true, { orgMode = false } = {}) {
   if (!artifact?.publishedUrl) {
     return publishable
       ? 'Not shared yet. Open it and choose Share to get a web link.'
@@ -63,7 +70,8 @@ export function artifactStatusHint(artifact, publishable = true) {
   }
   const mode = accessMode(artifact);
   if (mode === 'restricted') {
-    return isOwnerOnlySelection(artifact)
+    if (orgMode) return ORG_RESTRICTED_HINT;
+    return isOwnerOnlyAccess(artifact)
       ? 'Shared, but only you can open the link.'
       : 'Shared. Only the people you chose can open the link.';
   }
@@ -82,7 +90,9 @@ export function artifactStatusHint(artifact, publishable = true) {
 // `pageBadge` — false drops the idle "Not shared" / "Draft" badge of an
 // unpublished artifact that can't become a page (a live app shares through
 // "Share with…" instead). Phases and the authorship tag still show.
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true }) {
+//
+// `orgMode`: MindsHub mode, whose cards carry no audience (artifactStatusHint).
+export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
   const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
   const withExtra = (primary) => (tag
     ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{tag}</span>
@@ -118,7 +128,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   if (!artifact?.publishedUrl) {
     if (!pageBadge) return tag;
     return withExtra(
-      <Tooltip content={artifactStatusHint(artifact, publishable)}>
+      <Tooltip content={artifactStatusHint(artifact, publishable, { orgMode })}>
         <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>
       </Tooltip>,
     );
@@ -130,7 +140,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     // card it wraps to its own line, still right-aligned there. `tag` sits
     // between them, in the same row.
     <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
-      <Tooltip content={artifactStatusHint(artifact, publishable)}>
+      <Tooltip content={artifactStatusHint(artifact, publishable, { orgMode })}>
         <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
           {badge.label}
         </Badge>

@@ -65,6 +65,23 @@ export function readRefusalBody(text) {
   };
 }
 
+/**
+ * A refused request's body as a JSON object, for a caller that reads a field
+ * of its own beside the sentence and the code (the malformed `emails` of a
+ * people lookup). Null when the body is not a JSON object.
+ *
+ * @param {string} text
+ * @returns {Record<string, unknown> | null}
+ */
+export function readRefusalObject(text) {
+  try {
+    const data = JSON.parse(typeof text === 'string' ? text.trim() : '');
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 /* RFC 9110's three HTTP-date forms (section 5.6.7), which a recipient must
    all accept. IMF-fixdate and the obsolete RFC 850 form name GMT. asctime
    names no zone but means GMT too, so it gets one before Date.parse, which

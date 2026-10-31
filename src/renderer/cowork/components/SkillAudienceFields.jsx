@@ -1,6 +1,6 @@
-// `<SkillAudienceFields>` — who can use a skill inside a hosted org
-// (ENG-3787), picked from three cards: Only me, Everyone at ‹org›, or
-// Specific teams and people. The last unfolds a `<RecipientField>` under
+// `<SkillAudienceFields>`: who can use a skill inside the org in MindsHub
+// mode, picked from three cards: Only me, Everyone at ‹org›, or Specific
+// teams and people. The last unfolds a `<RecipientField>` under
 // itself; a skill reaches only people in the org, so it takes no outside
 // emails (the server refuses them). "Always include in every task" shows once
 // the org or a team is picked.
@@ -14,23 +14,26 @@
 // lists; the lists stay here, so switching back to "Specific" shows them.
 
 import { useEffect, useRef, useState } from 'react';
-import Ico from './Icons';
 import { Tooltip } from './ui';
 import { Switch } from './ui/Switch';
-import { useHubTeams } from '../hooks/useOrgSharing';
-import AudiencePanel from './AudiencePanel';
+import { useMindsHubTeams } from '../hooks/useOrgSharing';
+import AudiencePanel, { everyoneOption, onlyMeOption, specificOption } from './AudiencePanel';
 import {
+  AUDIENCE_CHOICE,
+  SHARED_KIND,
   alwaysOnHelp,
   ALWAYS_ON_LABEL,
-  ORG_ADMIN_ONLY_HINT,
   alwaysOnLockReason,
   canBeAlwaysOn,
-  everyoneAtLabel,
   namesDefaultTeam,
+  orgShareLockReason,
   withoutDefaultTeam,
 } from '../lib/orgSharing';
+import { LOAD_STATUS } from '../lib/sharingContract';
 
-function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
+/** The "Always include in every task" switch with its help line; disabled,
+    with `lockReason` on hover, when the caller may not change it. */
+export function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
   const control = (
     <div className="flex items-center justify-between gap-3">
       <span className="font-body text-[13px] font-semibold text-ink">{ALWAYS_ON_LABEL}</span>
@@ -57,26 +60,28 @@ function AlwaysOnRow({ checked, onCheckedChange, lockReason }) {
   );
 }
 
-/** Which card an access reads as. The org's default team is everyone. */
+/** Which card an access reads as (an AUDIENCE_CHOICE). The org's default
+    team is everyone. */
 export function skillAudienceMode(access, teams = []) {
-  if (access.orgAllowed || namesDefaultTeam(access.allowedTeamIds, teams)) return 'org';
-  if (access.allowedTeamIds.length > 0 || access.allowedUserIds.length > 0) return 'specific';
-  return 'private';
+  if (access.orgAllowed || namesDefaultTeam(access.allowedTeamIds, teams)) return AUDIENCE_CHOICE.ORG;
+  if (access.allowedTeamIds.length > 0 || access.allowedUserIds.length > 0) return AUDIENCE_CHOICE.SPECIFIC;
+  return AUDIENCE_CHOICE.PRIVATE;
 }
 
 /**
  * @param {{
  *   value: { orgAllowed: boolean, allowedTeamIds: string[], allowedUserIds: string[], alwaysOn: boolean },
  *   onChange: (next: { orgAllowed: boolean, allowedTeamIds: string[], allowedUserIds: string[], alwaysOn: boolean }) => void,
- *   capabilities: { can_share_org?: boolean, org_name?: string | null } | null,
+ *   capabilities: import('../lib/sharingContract').SharingCapabilities | null,
+ *   orgName?: string | null,
  *   canEdit: boolean,
  *   onPendingChange?: (pending: boolean) => void,
  * }} props
  */
-export function SkillAudienceFields({ value, onChange, capabilities, canEdit, onPendingChange = () => {} }) {
+export function SkillAudienceFields({ value, onChange, capabilities, orgName = null, canEdit, onPendingChange = () => {} }) {
   const access = value;
   // Teams load only while the fields are shown.
-  const teamsState = useHubTeams(true);
+  const teamsState = useMindsHubTeams(true);
   const teams = teamsState.teams;
   const [mode, setMode] = useState(() => skillAudienceMode(access, teams));
   // The teams and people under "Specific", the default team left out.
@@ -89,7 +94,7 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
   const touched = useRef(false);
   const settled = useRef(false);
   useEffect(() => {
-    if (settled.current || teamsState.status !== 'ready') return;
+    if (settled.current || teamsState.status !== LOAD_STATUS.READY) return;
     settled.current = true;
     if (touched.current) return;
     setMode(skillAudienceMode(access, teams));
@@ -97,14 +102,11 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamsState.status]);
 
-  const orgName = capabilities?.org_name ?? null;
-  const canShareOrg = capabilities?.can_share_org === true;
-
   // The audience each card stands for.
   const audienceFor = (nextMode, nextLists, alwaysOn) => {
-    const next = nextMode === 'org'
+    const next = nextMode === AUDIENCE_CHOICE.ORG
       ? { orgAllowed: true, allowedTeamIds: [], allowedUserIds: [] }
-      : nextMode === 'specific'
+      : nextMode === AUDIENCE_CHOICE.SPECIFIC
         ? { orgAllowed: false, allowedTeamIds: [...nextLists.teamIds], allowedUserIds: [...nextLists.userIds] }
         : { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] };
     // Always on resets to off once neither the org nor a team is picked.
@@ -120,26 +122,19 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
   };
 
   // "Specific" with nobody in it is unfinished; Save waits for a pick.
-  const empty = mode === 'specific' && lists.teamIds.length === 0 && lists.userIds.length === 0;
+  const empty = mode === AUDIENCE_CHOICE.SPECIFIC && lists.teamIds.length === 0 && lists.userIds.length === 0;
   useEffect(() => {
     onPendingChange(empty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empty]);
 
-  const showAlwaysOn = mode === 'org' || (mode === 'specific' && lists.teamIds.length > 0);
+  const showAlwaysOn = mode === AUDIENCE_CHOICE.ORG
+    || (mode === AUDIENCE_CHOICE.SPECIFIC && lists.teamIds.length > 0);
 
   const options = [
-    { value: 'private', icon: Ico.lock(16), title: 'Only me', desc: 'Nobody else can use it' },
-    {
-      value: 'org',
-      icon: Ico.building(16),
-      title: everyoneAtLabel(orgName),
-      desc: 'Anyone in your organization',
-      disabled: !canShareOrg,
-      disabledHint: ORG_ADMIN_ONLY_HINT,
-      disabledTestId: 'org-option-locked',
-    },
-    { value: 'specific', icon: Ico.people(16), title: 'Specific teams and people', desc: 'Pick teams or colleagues' },
+    onlyMeOption(SHARED_KIND.SKILL),
+    everyoneOption({ orgName, lockReason: orgShareLockReason(capabilities, SHARED_KIND.SKILL) }),
+    specificOption(SHARED_KIND.SKILL),
   ];
 
   return (
@@ -151,13 +146,13 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
         emit(next, lists);
       }}
       options={options}
-      specificValue="specific"
+      specificValue={AUDIENCE_CHOICE.SPECIFIC}
       recipients={{
         value: { teamIds: lists.teamIds, userIds: lists.userIds, emails: [] },
         onChange: (next) => {
           const nextLists = { teamIds: next.teamIds, userIds: next.userIds };
           setLists(nextLists);
-          emit('specific', nextLists);
+          emit(AUDIENCE_CHOICE.SPECIFIC, nextLists);
         },
         orgName,
         teamsState,
@@ -167,7 +162,7 @@ export function SkillAudienceFields({ value, onChange, capabilities, canEdit, on
         <AlwaysOnRow
           checked={shown.alwaysOn}
           onCheckedChange={(next) => emit(mode, lists, next)}
-          lockReason={alwaysOnLockReason(shown, { canShareOrg, canEdit })}
+          lockReason={alwaysOnLockReason(shown, { capabilities, canEdit })}
         />
       )}
     </AudiencePanel>

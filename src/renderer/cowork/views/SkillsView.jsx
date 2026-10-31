@@ -13,10 +13,10 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Mod
 import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, uploadSkillFile } from '../api';
 import {
-  useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync, setSkillAccessAndSync,
-  setSkillEnabledForMeAndSync,
+  useSkills, saveSkillAndSync, deleteSkillAndSync, setSkillSharingAndSync, setSkillEnabledForMeAndSync,
 } from '../lib/skillsStore';
-import { useHubTeams, useSharingCapabilities } from '../hooks/useOrgSharing';
+import { LoadStatus, RetryAlert } from '../components/LoadStatus';
+import { useSkillSharing } from './useSkillSharing';
 import SkillShareMenu from '../components/SkillShareMenu';
 import SkillDetail from '../components/SkillDetail';
 import SkillModal, { OWN_SHARED_CHANGE_NOTE, skillFieldStyle } from '../components/SkillModal';
@@ -24,15 +24,14 @@ import { ShareStateLabel, shareStateIcon } from '../components/ShareStateLabel';
 import {
   ALWAYS_ON_BADGE,
   ALWAYS_ON_BADGE_HINT,
-  canChangeSkillAudience,
   canEditSkill,
   groupSkillsBySection,
+  isOrgSharingOn,
   isSkillAlwaysOn,
-  skillShareState,
   skillAudienceBadge,
   skillOwnerEmail,
-  skillSection,
 } from '../lib/orgSharing';
+import { LOAD_STATUS } from '../lib/sharingContract';
 import { relativeAge } from '../lib/formatTime';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import {
@@ -62,9 +61,6 @@ function lockedActionHint(skill) {
   return 'Admin or creator';
 }
 
-/* The detail note on an always-on team or org-wide skill someone else shares. */
-const ALWAYS_ON_DETAIL = "It's part of every task, and only its owner can change it.";
-
 const OWN_SHARED_SWITCH_HINT = "Turning it on or off changes it for everyone it's shared with.";
 const OWN_SHARED_REMOVE_NOTE = "It's shared, so everyone it's shared with loses it too.";
 
@@ -82,7 +78,7 @@ export const TURN_ON_LABEL = 'Turn on: Anton can use this skill';
 export const TURN_OFF_LABEL = "Turn off: Anton won't use this skill";
 const NO_PERMISSION_SWITCH_HINT = 'You do not have permission to enable or disable this skill.';
 
-/* ENG-3787: a skill anyone else sees, and every built-in, has a switch "just
+/* A skill anyone else sees, and every built-in, has a switch "just
    for me": it turns the skill on or off in the caller's own tasks and leaves
    everyone else's alone. Only an editor turns it off for everyone, from the
    menu, and then the personal switch rests off and locked. */
@@ -160,19 +156,21 @@ function SkillTile({ skill }) {
 // it reaches, Always on, who shared it). Project and last update sit at the
 // right; the switch, Share and the overflow menu after them. Share and the
 // menu show on hover or focus, and always on a touch screen.
-function SkillRow({ skill, onClick, projects = [], orgSharing = null, actions = null, disabled = false, disabledForEveryone = false }) {
+function SkillRow({ skill, onClick, projects = [], capabilities = null, orgName = null, teams = [], actions = null, disabled = false, disabledForEveryone = false }) {
   const age = relativeAge(skill.updatedAt);
   // Project label, not slug (ENG-1676); unscoped skills apply everywhere.
   const project = projectLabelByName(projects, skill.projects?.[0] || skill.project);
-  /* With org sharing on, a skill someone else owns names them; the caller's
-     own skills need no byline. */
-  const sharedBy = orgSharing && !canEditSkill(skill) ? skillOwnerEmail(skill) : null;
-  const author = orgSharing ? null : sharedResourceAttribution(skill)?.createdBy;
+  /* Sharing in MindsHub mode is on where `capabilities`
+     (useSharingCapabilities' answer) says so. A skill someone else owns then names them; the
+     caller's own skills need no byline. */
+  const orgSharingOn = isOrgSharingOn(capabilities);
+  const sharedBy = orgSharingOn && !canEditSkill(skill) ? skillOwnerEmail(skill) : null;
+  const author = orgSharingOn ? null : sharedResourceAttribution(skill)?.createdBy;
   /* `shared: true` marks the creator's own shared skill and one someone else
      shares alike; the detail view's actions tell the two apart. */
-  const shared = !orgSharing && isSharedSkill(skill);
-  const audience = orgSharing ? skillAudienceBadge(skill, orgSharing) : null;
-  const alwaysOn = !!orgSharing && isSkillAlwaysOn(skill);
+  const shared = !orgSharingOn && isSharedSkill(skill);
+  const audience = orgSharingOn ? skillAudienceBadge(skill, { teams, orgName }) : null;
+  const alwaysOn = orgSharingOn && isSkillAlwaysOn(skill);
   const hasBadges = disabled || disabledForEveryone || skill.isBuiltin || shared || audience || alwaysOn || sharedBy;
   return (
     <ListItem
@@ -448,15 +446,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const [pendingSharing, setPendingSharing] = useState(() => new Map());
   const searchRef = useRef(null);
   useCollectionShortcut(searchRef);
-  /* Org sharing (ENG-3787) groups the list by who each skill reaches and
-     replaces the "Who can use it" select with the Share dialog. Off on every
-     other build, where the page is as it was. */
-  const sharingCapabilities = useSharingCapabilities();
-  const orgSharingOn = sharingCapabilities.enabled;
-  const teamsState = useHubTeams(orgSharingOn);
-  const orgSharing = orgSharingOn
-    ? { teams: teamsState.teams, orgName: sharingCapabilities.org_name }
-    : null;
   /* On/off changes in flight: skill label → the value asked for, so a
      switch moves at once and moves back on a refusal. `enabledPending` holds
      the skill's own `enabled` (everyone's), `forMePending` the caller's own
@@ -474,6 +463,14 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
   // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
   const showToast = (msg, type = 'error') => toastManager.add({ title: msg, type: type === 'error' ? 'danger' : type });
+
+  // Sharing inside the org (useSkillSharing): off on every other build.
+  const sharing = useSkillSharing({ showToast, reloadSkills: reload });
+  const {
+    capabilities: sharingCapabilities, orgSharingOn, orgName, teamsState,
+    canOpenShare, hidesOwnerActions, readOnlyOrgNote, shareState,
+  } = sharing;
+  const sharingStatus = sharing.status;
 
   useEffect(() => {
     fetchProjects().then(setProjects);
@@ -560,12 +557,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     }
   };
 
-  const saveAccess = async (skill, access) => {
-    // Throws on a refusal, which the Share dropdown shows in place.
-    await setSkillAccessAndSync(skill.slug || skill.label, access);
-    showToast(`Updated who can use ${skill.label}.`, 'success');
-  };
-
   const patchOpen = (label, patch) => setSelected((current) => (
     current?.label === label ? { ...current, ...patch } : current
   ));
@@ -601,7 +592,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   /* Turns a skill on or off for everyone: its own `enabled`. The switch
      moves at once; a refusal moves it back and shows the server's sentence.
      The reload inside the save re-points the open skill through the effect
-     above; adopting the response here would trade the catalogue entry for a
+     above; adopting the response here would trade the catalog entry for a
      serializer that need not carry capabilities. True once it is saved, and
      only for the latest request on the skill. */
   const writeEnabled = async (skill, next) => {
@@ -670,14 +661,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   /* An editor turned it off for everyone; every viewer is told. */
   const isDisabledForEveryone = (skill) => usesPersonalSwitch(skill) && !isEnabledForEveryone(skill);
 
-  /* Whether the open skill offers Share: the caller's own, on an org. */
-  const canOpenShare = (skill) => orgSharingOn && canChangeSkillAudience(skill);
-  /* An org skill someone else owns keeps no Edit or Uninstall at all, and a
-     built-in never does. */
-  const hidesOwnerActions = (skill) => !!skill.isBuiltin || (orgSharingOn && !canEditSkill(skill));
-  /* A team or org-wide skill someone else owns. */
-  const alwaysApplied = (skill) => orgSharingOn && !canEditSkill(skill)
-    && (skillSection(skill) === 'team' || skillSection(skill) === 'org');
+  const mindsHubNotice = sharing.unreachableMessage && (
+    <RetryAlert variant="warning" message={sharing.unreachableMessage} onRetry={sharing.retryMindsHub} />
+  );
   const enabledControl = (skill, size) => {
     const personal = usesPersonalSwitch(skill);
     return (
@@ -720,12 +706,12 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     }]),
   ];
   /* "Share" or "Shared", with who in the tooltip. */
-  const shareState = (skill) => skillShareState(skill, { teams: teamsState.teams, orgName: sharingCapabilities.org_name });
   const shareMenu = (skill, trigger, tooltip = shareState(skill).hint) => (
     <SkillShareMenu
       skill={skill}
       capabilities={sharingCapabilities}
-      onSave={(access) => saveAccess(skill, access)}
+      orgName={orgName}
+      onSave={(access) => sharing.saveAccess(skill, access)}
       trigger={trigger}
       tooltip={tooltip}
     />
@@ -776,7 +762,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     return 0;
   });
 
-  // Without org sharing the list is flat, built-ins folded away at the end.
+  // Without sharing in MindsHub mode the list is flat, built-ins folded away
+  // at the end.
   const ownSkills = sorted.filter((skill) => !skill.isBuiltin);
   const builtinSkills = sorted.filter((skill) => skill.isBuiltin);
   const skillRow = (skill) => (
@@ -785,7 +772,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
       skill={skill}
       onClick={setSelected}
       projects={projects}
-      orgSharing={orgSharing}
+      capabilities={sharingCapabilities}
+      orgName={orgName}
+      teams={teamsState.teams}
       actions={rowActions(skill)}
       disabled={!usesPersonalSwitch(skill) && skill.enabled === false}
       disabledForEveryone={isDisabledForEveryone(skill)}
@@ -804,7 +793,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <SkillDetail
             skill={selected}
             projects={projects}
-            orgSharing={orgSharing}
+            capabilities={sharingCapabilities}
+            orgName={orgName}
             teamsState={orgSharingOn ? teamsState : null}
             enabled={isEnabled(selected)}
             disabledForEveryone={isDisabledForEveryone(selected)}
@@ -833,7 +823,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                 {orgSharingOn && !canEditSkill(selected) && !selected.isBuiltin && (
                   <p className="m-0 text-[12px] text-ink-3" role="note">
                     {skillOwnerEmail(selected) ? `Shared by ${skillOwnerEmail(selected)}. ` : ''}
-                    {alwaysApplied(selected) && isSkillAlwaysOn(selected) ? ALWAYS_ON_DETAIL : "You can use it but can't change it."}
+                    {readOnlyOrgNote(selected)}
                   </p>
                 )}
                 {!orgSharingOn && !canUseSharedResource(selected, 'canEdit') && (
@@ -881,55 +871,62 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                 : `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`
             )}
           />
-          <CollectionState
-            loading={skills === null}
-            total={(skills ?? []).length}
-            shown={sorted.length}
-            query={search}
-            onClear={() => setSearch('')}
-            skeleton="group"
-            skeletonClassName={LIST_CLASS}
-            empty={{
-              icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
-              title: 'No saved skills yet',
-              style: { flex: 1 },
-            }}
-          >
-            {orgSharing ? (
-              <div className={`${LIST_CLASS} flex flex-col gap-6`}>
-                {/* Only the sections that hold a skill; an empty list keeps
-                    CollectionState's one empty state. */}
-                {groupSkillsBySection(sorted, { orgName: orgSharing.orgName }).map((group) => (group.id === 'builtin' ? (
-                  <BuiltinSection key={group.id} count={group.skills.length} open={builtinOpen} onToggle={toggleBuiltin}>
-                    {group.skills.map(skillRow)}
-                  </BuiltinSection>
-                ) : (
-                  <ListGroup
-                    key={group.id}
-                    aria-label={group.title}
-                    title={(
-                      <h2 className="flex items-center gap-2">
-                        <span className="inline-flex text-ink-4" aria-hidden="true">{SECTION_ICONS[group.id](14)}</span>
-                        {group.title}
-                      </h2>
-                    )}
-                    description={<span data-testid="section-count">{group.skills.length}</span>}
-                  >
-                    {group.skills.map(skillRow)}
-                  </ListGroup>
-                )))}
-              </div>
-            ) : (
-              <div className={`${LIST_CLASS} flex flex-col gap-6`}>
-                {ownSkills.length > 0 && <ListGroup>{ownSkills.map(skillRow)}</ListGroup>}
-                {builtinSkills.length > 0 && (
-                  <BuiltinSection count={builtinSkills.length} open={builtinOpen} onToggle={toggleBuiltin}>
-                    {builtinSkills.map(skillRow)}
-                  </BuiltinSection>
-                )}
-              </div>
-            )}
-          </CollectionState>
+          {mindsHubNotice && <div className={`${LIST_CLASS} mb-4`}>{mindsHubNotice}</div>}
+          {sharingStatus === LOAD_STATUS.ERROR ? (
+            <div className={LIST_CLASS}>
+              <LoadStatus status={sharingStatus} what="sharing settings" onRetry={sharing.retry} />
+            </div>
+          ) : (
+            <CollectionState
+              loading={skills === null || sharingStatus === LOAD_STATUS.LOADING}
+              total={(skills ?? []).length}
+              shown={sorted.length}
+              query={search}
+              onClear={() => setSearch('')}
+              skeleton="group"
+              skeletonClassName={LIST_CLASS}
+              empty={{
+                icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
+                title: 'No saved skills yet',
+                style: { flex: 1 },
+              }}
+            >
+              {orgSharingOn ? (
+                <div className={`${LIST_CLASS} flex flex-col gap-6`}>
+                  {/* Only the sections that hold a skill; an empty list keeps
+                      CollectionState's one empty state. */}
+                  {groupSkillsBySection(sorted, { orgName }).map((group) => (group.id === 'builtin' ? (
+                    <BuiltinSection key={group.id} count={group.skills.length} open={builtinOpen} onToggle={toggleBuiltin}>
+                      {group.skills.map(skillRow)}
+                    </BuiltinSection>
+                  ) : (
+                    <ListGroup
+                      key={group.id}
+                      aria-label={group.title}
+                      title={(
+                        <h2 className="flex items-center gap-2">
+                          <span className="inline-flex text-ink-4" aria-hidden="true">{SECTION_ICONS[group.id](14)}</span>
+                          {group.title}
+                        </h2>
+                      )}
+                      description={<span data-testid="section-count">{group.skills.length}</span>}
+                    >
+                      {group.skills.map(skillRow)}
+                    </ListGroup>
+                  )))}
+                </div>
+              ) : (
+                <div className={`${LIST_CLASS} flex flex-col gap-6`}>
+                  {ownSkills.length > 0 && <ListGroup>{ownSkills.map(skillRow)}</ListGroup>}
+                  {builtinSkills.length > 0 && (
+                    <BuiltinSection count={builtinSkills.length} open={builtinOpen} onToggle={toggleBuiltin}>
+                      {builtinSkills.map(skillRow)}
+                    </BuiltinSection>
+                  )}
+                </div>
+              )}
+            </CollectionState>
+          )}
         </>
       )}
       <UploadSkillModal
@@ -970,7 +967,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         initial={modalSkill ?? null}
         projects={projects}
         canShare={canShare}
-        orgSharing={orgSharingOn ? sharingCapabilities : null}
+        capabilities={sharingCapabilities}
+        orgName={orgName}
       />
     </div>
   );

@@ -3,12 +3,17 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
-const api = vi.hoisted(() => ({ byIds: vi.fn(), directory: vi.fn() }));
+const api = vi.hoisted(() => ({ byIds: vi.fn(), byEmails: vi.fn(), directory: vi.fn() }));
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal()),
-  fetchHubPeopleByIds: api.byIds,
-  fetchHubDirectory: api.directory,
+  fetchMindsHubPeopleByIds: api.byIds,
+  fetchMindsHubPeopleByEmails: api.byEmails,
+  fetchMindsHubDirectory: api.directory,
 }));
+// The person signed in. The directory leaves them out, as MindsHub's member
+// list does.
+const account = vi.hoisted(() => ({ user: null }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => account.user }));
 
 import RecipientField from './RecipientField';
 import { __resetOrgSharingForTests } from '../hooks/useOrgSharing';
@@ -32,10 +37,17 @@ const TEAMS = {
 
 beforeEach(() => {
   __resetOrgSharingForTests();
+  account.user = { name: 'Mia Lane', email: 'Mia@Acme.com', sub: 'u-mia' };
   api.directory.mockReset();
   api.directory.mockImplementation(async () => directoryAnswer());
   api.byIds.mockReset();
   api.byIds.mockImplementation(async (ids) => ({ reachable: true, people: DIRECTORY.filter((p) => ids.includes(p.id)) }));
+  // Everyone at the org is in DIRECTORY, whatever part of it the directory
+  // read sends.
+  api.byEmails.mockReset();
+  api.byEmails.mockImplementation(async (emails) => ({
+    reachable: true, people: DIRECTORY.filter((p) => emails.includes(p.email)), unanswered: [],
+  }));
 });
 
 function Harness({ initial = {}, spy = () => {}, ...props }) {
@@ -207,6 +219,46 @@ describe('<RecipientField>', () => {
     expect(input()).toHaveFocus();
   });
 
+  /* MindsHub was asked and said no: asking again gets the same answer, so
+     there is no Retry, and the line never says MindsHub couldn't be reached. */
+  it('says MindsHub refused to list the people, with no Retry', async () => {
+    api.directory.mockResolvedValueOnce({ reachable: false, failure: 'mindshub_refused', people: [], truncated: false });
+    const user = userEvent.setup();
+    render(<Harness allowExternal />);
+    await user.click(input());
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent("MindsHub refused to list your organization's people");
+    expect(alert).not.toHaveTextContent("Couldn't load");
+    expect(within(alert).queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says MindsHub is limiting requests, and Retry asks again', async () => {
+    api.directory.mockResolvedValueOnce({ reachable: false, failure: 'mindshub_throttled', people: [], truncated: false });
+    const user = userEvent.setup();
+    render(<Harness allowExternal />);
+    await user.click(input());
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('MindsHub is limiting requests. Try again in a minute.');
+    expect(alert).not.toHaveTextContent("Couldn't load");
+    await user.click(within(alert).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(options()).toHaveLength(6));
+    expect(api.directory).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['refused', 'mindshub_refused', 'MindsHub refused to list your teams.'],
+    ['throttled', 'mindshub_throttled', 'MindsHub is limiting requests. Try again in a minute.'],
+    ['unreachable', 'mindshub_unreachable', "Couldn't load your teams. Try again later."],
+  ])('says why the teams could not be read when MindsHub %s', async (_, failure, line) => {
+    const user = userEvent.setup();
+    render(<Harness allowExternal teamsState={{ status: 'ready', reachable: false, failure, teams: [] }} />);
+    await user.click(input());
+
+    expect(await screen.findByText(line)).toBeInTheDocument();
+  });
+
   it('holds a paste made while the directory loads, says Checking…, and resolves it once loaded', async () => {
     let answer;
     api.directory.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
@@ -283,6 +335,7 @@ describe('<RecipientField>', () => {
   });
 
   describe('a truncated directory', () => {
+    // Bo is in the org, past the end of what the directory read sends.
     beforeEach(() => {
       api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
     });
@@ -305,27 +358,181 @@ describe('<RecipientField>', () => {
       expect(screen.getByRole('status')).toHaveTextContent('No matches');
     });
 
-    it('takes a typed email it does not hold as an outside one when allowed', async () => {
+    it('adds a typed email of a member past its end as that person, never as an outside email', async () => {
+      let answer;
+      api.byEmails.mockImplementationOnce((emails) => new Promise((resolve) => {
+        answer = () => resolve({ reachable: true, people: DIRECTORY.filter((p) => emails.includes(p.email)), unanswered: [] });
+      }));
       const user = userEvent.setup();
       const spy = vi.fn();
       render(<Harness allowExternal spy={spy} />);
       await user.click(input());
       await waitFor(() => expect(options()).toHaveLength(5));
       await user.type(input(), 'bo@acme.com');
-      await screen.findByRole('option', { name: 'Invite bo@acme.com (outside Acme)' });
+      // Past the capped list's end nobody has said Bo isn't a member.
+      await screen.findByRole('option', { name: 'Add bo@acme.com' });
+      expect(screen.queryByText(/outside Acme/)).toBeNull();
       await user.keyboard('{Enter}');
-      expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['bo@acme.com'] });
+
+      expect(summary()).toBe('Checking…');
+      expect(api.byEmails).toHaveBeenCalledWith(['bo@acme.com']);
+      expect(spy).not.toHaveBeenCalled();
+      answer();
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(spy.mock.calls.every(([value]) => value.emails.length === 0)).toBe(true);
+      await waitFor(() => expect(rows()).toEqual([['Bo Chen', 'bo@acme.com']]));
     });
 
-    it('reports a pasted email it does not hold as not in the org when only the org is allowed', async () => {
+    it('adds a member past its end as that person when Invite is picked', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+      await user.type(input(), 'bo@acme.com');
+      await user.click(await screen.findByRole('option', { name: 'Add bo@acme.com' }));
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(spy.mock.calls.every(([value]) => value.emails.length === 0)).toBe(true);
+    });
+
+    it('calls an address outside the org only once MindsHub said no member holds it', async () => {
+      const user = userEvent.setup();
+      render(<Harness allowExternal />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+
+      // Not asked yet: Add, with no claim about the org.
+      await user.type(input(), 'zed@partner.io');
+      expect(await screen.findByRole('option', { name: 'Add zed@partner.io' })).toBeInTheDocument();
+      expect(screen.queryByText(/outside Acme/)).toBeNull();
+      await user.keyboard('{Enter}');
+      await waitFor(() => expect(api.byEmails).toHaveBeenCalledWith(['zed@partner.io']));
+      await user.click(await screen.findByRole('button', { name: 'Remove zed@partner.io' }));
+
+      await user.type(input(), 'zed@partner.io');
+      expect(await screen.findByRole('option', { name: 'Invite zed@partner.io (outside Acme)' })).toBeInTheDocument();
+    });
+
+    it('says nothing about the org for an address it has not asked about, where only the org may be named', async () => {
+      const user = userEvent.setup();
+      render(<Harness />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+
+      await user.type(input(), 'bo@acme.com');
+
+      expect(await screen.findByRole('option', { name: 'Add bo@acme.com' })).toBeInTheDocument();
+      expect(screen.queryByText('Only people in Acme')).toBeNull();
+    });
+
+    it('takes a typed email no member holds as an outside one when allowed', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+      await user.type(input(), 'zed@partner.io{Enter}');
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@partner.io'] }));
+      expect(api.byEmails).toHaveBeenCalledTimes(1);
+    });
+
+    it('finds pasted members past its end and reports the rest as not in the org when only the org is allowed', async () => {
       const spy = vi.fn();
       render(<Harness spy={spy} />);
       fireEvent.focus(input());
       await screen.findByRole('option', { name: /Ana Ruiz/ });
-      fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com bo@acme.com' } });
+      fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com Bo@acme.com zed@acme.com' } });
 
-      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] }));
-      expect(screen.getByRole('alert')).toHaveTextContent('Not added: bo@acme.com (not found in the first 2 people of Acme)');
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana', 'u-bo'], emails: [] }));
+      expect(screen.getByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not in Acme)');
+      // Only the addresses the directory doesn't have are asked about, once.
+      expect(api.byEmails.mock.calls).toEqual([[['bo@acme.com', 'zed@acme.com']]]);
+    });
+
+    it('offers a member it found past its end when their address is typed again', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+      await user.type(input(), 'bo@acme.com{Enter}');
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      await user.click(await screen.findByRole('button', { name: 'Remove Bo Chen' }));
+
+      await user.type(input(), 'bo@acme.com');
+
+      expect(await screen.findByRole('option', { name: /Bo Chen/ })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /Invite/ })).toBeNull();
+      await user.keyboard('{Enter}');
+      expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] });
+      expect(api.byEmails).toHaveBeenCalledTimes(1);
+    });
+
+    /* cowork-server refuses an address it finds malformed with 400
+       invalid_email, which the lookup reports as `invalid`: that address is
+       not an email, never one to check again. */
+    it('reports an address the lookup refused as malformed as not an email, not as unchecked', async () => {
+      api.byEmails.mockResolvedValueOnce({ reachable: true, people: [], unanswered: [], invalid: ['odd@acme.com'] });
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+
+      await user.type(input(), 'odd@acme.com{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: odd@acme.com (not an email)');
+      expect(screen.queryByText(/couldn't check/)).toBeNull();
+      expect(spy).not.toHaveBeenCalled();
+
+      // Typed again, it is offered as nothing, and nobody is asked again.
+      await user.clear(input());
+      await user.type(input(), 'odd@acme.com{Enter}');
+      expect(screen.queryByRole('option', { name: /odd@acme\.com/ })).toBeNull();
+      expect(api.byEmails).toHaveBeenCalledTimes(1);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['refused', 'mindshub_refused', 'MindsHub refused to check who is in Acme'],
+      ['throttled', 'mindshub_throttled', 'MindsHub is limiting requests, try again in a minute'],
+    ])('keeps an address in the input, and says why, when MindsHub %s the lookup', async (_, failure, reason) => {
+      api.byEmails.mockResolvedValueOnce({ reachable: false, failure, people: [], unanswered: ['bo@acme.com'], invalid: [] });
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+
+      await user.type(input(), 'bo@acme.com{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(`Not added: bo@acme.com (${reason})`);
+      expect(screen.queryByText(/couldn't check/)).toBeNull();
+      expect(input()).toHaveValue('bo@acme.com');
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("keeps an address in the input, never as an outside email, when MindsHub can't be asked about it", async () => {
+      api.byEmails.mockResolvedValueOnce({ reachable: false, people: [], unanswered: ['bo@acme.com'] });
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+
+      await user.type(input(), 'bo@acme.com{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Not added: bo@acme.com (couldn't check who is in Acme, try again)");
+      expect(input()).toHaveValue('bo@acme.com');
+      expect(spy).not.toHaveBeenCalled();
+
+      // Enter asks again.
+      await user.keyboard('{Enter}');
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(api.byEmails).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -367,10 +574,37 @@ describe('<RecipientField>', () => {
       ageDirectory();
 
       await user.type(input(), 'bo@acme.com');
-      await user.click(await screen.findByRole('option', { name: 'Invite bo@acme.com (outside Acme)' }));
+      // A list over a minute old can't say Bo isn't a member.
+      await user.click(await screen.findByRole('option', { name: 'Add bo@acme.com' }));
+      expect(screen.queryByText(/outside Acme/)).toBeNull();
 
       await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
       expect(api.directory).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the address in the input, never as an outside email, when the directory could not be read again', async () => {
+      api.directory
+        .mockResolvedValueOnce(directoryAnswer({ people: [ANA, ANDY] }))
+        .mockResolvedValueOnce({ reachable: false, people: [], truncated: false })
+        .mockResolvedValue(directoryAnswer({ people: [ANA, ANDY, BO] }));
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      ageDirectory();
+
+      await user.type(input(), 'bo@acme.com{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Not added: bo@acme.com (couldn't check who is in Acme, try again)");
+      expect(input()).toHaveValue('bo@acme.com');
+      expect(spy).not.toHaveBeenCalled();
+      expect(api.directory).toHaveBeenCalledTimes(2);
+
+      // Enter asks again, and the fresh copy has him.
+      await user.keyboard('{Enter}');
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(spy.mock.calls.every(([value]) => value.emails.length === 0)).toBe(true);
     });
 
     it('does not read a fresh directory again', async () => {
@@ -386,7 +620,7 @@ describe('<RecipientField>', () => {
       expect(api.directory).toHaveBeenCalledTimes(1);
     });
 
-    it('says how far a truncated directory went when they are still not found, for org-only sharing', async () => {
+    it('asks MindsHub about them once a truncated directory is read again, and says not in the org, for org-only sharing', async () => {
       api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
       const user = userEvent.setup();
       render(<Harness />);
@@ -396,8 +630,56 @@ describe('<RecipientField>', () => {
 
       await user.type(input(), 'zed@acme.com{Enter}');
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not found in the first 2 people of Acme)');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not in Acme)');
       expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails.mock.calls).toEqual([[['zed@acme.com']]]);
+    });
+
+    it('asks MindsHub again about an address it said no member holds once the directory is read again', async () => {
+      const ZED = { id: 'u-zed', name: 'Zed Ito', email: 'zed@acme.com' };
+      api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
+      api.byEmails
+        .mockResolvedValueOnce({ reachable: true, people: [], unanswered: [] })
+        .mockResolvedValue({ reachable: true, people: [ZED], unanswered: [] });
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      await user.type(input(), 'zed@acme.com{Enter}');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not in Acme)');
+
+      // A minute on, Zed has joined.
+      ageDirectory();
+      await user.type(input(), 'zed@acme.com{Enter}');
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-zed'], emails: [] }));
+      expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks MindsHub again when the directory goes old while it answers, since the new read drops the answer', async () => {
+      const ZED = { id: 'u-zed', name: 'Zed Ito', email: 'zed@acme.com' };
+      api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
+      let answer;
+      api.byEmails
+        .mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }))
+        .mockResolvedValue({ reachable: true, people: [ZED], unanswered: [] });
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      await user.type(input(), 'zed@acme.com{Enter}');
+      expect(summary()).toBe('Checking…');
+
+      ageDirectory();
+      answer({ reachable: true, people: [], unanswered: [] });
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-zed'], emails: [] }));
+      expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).toBeNull();
     });
 
     it('adds them as outside when a truncated directory still does not have them and outside emails are allowed', async () => {
@@ -413,7 +695,53 @@ describe('<RecipientField>', () => {
 
       await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@acme.com'] }));
       expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails.mock.calls).toEqual([[['zed@acme.com']]]);
       await waitFor(() => expect(rows()).toEqual([['zed@acme.com', 'Outside Acme']]));
+    });
+  });
+
+  describe('the address of the person signed in', () => {
+    it('is refused as "that\'s you", never invited as an outside email', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+
+      await user.type(input(), 'mia@acme.com');
+      expect(screen.getByRole('status')).toHaveTextContent("That's you");
+      expect(screen.queryByRole('option', { name: /Invite/ })).toBeNull();
+      await user.keyboard('{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Not added: mia@acme.com (that's you)");
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('is refused from a paste while the rest is added', async () => {
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      fireEvent.focus(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com MIA@acme.com zed@partner.io' } });
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: ['zed@partner.io'] }));
+      expect(screen.getByRole('alert')).toHaveTextContent("Not added: mia@acme.com (that's you)");
+    });
+
+    it('does not send an old directory to be read again', async () => {
+      const realNow = Date.now.bind(Date);
+      const user = userEvent.setup();
+      render(<Harness allowExternal />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 61 * 1000);
+      try {
+        await user.type(input(), 'mia@acme.com{Enter}');
+        expect(await screen.findByRole('alert')).toHaveTextContent("Not added: mia@acme.com (that's you)");
+        expect(api.directory).toHaveBeenCalledTimes(1);
+      } finally {
+        clock.mockRestore();
+      }
     });
   });
 
@@ -506,7 +834,7 @@ describe('<RecipientField>', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('removes a row with its labelled ×, by click or keyboard, and Backspace leaves rows alone', async () => {
+  it('removes a row with its labeled ×, by click or keyboard, and Backspace leaves rows alone', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();
     render(<Harness allowExternal spy={spy} initial={{ teamIds: ['t-finance'], userIds: ['u-ana'], emails: ['zed@partner.io'] }} />);
@@ -589,7 +917,7 @@ describe('<RecipientField>', () => {
     expect(spy).toHaveBeenLastCalledWith({ teamIds: ['t-platform'], userIds: ['u-bo'], emails: [] });
   });
 
-  it('never takes people the hub could not be asked about for unknown, and asks again on Retry', async () => {
+  it('never takes people MindsHub could not be asked about for unknown, and asks again on Retry', async () => {
     api.byIds.mockImplementationOnce(async () => ({ reachable: false, people: [], unanswered: ['u-bo'] }));
     const user = userEvent.setup();
     render(<Harness allowExternal initial={{ userIds: ['u-bo', 'u-gone'] }} />);
@@ -604,6 +932,30 @@ describe('<RecipientField>', () => {
     await waitFor(() => expect(rows()).toEqual([['Bo Chen', 'bo@acme.com'], ['Unknown person']]));
     expect(api.byIds).toHaveBeenLastCalledWith(['u-bo']);
     expect(screen.queryByText(/Couldn't load some names/)).toBeNull();
+  });
+
+  it('says MindsHub refused to name some people, with no Retry', async () => {
+    api.byIds.mockImplementationOnce(async () => ({ reachable: false, failure: 'mindshub_refused', people: [], unanswered: ['u-bo'] }));
+    render(<Harness allowExternal initial={{ userIds: ['u-bo'] }} />);
+
+    await waitFor(() => expect(rows()).toEqual([["Couldn't load name"]]));
+    expect(screen.getByText('MindsHub refused to name some people.')).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load some names/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says MindsHub is limiting requests while naming people, and Retry asks again', async () => {
+    api.byIds.mockImplementationOnce(async () => ({ reachable: false, failure: 'mindshub_throttled', people: [], unanswered: ['u-bo'] }));
+    const user = userEvent.setup();
+    render(<Harness allowExternal initial={{ userIds: ['u-bo'] }} />);
+
+    await waitFor(() => expect(rows()).toEqual([["Couldn't load name"]]));
+    expect(screen.getByText(/MindsHub is limiting requests\. Try again in a minute\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load some names/)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(rows()).toEqual([['Bo Chen', 'bo@acme.com']]));
+    expect(screen.queryByText(/MindsHub is limiting requests/)).toBeNull();
   });
 
   it('keeps every id of a lookup that failed outright as not loaded, and asks again on the next open', async () => {
@@ -625,7 +977,7 @@ describe('<RecipientField>', () => {
     expect(row.querySelector('.bg-warning-bg')).not.toBeNull();
   });
 
-  it('summarises an empty field', () => {
+  it('summarizes an empty field', () => {
     render(<Harness allowExternal />);
     expect(summary()).toBe('Add at least one team, person or email.');
   });
