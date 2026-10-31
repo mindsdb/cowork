@@ -6,7 +6,8 @@ vi.mock('../platform/host', () => ({
 vi.mock('../lib/deployment', () => ({ PLATFORM_UI: true }));
 
 import {
-  fetchHubDirectory, fetchHubPeopleByIds, fetchHubTeams, fetchSkillSharingCapabilities, setSkillAccess,
+  fetchHubDirectory, fetchHubPeopleByEmails, fetchHubPeopleByIds, fetchHubTeams, fetchSkillSharingCapabilities,
+  setSkillAccess,
 } from './api';
 
 const jsonRes = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -229,5 +230,40 @@ describe('fetchHubPeopleByIds', () => {
     const fetch = vi.spyOn(globalThis, 'fetch');
     expect(await fetchHubPeopleByIds([])).toEqual({ reachable: true, people: [], unanswered: [] });
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchHubPeopleByEmails', () => {
+  it('asks the people route which members hold the addresses, lowercased', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({
+      reachable: true,
+      people: [
+        { id: 'u2', name: 'Bo Chen', email: 'Bo@Acme.com' },
+        { id: 'u-other', name: 'Not Asked', email: 'x@acme.com' },
+      ],
+    }));
+
+    expect(await fetchHubPeopleByEmails([' Bo@Acme.com', 'zed@partner.io', 'bo@acme.com', ''])).toEqual({
+      reachable: true,
+      people: [{ id: 'u2', name: 'Bo Chen', email: 'bo@acme.com' }],
+      unanswered: [],
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('http://127.0.0.1:26866/api/v1/hub/people/?emails=bo%40acme.com%2Czed%40partner.io');
+    expect(init.headers).not.toHaveProperty('X-MindsHub-Authorization');
+  });
+
+  it('asks in batches of at most 50 addresses, and lists the ones a failed batch could not ask', async () => {
+    const emails = Array.from({ length: 60 }, (_, i) => `p${i}@acme.com`);
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonRes({ detail: 'boom' }, 500))
+      .mockResolvedValueOnce(jsonRes({ reachable: true, people: [{ id: 'u55', name: 'P55', email: 'p55@acme.com' }] }));
+
+    expect(await fetchHubPeopleByEmails(emails)).toEqual({
+      reachable: false,
+      people: [{ id: 'u55', name: 'P55', email: 'p55@acme.com' }],
+      unanswered: emails.slice(0, 50),
+    });
   });
 });

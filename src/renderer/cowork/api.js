@@ -2074,23 +2074,25 @@ export async function fetchHubDirectory() {
   }
 }
 
-const HUB_PEOPLE_IDS_BATCH = 50;
+const HUB_PEOPLE_BATCH = 50;
 
-/* The people a stored audience names, by user id, so their rows can say who
-   they are. Asked in batches of at most 50 ids. Ids the hub answered for but
-   doesn't know are simply absent from `people`. `unanswered` lists the ids of
-   any batch that could not be asked (`reachable` is then false): those are
-   not known to be missing, only not looked up yet. */
-export async function fetchHubPeopleByIds(ids) {
-  const unique = [...new Set((ids || []).filter((id) => typeof id === 'string' && id))];
+/* The people the hub answers for `values` under one lookup, `ids` or
+   `emails` (`GET /hub/people/?ids=` or `?emails=`), asked in batches of at
+   most 50. A person is kept when `keyOf` gives one of the values asked; a
+   value the hub answered for but no member has is simply absent from
+   `people`. `unanswered` lists the values of any batch that could not be
+   asked (`reachable` is then false): those are not known to be missing, only
+   not looked up yet. */
+async function fetchHubPeopleBy(param, values, keyOf) {
+  const unique = [...new Set((values || []).filter((value) => typeof value === 'string' && value))];
   if (unique.length === 0) return { reachable: true, people: [], unanswered: [] };
   const batches = [];
-  for (let i = 0; i < unique.length; i += HUB_PEOPLE_IDS_BATCH) {
-    batches.push(unique.slice(i, i + HUB_PEOPLE_IDS_BATCH));
+  for (let i = 0; i < unique.length; i += HUB_PEOPLE_BATCH) {
+    batches.push(unique.slice(i, i + HUB_PEOPLE_BATCH));
   }
   const answers = await Promise.all(batches.map(async (batch) => {
     try {
-      const params = new URLSearchParams({ ids: batch.join(',') });
+      const params = new URLSearchParams({ [param]: batch.join(',') });
       const data = await req(`/hub/people/?${params}`);
       return {
         batch,
@@ -2102,15 +2104,31 @@ export async function fetchHubPeopleByIds(ids) {
     }
   }));
   const wanted = new Set(unique);
-  const byId = new Map();
+  const byKey = new Map();
   const unanswered = [];
   for (const answer of answers) {
     if (!answer.reachable) unanswered.push(...answer.batch);
     for (const person of answer.people) {
-      if (wanted.has(person.id) && !byId.has(person.id)) byId.set(person.id, person);
+      const key = keyOf(person);
+      if (wanted.has(key) && !byKey.has(key)) byKey.set(key, person);
     }
   }
-  return { reachable: unanswered.length === 0, people: [...byId.values()], unanswered };
+  return { reachable: unanswered.length === 0, people: [...byKey.values()], unanswered };
+}
+
+/* The people a stored audience names, by user id, so their rows can say who
+   they are. */
+export async function fetchHubPeopleByIds(ids) {
+  return fetchHubPeopleBy('ids', ids, (person) => person.id);
+}
+
+/* The members who hold these addresses. The directory the picker loads is
+   capped (`truncated`), so a member past the cap is not in it; asked here, a
+   typed address still names them, and sharing stores their user id rather
+   than an outside email. `unanswered` holds lowercased addresses. */
+export async function fetchHubPeopleByEmails(emails) {
+  const lowered = (emails || []).map((email) => (typeof email === 'string' ? email.trim().toLowerCase() : ''));
+  return fetchHubPeopleBy('emails', lowered, (person) => person.email);
 }
 
 export async function deleteSkill(label) {

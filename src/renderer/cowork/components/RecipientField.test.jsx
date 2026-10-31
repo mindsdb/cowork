@@ -3,10 +3,11 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
-const api = vi.hoisted(() => ({ byIds: vi.fn(), directory: vi.fn() }));
+const api = vi.hoisted(() => ({ byIds: vi.fn(), byEmails: vi.fn(), directory: vi.fn() }));
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal()),
   fetchHubPeopleByIds: api.byIds,
+  fetchHubPeopleByEmails: api.byEmails,
   fetchHubDirectory: api.directory,
 }));
 // The person signed in. The directory leaves them out, as the auth service's
@@ -41,6 +42,11 @@ beforeEach(() => {
   api.directory.mockImplementation(async () => directoryAnswer());
   api.byIds.mockReset();
   api.byIds.mockImplementation(async (ids) => ({ reachable: true, people: DIRECTORY.filter((p) => ids.includes(p.id)) }));
+  // The whole org is DIRECTORY, whatever part of it the directory read sends.
+  api.byEmails.mockReset();
+  api.byEmails.mockImplementation(async (emails) => ({
+    reachable: true, people: DIRECTORY.filter((p) => emails.includes(p.email)), unanswered: [],
+  }));
 });
 
 function Harness({ initial = {}, spy = () => {}, ...props }) {
@@ -288,6 +294,7 @@ describe('<RecipientField>', () => {
   });
 
   describe('a truncated directory', () => {
+    // Bo is in the org, past the end of what the directory read sends.
     beforeEach(() => {
       api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
     });
@@ -310,7 +317,11 @@ describe('<RecipientField>', () => {
       expect(screen.getByRole('status')).toHaveTextContent('No matches');
     });
 
-    it('takes a typed email it does not hold as an outside one when allowed', async () => {
+    it('adds a typed email of a member past its end as that person, never as an outside email', async () => {
+      let answer;
+      api.byEmails.mockImplementationOnce((emails) => new Promise((resolve) => {
+        answer = () => resolve({ reachable: true, people: DIRECTORY.filter((p) => emails.includes(p.email)), unanswered: [] });
+      }));
       const user = userEvent.setup();
       const spy = vi.fn();
       render(<Harness allowExternal spy={spy} />);
@@ -319,18 +330,92 @@ describe('<RecipientField>', () => {
       await user.type(input(), 'bo@acme.com');
       await screen.findByRole('option', { name: 'Invite bo@acme.com (outside Acme)' });
       await user.keyboard('{Enter}');
-      expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['bo@acme.com'] });
+
+      expect(summary()).toBe('Checking…');
+      expect(api.byEmails).toHaveBeenCalledWith(['bo@acme.com']);
+      expect(spy).not.toHaveBeenCalled();
+      answer();
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(spy.mock.calls.every(([value]) => value.emails.length === 0)).toBe(true);
+      await waitFor(() => expect(rows()).toEqual([['Bo Chen', 'bo@acme.com']]));
     });
 
-    it('reports a pasted email it does not hold as not in the org when only the org is allowed', async () => {
+    it('adds a member past its end as that person when Invite is picked', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+      await user.type(input(), 'bo@acme.com');
+      await user.click(await screen.findByRole('option', { name: 'Invite bo@acme.com (outside Acme)' }));
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(spy.mock.calls.every(([value]) => value.emails.length === 0)).toBe(true);
+    });
+
+    it('takes a typed email no member holds as an outside one when allowed', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+      await user.type(input(), 'zed@partner.io{Enter}');
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@partner.io'] }));
+      expect(api.byEmails).toHaveBeenCalledTimes(1);
+    });
+
+    it('finds pasted members past its end and reports the rest as not in the org when only the org is allowed', async () => {
       const spy = vi.fn();
       render(<Harness spy={spy} />);
       fireEvent.focus(input());
       await screen.findByRole('option', { name: /Ana Ruiz/ });
-      fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com bo@acme.com' } });
+      fireEvent.paste(input(), { clipboardData: { getData: () => 'ana@acme.com Bo@acme.com zed@acme.com' } });
 
-      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana'], emails: [] }));
-      expect(screen.getByRole('alert')).toHaveTextContent('Not added: bo@acme.com (not found in the first 2 people of Acme)');
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-ana', 'u-bo'], emails: [] }));
+      expect(screen.getByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not in Acme)');
+      // Only the addresses the directory doesn't have are asked about, once.
+      expect(api.byEmails.mock.calls).toEqual([[['bo@acme.com', 'zed@acme.com']]]);
+    });
+
+    it('offers a member it found past its end when their address is typed again', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+      await user.type(input(), 'bo@acme.com{Enter}');
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      await user.click(await screen.findByRole('button', { name: 'Remove Bo Chen' }));
+
+      await user.type(input(), 'bo@acme.com');
+
+      expect(await screen.findByRole('option', { name: /Bo Chen/ })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /Invite/ })).toBeNull();
+      await user.keyboard('{Enter}');
+      expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] });
+      expect(api.byEmails).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an address in the input, never as an outside email, when the hub can't be asked about it", async () => {
+      api.byEmails.mockResolvedValueOnce({ reachable: false, people: [], unanswered: ['bo@acme.com'] });
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await waitFor(() => expect(options()).toHaveLength(5));
+
+      await user.type(input(), 'bo@acme.com{Enter}');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Not added: bo@acme.com (couldn't check who is in Acme, try again)");
+      expect(input()).toHaveValue('bo@acme.com');
+      expect(spy).not.toHaveBeenCalled();
+
+      // Enter asks again.
+      await user.keyboard('{Enter}');
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
+      expect(api.byEmails).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -416,7 +501,7 @@ describe('<RecipientField>', () => {
       expect(api.directory).toHaveBeenCalledTimes(1);
     });
 
-    it('says how far a truncated directory went when they are still not found, for org-only sharing', async () => {
+    it('asks the hub about them once a truncated directory is read again, and says not in the org, for org-only sharing', async () => {
       api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
       const user = userEvent.setup();
       render(<Harness />);
@@ -426,8 +511,56 @@ describe('<RecipientField>', () => {
 
       await user.type(input(), 'zed@acme.com{Enter}');
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not found in the first 2 people of Acme)');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not in Acme)');
       expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails.mock.calls).toEqual([[['zed@acme.com']]]);
+    });
+
+    it('asks the hub again about an address it said no member holds once the directory is read again', async () => {
+      const ZED = { id: 'u-zed', name: 'Zed Ito', email: 'zed@acme.com' };
+      api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
+      api.byEmails
+        .mockResolvedValueOnce({ reachable: true, people: [], unanswered: [] })
+        .mockResolvedValue({ reachable: true, people: [ZED], unanswered: [] });
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      await user.type(input(), 'zed@acme.com{Enter}');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Not added: zed@acme.com (not in Acme)');
+
+      // A minute on, Zed has joined.
+      ageDirectory();
+      await user.type(input(), 'zed@acme.com{Enter}');
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-zed'], emails: [] }));
+      expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks the hub again when the directory goes old while it answers, since the new read drops the answer', async () => {
+      const ZED = { id: 'u-zed', name: 'Zed Ito', email: 'zed@acme.com' };
+      api.directory.mockResolvedValue(directoryAnswer({ people: [ANA, ANDY], truncated: true }));
+      let answer;
+      api.byEmails
+        .mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }))
+        .mockResolvedValue({ reachable: true, people: [ZED], unanswered: [] });
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      await user.type(input(), 'zed@acme.com{Enter}');
+      expect(summary()).toBe('Checking…');
+
+      ageDirectory();
+      answer({ reachable: true, people: [], unanswered: [] });
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-zed'], emails: [] }));
+      expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).toBeNull();
     });
 
     it('adds them as outside when a truncated directory still does not have them and outside emails are allowed', async () => {
@@ -443,6 +576,7 @@ describe('<RecipientField>', () => {
 
       await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@acme.com'] }));
       expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails.mock.calls).toEqual([[['zed@acme.com']]]);
       await waitFor(() => expect(rows()).toEqual([['zed@acme.com', 'Outside Acme']]));
     });
   });

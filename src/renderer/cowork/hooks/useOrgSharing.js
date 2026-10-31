@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { fetchHubDirectory, fetchHubPeopleByIds, fetchHubTeams, fetchSkillSharingCapabilities } from '../api';
+import {
+  fetchHubDirectory, fetchHubPeopleByEmails, fetchHubPeopleByIds, fetchHubTeams, fetchSkillSharingCapabilities,
+} from '../api';
 import { subscribeOrganizationChanges } from '../lib/organizationChanges';
 import { SHARING_OFF } from '../lib/orgSharing';
 
@@ -199,8 +201,17 @@ export function useKnownPeople(ids) {
  * `refresh` reads it again while the loaded list stays in place
  * (`refreshing`), for an address the list is too old to know. This is the
  * app's one copy of the directory, and `loadedAt` says how old it is.
+ *
+ * A `truncated` list stops before some members. `lookUp` asks the hub about
+ * addresses it doesn't have (`fetchHubPeopleByEmails`, `lookingUp` meanwhile)
+ * and keeps each answer in `addresses`: the member who holds it, or null when
+ * no member does. An address the hub couldn't be asked about is left out. A
+ * new read of the list drops the answers, which are as old as it.
  */
-const DIRECTORY_IDLE = Object.freeze({ status: 'idle', people: [], truncated: false, loadedAt: 0, refreshing: false });
+const NO_ADDRESSES = Object.freeze({});
+const DIRECTORY_IDLE = Object.freeze({
+  status: 'idle', people: [], truncated: false, loadedAt: 0, refreshing: false, addresses: NO_ADDRESSES, lookingUp: false,
+});
 
 /** How old the directory may be before an address it doesn't have is
     checked against a fresh copy. */
@@ -227,11 +238,11 @@ function readDirectoryInto(generation, onFailure) {
       return;
     }
     setDirectory({
+      ...DIRECTORY_IDLE,
       status: 'ready',
       people: result.people || [],
       truncated: result.truncated === true,
       loadedAt: Date.now(),
-      refreshing: false,
     });
   });
 }
@@ -251,6 +262,26 @@ function refreshDirectory() {
   readDirectoryInto(generation, () => setDirectory({ ...directory, refreshing: false }));
 }
 
+/* Asks the hub which members hold `emails` (lowercased), those not answered yet. */
+function lookUpAddresses(emails) {
+  if (directory.status !== 'ready' || directory.lookingUp) return;
+  const wanted = [...new Set(emails)].filter((email) => !Object.hasOwn(directory.addresses, email));
+  if (wanted.length === 0) return;
+  const generation = directoryGeneration;
+  setDirectory({ ...directory, lookingUp: true });
+  Promise.resolve().then(() => fetchHubPeopleByEmails(wanted)).catch(() => null).then((result) => {
+    if (generation !== directoryGeneration) return;
+    const unanswered = new Set(result ? result.unanswered || [] : wanted);
+    const found = new Map((result?.people || []).map((person) => [person.email, person]));
+    const addresses = { ...directory.addresses };
+    for (const email of wanted) {
+      if (found.has(email)) addresses[email] = found.get(email);
+      else if (!unanswered.has(email)) addresses[email] = null;
+    }
+    setDirectory({ ...directory, addresses, lookingUp: false });
+  });
+}
+
 function subscribeDirectory(listener) {
   directoryListeners.add(listener);
   return () => directoryListeners.delete(listener);
@@ -260,7 +291,8 @@ const readDirectory = () => directory;
 
 /**
  * Everyone in the org, for the recipient picker: `{ status, people,
- * truncated, loadedAt, refreshing, retry, refresh }`, `status` being
+ * truncated, loadedAt, refreshing, addresses, lookingUp, retry, refresh,
+ * lookUp }`, `status` being
  * 'idle' | 'loading' | 'ready' | 'error'. Read the first time a picker is
  * `active`; every later picker shares it.
  */
@@ -275,5 +307,5 @@ export function useOrgDirectory(active = true) {
       loadDirectory();
     }
   }, []);
-  return { ...state, retry, refresh: refreshDirectory };
+  return { ...state, retry, refresh: refreshDirectory, lookUp: lookUpAddresses };
 }

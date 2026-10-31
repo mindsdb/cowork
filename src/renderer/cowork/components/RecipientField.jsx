@@ -28,9 +28,10 @@
 // (useAccountUser) is refused here as "that's you" rather than taken for an
 // outside one. cowork-server's artifact access route
 // (`PUT /artifacts/workspace/…/access`) refuses it as well.
-// A truncated directory can't say whether an address past its end belongs to
-// a member, and no route looks a member up by address. With outside emails
-// allowed, such an address is added as an outside email.
+// A truncated directory stops before some members, so an address it doesn't
+// have is asked about once (useOrgDirectory's `lookUp`): a member's address is
+// that person, never an outside email. If that can't be asked, the address
+// stays in the input, as it does when a new read fails.
 // Before the directory has loaded (or while it is read again), addresses wait
 // ("Checking…") and resolve once it does; if it failed they stay in the input
 // for a Retry.
@@ -188,7 +189,8 @@ export function RecipientField({
   const typedEmail = query.toLowerCase();
   const typedIsEmail = isEmailShaped(typedEmail);
   const directoryPeople = directoryReady ? directory.people : EMPTY_VALUE.userIds;
-  const findByEmail = (email) => directoryPeople.find((p) => (p.email || '').toLowerCase() === email) || null;
+  const findByEmail = (email) => directoryPeople.find((p) => (p.email || '').toLowerCase() === email)
+    || (directoryReady && directory.addresses[email]) || null;
   const matchedPerson = typedIsEmail ? findByEmail(typedEmail) : null;
   // Whether "nobody in the org has this address" is known yet.
   const emailAnswered = directoryReady;
@@ -198,9 +200,10 @@ export function RecipientField({
   let peopleOptions = [];
   if (!emailsOnly) {
     const seen = new Set(userIds);
-    // Pasted lists aren't filtered: they are added on their own.
+    /* Pasted lists aren't filtered: they are added on their own. A typed
+       address the hub named past a truncated list's end is offered too. */
     const local = SEPARATORS.test(query) ? [] : filterPeople(directoryPeople, query);
-    for (const person of local) {
+    for (const person of matchedPerson ? [...local, matchedPerson] : local) {
       if (seen.has(person.id)) continue;
       seen.add(person.id);
       peopleOptions.push(person);
@@ -249,8 +252,9 @@ export function RecipientField({
       known.remember([option.person]);
       if (!latest.current.userIds.includes(option.person.id)) emit({ userIds: [...latest.current.userIds, option.person.id] });
     } else if (option.kind === 'invite') {
-      // An old directory may just not know them yet: check it first.
-      if (!emailsOnly && directoryStale) {
+      /* An old directory may just not know them yet, and a truncated one may
+         stop before them: check first. */
+      if (!emailsOnly && (directoryStale || directory.truncated)) {
         resolveTokens([option.email]);
         if (close) setOpen(false);
         return;
@@ -264,28 +268,29 @@ export function RecipientField({
     if (close) setOpen(false);
   };
 
-  // Each typed or pasted address becomes a person when the org has that
-  // exact email in the loaded directory, else an outside email when allowed,
-  // else it is reported. Until the directory has loaded nothing is added, so
-  // a member is never taken for an outside address: the text stays in the
-  // input, held while the directory loads, and left for a Retry if it failed.
-  // An address a directory over a minute old doesn't have is held while it is
-  // read again, once.
-  const holdTokens = (tokens, refreshed) => {
+  /* Each typed or pasted address becomes a person when the org has that
+     exact email in the loaded directory, else an outside email when allowed,
+     else it is reported. Until the directory has loaded nothing is added, so
+     a member is never taken for an outside address: the text stays in the
+     input, held while the directory loads, and left for a Retry if it failed.
+     An address a directory over a minute old doesn't have is held while it is
+     read again, once, and one a truncated directory doesn't have while the hub
+     is asked about it, once. */
+  const holdTokens = (tokens, checks) => {
     setText(tokens.join(' '));
     setActive(-1);
     setNotAdded([]);
-    setHeld({ tokens, refreshed });
+    setHeld({ tokens, ...checks });
   };
-  const resolveTokens = (tokens, { refreshed = false } = {}) => {
-    if (!emailsOnly && (!directoryReady || directory.refreshing)) {
+  const resolveTokens = (tokens, { refreshed = false, lookedUp = false } = {}) => {
+    if (!emailsOnly && (!directoryReady || directory.refreshing || directory.lookingUp)) {
       if (directory.status === 'error') {
         setText(tokens.join(' '));
         setActive(-1);
         setNotAdded([]);
         if (typeof document !== 'undefined' && document.activeElement === inputRef.current) setOpen(true);
       } else {
-        holdTokens(tokens, refreshed);
+        holdTokens(tokens, { refreshed, lookedUp });
       }
       return;
     }
@@ -294,7 +299,8 @@ export function RecipientField({
       return isEmailShaped(email) && !isOwnEmail(email) && !findByEmail(email);
     };
     if (!emailsOnly && !refreshed && directoryStale && tokens.some(unmatched)) {
-      holdTokens(tokens, true);
+      // The new read drops the hub's answers, so they are asked for again.
+      holdTokens(tokens, { refreshed: true, lookedUp: false });
       directory.refresh();
       return;
     }
@@ -302,14 +308,22 @@ export function RecipientField({
     // failed. An address the old copy lacks may belong to someone who joined
     // since, so it is neither taken for an outside email nor called "not in"
     // the org. It stays in the input, and Enter checks it again.
-    const unchecked = !emailsOnly && refreshed && directoryStale ? tokens.filter(unmatched) : [];
+    const refreshFailed = !emailsOnly && refreshed && directoryStale;
+    /* Past a truncated directory's end, only the hub can say whose an address
+       is. One it couldn't be asked about stays in the input the same way. */
+    const unanswered = !emailsOnly && !refreshFailed && directory.truncated
+      ? tokens.filter((raw) => unmatched(raw) && !Object.hasOwn(directory.addresses, raw.toLowerCase()))
+      : [];
+    if (unanswered.length && !lookedUp) {
+      holdTokens(tokens, { refreshed, lookedUp: true });
+      directory.lookUp(unanswered.map((raw) => raw.toLowerCase()));
+      return;
+    }
+    const unchecked = refreshFailed ? tokens.filter(unmatched) : unanswered;
     setHeld(null);
     resetInput();
     if (unchecked.length) setText(unchecked.join(' '));
-    // Not found in a capped directory: they may be past its end.
-    const notInOrg = directory.truncated
-      ? `not found in the first ${directory.people.length} people of ${org}`
-      : `not in ${org}`;
+    const notInOrg = `not in ${org}`;
     const answers = tokens.filter((raw) => !unchecked.includes(raw)).map((raw) => {
       const email = raw.toLowerCase();
       if (!isEmailShaped(email)) return { raw, reason: 'not an email' };
@@ -344,10 +358,11 @@ export function RecipientField({
   // them in the input with the directory's Retry.
   useEffect(() => {
     if (!held) return;
-    if (directory.status === 'ready' && !directory.refreshing) resolveTokens(held.tokens, { refreshed: held.refreshed });
-    else if (directory.status === 'error') setHeld(null);
+    if (directory.status === 'ready' && !directory.refreshing && !directory.lookingUp) {
+      resolveTokens(held.tokens, { refreshed: held.refreshed, lookedUp: held.lookedUp });
+    } else if (directory.status === 'error') setHeld(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [directory.status, directory.refreshing, held]);
+  }, [directory.status, directory.refreshing, directory.lookingUp, held]);
 
   /** Adds what Enter / Tab / comma means right now; false when nothing. */
   const commit = () => {
