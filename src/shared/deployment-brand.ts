@@ -1,9 +1,9 @@
 // A deployment brand: the product name, style, theme, logo and icons that a
-// web build with the platform UI off reads at run time from its own origin.
-// One build then serves every deployment, and a deployment changes its brand
-// by serving different files at these paths. Cowork ships stock files there
-// (src/renderer/public/brand/), so a deployment that serves nothing of its own
-// looks stock. Hosted web and desktop never load either file.
+// web build reads at run time from its own origin, with the platform UI on or
+// off. One build then serves every deployment, and a deployment changes its
+// brand by serving different files at these paths. Cowork ships stock files
+// there (src/renderer/public/brand/), so a deployment that serves nothing of
+// its own looks stock. Desktop never loads either file.
 
 /** The brand's config: a classic script that sets `window[BRAND_GLOBAL]`. */
 export const BRAND_SCRIPT_PATH = '/brand/brand.js';

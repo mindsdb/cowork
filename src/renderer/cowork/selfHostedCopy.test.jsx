@@ -4,6 +4,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+// The hosted build reads a deployment brand, so its name shows in the
+// platform wording where a surface names the product.
 vi.hoisted(() => {
   window.COWORK_DEPLOYMENT_BRAND = { productName: 'Acme Cowork' };
 });
@@ -74,10 +76,10 @@ describe('platform build', () => {
     )).toBeInTheDocument();
   });
 
-  it('names the desktop app when scheduling', () => {
+  it('names the desktop app and the deployment brand when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
-    expect(screen.getByText('Anton runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Ask Anton to…')).toBeInTheDocument();
+    expect(screen.getByText('Acme Cowork runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ask Acme Cowork to…')).toBeInTheDocument();
   });
 
   it('points the empty artifacts list at the desktop app', () => {

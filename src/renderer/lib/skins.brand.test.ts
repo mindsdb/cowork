@@ -130,7 +130,7 @@ describe('the brand defaults', () => {
     expect(await shows(ACME)).toEqual({ skin: 'acme', theme: 'light' });
   });
 
-  it('write nothing with the platform UI on', async () => {
+  it('write nothing on desktop', async () => {
     window.localStorage.setItem('anton.skin', '8bit');
     expect(await shows(OFF)).toEqual({ skin: '8bit', theme: null });
     expect(stored('anton.brandDefaults')).toBeNull();

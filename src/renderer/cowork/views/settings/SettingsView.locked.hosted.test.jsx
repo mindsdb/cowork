@@ -2,12 +2,15 @@ import { render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 /*
- * Hosted web and desktop never read a deployment brand, so a style lock in the
- * global changes nothing there: the Style picker stays.
+ * The hosted build, a web build with the platform UI on, reads a deployment
+ * brand too, so a style lock there names the style with no picker.
+ * SettingsView.locked.desktop.test.jsx keeps the picker on desktop.
  */
 vi.hoisted(() => {
   window.COWORK_DEPLOYMENT_BRAND = { skinLocked: true };
 });
+vi.mock('../../../lib/buildTarget', () => ({ WEB_BUILD: true }));
+vi.mock('../../../lib/deployment', () => ({ PLATFORM_UI: true }));
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
@@ -25,14 +28,15 @@ vi.mock('../ChannelsView', () => ({ default: () => <div>Channels</div> }));
 
 import SettingsView from './SettingsView';
 
-it('keeps the Style picker with the platform UI on', () => {
+it('shows the locked style without a picker with the platform UI on', () => {
   render(<SettingsView
-    settings={{ configReady: true }} setSetting={vi.fn()} onSave={vi.fn(async () => ({}))} theme="dark" skin="normal" customTheme={{}}
+    settings={{ configReady: true }} setSetting={vi.fn()} onSave={vi.fn(async () => ({}))} theme="dark" skin="8bit" customTheme={{}}
     onThemeChange={vi.fn()} onSkinChange={vi.fn()} onCustomThemeChange={vi.fn()}
     agentLabel="Cowork" serverOnline section="appearance" onSectionChange={vi.fn()}
   />);
-  expect(screen.getByRole('group', { name: 'Style' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '8-Bit style' })).toBeInTheDocument();
-  expect(screen.getByLabelText('8-bit style toggle button')).toBeInTheDocument();
-  expect(screen.queryByText('Set by this deployment. Light and dark stay your choice.')).toBeNull();
+  expect(screen.getByText('Set by this deployment. Light and dark stay your choice.')).toBeInTheDocument();
+  expect(screen.getByText('Normal')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Style' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '8-Bit style' })).toBeNull();
+  expect(screen.queryByLabelText('8-bit style toggle button')).toBeNull();
 });
