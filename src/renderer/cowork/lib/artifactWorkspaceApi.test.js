@@ -287,6 +287,19 @@ describe('workspace request errors', () => {
       message: 'Bad access',
     });
   });
+
+  // A share with everyone the caller may not make: a string detail beside a
+  // top-level code (cowork.services.publish.ShareOrgRequired.refusal).
+  it("puts a refused share's top-level code beside its string detail", async () => {
+    const reason = 'Sharing an artifact with everyone in the organization requires the artifacts.share_org permission or an organization admin.';
+    refuse(403, { detail: reason, code: 'share_org_required' });
+
+    await expect(setArtifactAccess(ARTIFACT, { mode: 'restricted', org_allowed: true })).rejects.toMatchObject({
+      status: 403,
+      code: 'share_org_required',
+      message: reason,
+    });
+  });
 });
 
 /*

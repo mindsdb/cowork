@@ -273,6 +273,32 @@ describe('artifact access fields', () => {
     expect(isOwnerOnlyAccess({})).toBe(true);
     expect(isOwnerOnlyAccess({ allowedTeamIds: ['t1'] })).toBe(false);
   });
+
+  /* cowork-server's MindsHub mode card of a restricted artifact
+     (cowork.schemas.artifact_access.ArtifactAccessView.audience_unknown, as
+     the artifact list answers it, less the owner-only accessEmails). */
+  const UNKNOWN_CARD = {
+    publishedUrl: 'u', accessMode: 'restricted', accessProtected: false,
+    orgAllowed: null, ownerOnly: null, allowedTeamIds: null, allowedUserIds: null,
+  };
+
+  it('reads an audience answered null as unknown, never as an empty one', () => {
+    expect(readArtifactAudience(UNKNOWN_CARD)).toBeNull();
+    // One field answered null is enough.
+    expect(readArtifactAudience({ orgAllowed: false, allowedTeamIds: null })).toBeNull();
+    expect(readArtifactAudience({ orgAllowed: false, accessEmails: null })).toBeNull();
+    // A field left out still reads as empty.
+    expect(readArtifactAudience({ orgAllowed: false }))
+      .toEqual({ orgAllowed: false, teamIds: [], userIds: [], emails: [], ownerOnly: null });
+  });
+
+  it('derives no "Only me" from an audience it does not know', () => {
+    expect(isOwnerOnlyAccess(UNKNOWN_CARD)).toBeNull();
+    expect(artifactShareState(UNKNOWN_CARD, { orgSharing: true })).toBe(ARTIFACT_SHARE_UNKNOWN);
+    expect(artifactShareState(UNKNOWN_CARD)).toBe(ARTIFACT_SHARE_UNKNOWN);
+    // A public or password card's own mode is still its to say.
+    expect(artifactShareState({ ...UNKNOWN_CARD, accessMode: 'public' }).kind).toBe('public');
+  });
 });
 
 describe('skillAccess', () => {

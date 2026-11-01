@@ -80,12 +80,21 @@ export const MAX_IDS_PER_LOOKUP = 50;
 export const MAX_EMAILS_PER_LOOKUP = 50;
 
 /** The `code` cowork-server's people lookup answers with a 400 when an
-    address in `?emails=` is malformed; the body's `emails` lists them. */
+    address in `?emails=` is malformed; the body's `emails` lists them.
+    Mirrors cowork-server's INVALID_EMAIL_CODE (cowork/services/sharing_contract.py). */
 export const INVALID_EMAIL_CODE = 'invalid_email';
 
 /** The `code` of the same 400 when an id in `?ids=` isn't a UUID; the body's
-    `ids` lists them. */
+    `ids` lists them. Mirrors cowork-server's INVALID_ID_CODE
+    (cowork/services/sharing_contract.py). */
 export const INVALID_ID_CODE = 'invalid_id';
+
+/** The `code` cowork-server answers with a 403 when a save would newly share
+    an artifact with everyone in the organization and the caller lacks
+    `artifacts.share_org`; the body's string `detail` is the reason. Mirrors
+    cowork-server's SHARE_ORG_REQUIRED_CODE (cowork/services/sharing_contract.py);
+    anton's publisher holds it under the same name. */
+export const SHARE_ORG_REQUIRED_CODE = 'share_org_required';
 
 /** `GET /hub/people/`'s two lookups. `param` is the query parameter, and the
     field of a 400 `invalidCode` body that lists the values cowork-server
@@ -174,14 +183,31 @@ export function readAudienceAnswer(answer) {
   };
 }
 
+/* The fields of an artifact's audience, any of which cowork-server answers
+   as null when it doesn't know who the artifact reaches. */
+const ARTIFACT_AUDIENCE_VIEW_FIELDS = Object.freeze([
+  AUDIENCE_VIEW_FIELD.ORG_ALLOWED,
+  AUDIENCE_VIEW_FIELD.ALLOWED_TEAM_IDS,
+  AUDIENCE_VIEW_FIELD.ALLOWED_USER_IDS,
+  AUDIENCE_VIEW_FIELD.ACCESS_EMAILS,
+  AUDIENCE_VIEW_FIELD.OWNER_ONLY,
+]);
+
 /**
  * An artifact's audience as an answer or a card reports it, a list it
  * leaves out read as empty. `ownerOnly` stays null when it doesn't say.
  *
+ * Null when the answer doesn't know who the artifact reaches: it gives one of
+ * the audience fields as null, the way a MindsHub mode card of a restricted
+ * artifact does (only `GET .../access` says who that reaches). Nothing is
+ * derived from such an answer, "Only me" included.
+ *
  * @param {unknown} answer
- * @returns {import('./sharingContract').ArtifactAudience}
+ * @returns {import('./sharingContract').ArtifactAudience | null}
  */
 export function readArtifactAudience(answer) {
+  const view = answer && typeof answer === 'object' ? answer : {};
+  if (ARTIFACT_AUDIENCE_VIEW_FIELDS.some((field) => view[field] === null)) return null;
   const said = readAudienceAnswer(answer);
   return {
     orgAllowed: said.orgAllowed === true,

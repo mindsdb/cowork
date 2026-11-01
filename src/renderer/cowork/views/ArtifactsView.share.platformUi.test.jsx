@@ -27,11 +27,13 @@ vi.mock('../../platform/host', () => ({
   getAccessToken: vi.fn(async () => null),
 }));
 vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
-vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
+const toast = vi.hoisted(() => ({ add: vi.fn() }));
+vi.mock('../components/ui/Toast', () => ({ useToastManager: () => toast }));
 vi.mock('../components/artifact', () => ({ ArtifactViewer: () => null }));
 
 import ArtifactsView from './ArtifactsView';
 import * as api from '../api';
+import { OWNED_BY_OTHER_USER_MESSAGE } from '../components/artifact/publish/publishErrors';
 
 const unpublished = {
   id: 'a1', path: '/proj/.anton/artifacts/share-test/index.html',
@@ -126,5 +128,60 @@ describe.each([
 
     expect(within(dialog).getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'false');
     expect(within(dialog).getByRole('button', { name: 'Share' })).toBeDisabled();
+  });
+
+  /* What `req()` throws for cowork-server's 403 share_org_required: MindsHub's
+     reason as the message and the code beside it. Asking again gets the same
+     answer, so the card keeps its state and offers no Try again. */
+  const REASON = 'Sharing an artifact with everyone in the organization needs the artifacts.share_org permission.';
+  const refused = () => Object.assign(new Error(REASON), { status: 403, code: 'share_org_required' });
+
+  async function sharePublicly() {
+    localStorage.setItem('anton:artifacts-view', view);
+    render(<ArtifactsView artifacts={[unpublished]} />);
+    const dialog = openShareDialog();
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Public/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Share' }));
+    await waitFor(() => expect(toast.add).toHaveBeenCalledTimes(1));
+    return toast.add.mock.calls[0][0];
+  }
+
+  /* What `req()` throws for cowork-server's 409 artifact_owned_by_other_user:
+     the server's sentence as the message and the code beside it. Asking again
+     gets the same answer here too. */
+  const ownedElsewhere = () => Object.assign(
+    new Error(OWNED_BY_OTHER_USER_MESSAGE),
+    { status: 409, code: 'artifact_owned_by_other_user' },
+  );
+
+  it.each([
+    ['a share with everyone the caller may not make', refused, REASON],
+    ["another owner's artifact", ownedElsewhere, OWNED_BY_OTHER_USER_MESSAGE],
+  ])("shows a refused share's reason once and offers no Try again: %s", async (_name, error, message) => {
+    api.publishArtifact.mockRejectedValue(error());
+
+    expect(await sharePublicly()).toEqual({ title: message, type: 'danger' });
+    expect(screen.queryByText('Sharing failed')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByText('Not shared')).toBeInTheDocument();
+  });
+
+  it('keeps Sharing failed and Try again for a failure asking again can help', async () => {
+    api.publishArtifact.mockRejectedValue(Object.assign(new Error('Publishing failed: upload timed out'), { status: 502, code: null }));
+
+    expect(await sharePublicly()).toEqual({ title: 'Sharing failed: Publishing failed: upload timed out', type: 'danger' });
+    expect(screen.getByText('Sharing failed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+
+  it("shows a refused update's reason once", async () => {
+    api.updateArtifact.mockRejectedValue(refused());
+    localStorage.setItem('anton:artifacts-view', view);
+    const published = { ...unpublished, publishedUrl: 'https://share/a1', accessMode: 'restricted', accessEmails: [], orgAllowed: true, ownerOnly: false, modified: true };
+    render(<ArtifactsView artifacts={[published]} />);
+    fireEvent.click(screen.getByLabelText('Artifact menu'));
+    fireEvent.click(screen.getByText('Update'));
+
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith({ title: REASON, type: 'danger' }));
   });
 });

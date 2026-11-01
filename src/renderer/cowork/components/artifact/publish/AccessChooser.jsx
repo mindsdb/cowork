@@ -75,12 +75,18 @@ export function newAccessDraft() {
 // can open it. The lists stay on the draft, so switching to "Specific teams
 // and people" shows them, but Everyone sends `org_allowed` alone, so updating
 // as Everyone drops them.
+//
+// An artifact that doesn't know who it reaches (a MindsHub mode card of a
+// restricted artifact, readArtifactAudience's null) gives a draft with
+// nothing picked and nobody listed, which `isAccessDraftValid` refuses: no
+// save is built from it.
 export function accessDraftFromArtifact(artifact, { orgSharing = false, teams = [] } = {}) {
   // Nothing is live on an unpublished artifact, so with MindsHub UI off it
   // starts from a new draft, whatever access an earlier publish left on it.
   if (!PLATFORM_UI && !artifact?.publishedUrl) return newAccessDraft();
-  const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
   const audience = readArtifactAudience(artifact);
+  if (!audience) return { mode: '', password: '', emailsText: '', teamIds: [], userIds: [] };
+  const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
   let mode = serverMode;
   if (serverMode === 'restricted') {
     if (isOwnerOnlyAccess(artifact)) mode = AUDIENCE_CHOICE.PRIVATE;
@@ -247,6 +253,8 @@ export const ACCESS_LABELS = {
     title: 'Password protected',
     desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL and the password' : 'Anyone on the internet with the password',
   },
+  // Restricted, to an audience the artifact doesn't know.
+  restricted: { icon: Ico.people, title: 'Restricted', desc: "Who can open the link isn't known yet" },
   // Without sharing in MindsHub mode: people by email.
   specificPeople: {
     icon: Ico.people,
@@ -263,11 +271,13 @@ export const ACCESS_LABELS = {
 export function accessSummaryLabel(artifact, { orgSharing = false, orgName = null } = {}) {
   const mode = artifact?.accessMode;
   if (mode !== 'restricted') return ACCESS_LABELS[mode] || ACCESS_LABELS.public;
+  // An audience the artifact doesn't know is neither Only me nor a list.
+  const audience = readArtifactAudience(artifact);
+  if (!audience) return ACCESS_LABELS.restricted;
   // A restricted publish with no recipients and no org grants access to the
   // owner alone; saying "people you list" there would be a lie.
   if (artifact.ownerOnly) return ACCESS_LABELS.private;
   if (!orgSharing) return ACCESS_LABELS.specificPeople;
-  const audience = readArtifactAudience(artifact);
   const lists = audience.teamIds.length + audience.userIds.length + audience.emails.length;
   if (audience.orgAllowed && lists === 0) return { ...ACCESS_LABELS.org, title: everyoneAtLabel(orgName) };
   return ACCESS_LABELS.specific;

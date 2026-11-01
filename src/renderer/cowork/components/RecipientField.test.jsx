@@ -369,9 +369,11 @@ describe('<RecipientField>', () => {
       await user.click(input());
       await waitFor(() => expect(options()).toHaveLength(5));
       await user.type(input(), 'bo@acme.com');
-      // Past the capped list's end nobody has said Bo isn't a member.
+      // Past the capped list's end nobody has said Bo isn't a member, and
+      // typing asks nobody.
       await screen.findByRole('option', { name: 'Add bo@acme.com' });
       expect(screen.queryByText(/outside Acme/)).toBeNull();
+      expect(api.byEmails).not.toHaveBeenCalled();
       await user.keyboard('{Enter}');
 
       expect(summary()).toBe('Checking…');
@@ -605,6 +607,34 @@ describe('<RecipientField>', () => {
       await user.keyboard('{Enter}');
       await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: ['u-bo'], emails: [] }));
       expect(spy.mock.calls.every(([value]) => value.emails.length === 0)).toBe(true);
+    });
+
+    /* Typing asks nobody: an address a list over a minute old doesn't have
+       reads "Add", with no claim about the org, until it is picked. Picking
+       it reads the whole directory again, not the address alone, and the
+       address is then added for what the fresh copy says. */
+    it('asks nothing while an address is typed, and reads the directory again once it is picked', async () => {
+      const user = userEvent.setup();
+      const spy = vi.fn();
+      render(<Harness allowExternal spy={spy} />);
+      await user.click(input());
+      await screen.findByRole('option', { name: /Ana Ruiz/ });
+      ageDirectory();
+
+      await user.type(input(), 'zed@partner.io');
+
+      expect(await screen.findByRole('option', { name: 'Add zed@partner.io' })).toBeInTheDocument();
+      expect(screen.queryByText(/outside Acme/)).toBeNull();
+      expect(api.directory).toHaveBeenCalledTimes(1);
+      expect(api.byEmails).not.toHaveBeenCalled();
+
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ teamIds: [], userIds: [], emails: ['zed@partner.io'] }));
+      expect(api.directory).toHaveBeenCalledTimes(2);
+      expect(api.byEmails).not.toHaveBeenCalled();
+      await waitFor(() => expect(rows()).toEqual([['zed@partner.io', 'Outside Acme']]));
+      expect(input()).toHaveValue('');
     });
 
     it('does not read a fresh directory again', async () => {

@@ -615,18 +615,20 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 });
 
 describe('PublishMenu on an org card, driven by usePublish', () => {
-  // cowork-server's org card says restricted but carries no audience: its
-  // teams, people and org flag are empty whoever it is shared with. Only
-  // the access route says who has access.
+  /* cowork-server's org card says restricted but not who it reaches: its
+     audience fields answer null whoever it is shared with
+     (cowork.schemas.artifact_access.ArtifactAccessView.audience_unknown).
+     Only the access route says who has access. */
   const CARD = {
     id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70',
     projectId: 'proj-1',
     publishedUrl: 'https://share/abc',
     accessMode: 'restricted',
-    ownerOnly: false,
-    orgAllowed: false,
-    allowedTeamIds: [],
-    allowedUserIds: [],
+    accessProtected: false,
+    ownerOnly: null,
+    orgAllowed: null,
+    allowedTeamIds: null,
+    allowedUserIds: null,
   };
   // The access route's answer, camelCase as cowork-server sends it.
   const SHARED_WITH_PLATFORM = {
@@ -657,7 +659,7 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     await openChange(user);
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Loading current access…'));
-    // Nothing to pick from the card's empty audience, and nothing to save.
+    // Nothing to pick from the card's unknown audience, and nothing to save.
     expect(screen.queryByRole('radio')).toBeNull();
     const update = screen.getByRole('button', { name: 'Update' });
     expect(update).toBeDisabled();
@@ -722,7 +724,7 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     });
   });
 
-  it("offers Retry when the access route fails, never the card's empty audience", async () => {
+  it("offers Retry when the access route fails, never the card's unknown audience", async () => {
     const user = userEvent.setup();
     workspace.load.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { status: 503 }));
     workspace.load.mockResolvedValueOnce(SHARED_WITH_PLATFORM);
@@ -749,9 +751,9 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     expect(workspace.save).not.toHaveBeenCalled();
   });
 
-  /* The card says restricted with `ownerOnly: false` and empty lists for
-     every org artifact, owner-only ones included. Until the access route
-     answers, nothing may claim the artifact is shared. */
+  /* The card answers its audience null for every org artifact, owner-only
+     ones included. Until the access route answers, nothing may claim the
+     artifact is shared. */
   it('claims "Shared" neither on the trigger nor in the panel until the access route answers', async () => {
     const user = userEvent.setup();
     let answer;

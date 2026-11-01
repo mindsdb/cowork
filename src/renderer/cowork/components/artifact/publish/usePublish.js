@@ -29,16 +29,17 @@ import {
   loadArtifactAccess,
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
-import { OWNED_BY_OTHER_USER_MESSAGE, isOwnedByOtherUserError } from './publishErrors';
+import { publishRefusalMessage } from './publishErrors';
 import { useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../../../hooks/useOrgSharing';
-import { isOrgSharingOn } from '../../../lib/orgSharing';
+import { isOrgSharingOn, isOwnerOnlyAccess } from '../../../lib/orgSharing';
 import { readArtifactAudience, readAudienceAnswer, readAudienceRequest } from '../../../lib/sharingContract';
 
 // Map the publish failures a user can act on (a missing Minds API key, an
-// artifact another account published) to a clear message; everything else
-// surfaces verbatim.
+// artifact another account published, a share with everyone refused) to a
+// clear message; everything else surfaces verbatim.
 function friendlyPublishError(e) {
-  if (isOwnedByOtherUserError(e)) return OWNED_BY_OTHER_USER_MESSAGE;
+  const refusal = publishRefusalMessage(e);
+  if (refusal) return refusal;
   const msg = e?.message || String(e);
   if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to share.';
   return `Sharing failed: ${msg}`;
@@ -59,18 +60,34 @@ function hasServerAccess(a) {
   return a?.accessMode != null || a?.accessProtected != null;
 }
 
+/* The audience the state starts from: what the artifact says, or null in
+   every field when it doesn't know who the artifact reaches (a MindsHub mode
+   card of a restricted artifact, readArtifactAudience's null). The state then
+   holds those nulls, which every reader of it takes as unknown, never as an
+   empty audience or "Only me". */
+const UNKNOWN_AUDIENCE = Object.freeze({ emails: null, orgAllowed: null, ownerOnly: null, teamIds: null, userIds: null });
+
+function seededAudience(a) {
+  const audience = readArtifactAudience(a);
+  if (!audience) return UNKNOWN_AUDIENCE;
+  return { ...audience, ownerOnly: audience.ownerOnly === true };
+}
+
 export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const orgMode = useOrgMode();
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
   const [accessMode, setAccessMode] = useState(modeFromArtifact(artifact));
   const [accessPassword, setAccessPassword] = useState(artifact?.accessPassword || '');
-  const [accessEmails, setAccessEmails] = useState(artifact?.accessEmails || []);
-  const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
-  const [ownerOnly, setOwnerOnly] = useState(!!artifact?.ownerOnly);
+  /* Who a restricted artifact reaches, each null while it isn't known
+     (seededAudience). */
+  const [seed] = useState(() => seededAudience(artifact));
+  const [accessEmails, setAccessEmails] = useState(seed.emails);
+  const [orgAllowed, setOrgAllowed] = useState(seed.orgAllowed);
+  const [ownerOnly, setOwnerOnly] = useState(seed.ownerOnly);
   // Teams and people in the org the restricted access names; MindsHub mode
   // only.
-  const [teamIds, setTeamIds] = useState(artifact?.allowedTeamIds || []);
-  const [userIds, setUserIds] = useState(artifact?.allowedUserIds || []);
+  const [teamIds, setTeamIds] = useState(seed.teamIds);
+  const [userIds, setUserIds] = useState(seed.userIds);
   // Have we synced the *real* access list from the server (or a publish
   // response) for this artifact yet? Seeded from the prop's own knowledge:
   // grid/rail objects carry `accessMode` from the listing (so the list they
@@ -86,7 +103,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const accessLoadedRef = useRef(accessLoaded);
   accessLoadedRef.current = accessLoaded;
   // Whether the access route's last read failed (MindsHub mode). Until an answer
-  // has landed, the panel then offers Retry instead of the card's empty
+  // has landed, the panel then offers Retry instead of the card's unknown
   // audience.
   const [accessLoadFailed, setAccessLoadFailed] = useState(false);
   const [artifactKey, setArtifactKey] = useState(artifact?.artifactKey || '');
@@ -122,12 +139,13 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     // loaded for this artifact stays; a different artifact starts from its
     // card while the open effect below waits for the access route again.
     if (!orgMode || !sameArtifact) {
+      const audience = seededAudience(artifact);
       setAccessPassword(artifact?.accessPassword || '');
-      setAccessEmails(artifact?.accessEmails || []);
-      setOrgAllowed(!!artifact?.orgAllowed);
-      setOwnerOnly(!!artifact?.ownerOnly);
-      setTeamIds(artifact?.allowedTeamIds || []);
-      setUserIds(artifact?.allowedUserIds || []);
+      setAccessEmails(audience.emails);
+      setOrgAllowed(audience.orgAllowed);
+      setOwnerOnly(audience.ownerOnly);
+      setTeamIds(audience.teamIds);
+      setUserIds(audience.userIds);
     }
     // A refresh learns the key from the server, but its report back to the
     // parent doesn't carry it, so an access change in that report would reset
@@ -265,7 +283,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, modified: false, publishedUrl: url });
       return true;
     } catch (e) {
-      setError(isOwnedByOtherUserError(e) ? OWNED_BY_OTHER_USER_MESSAGE : `Update failed: ${e?.message || e}`);
+      setError(publishRefusalMessage(e) ?? `Update failed: ${e?.message || e}`);
       return false;
     } finally {
       setPhase('idle');
@@ -314,10 +332,11 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       let a = null;
       try { a = await loadArtifactAccess(artifact); } catch { /* reported below */ }
       if (!isCurrent()) return;
-      // A failure keeps whatever access is already loaded.
-      if (!a) { setAccessLoadFailed(true); return; }
+      // A failure keeps whatever access is already loaded, and so does an
+      // answer that doesn't say who the artifact reaches.
+      const audience = a ? readArtifactAudience(a) : null;
+      if (!audience) { setAccessLoadFailed(true); return; }
       const nextMode = a.accessMode || 'public';
-      const audience = readArtifactAudience(a);
       const nextEmails = audience.emails;
       const nextOrg = audience.orgAllowed;
       const nextTeams = audience.teamIds;
@@ -360,16 +379,27 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     const nextUrl = s.publishedUrl || '';
     // The server is authoritative for the access list on every refresh — and
     // /artifacts/status intentionally omits the plaintext password, so we only
-    // learn mode/emails/org here (never accessPassword). (ENG-931)
+    // learn the mode and who it reaches here, never accessPassword.
     const nextMode = s.accessMode || 'public';
-    const nextEmails = Array.isArray(s.accessEmails) ? s.accessEmails : [];
-    const nextOrg = !!s.orgAllowed;
-    // NOT part of the accessSame comparison below: the server derives ownerOnly
-    // from emails + org_allowed, so if those two match, this one matches too.
-    const nextOwnerOnly = !!s.ownerOnly;
+    const said = readAudienceAnswer(s);
+    const nextEmails = said.emails ?? [];
+    const nextOrg = said.orgAllowed === true;
+    // A list the status leaves out reads as empty, as on the card.
+    const nextTeams = said.teamIds ?? [];
+    const nextUsers = said.userIds ?? [];
+    /* isOwnerOnlyAccess takes the server's ownerOnly when it sends one, and
+       derives it from the audience for a server that leaves it out. Only a
+       restricted artifact is owner-only. */
+    const nextOwnerOnly = nextMode === 'restricted' && isOwnerOnlyAccess(s) === true;
     if (s.artifactKey) setArtifactKey(s.artifactKey);
-    const accessSame = nextMode === accessMode && nextOrg === orgAllowed
-      && nextEmails.join(',') === accessEmails.join(',');
+    /* The unknown audience (UNKNOWN_AUDIENCE: every field null) matches no
+       answer, so the refresh replaces it with the server's. */
+    const accessSame = nextMode === accessMode
+      && nextOrg === orgAllowed
+      && nextOwnerOnly === ownerOnly
+      && nextEmails.join(',') === (accessEmails ?? []).join(',')
+      && nextTeams.join(',') === (teamIds ?? []).join(',')
+      && nextUsers.join(',') === (userIds ?? []).join(',');
     // Apply access unconditionally-ish (skip only when identical, to avoid a
     // churn render) and mark the list as loaded — this is the fix's core: the
     // list is now the real server one, not an empty/stale seed.
@@ -378,6 +408,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessEmails(nextEmails);
       setOrgAllowed(nextOrg);
       setOwnerOnly(nextOwnerOnly);
+      setTeamIds(nextTeams);
+      setUserIds(nextUsers);
     }
     setAccessLoaded(true);
     // Nothing the parent cares about changed → skip the parent onChange (and
@@ -398,8 +430,10 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       accessEmails: nextEmails,
       orgAllowed: nextOrg,
       ownerOnly: nextOwnerOnly,
+      allowedTeamIds: nextTeams,
+      allowedUserIds: nextUsers,
     });
-  }, [phase, canAct, orgMode, targetPath, identityKey, modified, publishedUrl, accessMode, accessEmails, orgAllowed, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, identityKey, modified, publishedUrl, accessMode, accessEmails, orgAllowed, ownerOnly, teamIds, userIds, artifact, onChange]);
 
   // Fetch the publish history for the rollback UI. Lazy: the panel calls this
   // when it opens, not on every render. Any error (404 / older server / not

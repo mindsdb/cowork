@@ -52,10 +52,7 @@ import {
 } from '../components/artifact/publish/AccessChooser';
 import { AUDIENCE_CHOICE } from '../lib/orgSharing';
 import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
-import {
-  OWNED_BY_OTHER_USER_MESSAGE,
-  isOwnedByOtherUserError,
-} from '../components/artifact/publish/publishErrors';
+import { publishRefusalMessage } from '../components/artifact/publish/publishErrors';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import { artifactAuthorship } from '../lib/artifactAuthorship';
@@ -879,12 +876,15 @@ export default function ArtifactsView({
     } catch (e) {
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
-      let friendly = `Sharing failed: ${msg}`;
-      if (isOwnedByOtherUserError(e)) friendly = OWNED_BY_OTHER_USER_MESSAGE;
-      else if (/minds_api_key/i.test(msg) || /minds api key/i.test(msg)) {
+      const refusal = publishRefusalMessage(e);
+      let friendly = refusal ?? `Sharing failed: ${msg}`;
+      if (!refusal && (/minds_api_key/i.test(msg) || /minds api key/i.test(msg))) {
         friendly = 'Set your Minds API key in Settings to share artifacts.';
       }
-      setPhase(artifact.path, 'failed');
+      /* A refused share (another owner's artifact, or a share with everyone
+         the caller may not make) is refused again, so the card keeps its
+         state and offers no Try again; the toast says why. */
+      setPhase(artifact.path, refusal ? null : 'failed');
       showToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
@@ -921,7 +921,7 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       showToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
-      const message = isOwnedByOtherUserError(e) ? OWNED_BY_OTHER_USER_MESSAGE : `Update failed: ${e?.message || e}`;
+      const message = publishRefusalMessage(e) ?? `Update failed: ${e?.message || e}`;
       showToast({ kind: 'error', message });
     } finally {
       setBusy(artifact.path, false);

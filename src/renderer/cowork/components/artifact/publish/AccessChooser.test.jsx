@@ -7,6 +7,7 @@ import {
   buildAccessPayload,
   addedIndividuals,
   ACCESS_LABELS,
+  accessSummaryLabel,
   newAccessDraft,
 } from './AccessChooser';
 
@@ -195,6 +196,32 @@ describe('owner-only as its own selection', () => {
       <AccessChooser value={{ mode: 'private', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
     );
     expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
+
+/* cowork-server's MindsHub mode card of a restricted artifact answers its
+   audience null (cowork.schemas.artifact_access.ArtifactAccessView
+   .audience_unknown): only the access route says who it reaches. */
+describe('an artifact that does not know who it reaches', () => {
+  const card = {
+    publishedUrl: 'https://share/abc', accessMode: 'restricted', accessProtected: false,
+    orgAllowed: null, ownerOnly: null, allowedTeamIds: null, allowedUserIds: null,
+  };
+
+  it('seeds a draft with nothing picked and nobody listed, which cannot be saved', () => {
+    for (const orgSharing of [false, true]) {
+      const draft = accessDraftFromArtifact(card, { orgSharing });
+      expect(draft).toEqual({ mode: '', password: '', emailsText: '', teamIds: [], userIds: [] });
+      expect(isAccessDraftValid(draft, { orgSharing })).toBe(false);
+    }
+  });
+
+  it('labels the summary Restricted, neither Only me nor a list', () => {
+    for (const orgSharing of [false, true]) {
+      expect(accessSummaryLabel(card, { orgSharing, orgName: 'Acme' })).toBe(ACCESS_LABELS.restricted);
+    }
+    expect(ACCESS_LABELS.restricted.title).toBe('Restricted');
+    expect(ACCESS_LABELS.restricted.desc).toBe("Who can open the link isn't known yet");
   });
 });
 

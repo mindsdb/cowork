@@ -445,10 +445,15 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
 /**
  * "Only me" on the wire is `restricted` with no recipients and no org. The
  * server also sends an explicit `ownerOnly`; prefer it, and fall back to the
- * derivation for a record written before that flag existed.
+ * derivation for a record written before that flag existed. Null when the
+ * answer doesn't know who the artifact reaches (readArtifactAudience): its
+ * empty lists then say nothing.
+ *
+ * @returns {boolean | null}
  */
 export function isOwnerOnlyAccess(artifact) {
   const audience = readArtifactAudience(artifact);
+  if (!audience) return null;
   if (audience.ownerOnly !== null) return audience.ownerOnly;
   return audience.emails.length === 0 && !audience.orgAllowed
     && audience.teamIds.length === 0 && audience.userIds.length === 0;
@@ -498,9 +503,10 @@ export const ARTIFACT_SHARE_UNKNOWN = Object.freeze({ shared: false, kind: 'unkn
 
 /**
  * The same for a published artifact (its publish controller or artifact):
- * `kind` 'private' | 'public' | 'password' | 'org' | 'specific'. With
- * `audienceKnown` false (MindsHub mode before the access route answers, whose
- * card carries no audience) a restricted artifact is ARTIFACT_SHARE_UNKNOWN.
+ * `kind` 'private' | 'public' | 'password' | 'org' | 'specific'. A restricted
+ * artifact is ARTIFACT_SHARE_UNKNOWN with `audienceKnown` false (MindsHub
+ * mode before the access route answers) and when the artifact itself doesn't
+ * know who it reaches (a MindsHub mode card, whose audience fields are null).
  */
 export function artifactShareState(artifact, {
   orgSharing = false, orgName = null, teams = [], audienceKnown = true,
@@ -509,8 +515,8 @@ export function artifactShareState(artifact, {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
   if (mode === 'public') return { shared: true, kind: 'public', hint: 'Public link: anyone with the URL can open it' };
   if (mode === 'password') return { shared: true, kind: 'password', hint: 'Password protected' };
-  if (!audienceKnown) return ARTIFACT_SHARE_UNKNOWN;
-  const audience = readArtifactAudience(artifact);
+  const audience = audienceKnown ? readArtifactAudience(artifact) : null;
+  if (!audience) return ARTIFACT_SHARE_UNKNOWN;
   if (isOwnerOnlyAccess(artifact)) return { shared: false, kind: 'private', hint: ONLY_ME_DESC[SHARED_KIND.ARTIFACT] };
   if (orgSharing && (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams))) {
     return { shared: true, kind: 'org', hint: sharedWithEveryoneHint(orgName) };

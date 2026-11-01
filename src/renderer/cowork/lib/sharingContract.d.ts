@@ -46,6 +46,7 @@ export declare const MAX_IDS_PER_LOOKUP: 50;
 export declare const MAX_EMAILS_PER_LOOKUP: 50;
 export declare const INVALID_EMAIL_CODE: 'invalid_email';
 export declare const INVALID_ID_CODE: 'invalid_id';
+export declare const SHARE_ORG_REQUIRED_CODE: 'share_org_required';
 
 /** One of `GET /hub/people/`'s two lookups. */
 export interface PeopleLookup {
@@ -169,7 +170,9 @@ export type ArtifactAccessPayload =
   | DesktopRestrictedAccessPayload;
 
 export function readAudienceAnswer(answer: unknown): AudienceAnswer;
-export function readArtifactAudience(answer: unknown): ArtifactAudience;
+/** Null when the answer gives an audience field as null: it doesn't know who
+ *  the artifact reaches. */
+export function readArtifactAudience(answer: unknown): ArtifactAudience | null;
 export function readAudienceRequest(payload: unknown): RequestedAudience;
 export function setsAudience(payload: unknown): boolean;
 export function readSharingCapabilities(answer: unknown): SharingCapabilities;

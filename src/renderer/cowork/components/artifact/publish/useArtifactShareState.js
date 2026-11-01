@@ -11,8 +11,9 @@
  * There, the chooser and its Save wait for what sharing allows
  * (`sharingStatus`): a draft read before that would show a share with
  * everyone as a list, and save it as one. They also wait for the access route
- * (`accessStatus`, usePublish's `accessLoaded`), since an org card carries no
- * audience: before it answers they would show, and save, an empty audience.
+ * (`accessStatus`, usePublish's `accessLoaded`), since an org card doesn't
+ * say who a restricted artifact reaches (its audience fields are null):
+ * before it answers they would show nothing picked, with nobody listed.
  * A failed read offers Retry and saves nothing.
  *
  * Published is not the same as shared: an owner-only artifact has a URL that

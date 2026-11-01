@@ -34,12 +34,30 @@ const wsMock = vi.hoisted(() => ({
 vi.mock('../../../lib/artifactWorkspaceApi', () => wsMock);
 
 import { usePublish } from './usePublish';
+import { accessDraftFromArtifact } from './AccessChooser';
+import { ARTIFACT_SHARE_UNKNOWN, artifactShareState } from '../../../lib/orgSharing';
 
 function deferred() {
   let resolve;
   const promise = new Promise((r) => { resolve = r; });
   return { promise, resolve };
 }
+
+/* cowork-server's MindsHub mode card of a restricted artifact: its audience
+   fields answer null (cowork.schemas.artifact_access.ArtifactAccessView
+   .audience_unknown), and the list leaves out accessEmails and
+   accessPassword. */
+const UNKNOWN_AUDIENCE_CARD = {
+  id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70',
+  projectId: 'proj-1',
+  publishedUrl: 'https://share/abc',
+  accessMode: 'restricted',
+  accessProtected: false,
+  orgAllowed: null,
+  ownerOnly: null,
+  allowedTeamIds: null,
+  allowedUserIds: null,
+};
 
 // No `path`: an org card is addressed by identity, and relying on a path here
 // is exactly the bug this guards against.
@@ -332,14 +350,12 @@ describe('usePublish on Cloud', () => {
     expect(result.current.allowedTeamIds).toEqual(['t-platform']);
   });
 
-  // An org card says `restricted` but carries no audience: cowork-server
-  // leaves its teams, people and org flag empty. Only the access route's
-  // answer is the access.
+  // An org card says `restricted` but not who it reaches. Only the access
+  // route's answer is the access.
   it('does not count an org card as loaded access until the access route answers', async () => {
     const read = deferred();
     wsMock.loadArtifactAccess.mockReturnValue(read.promise);
-    const card = { ...ORG_ARTIFACT, ownerOnly: false, orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] };
-    const { result } = renderHook(() => usePublish(card, { enabled: true }));
+    const { result } = renderHook(() => usePublish(UNKNOWN_AUDIENCE_CARD, { enabled: true }));
 
     expect(result.current.accessLoaded).toBe(false);
     await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1));
@@ -351,6 +367,66 @@ describe('usePublish on Cloud', () => {
 
     expect(result.current.accessLoaded).toBe(true);
     expect(result.current.allowedTeamIds).toEqual(['t-platform']);
+  });
+
+  /* Before the access route answers, the card's nulls stay nulls: nothing
+     reads them as an empty audience, "Only me" included, and no save can be
+     built from them. */
+  it('holds an audience the card does not know as unknown until the access route answers', async () => {
+    const read = deferred();
+    wsMock.loadArtifactAccess.mockReturnValue(read.promise);
+    const { result } = renderHook(() => usePublish(UNKNOWN_AUDIENCE_CARD, { enabled: true }));
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledTimes(1));
+
+    expect(result.current).toMatchObject({
+      accessMode: 'restricted',
+      accessEmails: null,
+      orgAllowed: null,
+      ownerOnly: null,
+      allowedTeamIds: null,
+      allowedUserIds: null,
+    });
+    expect(artifactShareState(result.current, { orgSharing: true })).toBe(ARTIFACT_SHARE_UNKNOWN);
+    expect(accessDraftFromArtifact(result.current, { orgSharing: true }).mode).toBe('');
+
+    await act(async () => {
+      read.resolve({ accessMode: 'restricted', accessEmails: [], orgAllowed: false, ownerOnly: true, allowedTeamIds: [], allowedUserIds: [] });
+    });
+
+    expect(result.current).toMatchObject({ ownerOnly: true, orgAllowed: false, allowedTeamIds: [], allowedUserIds: [], accessEmails: [] });
+    expect(artifactShareState(result.current, { orgSharing: true }).kind).toBe('private');
+  });
+
+  it("starts another artifact from its card's unknown audience, not the last one's", async () => {
+    const B = { ...UNKNOWN_AUDIENCE_CARD, id: 'b2c3d4e5f6a70b1c2d3e4f5a6b7c8d9e' };
+    const readB = deferred();
+    wsMock.loadArtifactAccess.mockImplementation((a) => (a.id === B.id
+      ? readB.promise
+      : Promise.resolve({ accessMode: 'restricted', accessEmails: ['alice@x.com'], orgAllowed: false, ownerOnly: false, allowedTeamIds: [], allowedUserIds: [] })));
+    const { result, rerender } = renderHook(
+      ({ artifact }) => usePublish(artifact, { enabled: true }),
+      { initialProps: { artifact: ORG_ARTIFACT } },
+    );
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    rerender({ artifact: B });
+
+    await waitFor(() => expect(wsMock.loadArtifactAccess).toHaveBeenCalledWith(B));
+    expect(result.current).toMatchObject({
+      accessLoaded: false, accessEmails: null, orgAllowed: null, ownerOnly: null, allowedTeamIds: null, allowedUserIds: null,
+    });
+    expect(artifactShareState(result.current)).toBe(ARTIFACT_SHARE_UNKNOWN);
+  });
+
+  it('treats an access answer that does not say who it reaches as a failed read', async () => {
+    wsMock.loadArtifactAccess.mockResolvedValue({ accessMode: 'restricted', orgAllowed: null, ownerOnly: null, allowedTeamIds: null, allowedUserIds: null, accessEmails: null });
+    const onChange = vi.fn();
+    const { result } = renderHook(() => usePublish(UNKNOWN_AUDIENCE_CARD, { onChange, enabled: true }));
+
+    await waitFor(() => expect(result.current.accessLoadFailed).toBe(true));
+    expect(result.current.accessLoaded).toBe(false);
+    expect(result.current.ownerOnly).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('does not count an org card as loaded even before the panel opens', () => {
@@ -392,7 +468,7 @@ describe('usePublish on Cloud', () => {
       accessMode: 'restricted', accessEmails: ['alice@x.com'], ownerOnly: false,
       orgAllowed: false, allowedTeamIds: ['t-platform'], allowedUserIds: ['u-ana'],
     });
-    const card = { ...ORG_ARTIFACT, ownerOnly: false, orgAllowed: false, allowedTeamIds: [], allowedUserIds: [], modified: false };
+    const card = { ...UNKNOWN_AUDIENCE_CARD, modified: false };
     const { result, rerender } = renderHook(
       ({ artifact }) => usePublish(artifact, { enabled: true }),
       { initialProps: { artifact: card } },
@@ -439,6 +515,24 @@ describe('usePublish on desktop is unchanged', () => {
     expect(apiMock.publishArtifact).toHaveBeenCalledWith('/tmp/a/index.html', { mode: 'public' });
     expect(wsMock.setArtifactAccess).not.toHaveBeenCalled();
     expect(result.current.orgMode).toBe(false);
+  });
+});
+
+describe('usePublish on Cloud: a share with everyone refused', () => {
+  it("shows the access route's reason once, with no \"Sharing failed:\" in front", async () => {
+    const reason = 'Sharing an artifact with everyone in the organization requires the artifacts.share_org permission or an organization admin.';
+    wsMock.setArtifactAccess.mockRejectedValue(Object.assign(new Error(reason), { status: 403, code: 'share_org_required' }));
+    const { result } = renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
+
+    let ok;
+    await act(async () => {
+      ok = await result.current.publish({
+        mode: 'restricted', org_allowed: true, allowed_team_ids: [], allowed_user_ids: [], allowed_emails: [], owner_only: false,
+      });
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.error).toBe(reason);
   });
 });
 

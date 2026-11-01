@@ -48,7 +48,7 @@ function accessBadge(artifact) {
   return mode ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
 }
 
-/** A restricted artifact's line in MindsHub mode, whose card names no audience. */
+/** A restricted artifact's line when its card doesn't say who it reaches. */
 export const ORG_RESTRICTED_HINT = 'Restricted. Open Share to see who can open the link.';
 
 /*
@@ -58,9 +58,11 @@ export const ORG_RESTRICTED_HINT = 'Restricted. Open Share to see who can open t
  * so they get none. The unknown fallback says so rather than naming an
  * audience it cannot see, for the same fail-closed reason as its badge.
  *
- * In MindsHub mode (`orgMode`) a card carries no audience: only the owner's
- * access route says who a restricted artifact reaches. Its line then names
- * nobody and points at Share, which reads that route (ORG_RESTRICTED_HINT).
+ * In MindsHub mode (`orgMode`) a card doesn't say who a restricted artifact
+ * reaches (its audience fields are null): only the owner's access route does.
+ * Its line then names nobody and points at Share, which reads that route
+ * (ORG_RESTRICTED_HINT). So does any card whose audience is unknown
+ * (isOwnerOnlyAccess's null).
  */
 export function artifactStatusHint(artifact, publishable = true, { orgMode = false } = {}) {
   if (!artifact?.publishedUrl) {
@@ -70,8 +72,9 @@ export function artifactStatusHint(artifact, publishable = true, { orgMode = fal
   }
   const mode = accessMode(artifact);
   if (mode === 'restricted') {
-    if (orgMode) return ORG_RESTRICTED_HINT;
-    return isOwnerOnlyAccess(artifact)
+    const ownerOnly = isOwnerOnlyAccess(artifact);
+    if (orgMode || ownerOnly === null) return ORG_RESTRICTED_HINT;
+    return ownerOnly
       ? 'Shared, but only you can open the link.'
       : 'Shared. Only the people you chose can open the link.';
   }
@@ -91,7 +94,8 @@ export function artifactStatusHint(artifact, publishable = true, { orgMode = fal
 // unpublished artifact that can't become a page (a live app shares through
 // "Share with…" instead). Phases and the authorship tag still show.
 //
-// `orgMode`: MindsHub mode, whose cards carry no audience (artifactStatusHint).
+// `orgMode`: MindsHub mode, whose cards don't say who an artifact reaches
+// (artifactStatusHint).
 export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
   const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
   const withExtra = (primary) => (tag
