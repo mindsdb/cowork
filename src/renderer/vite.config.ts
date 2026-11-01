@@ -94,17 +94,21 @@ function webEntryTransform(name: string, transform: (html: string) => string) {
   };
 }
 
-// A web build with the platform UI off loads a deployment brand at run time
-// (shared/deployment-brand.ts). The tags go in at build time, so hosted web
-// and desktop pages stay byte-identical and never request the brand.
+// Every web build loads a deployment brand at run time
+// (shared/deployment-brand.ts), with the platform UI on or off. The tags go in
+// at build time, so desktop pages stay byte-identical and never request the
+// brand.
 const deploymentBrand = webEntryTransform('cowork-deployment-brand', withDeploymentBrand);
 
 // A web build with the platform UI on is the hosted build, whose preview frame
 // loads signed draft links, so its page's CSP must let a frame load the draft
 // hosts (shared/draft-link-origins.ts). They go in at build time: one hosted
 // build serves every environment, and the self-hosted and white-label pages
-// built from the same template must not name them. Never in the same build as
-// the brand transform, so the two need no order between them.
+// built from the same template must not name them. The hosted build runs the
+// brand transform too. The brand transform adds tags around the title and
+// icons and before </head>; this one rewrites only the CSP meta tag. Neither
+// adds anything the other checks for, so either order gives the same page
+// (shared/deployment-brand.test.ts).
 const draftLinkFrameSources = webEntryTransform('cowork-draft-link-frame-sources', withDraftLinkFrameSources);
 
 // The build's platform switch: on for desktop, and for web only when
@@ -126,13 +130,13 @@ export default defineConfig(({ mode }) => ({
     // rides @rolldown/plugin-babel with the exported preset.
     react(),
     babel({ presets: [reactCompilerPreset()] }),
-    ...(IS_WEB ? [webSpaFallback] : []),
-    ...(platformUiFor(mode) ? [] : [deploymentBrand]),
+    ...(IS_WEB ? [webSpaFallback, deploymentBrand] : []),
     ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources] : []),
   ],
   customLogger: logger,
   define: {
     __PLATFORM_UI__: JSON.stringify(platformUiFor(mode)),
+    __WEB_BUILD__: JSON.stringify(IS_WEB),
     __APP_VERSION__: JSON.stringify(appVersion),
     __GIT_HASH__: JSON.stringify(gitHash),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
