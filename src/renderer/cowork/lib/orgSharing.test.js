@@ -107,6 +107,15 @@ describe('the org name sharing copy uses', () => {
     expect(sharingOrgName(org({ name: staffOrg, displayName: 'Acme Inc' }), { org: staffOrg, orgId: 'o4', orgIsPersonal: false })).toBe('Acme Inc');
   });
 
+  /* A member of someone else's personal organization gets that
+     organization's Keycloak name, `personal_<their id>`, in the claim: an id
+     too, so the copy says "the organization" until the list names it. */
+  it("names none for a claim naming someone else's personal organization by its id", () => {
+    const theirs = 'personal_f9de0faf-98cf-4d15-8ef3-18fdd6b5e66c';
+    expect(sharingOrgName(null, { org: theirs, orgId: 'o5', orgIsPersonal: false })).toBeNull();
+    expect(sharingOrgName(org({ name: theirs, displayName: 'Northwind Traders' }), { org: theirs, orgId: 'o5', orgIsPersonal: false })).toBe('Northwind Traders');
+  });
+
   it('says Everyone at ‹org› with a name, and Everyone in the organization without', () => {
     expect(everyoneAtLabel('Acme Inc')).toBe('Everyone at Acme Inc');
     expect(everyoneAtLabel(null)).toBe('Everyone in the organization');

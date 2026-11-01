@@ -3,7 +3,7 @@ import {
   type MindsOrg,
   PERSONAL_ORG_LABEL,
   chooseMindsOrg,
-  isStaffCreatedOrgName,
+  isIdOrganizationName,
   needsOrgPick,
   organizationLabel,
   personalOrgName,
@@ -112,19 +112,21 @@ describe('needsOrgPick', () => {
   });
 });
 
-describe('isStaffCreatedOrgName', () => {
-  /* MindsHub names an organization its staff create `staff-org-<uuid>`, an
-     id, and keeps its readable name in the display name. */
-  it('spots the id MindsHub gives an organization its staff created', () => {
-    expect(isStaffCreatedOrgName('staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(true);
+describe('isIdOrganizationName', () => {
+  /* MindsHub names an organization its staff create `staff-org-<uuid>`, and
+     a user's own organization `personal_<uuid>`: ids, with the readable name
+     kept in the display name. */
+  it('spots the ids MindsHub gives a staff-created and a personal organization', () => {
+    expect(isIdOrganizationName('staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(true);
+    expect(isIdOrganizationName(personalOrgName('6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b'))).toBe(true);
   });
 
   it('leaves a name a person chose alone', () => {
-    expect(isStaffCreatedOrgName('acme')).toBe(false);
-    expect(isStaffCreatedOrgName('staff-org-acme')).toBe(false);
-    expect(isStaffCreatedOrgName('Acme staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(false);
-    expect(isStaffCreatedOrgName(personalOrgName('6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b'))).toBe(false);
-    expect(isStaffCreatedOrgName(null)).toBe(false);
+    expect(isIdOrganizationName('acme')).toBe(false);
+    expect(isIdOrganizationName('staff-org-acme')).toBe(false);
+    expect(isIdOrganizationName('personal_acme')).toBe(false);
+    expect(isIdOrganizationName('Acme staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(false);
+    expect(isIdOrganizationName(null)).toBe(false);
   });
 });
 

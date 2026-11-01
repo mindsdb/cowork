@@ -10,7 +10,7 @@
  * and their readers and builders live in lib/sharingContract.
  */
 
-import { isStaffCreatedOrgName, organizationLabel } from '../../../shared/minds-orgs';
+import { isIdOrganizationName, organizationLabel } from '../../../shared/minds-orgs';
 import { canUseSharedResource } from './sharedResourceAccess';
 import {
   MINDSHUB_ERROR_CODE,
@@ -46,12 +46,14 @@ export function isOrgSharingOn(capabilities) {
  * the viewer in, and carries the organization's Keycloak name, which can
  * differ from its display name. Null when neither names an organization, for
  * a personal one, whose label ("Personal") names nobody to share with, and
- * for a claim whose Keycloak name is an id (an organization MindsHub's staff
- * created, `staff-org-<uuid>`): the copy then says "the organization".
+ * for a claim whose Keycloak name is an id (isIdOrganizationName: an
+ * organization MindsHub's staff created, `staff-org-<uuid>`, or someone's
+ * personal organization, `personal_<uuid>`): the copy then says "the
+ * organization".
  */
 export function sharingOrgName(activeOrg, accountUser = null) {
   if (activeOrg) return activeOrg.isPersonal ? null : organizationLabel(activeOrg);
-  if (!accountUser || accountUser.orgIsPersonal || isStaffCreatedOrgName(accountUser.org)) return null;
+  if (!accountUser || accountUser.orgIsPersonal || isIdOrganizationName(accountUser.org)) return null;
   return accountUser.org || null;
 }
 

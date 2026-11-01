@@ -38,17 +38,17 @@ export function personalOrgName(userId: string): string {
   return `personal_${userId}`;
 }
 
-/** Keycloak's name for an organization MindsHub's staff created:
- *  `staff-org-<uuid>`, built from MindsHub's creation id. MindsHub's staff
- *  organization create builds the same string. Its readable name is the
- *  display name, and a rename changes only that, so this one is never a name
- *  to print. */
-const STAFF_CREATED_ORG_NAME = /^staff-org-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Keycloak's names for an organization that are ids, not names a person
+ *  reads: `staff-org-<uuid>`, which MindsHub's staff organization create
+ *  builds from its creation id, and `personal_<uuid>` (personalOrgName), a
+ *  user's own organization, whoever's it is. The readable name is the display
+ *  name, and a rename changes only that, so neither is a name to print. */
+const ID_ORG_NAME = /^(?:staff-org-|personal_)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Whether a Keycloak organization name is the id MindsHub gave an
- *  organization its staff created, rather than a name a person reads. */
-export function isStaffCreatedOrgName(name: string | null | undefined): boolean {
-  return typeof name === 'string' && STAFF_CREATED_ORG_NAME.test(name);
+/** Whether a Keycloak organization name is an id, a staff-created
+ *  organization's or a personal one's, rather than a name a person reads. */
+export function isIdOrganizationName(name: string | null | undefined): boolean {
+  return typeof name === 'string' && ID_ORG_NAME.test(name);
 }
 
 /**
