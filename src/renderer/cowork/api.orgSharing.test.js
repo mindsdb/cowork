@@ -72,8 +72,8 @@ describe('fetchSkillSharingCapabilities', () => {
     });
   });
 
-  /* The organization's name comes from the app's own organization list
-     (useSharingOrgName), never from this answer. */
+  /* The organization's name comes from the app's own organization list or
+     the token's claim (useSharingOrgName), never from this answer. */
   it('reads no organization name from the answer', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonRes({ enabled: true, orgName: 'Acme', org_name: 'Acme' }));
 

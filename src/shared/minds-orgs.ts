@@ -38,6 +38,19 @@ export function personalOrgName(userId: string): string {
   return `personal_${userId}`;
 }
 
+/** Keycloak's name for an organization MindsHub's staff created:
+ *  `staff-org-<uuid>`, built from MindsHub's creation id. MindsHub's staff
+ *  organization create builds the same string. Its readable name is the
+ *  display name, and a rename changes only that, so this one is never a name
+ *  to print. */
+const STAFF_CREATED_ORG_NAME = /^staff-org-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Whether a Keycloak organization name is the id MindsHub gave an
+ *  organization its staff created, rather than a name a person reads. */
+export function isStaffCreatedOrgName(name: string | null | undefined): boolean {
+  return typeof name === 'string' && STAFF_CREATED_ORG_NAME.test(name);
+}
+
 /**
  * What to call a personal organization when Keycloak's own label is not to
  * hand. Only the membership listing carries Keycloak's display name, so readers

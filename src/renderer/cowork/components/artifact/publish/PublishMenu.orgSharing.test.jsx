@@ -47,7 +47,8 @@ const TEAMS = { status: 'ready', reachable: true, teams: [{ id: 't-platform', di
 // What usePublish hands a MindsHub mode panel once the capabilities read
 // answered: useSharingCapabilities' `status`, `capabilities` (here an
 // admin's) and `retry`, with the caller's `teams` and the organization's
-// name from the app's organization list (`orgName`, useSharingOrgName).
+// name from the app's organization list or the token's claim (`orgName`,
+// useSharingOrgName).
 const ADMIN_CAPABILITIES = { enabled: true, canShareArtifactsOrg: true, canWriteSkillsOrg: false };
 const orgSharing = ({ capabilities = {}, ...over } = {}) => ({
   status: 'ready', retry: vi.fn(), capabilities: { ...ADMIN_CAPABILITIES, ...capabilities }, teams: TEAMS, orgName: 'Acme', ...over,

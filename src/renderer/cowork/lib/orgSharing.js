@@ -10,7 +10,7 @@
  * and their readers and builders live in lib/sharingContract.
  */
 
-import { organizationLabel } from '../../../shared/minds-orgs';
+import { isStaffCreatedOrgName, organizationLabel } from '../../../shared/minds-orgs';
 import { canUseSharedResource } from './sharedResourceAccess';
 import {
   MINDSHUB_ERROR_CODE,
@@ -39,14 +39,20 @@ export function isOrgSharingOn(capabilities) {
 
 /**
  * The name sharing copy gives the active organization ("Everyone at Acme"),
- * from the app's own organization list (useMindsOrgs' `activeOrg`), named as
- * the account menu names it (organizationLabel). Null when no organization is
- * known, and for a personal one, whose label ("Personal") names nobody to
- * share with: the copy then says "the organization".
+ * from where the account menu reads it: the app's own organization list
+ * (useMindsOrgs' `activeOrg`, organizationLabel), else the access token's
+ * organization claim (useAccountUser's `org`). The list is read only where
+ * organization switching is on; the claim is there whenever MindsHub signed
+ * the viewer in, and carries the organization's Keycloak name, which can
+ * differ from its display name. Null when neither names an organization, for
+ * a personal one, whose label ("Personal") names nobody to share with, and
+ * for a claim whose Keycloak name is an id (an organization MindsHub's staff
+ * created, `staff-org-<uuid>`): the copy then says "the organization".
  */
-export function sharingOrgName(activeOrg) {
-  if (!activeOrg || activeOrg.isPersonal) return null;
-  return organizationLabel(activeOrg);
+export function sharingOrgName(activeOrg, accountUser = null) {
+  if (activeOrg) return activeOrg.isPersonal ? null : organizationLabel(activeOrg);
+  if (!accountUser || accountUser.orgIsPersonal || isStaffCreatedOrgName(accountUser.org)) return null;
+  return accountUser.org || null;
 }
 
 /** Whether cowork-server couldn't ask MindsHub for the caller's permissions,

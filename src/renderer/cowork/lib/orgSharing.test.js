@@ -80,6 +80,33 @@ describe('the org name sharing copy uses', () => {
     expect(sharingOrgName(org({ isPersonal: true, name: 'personal_u1', displayName: 'Personal Organization' }))).toBeNull();
   });
 
+  /* The organization list is read only where organization switching is on;
+     the token's claim (useAccountUser) names the organization without it. */
+  it('falls back to the token claim when the list names no organization', () => {
+    const claim = { org: 'acme', orgId: 'o1', orgIsPersonal: false };
+    expect(sharingOrgName(null, claim)).toBe('acme');
+    expect(sharingOrgName(org(), claim)).toBe('Acme Inc');
+    expect(sharingOrgName(null, { org: 'Personal', orgId: 'o2', orgIsPersonal: true })).toBeNull();
+    expect(sharingOrgName(null, { org: null, orgId: null, orgIsPersonal: false })).toBeNull();
+    // A personal organization on the list names none, whatever the claim says.
+    expect(sharingOrgName(org({ isPersonal: true, name: 'personal_u1' }), claim)).toBeNull();
+  });
+
+  /* The claim's personal rule is its own flag, not the label: a company
+     organization can be named Personal. */
+  it('names a company organization the claim calls Personal', () => {
+    expect(sharingOrgName(null, { org: 'Personal', orgId: 'o3', orgIsPersonal: false })).toBe('Personal');
+  });
+
+  /* An organization MindsHub's staff created carries `staff-org-<uuid>` as
+     its Keycloak name, which is all the claim has: an id, not a name. */
+  it('names none for a claim whose Keycloak name is a staff-created id', () => {
+    const staffOrg = 'staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b';
+    expect(sharingOrgName(null, { org: staffOrg, orgId: 'o4', orgIsPersonal: false })).toBeNull();
+    // The list's display name still names it.
+    expect(sharingOrgName(org({ name: staffOrg, displayName: 'Acme Inc' }), { org: staffOrg, orgId: 'o4', orgIsPersonal: false })).toBe('Acme Inc');
+  });
+
   it('says Everyone at ‹org› with a name, and Everyone in the organization without', () => {
     expect(everyoneAtLabel('Acme Inc')).toBe('Everyone at Acme Inc');
     expect(everyoneAtLabel(null)).toBe('Everyone in the organization');

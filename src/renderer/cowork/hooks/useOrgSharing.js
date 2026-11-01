@@ -123,13 +123,14 @@ export function useMindsHubTeams(active) {
 /**
  * The active organization's name for sharing copy (lib/orgSharing's
  * sharingOrgName), from the app's own organization list (useMindsOrgs,
- * MindsHub UI only), read only while `active`. Null until it lands, and when
- * no name is known.
+ * MindsHub UI, and on web only where organization switching is on) or else
+ * the access token's organization claim, read only while `active`. Null until
+ * the token is read, and when no name is known.
  */
 export function useSharingOrgName(active) {
   const accountUser = useAccountUser(false, { active });
   const { activeOrg } = useMindsOrgs(accountUser);
-  return active ? sharingOrgName(activeOrg) : null;
+  return active ? sharingOrgName(activeOrg, accountUser) : null;
 }
 
 /* How long after a failed lookup the ids it couldn't ask are asked again,

@@ -3,6 +3,7 @@ import {
   type MindsOrg,
   PERSONAL_ORG_LABEL,
   chooseMindsOrg,
+  isStaffCreatedOrgName,
   needsOrgPick,
   organizationLabel,
   personalOrgName,
@@ -108,6 +109,22 @@ describe('needsOrgPick', () => {
     expect(needsOrgPick([PERSONAL, ACME])).toBe(false);
     expect(needsOrgPick([PERSONAL])).toBe(false);
     expect(needsOrgPick([])).toBe(false);
+  });
+});
+
+describe('isStaffCreatedOrgName', () => {
+  /* MindsHub names an organization its staff create `staff-org-<uuid>`, an
+     id, and keeps its readable name in the display name. */
+  it('spots the id MindsHub gives an organization its staff created', () => {
+    expect(isStaffCreatedOrgName('staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(true);
+  });
+
+  it('leaves a name a person chose alone', () => {
+    expect(isStaffCreatedOrgName('acme')).toBe(false);
+    expect(isStaffCreatedOrgName('staff-org-acme')).toBe(false);
+    expect(isStaffCreatedOrgName('Acme staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(false);
+    expect(isStaffCreatedOrgName(personalOrgName('6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b'))).toBe(false);
+    expect(isStaffCreatedOrgName(null)).toBe(false);
   });
 });
 

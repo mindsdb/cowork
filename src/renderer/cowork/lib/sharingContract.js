@@ -93,7 +93,8 @@ export const INVALID_ID_CODE = 'invalid_id';
     an artifact with everyone in the organization and the caller lacks
     `artifacts.share_org`; the body's string `detail` is the reason. Mirrors
     cowork-server's SHARE_ORG_REQUIRED_CODE (cowork/services/sharing_contract.py);
-    anton's publisher holds it under the same name. */
+    MindsHub, the upload service, and anton's publisher hold it under the same
+    name. */
 export const SHARE_ORG_REQUIRED_CODE = 'share_org_required';
 
 /** `GET /hub/people/`'s two lookups. `param` is the query parameter, and the

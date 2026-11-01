@@ -26,7 +26,7 @@ const ADMIN = { enabled: true, canShareSkillsOrg: true };
 const MEMBER = { enabled: true, canShareSkillsOrg: false };
 
 /* `orgName` is what the Skills page reads from the app's organization list
-   (useSharingOrgName). */
+   or the token's claim (useSharingOrgName). */
 async function renderDialog({ access = { orgAllowed: false, allowedTeamIds: [], allowedUserIds: [] }, capabilities = MEMBER, orgName = 'Acme', extra = {}, onSave = vi.fn(async () => {}) } = {}) {
   render(<SkillShareMenu skill={skill(access, extra)} capabilities={capabilities} orgName={orgName} onSave={onSave} trigger={<button type="button">Share</button>} />);
   fireEvent.click(screen.getByRole('button', { name: 'Share' }));
