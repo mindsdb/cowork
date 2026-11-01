@@ -591,6 +591,45 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
   });
 });
 
+describe('MarkdownContent HTML comments', () => {
+  it('keeps a comment inside a fenced code block', () => {
+    const { container } = render(
+      <MarkdownContent text={'```html\n<div><!-- keep me --></div>\n```'} complete />,
+    );
+    expect(container.querySelector('code').textContent).toContain('<div><!-- keep me --></div>');
+  });
+
+  it('keeps a comment inside an inline code span', () => {
+    const { container } = render(
+      <MarkdownContent text={'write `<!-- note -->` to leave a note'} complete />,
+    );
+    expect(container.querySelector('code').textContent).toBe('<!-- note -->');
+  });
+
+  it('shows every byte of fenced text that opens a comment and closes it later', () => {
+    const body = '{"plan":"A-1","qty":1,"note":"<!--","qty":100000,"x":"-->"}';
+    const { container } = render(<MarkdownContent text={'```\n' + body + '\n```'} complete />);
+    expect(container.querySelector('code').textContent).toContain(body);
+  });
+
+  it('keeps the rest of a code block after an unclosed comment mark', () => {
+    const { container } = render(
+      <MarkdownContent text={'```\nstart <!-- open\nqty: 100000\n```\n\nafter'} complete />,
+    );
+    expect(container.querySelector('code').textContent).toContain('qty: 100000');
+    expect(container.textContent).toContain('after');
+  });
+
+  it('still turns a key:value comment in prose into a chip and drops a plain one', () => {
+    const { container } = render(
+      <MarkdownContent text={'- rate limit is 50/min <!-- topic:api -->\n- draft <!-- TODO -->'} complete />,
+    );
+    expect(container.textContent).toContain('topic: api');
+    expect(container.textContent).not.toContain('TODO');
+    expect(container.textContent).not.toContain('<!--');
+  });
+});
+
 describe('MarkdownContent streaming performance', () => {
   it('can render an incomplete coding-agent message without per-word DOM wrappers', () => {
     const { container } = render(

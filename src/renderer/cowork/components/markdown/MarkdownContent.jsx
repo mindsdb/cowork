@@ -379,13 +379,32 @@ function _normalizeFormFences(text) {
 
 // Regions we must never rewrite: fenced code blocks (``` or ~~~) and inline
 // code spans. A message that *documents* LaTeX ("write `$x$` for inline
-// math") has to show its delimiters verbatim, not render them. We stash these
-// behind placeholders (see below) rather than splitting on them, so the
+// math") has to show its delimiters verbatim, not render them, and code that
+// holds an HTML comment has to show the comment. We stash these behind
+// placeholders (see `_outsideCode`) rather than splitting on them, so the
 // conversion still sees each line's real context. This misses a few CommonMark
 // corners on purpose — 4+ backtick fences, multi-backtick spans, an
 // unterminated fence mid-stream — since covering them fully would mean
 // re-implementing the parser; the realistic cases are handled.
 const _MD_CODE_REGION = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/g;
+
+// Run `transform` over `text` with its code regions stashed behind
+// NUL-delimited placeholders, so the transform runs against the *whole*
+// string — preserving each line's real context (blockquote `>` / list-item
+// prefixes) that a naive split would fragment (e.g. "> `x` \[y\]") — while
+// never rewriting code. Placeholders carry no newline, no math delimiter and
+// no comment mark, so they pass through untouched; the code is restored
+// verbatim afterwards. NUL can't occur in chat text and never escapes this
+// function.
+function _outsideCode(text, transform) {
+  const code = [];
+  const stashed = text.replace(_MD_CODE_REGION, (m) => {
+    const token = `\u0000${code.length}\u0000`;
+    code.push(m);
+    return token;
+  });
+  return transform(stashed).replace(/\u0000(\d+)\u0000/g, (_m, i) => code[Number(i)]);
+}
 
 const _isBlankRun = (s) => /^\s*$/.test(s);
 
@@ -442,21 +461,7 @@ export function _normalizeMathDelimiters(text) {
   ) {
     return text;
   }
-  // Stash code regions behind NUL-delimited placeholders so the conversion
-  // runs against the *whole* string — preserving each line's real context
-  // (blockquote `>` / list-item prefixes) that a naive split would fragment
-  // (e.g. "> `x` \[y\]") — while never rewriting code. Placeholders carry no
-  // math delimiter and no newline, so they pass through untouched; the code
-  // is restored verbatim afterwards. NUL can't occur in chat text and never
-  // escapes this function.
-  const code = [];
-  const stashed = text.replace(_MD_CODE_REGION, (m) => {
-    const token = `\u0000${code.length}\u0000`;
-    code.push(m);
-    return token;
-  });
-  const converted = _convertMathDelimiters(stashed);
-  return converted.replace(/\u0000(\d+)\u0000/g, (_m, i) => code[Number(i)]);
+  return _outsideCode(text, _convertMathDelimiters);
 }
 
 function _convertMathDelimiters(text) {
@@ -492,7 +497,8 @@ function _convertMathDelimiters(text) {
 // The scanner below is intentionally narrow: it only rewrites comment
 // bodies that look like one or more `key:value` pairs (e.g. `topic:foo`,
 // `ts:2026-02-27`, `source:consolidation`). Plain authorship comments
-// like `<!-- TODO -->` or `<!-- not sure -->` are stripped.
+// like `<!-- TODO -->` or `<!-- not sure -->` are stripped. Comments inside
+// code blocks and code spans are code, so they stay exactly as written.
 const _ENGRAM_BODY_RE = /^\s*([a-z][a-z0-9_-]*:[^\s<>]+(?:\s+[a-z][a-z0-9_-]*:[^\s<>]+)*)\s*$/i;
 
 function _engramCommentChips(body) {
@@ -517,8 +523,11 @@ function _engramCommentChips(body) {
 }
 
 function _renderEngramComments(text) {
-  if (!text || typeof text !== 'string') return text;
+  if (!text || typeof text !== 'string' || text.indexOf('<!--') === -1) return text;
+  return _outsideCode(text, _renderProseEngramComments);
+}
 
+function _renderProseEngramComments(text) {
   let out = '';
   let cursor = 0;
 
