@@ -8,7 +8,7 @@
 import {
   Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef,
 } from 'react';
-import Markdown from 'react-markdown';
+import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -555,6 +555,14 @@ function _renderProseEngramComments(text) {
   return out;
 }
 
+/* react-markdown empties a link to any scheme but http(s), irc(s), mailto and
+ * xmpp before the `a` override sees it, so the `engram:` links
+ * _renderEngramComments writes would arrive empty and show as plain text.
+ * Keep them on links, and leave every other URL to react-markdown's check. */
+function _markdownUrlTransform(url, key) {
+  return key === 'href' && url.startsWith('engram:') ? url : defaultUrlTransform(url);
+}
+
 // Density-scoped class strings. `dense` halves the rhythm and shaves
 // a step off every body-text role; used by memory previews where the
 // reading column is narrower and we want more lessons on screen.
@@ -941,6 +949,7 @@ export function MarkdownContent({
           [rehypeKatex, _KATEX_OPTIONS],
         ]}
         components={components}
+        urlTransform={_markdownUrlTransform}
       >
         {normalized || ''}
       </Markdown>

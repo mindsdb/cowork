@@ -620,6 +620,23 @@ describe('MarkdownContent HTML comments', () => {
     expect(container.textContent).toContain('after');
   });
 
+  it('renders a key:value comment as a chip, not as a blocked link', () => {
+    const { container } = render(
+      <MarkdownContent text={'- rate limit is 50/min <!-- topic:api -->'} complete />,
+    );
+    expect(container.querySelector('[title="Link blocked: unsupported URL scheme"]')).toBeNull();
+    expect(container.querySelector('span.font-mono')?.textContent).toBe('topic: api');
+  });
+
+  it('still blocks a link to an unsafe scheme', () => {
+    const { container } = render(
+      <MarkdownContent text={'[open](javascript:alert(1)) and ![x](engram:a?k=b)'} complete />,
+    );
+    expect(container.querySelector('[title="Link blocked: unsupported URL scheme"]')?.textContent).toBe('open');
+    expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(container.querySelector('img[src^="engram:"]')).toBeNull();
+  });
+
   it('still turns a key:value comment in prose into a chip and drops a plain one', () => {
     const { container } = render(
       <MarkdownContent text={'- rate limit is 50/min <!-- topic:api -->\n- draft <!-- TODO -->'} complete />,
