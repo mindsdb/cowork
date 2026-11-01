@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
 import { Alert, Button, OutsidePressLayer, Spinner, Tooltip } from '../../ui';
+import { UNRECORDED_LINK_WARNING } from './linkLeftLive';
 import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
@@ -148,6 +149,13 @@ function ErrorRow({ message }) {
   return <Alert variant="danger" className="mx-4 mb-3">{message}</Alert>;
 }
 
+/* What the last action left live, or a warning that this link has no owner on
+   record (linkLeftLive.js). */
+function NoticeRow({ message }) {
+  if (!message) return null;
+  return <Alert variant="warning" className="mx-4 mb-3">{message}</Alert>;
+}
+
 // ── Version history ───────────────────────────────────────────────────────
 
 function formatWhen(iso) {
@@ -274,8 +282,9 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (ok) { setView('summary'); setPwd({ value: '', reveal: false }); }
   };
   const doUnpublish = async () => {
-    const ok = await pub.unpublish();
-    if (ok) setOpen(false);
+    const result = await pub.unpublish();
+    // Stays open when the page itself is still live, so the person reads why.
+    if (result?.ok && !result.notice) setOpen(false);
   };
   const doActivate = async (md5) => {
     if (pub.busy) return;
@@ -337,6 +346,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                     <SectionLabel>Who can access your app</SectionLabel>
                     <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} />
                   </div>
+                  <NoticeRow message={pub.notice} />
                   <ErrorRow message={pub.error} />
                   <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                     <FooterButton primary onClick={doPublish}
@@ -429,6 +439,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                     )}
                   </div>
   
+                  <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? UNRECORDED_LINK_WARNING : '')} />
                   <ErrorRow message={pub.error} />
   
                   <div className="flex items-center justify-between gap-2 py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">

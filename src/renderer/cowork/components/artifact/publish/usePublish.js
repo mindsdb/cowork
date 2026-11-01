@@ -30,6 +30,7 @@ import {
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
 import { OWNED_BY_OTHER_USER_MESSAGE, isOwnedByOtherUserError } from './publishErrors';
+import { republishNotice, stopSharingNotice } from './linkLeftLive';
 
 // Map the publish failures a user can act on (a missing Minds API key, an
 // artifact another account published) to a clear message; everything else
@@ -77,6 +78,12 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [modified, setModified] = useState(!!artifact?.modified);
   const [phase, setPhase] = useState('idle'); // idle | publishing | updating | unpublishing | activating
   const [error, setError] = useState('');
+  // What the last action left live that the person should know about, such as
+  // an old link Cowork couldn't take down (linkLeftLive.js). '' for nothing.
+  const [notice, setNotice] = useState('');
+  // false when the artifact's live link has no owner on record, so Cowork can't
+  // update it or take it down; null until the status says, or when it can't.
+  const [linkOwnerRecorded, setLinkOwnerRecorded] = useState(artifact?.linkOwnerRecorded ?? null);
   // Publish history for the version-rollback UI. Empty until loadVersions()
   // runs (lazily, when the publish panel opens) — and on any failure (404 /
   // older server / not published), so the UI degrades to "no history".
@@ -130,6 +137,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     const wasPublished = !!publishedUrl;
     setPhase('publishing');
     setError('');
+    setNotice('');
     try {
       // Same state machine, different transport. Both land on the server's
       // `publish_artifact`, so the response shape is identical — org mode just
@@ -161,6 +169,9 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessLoaded(true);  // publish response is authoritative for the list
       setArtifactKey(next.artifactKey);
       setModified(false);
+      setNotice(republishNotice(r));
+      // A link this publish made is on record as this person's.
+      if (r.replacedLink) setLinkOwnerRecorded(true);
       // Only count the analytics event on the transition to published,
       // not on every in-place access change.
       if (!wasPublished) trackArtifactPublished(r.report_id || r.reportId || artifact?.id || '', m);
@@ -178,9 +189,12 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     if (phase !== 'idle' || !supportsPublishRoutes || !targetPath) return false;
     setPhase('updating');
     setError('');
+    setNotice('');
     try {
       const r = await updateArtifact(targetPath);
       setModified(false);
+      setNotice(republishNotice(r));
+      if (r?.replacedLink) setLinkOwnerRecorded(true);
       const url = r?.url || publishedUrl;
       if (url) setPublishedUrl(url);
       onChange?.({ ...artifact, modified: false, publishedUrl: url });
@@ -193,18 +207,26 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     }
   }, [phase, supportsPublishRoutes, targetPath, publishedUrl, artifact, onChange]);
 
+  /* Resolves to { ok, notice }: whether the artifact stopped pointing at its
+     page, and what to tell the person when the page itself stays live. The
+     caller reads the notice here, since the state it also sets is not visible
+     in the caller's closure. */
   const unpublish = useCallback(async () => {
-    if (phase !== 'idle' || !supportsPublishRoutes || !targetPath) return false;
+    if (phase !== 'idle' || !supportsPublishRoutes || !targetPath) return { ok: false, notice: '' };
     setPhase('unpublishing');
     setError('');
+    setNotice('');
     try {
-      await unpublishArtifact(targetPath);
+      const r = await unpublishArtifact(targetPath);
+      const left = stopSharingNotice(r);
+      setNotice(left);
+      setLinkOwnerRecorded(null);
       setPublishedUrl('');
       onChange?.({ ...artifact, publishedUrl: '' });
-      return true;
+      return { ok: true, notice: left };
     } catch (e) {
       setError(`Couldn't stop sharing: ${e?.message || e}`);
-      return false;
+      return { ok: false, notice: '' };
     } finally {
       setPhase('idle');
     }
@@ -265,6 +287,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     }
     const s = await fetchArtifactStatus(targetPath);
     if (!s || !isCurrent()) return;
+    setLinkOwnerRecorded(s.linkOwnerRecorded ?? null);
     const nextModified = !!s.modified;
     const nextUrl = s.publishedUrl || '';
     // The server is authoritative for the access list on every refresh — and
@@ -389,7 +412,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   return {
     publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, ownerOnly, artifactKey, modified,
     accessLoaded,
-    phase, busy, error, setError,
+    phase, busy, error, setError, notice, linkOwnerRecorded,
     versions, versionsLoading,
     supportsPublishRoutes,
     publish, update, unpublish, refresh, loadVersions, activate,

@@ -199,7 +199,7 @@ describe('usePublish on Cloud', () => {
 
     await act(async () => {
       expect(await result.current.update()).toBe(false);
-      expect(await result.current.unpublish()).toBe(false);
+      expect(await result.current.unpublish()).toEqual({ ok: false, notice: '' });
       await result.current.loadVersions();
     });
 
