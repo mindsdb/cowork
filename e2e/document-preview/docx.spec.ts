@@ -21,7 +21,10 @@
  * pictures stored in the file, one in the body and one in the header, must
  * load as blob: pictures the browser decodes. The list number docx-preview builds
  * from numbering.xml must keep its counter(), and the run colored by the
- * theme alone must show the color theme1.xml gives it.
+ * theme alone must show the color theme1.xml gives it. Every list marker in
+ * the symbol-font bullet fixtures must be a Unicode character in no symbol
+ * font, which every browser draws, not a private-use character that one
+ * without a symbol-encoded Symbol font draws as a box.
  */
 import { expect, test, type Frame, type Page } from '@playwright/test';
 
@@ -68,6 +71,22 @@ const PICTURE_BULLET_SIDE = 800;
    many there are, and each different ::before background image among them,
    which holds a picture bullet. */
 interface ListBullets { paragraphs: number; images: string[] }
+
+/* The fixtures whose lists mark their items with symbol-font bullets: Word's
+   default list, LibreOffice's export, and python-docx's List Bullet styles. */
+const WORD_BULLETS_FIXTURE = 'Word\'s symbol-font bullets';
+const LIBREOFFICE_BULLETS_FIXTURE = 'LibreOffice\'s symbol-font bullets';
+const PYTHON_DOCX_FIXTURE = 'python-docx heading, table and picture';
+const SYMBOL_BULLET_FIXTURES = [WORD_BULLETS_FIXTURE, LIBREOFFICE_BULLETS_FIXTURE, PYTHON_DOCX_FIXTURE];
+
+/* A character from the private-use range symbol fonts draw from, and a
+   computed font-family that starts with a symbol font. */
+const SYMBOL_PRIVATE_USE = /[\uf000-\uf0ff]/u;
+const SYMBOL_FONT = /^['"]?(?:symbol|wingdings|webdings)\b/i;
+
+/* What the frame computed for one list paragraph: its text, and the content
+   and font of its ::before marker. */
+interface ListMarker { text: string; content: string; fontFamily: string }
 
 /* One request, and whether the harness page made it rather than the preview
    frame or a frame inside it. */
@@ -200,6 +219,21 @@ function listBullets(): ListBullets {
   return { paragraphs: images.length, images: [...new Set(images)] };
 }
 
+/* Runs in the frame. Each list paragraph docx-preview built, by the
+   numbering class it gives each one, with its ::before marker. */
+function listMarkers(): ListMarker[] {
+  return Array.from(document.querySelectorAll('p[class*="docx-num-"]'), (paragraph) => {
+    const marker = getComputedStyle(paragraph, '::before');
+    return { text: paragraph.textContent ?? '', content: marker.content, fontFamily: marker.fontFamily };
+  });
+}
+
+function markerOf(markers: readonly ListMarker[], text: string): ListMarker {
+  const marker = markers.find((candidate) => candidate.text === text);
+  if (!marker) throw new Error(`no list paragraph reads ${text}`);
+  return marker;
+}
+
 /* Runs in the frame. The natural width of the picture that a computed
    url("...") value names, once the browser has decoded it. */
 async function decodedPictureWidth(cssUrl: string): Promise<number> {
@@ -293,5 +327,40 @@ test.describe('docx preview', () => {
     expect(bullets.paragraphs).toBe(PICTURE_BULLET_PARAGRAPHS);
     expect(bullets.images, 'the list paragraphs\' ::before background images').toEqual([expect.stringMatching(/^url\("blob:/)]);
     expect(await frame.evaluate(decodedPictureWidth, bullets.images[0])).toBe(PICTURE_BULLET_SIDE);
+  });
+
+  for (const name of SYMBOL_BULLET_FIXTURES) {
+    const fixture = fixtureNamed(fixtures, name);
+    test(`${name}: every list marker is a Unicode character, and no bullet is in a symbol font`, async ({ page }) => {
+      const run = await openPreview(page, 'docx', fixture);
+      expect(run.outcome).toBe('rendered');
+      const markers = await (await previewFrame(page)).evaluate(listMarkers);
+      expect(markers.length, 'list paragraphs').toBeGreaterThan(0);
+      expect(markers.filter(({ content }) => SYMBOL_PRIVATE_USE.test(content)), 'markers that hold a private-use character').toEqual([]);
+      /* A numbered marker keeps its font: its digits draw in any font. */
+      const bullets = markers.filter(({ content }) => !content.includes('counter('));
+      expect(bullets.filter(({ fontFamily }) => SYMBOL_FONT.test(fontFamily)), 'bullets in a symbol font').toEqual([]);
+      expect(markers.some(({ content }) => content.includes('\u2022')), 'a marker that is a bullet').toBe(true);
+    });
+  }
+
+  test('Word\'s list keeps its Courier New o, draws its Wingdings square as ▪ in both lists, and keeps its numbers', async ({ page }) => {
+    const run = await openPreview(page, 'docx', fixtureNamed(fixtures, WORD_BULLETS_FIXTURE));
+    expect(run.outcome).toBe('rendered');
+    const markers = await (await previewFrame(page)).evaluate(listMarkers);
+    expect(markerOf(markers, 'Order the parts').content).toContain('\u2022');
+    expect(markerOf(markers, 'Check the supplier').content).toContain('o');
+    expect(markerOf(markers, 'Check the supplier').fontFamily).toContain('Courier New');
+    expect(markerOf(markers, 'Confirm the dates').content).toContain('\u25aa');
+    expect(markerOf(markers, 'Review the plan').content, 'the list that shares the first list\'s template').toContain('\u2022');
+    expect(markerOf(markers, 'First step').content, 'the numbered list in a Symbol font').toContain('counter(');
+  });
+
+  test('LibreOffice\'s OpenSymbol white bullet keeps its own font', async ({ page }) => {
+    const run = await openPreview(page, 'docx', fixtureNamed(fixtures, LIBREOFFICE_BULLETS_FIXTURE));
+    expect(run.outcome).toBe('rendered');
+    const markers = await (await previewFrame(page)).evaluate(listMarkers);
+    expect(markerOf(markers, 'Book the room').content).toContain('\u25e6');
+    expect(markerOf(markers, 'Book the room').fontFamily).toContain('OpenSymbol');
   });
 });

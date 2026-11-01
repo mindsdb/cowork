@@ -266,9 +266,41 @@
     textIncludes:
       - One picture bullet shown 1,000 times
 
-# A heading, a paragraph, a table and an inline picture, written by python-docx
-# on its default template, as the agent writes a Word file. Written by
-# make-python-docx-fixture.py.
+# Word's default bulleted list: a Symbol bullet, a Courier New "o" and a
+# Wingdings square, in two lists that share one w:abstractNum, and a numbered
+# list whose marker runs in Symbol. Symbol's bullet is a private-use character
+# that a browser without a symbol-encoded Symbol font draws as a box.
+- name: Word's symbol-font bullets
+  file: word-bullets.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Order the parts
+      - Check the supplier
+      - Confirm the dates
+      - Review the plan
+      - First step
+
+# A bulleted list as LibreOffice exports one to Word: Symbol and Wingdings
+# private-use bullets, and an OpenSymbol white bullet between them.
+- name: LibreOffice's symbol-font bullets
+  file: libreoffice-bullets.docx
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes:
+      - Plan the week
+      - Book the room
+      - Send the agenda
+
+# A heading, a paragraph, a two-level bulleted list, a table and an inline
+# picture, written by python-docx on its default template, as Export to Word
+# writes a Word file. Written by make-python-docx-fixture.py.
 - name: python-docx heading, table and picture
   file: python-docx-report.docx
   kind: clean
@@ -279,6 +311,8 @@
     textIncludes:
       - Regional sales
       - Totals for each region this quarter.
+      - Ship the East order
+      - Confirm the truck
       - East
       - '140'
 
