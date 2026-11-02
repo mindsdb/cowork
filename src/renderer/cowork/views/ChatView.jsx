@@ -178,8 +178,11 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
 // assistant bubble, so we surface the delete here instead.
 // Connect-intro bubble — synthesized assistant turn shown after the
 // user picks a connector. Reads as a small card with the connector
-// logo + label. The form opens as a modal over it; once the form is
-// closed (X, Escape or a click outside) the card offers to open it again.
+// logo + label. The form opens as a modal over it. Closing the form
+// (X, Escape or a click outside) in a task that keeps the transcript
+// leaves the card able to open it again; a connect chat started from the
+// connector picker is discarded instead, and the app returns to where the
+// user was (see the app's connect-form dismiss handler).
 //
 // In modify mode, the bubble grows two affordances inline next to
 // the card: a borderless "← Cancel" and a danger-tinted
@@ -3597,8 +3600,11 @@ export default function ChatView({
 
       {/* Data-vault connection form, in the app's Modal: Escape, a click
           outside and the form's own X all close it, and focus goes back to
-          where it was. Closing leaves the connect-intro bubble and the
-          pointer card in the transcript, each able to open it again. */}
+          where it was. In a task that keeps the transcript, closing leaves
+          the connect-intro bubble and the pointer card, each able to open
+          it again. A connect chat started from the connector picker that
+          hasn't connected yet is discarded on close, and the app returns to
+          where the user was. */}
       <Modal
         open={formActive}
         onClose={() => (onDismissConnectForm
