@@ -30,11 +30,18 @@ describe('isChromiumNetError', () => {
 describe('installMainErrorDialog', () => {
   it('logs a net error from a listener-less request instead of showing the dialog', () => {
     const showErrorBox = vi.fn();
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {});
     installMainErrorDialog(showErrorBox);
     fireUncaught(new Error('net::ERR_NETWORK_CHANGED'));
     expect(showErrorBox).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledOnce();
+    const entry = JSON.parse(String(log.mock.calls[0][0]));
+    expect(entry).toMatchObject({
+      logger: 'main.error-dialog',
+      event: 'uncaught_network_error',
+      error_type: 'Error',
+    });
+    expect(JSON.stringify(entry)).not.toContain('ERR_NETWORK_CHANGED');
   });
 
   it('keeps the dialog for any other uncaught error', () => {

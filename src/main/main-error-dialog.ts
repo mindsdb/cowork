@@ -6,6 +6,7 @@
 // its own, so the dialog only alarms the user: log those and keep the dialog
 // for everything else.
 import { dialog } from 'electron';
+import { diagnostic } from '../shared/diagnostics';
 
 export function isChromiumNetError(err: unknown): boolean {
   return err instanceof Error && err.message.startsWith('net::ERR_');
@@ -14,7 +15,9 @@ export function isChromiumNetError(err: unknown): boolean {
 export function installMainErrorDialog(showErrorBox = dialog.showErrorBox): void {
   process.on('uncaughtException', (err) => {
     if (isChromiumNetError(err)) {
-      console.error('[main] uncaught network error (request retries on its own):', err);
+      // The request retries on its own. The diagnostic keeps the error's type
+      // and stack position, not its message.
+      diagnostic('main.error-dialog', 'WARNING', 'uncaught_network_error', err);
       return;
     }
     // Any listener turns Electron's own dialog off, so show the same one here.
