@@ -21,7 +21,7 @@ import { Info } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
 import { Modal, ModalBody, ModalHeader, ModalToolbar } from '../ui/Modal';
-import { Alert, Badge, Button, EmptyState, Select, Tooltip } from '../ui';
+import { Alert, Badge, EmptyState, Select, Tooltip } from '../ui';
 
 // Category → fallback Ico name when a connector doesn't ship its own
 // flat icon. Keep this map small and obvious; "other" → generic puzzle.
@@ -459,14 +459,15 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           )}
           {!loading && !error && filtered.length === 0 && (offerBuildForQuery ? (
             <EmptyState
-              icon={Ico.search(32)}
+              icon={Ico.search(20)}
               title={<>No connectors match “{trimmedQuery}”</>}
               description="Anton can build one with you: it asks how the system is reached, then sets up and tests the connection."
-              action={(
-                <Button variant="primary" className="max-w-full" onClick={() => onBuildCustom(trimmedQuery)}>
-                  <span className="truncate">Build a custom connector for “{trimmedQuery}”</span>
-                </Button>
-              )}
+              action={{
+                label: <span className="truncate">Build a custom connector for “{trimmedQuery}”</span>,
+                onClick: () => onBuildCustom(trimmedQuery),
+                primary: true,
+                className: 'max-w-full',
+              }}
             />
           ) : (
             <div className="p-3 text-ink-3 text-[13px]">
