@@ -50,10 +50,9 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
-import {
-  OWNED_BY_OTHER_USER_MESSAGE,
-  isOwnedByOtherUserError,
-} from '../components/artifact/publish/publishErrors';
+import { AUDIENCE_CHOICE } from '../lib/orgSharing';
+import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
+import { publishRefusalMessage } from '../components/artifact/publish/publishErrors';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import { artifactAuthorship } from '../lib/artifactAuthorship';
@@ -179,7 +178,8 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
       <ModalFooter>
         <Button variant="subtle" onClick={onCancel}>Cancel</Button>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
-          {draft.mode === 'password' ? 'Share protected' : draft.mode === 'restricted' ? 'Share restricted' : 'Share'}
+          {draft.mode === AUDIENCE_CHOICE.PASSWORD ? 'Share protected'
+            : draft.mode === AUDIENCE_CHOICE.SPECIFIC ? 'Share restricted' : 'Share'}
         </Button>
       </ModalFooter>
     </Modal>
@@ -235,6 +235,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
   const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
+  const orgMode = useOrgMode();
 
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
@@ -341,6 +342,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             publishable={publishable}
             onRetry={onRetry}
             authorship={authorship}
+            orgMode={orgMode}
             // A live app has no page link to report; its state line says what matters.
             pageBadge={!liveAppCard}
           />
@@ -507,9 +509,11 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 // Status badges carry tooltips and a Try again link, so they sit above the
 // stretched open button.
 function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
+  const orgMode = useOrgMode();
   return (
     <ItemActions className="min-w-0 shrink">
       <ArtifactStatus
+        orgMode={orgMode}
         artifact={artifact}
         phase={phase}
         // Publishable = HTML + Markdown (isPublishableArtifact — the same
@@ -844,15 +848,19 @@ export default function ArtifactsView({
         // Server is authoritative (it degrades an empty restricted/password
         // selection back to public); fall back to the requested access.
         const m = r.accessMode || access?.mode || 'public';
+        // Each audience field the answer leaves out is the request's
+        // (lib/sharingContract reads both).
+        const answered = readAudienceAnswer(r);
+        const requested = readAudienceRequest(access);
         updateOne({
           ...artifact,
           publishedUrl: r.url,
           accessMode: m,
           accessProtected: m === 'password',
           accessPassword: m === 'password' ? (access?.password || '') : '',
-          accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
-          orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
-          ownerOnly: m === 'restricted' ? !!(r.ownerOnly ?? access?.owner_only) : false,
+          accessEmails: m === 'restricted' ? (answered.emails ?? requested.emails) : [],
+          orgAllowed: m === 'restricted' ? (answered.orgAllowed ?? requested.orgAllowed) : false,
+          ownerOnly: m === 'restricted' ? (answered.ownerOnly ?? requested.ownerOnly) : false,
         });
         setPhase(artifact.path, null);
         const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
@@ -868,12 +876,15 @@ export default function ArtifactsView({
     } catch (e) {
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
-      let friendly = `Sharing failed: ${msg}`;
-      if (isOwnedByOtherUserError(e)) friendly = OWNED_BY_OTHER_USER_MESSAGE;
-      else if (/minds_api_key/i.test(msg) || /minds api key/i.test(msg)) {
+      const refusal = publishRefusalMessage(e);
+      let friendly = refusal ?? `Sharing failed: ${msg}`;
+      if (!refusal && (/minds_api_key/i.test(msg) || /minds api key/i.test(msg))) {
         friendly = 'Set your Minds API key in Settings to share artifacts.';
       }
-      setPhase(artifact.path, 'failed');
+      /* A refused share (another owner's artifact, or a share with everyone
+         the caller may not make) is refused again, so the card keeps its
+         state and offers no Try again; the toast says why. */
+      setPhase(artifact.path, refusal ? null : 'failed');
       showToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
@@ -910,7 +921,7 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       showToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
-      const message = isOwnedByOtherUserError(e) ? OWNED_BY_OTHER_USER_MESSAGE : `Update failed: ${e?.message || e}`;
+      const message = publishRefusalMessage(e) ?? `Update failed: ${e?.message || e}`;
       showToast({ kind: 'error', message });
     } finally {
       setBusy(artifact.path, false);

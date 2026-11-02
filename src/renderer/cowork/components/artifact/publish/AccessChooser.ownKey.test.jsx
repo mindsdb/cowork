@@ -26,17 +26,18 @@ describe('AccessChooser with the platform UI off and no shared publish token', (
     expect(ACCESS_LABELS.password.desc).toBe('Anyone on the internet with the password');
   });
 
-  it('renders no choice selected and offers "Only you" first', () => {
+  it('renders no choice selected and offers "Only me" first', () => {
     render(<AccessChooser value={newAccessDraft()} onChange={() => {}} />);
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(4);
     for (const radio of radios) expect(radio).toHaveAttribute('aria-checked', 'false');
-    expect(radios[0]).toHaveAccessibleName(/Only you/);
+    expect(radios[0]).toHaveAccessibleName(/Only me/);
     expect(screen.getByText('Anyone on the internet with the URL')).toBeInTheDocument();
   });
 
-  it('points an empty Specific people to "Only you"', () => {
-    render(<AccessChooser value={{ ...newAccessDraft(), mode: 'restricted' }} onChange={() => {}} />);
-    expect(screen.getByText(/Add someone, or choose “Only you”/)).toBeInTheDocument();
+  it('asks for an email in an empty Specific people', () => {
+    render(<AccessChooser value={{ ...newAccessDraft(), mode: 'specific' }} onChange={() => {}} />);
+    expect(screen.getByTestId('recipient-summary')).toHaveTextContent('Add at least one email.');
+    expect(screen.getByRole('combobox', { name: 'Add people by email' })).toBeInTheDocument();
   });
 });
