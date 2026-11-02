@@ -174,9 +174,10 @@ function settleApplyProgress(at: 'navigation' | 'apply-end' | 'request-end'): vo
   if (settles) updateCoordinator.feed(settledApplyInput(updateCoordinator.getInput()));
 }
 
-/** Busy phases are mirrored onto the apply so `applying` reaches `reloading`
- *  during a server reinstall. Outside an apply only the legacy channel hears
- *  them, so the coordinator cannot be left stuck in `applying`. */
+/** Every phase feeds the coordinator's server layer. Busy phases are also
+ *  mirrored onto the apply, so `applying` reaches `reloading` during a server
+ *  reinstall; outside an apply nothing is mirrored, so the coordinator cannot
+ *  be left stuck in `applying`. */
 export function feedServerUpdateStatus(payload: Record<string, unknown>): void {
   const phase = payload.phase;
   if (phase !== 'downloading' && phase !== 'restarting' && phase !== 'error' && phase !== 'idle') return;
