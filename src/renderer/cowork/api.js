@@ -10,7 +10,7 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { isAntonConfigError } from './lib/antonErrors';
-import { readRefusalBody, readRetryAfter } from './lib/httpRefusal';
+import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
@@ -23,6 +23,9 @@ import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
 import { SHARING_OFF } from './lib/orgSharing';
+import {
+  MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
+} from './lib/sharingContract';
 import {
   expectedOrganizationHeaders,
   handleOrganizationBoundaryResponse,
@@ -187,6 +190,7 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  *   code: string|null,
  *   retry_after: number|null,
  *   retry_at: string|null,
+ *   body: Record<string, unknown>|null,
  * }} RefusalError
  */
 
@@ -239,6 +243,7 @@ async function responseError(res, fallback) {
   err.code = code;
   err.retry_after = retry_after;
   err.retry_at = retry_at;
+  err.body = readRefusalObject(text);
   return err;
 }
 
@@ -1956,9 +1961,9 @@ export async function uploadSkillFile(file, { shared } = {}) {
   return res.json();
 }
 
-/* Turns a skill on or off for the caller alone (ENG-3787). Any skill the
-   caller can see takes it, a built-in included; the skill's own `enabled`
-   (on or off for everyone) is untouched. Answers the updated skill. */
+/* Turns a skill on or off for the caller alone. Any skill the caller can
+   see takes it, a built-in included; the skill's own `enabled` (on or off
+   for everyone) is untouched. Answers the updated skill. */
 export async function setSkillEnabledForMe(slug, enabled) {
   return req(`/skills/${encodeURIComponent(slug)}/me`, {
     method: 'PUT',
@@ -1971,24 +1976,19 @@ export async function setSkillEnabledForMe(slug, enabled) {
 export async function setSkillSharing(label, shared) {
   return req(`/skills/${encodeURIComponent(label)}/sharing`, {
     method: 'PUT',
-    body: JSON.stringify({ shared }),
+    body: JSON.stringify({ shared: shared === true }),
   });
 }
 
-/* Org sharing (ENG-3787): who a skill reaches on a hosted org deployment.
-   `enabled: false` is every other build, and the sharing UI stays hidden
-   there. A server without the route answers 404 and reads the same. */
+/* What sharing inside the org allows the caller, in MindsHub mode
+   (lib/sharingContract's SharingCapabilities). `enabled: false` is every
+   other build, and the sharing UI stays hidden there. A server without the
+   route answers 404 and reads the same. */
 export async function fetchSkillSharingCapabilities() {
   try {
     const data = await req('/skills/sharing-capabilities');
     if (!data || typeof data !== 'object') return SHARING_OFF;
-    const name = data.orgName;
-    return {
-      enabled: data.enabled === true,
-      can_share_org: data.canShareOrg === true,
-      can_write_org: data.canWriteOrg === true,
-      org_name: typeof name === 'string' && name.trim() ? name.trim() : null,
-    };
+    return readSharingCapabilities(data);
   } catch (err) {
     if (err?.status === 404) return SHARING_OFF;
     throw err;
@@ -1996,56 +1996,64 @@ export async function fetchSkillSharingCapabilities() {
 }
 
 /* Sets who a skill reaches: everyone in the org, teams by id, people in the
-   org by user id. An empty audience is Only me. `always_on` makes an
-   org-wide or team skill part of every task. A refusal (400/403) throws with
-   the server's `detail` as its message. */
-export async function setSkillAccess(slug, {
-  org_allowed = false, allowed_team_ids = [], allowed_user_ids = [], always_on = false,
-} = {}) {
+   org by user id. An empty audience is Only me. `always_on` makes a skill
+   shared with everyone or a team part of every task. The route keeps any
+   field left out, so someone who may switch only `always_on` sends it alone:
+   the people are listed only to the owner or an admin, and an empty list
+   from anyone else would read as removing them. The body comes from
+   lib/sharingContract's skillAccessRequest or skillAlwaysOnRequest. A refusal (400/403) throws
+   with the server's `detail` as its message. */
+export async function setSkillAccess(slug, access) {
   return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
     method: 'PUT',
-    body: JSON.stringify({
-      org_allowed: org_allowed === true,
-      allowed_team_ids,
-      allowed_user_ids,
-      always_on: always_on === true,
-    }),
+    body: JSON.stringify(access),
   });
 }
 
-/* The caller's teams in the MindsHub org. `reachable: false` when the hub
-   could not be asked, so the picker can say so rather than show no teams. */
-export async function fetchHubTeams() {
+/* A MindsHub read's answer when it got none: `reachable` false, and
+   `failure` saying why (lib/sharingContract's MINDSHUB_ERROR_CODE). A 200
+   with `reachable: false` is cowork-server saying MindsHub couldn't be asked;
+   a refusal or a throttle comes as its own error code (readMindsHubFailure). */
+const MINDSHUB_NOT_ASKED = Object.freeze({ reachable: false, failure: MINDSHUB_ERROR_CODE.UNREACHABLE });
+const mindsHubReadFailed = (err) => ({ reachable: false, failure: readMindsHubFailure(err) });
+
+/* The caller's teams in the MindsHub org. `reachable: false` when MindsHub
+   gave no answer, so the picker can say why (`failure`) rather than show no
+   teams. This read and the two people reads below send no
+   X-MindsHub-Authorization (README, "The MindsHub hub routes", says why). */
+export async function fetchMindsHubTeams() {
   try {
-    const data = await req('/hub/teams/', { headers: await hubHeaders() });
+    const data = await req('/hub/teams/');
+    if (data?.reachable === false) return { ...MINDSHUB_NOT_ASKED, teams: [] };
     const teams = Array.isArray(data?.teams)
       ? data.teams
         .filter((team) => team && typeof team.id === 'string' && team.id)
         .map((team) => ({
           id: team.id,
-          display_name: hubTeamName(team),
+          display_name: mindsHubTeamName(team),
           // The org's default "All members" team, which the server maps to
-          // org-wide: the pickers leave it out for "Everyone at ‹org›".
+          // sharing with everyone: the pickers leave it out for "Everyone at
+          // ‹org›".
           is_default: team.isDefault === true,
         }))
       : [];
-    return { reachable: data?.reachable !== false, teams };
-  } catch {
-    return { reachable: false, teams: [] };
+    return { reachable: true, failure: null, teams };
+  } catch (err) {
+    return { ...mindsHubReadFailed(err), teams: [] };
   }
 }
 
 /* A team's name to show; a raw id is never shown. */
 const UNNAMED_TEAM = 'Unnamed team';
 
-function hubTeamName(team) {
+function mindsHubTeamName(team) {
   const name = team.displayName;
   return typeof name === 'string' && name.trim() ? name.trim() : UNNAMED_TEAM;
 }
 
-/* One person as the hub sends them, or null without an id. The id is what
+/* One person as MindsHub sends them, or null without an id. The id is what
    sharing stores (`allowed_user_ids`); the name and email only label a row. */
-function hubPerson(person) {
+function mindsHubPerson(person) {
   if (!person || typeof person.id !== 'string' || !person.id) return null;
   const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
   const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
@@ -2053,67 +2061,118 @@ function hubPerson(person) {
 }
 
 /* Everyone in the caller's active MindsHub org, read once so the recipient
-   picker can list and filter them locally (`GET /hub/people/`). The
-   hub caps the list; `truncated` says there are more than it sent. Parsed
+   picker can list and filter them locally (`GET /hub/people/`). MindsHub
+   caps the list; `truncated` says there are more than it sent. Parsed
    tolerantly: a bare array is taken as the people, and any answer with no
-   list at all reads as unreachable, so the picker offers Retry. */
-export async function fetchHubDirectory() {
+   list at all reads as unreachable, so the picker offers Retry. `failure`
+   says why there is no list. */
+export async function fetchMindsHubDirectory() {
   try {
-    const data = await req('/hub/people/', { headers: await hubHeaders() });
+    const data = await req('/hub/people/');
     const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
-    if (!raw || data?.reachable === false) return { reachable: false, people: [], truncated: false };
+    if (!raw || data?.reachable === false) return { ...MINDSHUB_NOT_ASKED, people: [], truncated: false };
     const seen = new Set();
     const people = [];
     for (const entry of raw) {
-      const person = hubPerson(entry);
+      const person = mindsHubPerson(entry);
       if (!person || (!person.email && !person.name) || seen.has(person.id)) continue;
       seen.add(person.id);
       people.push(person);
     }
-    return { reachable: true, people, truncated: data?.truncated === true };
-  } catch {
-    return { reachable: false, people: [], truncated: false };
+    return { reachable: true, failure: null, people, truncated: data?.truncated === true };
+  } catch (err) {
+    return { ...mindsHubReadFailed(err), people: [], truncated: false };
   }
 }
 
-const HUB_PEOPLE_IDS_BATCH = 50;
+/* The values of `asked` a refused lookup names as malformed: cowork-server
+   checks every value before it asks MindsHub and answers 400 with the
+   lookup's `invalidCode`, naming them in the body's `param` field (an id
+   that isn't a UUID, an address MindsHub wouldn't take) and asking about
+   none of the batch. Compared trimmed, and addresses lowercased, as
+   cowork-server compares them. Empty for any other failure. */
+function malformedValues(err, lookup, asked) {
+  if (err?.status !== 400 || err?.code !== lookup.invalidCode) return [];
+  const named = Array.isArray(err.body?.[lookup.param]) ? err.body[lookup.param] : [];
+  const fold = (value) => (lookup === PEOPLE_LOOKUP.EMAILS ? value.trim().toLowerCase() : value.trim());
+  const refused = new Set(named.filter((value) => typeof value === 'string').map(fold));
+  return asked.filter((value) => refused.has(fold(value)));
+}
+
+/* Asks one batch (`GET /hub/people/?ids=` or `?emails=`). A batch refused
+   for malformed values is asked again once without them, so the good values
+   beside a bad one still get an answer. A batch that got no answer says why
+   (`failure`). */
+async function askMindsHubPeople(lookup, batch) {
+  try {
+    const params = new URLSearchParams({ [lookup.param]: batch.join(',') });
+    const data = await req(`/hub/people/?${params}`);
+    const people = (Array.isArray(data?.people) ? data.people : []).map(mindsHubPerson).filter(Boolean);
+    if (data?.reachable === false) return { people, unanswered: batch, invalid: [], failure: MINDSHUB_NOT_ASKED.failure };
+    return { people, unanswered: [], invalid: [], failure: null };
+  } catch (err) {
+    const invalid = malformedValues(err, lookup, batch);
+    if (invalid.length === 0) return { people: [], unanswered: batch, invalid: [], failure: readMindsHubFailure(err) };
+    const rest = batch.filter((value) => !invalid.includes(value));
+    if (rest.length === 0) return { people: [], unanswered: [], invalid, failure: null };
+    const again = await askMindsHubPeople(lookup, rest);
+    return { ...again, invalid: [...invalid, ...again.invalid] };
+  }
+}
+
+/* The people MindsHub answers for `values` under one lookup (PEOPLE_LOOKUP),
+   asked in batches of its `batchSize` (the bound MindsHub sets per lookup).
+   A person is kept when `keyOf` gives one of the values asked; a value
+   MindsHub answered for but no member has is simply absent from `people`.
+   `unanswered` lists the values of any batch that got no answer (`reachable`
+   is then false, and `failure` says why): those are not known to be missing,
+   only not looked up yet. `invalid` lists the values cowork-server refused
+   as malformed, which no lookup will ever find. */
+async function fetchMindsHubPeopleBy(lookup, values, keyOf) {
+  const unique = [...new Set((values || []).filter((value) => typeof value === 'string' && value))];
+  if (unique.length === 0) return { reachable: true, failure: null, people: [], unanswered: [], invalid: [] };
+  const batches = [];
+  for (let i = 0; i < unique.length; i += lookup.batchSize) {
+    batches.push(unique.slice(i, i + lookup.batchSize));
+  }
+  const answers = await Promise.all(batches.map((batch) => askMindsHubPeople(lookup, batch)));
+  const wanted = new Set(unique);
+  const byKey = new Map();
+  const unanswered = [];
+  const invalid = [];
+  for (const answer of answers) {
+    unanswered.push(...answer.unanswered);
+    invalid.push(...answer.invalid);
+    for (const person of answer.people) {
+      const key = keyOf(person);
+      if (wanted.has(key) && !byKey.has(key)) byKey.set(key, person);
+    }
+  }
+  return {
+    reachable: unanswered.length === 0,
+    // Batches that failed differently report one failure (firstMindsHubFailure).
+    failure: firstMindsHubFailure(answers.map((answer) => answer.failure)),
+    people: [...byKey.values()],
+    unanswered,
+    invalid,
+  };
+}
 
 /* The people a stored audience names, by user id, so their rows can say who
-   they are. Asked in batches of at most 50 ids. Ids the hub answered for but
-   doesn't know are simply absent from `people`. `unanswered` lists the ids of
-   any batch that could not be asked (`reachable` is then false): those are
-   not known to be missing, only not looked up yet. */
-export async function fetchHubPeopleByIds(ids) {
-  const unique = [...new Set((ids || []).filter((id) => typeof id === 'string' && id))];
-  if (unique.length === 0) return { reachable: true, people: [], unanswered: [] };
-  const batches = [];
-  for (let i = 0; i < unique.length; i += HUB_PEOPLE_IDS_BATCH) {
-    batches.push(unique.slice(i, i + HUB_PEOPLE_IDS_BATCH));
-  }
-  const headers = await hubHeaders();
-  const answers = await Promise.all(batches.map(async (batch) => {
-    try {
-      const params = new URLSearchParams({ ids: batch.join(',') });
-      const data = await req(`/hub/people/?${params}`, { headers });
-      return {
-        batch,
-        reachable: data?.reachable !== false,
-        people: (Array.isArray(data?.people) ? data.people : []).map(hubPerson).filter(Boolean),
-      };
-    } catch {
-      return { batch, reachable: false, people: [] };
-    }
-  }));
-  const wanted = new Set(unique);
-  const byId = new Map();
-  const unanswered = [];
-  for (const answer of answers) {
-    if (!answer.reachable) unanswered.push(...answer.batch);
-    for (const person of answer.people) {
-      if (wanted.has(person.id) && !byId.has(person.id)) byId.set(person.id, person);
-    }
-  }
-  return { reachable: unanswered.length === 0, people: [...byId.values()], unanswered };
+   they are. `invalid` holds ids cowork-server refused as no UUID, which name
+   nobody. */
+export async function fetchMindsHubPeopleByIds(ids) {
+  return fetchMindsHubPeopleBy(PEOPLE_LOOKUP.IDS, ids, (person) => person.id);
+}
+
+/* The members who hold these addresses. The directory the picker loads is
+   capped (`truncated`), so a member past the cap is not in it; asked here, a
+   typed address still names them, and sharing stores their user id rather
+   than an outside email. `unanswered` and `invalid` hold lowercased
+   addresses. */
+export async function fetchMindsHubPeopleByEmails(emails) {
+  const lowered = (emails || []).map((email) => (typeof email === 'string' ? email.trim().toLowerCase() : ''));
+  return fetchMindsHubPeopleBy(PEOPLE_LOOKUP.EMAILS, lowered, (person) => person.email);
 }
 
 export async function deleteSkill(label) {
@@ -2538,7 +2597,7 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 //   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
 // Public (or a falsy access) sends just `{ path }`, which clears any prior
 // protection on re-publish. `notify` goes through as given: cowork-server
-// forwards it to auth, which emails exactly the people it lists (ENG-3787).
+// forwards it to MindsHub, which emails exactly the people it lists.
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
@@ -3153,7 +3212,7 @@ export const MOCK_DATA = {
   },
 };
 
-// ── Artifact comments (Plan 5) ────────────────────────────────────────────
+// ── Artifact comments ────────────────────────────────────────────
 // Renderer holds no token; cowork-server attaches the user's MindsHub creds and
 // proxies to the inference backend. Scope is the composite {userDir}/{reportId}.
 

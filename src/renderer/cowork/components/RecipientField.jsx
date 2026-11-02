@@ -1,16 +1,16 @@
-// `<RecipientField>` — who to share with (ENG-3787), the way Google Drive's
-// share dialog asks: a search input on top and, once it is clicked or
+// `<RecipientField>`: who to share with, the way Google Drive's share
+// dialog asks: a search input on top and, once it is clicked or
 // focused, a dropdown anchored right under it that lists everyone it could
 // add, grouped: the caller's Teams, then the People in ‹org›. The recipients
 // picked so far sit below as a list of rows (`<RecipientRow>`), newest on
 // top, each with its own remove ×.
 //
 // Recipients come in three kinds, kept apart in `value`:
-//   - teams (`teamIds`) — the caller's own MindsHub teams, the org's default
+//   - teams (`teamIds`): the caller's own MindsHub teams, the org's default
 //     team left out ("Everyone at ‹org›" is that choice);
-//   - people in the org (`userIds`) — from the org's directory, read once
+//   - people in the org (`userIds`): from the org's directory, read once
 //     per session (`useOrgDirectory`) and named afterwards by `useKnownPeople`;
-//   - outside emails (`emails`) — only with `allowExternal`.
+//   - outside emails (`emails`): only with `allowExternal`.
 // With `emailsOnly` (no org) it is just addresses, with no dropdown.
 //
 // Typing filters the lists locally (name, email or team name; case and
@@ -19,12 +19,13 @@
 //
 // A typed or pasted email is matched against the loaded directory: a match is
 // that person, anything else becomes "Invite …" when outside emails are
-// allowed and is reported as not in the org when they aren't. An address the
-// directory doesn't have, when the directory is over a minute old, is checked
-// once against a fresh copy first, so someone who joined since is found.
-// Before the directory has loaded (or while it is read again), addresses wait
-// ("Checking…") and resolve once it does; if it failed they stay in the input
-// for a Retry.
+// allowed and is reported as not in the org when they aren't. Until the
+// directory can say so (a list over a minute old is read again, a truncated
+// one asks MindsHub), the menu offers "Add …" with no claim about the org
+// either way, and an address waits ("Checking…") rather than becoming an
+// outside email. `useRecipientTokens` owns those rules. cowork-server's
+// artifact access route (`PUT /artifacts/workspace/…/access`) refuses the
+// caller's own address as well.
 //
 // ↑/↓ move across both groups, Enter / Tab / comma add the highlighted (or
 // top) row, Escape closes; the input keeps the focus, so one can keep typing
@@ -41,15 +42,20 @@ import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { openExternal } from '../../platform/host';
 import { MINDS_MEMBERS_URL } from '../../lib/mindsUrls';
-import { isEmailShaped } from '../lib/emailAddress';
 import {
   filterPeople,
   filterTeams,
+  mindsHubFailureText,
+  mindsHubRetryHelps,
   orgNameOrGeneric,
   recipientSummary,
   shareableTeams,
 } from '../lib/orgSharing';
-import { DIRECTORY_MAX_AGE_MS, useHubTeams, useKnownPeople, useOrgDirectory } from '../hooks/useOrgSharing';
+import { isEmailShaped } from '../lib/emailAddress';
+import { useKnownPeople, useMindsHubTeams, useOrgDirectory } from '../hooks/useOrgSharing';
+import { useRecipientTokens } from '../hooks/useRecipientTokens';
+import { LOAD_STATUS } from '../lib/sharingContract';
+import { useAccountUser } from '../hooks/useAccountUser';
 import { RecipientRow, RecipientTile, recipientItems } from './RecipientRows';
 
 const SEPARATORS = /[\s,;]+/;
@@ -62,7 +68,36 @@ const MENU_GAP = 4;
 const EMPTY_VALUE = Object.freeze({ teamIds: [], userIds: [], emails: [] });
 const SKELETON_TILE = 'inline-grid shrink-0 place-items-center w-[28px] h-[28px] rounded-full';
 
-/* A grey placeholder row while the directory loads. */
+/* What the field says when a MindsHub read got no answer, by why
+   (mindsHubFailureText): an outage, a refusal, and a throttle, which reads
+   MINDSHUB_THROTTLED. Retry shows unless MindsHub refused. */
+const DIRECTORY_FAILED = Object.freeze({
+  unreachable: "Couldn't load your organization's directory",
+  refused: "MindsHub refused to list your organization's people",
+});
+const TEAMS_FAILED = Object.freeze({
+  unreachable: "Couldn't load your teams. Try again later.",
+  refused: 'MindsHub refused to list your teams.',
+});
+const NAMES_FAILED = Object.freeze({
+  unreachable: "Couldn't load some names.",
+  refused: 'MindsHub refused to name some people.',
+});
+
+/* A Retry link inside the field's notes. `keepFocus` keeps the input focused
+   when it sits in the dropdown. */
+function RetryLink({ onClick, keepFocus = false }) {
+  return (
+    <button
+      type="button"
+      onMouseDown={keepFocus ? (e) => e.preventDefault() : undefined}
+      onClick={onClick}
+      className="shrink-0 bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
+    >Retry</button>
+  );
+}
+
+/* A gray placeholder row while the directory loads. */
 function SkeletonRow({ width }) {
   return (
     <li role="presentation" aria-hidden="true" data-testid="recipient-skeleton" className="flex items-center gap-2.5 py-[7px] px-2">
@@ -117,7 +152,7 @@ function useMenuPosition(anchorRef, open) {
  *   allowExternal?: boolean,
  *   emailsOnly?: boolean,
  *   orgName?: string | null,
- *   teamsState?: { status: string, reachable: boolean, teams: Array<{ id: string, display_name: string, is_default?: boolean }> } | null,
+ *   teamsState?: { status: string, reachable: boolean, failure?: import('../lib/sharingContract').MindsHubFailure | null, teams: Array<{ id: string, display_name: string, is_default?: boolean }> } | null,
  *   label?: string,
  *   autoFocus?: boolean,
  * }} props
@@ -144,11 +179,14 @@ export function RecipientField({
     onChange(latest.current);
   };
 
-  const ownTeams = useHubTeams(!emailsOnly && !teamsProp);
+  const ownTeams = useMindsHubTeams(!emailsOnly && !teamsProp);
   const teamsState = teamsProp || ownTeams;
   const directory = useOrgDirectory(!emailsOnly);
   const known = useKnownPeople(emailsOnly ? EMPTY_VALUE.userIds : userIds);
   const org = orgNameOrGeneric(orgName);
+  // The person signed in, whom the directory leaves out.
+  const accountUser = useAccountUser();
+  const ownEmail = (accountUser?.email || '').toLowerCase();
 
   const anchorRef = useRef(null);
   const inputRef = useRef(null);
@@ -157,43 +195,59 @@ export function RecipientField({
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(-1);
-  const [notAdded, setNotAdded] = useState([]);
-  // Addresses typed or pasted before the directory loaded, or while it is
-  // read again, held (their text left in the input) until it can say who is
-  // in the org: `{ tokens, refreshed }`, `refreshed` once a fresh copy was
-  // asked for them, so it is asked only once.
-  const [held, setHeld] = useState(null);
   const listId = useId();
   const optionId = (i) => `${listId}-opt-${i}`;
   const query = text.trim();
-  const directoryReady = directory.status === 'ready';
-  // Too old to say an address isn't in the org without reading it again.
-  const directoryStale = directoryReady && Date.now() - (directory.loadedAt || 0) > DIRECTORY_MAX_AGE_MS;
+
+  const resolver = useRecipientTokens({
+    directory,
+    emailsOnly,
+    allowExternal,
+    ownEmail,
+    org,
+    latest,
+    emit,
+    remember: known.remember,
+    showText: (next) => {
+      setText(next);
+      setActive(-1);
+    },
+    reopen: () => {
+      if (typeof document !== 'undefined' && document.activeElement === inputRef.current) setOpen(true);
+    },
+  });
+  const {
+    directoryReady, directoryStale, directoryPeople, isEmail, isOwnEmail, findByEmail, notAdded, held,
+  } = resolver;
+  const resolveTokens = resolver.resolve;
 
   // ── What the menu offers ──
   const typedEmail = query.toLowerCase();
-  const typedIsEmail = isEmailShaped(typedEmail);
-  const directoryPeople = directoryReady ? directory.people : EMPTY_VALUE.userIds;
-  const findByEmail = (email) => directoryPeople.find((p) => (p.email || '').toLowerCase() === email) || null;
+  const typedIsEmail = isEmail(typedEmail);
   const matchedPerson = typedIsEmail ? findByEmail(typedEmail) : null;
   // Whether "nobody in the org has this address" is known yet.
-  const emailAnswered = directoryReady;
-  const teamsReady = teamsState.status === 'ready' && teamsState.reachable;
+  const emailAnswered = resolver.isAnswered(typedEmail, matchedPerson);
+  const teamsReady = teamsState.status === LOAD_STATUS.READY && teamsState.reachable;
   const ownShareable = teamsReady ? shareableTeams(teamsState.teams) : [];
   const teamOptions = emailsOnly ? [] : filterTeams(ownShareable, query).filter((t) => !teamIds.includes(t.id));
   let peopleOptions = [];
   if (!emailsOnly) {
     const seen = new Set(userIds);
-    // Pasted lists aren't filtered: they are added on their own.
+    /* Pasted lists aren't filtered: they are added on their own. A typed
+       address MindsHub named past a truncated list's end is offered too. */
     const local = SEPARATORS.test(query) ? [] : filterPeople(directoryPeople, query);
-    for (const person of local) {
+    for (const person of matchedPerson ? [...local, matchedPerson] : local) {
       if (seen.has(person.id)) continue;
       seen.add(person.id);
       peopleOptions.push(person);
     }
   }
+  const typedIsOwn = typedIsEmail && isOwnEmail(typedEmail);
+  /* The row that adds the typed address. Unanswered, it checks first (add()
+     starts the read or the lookup), so it is offered where only the org may
+     be named too. */
   const canInvite = typedIsEmail && !emails.includes(typedEmail) && (emailsOnly
-    || (allowExternal && emailAnswered && !matchedPerson));
+    || (directoryReady && !matchedPerson && !typedIsOwn && (allowExternal || !emailAnswered)));
   const options = [
     ...teamOptions.map((team) => ({ kind: 'team', key: `team:${team.id}`, team })),
     ...peopleOptions.map((person) => ({ kind: 'person', key: `person:${person.id}`, person })),
@@ -202,13 +256,14 @@ export function RecipientField({
   const current = active >= 0 && active < options.length ? active : (query && options.length ? 0 : -1);
 
   // Rows under the lists: loading, a failure, nothing found.
-  const directoryLoading = !emailsOnly && (directory.status === 'loading' || directory.status === 'idle');
-  const teamsLoading = !emailsOnly && !teamsProp && teamsState.status !== 'ready';
+  const directoryLoading = !emailsOnly
+    && (directory.status === LOAD_STATUS.LOADING || directory.status === LOAD_STATUS.IDLE);
+  const teamsLoading = !emailsOnly && !teamsProp && teamsState.status !== LOAD_STATUS.READY;
   const nothingFound = !emailsOnly && !!query && options.length === 0 && !directoryLoading
-    && directory.status !== 'error' && !(typedIsEmail && !allowExternal);
+    && directory.status !== LOAD_STATUS.ERROR && !(typedIsEmail && !allowExternal);
   const menuOpen = open && !emailsOnly ? true : open && options.length > 0;
   // A typed email nobody in the org has, where only the org may be named.
-  const showOrgOnlyHint = !emailsOnly && !allowExternal && typedIsEmail && emailAnswered && !matchedPerson;
+  const showOrgOnlyHint = !emailsOnly && !allowExternal && typedIsEmail && emailAnswered && !matchedPerson && !typedIsOwn;
   const position = useMenuPosition(anchorRef, menuOpen);
 
   // Keep the highlighted row in view as the arrows move it.
@@ -223,7 +278,7 @@ export function RecipientField({
   const resetInput = () => {
     setText('');
     setActive(-1);
-    setNotAdded([]);
+    resolver.clearNotAdded();
   };
 
   const add = (option, { close = false } = {}) => {
@@ -234,8 +289,9 @@ export function RecipientField({
       known.remember([option.person]);
       if (!latest.current.userIds.includes(option.person.id)) emit({ userIds: [...latest.current.userIds, option.person.id] });
     } else if (option.kind === 'invite') {
-      // An old directory may just not know them yet: check it first.
-      if (!emailsOnly && directoryStale) {
+      /* An old directory may just not know them yet, and a truncated one may
+         stop before them: check first. */
+      if (!emailsOnly && (directoryStale || directory.truncated)) {
         resolveTokens([option.email]);
         if (close) setOpen(false);
         return;
@@ -248,81 +304,6 @@ export function RecipientField({
     // keyboard can add several in a row.
     if (close) setOpen(false);
   };
-
-  // Each typed or pasted address becomes a person when the org has that
-  // exact email in the loaded directory, else an outside email when allowed,
-  // else it is reported. Until the directory has loaded nothing is added, so
-  // a member is never taken for an outside address: the text stays in the
-  // input, held while the directory loads, and left for a Retry if it failed.
-  // An address a directory over a minute old doesn't have is held while it is
-  // read again, once.
-  const holdTokens = (tokens, refreshed) => {
-    setText(tokens.join(' '));
-    setActive(-1);
-    setNotAdded([]);
-    setHeld({ tokens, refreshed });
-  };
-  const resolveTokens = (tokens, { refreshed = false } = {}) => {
-    if (!emailsOnly && (!directoryReady || directory.refreshing)) {
-      if (directory.status === 'error') {
-        setText(tokens.join(' '));
-        setActive(-1);
-        setNotAdded([]);
-        if (typeof document !== 'undefined' && document.activeElement === inputRef.current) setOpen(true);
-      } else {
-        holdTokens(tokens, refreshed);
-      }
-      return;
-    }
-    const unmatched = (raw) => isEmailShaped(raw.toLowerCase()) && !findByEmail(raw.toLowerCase());
-    if (!emailsOnly && !refreshed && directoryStale && tokens.some(unmatched)) {
-      holdTokens(tokens, true);
-      directory.refresh();
-      return;
-    }
-    setHeld(null);
-    resetInput();
-    // Not found in a capped directory: they may be past its end.
-    const notInOrg = directory.truncated
-      ? `not found in the first ${directory.people.length} people of ${org}`
-      : `not in ${org}`;
-    const answers = tokens.map((raw) => {
-      const email = raw.toLowerCase();
-      if (!isEmailShaped(email)) return { raw, reason: 'not an email' };
-      if (emailsOnly) return { email };
-      const person = findByEmail(email);
-      if (person) return { person };
-      if (allowExternal) return { email };
-      return { raw: email, reason: notInOrg };
-    });
-    const next = { ...latest.current, userIds: [...latest.current.userIds], emails: [...latest.current.emails] };
-    const people = [];
-    const refused = [];
-    for (const answer of answers) {
-      if (answer.person) {
-        people.push(answer.person);
-        if (!next.userIds.includes(answer.person.id)) next.userIds.push(answer.person.id);
-      } else if (answer.email) {
-        if (!next.emails.includes(answer.email)) next.emails.push(answer.email);
-      } else {
-        refused.push(answer);
-      }
-    }
-    if (people.length) known.remember(people);
-    if (next.userIds.length !== latest.current.userIds.length || next.emails.length !== latest.current.emails.length) {
-      emit({ userIds: next.userIds, emails: next.emails });
-    }
-    setNotAdded(refused);
-  };
-
-  // The held addresses resolve once the directory answers; a failure leaves
-  // them in the input with the directory's Retry.
-  useEffect(() => {
-    if (!held) return;
-    if (directory.status === 'ready' && !directory.refreshing) resolveTokens(held.tokens, { refreshed: held.refreshed });
-    else if (directory.status === 'error') setHeld(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [directory.status, directory.refreshing, held]);
 
   /** Adds what Enter / Tab / comma means right now; false when nothing. */
   const commit = () => {
@@ -462,12 +443,14 @@ export function RecipientField({
         </li>
       );
     }
+    // Known to be outside the org: Invite. Not checked yet: Add, no claim.
+    const outside = !emailsOnly && emailAnswered;
     return (
       <li key={option.key} {...rowProps}>
-        <RecipientTile item={{ kind: 'outside' }} />
+        <RecipientTile item={{ kind: outside ? 'outside' : 'email' }} />
         <span className="min-w-0 flex-1 truncate text-[13px] text-ink" title={option.email}>
-          {emailsOnly ? `Add ${option.email}` : `Invite ${option.email}`}
-          {!emailsOnly && <span className="text-ink-3">{` (outside ${org})`}</span>}
+          {outside ? `Invite ${option.email}` : `Add ${option.email}`}
+          {outside && <span className="text-ink-3">{` (outside ${org})`}</span>}
         </span>
       </li>
     );
@@ -512,23 +495,19 @@ export function RecipientField({
   }
 
   let footer = null;
-  if (!emailsOnly && directory.status === 'error') {
+  if (!emailsOnly && directory.status === LOAD_STATUS.ERROR) {
     footer = (
       <div role="alert" className="flex items-center justify-between gap-3 py-2 px-2 font-body text-xs text-ink-3">
-        <span className="min-w-0">Couldn&apos;t load your organization&apos;s directory</span>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={directory.retry}
-          className="shrink-0 bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
-        >Retry</button>
+        <span className="min-w-0">{mindsHubFailureText(directory.failure, DIRECTORY_FAILED)}</span>
+        {mindsHubRetryHelps(directory.failure) && <RetryLink onClick={directory.retry} keepFocus />}
       </div>
     );
   }
-  const teamsUnreachable = !emailsOnly && teamsState.status === 'ready' && !teamsState.reachable;
-  const statusLine = showOrgOnlyHint ? `Only people in ${org}`
+  const teamsUnreachable = !emailsOnly && teamsState.status === LOAD_STATUS.READY && !teamsState.reachable;
+  const statusLine = typedIsOwn ? "That's you"
+    : showOrgOnlyHint ? `Only people in ${org}`
     : nothingFound ? 'No matches'
-      : (!query && !peopleEmpty && !directoryLoading && !teamsLoading && options.length === 0 && directory.status !== 'error' && !teamsUnreachable)
+      : (!query && !peopleEmpty && !directoryLoading && !teamsLoading && options.length === 0 && directory.status !== LOAD_STATUS.ERROR && !teamsUnreachable)
         ? 'Everyone you can add is already added.'
         : null;
   const truncatedNote = !emailsOnly && directoryReady && directory.truncated
@@ -560,7 +539,7 @@ export function RecipientField({
           </ul>
         )}
         {teamsUnreachable && !query && (
-          <div role="status" className="py-2 px-2 font-body text-xs text-ink-3">Couldn&apos;t load your teams. Try again later.</div>
+          <div role="status" className="py-2 px-2 font-body text-xs text-ink-3">{mindsHubFailureText(teamsState.failure, TEAMS_FAILED)}</div>
         )}
         {statusLine && (
           <div role="status" className="py-2 px-2 font-body text-xs text-ink-3">{statusLine}</div>
@@ -602,8 +581,8 @@ export function RecipientField({
             setText(e.target.value);
             setOpen(true);
             setActive(-1);
-            if (notAdded.length) setNotAdded([]);
-            if (held) setHeld(null);
+            if (notAdded.length) resolver.clearNotAdded();
+            if (held) resolver.release();
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
@@ -627,14 +606,15 @@ export function RecipientField({
           {`Not added: ${notAdded.map((n) => `${n.raw} (${n.reason})`).join(', ')}`}
         </span>
       )}
-      {known.unreachable && (
+      {known.failure && (
         <span className="mt-[6px] font-body text-xs text-ink-3" role="status">
-          {"Couldn't load some names. "}
-          <button
-            type="button"
-            onClick={known.retry}
-            className="bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
-          >Retry</button>
+          {mindsHubFailureText(known.failure, NAMES_FAILED)}
+          {mindsHubRetryHelps(known.failure) && (
+            <>
+              {' '}
+              <RetryLink onClick={known.retry} />
+            </>
+          )}
         </span>
       )}
       {rows.length > 0 && (

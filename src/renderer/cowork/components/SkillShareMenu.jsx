@@ -1,5 +1,5 @@
-// `<SkillShareMenu>` — a skill's Share dropdown inside a hosted org
-// (ENG-3787): an anchored popover, the same pattern as the artifact publish
+// `<SkillShareMenu>`: a skill's Share dropdown inside the org in MindsHub
+// mode: an anchored popover, the same pattern as the artifact publish
 // dropdown (PublishMenu), holding the shared `<AudiencePanel>` through
 // `<SkillAudienceFields>`: Only me, Everyone at ‹org›, or Specific teams and
 // people, plus "Always include in every task" where it applies.
@@ -8,31 +8,40 @@
 // then offers Update. A refusal (400 someone outside the org, 403 not an
 // admin) shows in place and keeps the dropdown open; a success closes it.
 //
-//   <SkillShareMenu skill={skill} capabilities={caps} onSave={save}
+// Only the owner or an admin changes who a skill reaches
+// (`canChangeSkillAudience`). Anyone else it opens for, such as a member of a
+// team the skill is shared with, gets "Always include in every task" alone,
+// locked as `skillAlwaysOnLock` says, and Update sends `always_on` alone.
+//
+//   <SkillShareMenu skill={skill} capabilities={caps} orgName={name} onSave={save}
 //     trigger={<Button>Share</Button>} tooltip="Shared with 2 teams" />
 
 import { cloneElement, useEffect, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import { Alert, Button, Spinner, Tooltip } from './ui';
-import SkillAudienceFields from './SkillAudienceFields';
+import SkillAudienceFields, { AlwaysOnRow } from './SkillAudienceFields';
 import {
-  canEditSkill, sameSkillAccessPayload, skillAccess, skillAccessPayload,
+  canBeAlwaysOn, canChangeSkillAudience, canEditSkill, sameSkillAccessPayload, skillAccess, skillAccessPayload,
+  skillAlwaysOnLock,
 } from '../lib/orgSharing';
+import { skillAlwaysOnRequest } from '../lib/sharingContract';
 import { UpToDateTag } from './UpToDateTag';
 
 export const SKILL_SHARE_TITLE = 'Who can use this skill';
+const AUDIENCE_LOCKED_NOTE = 'Only its owner or an admin can change who can use it.';
 
 /**
  * @param {{
  *   skill: object,
- *   capabilities: { can_share_org?: boolean, org_name?: string | null },
- *   onSave: (access: { org_allowed: boolean, allowed_team_ids: string[], allowed_user_ids: string[], always_on: boolean }) => Promise<void>,
+ *   capabilities: import('../lib/sharingContract').SharingCapabilities,
+ *   orgName?: string | null,
+ *   onSave: (access: import('../lib/sharingContract').SkillAccessPayload | import('../lib/sharingContract').SkillAlwaysOnPayload) => Promise<void>,
  *   trigger: import('react').ReactElement,
  *   tooltip?: string | null,
  *   align?: 'start' | 'center' | 'end',
  * }} props
  */
-export function SkillShareMenu({ skill, capabilities, onSave, trigger, tooltip = null, align = 'end' }) {
+export function SkillShareMenu({ skill, capabilities, orgName = null, onSave, trigger, tooltip = null, align = 'end' }) {
   const [open, setOpen] = useState(false);
   const [access, setAccess] = useState(() => skillAccess(skill));
   // "Specific teams and people" picked with nobody in it: Update waits.
@@ -52,8 +61,12 @@ export function SkillShareMenu({ skill, capabilities, onSave, trigger, tooltip =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, skill?.label]);
 
-  const payload = skillAccessPayload(access);
-  const changed = !sameSkillAccessPayload(payload, skillAccessPayload(skillAccess(skill)));
+  const saved = skillAccess(skill);
+  const audienceLocked = !canChangeSkillAudience(skill);
+  const payload = audienceLocked ? skillAlwaysOnRequest(access.alwaysOn === true) : skillAccessPayload(access);
+  const changed = audienceLocked
+    ? access.alwaysOn !== saved.alwaysOn
+    : !sameSkillAccessPayload(payload, skillAccessPayload(saved));
 
   const update = async () => {
     if (busy || pending || !changed) return;
@@ -95,16 +108,28 @@ export function SkillShareMenu({ skill, capabilities, onSave, trigger, tooltip =
               >Dismiss</button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto py-3 px-4">
-              {open && (
+              {open && (audienceLocked ? (
+                <div className="flex flex-col gap-3">
+                  <p className="m-0 font-body text-[12px] text-ink-3" role="note">{AUDIENCE_LOCKED_NOTE}</p>
+                  {canBeAlwaysOn(saved) && (
+                    <AlwaysOnRow
+                      checked={access.alwaysOn}
+                      onCheckedChange={(next) => setAccess((current) => ({ ...current, alwaysOn: next }))}
+                      lockReason={skillAlwaysOnLock(skill, capabilities).reason}
+                    />
+                  )}
+                </div>
+              ) : (
                 <SkillAudienceFields
                   key={`${skill?.label}:${generation}`}
                   value={access}
                   onChange={setAccess}
                   capabilities={capabilities}
+                  orgName={orgName}
                   canEdit={canEditSkill(skill)}
                   onPendingChange={setPending}
                 />
-              )}
+              ))}
             </div>
             {error && <Alert variant="danger" className="mx-4 mb-3">{error}</Alert>}
             <div className="flex items-center justify-end gap-2 py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -13,9 +13,9 @@ const api = vi.hoisted(() => ({
   setSkillAccess: vi.fn(),
   setSkillEnabledForMe: vi.fn(),
   uploadSkillFile: vi.fn(),
-  // Org sharing (ENG-3787) is off here: this file is the per-person build.
+  // Sharing in MindsHub mode is off here: this file is the per-person build.
   fetchSkillSharingCapabilities: vi.fn(async () => ({ enabled: false })),
-  fetchHubTeams: vi.fn(async () => ({ reachable: true, teams: [] })),
+  fetchMindsHubTeams: vi.fn(async () => ({ reachable: true, teams: [] })),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
 const hostState = vi.hoisted(() => ({ isWeb: true }));
@@ -62,6 +62,14 @@ async function choose(user, control, name) {
 
 const EVERYONE = /Everyone \(read-only\)/;
 const ONLY_ME = /Only me/;
+
+/* The first import of SkillsView transforms its whole module graph, which
+   takes seconds on a loaded machine; each test then imports it again after
+   vi.resetModules, which is quick once transformed. Importing it once here
+   keeps that cost out of the first test's timeout. */
+beforeAll(async () => {
+  await import('./SkillsView');
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

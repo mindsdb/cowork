@@ -1,14 +1,14 @@
-// `<AudiencePanel>` — "who can open / use this", one component for both
-// audiences (ENG-3787): the artifact Share panel ("Who can access your app")
-// and a skill's audience (the Share dropdown and the Add/Edit skill side
-// column). Same cards, same look, same inline expansion; the caller decides
-// which options appear.
+// `<AudiencePanel>`: "who can open / use this", one component for both
+// audiences: the artifact Share panel ("Who can access your app") and a
+// skill's audience (the Share dropdown and the Add/Edit skill side column).
+// Same cards, same look, same inline expansion; the caller decides which
+// options appear.
 //
 //   <AudiencePanel
 //     ariaLabel="Who can use this skill"
 //     value={mode} onValueChange={setMode}
-//     options={[{ value: 'private', icon, title, desc }, …]}
-//     specificValue="specific"
+//     options={[onlyMeOption(SHARED_KIND.SKILL), …]}
+//     specificValue={AUDIENCE_CHOICE.SPECIFIC}
 //     recipients={{ value, onChange, orgName, teamsState, allowExternal }}
 //   >
 //     {slot under the cards: a password box, the always-on switch}
@@ -18,11 +18,58 @@
 // no hover of its own, so the hint hangs off a wrapper (`disabledTestId`).
 // The option whose value is `specificValue` unfolds a `<RecipientField>`
 // (given `recipients`) right under its own card when picked.
+// `onlyMeOption`, `everyoneOption` and `specificOption` are the cards both
+// audiences offer, with the copy from lib/orgSharing.
 
 import { RadioGroup } from '@base-ui/react/radio-group';
+import Ico from './Icons';
 import { Tooltip } from './ui';
 import { AudienceOption } from './AudienceOption';
 import RecipientField from './RecipientField';
+import {
+  AUDIENCE_CHOICE,
+  EVERYONE_AT_DESC,
+  ONLY_ME_DESC,
+  ONLY_ME_TITLE,
+  SPECIFIC_DESC,
+  SPECIFIC_TITLE,
+  everyoneAtLabel,
+} from '../lib/orgSharing';
+
+/**
+ * The "Only me" option for a skill or an artifact (`kind`, a SHARED_KIND).
+ * @param {'skill' | 'artifact'} kind
+ */
+export function onlyMeOption(kind) {
+  return { value: AUDIENCE_CHOICE.PRIVATE, icon: Ico.lock(16), title: ONLY_ME_TITLE, desc: ONLY_ME_DESC[kind] };
+}
+
+/**
+ * The "Everyone at ‹org›" option. With a `lockReason` (orgShareLockReason:
+ * the caller lacks the permission, or MindsHub couldn't be asked) it is
+ * grayed, with the reason on hover. One already shared with everyone shows
+ * it picked all the same.
+ * @param {{ orgName: string | null, lockReason: string | null }} args
+ */
+export function everyoneOption({ orgName, lockReason }) {
+  return {
+    value: AUDIENCE_CHOICE.ORG,
+    icon: Ico.building(16),
+    title: everyoneAtLabel(orgName),
+    desc: EVERYONE_AT_DESC,
+    disabled: !!lockReason,
+    disabledHint: lockReason,
+    disabledTestId: 'org-option-locked',
+  };
+}
+
+/**
+ * The "Specific teams and people" option for a skill or an artifact.
+ * @param {'skill' | 'artifact'} kind
+ */
+export function specificOption(kind) {
+  return { value: AUDIENCE_CHOICE.SPECIFIC, icon: Ico.people(16), title: SPECIFIC_TITLE, desc: SPECIFIC_DESC[kind] };
+}
 
 /**
  * @param {{

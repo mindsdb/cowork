@@ -29,7 +29,7 @@ vi.mock('../api', () => ({
   fetchProjects: vi.fn(async () => []),
   uploadSkillFile: (...args) => mocks.uploadSkillFile(...args),
   fetchSkillSharingCapabilities: vi.fn(async () => ({ enabled: false })),
-  fetchHubTeams: vi.fn(async () => ({ reachable: true, teams: [] })),
+  fetchMindsHubTeams: vi.fn(async () => ({ reachable: true, teams: [] })),
 }));
 
 vi.mock('../lib/skillsStore', () => ({

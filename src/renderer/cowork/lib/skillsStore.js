@@ -166,7 +166,7 @@ export async function setSkillSharingAndSync(label, shared) {
   return saved;
 }
 
-/** Set who an org skill reaches (ENG-3787), then refresh the shared list so
+/** Set who an org skill reaches, then refresh the shared list so
  *  its section and badge follow. The PUT answers the skill's new `access`
  *  and `section`, so the cached row takes them at once and the skill moves
  *  section before the reload lands (and stays moved if the reload fails);
@@ -193,7 +193,7 @@ export async function setSkillAccessAndSync(slug, access) {
 let _forMeSeq = 0;
 const _forMeApplied = new Map();
 
-/** Turn a skill on or off for the caller alone (ENG-3787), then refresh the
+/** Turn a skill on or off for the caller alone, then refresh the
  *  shared list. The PUT succeeded, so the cached row takes the new
  *  `enabledForMe` at once and keeps it if the reload fails, unless a request
  *  sent later has already set it; nothing else is adopted from the response.

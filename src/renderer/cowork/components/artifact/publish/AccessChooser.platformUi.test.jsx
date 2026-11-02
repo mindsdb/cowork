@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 // A web build without the platform UI whose page has no SPA wrapper
-// publish-token tag, which keeps the shared-token choices: no "Only you", and
+// publish-token tag, which keeps the shared-token choices: no "Only me", and
 // Public says "Anyone with the URL".
 vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
 
@@ -42,18 +42,18 @@ describe('AccessChooser with the platform UI off and no publish-token tag', () =
     expect(ACCESS_LABELS.password.desc).toBe('Anyone with the URL and the password');
   });
 
-  it('renders no choice selected and offers no "Only you"', () => {
+  it('renders no choice selected and offers no "Only me"', () => {
     render(<AccessChooser value={newAccessDraft()} onChange={() => {}} />);
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(3);
     for (const radio of radios) expect(radio).toHaveAttribute('aria-checked', 'false');
-    expect(screen.queryByText('Only you')).toBeNull();
+    expect(screen.queryByText('Only me')).toBeNull();
     expect(screen.getByText('Anyone with the URL')).toBeInTheDocument();
   });
 
-  it('asks for an email without pointing to "Only you" when Specific people is empty', () => {
-    render(<AccessChooser value={{ ...newAccessDraft(), mode: 'restricted' }} onChange={() => {}} />);
+  it('asks for an email without pointing to "Only me" when Specific people is empty', () => {
+    render(<AccessChooser value={{ ...newAccessDraft(), mode: 'specific' }} onChange={() => {}} />);
     expect(screen.getByTestId('recipient-summary')).toHaveTextContent('Add at least one email.');
-    expect(screen.queryByText(/Only you/)).toBeNull();
+    expect(screen.queryByText(/Only me/)).toBeNull();
   });
 });
