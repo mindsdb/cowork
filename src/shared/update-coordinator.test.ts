@@ -86,7 +86,14 @@ describe('coordinateUpdates', () => {
     ['failed OTA apply offers the reload again', { ota: { phase: 'error', version: X } }, { action: 'reload', ui: { status: 'failed', error: 'apply-failed', version: X } }],
     ['rolled-back bundle has nothing to click', { ota: { phase: 'rolled-back' } }, { action: null, ui: { status: 'failed', error: 'rolled-back' } }],
     ['server reinstall in flight', { server: { phase: 'downloading', to: '0.26.10.7.1' } }, { server: { status: 'applying', version: '0.26.10.7.1' } }],
-    ['critical server error', { server: { phase: 'error', critical: true, error: 'rollback failed' } }, { server: { status: 'failed', error: 'rollback failed' } }],
+    ['critical server error offers a restart', { server: { phase: 'error', critical: true, error: 'rollback failed' } },
+      { action: 'restart-app', server: { status: 'failed', error: 'rollback failed', critical: true } }],
+    ['a non-critical server error offers nothing', { server: { phase: 'error', error: 'install failed' } }, { action: null, server: { status: 'failed', error: 'install failed' } }],
+    ['a down server outranks a shell restart and an OTA', { server: { phase: 'error', critical: true }, shell: shell('ready-to-install', { targetVersion: 'v' }), ota: UI },
+      { action: 'restart-app' }],
+    ['a down server is not hidden by a server offer', { server: { phase: 'error', critical: true }, otaOffer: offer(null, '0.26.10.7.1') },
+      { action: 'restart-app', server: { status: 'failed', critical: true } }],
+    ['a down server waits for an apply in flight', { server: { phase: 'error', critical: true }, ota: { phase: 'downloading', version: 'ui' } }, { action: null }],
     ['a server offer reads as applying while installed', { otaOffer: offer(null, '0.26.10.7.1'), server: { phase: 'restarting' } }, { server: { status: 'applying' } }],
     ['aborted install keeps the relaunch and its reason', { shell: shell('ready-to-install', { targetVersion: 'v', recoverable: true, errorCode: 'update-request-failed', errorMessage: 'installer launch failed' }) },
       { action: 'relaunch', shell: { errorCode: 'update-request-failed', errorMessage: 'installer launch failed' } }],
@@ -217,6 +224,15 @@ describe('resolveApplyAction: a click runs only what the state still offers', ()
     ['a terminal failure behind a manual notice does not', state({ shell: shell('failed', { recoverable: false }), shellManual: { version: 'v' } }), 'retry', 'stale'],
   ])('%s', (_name, s, click, expected) => {
     expect(resolveApplyAction(s, click)).toBe(expected);
+  });
+
+  it('a restart for a down server runs only while the server is down', () => {
+    const down = state({ server: { phase: 'error', critical: true } });
+    expect(resolveApplyAction(down, 'restart-app')).toBe('restart-app');
+    expect(resolveApplyAction(down, undefined)).toBe('restart-app');
+    expect(resolveApplyAction(down, 'reload')).toBe('stale');
+    expect(resolveApplyAction(states.reload, 'restart-app')).toBe('stale');
+    expect(resolveApplyAction(state({ server: { phase: 'error' } }), 'restart-app')).toBe('stale');
   });
 
   it('never relaunches for anything but a relaunch click', () => {
@@ -408,6 +424,7 @@ describe('dispatchApplyStep', () => {
     reload: vi.fn(async (): Promise<unknown> => true),
     retry: vi.fn(async () => ({ phase: 'checking' })),
     download: vi.fn(async () => ({ phase: 'downloading' })),
+    restartApp: vi.fn(async (): Promise<unknown> => true),
   });
 
   it('runs only the chosen step; retry and download succeed by the phase they reach', async () => {
@@ -420,6 +437,8 @@ describe('dispatchApplyStep', () => {
     expect(await dispatchApplyStep('download', h)).toBe(true);
     h.download.mockResolvedValueOnce({ phase: 'idle' });
     expect(await dispatchApplyStep('download', h)).toBe(false);
+    expect(await dispatchApplyStep('restart-app', h)).toBe(true);
+    expect(h.restartApp).toHaveBeenCalledTimes(1);
   });
 
   it('a stale click and nothing pending run nothing', async () => {
@@ -427,5 +446,17 @@ describe('dispatchApplyStep', () => {
     expect(await dispatchApplyStep('stale', h)).toBe('stale');
     expect(await dispatchApplyStep(null, h)).toBe(false);
     for (const fn of Object.values(h)) expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('a server that did not come back from an update', () => {
+  it('stays down through the end of the apply, and a later server status clears it', () => {
+    const c = createUpdateCoordinator();
+    c.feed({ server: { phase: 'error', critical: true, error: 'rollback failed' } });
+    c.feed(settledApplyInput(c.getInput()));
+    expect(c.getState()).toMatchObject({ action: 'restart-app', server: { status: 'failed', critical: true } });
+    c.feed({ server: { phase: 'idle' } });
+    expect(c.getState().action).toBeNull();
+    expect(c.getState().server.critical).toBeUndefined();
   });
 });

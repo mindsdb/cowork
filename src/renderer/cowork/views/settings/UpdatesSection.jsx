@@ -337,6 +337,9 @@ export default function UpdatesSection({
                   case 'ota-error':
                     body = "Couldn't apply the update. Try again to restart.";
                     break;
+                  case 'server-down':
+                    body = banner.hint;
+                    break;
                   case 'ota-ready':
                     body = `Restart the app to apply it${parts.length > 0 ? ` (${parts.join(', ')})` : ''}.`;
                     break;

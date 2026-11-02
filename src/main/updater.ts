@@ -586,7 +586,17 @@ export async function handleUnifiedApply(
     reload: () => handleApplyRequest(getWindow, force),
     retry: () => checkShellAutoUpdate('retry'),
     download: () => downloadShellAutoUpdate(),
+    restartApp: async () => restartApp(),
   });
+}
+
+/** Restart with no install: a fresh launch starts the server again from the
+ *  release that is installed now. */
+function restartApp(): boolean {
+  diagnostic("main.updater", "INFO", "updater_restart_app_requested", '[updater] restarting the app to recover a server that did not come back from an update');
+  app.relaunch();
+  app.quit();
+  return true;
 }
 
 // After the boot poll (server now current), re-verify a constrained OTA cache
