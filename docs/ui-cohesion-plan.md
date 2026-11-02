@@ -112,7 +112,7 @@ Legend: ✅ assessed (moves proposed) · 🟡 partial · ⬜ not started
 | Feedback | ⬜ | — | — | Toast, Tooltip, Spinner, status pills, banners, errors |
 | Empty & loading states | ⬜ | — | — | zero-data + skeletons; where "considered" shows |
 | Iconography | ⬜ | — | — | weight/size/consistency (Icons.jsx) |
-| Data viz | ⬜ | — | — | charts in messages (MessageChart) |
+| Data viz | ⬜ | — | — | charts in HTML artifacts; messages no longer render chart fences |
 | Motion | ⬜ | — | — | transition/easing consistency; boot choreography |
 | Density & information hierarchy | ⬜ | — | — | channels tables, tasks, settings |
 | Dark mode (holistic) | ⬜ | — | — | accent hue divergence flagged; needs a full pass |
