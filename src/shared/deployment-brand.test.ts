@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { BRAND_SCRIPT_PATH, BRAND_STYLESHEET_PATH, withDeploymentBrand } from './deployment-brand';
+import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from './draft-link-origins';
 
 const webPage = readFileSync(path.resolve(__dirname, '../renderer/index-web.html'), 'utf-8');
 const desktopPage = readFileSync(path.resolve(__dirname, '../renderer/index.html'), 'utf-8');
@@ -49,7 +50,7 @@ describe('withDeploymentBrand', () => {
     expect(page.indexOf('</head>')).toBe(at(link) + link.length + '\n  '.length);
   });
 
-  it('leaves hosted web and desktop source pages without deployment hooks', () => {
+  it('leaves the source pages without deployment hooks', () => {
     for (const source of [webPage, desktopPage]) {
       expect(source).not.toContain('/brand/');
       expect(source).not.toContain('cowork-deployment-brand:');
@@ -75,5 +76,40 @@ describe('withDeploymentBrand', () => {
 
   it.each([start, end])('refuses an existing deployment marker %s', (marker) => {
     expect(() => withDeploymentBrand(webPage.replace('<title>', marker + '<title>'))).toThrow('marker');
+  });
+});
+
+// The hosted build runs both web-entry transforms (renderer/vite.config.ts).
+describe('withDeploymentBrand beside withDraftLinkFrameSources', () => {
+  const brandFirst = withDraftLinkFrameSources(withDeploymentBrand(webPage));
+
+  /** One CSP directive's sources, from the page's meta tag. */
+  function sources(html: string, name: string): string[] {
+    const policy = /http-equiv="Content-Security-Policy"\s+content="([^"]*)"/.exec(html)?.[1] ?? '';
+    const directive = policy.split(';').map((part) => part.trim().split(/\s+/)).find(([first]) => first === name);
+    return directive ? directive.slice(1) : [];
+  }
+
+  it('gives the same page in either order', () => {
+    expect(withDeploymentBrand(withDraftLinkFrameSources(webPage))).toBe(brandFirst);
+  });
+
+  it('keeps every brand tag and every draft host', () => {
+    expect(brandFirst.split(start)).toHaveLength(2);
+    expect(brandFirst).toContain(`<script src="${BRAND_SCRIPT_PATH}"></script>`);
+    expect(brandFirst).toContain(`<link rel="stylesheet" href="${BRAND_STYLESHEET_PATH}" />`);
+    for (const origin of DRAFT_LINK_ORIGINS) {
+      expect(sources(brandFirst, 'frame-src')).toContain(origin);
+      expect(sources(brandFirst, 'child-src')).toContain(origin);
+    }
+  });
+
+  it("lets the page's CSP load the brand's script, title line, stylesheet and images from its own origin", () => {
+    expect(sources(brandFirst, 'script-src')).toEqual(expect.arrayContaining(["'self'", "'unsafe-inline'"]));
+    expect(sources(brandFirst, 'style-src')).toContain("'self'");
+    expect(sources(brandFirst, 'img-src')).toContain("'self'");
+    // A CSP meta tag governs only what follows it.
+    expect(brandFirst.indexOf(`<script src="${BRAND_SCRIPT_PATH}"></script>`))
+      .toBeGreaterThan(brandFirst.indexOf('http-equiv="Content-Security-Policy"'));
   });
 });

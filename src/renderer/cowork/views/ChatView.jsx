@@ -443,6 +443,8 @@ const INCOMPLETE_REASON_TEXT = {
   handback_verifier_failure: "Stopped early: the agent couldn't confirm the task was done.",
   handback_stuck: 'Stopped early: the agent judged the task stuck.',
   retry_exhausted: 'Stopped early: the task kept failing.',
+  question_unanswered: 'Stopped early: a question went unanswered.',
+  content_filter: "Stopped early: the model's content filter blocked a reply.",
 };
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
@@ -1918,6 +1920,7 @@ export default function ChatView({
   onAttachFiles,
   onAddGoogleDriveFiles,
   onAddGoogleDriveProjectFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
@@ -3015,6 +3018,28 @@ export default function ChatView({
                     />
                   );
                 }
+                /* The server stopped while the turn ran (`turn_lost`): a
+                 * shutdown or a crash. The answer above ends where it was cut
+                 * off, and nothing about the question failed, so Try again
+                 * sends it again. A proxy that outlives a crash sends this
+                 * code live; boot recovery saves it for a reload. */
+                if (m.code === 'turn_lost') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The answer was cut off"
+                      body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        : []}
+                    />
+                  );
+                }
                 /* The UI heard nothing from the turn for its idle window
                  * (`stalled`). The tab ends only its own reader and sends no
                  * cancel, so the turn may still be running on the server. A
@@ -3092,6 +3117,29 @@ export default function ChatView({
                       body={m.content}
                       retryAt={m.retryAt}
                       onRetry={busyResend ? () => onSend?.(busyResend.text, busyResend.attachments) : undefined}
+                    />
+                  );
+                }
+                /* A proxy in front of the server refused the question with a
+                   503 `cowork_unavailable`: it could open no connection to the
+                   server, as while the server starts again after a crash.
+                   Nothing reached the server, so waiting is the fix, with the
+                   same Retry gate counted down to the proxy's Retry-After. */
+                if (m.code === 'cowork_unavailable') {
+                  const unavailableResend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Server"
+                      title="The server isn't answering"
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={unavailableResend
+                        ? () => onSend?.(unavailableResend.text, unavailableResend.attachments)
+                        : undefined}
                     />
                   );
                 }
@@ -3359,6 +3407,7 @@ export default function ChatView({
             onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
             onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+            onAddSharePointFiles={onAddSharePointFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
@@ -3455,6 +3504,7 @@ export default function ChatView({
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
           onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+          onAddSharePointFiles={onAddSharePointFiles}
           onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />

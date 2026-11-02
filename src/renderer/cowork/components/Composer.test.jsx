@@ -3,7 +3,7 @@
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -797,5 +797,41 @@ describe('Composer — slash menu entrance direction', () => {
 
   it('keeps the upward entrance when it opens above the composer', () => {
     expect(openSlashWithComposerAt(600)).not.toHaveClass('menu--drop-down');
+  });
+});
+
+describe('Composer — slash menu closing on blur', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const openSlash = () => {
+    const ta = screen.getByRole('textbox');
+    fireEvent.change(ta, { target: { value: '/' } });
+    ta.setSelectionRange(1, 1);
+    fireEvent.select(ta);
+    return ta;
+  };
+
+  it('closes the menu 120 ms after the prompt box loses focus', () => {
+    vi.useFakeTimers();
+    renderComposer();
+    const ta = openSlash();
+    expect(screen.getByRole('listbox', { name: 'Skills and actions' })).toBeInTheDocument();
+
+    fireEvent.blur(ta);
+    act(() => { vi.advanceTimersByTime(119); });
+    expect(screen.getByRole('listbox', { name: 'Skills and actions' })).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(screen.queryByRole('listbox', { name: 'Skills and actions' })).toBeNull();
+  });
+
+  it('starts no timer that fires after the Composer unmounts', () => {
+    vi.useFakeTimers();
+    const { unmount } = render(
+      <Composer onSend={vi.fn()} project={{ name: 'general' }} projects={[{ name: 'general' }]} models={[]} />,
+    );
+    fireEvent.blur(openSlash());
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
