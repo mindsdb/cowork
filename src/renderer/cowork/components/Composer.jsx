@@ -677,7 +677,9 @@ export default function Composer({
 
   const closeSlash = useCallback(() => setSlashOpen((prev) => (prev ? false : prev)), []);
   // Blur closes the menu after a short delay so a click on a menu row still
-  // lands. The timer is cleared on unmount so it never sets state afterwards.
+  // lands. Focus cancels the pending close, so a quick click back into the box
+  // keeps the menu. The timer is cleared on unmount so it never sets state
+  // afterwards.
   const closeSlashTimerRef = useRef(null);
   const closeSlashSoon = () => {
     clearTimeout(closeSlashTimerRef.current);
@@ -1124,7 +1126,7 @@ export default function Composer({
             value={value}
             onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
+            onFocus={() => { setFocused(true); clearTimeout(closeSlashTimerRef.current); }}
             onBlur={() => { setFocused(false); closeSlashSoon(); }}
             onSelect={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onClick={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
