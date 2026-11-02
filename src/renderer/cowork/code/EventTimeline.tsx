@@ -10,6 +10,7 @@ import {
   changeLabel,
   commandOutput,
   displayCommand,
+  errorTitle,
   exitCode,
   fileChanges,
   isIgnoredActivity,
@@ -98,8 +99,8 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
   // request is already shown by the approval card; a denial stays visible.
   const grantedApproval = event.type === 'approval' && event.data.decision !== 'deny';
   // A dropped connection that Codex retries is part of the work too, and so
-  // is the turn's checklist. A turn that ends on the error gets the outcome
-  // card instead, and a proposed plan from plan mode stays a card.
+  // are errors and the turn's checklist. A turn that ends on the error also
+  // gets the outcome card, and a proposed plan from plan mode stays a card.
   const kind = ACTIVITY_TYPES.has(event.type) || grantedApproval || event.type === 'error' || isPlanUpdate(event) ? 'activity' : 'event';
   if (kind === 'activity' && previousItem?.kind === 'activity') {
     previousItem.events.push(event);
@@ -218,6 +219,7 @@ const STEP_ICON: Record<StepIcon, (size: IconSize) => ReactNode> = {
   compact: Ico.list,
   plan: Ico.taskCheck,
   retry: Ico.refresh,
+  error: Ico.warning,
   approval: Ico.key,
 };
 
@@ -276,6 +278,18 @@ function stepDetail(event: CodingEvent): (() => ReactNode) | undefined {
         {explanation && <p>{explanation}</p>}
         <PlanSteps event={event} />
       </div>
+    );
+  }
+  if (event.type === 'error') {
+    // The row names the error; the detail is the whole message.
+    const detail = typeof event.data.detail === 'string' ? event.data.detail.trim() : '';
+    const message = event.text.trim();
+    if (!detail && (!message || message === errorTitle(event))) return undefined;
+    return () => (
+      <>
+        {message && <p className="code-step__thought">{message}</p>}
+        {detail && detail !== message && <pre className="code-step__output">{detail}</pre>}
+      </>
     );
   }
   if (event.type === 'reasoning') {
@@ -351,7 +365,7 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
   const copy = sole
     ? <span className="code-activity-group__copy">{sole.verb && <>{sole.verb} </>}<span className="code-activity-group__target">{sole.target}</span></span>
     : <span className="code-activity-group__copy">{headline}</span>;
-  if (sole && !single) return <div className="code-activity-group"><div className="code-activity-group__line">{copy}</div></div>;
+  if (sole && !single) return <div className={`code-activity-group${failed ? ' is-failed' : ''}`}><div className="code-activity-group__line">{copy}</div></div>;
   return (
     <details
       className={`code-activity-group${failed ? ' is-failed' : ''}`}
