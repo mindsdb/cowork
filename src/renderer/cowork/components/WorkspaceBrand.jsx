@@ -6,11 +6,11 @@ const MODES = [
   { value: 'code', label: 'Code', icon: Ico.code(14) },
 ];
 
-// The brand in the titlebar's sidebar zone. While Code is opt-in it carries
-// the Cowork/Code switch, a segmented toggle beside the wordmark. Its labels
-// show where the zone has room for them (a container query in globals.css)
-// and it is icon-only otherwise. Without Code it is only the wordmark, so
-// nothing appears or disappears for people who don't have Code. Compact
+// The brand in the titlebar's sidebar zone. Where Code is available it
+// carries the Cowork/Code switch, a segmented toggle beside the wordmark. Its
+// labels show where the zone has room for them (a container query in
+// globals.css) and it is icon-only otherwise. Without Code it is only the
+// wordmark, so nothing appears or disappears where Code is off. Compact
 // (sidebar collapsed) drops the wordmark and the labels.
 export default function WorkspaceBrand({ wordmark, logo, mode, showSwitch, onChange, compact = false }) {
   if (compact && !showSwitch && !logo) return null;

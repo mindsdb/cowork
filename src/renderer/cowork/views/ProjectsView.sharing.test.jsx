@@ -19,6 +19,7 @@ vi.mock('../components/project/NewProjectModal', () => ({ default: () => null })
 vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 
 import ProjectsView from './ProjectsView';
+import { AppHeaderProvider, useAppHeaderSlots } from '../components/appHeader';
 
 const shared = {
   id: 'owner-project-id', name: 'planning', display_name: 'Planning', path: '', shared: true,
@@ -44,6 +45,23 @@ it('opens shared files by UUID without a composer, private context, or executabl
   expect(api.listSharedProjectFiles).toHaveBeenCalledWith(shared.id);
   expect(api.readSharedProjectFile).toHaveBeenCalledWith(shared.id, 'report.html');
   expect(api.fetchMemory).not.toHaveBeenCalled();
+});
+
+it("puts the shared project's crumbs in the titlebar, as the owner's project page does", async () => {
+  function HeaderSlot() {
+    const { setHeader } = useAppHeaderSlots();
+    return <div data-testid="header-slot" ref={setHeader} />;
+  }
+  render(
+    <AppHeaderProvider>
+      <HeaderSlot />
+      <ProjectsView projects={[own, shared]} selectedProject={shared} />
+    </AppHeaderProvider>,
+  );
+  const slot = screen.getByTestId('header-slot');
+  expect(slot).toContainElement(screen.getByRole('button', { name: 'Projects' }));
+  expect(slot).toHaveTextContent('Planning');
+  await screen.findByRole('button', { name: 'report.html' });
 });
 
 it('clears file content when the project grant disappears', async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { downloadSharedProjectFile, listSharedProjectFiles, readSharedProjectFile } from '../../api';
 import { projectLabel } from '../../lib/projectLabel';
+import { AppHeader } from '../appHeader';
 import { Button } from '../ui';
 import { Crumb, CrumbCurrent, CrumbSep } from '../ui/Crumb';
 import SharedProjectReference from './SharedProjectReference';
@@ -80,16 +81,19 @@ export default function SharedProjectFiles({ project, onShowAll }) {
   };
 
   return (
-    <section className="flex-1 min-h-0 overflow-auto font-body text-ink-2" aria-label="Shared project files">
-      <div className="flex items-center gap-2 px-7 py-4 border-b border-solid border-line">
-        <Crumb label="Projects" onClick={onShowAll} title="All projects" />
-        <CrumbSep />
-        <CrumbCurrent label={projectLabel(project)} />
-      </div>
-      <div className="max-w-[960px] mx-auto px-7 py-8 flex flex-col gap-5">
+    <section className="scroll-clean titlebar-fade titlebar-fade--page flex-1 min-h-0 overflow-auto font-body text-ink-2" aria-label="Shared project files">
+      {/* Projects › [project], in the app titlebar as on the owner's project page. */}
+      <AppHeader>
+        <div className="flex items-center gap-2 min-w-0 flex-[1_1_0] overflow-hidden">
+          <Crumb label="Projects" onClick={onShowAll} title="All projects" />
+          <CrumbSep />
+          <CrumbCurrent label={projectLabel(project)} />
+        </div>
+      </AppHeader>
+      <div className="max-w-[960px] mx-auto px-7 pt-3 pb-8 flex flex-col gap-5">
         <div>
           <p className="text-xs font-semibold text-accent">Shared with you · Read only</p>
-          <h1 className="font-display text-2xl text-ink mt-2">{projectLabel(project)}</h1>
+          <h1 className="s-h2 m-0 mt-2 text-ink">{projectLabel(project)}</h1>
           <SharedProjectReference project={project} />
           <p className="text-sm mt-2 text-ink-3">Browse and download files. Only the owner can edit this project or run tasks here.</p>
         </div>
