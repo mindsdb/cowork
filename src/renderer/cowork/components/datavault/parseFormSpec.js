@@ -47,7 +47,7 @@ export function parseFormSpec(rawText) {
 
 // Pull the FULL `data-vault-form` block out of a streamed assistant
 // markdown body and parse it. Used by the stream-completion handler
-// to open the side panel deterministically — the in-markdown
+// to open the form modal deterministically — the in-markdown
 // MarkdownCode path can't, because the just-completed message mounts
 // already-`complete` and its "historical replay" guard suppresses the
 // form-store dispatch (see App.jsx onDone). Matches the LAST
