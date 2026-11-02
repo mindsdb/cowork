@@ -76,7 +76,7 @@ interface ListBullets { paragraphs: number; images: string[] }
    default list, LibreOffice's export, and python-docx's List Bullet styles. */
 const WORD_BULLETS_FIXTURE = 'Word\'s symbol-font bullets';
 const LIBREOFFICE_BULLETS_FIXTURE = 'LibreOffice\'s symbol-font bullets';
-const PYTHON_DOCX_FIXTURE = 'python-docx heading, table and picture';
+const PYTHON_DOCX_FIXTURE = 'python-docx heading, list, table and picture';
 const SYMBOL_BULLET_FIXTURES = [WORD_BULLETS_FIXTURE, LIBREOFFICE_BULLETS_FIXTURE, PYTHON_DOCX_FIXTURE];
 
 /* A character from the private-use range symbol fonts draw from, and a

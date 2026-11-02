@@ -301,7 +301,7 @@
 # A heading, a paragraph, a two-level bulleted list, a table and an inline
 # picture, written by python-docx on its default template, as Export to Word
 # writes a Word file. Written by make-python-docx-fixture.py.
-- name: python-docx heading, table and picture
+- name: python-docx heading, list, table and picture
   file: python-docx-report.docx
   kind: clean
   expect:

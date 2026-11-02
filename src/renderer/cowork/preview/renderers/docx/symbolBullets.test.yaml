@@ -7,7 +7,7 @@
 rewritten:
   - name: Word's first level, Symbol U+F0B7, becomes a bullet
     format: bullet
-    levelText: ""
+    levelText: "\uF0B7"
     font: Symbol
     text: "•"
   - name: the same character below U+0100, Symbol U+00B7, becomes a bullet
@@ -17,7 +17,7 @@ rewritten:
     text: "•"
   - name: Word's third level, Wingdings U+F0A7, becomes a small square
     format: bullet
-    levelText: ""
+    levelText: "\uF0A7"
     font: Wingdings
     text: "▪"
   - name: Wingdings U+00A7 becomes the same small square
@@ -27,32 +27,37 @@ rewritten:
     text: "▪"
   - name: Symbol U+F0A7 is a club in Symbol, not Wingdings' square
     format: bullet
-    levelText: ""
+    levelText: "\uF0A7"
     font: Symbol
     text: "♣"
   - name: Wingdings' arrow, diamond, check, square and box bullets
     format: bullet
-    levelText: ""
+    levelText: "\uF0D8\uF076\uF0FC\uF06E\uF071"
     font: Wingdings
     text: "➢❖✓■❑"
+  - name: Wingdings' circle, diamond and arrow bullets
+    format: bullet
+    levelText: "\uF06C\uF075\uF0E8"
+    font: Wingdings
+    text: "●◆➔"
   - name: a Wingdings 2 character the table doesn't name becomes a plain bullet
     format: bullet
-    levelText: ""
+    levelText: "\uF097"
     font: "'Wingdings 2'"
     text: "•"
   - name: a Webdings character becomes a plain bullet
     format: bullet
-    levelText: ""
+    levelText: "\uF03D"
     font: Webdings
     text: "•"
   - name: Symbol named first in a list of families still counts
     format: bullet
-    levelText: ""
+    levelText: "\uF0B7"
     font: "Symbol, 'Segoe UI'"
     text: "•"
   - name: white space and a %1 placeholder stay as they are
     format: bullet
-    levelText: " %1"
+    levelText: "\uF0B7 %1"
     font: Symbol
     text: "• %1"
 
@@ -83,10 +88,10 @@ unchanged:
     keepsFont: true
   - name: a picture bullet keeps its level text and font
     format: bullet
-    levelText: ""
+    levelText: "\uF0B7"
     font: Symbol
     picture: true
-    text: ""
+    text: "\uF0B7"
     keepsFont: true
   - name: a bullet with no font keeps its character
     format: bullet

@@ -37,6 +37,9 @@ const DRAWN: ReadonlyMap<string, ReadonlyMap<number, string>> = new Map([
     [0xf0fc, '✓'], // ✓
     [0xf06e, '■'], // ■
     [0xf071, '❑'], // ❑
+    [0xf06c, '●'], // ●
+    [0xf075, '◆'], // ◆
+    [0xf0e8, '➔'], // ➔
   ])],
 ]);
 
