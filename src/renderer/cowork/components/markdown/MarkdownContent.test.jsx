@@ -620,6 +620,31 @@ describe('MarkdownContent HTML comments', () => {
     expect(container.textContent).toContain('after');
   });
 
+  /* Code forms a pattern over the raw text can't see as code. A code span's
+     line ending renders as a space, as CommonMark specifies. */
+  it.each([
+    ['a double-backtick code span', 'see ``a <!-- x --> b`` here', 'a <!-- x --> b'],
+    ['a code span across two lines', 'see `a <!--\nx --> b` here', 'a <!-- x --> b'],
+    ['an indented code block', 'intro\n\n    <div><!-- keep --></div>\n\nafter', '<div><!-- keep --></div>'],
+    ['a fence after a run of backticks in a line', 'type ``` <!-- x -->\n\n```\ncode <!-- y -->\n```', 'code <!-- y -->'],
+    ['a fence that never closes', '```\nline <!-- z -->\nmore', 'line <!-- z -->\nmore'],
+    ['a four-backtick fence holding three backticks', '````\n```\n<!-- w -->\n```\n````', '```\n<!-- w -->\n```'],
+  ])('keeps a comment inside %s', (_form, text, code) => {
+    const { container } = render(<MarkdownContent text={text} complete />);
+    expect(container.querySelector('code').textContent).toContain(code);
+  });
+
+  it('turns a key:value comment on its own line into a chip and drops a plain one', () => {
+    const { container } = render(
+      <MarkdownContent text={'intro\n\n<!-- topic:api -->\n\n<!-- TODO -->\n\nnext'} complete />,
+    );
+    expect(container.querySelector('span.font-mono')?.textContent).toBe('topic: api');
+    expect(container.textContent).toContain('intro');
+    expect(container.textContent).toContain('next');
+    expect(container.textContent).not.toContain('TODO');
+    expect(container.textContent).not.toContain('<!--');
+  });
+
   it('renders a key:value comment as a chip, not as a blocked link', () => {
     const { container } = render(
       <MarkdownContent text={'- rate limit is 50/min <!-- topic:api -->'} complete />,
