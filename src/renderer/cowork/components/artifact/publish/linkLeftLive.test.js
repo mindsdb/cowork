@@ -30,5 +30,5 @@ describe('republishNotice', () => {
 
 it('the warning names the administrator, not a command only one deployment has', () => {
   expect(UNRECORDED_LINK_WARNING).toContain('Ask your administrator');
-  expect(UNRECORDED_LINK_WARNING).not.toMatch(/make |cowork-self-hosted/);
+  expect(UNRECORDED_LINK_WARNING).not.toMatch(/\bmake\b|cowork\.ops/);
 });

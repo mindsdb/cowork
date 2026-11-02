@@ -1031,7 +1031,7 @@ export function ArtifactViewer({
       }
       await deleteArtifactAndSync(artifact);
       setConfirmDelete(false);
-      onDelete?.(actionPath);
+      onDelete?.(actionPath, { notice: leftLive });
       // The artifact is gone but its page is still open to anyone with the
       // link: say so here rather than close over it.
       if (leftLive) {

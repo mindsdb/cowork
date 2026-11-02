@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
 
 // A web build without the platform UI whose page has no SPA wrapper
-// publish-token tag, which keeps the shared-token choices: no "Only you", and
+// publish-token tag, which keeps the shared-token choices: no "Only me", and
 // Public says "Anyone with the URL".
 vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
 
@@ -44,7 +44,7 @@ describe('PublishMenu with the platform UI off and no publish-token tag', () => 
     fireEvent.click(screen.getByText('Share'));
 
     for (const radio of screen.getAllByRole('radio')) expect(radio).toHaveAttribute('aria-checked', 'false');
-    expect(screen.queryByText('Only you')).toBeNull();
+    expect(screen.queryByText('Only me')).toBeNull();
     expect(shareButton()).toBeDisabled();
 
     fireEvent.click(shareButton());
