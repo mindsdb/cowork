@@ -1877,6 +1877,42 @@ describe('a drained message whose send fails (ENG-1378)', () => {
       expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore),
     );
   });
+
+  it('tries each task once when two tasks\' queued uploads keep failing', async () => {
+    const user = userEvent.setup();
+    const alpha = await openTask(user); // conv-a
+
+    // Turn 1 in Alpha holds the slot; Alpha and Beta each queue a file.
+    await send(user, alpha, 'first message');
+    const stream = streams[streams.length - 1];
+    await attach(user, 'alpha.txt');
+    await send(user, alpha, 'queued alpha');
+    const beta = await openByTitle(user, 'Beta task');
+    await attach(user, 'beta.txt');
+    await send(user, beta, 'queued beta');
+    await waitFor(() => expect(screen.getAllByLabelText('Remove from queue').length).toBeGreaterThan(0));
+    const streamCallsBefore = spies.streamMessage.mock.calls.length;
+
+    uploadAttachments.mockClear();
+    uploadAttachments.mockRejectedValue(new Error('Upload failed (500)'));
+    await act(async () => { stream.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    // One upload attempt per task, then the drain chain stops.
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(2));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(uploadAttachments).toHaveBeenCalledTimes(2);
+    expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore);
+
+    // The next turn to finish drains them again, and a working upload sends.
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+    await openByTitle(user, 'Alpha task');
+    await send(user, alpha, 'second message');
+    await waitFor(() => expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore + 1));
+    const second = streams[streams.length - 1];
+    await act(async () => { second.opts.onDone('conv-a'); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore + 2));
+  });
 });
 
 describe('attachment send that would strand at "Queued"', () => {

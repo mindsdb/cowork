@@ -62,4 +62,12 @@ describe('uploadAttachments', () => {
     await expect(uploadAttachments([new File(['x'], 'a.txt')], { projectName: 'general', sessionId: 'conv-a' }))
       .rejects.toBe(boom);
   });
+
+  it('passes a network error through when the upload has no time limit', async () => {
+    const boom = new TypeError('Failed to fetch');
+    global.fetch = vi.fn(async () => { throw boom; });
+
+    await expect(uploadAttachments([new File(['x'], 'a.txt')], { projectName: 'general', sessionId: 'conv-a', timeoutMs: 0 }))
+      .rejects.toBe(boom);
+  });
 });

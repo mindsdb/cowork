@@ -2883,7 +2883,7 @@ export async function uploadAttachments(files, { projectName, sessionId, timeout
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch (err) {
-    if (signal.aborted) throw new Error('The file upload stopped responding. Please try again.');
+    if (signal?.aborted) throw new Error('The file upload stopped responding. Please try again.');
     throw err;
   } finally {
     cancel();

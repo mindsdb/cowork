@@ -4100,8 +4100,11 @@ function AppCore() {
       releaseSlotClaim(id);
       // Other tasks' messages were queued behind this reservation, so send
       // the next one now. This task is skipped: retrying its failed upload
-      // straight away would fail again.
-      drainNextQueuedMessage(null, id);
+      // straight away would fail again. A send the drain started carries the
+      // tasks its drain chain already skipped, so two tasks whose uploads keep
+      // failing don't hand the slot back and forth: each is tried once, and
+      // the next turn to finish drains them again.
+      drainNextQueuedMessage(null, [...(opts.drainSkipped || []), id]);
       // Make the failure impossible to miss. The inline composer error alone
       // was easy to overlook, so a file that couldn't upload just sat at
       // "Queued" with no visible reason (the exact shape of the stuck-upload
@@ -4339,7 +4342,8 @@ function AppCore() {
   // but queues are per-task — so after a turn ends we must sweep every
   // task's queue, not just the finishing one. `preferredTaskId` (the
   // finishing task) is tried first so its own follow-ups keep FIFO order.
-  const drainNextQueuedMessage = (preferredTaskId, skipTaskId) => {
+  // `skipTaskIds` lists tasks a failed send already tried in this chain.
+  const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
     if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
@@ -4351,7 +4355,7 @@ function AppCore() {
      * queued before the click, and Stop or the delete drains the rest itself.
      */
     const skipped = new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere));
-    if (skipTaskId) skipped.add(skipTaskId);
+    for (const skipTaskId of skipTaskIds) skipped.add(skipTaskId);
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
@@ -4371,6 +4375,7 @@ function AppCore() {
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
+      drainSkipped: skipped,
     })).catch(() => {
       enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
     });
