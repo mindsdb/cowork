@@ -92,6 +92,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
 import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
+import { frameScheduler } from './lib/frameScheduler';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -110,7 +111,8 @@ import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
@@ -717,6 +719,8 @@ function AppCore() {
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [composerPrefill, setComposerPrefill] = useState(null);
+  // Set by the checklist's "Try an example" row; Home answers it and clears it.
+  const [examplesRequest, setExamplesRequest] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // null = no section selected: the mobile master-detail shows its section
@@ -1144,6 +1148,14 @@ function AppCore() {
     return () => clearInterval(timer);
   }, [inFlightSet.size, hasPendingReservationMiss, refreshInFlightSet]);
 
+  // Every queue write goes through here so messageQueueRef stays in step:
+  // stream events in one network read run before any commit, and the queue
+  // drain reads the ref between them. `update` must be pure.
+  const updateMessageQueue = (update) => {
+    setMessageQueue(update);
+    messageQueueRef.current = update(messageQueueRef.current);
+  };
+
   const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
@@ -1153,10 +1165,10 @@ function AppCore() {
     // send, not whatever the composer happens to show when it finally
     // drains (which, for a cross-task drain, belongs to another task).
     const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
-    setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
+    updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
-    setMessageQueue((prev) => {
+    updateMessageQueue((prev) => {
       const arr = (prev[taskId] || []).filter((q) => q.id !== itemId);
       const next = { ...prev };
       if (arr.length === 0) delete next[taskId];
@@ -1165,15 +1177,9 @@ function AppCore() {
     });
   };
   const popQueueHead = (taskId) => {
-    const arr = messageQueueRef.current[taskId] || [];
-    if (arr.length === 0) return null;
-    const [head, ...rest] = arr;
-    setMessageQueue((prev) => {
-      const next = { ...prev };
-      if (rest.length === 0) delete next[taskId];
-      else next[taskId] = rest;
-      return next;
-    });
+    const head = (messageQueueRef.current[taskId] || [])[0];
+    if (!head) return null;
+    removeFromQueue(taskId, head.id);
     return head;
   };
   // When the server mints a canonical id for a task that was streaming under
@@ -1181,13 +1187,13 @@ function AppCore() {
   // The drain finds a task by its queue key, so a queue left under a stale
   // id would never re-match the task (ENG-1378).
   const migrateQueuedMessages = (fromIds, toId) => {
-    setMessageQueue((prev) => mergeQueuesForAdoptedId(prev, fromIds, toId));
+    updateMessageQueue((queues) => mergeQueuesForAdoptedId(queues, fromIds, toId));
   };
 
   const clearQueueForTask = (taskId) => {
-    setMessageQueue((prev) => {
-      if (!prev[taskId]) return prev;
-      const next = { ...prev };
+    updateMessageQueue((queues) => {
+      if (!queues[taskId]) return queues;
+      const next = { ...queues };
       delete next[taskId];
       return next;
     });
@@ -1198,11 +1204,19 @@ function AppCore() {
   const stampUserMessageIdOnTasks = (taskIds, userMessageId) => {
     if (!userMessageId) return;
     const ids = new Set(taskIds.filter(Boolean).map(String));
-    setTasks((prev) => prev.map((t) => {
-      if (!ids.has(String(t.id))) return t;
-      const next = stampUserMessageId(t.messages, userMessageId);
-      return next === t.messages ? t : { ...t, messages: next };
-    }));
+    // Runs on every stream event: returning `prev` when nothing changed keeps
+    // it from re-rendering the app between the paced answer renders.
+    setTasks((prev) => {
+      let changed = false;
+      const next = prev.map((t) => {
+        if (!ids.has(String(t.id))) return t;
+        const messages = stampUserMessageId(t.messages, userMessageId);
+        if (messages === t.messages) return t;
+        changed = true;
+        return { ...t, messages };
+      });
+      return changed ? next : prev;
+    });
   };
 
   // Called from every stream's onEvent, right after reduceStream. Keeps
@@ -1438,13 +1452,8 @@ function AppCore() {
       else delete next[cidToCancel];
       return next;
     };
-    setMessageQueue(withoutQueuedAtClick);
-    /*
-     * Prune the ref in lockstep: the drain below reads messageQueueRef
-     * synchronously and the state→ref effect hasn't run yet, so without this
-     * it would still see (and could re-pick) the dropped messages.
-     */
-    messageQueueRef.current = withoutQueuedAtClick(messageQueueRef.current);
+    // The drain below reads messageQueueRef before the state→ref effect runs.
+    updateMessageQueue(withoutQueuedAtClick);
 
     // Re-read after the awaits above: only the holder clears the shared slot.
     releaseSlotClaim(cidToCancel);
@@ -2345,6 +2354,7 @@ function AppCore() {
     let streamState = initialStreamState();
 
     const flushStreaming = () => {
+      if (!isCurrentStream(taskId, ctrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== taskId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -2362,6 +2372,8 @@ function AppCore() {
       }));
     };
 
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
+
     activeStreamingTaskIdRef.current = taskId;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
     const ctrl = tailInFlight(taskId, {
@@ -2378,9 +2390,10 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(taskId, open._scratchpadTabId);
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onDone() {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(taskId, ctrl);
         releaseStream(taskId, ctrl);
         if (superseded) return;
@@ -2448,6 +2461,7 @@ function AppCore() {
         drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         // Read first, drop second: the record is what answers "am I still the
         // live stream here", so releasing before reading would make every
         // terminal look superseded. Releasing is controller-guarded, so a
@@ -2865,7 +2879,7 @@ function AppCore() {
     } else {
       // No registry entry — fall back to the chat-agent flow. Anton
       // can still walk the user through the change.
-      Promise.resolve().then(() => handleSendFromHome(`Update connection ${connection.name} (${label}).`));
+      Promise.resolve().then(() => sendFromApp(`Update connection ${connection.name} (${label}).`));
     }
   };
   // Cancel a modify-flow task: drop the synthetic chat task we
@@ -3063,7 +3077,7 @@ function AppCore() {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
-      Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
+      Promise.resolve().then(() => sendFromApp(`Connect ${label}`));
     }
     return tempId;
   };
@@ -3636,6 +3650,7 @@ function AppCore() {
     let streamState = initialStreamState();
 
     const flushStreamingMessage = () => {
+      if (!isCurrentStream(resolvedId, sessionCtrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== resolvedId && t.id !== taskId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -3658,6 +3673,7 @@ function AppCore() {
     // stream. Two RAFs give React a guaranteed paint between phases
     // (one to commit the route+task, one to commit the empty mount).
     let sessionCtrl = null;
+    const streamFlush = frameScheduler(() => flushSync(flushStreamingMessage));
     const startConversation = () => {
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
@@ -3686,6 +3702,8 @@ function AppCore() {
       activeStreamProducedRef.current = false; // fresh stream: no events yet
       markInFlight(taskId);
     };
+    // Before the session-start event, which clears the console attribution this reads.
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text) });
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
@@ -3713,7 +3731,7 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(resolvedId || taskId, open._scratchpadTabId);
         }
-        flushSync(() => flushStreamingMessage());
+        streamFlush.request();
       },
       onProgress(event, sid) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
@@ -3728,6 +3746,7 @@ function AppCore() {
         // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId, sessionCtrl);
         releaseStream(resolvedId, sessionCtrl);
         if (superseded) return;
@@ -3811,6 +3830,7 @@ function AppCore() {
         drainNextQueuedMessage(finalId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || taskId, sessionCtrl);
         releaseStream(resolvedId || taskId, sessionCtrl);
         if (superseded) return;
@@ -3833,6 +3853,10 @@ function AppCore() {
     requestAnimationFrame(() => requestAnimationFrame(startConversation));
     return true;
   };
+
+  // A task the app starts for the person (a connector button, an artifact
+  // repair), so analytics can tell it from one they typed.
+  const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
 
   // Send inside an existing task
   //
@@ -4153,6 +4177,7 @@ function AppCore() {
     };
 
     const flushStreaming = () => {
+      if (!isCurrentStream(resolvedId || id, ctrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== id && t.id !== resolvedId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -4183,6 +4208,7 @@ function AppCore() {
     // Tag this task as currently streaming so reconcileTaskMessages
     // can distinguish a real in-flight turn from a zombie placeholder.
     activeStreamingTaskIdRef.current = id;
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
     const ctrl = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectId: taskProjectId,
@@ -4205,9 +4231,10 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(resolvedId || id, open._scratchpadTabId);
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onDone() {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
@@ -4280,6 +4307,7 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
@@ -4386,7 +4414,7 @@ function AppCore() {
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return handleSendFromHome(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
+      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -4490,6 +4518,7 @@ function AppCore() {
     };
 
     const flushStreaming = () => {
+      if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== id && t.id !== resolvedId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -4509,6 +4538,7 @@ function AppCore() {
 
     activeStreamingTaskIdRef.current = id;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
     // Same superseded guard the other three stream sites carry, in the same
     // order: read → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"
@@ -4573,7 +4603,7 @@ function AppCore() {
             }
           }
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onChunk(chunk, sid) {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
@@ -4591,6 +4621,7 @@ function AppCore() {
         }
       },
       onDone(sid) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
@@ -4660,6 +4691,7 @@ function AppCore() {
        * drains.
        */
       onError(message) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
@@ -5805,6 +5837,12 @@ function AppCore() {
             if (sidebarPopout) setNavPopoutOpen(false);
             return handleSendFromHome(text);
           }}
+          // The example row sends nothing: it opens Home with the examples
+          // showing. newTask also closes the popout drawer.
+          onOpenExamples={() => {
+            newTask();
+            setExamplesRequest(Date.now());
+          }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
           // off-screen, so its anchor is invisible. The armed state
@@ -5902,6 +5940,8 @@ function AppCore() {
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
             onPrefillConsumed={() => setComposerPrefill(null)}
+            examplesRequest={examplesRequest}
+            onExamplesRequestConsumed={() => setExamplesRequest(0)}
             codingModeEnabled={false}
           />
         )}
@@ -6402,7 +6442,7 @@ function AppCore() {
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
-          handleSendFromHome(buildCustomConnectorRequest(query));
+          sendFromApp(buildCustomConnectorRequest(query));
         }}
       />
 

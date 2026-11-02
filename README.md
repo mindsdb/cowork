@@ -295,13 +295,22 @@ The blocking brand script and title line follow this region, before the app's
 bundle, so the first render already has the brand. The script must never be
 `async` or `defer`. The stylesheet goes last in `<head>`. Cowork ships empty
 stock files in `src/renderer/public/brand/`, and `scripts/spa_wrapper.py`
-serves them, so a deployment that serves nothing of its own looks stock.
+and the frontend image's nginx (`scripts/nginx-frontend.conf`) serve them, so
+a deployment that serves nothing of its own looks stock. A hosted deployment
+that serves its own brand mounts its files over the image's `/brand/` folder.
+nginx sends them with `Cache-Control: no-cache` and an ETag, and answers a
+missing one with a 404.
 
-The wrapper identifies its HTML shell responses with `X-Cowork-Spa-Shell: 1`,
+`scripts/spa_wrapper.py` marks its HTML shell responses with `X-Cowork-Spa-Shell: 1`,
 including `/`, `/index-web.html` and deep client routes. Assets, API responses
 and redirects have no such header. A deployment proxy can use the header to
 distinguish the shell from other HTML. The build rejects missing, duplicate or
 reordered title and icon anchors, and markers already present in the source.
+
+The hosted build adds the draft hosts to the page's CSP meta tag as well.
+That tag allows same-origin scripts, inline scripts, styles and images, so the
+brand's script, its title line, its stylesheet and its images load there too.
+Both changes are made at build time, and either order gives the same page.
 
 Every field is optional. A field that breaks its rule is ignored, with one
 console warning, and the rest still apply. Unknown keys are ignored, so the

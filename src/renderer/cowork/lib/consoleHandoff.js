@@ -3,20 +3,28 @@
 //
 //   /?from=console                                   empty composer
 //   /?from=console&mode=games&sample=classic-snake-game
+//   /?from=console&start=own-work                    the first onboarding step
 //
-// The URL names a sample by id and never carries prompt text. It has to be
-// captured before the Keycloak redirect, because web-main.tsx's redirectUri is
-// the bare pathname and the query string does not survive login. It is then
-// consumed once by HomeView. Nothing here sends a message: the sample is only
-// placed in the composer, and the user still presses Send.
+// The URL names a sample, or a start the app owns, by id and never carries
+// prompt text. It has to be captured before the Keycloak redirect, because
+// web-main.tsx's redirectUri is the bare pathname and the query string does
+// not survive login. It is then consumed once by HomeView. Nothing here sends
+// a message: the sample or start is only placed in the composer, and the user
+// still presses Send.
 import { TASK_MODES } from '../components/taskmodes/taskModes';
+import { OWN_WORK_PROMPT } from '../components/onboarding/steps';
 
 const STORAGE_KEY = 'anton.consoleHandoff';
 export const CONSOLE_ENTRY_SOURCE = 'console';
 // Long enough to cover a real login round trip, short enough that a handoff
 // abandoned mid-login does not prefill a composer the user opens much later.
 const MAX_AGE_MS = 10 * 60 * 1000;
-const HANDOFF_PARAMS = ['from', 'mode', 'sample'];
+const HANDOFF_PARAMS = ['from', 'mode', 'sample', 'start'];
+
+// Starts a link may ask for. Anything else is dropped, so a bad link opens an
+// empty composer.
+export const OWN_WORK_START = 'own-work';
+const STARTS = [OWN_WORK_START];
 
 // Sample ids are derived from their labels so the catalog needs no second key.
 // Renaming a label the console links to changes its id; the console's links are
@@ -35,7 +43,10 @@ export function findSample(modeId, id) {
     handoff may replace it. */
 export const isUntouchedSample = (text) => {
   const trimmed = (text || '').trim();
-  return Boolean(trimmed) && TASK_MODES.some((m) => m.samples.some((s) => s.prompt === trimmed));
+  return (
+    Boolean(trimmed) &&
+    (trimmed === OWN_WORK_PROMPT || TASK_MODES.some((m) => m.samples.some((s) => s.prompt === trimmed)))
+  );
 };
 
 const sessionStore = () => {
@@ -51,10 +62,12 @@ export function captureConsoleHandoff(loc = window.location, storage = sessionSt
   if (params.get('from') !== CONSOLE_ENTRY_SOURCE) return;
 
   const match = findSample(params.get('mode'), params.get('sample'));
+  const start = STARTS.includes(params.get('start')) ? params.get('start') : null;
   const handoff = {
     entrySource: CONSOLE_ENTRY_SOURCE,
     modeId: match ? match.mode.id : null,
     sampleId: match ? sampleId(match.sample.label) : null,
+    start,
     at: Date.now(),
   };
   try { storage?.setItem(STORAGE_KEY, JSON.stringify(handoff)); } catch {}
@@ -79,5 +92,7 @@ export function takeConsoleHandoff(storage = sessionStore(), now = Date.now()) {
   if (!handoff || handoff.entrySource !== CONSOLE_ENTRY_SOURCE) return null;
   if (typeof handoff.at !== 'number' || now - handoff.at > MAX_AGE_MS) return null;
   const match = handoff.modeId ? findSample(handoff.modeId, handoff.sampleId) : null;
-  return { entrySource: handoff.entrySource, mode: match?.mode ?? null, sample: match?.sample ?? null };
+  // A sample wins over a start: the link asked for a specific example.
+  const start = !match && STARTS.includes(handoff.start) ? handoff.start : null;
+  return { entrySource: handoff.entrySource, mode: match?.mode ?? null, sample: match?.sample ?? null, start };
 }
