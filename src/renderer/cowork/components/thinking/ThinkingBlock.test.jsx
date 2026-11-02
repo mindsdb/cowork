@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ThinkingBlock } from './ThinkingBlock';
 
@@ -147,5 +147,37 @@ describe('ThinkingBlock — folding (ENG-3554)', () => {
     render(<ThinkingBlock steps={[tool]} isActive={false} startedAt={0} />);
     expect(screen.queryByText('Running code')).toBeNull();
     expect(screen.getByRole('button', { expanded: false })).toBeInTheDocument();
+  });
+});
+
+describe('ThinkingBlock object and plain rows', () => {
+  const skill = { id: 'skill-digest', label: 'Weekly metrics digest', badge: 'Skill', status: 'completed', startedAt: 1000, completedAt: 1000 };
+  const artifact = { id: 'artifact-dash', label: 'Signups dashboard', badge: 'Artifact', status: 'completed', startedAt: 9000, completedAt: 9000 };
+  const cell = { id: 'step-1', label: 'Load signups.csv', status: 'completed', startedAt: 1000, completedAt: 5000, _isScratchpad: true };
+  const memory = { id: 'step-2', label: 'Saving to memory: Prefers weekly buckets', badge: 'Memory', status: 'completed', startedAt: 5000, completedAt: 6000 };
+
+  // A skill-draft turn's only step is the skill, and the card under the answer
+  // already shows it: the fold above the answer held nothing else.
+  it('renders nothing for a finished block of object rows only', () => {
+    const { container } = render(<ThinkingBlock steps={[skill]} startedAt={1000} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('still shows the object row beside real work', async () => {
+    render(<ThinkingBlock steps={[cell, artifact]} startedAt={1000} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('Signups dashboard')).toBeVisible();
+  });
+
+  it('hands object and scratchpad rows to onActivateStep, and leaves memory rows inert', () => {
+    const onActivateStep = vi.fn();
+    render(<ThinkingBlock steps={[cell, memory, artifact]} startedAt={1000} onActivateStep={onActivateStep} />);
+    fireEvent.click(screen.getByRole('button'));
+
+    fireEvent.click(screen.getByText('Signups dashboard'));
+    fireEvent.click(screen.getByText('Load signups.csv'));
+    fireEvent.click(screen.getByText('Saving to memory: Prefers weekly buckets'));
+
+    expect(onActivateStep.mock.calls.map(([step]) => step.id)).toEqual(['artifact-dash', 'step-1']);
   });
 });

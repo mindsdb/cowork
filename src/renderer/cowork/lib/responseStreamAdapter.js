@@ -177,8 +177,31 @@ function closeOpenInspectableSteps(steps, completedAt) {
   return closeOpenSteps(
     steps,
     completedAt,
-    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress',
+    (step) => step._isScratchpad || step._isToolCall || step.badge === 'ToolProgress' || step.badge === 'Memory',
   );
+}
+
+/** First line of `text`, cut to 70 characters, for a step label. */
+function labelPreview(text) {
+  const first = String(text || '').trim().split('\n')[0];
+  return first.length > 70 ? first.slice(0, 67) + '…' : first;
+}
+
+/** Row label for a memory tool call (memorize, recall, recall_skill). `args`
+ *  is the tool's input, null until thought.*.end delivers it. */
+function memoryStepLabel(toolName, args) {
+  if (toolName === 'recall_skill') {
+    const label = labelPreview(args?.label);
+    return label ? `Loading the ${label} skill` : 'Loading a skill';
+  }
+  if (toolName.includes('recall')) {
+    const query = labelPreview(args?.query);
+    return query ? `Searching past conversations for "${query}"` : 'Searching past conversations';
+  }
+  const entries = Array.isArray(args?.entries) ? args.entries : [];
+  if (entries.length > 1) return `Saving ${entries.length} notes to memory`;
+  const text = labelPreview(entries[0]?.text);
+  return text ? `Saving to memory: ${text}` : 'Saving to memory';
 }
 
 /** Close open ToolProgress rows — only the given tool's when `toolUseId`
@@ -701,7 +724,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       id: `artifact-${art.slug || state.steps.length + 1}`,
       label: art.title || art.slug || 'Artifact',
       badge: 'Artifact',
-      icon: 'sparkle',
+      // The artifact card's own glyph, so the row and the card match.
+      icon: 'doc',
       status: 'completed',
       startedAt: eventTs,
       completedAt: eventTs,
@@ -904,6 +928,76 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         data: { markdown },
       }],
     };
+  }
+
+  // ── Memory tools and context compaction ──────────────────────────
+  // memorize, recall and recall_skill get their own start/end roles from the
+  // server (stream_formatter.py) and finish with a scratchpad.result carrying
+  // their tool_use_id. Each call is one plain row: nothing to inspect, so it
+  // never joins ScratchpadModal's tabs.
+  if (role === 'thought.memorize.start' || role === 'thought.recall.start') {
+    const toolUseId = event.tool_use_id || null;
+    if (toolUseId && state.steps.some((s) => s.badge === 'Memory' && s._toolUseId === toolUseId)) return state;
+    const toolName = event.content || (role === 'thought.memorize.start' ? 'memorize' : 'recall');
+    const step = {
+      id: `step-${state.steps.length + 1}`,
+      label: memoryStepLabel(toolName, null),
+      badge: 'Memory',
+      icon: toolName === 'recall_skill' ? 'cube' : 'memory',
+      status: 'in_progress',
+      startedAt: eventTs,
+      completedAt: null,
+      data: { tool_name: toolName },
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _isToolCall: false,
+      _scratchpadTabId: null,
+      _toolUseId: toolUseId,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
+  if (role === 'thought.memorize.end' || role === 'thought.recall.end') {
+    const toolUseId = event.tool_use_id || null;
+    const idx = state.steps.findIndex((s) => s.badge === 'Memory' && s._toolUseId === toolUseId);
+    if (idx === -1) return state;
+    const args = safeJsonParse(event.content);
+    if (!args || typeof args !== 'object') return state;
+    const steps = state.steps.slice();
+    const prev = steps[idx];
+    steps[idx] = { ...prev, label: memoryStepLabel(prev.data?.tool_name || '', args), data: { ...prev.data, args } };
+    return { ...state, steps };
+  }
+
+  if (role === 'thought.scratchpad.result' && event.tool_use_id) {
+    const idx = state.steps.findIndex((s) => s.badge === 'Memory' && s._toolUseId === event.tool_use_id);
+    if (idx !== -1) {
+      const steps = state.steps.slice();
+      steps[idx] = { ...steps[idx], status: 'completed', completedAt: eventTs };
+      return { ...state, steps };
+    }
+  }
+
+  // anton summarized or cut older history to fit the context window. One
+  // finished row, so a turn that suddenly forgets earlier detail says why.
+  if (role === 'thought.context_compacted') {
+    const step = {
+      id: `step-${state.steps.length + 1}`,
+      label: labelPreview(event.content) || 'Summarized older messages to free up context',
+      badge: 'Compaction',
+      icon: 'compact',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: null,
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _isToolCall: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
   }
 
   // New scratchpad cell starts. We push a placeholder step now so the
