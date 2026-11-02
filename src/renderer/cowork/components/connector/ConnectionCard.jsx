@@ -45,6 +45,7 @@ export function disconnectPrompt({ engine, name, shared }) {
 
 function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
+  // ConfirmModal, not window.confirm: see CustomizeView's `confirming`.
   const [confirming, setConfirming] = useState(false);
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
@@ -70,8 +71,6 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const shared = connection.shared === true;
   const badge = shared ? 'Shared' : managed ? 'Managed' : null;
 
-  // An in-app dialog, not window.confirm: on Windows the native dialog leaves
-  // the page without keyboard focus, so no text field takes typing afterwards.
   const handleRemove = async () => {
     setConfirming(false);
     setBusy(true);

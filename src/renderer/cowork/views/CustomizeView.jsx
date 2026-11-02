@@ -552,8 +552,7 @@ export default function CustomizeView({
   const [sort, setSort] = useState('recent');
   const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
-  // Shown in an in-app dialog rather than alert(), for the same Windows focus
-  // reason as the confirm dialogs.
+  // Not alert(): it loses Windows focus the same way as window.confirm.
   const [deleteError, setDeleteError] = useState(null);
   const [sharePointEditing, setSharePointEditing] = useState(null);
   const searchRef = useRef(null);

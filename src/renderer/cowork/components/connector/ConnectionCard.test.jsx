@@ -111,8 +111,6 @@ describe('ConnectionCard', () => {
     await waitFor(() => expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled());
   });
 
-  // On Windows the native dialog leaves the page without keyboard focus, so no
-  // text field in the app takes typing after it closes.
   it('asks in an in-app dialog, never the native window.confirm', async () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     const onDelete = vi.fn();
