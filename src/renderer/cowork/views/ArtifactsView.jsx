@@ -53,6 +53,7 @@ import {
 import { AUDIENCE_CHOICE } from '../lib/orgSharing';
 import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
 import { publishRefusalMessage } from '../components/artifact/publish/publishErrors';
+import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import { artifactAuthorship } from '../lib/artifactAuthorship';
@@ -781,7 +782,13 @@ export default function ArtifactsView({
   // Toast surfaces publish/unpublish results — primarily so failures
   // don't disappear into the console.
   const toastManager = useToastManager();
-  const showToast = ({ kind, message }) => toastManager.add({ title: message, type: kind === 'ok' ? 'success' : 'danger' });
+  // A warning names a shared link Cowork left live, so it stays until the
+  // person dismisses it.
+  const showToast = ({ kind, message }) => toastManager.add(
+    kind === 'warning'
+      ? { title: message, type: 'warning', timeout: 0 }
+      : { title: message, type: kind === 'ok' ? 'success' : 'danger' },
+  );
   const searchRef = useRef(null);
 
 
@@ -897,11 +904,13 @@ export default function ArtifactsView({
     setBusy(artifact.path, true);
     setPhase(artifact.path, 'unpublishing');
     try {
-      await unpublishArtifact(publishTargetPath(artifact));
+      const leftLive = stopSharingNotice(await unpublishArtifact(publishTargetPath(artifact)));
       updateOne({ ...artifact, publishedUrl: '' });
       // Without the platform UI the deployment decides where shares live,
       // so the toast names no service.
-      showToast({ kind: 'ok', message: PLATFORM_UI ? 'Stopped sharing on MindsHub.' : 'Stopped sharing.' });
+      showToast(leftLive
+        ? { kind: 'warning', message: leftLive }
+        : { kind: 'ok', message: PLATFORM_UI ? 'Stopped sharing on MindsHub.' : 'Stopped sharing.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
     } finally {
@@ -919,7 +928,8 @@ export default function ArtifactsView({
       // Server refreshed last_md5 + published_mtime, so the artifact is no
       // longer "modified". Reflect it locally without a refetch.
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
-      showToast({ kind: 'ok', message: 'Updated the shared version.' });
+      const replaced = republishNotice(r);
+      showToast(replaced ? { kind: 'warning', message: replaced } : { kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
       const message = publishRefusalMessage(e) ?? `Update failed: ${e?.message || e}`;
       showToast({ kind: 'error', message });
@@ -947,11 +957,12 @@ export default function ArtifactsView({
       // the same rule as a backstop). Skipped in org mode — see
       // needsClientUnpublishBeforeDelete: there this call 501s and the server's
       // own delete does the unpublish with the right credential.
+      let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl })) {
-        await unpublishArtifact(artifact.path);
+        leftLive = stopSharingNotice(await unpublishArtifact(artifact.path));
       }
       await deleteArtifactAndSync(artifact);
-      showToast({ kind: 'ok', message: 'Deleted.' });
+      showToast(leftLive ? { kind: 'warning', message: leftLive } : { kind: 'ok', message: 'Deleted.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
       // Only on failure: on success the row is already gone, and clearing the
@@ -1128,6 +1139,9 @@ export default function ArtifactsView({
         artifact={viewer}
         onClose={() => setViewerPath(null)}
         onChange={updateOne}
+        // The viewer closes once its card leaves the list, so a link the
+        // delete left live is told here instead.
+        onDelete={(_path, { notice } = {}) => { if (notice) showToast({ kind: 'warning', message: notice }); }}
         onPublish={handlePublish}
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.

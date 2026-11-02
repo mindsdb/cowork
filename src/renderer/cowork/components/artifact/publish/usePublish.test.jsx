@@ -358,6 +358,69 @@ describe('usePublish — an artifact published by another owner', () => {
   });
 });
 
+describe('usePublish — a link with no owner on record stays live', () => {
+  const artifact = { path: '/p/a.html', publishedUrl: 'https://share/old', accessMode: 'public' };
+
+  it('Stop sharing returns and shows the notice when the page itself stays live', async () => {
+    apiMock.unpublishArtifact.mockResolvedValue({
+      status: 'ok', takenDown: false, liveLink: 'https://share/old', reason: 'no_owner_record',
+    });
+    const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
+    let outcome;
+    await act(async () => { outcome = await result.current.unpublish(); });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.notice).toContain('https://share/old');
+    expect(result.current.notice).toBe(outcome.notice);
+    expect(result.current.publishedUrl).toBe('');
+  });
+
+  it('Stop sharing that took the page down returns no notice', async () => {
+    apiMock.unpublishArtifact.mockResolvedValue({ status: 'ok', takenDown: true, liveLink: null, reason: null });
+    const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
+    let outcome;
+    await act(async () => { outcome = await result.current.unpublish(); });
+    expect(outcome).toEqual({ ok: true, notice: '' });
+    expect(result.current.notice).toBe('');
+  });
+
+  it('Update that shared a new link names the old one, which stays live', async () => {
+    apiMock.updateArtifact.mockResolvedValue({ status: 'ok', url: 'https://share/new', replacedLink: 'https://share/old' });
+    const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
+    await act(async () => { await result.current.update(); });
+    expect(result.current.publishedUrl).toBe('https://share/new');
+    expect(result.current.notice).toContain('https://share/old');
+  });
+
+  it('the status tells the hook when the live link has no owner on record', async () => {
+    apiMock.fetchArtifactStatus.mockResolvedValue({ ...STATUS_RESTRICTED, publishedUrl: 'https://share/old', linkOwnerRecorded: false });
+    const { result } = renderHook(() => usePublish({ ...artifact, accessMode: 'restricted' }, { enabled: true }));
+    await waitFor(() => expect(result.current.linkOwnerRecorded).toBe(false));
+  });
+
+  it('keeps a notice with its artifact, and drops it when the viewer opens another', async () => {
+    apiMock.unpublishArtifact.mockResolvedValue({
+      status: 'ok', takenDown: false, liveLink: 'https://share/old', reason: 'no_owner_record',
+    });
+    const { result, rerender } = renderHook(({ a }) => usePublish(a, { enabled: false }), { initialProps: { a: artifact } });
+    await act(async () => { await result.current.unpublish(); });
+    // The parent hands back the same artifact, now unshared.
+    rerender({ a: { ...artifact, publishedUrl: '' } });
+    expect(result.current.notice).toContain('https://share/old');
+    rerender({ a: { path: '/p/b.html', publishedUrl: 'https://share/b', accessMode: 'public', linkOwnerRecorded: true } });
+    expect(result.current.notice).toBe('');
+    expect(result.current.linkOwnerRecorded).toBe(true);
+  });
+
+  it('puts the link on record after an Update that kept no old link', async () => {
+    apiMock.updateArtifact.mockResolvedValue({ status: 'ok', url: 'https://share/new', replacedLink: null });
+    const { result } = renderHook(() => usePublish({ ...artifact, linkOwnerRecorded: false }, { enabled: false }));
+    expect(result.current.linkOwnerRecorded).toBe(false);
+    await act(async () => { await result.current.update(); });
+    expect(result.current.linkOwnerRecorded).toBe(true);
+    expect(result.current.notice).toBe('');
+  });
+});
+
 describe('usePublish: a share with everyone refused', () => {
   // What `req()` throws for cowork-server's 403 share_org_required: MindsHub's
   // reason as the message and the code beside it.

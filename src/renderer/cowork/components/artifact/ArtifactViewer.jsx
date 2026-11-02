@@ -53,6 +53,7 @@ import { useLiveApps } from '../../../lib/liveApps';
 import { useLiveApp } from '../../hooks/useLiveApp';
 import { launchLiveAppPrompt, liveAppViewerNotice } from '../../lib/liveAppState';
 import { usePublish } from './publish/usePublish';
+import { stopSharingNotice } from './publish/linkLeftLive';
 import { useArtifactComments, useArtifactCommentLayer } from './comments';
 import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
 import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
@@ -1024,12 +1025,19 @@ export function ArtifactViewer({
     try {
       // Desktop's path-addressed delete needs a client-side unpublish first.
       // SaaS performs both operations atomically on the scoped server route.
+      let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: isPublished })) {
-        await unpublishArtifact(actionPath);
+        leftLive = stopSharingNotice(await unpublishArtifact(actionPath));
       }
       await deleteArtifactAndSync(artifact);
       setConfirmDelete(false);
-      onDelete?.(actionPath);
+      onDelete?.(actionPath, { notice: leftLive });
+      // The artifact is gone but its page is still open to anyone with the
+      // link: say so here rather than close over it.
+      if (leftLive) {
+        setErr(leftLive);
+        return;
+      }
       onClose?.();
     } catch (e) {
       setConfirmDelete(false);

@@ -77,7 +77,7 @@ describe('PublishMenu with the platform UI off and no publish-token tag', () => 
   it('starts a reshare with nothing picked after Stop sharing from Change', async () => {
     const published = makeController({
       publishedUrl: 'https://view.example/r/a',
-      unpublish: vi.fn().mockResolvedValue(true),
+      unpublish: vi.fn().mockResolvedValue({ ok: true, notice: '' }),
     });
     const { rerender } = render(<PublishMenu controller={published} />);
     fireEvent.click(screen.getByText('Shared'));

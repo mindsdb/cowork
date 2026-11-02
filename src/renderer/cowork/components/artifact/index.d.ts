@@ -128,7 +128,8 @@ export interface ArtifactViewerProps {
   artifact: ArtifactViewerArtifact | null;
   onClose: () => void;
   onChange?: (artifact: ArtifactViewerArtifact) => void;
-  onDelete?: (path: string) => void;
+  /** `notice` names a shared link the delete left live, or is ''. */
+  onDelete?: (path: string, outcome?: { notice: string }) => void;
   onAddressWithAgent?: (request: ArtifactAgentRepairRequest) => Promise<boolean | void>;
   /** The chat hosting the viewer, when there is one. */
   conversationId?: string | null;
