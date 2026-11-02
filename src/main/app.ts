@@ -3,10 +3,11 @@
 // so the scrub has to run ahead of it.
 import './sanitize-packaged-env';
 import { diagnostic } from '../shared/diagnostics';
-// MUST be second: sets the per-channel Electron app name (→ userData dir) before
-// any module that reads app.getPath('userData') at load time (e.g. token-store),
-// then starts the crash reporter so a native crash while the rest loads leaves
-// a minidump.
+// MUST come before every other local import except the env scrub above
+// (diagnostics reads nothing at load): sets the per-channel Electron app name
+// (→ userData dir) before any module that reads app.getPath('userData') at
+// load time (e.g. token-store), then starts the crash reporter so a native
+// crash while the rest loads leaves a minidump.
 import './app-identity';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
