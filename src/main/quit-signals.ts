@@ -1,3 +1,5 @@
+import { diagnostic } from '../shared/diagnostics';
+
 // Ctrl-C under `npm run dev` delivers SIGINT to Electron main several times at
 // once: from the terminal's process group, from electron's cli.js wrapper, and
 // from concurrently's tree-kill. Electron's own handler allows one graceful
@@ -20,7 +22,7 @@ export function installQuitSignalHandlers(
     proc.on(signal, () => {
       if (signalled) return;
       signalled = true;
-      console.log(`[app] received ${signal}; stopping the server before quitting`);
+      diagnostic('main.quit-signals', 'INFO', 'quit_signal_received', { exit_signal: signal });
       quit();
     });
   }

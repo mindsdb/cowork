@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { installQuitSignalHandlers, QUIT_SIGNALS } from './quit-signals';
 
 function fakeProcess() {
@@ -8,15 +8,23 @@ function fakeProcess() {
 }
 
 describe('installQuitSignalHandlers', () => {
-  it.each(QUIT_SIGNALS)('quits on %s', (signal) => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it.each(QUIT_SIGNALS)('quits on %s and logs which signal', (signal) => {
     const proc = fakeProcess();
     const quit = vi.fn();
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.stubEnv('LOG_LEVEL', 'INFO');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     installQuitSignalHandlers(quit, proc);
 
     proc.emit(signal);
 
     expect(quit).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+    expect(entry).toMatchObject({ logger: 'main.quit-signals', event: 'quit_signal_received', exit_signal: signal });
   });
 
   // Regression: one Ctrl-C under `npm run dev` arrives as several SIGINTs. Each
