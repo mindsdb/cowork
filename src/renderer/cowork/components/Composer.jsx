@@ -676,6 +676,14 @@ export default function Composer({
   }, [slashOpen, slashQuery, allSkills, project]);
 
   const closeSlash = useCallback(() => setSlashOpen((prev) => (prev ? false : prev)), []);
+  // Blur closes the menu after a short delay so a click on a menu row still
+  // lands. The timer is cleared on unmount so it never sets state afterwards.
+  const closeSlashTimerRef = useRef(null);
+  const closeSlashSoon = () => {
+    clearTimeout(closeSlashTimerRef.current);
+    closeSlashTimerRef.current = setTimeout(closeSlash, 120);
+  };
+  useEffect(() => () => clearTimeout(closeSlashTimerRef.current), []);
 
   // Known skill names — the overlay colours only "/<known-skill>" tokens (not
   // arbitrary slashes like a file path), matching how the sent message tints
@@ -1117,7 +1125,7 @@ export default function Composer({
             onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onPaste={handlePaste}
             onFocus={() => setFocused(true)}
-            onBlur={() => { setFocused(false); setTimeout(() => closeSlash(), 120); }}
+            onBlur={() => { setFocused(false); closeSlashSoon(); }}
             onSelect={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onClick={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onScroll={handleScroll}
