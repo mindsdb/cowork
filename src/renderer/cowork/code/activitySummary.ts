@@ -1,4 +1,6 @@
 import type { CodingEvent } from './api';
+import type { StepIconName } from '../components/steps/stepIcons';
+import type { StepStatus } from '../components/steps/stepStatus';
 
 
 // Codex runs every command through a login shell. The wrapper is the same on
@@ -8,15 +10,16 @@ const SHELL_WRAPPER = /^\/bin\/(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/;
 // Codex echoes the user's own message back as an item. It is not work.
 const IGNORED_ITEM_TYPES = new Set(['userMessage']);
 
-type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'plan' | 'compact' | 'retry' | 'error';
+type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'web' | 'list' | 'tool' | 'plan' | 'compact' | 'retry' | 'error';
 
-const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'plan', 'compact', 'retry', 'error'];
+const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'web', 'list', 'tool', 'plan', 'compact', 'retry', 'error'];
 
 const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
   edit: (count) => `edited ${count} ${count === 1 ? 'file' : 'files'}`,
   command: (count) => `ran ${count} ${count === 1 ? 'command' : 'commands'}`,
   read: (count) => `read ${count} ${count === 1 ? 'file' : 'files'}`,
   search: (count) => `searched ${count} ${count === 1 ? 'time' : 'times'}`,
+  web: (count) => (count === 1 ? 'searched the web' : `searched the web ${count} times`),
   list: (count) => `listed ${count} ${count === 1 ? 'folder' : 'folders'}`,
   tool: (count) => `used ${count} ${count === 1 ? 'tool' : 'tools'}`,
   plan: () => 'updated the plan',
@@ -76,6 +79,48 @@ export function isCompaction(event: CodingEvent): boolean {
 }
 
 
+// Codex's own web search. The item carries the query, and an action that
+// says whether it searched, opened a page, or looked inside one.
+export function isWebSearch(event: CodingEvent): boolean {
+  return event.type === 'tool' && text(event.data.type) === 'webSearch';
+}
+
+
+interface WebSearchAction {
+  type: string;
+  query: string;
+  url: string;
+  pattern: string;
+}
+
+
+function webSearchAction(event: CodingEvent): WebSearchAction {
+  const raw = event.data.action && typeof event.data.action === 'object' ? event.data.action as Record<string, unknown> : {};
+  const queries = Array.isArray(raw.queries) ? raw.queries.filter((query): query is string => typeof query === 'string' && !!query.trim()) : [];
+  return {
+    type: text(raw.type),
+    query: (text(event.data.query) || text(raw.query) || queries.join(', ')).trim(),
+    url: text(raw.url).trim(),
+    pattern: text(raw.pattern).trim(),
+  };
+}
+
+
+// "https://www.example.com/docs/" reads as "example.com/docs".
+function pageName(url: string): string {
+  return url.replace(/^[a-z][a-z\d+.-]*:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+}
+
+
+function webSearchLabel(event: CodingEvent): StepLabel {
+  const action = webSearchAction(event);
+  const page = pageName(action.url);
+  if (action.type === 'findInPage' && action.pattern) return { icon: 'web', verb: `Searched ${page || 'the page'} for`, target: action.pattern };
+  if (action.type === 'openPage' || action.type === 'findInPage') return { icon: 'web', verb: 'Opened', target: page || 'a page' };
+  return action.query ? { icon: 'web', verb: 'Searched the web for', target: action.query } : { icon: 'web', verb: 'Searched the web', target: '' };
+}
+
+
 export function displayCommand(event: CodingEvent): string {
   const actions = commandActions(event);
   if (actions.length === 1 && actions[0].command) return actions[0].command;
@@ -92,6 +137,7 @@ function actionKinds(event: CodingEvent): ActionKind[] {
     return Array.from({ length: Math.max(1, changes) }, () => 'edit' as const);
   }
   if (isCompaction(event)) return ['compact'];
+  if (isWebSearch(event)) return ['web'];
   if (event.type === 'tool') return ['tool'];
   if (event.type === 'error') return [isRetryNotice(event) ? 'retry' : 'error'];
   if (isPlanUpdate(event)) return ['plan'];
@@ -185,6 +231,10 @@ function presentTense(event: CodingEvent): string {
     return path ? `Editing ${path.split(/[\\/]/).at(-1)}` : 'Editing files';
   }
   if (isCompaction(event)) return 'Compacting context';
+  if (isWebSearch(event)) {
+    const { query } = webSearchAction(event);
+    return query ? `Searching the web for ${query}` : 'Searching the web';
+  }
   if (event.type === 'tool' && text(event.data.tool)) return `Calling ${text(event.data.tool)}`;
   if (event.type === 'tool') return event.title ? `Using ${event.title}` : 'Using a tool';
   const actions = commandActions(event);
@@ -220,10 +270,8 @@ function basename(path: string): string {
 }
 
 
-export type StepIcon = 'read' | 'search' | 'list' | 'command' | 'edit' | 'tool' | 'image' | 'thought' | 'plan' | 'compact' | 'retry' | 'error' | 'approval';
-
 export interface StepLabel {
-  icon: StepIcon;
+  icon: StepIconName;
   verb: string;
   target: string;
 }
@@ -250,6 +298,7 @@ export function stepLabel(event: CodingEvent): StepLabel {
   if (event.type === 'error') return { icon: 'error', verb: errorTitle(event), target: '' };
   if (event.type === 'approval') return { icon: 'approval', verb: 'Asked to run', target: displayCommand({ ...event, data: { command: event.text } }) || event.title };
   if (isCompaction(event)) return { icon: 'compact', verb: 'Compacted context', target: '' };
+  if (isWebSearch(event)) return webSearchLabel(event);
   if (event.type === 'tool') {
     if (text(event.data.type) === 'imageView') return { icon: 'image', verb: 'Viewed', target: basename(event.title) || 'an image' };
     const tool = text(event.data.tool);
@@ -292,6 +341,14 @@ export function stepFailed(event: CodingEvent): boolean {
   if (event.type === 'error') return !isRetryNotice(event);
   const code = exitCode(event);
   return event.phase === 'failed' || (code !== null && code !== 0);
+}
+
+
+// Code Mode's rows on the shared step status vocabulary. A row is never
+// `running`: the live status line names the work in progress, and
+// activityRows leaves live commands and tools out.
+export function codeStepStatus(event: CodingEvent): StepStatus {
+  return stepFailed(event) ? 'failed' : 'done';
 }
 
 

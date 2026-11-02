@@ -1,32 +1,17 @@
-// One row inside the expanded ThinkingBlock. Vertical-line "rail" on
-// the left, icon, label, optional duration on the right.
+// One row inside the expanded ThinkingBlock. This file is Cowork's adapter
+// onto the shared StepRow: it turns a responseStreamAdapter step into row
+// props and leaves the drawing to StepRow (shared with Code Mode).
 //
-// Adapted from mdb-ai's ThinkingStep.jsx — without jotai. Click handling is
-// delegated via onActivate; the block passes it only to rows that open
-// something (see isActivatableStep in ThinkingBlock).
+// Click handling is delegated via onActivate; the block passes it only to
+// rows that open something (see isActivatableStep in ThinkingBlock).
 
-import { useEffect, useState } from 'react';
-import clsx from 'clsx';
-import { StepIcon } from './StepIcon';
+import { StepRow } from '../steps/StepRow';
 import { useTypedText } from './FirstTake';
 import { stepDisplayLabel } from '../../lib/responseStreamAdapter';
 
-const DOT_FRAMES = ['.', '..', '...', '..', '.'];
-function TextDots() {
-  const [idx, setIdx] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setIdx((i) => (i + 1) % DOT_FRAMES.length), 400);
-    return () => clearInterval(id);
-  }, []);
-  // Match the step label's 12.5px. Without an explicit size the dots
-  // inherit the 16px body font-size, which makes an in-progress row's line
-  // box ~5px taller than the same row once it settles (label 12.5px) — so
-  // the block visibly jumps every time a step starts or finishes. Sizing
-  // the dots to the label keeps the row height constant across states.
-  return <span className="inline-block w-5 text-ink-4 text-[12.5px] leading-[1.5]">{DOT_FRAMES[idx]}</span>;
-}
-
 const UNTIMED_BADGES = new Set(['ToolProgress', 'Artifact', 'Skill', 'Compaction']);
+
+const OBJECT_TAGS = { Artifact: 'artifact', Skill: 'skill' };
 
 function formatStepDuration(startedAt, completedAt) {
   if (!startedAt || !completedAt) return null;
@@ -42,90 +27,56 @@ function TypedStandIn({ text }) {
   return useTypedText(text);
 }
 
+/** Map a thinking step onto the shared step status vocabulary.
+ *  A killed cell failed; a cell or tool that ended with an error is
+ *  `recovered`, because the agent usually retries and moves on. */
+export function thinkingStepStatus(step) {
+  if (step?.status === 'in_progress') return { status: 'running' };
+  if (step?.cellStatus === 'timeout') {
+    return {
+      status: 'failed',
+      label: 'Timed out',
+      title: 'This cell was stopped — it timed out or went silent. The next cell should be smaller, or split the work across cells.',
+    };
+  }
+  if (step?.cellStatus === 'error') return { status: 'recovered', title: 'This cell ended with an error.' };
+  return { status: 'done' };
+}
+
+/** The duration shown on a settled row, or null. No duration on a tool's
+ *  step line: fullstack generation runs steps in parallel, so "time until
+ *  the next line" is not how long the step took (ENG-2981). Nor on a row
+ *  that marks a moment rather than work (an artifact, a skill, a
+ *  compaction): it always read "0s". */
+export function thinkingStepDuration(step) {
+  if (!step || step.status === 'in_progress' || UNTIMED_BADGES.has(step.badge)) return null;
+  return formatStepDuration(step.startedAt, step.completedAt);
+}
+
 export function ThinkingStep({
   step,
   isFirst = false,
   isLast = false,
   onActivate,
 }) {
-  const isInProgress = step.status === 'in_progress';
-  const duration = formatStepDuration(step.startedAt, step.completedAt);
-
+  const { status, label, title } = thinkingStepStatus(step);
   return (
-    <div
-      className={clsx(
-        'group flex gap-1.5',
-        onActivate && 'cursor-pointer'
-      )}
-      onClick={onActivate ? () => onActivate(step) : undefined}
-    >
-      {/* Left rail — vertical line + circular marker. */}
-      <div className="flex w-4 flex-col items-center">
-        <div className={clsx('w-px flex-1', isFirst ? 'bg-transparent' : 'bg-line-2')} />
-        <div
-          className={clsx(
-            'my-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full',
-            isInProgress ? 'bg-surface-2' : 'bg-surface-2/60'
-          )}
-        >
-          <StepIcon type={step.icon} size={12} />
-        </div>
-        <div className={clsx('w-px flex-1', isLast ? 'bg-transparent' : 'bg-line-2')} />
-      </div>
-
-      {/* Right column — label + meta */}
-      <div
-        className={clsx(
-          'flex min-w-0 flex-1 items-center justify-between rounded-md py-1.5',
-          'transition-colors duration-hover group-hover:bg-surface-2/60'
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-1.5 px-1">
-          <span
-            className={clsx(
-              // A Note is Anton's own sentence between steps (ENG-3554):
-              // show all of it rather than cutting it off mid-thought.
-              step.badge === 'Note' ? 'whitespace-pre-wrap break-words' : 'truncate',
-              'text-[12.5px]',
-              isInProgress ? 'text-ink' : 'text-ink-3'
-            )}
-            title={stepDisplayLabel(step)}
-          >
-            {step.standIn ? <TypedStandIn text={step.standIn} /> : step.label}
-          </span>
-          {isInProgress && <TextDots />}
-        </div>
-        <div className="ml-2 flex flex-none items-center gap-2 pr-1">
-          {/* No duration on a tool's step line: fullstack generation runs
-              steps in parallel, so "time until the next line" is not how
-              long the step took (ENG-2981). Nor on a row that marks a
-              moment rather than work (an artifact, a skill, a compaction):
-              it always read "0s". */}
-          {!isInProgress && duration && !UNTIMED_BADGES.has(step.badge) && (
-            <span className="w-10 text-right text-[11px] text-ink-4">{duration}</span>
-          )}
-          {step.cellStatus === 'timeout' && (
-            <span
-              className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
-              title="This cell was stopped — it timed out or went silent. The next cell should be smaller, or split the work across cells."
-            >
-              timed out
-            </span>
-          )}
-          {step.cellStatus === 'error' && (
-            <span
-              className="h-1.5 w-1.5 flex-none rounded-full bg-yellow-400"
-              style={{ animation: 'step-error-dot-fade 4s ease-out forwards' }}
-              title="This cell ended with an error."
-            />
-          )}
-          {(step.badge === 'Artifact' || step.badge === 'Skill') && (
-            <span className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-ink-4">
-              {step.badge === 'Skill' ? 'skill' : 'artifact'}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
+    <StepRow
+      variant="timeline"
+      icon={step.icon}
+      target={step.standIn ? <TypedStandIn text={step.standIn} /> : step.label}
+      title={stepDisplayLabel(step)}
+      // A Note is Anton's own sentence between steps: show all of it rather
+      // than cutting it off mid-thought.
+      wrap={step.badge === 'Note'}
+      status={status}
+      statusLabel={label}
+      statusTitle={title}
+      duration={thinkingStepDuration(step)}
+      tag={OBJECT_TAGS[step.badge]}
+      first={isFirst}
+      last={isLast}
+      onActivate={onActivate ? () => onActivate(step) : undefined}
+    />
   );
 }
