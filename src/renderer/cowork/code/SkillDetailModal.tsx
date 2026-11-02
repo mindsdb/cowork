@@ -137,7 +137,6 @@ export function SkillDetailModal({
                   text={parsed.body}
                   complete
                   enableForms={false}
-                  enableCharts={false}
                   isAssistant={false}
                 />
               </div>
