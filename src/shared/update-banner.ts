@@ -7,7 +7,7 @@ import { serverLabel } from './update-coordinator';
 
 export { SHELL_AUTO_BANNER_PHASES, CHECK_ONLY_FAILURE_CODES } from './update-banner-rules';
 
-export type UpdateBannerKind = 'shell-auto' | 'shell-manual' | 'ota-ready' | 'ota-error';
+export type UpdateBannerKind = 'shell-auto' | 'shell-manual' | 'ota-ready' | 'ota-error' | 'server-down';
 export type UpdateBannerTone = 'ready' | 'progress' | 'error';
 export type UpdateBannerAction = UpdateAction;
 
@@ -55,12 +55,24 @@ export function debInstallStep(version?: string): string {
 
 const base = { disabled: false, dismissible: false } as const;
 
+/** Why the server is down after an update, for the banner hint and the
+ *  Settings card. */
+export const SERVER_DOWN_HINT = "The server update failed and the previous version couldn't be restored. Restart the app to recover.";
+
 export function deriveUpdateBanner(
   state: UpdateCoordinatorState | null | undefined,
   options: UpdateBannerOptions = {},
 ): UpdateBanner | null {
   if (!state) return null;
   const { shell, ui, server, action } = state;
+
+  // Nothing works without a server, so this outranks every other banner.
+  if (action === 'restart-app') {
+    return {
+      kind: 'server-down', tone: 'error', title: 'Server update failed', actionLabel: 'Restart app', action, ...base,
+      hint: SERVER_DOWN_HINT,
+    };
+  }
 
   // The boot overlay owns an OTA apply, so only shell progress shows here.
   if (shell.status === 'downloading' && !shell.manual) {

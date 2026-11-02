@@ -1030,6 +1030,9 @@ export async function applyUpdates(hooks: { onProceed?: () => void; action?: Upd
       local.feed({ shell: snapshot });
       return snapshot;
     },
+    // An older shell has no channel to restart the app, and never reports a
+    // server that is down, so this step is not offered there.
+    restartApp: async () => false,
   });
 }
 

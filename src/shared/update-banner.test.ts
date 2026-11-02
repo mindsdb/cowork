@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUpdateBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { deriveUpdateBanner, debInstallStep, SHELL_AUTO_BANNER_PHASES, SERVER_DOWN_HINT } from './update-banner';
 import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput, type OtaStatus, type ShellSnapshot } from './update-coordinator';
 import { transitionShellUpdate, type ShellUpdateSnapshot } from '../main/shell-update-state';
 
@@ -278,5 +278,30 @@ describe('deriveUpdateBanner: what a dismissed notice or a rollback leaves showi
       otaOffer: { ui: null, server: { version: '0.26.10.7.1' } },
       otaApply: { phase: 'rolled-back', version: '2.26.10.8.1' },
     }))).toMatchObject({ kind: 'ota-ready', action: 'reload', actionLabel: 'Restart now', version: '0.26.10.7.1' });
+  });
+});
+
+describe('deriveUpdateBanner: a server that did not come back from an update', () => {
+  const serverBanner = (server: Parameters<typeof coordinateUpdates>[0]['server'], extra: Partial<Parameters<typeof coordinateUpdates>[0]> = {}) =>
+    deriveUpdateBanner(coordinateUpdates({ ...EMPTY_UPDATE_INPUT, ...extra, server }));
+  const down = { kind: 'server-down', tone: 'error', title: 'Server update failed', actionLabel: 'Restart app', action: 'restart-app', hint: SERVER_DOWN_HINT };
+
+  it.each([
+    ['the rollback install failed', 'Server update failed and rollback also failed (uv exited 1). Restart the app to recover.'],
+    ['the restored server did not start', 'Server update failed; rolled back to cowork@abc1234 but the restored server did not start (timeout). Restart the app to recover.'],
+  ])('%s → a restart banner', (_name, error) => {
+    expect(serverBanner({ phase: 'error', critical: true, error })).toMatchObject(down);
+  });
+
+  it('a server error the updater recovered from raises nothing', () => {
+    expect(serverBanner({ phase: 'error', error: 'install failed' })).toBeNull();
+  });
+
+  it('outranks an update ready to install', () => {
+    expect(serverBanner({ phase: 'error', critical: true }, { otaOffer: { ui: { version: 'ui-1' }, server: null } })).toMatchObject(down);
+  });
+
+  it('clears once the server reports in again', () => {
+    expect(serverBanner({ phase: 'idle' })).toBeNull();
   });
 });

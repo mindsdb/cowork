@@ -111,13 +111,16 @@ export interface ShellLayerState extends UpdateLayerState {
   snapshot: ShellSnapshot | null;
 }
 
-/** `relaunch` also applies pending OTA at the next boot. `open-download-page`
- *  runs in the renderer. */
-export type UpdateAction = 'relaunch' | 'reload' | 'retry' | 'download' | 'open-download-page' | null;
+/** `relaunch` also applies pending OTA at the next boot. `restart-app`
+ *  restarts the app with no install, the way out when a failed server update
+ *  could not be rolled back. `open-download-page` runs in the renderer. */
+export type UpdateAction = 'relaunch' | 'reload' | 'retry' | 'download' | 'restart-app' | 'open-download-page' | null;
 
 export interface UpdateCoordinatorState {
   ui: UpdateLayerState & { component?: never };
-  server: UpdateLayerState & { component?: 'cowork-server' | 'anton-agent' };
+  /** `critical`: a failed server update whose rollback did not leave a
+   *  working server, so only restarting the app recovers. */
+  server: UpdateLayerState & { component?: 'cowork-server' | 'anton-agent'; critical?: boolean };
   shell: ShellLayerState;
   action: UpdateAction;
   version?: string;
@@ -235,14 +238,17 @@ function otaLayers(
 ): { ui: UpdateCoordinatorState['ui']; server: UpdateCoordinatorState['server'] } {
   const serverApplying = server?.phase === 'downloading' || server?.phase === 'restarting';
   const serverFailed = server?.phase === 'error';
+  const serverDead = serverFailed && server?.critical === true;
   const ui: UpdateCoordinatorState['ui'] = { status: 'idle' };
   const srv: UpdateCoordinatorState['server'] = { status: 'idle' };
 
   if (serverApplying) Object.assign(srv, { status: 'applying', version: server?.to });
-  else if (serverFailed) Object.assign(srv, { status: 'failed', error: server?.error });
+  else if (serverFailed) Object.assign(srv, { status: 'failed', error: server?.error, ...(serverDead ? { critical: true } : {}) });
 
   if (offer?.ui) Object.assign(ui, { status: 'ready', version: offer.ui.version });
-  if (offer?.server && !serverApplying) {
+  // An offer can't stand in for a server that is down: it is applied by
+  // talking to that server.
+  if (offer?.server && !serverApplying && !serverDead) {
     Object.assign(srv, { status: 'ready', version: offer.server.version, component: offer.server.component });
   }
 
@@ -281,7 +287,12 @@ export function coordinateUpdates(input: UpdateCoordinatorInput): UpdateCoordina
   // Shell-first, because a relaunch applies the OTA too. A shell failure with
   // no known target ranks below the OTA so a feed outage cannot hide a Restart.
   let action: UpdateAction = null;
-  if (applying || shell.status === 'downloading') {
+  if (applying) {
+    action = null;
+  } else if (serverIsDown(server)) {
+    // Nothing else works without a server, so this outranks every offer.
+    action = 'restart-app';
+  } else if (shell.status === 'downloading') {
     action = null;
   } else if (relaunch) {
     action = 'relaunch';
@@ -311,6 +322,10 @@ export function coordinateUpdates(input: UpdateCoordinatorInput): UpdateCoordina
   return { ui, server, shell, action, version, applying, silentShellFailure };
 }
 
+function serverIsDown(server: UpdateCoordinatorState['server']): boolean {
+  return server.status === 'failed' && server.critical === true;
+}
+
 function relaunchPending(shell: ShellLayerState): boolean {
   return shell.status === 'ready' && !shell.manual;
 }
@@ -328,10 +343,11 @@ export function serverLabel(server: UpdateCoordinatorState['server']): string | 
   return server.component === 'anton-agent' ? `${server.component} ${server.version}` : server.version;
 }
 
-export type ApplyStep = 'relaunch' | 'reload' | 'retry' | 'download';
+export type ApplyStep = 'relaunch' | 'reload' | 'retry' | 'download' | 'restart-app';
 
 function isApplyStep(action: unknown): action is ApplyStep {
-  return action === 'relaunch' || action === 'reload' || action === 'retry' || action === 'download';
+  return action === 'relaunch' || action === 'reload' || action === 'retry' || action === 'download'
+    || action === 'restart-app';
 }
 
 /** The banner can lag main by a push, so a click is checked on arrival. */
@@ -349,6 +365,8 @@ function stepStillOffered(state: UpdateCoordinatorState, step: ApplyStep): boole
         && state.shell.recoverable === true;
     case 'download':
       return state.shell.status === 'available' && !state.shell.manual;
+    case 'restart-app':
+      return serverIsDown(state.server);
   }
 }
 
@@ -570,6 +588,7 @@ export interface ApplyStepHandlers<R> {
   reload(): Promise<R>;
   retry(): Promise<{ phase: string }>;
   download(): Promise<{ phase: string }>;
+  restartApp(): Promise<R>;
 }
 
 export async function dispatchApplyStep<R>(
@@ -589,6 +608,8 @@ export async function dispatchApplyStep<R>(
       const phase = (await handlers.download()).phase;
       return phase === 'downloading' || phase === 'ready-to-install';
     }
+    case 'restart-app':
+      return handlers.restartApp();
     default:
       // `open-download-page` runs in the renderer.
       return false;

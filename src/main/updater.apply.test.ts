@@ -6,8 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // server check before it goes to the network, and a forced apply that follows
 // the dialog reuses that check instead of running it again.
 
+const electronApp = vi.hoisted(() => ({ relaunch: vi.fn(), quit: vi.fn() }));
 vi.mock('electron', () => ({
-  app: { getVersion: () => '2.260928.1', isPackaged: true },
+  app: { getVersion: () => '2.260928.1', isPackaged: true, relaunch: electronApp.relaunch, quit: electronApp.quit },
   BrowserWindow: class {},
   ipcMain: { handle: vi.fn() },
 }));
@@ -53,7 +54,7 @@ vi.mock('./shell-auto-update-runtime', () => ({
   startShellAutoUpdatePolling: vi.fn(() => Promise.resolve()),
 }));
 
-import { checkForUpdates, handleApplyRequest, updateCoordinator } from './updater';
+import { checkForUpdates, handleApplyRequest, handleUnifiedApply, updateCoordinator } from './updater';
 
 const apply = (options?: { force?: boolean }) => handleApplyRequest(() => null, options);
 
@@ -219,5 +220,23 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     // is a server-only restart, not a failed UI update.
     expect(journal.record).not.toHaveBeenCalled();
     serverUpdater.check.mockResolvedValue({ updateAvailable: true, latestVersion: '0.26.10.7.1' });
+  });
+});
+
+describe('Restart app for a server that did not come back from an update', () => {
+  it('relaunches the app with no install while the server is down', async () => {
+    electronApp.relaunch.mockClear();
+    electronApp.quit.mockClear();
+    updateCoordinator.feed({ shell: null, otaOffer: null, otaApply: null, shellManual: null, server: { phase: 'error', critical: true } });
+    expect(await handleUnifiedApply(() => null, { action: 'restart-app' })).toBe(true);
+    expect(electronApp.relaunch).toHaveBeenCalledTimes(1);
+    expect(electronApp.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('is stale once the server is back', async () => {
+    electronApp.relaunch.mockClear();
+    updateCoordinator.feed({ shell: null, otaOffer: null, otaApply: null, shellManual: null, server: { phase: 'idle' } });
+    expect(await handleUnifiedApply(() => null, { action: 'restart-app' })).toBe('stale');
+    expect(electronApp.relaunch).not.toHaveBeenCalled();
   });
 });
