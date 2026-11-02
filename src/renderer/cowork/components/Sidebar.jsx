@@ -11,6 +11,7 @@ import { relativeAge } from '../lib/formatTime';
 import { useAccountUser } from '../hooks/useAccountUser';
 import UserMenu from './UserMenu';
 import WorkspaceSelector from './WorkspaceSelector';
+import { WORKSPACE_SELECTOR_ENABLED } from '../lib/workspaceSelectorFlag';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
@@ -291,6 +292,8 @@ export default function Sidebar({
   // chat via this handler (App's send-from-home). Omit to hide the card
   // (tests, web shells that don't wire it).
   onStartChat = null,
+  // Takes the "Try an example" row to Home, where the examples are.
+  onOpenExamples = null,
   // First-artifact tip — App arms it (0 → 1 artifacts transition) and
   // owns the persistent dismissal; the sidebar anchors it to the Live
   // Artifacts nav row and adds the "clicking the row dismisses" path.
@@ -862,7 +865,7 @@ export default function Sidebar({
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
-        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
+        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} />}
 
         {/* One banner for all three update mechanisms, chosen by
             deriveUpdateBanner (shell-first). Exactly one banner or none. */}
@@ -929,8 +932,9 @@ export default function Sidebar({
             account row rather than at the top of the rail. A workspace is a
             container inside the organization, not the thing a reader starts a
             task from, and the top of the rail is where the first task begins.
-            Renders nothing until the org has a second workspace to move to. */}
-        {PLATFORM_UI && accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
+            Renders nothing until the org has a second workspace to move to.
+            Hidden for now behind WORKSPACE_SELECTOR_ENABLED. */}
+        {WORKSPACE_SELECTOR_ENABLED && PLATFORM_UI && accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
 
         {/* Footer — the settings / backend-status controls stay
             Electron-only: the FastAPI process IS the host on web, so

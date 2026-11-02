@@ -42,6 +42,7 @@ import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
+import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
 import { organizationLabel } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened } from '../lib/analytics';
@@ -107,6 +108,8 @@ export function UserMenu({ user, onOpenSettings }) {
   const triggerRef = useRef(null);
   const { loggingOut, waitNote, logout } = useLogout();
   const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
+  // MindsHub UI lands a company member in a company organization.
+  useOrgLanding({ sub: user.sub ?? null, orgs, activeOrg, switchOrg });
   const toastManager = useToastManager();
 
   const displayName = user.name || user.username || user.email;
@@ -160,7 +163,15 @@ export function UserMenu({ user, onOpenSettings }) {
      * A possibly committed web switch reloads immediately. Do not paint an
      * error into the old tenant while navigation is tearing that UI down.
      */
-    if (result?.ok || result?.reloadRequired) return;
+    if (result?.ok || result?.reloadRequired) {
+      /* The pick is where landing goes from now on, in every tab and window,
+         personal included, once the switch went through or may have. A
+         refused switch leaves the last organization as it was. The write is
+         synchronous and runs before the reload the switch asked for takes
+         the document down: location.reload() only queues the navigation. */
+      rememberLastOrg(user.sub ?? null, organizationId);
+      return;
+    }
     toastManager.add({
       title: result?.error || 'We could not change organization. Please try again.',
       type: 'danger',

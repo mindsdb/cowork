@@ -11,6 +11,13 @@ const hostMock = vi.hoisted(() => ({ isWeb: false }));
 const toastAdd = vi.hoisted(() => vi.fn());
 vi.mock('../../../platform/host', () => ({ host: hostMock }));
 vi.mock('../ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
+const analytics = vi.hoisted(() => ({
+  trackOnboardingRowClicked: vi.fn(),
+  trackOnboardingStepCompleted: vi.fn(),
+  // The real helper's label handling is tested with analytics; here it only runs the send.
+  sendWithStartVia: vi.fn((via, send) => send()),
+}));
+vi.mock('../../lib/analytics', () => analytics);
 
 const load = async () => {
   vi.resetModules();
@@ -23,6 +30,7 @@ describe('OnboardingChecklist', () => {
     localStorage.clear();
     hostMock.isWeb = false;
     toastAdd.mockClear();
+    Object.values(analytics).forEach((fn) => fn.mockClear());
   });
 
   it('closes from the header X without starting any chat', async () => {
@@ -44,7 +52,7 @@ describe('OnboardingChecklist', () => {
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={onStartChat} />);
 
-    const step = screen.getByText('See Cowork work');
+    const step = screen.getByText('Start with your own work');
     await user.click(step);
     await user.click(step);
 
@@ -59,15 +67,15 @@ describe('OnboardingChecklist', () => {
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={onStartChat} />);
 
-    const step = screen.getByText('See Cowork work');
+    const step = screen.getByText('Start with your own work');
     await user.click(step);
 
-    expect(screen.getByText('0/3')).toBeTruthy();
+    expect(screen.getByText('0/4')).toBeTruthy();
     expect(toastAdd).not.toHaveBeenCalled();
 
     await user.click(step);
 
-    expect(screen.getByText('1/3')).toBeTruthy();
+    expect(screen.getByText('1/4')).toBeTruthy();
     expect(onStartChat).toHaveBeenCalledTimes(2);
   });
 
@@ -77,15 +85,15 @@ describe('OnboardingChecklist', () => {
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={onStartChat} />);
 
-    const step = screen.getByText('See Cowork work');
+    const step = screen.getByText('Start with your own work');
     await user.click(step);
 
-    expect(screen.getByText('0/3')).toBeTruthy();
+    expect(screen.getByText('0/4')).toBeTruthy();
     expect(toastAdd).toHaveBeenCalledWith({ type: 'danger', title: 'Could not start chat. Please try again.' });
 
     await user.click(step);
 
-    expect(screen.getByText('1/3')).toBeTruthy();
+    expect(screen.getByText('1/4')).toBeTruthy();
   });
 
   it('ignores a second click while the chat is still starting', async () => {
@@ -95,26 +103,27 @@ describe('OnboardingChecklist', () => {
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={onStartChat} />);
 
-    const step = screen.getByText('See Cowork work');
+    const step = screen.getByText('Start with your own work');
     await user.click(step);
     await user.click(step);
 
     expect(onStartChat).toHaveBeenCalledTimes(1);
     await act(async () => { finish(true); });
-    expect(screen.getByText('1/3')).toBeTruthy();
+    expect(screen.getByText('1/4')).toBeTruthy();
   });
 
   it('shows all steps on desktop', async () => {
     const { OnboardingChecklist } = await load();
     render(<OnboardingChecklist onStartChat={vi.fn()} />);
 
-    expect(screen.getByText('See Cowork work')).toBeTruthy();
+    expect(screen.getByText('Start with your own work')).toBeTruthy();
     expect(screen.getByText('Customize Cowork to your role')).toBeTruthy();
     expect(screen.getByText('Connect an app')).toBeTruthy();
+    expect(screen.getByText('Try an example')).toBeTruthy();
     // The folder step is gone on purpose: no host can deliver its promise
     // yet (ENG-1852) — restore one when ENG-384/ENG-497 ship.
     expect(screen.queryByText('Point it at a folder')).toBeNull();
-    expect(screen.getByText('0/3')).toBeTruthy();
+    expect(screen.getByText('0/4')).toBeTruthy();
   });
 
   it('hides the desktopOnly steps on web and counts only the visible ones', async () => {
@@ -122,21 +131,27 @@ describe('OnboardingChecklist', () => {
     const { OnboardingChecklist } = await load();
     render(<OnboardingChecklist onStartChat={vi.fn()} />);
 
-    expect(screen.getByText('See Cowork work')).toBeTruthy();
+    expect(screen.getByText('Start with your own work')).toBeTruthy();
     expect(screen.getByText('Customize Cowork to your role')).toBeTruthy();
+    expect(screen.getByText('Try an example')).toBeTruthy();
     expect(screen.queryByText('Connect an app')).toBeNull();
-    expect(screen.getByText('0/2')).toBeTruthy();
+    expect(screen.getByText('0/3')).toBeTruthy();
   });
 
-  it('completes at 2/2 on web after the two visible steps', async () => {
+  it('completes at 3/3 on web once the example step is done too', async () => {
     hostMock.isWeb = true;
     const { OnboardingChecklist } = await load();
+    const { completeStep } = await import('./onboardingStore');
     const onStartChat = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={onStartChat} />);
 
-    await user.click(screen.getByText('See Cowork work'));
+    await user.click(screen.getByText('Start with your own work'));
     await user.click(screen.getByText('Customize Cowork to your role'));
+    expect(screen.queryByText(/got the basics/)).toBeNull();
+
+    // Home completes the example step when an example is sent.
+    await act(async () => { completeStep('see-it-work'); });
 
     expect(onStartChat).toHaveBeenCalledTimes(2);
     expect(screen.getByText(/got the basics/)).toBeTruthy();
@@ -147,10 +162,101 @@ describe('OnboardingChecklist', () => {
     const user = userEvent.setup();
     render(<OnboardingChecklist onStartChat={vi.fn().mockResolvedValue(true)} />);
 
-    await user.click(screen.getByText('See Cowork work'));
+    await user.click(screen.getByText('Start with your own work'));
     await user.click(screen.getByText('Customize Cowork to your role'));
 
     expect(screen.queryByText(/got the basics/)).toBeNull();
-    expect(screen.getByText('2/3')).toBeTruthy();
+    expect(screen.getByText('2/4')).toBeTruthy();
+  });
+
+  it('sends the own-work prompt from the first step', async () => {
+    const { OnboardingChecklist } = await load();
+    const { OWN_WORK_PROMPT } = await import('./steps');
+    const onStartChat = vi.fn().mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={onStartChat} />);
+
+    await user.click(screen.getByText('Start with your own work'));
+
+    expect(onStartChat).toHaveBeenCalledWith(OWN_WORK_PROMPT);
+  });
+
+  it('opens the examples from the example row without sending or completing it', async () => {
+    const { OnboardingChecklist } = await load();
+    const onStartChat = vi.fn().mockResolvedValue(true);
+    const onOpenExamples = vi.fn();
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} />);
+
+    await user.click(screen.getByText('Try an example'));
+    await user.click(screen.getByText('Try an example'));
+
+    // Not done until an example goes out, so the row stays usable.
+    expect(onOpenExamples).toHaveBeenCalledTimes(2);
+    expect(onStartChat).not.toHaveBeenCalled();
+    expect(screen.getByText('0/4')).toBeTruthy();
+  });
+
+  it('leaves a finished example step inert', async () => {
+    const { OnboardingChecklist } = await load();
+    const { completeStep } = await import('./onboardingStore');
+    const onOpenExamples = vi.fn();
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={vi.fn()} onOpenExamples={onOpenExamples} />);
+
+    await act(async () => { completeStep('see-it-work'); });
+    await user.click(screen.getByText('Try an example'));
+
+    expect(onOpenExamples).not.toHaveBeenCalled();
+  });
+
+  it('records the click, marks the start as the checklist, and reports the step once the chat starts', async () => {
+    const { OnboardingChecklist } = await load();
+    const onStartChat = vi.fn().mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={onStartChat} />);
+
+    await user.click(screen.getByText('Start with your own work'));
+
+    expect(analytics.trackOnboardingRowClicked).toHaveBeenCalledWith('bring-your-work');
+    // The send goes through the start label, or it is read as a composer send.
+    expect(analytics.sendWithStartVia).toHaveBeenCalledWith('checklist', expect.any(Function));
+    expect(onStartChat).toHaveBeenCalledTimes(1);
+    expect(analytics.trackOnboardingStepCompleted).toHaveBeenCalledWith('bring-your-work', 'checklist');
+  });
+
+  it('records the click but not a completion when the chat does not start', async () => {
+    const { OnboardingChecklist } = await load();
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={vi.fn().mockResolvedValue(false)} />);
+
+    await user.click(screen.getByText('Start with your own work'));
+
+    expect(analytics.trackOnboardingRowClicked).toHaveBeenCalledWith('bring-your-work');
+    expect(analytics.trackOnboardingStepCompleted).not.toHaveBeenCalled();
+  });
+
+  it('records the example row click, which sends nothing and completes nothing', async () => {
+    const { OnboardingChecklist } = await load();
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={vi.fn()} onOpenExamples={vi.fn()} />);
+
+    await user.click(screen.getByText('Try an example'));
+
+    expect(analytics.trackOnboardingRowClicked).toHaveBeenCalledWith('see-it-work');
+    expect(analytics.sendWithStartVia).not.toHaveBeenCalled();
+    expect(analytics.trackOnboardingStepCompleted).not.toHaveBeenCalled();
+  });
+
+  it('records nothing for a row that is already done', async () => {
+    const { OnboardingChecklist } = await load();
+    const { completeStep } = await import('./onboardingStore');
+    const user = userEvent.setup();
+    render(<OnboardingChecklist onStartChat={vi.fn().mockResolvedValue(true)} />);
+    await act(async () => { completeStep('bring-your-work'); });
+
+    await user.click(screen.getByText('Start with your own work'));
+
+    expect(analytics.trackOnboardingRowClicked).not.toHaveBeenCalled();
   });
 });

@@ -22,7 +22,7 @@ const CONNECTIONS = [
     engine: 'gmail', name: 'gmail-3ce87a', label: 'Gmail',
     user_label: 'Work', display_name: 'alejandro.cantu@mindsdb.com',
   },
-  // No registry spec (the ENG-1706 records) → humanized engine + unique slug.
+  // Legacy generated-id records: a plain "Unrecognized connector" title + unique slug.
   { engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-2cf3a6', label: null, user_label: null },
   { engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-724e63', label: null, user_label: null },
   { engine: 'linear', name: 'linear-internal-id', label: 'Linear', user_label: 'MindsDB', display_name: 'MindsDB' },
@@ -101,7 +101,10 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     await userEvent.click(sortPill);
     await userEvent.click(await screen.findByRole('option', { name: 'Name' }));
     const cards = screen.getAllByRole('article');
-    expect(within(cards.at(-1)).getByText('Linear')).toBeInTheDocument();
+    // By engine id `fm_…` would sort before `linear`; by visible name the
+    // legacy records' "Unrecognized connector" sorts after "Linear".
+    expect(within(cards.at(-3)).getByText('Linear')).toBeInTheDocument();
+    expect(within(cards.at(-1)).getByText('Unrecognized connector')).toBeInTheDocument();
   });
 
   it.each([

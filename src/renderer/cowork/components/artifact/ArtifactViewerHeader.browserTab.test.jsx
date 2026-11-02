@@ -6,7 +6,8 @@
 // assertions that matter are: it shows on Cloud once the artifact is shared,
 // and it does not appear when there is nothing for it to open. Before that,
 // Cloud's only URL is the draft route, which a tab can't load without the
-// bearer.
+// bearer, unless the deployment issues signed draft links and the viewer
+// opens the draft through one (opensDraftLinkInTab).
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -83,6 +84,13 @@ const liveApp = {
   actions: { ...props.actions, isBackendArtifact: true, isLiveApp: true },
 };
 
+// An unshared draft the preview opens by a signed link: the arrow opens a new
+// link, which needs no bearer.
+const draftByLink = {
+  ...props,
+  actions: { ...props.actions, opensDraftLinkInTab: true },
+};
+
 afterEach(() => {
   setOrgMode(false);
   onOpenInBrowserTab.mockClear();
@@ -107,6 +115,13 @@ describe('open in a browser tab', () => {
   it('is offered on Cloud for a live app nobody shared as a page, since it opens where the app runs', () => {
     setOrgMode(true);
     render(<ArtifactViewerHeader {...liveApp} />);
+
+    expect(screen.getByRole('button', { name: 'Open in a browser tab' })).toBeInTheDocument();
+  });
+
+  it('is offered on Cloud for an unshared draft that opens by a signed link', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...draftByLink} />);
 
     expect(screen.getByRole('button', { name: 'Open in a browser tab' })).toBeInTheDocument();
   });

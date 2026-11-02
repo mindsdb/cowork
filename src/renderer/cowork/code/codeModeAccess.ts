@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react';
 
+import { PLATFORM_UI } from '../../lib/deployment';
 import { host } from '../../platform/host';
 
 const STORAGE_KEY = 'mindshub.code.enabled.v1';
@@ -14,10 +15,12 @@ export interface CodeModeAccess {
   setEnabled: (enabled: boolean) => void;
 }
 
+// On unless this device turned it off. Unreadable storage stays off: it
+// cannot be written either, so a user there could never turn Code off.
 export function getCodeModePreference(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === 'true';
+    return window.localStorage.getItem(STORAGE_KEY) !== 'false';
   } catch {
     return false;
   }
@@ -43,6 +46,14 @@ export function deriveCodeModeAccess(
   return { available: true, enabled: true, state: 'enabled' };
 }
 
+// Self-hosted builds (PLATFORM_UI off) never offer Code, so that relaxing the
+// desktop-only rule in host.codeModeAvailable for web cannot turn it on for a
+// customer's deployment. Kept out of host.ts, which harnesses load without
+// the build's constants.
+export function codeModeAvailable(): boolean {
+  return PLATFORM_UI && host.codeModeAvailable;
+}
+
 function subscribe(onStoreChange: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
   const onStorage = (event: StorageEvent) => {
@@ -59,7 +70,7 @@ function subscribe(onStoreChange: () => void): () => void {
 export function useCodeModeAccess(): CodeModeAccess {
   const preference = useSyncExternalStore(subscribe, getCodeModePreference, () => false);
   return useMemo(() => ({
-    ...deriveCodeModeAccess(host.codeModeAvailable, preference),
+    ...deriveCodeModeAccess(codeModeAvailable(), preference),
     setEnabled: setCodeModePreference,
   }), [preference]);
 }
