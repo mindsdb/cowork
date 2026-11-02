@@ -9,7 +9,8 @@ vi.mock('../api', () => ({
   ...api, createProject: vi.fn(), renameProject: vi.fn(), revealProjectInFinder: vi.fn(),
   fetchArtifacts: vi.fn(async () => []), countNonEmptyMemory: vi.fn(() => 0),
 }));
-vi.mock('../components/rail', () => ({
+vi.mock('../components/rail', async (importOriginal) => ({
+  ...(await importOriginal()),
   WorkingFolderBox: () => <div>Private artifacts</div>, ContextBox: () => <div>Private instructions</div>, ScheduledBox: () => null,
 }));
 vi.mock('../components/Composer', () => ({ default: () => <div>Agent composer</div> }));
