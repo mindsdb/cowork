@@ -54,11 +54,13 @@ export default function ChannelConversations({ list, onReload, onChanged }) {
     const { task } = opened;
     setLoadingEarlier(true);
     const page = await fetchOlderChannelMessages(task.id, task.messagesCursor);
-    // A page that lands after another conversation was opened belongs to the
-    // old one: drop it, or the pane would show one conversation while the
-    // list and Delete act on another.
+    // Apply a page only to the view it was asked for: same conversation and
+    // same cursor. A page that lands after another conversation (or the same
+    // one, reopened) was loaded belongs to the old view; applying it would
+    // show the wrong conversation, a page twice, or a gap.
     setOpened((current) => {
-      if (!page || current.status !== 'ok' || current.task.id !== task.id) return current;
+      if (!page || current.status !== 'ok') return current;
+      if (current.task.id !== task.id || current.task.messagesCursor !== task.messagesCursor) return current;
       // The cursor guarantees no overlap with the loaded page, so prepend as App does.
       return {
         status: 'ok',

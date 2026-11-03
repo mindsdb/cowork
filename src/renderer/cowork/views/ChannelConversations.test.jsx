@@ -11,10 +11,11 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../api', () => api);
 vi.mock('../components/ChannelTranscript', () => ({
-  default: ({ messages, hasMore, onLoadEarlier }) => (
+  // Hides the button while a page loads, as the real transcript does.
+  default: ({ messages, hasMore, loadingEarlier, onLoadEarlier }) => (
     <div data-testid="transcript">
       {messages.map((m) => <p key={m.id}>{m.content}</p>)}
-      {hasMore && <button type="button" onClick={onLoadEarlier}>Load earlier messages</button>}
+      {hasMore && !loadingEarlier && <button type="button" onClick={onLoadEarlier}>Load earlier messages</button>}
     </div>
   ),
 }));
@@ -152,6 +153,77 @@ describe('ChannelConversations', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     });
     expect(api.deleteChannelConversation.mock.calls).toEqual([['c-b']]);
+  });
+
+  describe('reopening a conversation while its older page is still on the way', () => {
+    const A = { id: 'c-a', title: 'discord: A', channelType: 'discord' };
+    const B = { id: 'c-b', title: 'slack: B', channelType: 'slack' };
+    const OLDER = { messages: [{ id: 'a1', role: 'user', content: '[A-older]' }], hasMoreMessages: false, messagesCursor: null };
+
+    async function reopenA({ secondFirstPage }) {
+      const releases = [];
+      let opensOfA = 0;
+      api.fetchChannelConversation.mockImplementation(async (id) => {
+        if (id === 'c-b') return task('c-b', [{ id: 'b1', role: 'user', content: '[B-only]' }]);
+        opensOfA += 1;
+        return opensOfA === 1
+          ? task('c-a', [{ id: 'a2', role: 'user', content: '[A-newer]' }], { hasMoreMessages: true, messagesCursor: 'cur' })
+          : secondFirstPage;
+      });
+      api.fetchOlderChannelMessages.mockImplementation(() => new Promise((resolve) => { releases.push(resolve); }));
+      renderTab({ list: { state: 'ok', items: [A, B] } });
+
+      fireEvent.click(screen.getByRole('button', { name: /discord: A/ }));
+      await screen.findByText('[A-newer]');
+      fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' }));
+      fireEvent.click(screen.getByRole('button', { name: /slack: B/ }));
+      await screen.findByText('[B-only]');
+      fireEvent.click(screen.getByRole('button', { name: /discord: A/ }));
+      await waitFor(() => expect(screen.queryByText('[B-only]')).toBeNull());
+      return releases;
+    }
+
+    it('never shows the same page twice', async () => {
+      const releases = await reopenA({
+        secondFirstPage: task('c-a', [{ id: 'a2', role: 'user', content: '[A-newer]' }], { hasMoreMessages: true, messagesCursor: 'cur' }),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' }));
+
+      await act(async () => { releases[0](OLDER); });
+      await act(async () => { releases[1](OLDER); });
+
+      expect(screen.getByTestId('transcript').textContent).toBe('[A-older][A-newer]');
+    });
+
+    it('drops a page asked for from a cursor the reopened conversation no longer has', async () => {
+      const releases = await reopenA({
+        secondFirstPage: task('c-a', [{ id: 'a3', role: 'user', content: '[A-newest]' }], { hasMoreMessages: true, messagesCursor: 'cur-2' }),
+      });
+
+      await act(async () => { releases[0](OLDER); });
+
+      const rows = [...screen.getByTestId('transcript').querySelectorAll('p')].map((p) => p.textContent);
+      expect(rows).toEqual(['[A-newest]']);
+      expect(screen.getByRole('button', { name: 'Load earlier messages' })).toBeTruthy();
+    });
+  });
+
+  it('offers "Load earlier" on the next conversation even while a page for the last one is on the way', async () => {
+    const A = { id: 'c-a', title: 'discord: A', channelType: 'discord' };
+    const B = { id: 'c-b', title: 'slack: B', channelType: 'slack' };
+    api.fetchChannelConversation.mockImplementation(async (id) => task(
+      id, [{ id: `${id}-1`, role: 'user', content: id }], { hasMoreMessages: true, messagesCursor: `${id}-cur` },
+    ));
+    api.fetchOlderChannelMessages.mockImplementation(() => new Promise(() => {}));
+    renderTab({ list: { state: 'ok', items: [A, B] } });
+
+    fireEvent.click(screen.getByRole('button', { name: /discord: A/ }));
+    await screen.findByText('c-a');
+    fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' }));
+    fireEvent.click(screen.getByRole('button', { name: /slack: B/ }));
+    await screen.findByText('c-b');
+
+    expect(screen.getByRole('button', { name: 'Load earlier messages' })).toBeTruthy();
   });
 
   it('shows an outage with Retry instead of an empty list', () => {
