@@ -187,7 +187,7 @@ describe('ScheduleDetailView — auto-pause', () => {
 
   it('explains an auto-pause and resumes from the alert', async () => {
     const { props, user } = setup({ task: AUTO_PAUSED });
-    const alert = await screen.findByText('Paused after 3 failed runs in a row');
+    const alert = await screen.findByText('Paused after failing at 3 scheduled times in a row');
     const box = alert.closest('[role="alert"]') || alert.parentElement.parentElement;
     expect(within(box).getByText(AUTO_PAUSED.lastError)).toBeInTheDocument();
     await user.click(within(box).getByRole('button', { name: 'Resume' }));
@@ -197,7 +197,7 @@ describe('ScheduleDetailView — auto-pause', () => {
   it('shows no auto-pause alert for a schedule the user paused', async () => {
     setup({ task: { ...TASK, enabled: false } });
     await screen.findAllByRole('button', { name: 'Open task' });
-    expect(screen.queryByText(/failed runs in a row/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/scheduled times in a row/)).not.toBeInTheDocument();
   });
 });
 
@@ -221,7 +221,7 @@ describe('ScheduleDetailView — how the last run went', () => {
       consecutiveFailures: 3, lastRun: failed('failed_during_execution'),
     };
     const { props, user } = setup({ task });
-    const box = (await screen.findByText('Paused after 3 failed runs in a row')).closest('[role="alert"]');
+    const box = (await screen.findByText('Paused after failing at 3 scheduled times in a row')).closest('[role="alert"]');
     expect(within(box).getByText(/Resume picks up at the next scheduled time/)).toBeInTheDocument();
     await user.click(within(box).getByRole('button', { name: 'Review run' }));
     expect(props.onOpenRunSession).toHaveBeenCalledWith('conv-9');
@@ -250,6 +250,13 @@ describe('ScheduleDetailView — how the last run went', () => {
     const box = (await screen.findByText('The last run failed before it started work')).closest('[role="alert"]');
     expect(within(box).getByText(/It will be tried again/)).toBeInTheDocument();
     expect(within(box).queryByRole('button', { name: 'Run again' })).not.toBeInTheDocument();
+  });
+
+  it('says a retry whose time has passed will run shortly, not that it ran ago', async () => {
+    const retryAt = new Date(Date.now() - 20 * 1000).toISOString();
+    setup({ task: { ...TASK, state: 'active', retryAt, lastRun: failed('failed_before_execution') } });
+    const box = (await screen.findByText('The last run failed before it started work')).closest('[role="alert"]');
+    expect(within(box).getByText('It will be tried again shortly.')).toBeInTheDocument();
   });
 
   it('shows a one-off’s failure though its run disabled it', async () => {

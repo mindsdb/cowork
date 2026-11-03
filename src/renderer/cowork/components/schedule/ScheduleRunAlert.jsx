@@ -13,6 +13,14 @@ import { lastRunFailed, scheduleState } from './ScheduleStatusBadge';
 // Outcomes after which some of the run's actions may have happened.
 const MAY_HAVE_ACTED = new Set(['failed_during_execution', 'interrupted', 'uncertain']);
 
+// The server keeps reporting a retry's time until its next poll starts it, so
+// a time already past reads as "shortly", never "20s ago".
+function retryWhen(retryAt) {
+  const at = Date.parse(retryAt);
+  if (!Number.isFinite(at) || at <= Date.now()) return 'shortly';
+  return relativeTime(at) ?? 'shortly';
+}
+
 export function runAlert(task) {
   const state = scheduleState(task);
   const run = task.lastRun || null;
@@ -22,7 +30,9 @@ export function runAlert(task) {
       kind: 'auto_paused',
       variant: 'danger',
       title: task.consecutiveFailures
-        ? `Paused after ${task.consecutiveFailures} failed runs in a row`
+        // The server counts scheduled times, not attempts: a time whose
+        // retries all failed counts once.
+        ? `Paused after failing at ${task.consecutiveFailures} scheduled times in a row`
         : 'Paused after repeated failed runs',
       reason,
       note: 'Resume picks up at the next scheduled time. Run now runs it once, now.',
@@ -43,7 +53,7 @@ export function runAlert(task) {
     variant: 'danger',
     title: task.retryAt ? 'The last run failed before it started work' : 'The last run failed',
     reason,
-    note: task.retryAt ? `It will be tried again ${relativeTime(task.retryAt) ?? 'shortly'}.` : null,
+    note: task.retryAt ? `It will be tried again ${retryWhen(task.retryAt)}.` : null,
   };
 }
 

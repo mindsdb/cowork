@@ -149,8 +149,8 @@ export default function ScheduledView({
         // Desktop runs its own server, so tasks stop with the app. Every web
         // build, hosted or self-hosted, runs them on a server that stays up.
         subtitle={!host.isWeb
-          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while it was closed, ${agentLabel} runs the latest one when it reopens.`
-          : `Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one when it's back.`}
+          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while it was closed, ${agentLabel} runs the latest one from the last 7 days when it reopens.`
+          : `Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one from the last 7 days when it's back.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
