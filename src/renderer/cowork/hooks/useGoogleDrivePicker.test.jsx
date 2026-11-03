@@ -14,6 +14,7 @@ const apiMock = vi.hoisted(() => ({
   fetchConnector: vi.fn(),
   startConnectorOAuth: vi.fn(),
   pollConnectorOAuth: vi.fn(),
+  savePickedFiles: vi.fn(),
 }));
 vi.mock('../api', () => apiMock);
 
@@ -241,5 +242,81 @@ describe('useGoogleDrivePicker — connect flow (web, no Electron IPC)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('useGoogleDrivePicker — which chooser opens', () => {
+  const FULL_SCOPE = 'openid https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
+  const FILE_ONLY_SCOPE = 'openid https://www.googleapis.com/auth/drive.file';
+  const ROADMAP = {
+    id: 'f1', name: 'Roadmap', mimeType: 'application/vnd.google-apps.document',
+    iconUrl: 'https://icon', url: 'https://docs/f1', resourceKey: null, owner: 'Ana',
+  };
+
+  function setupWithAttachments() {
+    const setComposerAttachments = vi.fn();
+    const hook = renderHook(() => useGoogleDrivePicker({
+      selectedProject: { name: 'general' },
+      currentTask: null,
+      setComposerAttachments,
+      setActiveTaskId: vi.fn(),
+      setRoute: vi.fn(),
+    }));
+    return { ...hook, setComposerAttachments };
+  }
+
+  it('opens the in-app chooser for a connection that can read the whole Drive, and saves what was chosen', async () => {
+    apiMock.fetchDatasources.mockResolvedValueOnce(CONNECTED);
+    apiMock.fetchSavedConnection.mockResolvedValueOnce({ fields: { account_email: 'u@x.com', scope: FULL_SCOPE } });
+    apiMock.savePickedFiles.mockImplementationOnce(async (engine, name, files) => files);
+    const { result, setComposerAttachments } = setupWithAttachments();
+
+    let addPromise;
+    act(() => { addPromise = result.current.handleAddGoogleDriveFiles('Launch'); });
+    await vi.waitUntil(() => result.current.driveFileChooser !== null);
+    expect(result.current.driveFileChooser.connection.name).toBe('user-gmail-com');
+    act(() => { result.current.resolveDriveFileChooser([ROADMAP]); });
+    await addPromise;
+
+    expect(hostMock.pickDriveFiles).not.toHaveBeenCalled();
+    const [engine, name, saved, project] = apiMock.savePickedFiles.mock.calls[0];
+    expect([engine, name, project]).toEqual(['google_drive', 'user-gmail-com', 'Launch']);
+    expect(saved).toEqual([{
+      id: 'f1', name: 'Roadmap', mimeType: 'application/vnd.google-apps.document',
+      iconUrl: 'https://icon', url: 'https://docs/f1', resourceKey: null, projects: ['Launch'],
+    }]);
+    const addChips = setComposerAttachments.mock.calls[0][0];
+    expect(addChips([])).toEqual([expect.objectContaining({ id: 'gdrive-f1', source: 'gdrive', driveFileId: 'f1' })]);
+  });
+
+  it('treats closing the in-app chooser as a cancel, saving nothing', async () => {
+    apiMock.fetchDatasources.mockResolvedValueOnce(CONNECTED);
+    apiMock.fetchSavedConnection.mockResolvedValueOnce({ fields: { account_email: 'u@x.com', scope: FULL_SCOPE } });
+    const { result } = setupWithAttachments();
+
+    let addPromise;
+    act(() => { addPromise = result.current.handleAddGoogleDriveFiles('general'); });
+    await vi.waitUntil(() => result.current.driveFileChooser !== null);
+    act(() => { result.current.cancelDriveFileChooser(); });
+    await expect(addPromise).resolves.toBeUndefined();
+
+    expect(apiMock.savePickedFiles).not.toHaveBeenCalled();
+    expect(result.current.driveFileChooser).toBeNull();
+  });
+
+  it.each([
+    ['only drive.file', FILE_ONLY_SCOPE],
+    ['no stored scope', undefined],
+  ])('keeps the Google Picker for a connection with %s', async (_, scope) => {
+    apiMock.fetchDatasources.mockResolvedValueOnce(CONNECTED);
+    apiMock.fetchSavedConnection.mockResolvedValueOnce({ fields: { account_email: 'u@x.com', scope } });
+    hostMock.pickDriveFiles.mockResolvedValueOnce({ ok: true, files: [], newFiles: [] });
+    const { result } = setupWithAttachments();
+
+    await act(async () => { await result.current.handleAddGoogleDriveFiles('general'); });
+
+    expect(hostMock.pickDriveFiles).toHaveBeenCalledWith('google_drive', 'user-gmail-com', 'u@x.com', undefined, 'general');
+    expect(result.current.driveFileChooser).toBeNull();
+    expect(apiMock.savePickedFiles).not.toHaveBeenCalled();
   });
 });

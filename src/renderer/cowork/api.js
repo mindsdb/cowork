@@ -2220,6 +2220,37 @@ export async function deletePickedFile(engine, name, fileId, project) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
 }
 
+// One page of a Google Drive connection's files for the in-app file chooser,
+// most recently viewed first; `query` searches file names. The server holds
+// the token, so this works the same on desktop and web. Only meaningful for
+// a connection with drive.readonly (see driveCanReadAll).
+export async function searchGoogleDriveFiles(name, query = '', pageToken = '') {
+  return req('/connectors/google_drive/search', {
+    method: 'POST',
+    body: JSON.stringify({ name, query, page_token: pageToken }),
+  });
+}
+
+// Records Drive files the user added, tagged with `projectName`, on the
+// connection's `_picked_files`; returns the connection's full merged list.
+// The same endpoint the Google Picker flows save through.
+export async function savePickedFiles(engine, name, files, projectName) {
+  const body = files.map((f) => ({
+    id: f.id,
+    name: f.name,
+    mimeType: f.mimeType,
+    iconUrl: f.iconUrl,
+    url: f.url,
+    resourceKey: f.resourceKey ?? null,
+    projects: projectName ? [projectName] : [],
+  }));
+  const merged = await req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files`, {
+    method: 'PATCH',
+    body: JSON.stringify({ files: body }),
+  });
+  return merged?.files || body;
+}
+
 // Modify-flow read: returns the saved connection as
 //   {
 //     engine, name, createdAt, updatedAt,
