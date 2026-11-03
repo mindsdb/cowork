@@ -100,7 +100,7 @@ function autoTopUpLine(auto) {
     case 'payment_failed':
       return { text: "Auto top up failed: we couldn't charge your card. Update your payment method to resume it.", tone: 'text-danger-text' };
     case 'cap_reached':
-      return { text: `${rule} Paused for now: this month's cap is reached.`, tone: 'text-warning-text' };
+      return { text: `${rule} Paused to stay within this month's cap.`, tone: 'text-warning-text' };
     case 'pending_action':
       return { text: `${rule} Waiting on your bank to confirm the latest charge.`, tone: 'text-warning-text' };
     default:
