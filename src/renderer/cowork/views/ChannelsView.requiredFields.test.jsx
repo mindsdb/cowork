@@ -30,6 +30,7 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('../api', () => ({
+  fetchChannelConversations: vi.fn(async () => ({ state: 'hidden', items: [] })),
   fetchChannelPlugins: vi.fn(async () => [SLACK, TELEGRAM]),
   fetchChannelStatus: api.fetchChannelStatus,
   fetchChannelConfig: api.fetchChannelConfig,

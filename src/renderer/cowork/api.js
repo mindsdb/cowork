@@ -707,7 +707,8 @@ export async function fetchChannelConversation(id, { timeoutMs } = {}) {
   }));
 }
 
-/** `fetchOlderMessages` for a channel conversation. */
+/** `fetchOlderMessages` for a channel conversation, with its rows hydrated the
+ * way the first page's are: the channel view has no App-side hydration step. */
 export async function fetchOlderChannelMessages(id, cursor, { timeoutMs } = {}) {
   if (!cursor) return null;
   try {
@@ -716,7 +717,11 @@ export async function fetchOlderChannelMessages(id, cursor, { timeoutMs } = {}) 
       { timeoutMs },
     );
     const page = _pageFromItemsResponse(raw);
-    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
+    return {
+      messages: _hydrateAssistantEvents(page.items),
+      hasMoreMessages: page.hasMore,
+      messagesCursor: page.nextBefore,
+    };
   } catch {
     return null;
   }

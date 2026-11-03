@@ -142,6 +142,19 @@ describe('fetchOlderChannelMessages', () => {
     expect(calls).toEqual([{ url: `${API}/channel-conversations/${CID}/items?limit=50&before=cur-1`, method: 'GET' }]);
     expect(page).toEqual({ messages: [MESSAGE], hasMoreMessages: false, messagesCursor: null });
   });
+
+  it("hydrates an older page's failed turn, as the first page does", async () => {
+    const failed = {
+      id: 'm2', role: 'assistant', content: '', created_at: '2026-11-03T10:00:00',
+      events: [{ type: 'response.created' }, { type: 'response.failed', code: 'token_limit', error: 'no tokens left' }],
+    };
+    serve(() => jsonResponse(200, { items: [failed], hasMore: false, nextBefore: null }));
+
+    const page = await fetchOlderChannelMessages(CID, 'cur-1');
+
+    expect(page.messages.map((m) => m.role)).toEqual(['assistant', 'error']);
+    expect(page.messages[1].content).toBe('no tokens left');
+  });
 });
 
 describe('deleteChannelConversation', () => {

@@ -13,6 +13,7 @@ const SLACK = {
 const { testChannelConnection } = vi.hoisted(() => ({ testChannelConnection: vi.fn() }));
 
 vi.mock('../api', () => ({
+  fetchChannelConversations: vi.fn(async () => ({ state: 'hidden', items: [] })),
   fetchChannelPlugins: vi.fn(async () => [SLACK]),
   fetchChannelStatus: vi.fn(async () => ({ channels: [{ channel_type: 'slack', configured: true, status: 'disconnected' }] })),
   fetchChannelConfig: vi.fn(async () => ({ fields: { bot_token: { is_set: true, value: null } } })),
