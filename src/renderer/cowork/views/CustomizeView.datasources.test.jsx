@@ -104,6 +104,19 @@ describe('the connections page in cloud', () => {
     expect(api.deleteDatasourceConnection).not.toHaveBeenCalled();
   });
 
+  it("removes a database connection from its card through the relay alone, and drops the card", async () => {
+    render(<CustomizeView connectors={[]} />);
+    const card = (await screen.findByRole('button', { name: /Manage Postgres: Analytics/i })).closest('article');
+    api.listDatasourceConnections.mockResolvedValue([]);
+    await userEvent.click(within(card).getByRole('button', { name: 'Disconnect' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disconnect' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Manage Postgres: Analytics/i })).not.toBeInTheDocument());
+    expect(api.deleteDatasourceConnection).toHaveBeenCalledExactlyOnceWith(7);
+    expect(api.deleteDatasource).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Could not disconnect' })).not.toBeInTheDocument();
+  });
+
   it("answers a card's failed removal in the page's error dialog and keeps the card", async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     api.deleteDatasourceConnection.mockRejectedValueOnce(Object.assign(new Error('the relay refused'), { status: 404 }));
