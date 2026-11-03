@@ -165,7 +165,10 @@ describe('TaskBar', () => {
 
     await user.click(screen.getByRole('button', { name: 'Show task details for isolated copy' }));
     expect(screen.getByText('Storage')).toBeInTheDocument();
-    expect(screen.getByText('~1.2 GB · 18 GB across tasks')).toBeInTheDocument();
+    expect(screen.getByText('~1.2 GB')).toBeInTheDocument();
+    expect(screen.getByText('All tasks')).toBeInTheDocument();
+    expect(screen.getByText('18 GB')).toBeInTheDocument();
+    expect(screen.queryByText('Recovery')).not.toBeInTheDocument();
   });
 
   it('leaves out storage when there is no measurement', async () => {

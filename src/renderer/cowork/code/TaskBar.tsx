@@ -7,7 +7,7 @@ import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
 import { openCodeExternalUrl, openCodePath } from './shellLinks';
 import { supportsTaskCapability, type TaskCapabilityName } from './taskCapabilities';
-import { DISK_USAGE_EXPLANATION, diskUsageLabel, type TaskDiskUsage } from './workspaceUsage';
+import { DISK_USAGE_EXPLANATION, diskUsageRows, type TaskDiskUsage } from './workspaceUsage';
 
 
 export function TaskBar({
@@ -149,11 +149,11 @@ export function TaskBar({
                     <div><span>Agent</span><strong>{engineLabel}</strong></div>
                     <div><span>Model</span><strong>{modelLabel || session.model}</strong></div>
                     <div><span>Folder</span><code title={session.workspace_path}>{worktreeLabel}</code></div>
-                    {diskUsage && (
-                      <div title={DISK_USAGE_EXPLANATION}>
-                        <span>Storage</span><strong>{diskUsageLabel(diskUsage)}</strong>
+                    {diskUsage && diskUsageRows(diskUsage).map((row) => (
+                      <div key={row.label} title={DISK_USAGE_EXPLANATION}>
+                        <span>{row.label}</span><strong>{row.value}</strong>
                       </div>
-                    )}
+                    ))}
                   </div>
                 ),
               }]}

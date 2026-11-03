@@ -2,9 +2,17 @@ import { useEffect, useState } from 'react';
 
 import { codingApi, type WorkspaceUsagePage } from './api';
 
-// While the server is measuring, ask again this often, up to a minute.
+// While the server is measuring, ask again every 2 seconds for the first
+// minute, then back off to every 30 seconds. A large workspace can take longer
+// than a minute to walk, so polling never stops while the server is measuring.
 const MEASURING_POLL_MS = 2_000;
-const MEASURING_POLL_LIMIT = 30;
+const MEASURING_FAST_POLLS = 30;
+const MEASURING_SLOW_POLL_MS = 30_000;
+
+export function measuringPollDelay(polls: number): number {
+  if (polls < MEASURING_FAST_POLLS) return MEASURING_POLL_MS;
+  return Math.min(MEASURING_POLL_MS * 2 ** (polls - MEASURING_FAST_POLLS + 1), MEASURING_SLOW_POLL_MS);
+}
 
 export const DISK_USAGE_EXPLANATION =
   'Approximate storage Cowork keeps for this task: its workspace, comparison copy and recovery data. '
@@ -44,12 +52,27 @@ export function taskDiskUsage(page: WorkspaceUsagePage | null, sessionId: string
   };
 }
 
-/** "~1.2 GB (300 MB recovery) · 18 GB across tasks", or why there is no number yet. */
-export function diskUsageLabel(usage: TaskDiskUsage | null): string {
-  if (!usage || usage.taskBytes === null) return usage?.measuring || !usage ? 'Measuring…' : 'Not measured yet';
-  const recovery = usage.recoveryBytes > 0 ? ` (${formatBytes(usage.recoveryBytes)} recovery)` : '';
+export interface DiskUsageRow {
+  label: string;
+  value: string;
+}
+
+/**
+ * The task details rows for storage, one value each so none is cut off in
+ * the narrow details column: the task's size, the part kept for recovery
+ * when there is one, and the total across tasks. Before the task has a
+ * size, one row says why.
+ */
+export function diskUsageRows(usage: TaskDiskUsage | null): DiskUsageRow[] {
+  if (!usage || usage.taskBytes === null) {
+    return [{ label: 'Storage', value: usage?.measuring || !usage ? 'Measuring…' : 'Not measured yet' }];
+  }
   const updating = usage.measuring ? ' · updating…' : '';
-  return `~${formatBytes(usage.taskBytes)}${recovery} · ${formatBytes(usage.totalBytes)} across tasks${updating}`;
+  return [
+    { label: 'Storage', value: `~${formatBytes(usage.taskBytes)}${updating}` },
+    ...(usage.recoveryBytes > 0 ? [{ label: 'Recovery', value: `${formatBytes(usage.recoveryBytes)} of that` }] : []),
+    { label: 'All tasks', value: formatBytes(usage.totalBytes) },
+  ];
 }
 
 /**
@@ -75,9 +98,9 @@ export function useWorkspaceUsage(taskId: string | null, workspacePath = ''): Wo
         const next = await codingApi.workspaceUsage(taskId);
         if (!current) return;
         setPage(next);
-        if (next.measuring && polls < MEASURING_POLL_LIMIT) {
+        if (next.measuring) {
+          timer = setTimeout(() => void load(), measuringPollDelay(polls));
           polls += 1;
-          timer = setTimeout(() => void load(), MEASURING_POLL_MS);
         }
       } catch {
         // A server without the endpoint, or a failed measurement, shows no size.

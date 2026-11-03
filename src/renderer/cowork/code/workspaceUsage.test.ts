@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const workspaceUsage = vi.hoisted(() => vi.fn());
 vi.mock('./api', () => ({ codingApi: { workspaceUsage } }));
 
-import { diskUsageLabel, formatBytes, taskDiskUsage, useWorkspaceUsage } from './workspaceUsage';
+import { diskUsageRows, formatBytes, measuringPollDelay, taskDiskUsage, useWorkspaceUsage } from './workspaceUsage';
 
 const measured = {
   items: [{ session_id: 'task-1', bytes: 1_288_490_189 }],
@@ -27,9 +27,16 @@ describe('workspace disk usage', () => {
   });
 
   it('labels a task with its share and the total, or says it is still measuring', () => {
-    expect(diskUsageLabel(taskDiskUsage(measured, 'task-1'))).toBe('~1.2 GB · 18 GB across tasks');
-    expect(diskUsageLabel(taskDiskUsage({ ...measured, items: [], measuring: true }, 'task-1'))).toBe('Measuring…');
-    expect(diskUsageLabel(taskDiskUsage({ ...measured, items: [] }, 'task-1'))).toBe('Not measured yet');
+    expect(diskUsageRows(taskDiskUsage(measured, 'task-1'))).toEqual([
+      { label: 'Storage', value: '~1.2 GB' },
+      { label: 'All tasks', value: '18 GB' },
+    ]);
+    expect(diskUsageRows(taskDiskUsage({ ...measured, items: [], measuring: true }, 'task-1'))).toEqual([
+      { label: 'Storage', value: 'Measuring…' },
+    ]);
+    expect(diskUsageRows(taskDiskUsage({ ...measured, items: [] }, 'task-1'))).toEqual([
+      { label: 'Storage', value: 'Not measured yet' },
+    ]);
     expect(taskDiskUsage(null, 'task-1')).toBeNull();
   });
 
@@ -39,7 +46,12 @@ describe('workspace disk usage', () => {
       items: [{ session_id: 'task-1', bytes: 1_288_490_189, recovery_bytes: 314_572_800 }],
       measuring: true,
     };
-    expect(diskUsageLabel(taskDiskUsage(page, 'task-1'))).toBe('~1.2 GB (300 MB recovery) · 18 GB across tasks · updating…');
+    // One value per row, so the narrow details column never cuts off the total.
+    expect(diskUsageRows(taskDiskUsage(page, 'task-1'))).toEqual([
+      { label: 'Storage', value: '~1.2 GB · updating…' },
+      { label: 'Recovery', value: '300 MB of that' },
+      { label: 'All tasks', value: '18 GB' },
+    ]);
     // Older servers send neither field.
     expect(taskDiskUsage(measured, 'task-1')?.recoveryBytes).toBe(0);
   });
@@ -85,6 +97,35 @@ describe('workspace disk usage', () => {
 
     expect(workspaceUsage).toHaveBeenCalledTimes(3);
     expect(result.current).toEqual(measured);
+  });
+
+  it('keeps asking, more slowly, when a measurement takes longer than a minute', async () => {
+    vi.useFakeTimers();
+    const measuring = { items: [], total_bytes: 0, measured_at: null, measuring: true };
+    // The first request and 30 fast polls all find the server still measuring.
+    for (let index = 0; index < 31; index += 1) workspaceUsage.mockResolvedValueOnce(measuring);
+    workspaceUsage.mockResolvedValueOnce(measured);
+    const { result } = renderHook(() => useWorkspaceUsage('task-1'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(workspaceUsage).toHaveBeenCalledTimes(31);
+    expect(result.current?.measuring).toBe(true);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+
+    expect(workspaceUsage).toHaveBeenCalledTimes(32);
+    expect(result.current).toEqual(measured);
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(workspaceUsage).toHaveBeenCalledTimes(32);
+  });
+
+  it('backs off from every 2 seconds to every 30 after the first minute', () => {
+    expect(measuringPollDelay(0)).toBe(2_000);
+    expect(measuringPollDelay(29)).toBe(2_000);
+    expect(measuringPollDelay(30)).toBe(4_000);
+    expect(measuringPollDelay(32)).toBe(16_000);
+    expect(measuringPollDelay(33)).toBe(30_000);
+    expect(measuringPollDelay(500)).toBe(30_000);
   });
 
   it('fetches nothing without a task, and shows nothing if the server cannot answer', async () => {
