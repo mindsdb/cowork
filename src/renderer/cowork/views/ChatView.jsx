@@ -14,6 +14,8 @@ import { projectLabel } from '../lib/projectLabel';
 import { cn } from '../lib/cn';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
+import { CircleAlert } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
@@ -1262,14 +1264,6 @@ function ProviderLimitCard({ time, agentLabel, deleting }) {
 // viewer's timezone, and parsing it on the server shifts the day for some
 // users.
 
-/* " at 2:15 PM", or nothing when the gate gave no usable instant, so no
-   sentence promises a schedule the response never named. The guards are
-   `formatResetTime`'s, shared with the composer bar. */
-function refillClause(resetAt, lead) {
-  const time = formatResetTime(resetAt);
-  return time ? `${lead} at ${time}` : lead;
-}
-
 export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
@@ -1475,36 +1469,19 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
-// ENG-1782. Not an error: the turn kept going. Free tokens ran out and the
-// task moved onto the paid balance, or an auto top up failed. The composer
-// notice carries the same facts for the *next* task; this card explains why
-// *this* one's behaviour changed, in the timeline where it happened.
+// ENG-1782. Not an error: the turn kept going. The composer bar carries the
+// live state for the *next* task; this marks the turn where *this* one's
+// allowance changed, and still reads true after the bar moves on or is closed.
+// It keeps its own link: most people who reach billing from a chat notice never
+// click the bar.
 function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
   if (!PLATFORM_UI) return null;
   const open = (action) => () => {
-    trackBillingOpened('usage_alert');
+    trackBillingOpened('usage_alert', undefined, kind);
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
-  if (kind === 'free_low') {
-    // Headline names the crossing, not the count: the composer bar carries
-    // the live count a few pixels above, and two identical headlines that
-    // then drift apart (the bar tracks the next poll, this card is frozen at
-    // the crossing) read as two different figures for one number.
-    // The body says what is true of the allowance rather than of this turn.
-    // The router resolves per turn and can land on a paid model, so "this
-    // task is running on free tokens" is a claim the crossing does not prove.
-    return (
-      <ActionCard
-        time={time}
-        agentLabel={agentLabel}
-        kind="Usage"
-        title="Free Air allowance running low"
-        body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
-        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
-      />
-    );
-  }
   if (kind === 'auto_top_up_failed') {
+    // The one notice that asks for something, so it stays a card.
     return (
       <ActionCard
         time={time}
@@ -1519,15 +1496,25 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       />
     );
   }
+  // One quiet line, not a card: the composer bar says the same a few pixels
+  // below. Running low says what is true of the allowance, not of this turn:
+  // the router resolves per turn and can land on a paid model.
+  // No usable refill time drops the clause rather than leaving "refills".
+  const refillsAt = formatResetTime(resetsAt);
+  const text = kind === 'free_low'
+    ? `Free Air allowance ${formatPercentShort(fractionLeft)} left${refillsAt ? ` · refills at ${refillsAt}` : ''}`
+    : `Free Air allowance used up · now using your balance${refillsAt ? ` until ${refillsAt}` : ''}`;
   return (
-    <ActionCard
-      time={time}
-      agentLabel={agentLabel}
-      kind="Usage"
-      title="Free Air allowance used up"
-      body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
-      buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
-    />
+    <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
+      <Icon of={CircleAlert} size={14} />
+      <span>{text}</span>
+      <span aria-hidden="true">·</span>
+      <button
+        type="button"
+        onClick={open(USAGE_ACTIONS.viewUsage)}
+        className="border-0 bg-transparent p-0 m-0 font-body text-xs underline underline-offset-2 text-[color:inherit] cursor-pointer hover:text-ink-2"
+      >{USAGE_ACTIONS.viewUsage.label}</button>
+    </div>
   );
 }
 
