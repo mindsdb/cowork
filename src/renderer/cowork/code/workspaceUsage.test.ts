@@ -62,6 +62,31 @@ describe('workspace disk usage', () => {
     expect(workspaceUsage).toHaveBeenCalledWith('task-1');
   });
 
+  it('asks again once the task\'s workspace is ready, after polling settled while it prepared', async () => {
+    vi.useFakeTimers();
+    const preparing = { items: [{ session_id: 'task-1', bytes: 0 }], total_bytes: 0, measured_at: '2026-11-03T22:00:00Z', measuring: false };
+    workspaceUsage
+      .mockResolvedValueOnce({ items: [], total_bytes: 0, measured_at: null, measuring: true })
+      .mockResolvedValueOnce(preparing)
+      .mockResolvedValueOnce(measured);
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string }) => useWorkspaceUsage('task-1', path),
+      { initialProps: { path: '' } },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    // Measured while the workspace was still empty, and polling has stopped.
+    expect(result.current).toEqual(preparing);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(workspaceUsage).toHaveBeenCalledTimes(2);
+
+    rerender({ path: '/tasks/task-1/project' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    expect(workspaceUsage).toHaveBeenCalledTimes(3);
+    expect(result.current).toEqual(measured);
+  });
+
   it('fetches nothing without a task, and shows nothing if the server cannot answer', async () => {
     renderHook(() => useWorkspaceUsage(null));
     expect(workspaceUsage).not.toHaveBeenCalled();

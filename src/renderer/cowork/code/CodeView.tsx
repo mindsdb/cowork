@@ -273,7 +273,10 @@ export default function CodeView({
   const restoring = !!selectedId && !session;
   const taskBarSession = session;
   // Only this computer's workspaces are measured; a task elsewhere has none here.
-  const workspaceUsage = useWorkspaceUsage(taskBarSession && taskBarSession.computer_is_local !== false ? taskBarSession.id : null);
+  const workspaceUsage = useWorkspaceUsage(
+    taskBarSession && taskBarSession.computer_is_local !== false ? taskBarSession.id : null,
+    taskBarSession?.workspace_path || '',
+  );
   const automationError = selectedId ? automationErrors[selectedId] || '' : '';
   const conversationError = detail.error || (reviewOpen ? '' : actionError || automationError || taskList.error);
   // A local folder is a first-class Code workspace, not an exceptional state.

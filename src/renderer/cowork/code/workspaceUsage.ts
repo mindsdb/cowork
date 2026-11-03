@@ -54,10 +54,13 @@ export function diskUsageLabel(usage: TaskDiskUsage | null): string {
 
 /**
  * The server's last storage measurement, asked for again while it is still
- * measuring and whenever ``taskId`` changes. Nothing is shown while ``taskId``
- * is null or the last request failed, so an old number never outlives its task.
+ * measuring and whenever ``taskId`` or ``workspacePath`` changes. A new task's
+ * workspace path is empty until its workspace is ready, so a size measured
+ * while it was still preparing is replaced once it is. Nothing is shown while
+ * ``taskId`` is null or the last request failed, so an old number never
+ * outlives its task.
  */
-export function useWorkspaceUsage(taskId: string | null): WorkspaceUsagePage | null {
+export function useWorkspaceUsage(taskId: string | null, workspacePath = ''): WorkspaceUsagePage | null {
   const [page, setPage] = useState<WorkspaceUsagePage | null>(null);
   useEffect(() => {
     if (!taskId) {
@@ -86,6 +89,6 @@ export function useWorkspaceUsage(taskId: string | null): WorkspaceUsagePage | n
       current = false;
       if (timer) clearTimeout(timer);
     };
-  }, [taskId]);
+  }, [taskId, workspacePath]);
   return page;
 }
