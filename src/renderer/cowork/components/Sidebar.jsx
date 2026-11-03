@@ -223,6 +223,7 @@ export default function Sidebar({
   tasksStatus = 'ready',
   onRetryTasks,
   pins = [],
+  inFlightIds = null,
   scheduledCount = 0,
   projectsCount = 0,
   artifactsCount = 0,
@@ -329,14 +330,16 @@ export default function Sidebar({
   );
 
   // A task is "currently active" if any of its messages carries a
-  // live `_streaming` placeholder — the same signal the chat view
-  // uses to know a turn is in flight. Derived directly from messages
-  // so the dot lights up the moment the stream starts and clears the
-  // moment onDone/onError strips the placeholder. No new wire from
-  // App.jsx needed; `tasks` already carries the messages array.
+  // live `_streaming` placeholder (this window is streaming it) or the
+  // server lists its conversation as in flight. The placeholder alone
+  // isn't enough: a reload drops it, and it only comes back once the
+  // task is opened and re-attaches, so a still-running task lost its
+  // dot until then. The server list is fetched at boot, so it covers
+  // that gap, as well as turns started from another client.
   const activeTaskIds = new Set(
     tasks
-      .filter((t) => (t.messages || []).some((m) => m && m.role === '_streaming'))
+      .filter((t) => inFlightIds?.has?.(t.id)
+        || (t.messages || []).some((m) => m && m.role === '_streaming'))
       .map((t) => t.id)
   );
 
