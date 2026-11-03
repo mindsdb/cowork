@@ -250,8 +250,32 @@ describe('ScheduledView — save and run once', () => {
     await user.click(screen.getAllByRole('button', { name: /Schedule task/ })[0]);
     await user.type(screen.getByPlaceholderText(/Ask Anton/i), 'try it');
     await user.click(screen.getByRole('button', { name: 'Save and run once' }));
-    await vi.waitFor(() => expect(props.onRunNow).toHaveBeenCalledWith('new-1'));
+    await vi.waitFor(() => expect(props.onRunNow).toHaveBeenCalledWith('new-1', { trial: true }));
     expect(onCreate.mock.calls[0][0]).toMatchObject({ prompt: 'try it' });
+  });
+
+  it('runs a one-off as a trial, so its own time still comes', async () => {
+    const onCreate = vi.fn().mockResolvedValue({ id: 'new-1' });
+    const { props, user } = setup({ onCreate });
+    await user.click(screen.getAllByRole('button', { name: /Schedule task/ })[0]);
+    await user.type(screen.getByPlaceholderText(/Ask Anton/i), 'try it');
+    await user.click(screen.getByRole('combobox', { name: 'How often' }));
+    await user.click(await screen.findByRole('option', { name: 'Once' }));
+    await user.click(screen.getByRole('button', { name: 'Save and run once' }));
+    await vi.waitFor(() => expect(props.onRunNow).toHaveBeenCalledWith('new-1', { trial: true }));
+    expect(onCreate.mock.calls[0][0]).toMatchObject({ cadence: 'once' });
+  });
+
+  it('closes the form when the trial run fails, so saving again can’t make a second task', async () => {
+    const onCreate = vi.fn().mockResolvedValue({ id: 'new-1' });
+    const onRunNow = vi.fn().mockRejectedValue(new Error('The organization is running as many tasks as it can.'));
+    const { user } = setup({ onCreate, onRunNow });
+    await user.click(screen.getAllByRole('button', { name: /Schedule task/ })[0]);
+    await user.type(screen.getByPlaceholderText(/Ask Anton/i), 'try it');
+    await user.click(screen.getByRole('button', { name: 'Save and run once' }));
+    expect(await screen.findByText(/but its trial run didn’t start: The organization is running as many tasks as it can\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save and run once' })).not.toBeInTheDocument();
+    expect(onCreate).toHaveBeenCalledTimes(1);
   });
 });
 

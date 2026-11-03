@@ -126,7 +126,14 @@ export default function ScheduledView({
       return;
     }
     const created = await onCreate(payload);
-    if (runOnce && created?.id) await onRunNow(created.id);
+    if (!runOnce || !created?.id) return;
+    // The task exists now, so a failed trial run must not fail the save: the
+    // form would stay open, and saving again would create a second task.
+    try {
+      await onRunNow(created.id, { trial: true });
+    } catch (err) {
+      setError(`Saved “${payload.title}”, but its trial run didn’t start: ${err?.message || 'try Run now.'}`);
+    }
   }
 
   async function confirmDelete() {

@@ -21,6 +21,7 @@ import Ico from '../Icons';
 import { productName } from '../../../lib/deploymentBrand';
 import { host } from '../../../platform/host';
 import { askToNotify } from '../../hooks/useAutoPauseNotifications';
+import { scheduleState } from './ScheduleStatusBadge';
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -137,6 +138,11 @@ export default function ScheduleTaskModal({
       // pin a stale model id that's no longer valid.
       model:        null,
     };
+    // A one-off that already ran stays off when only its time changes, so a
+    // new time in the future turns it back on: "from the next run" is true.
+    if (isEdit && form.cadence === 'once' && scheduleState(task) === 'done') {
+      payload.enabled = true;
+    }
     try {
       await onSubmit(payload, task?.id || null, { runOnce });
       onClose?.();

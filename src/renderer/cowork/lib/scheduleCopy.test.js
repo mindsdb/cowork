@@ -24,7 +24,7 @@ describe('missedRunText', () => {
     expect(missedRunLabel(true)).toBe('If the server is down at this time');
     expect(missedOnceTitle(false)).toMatch(/while MindsHub was closed$/);
     expect(missedOnceTitle(true)).toMatch(/while the server was down$/);
-    expect(missedRunPast(false)).toEqual({ absent: 'while MindsHub was closed', back: 'when it reopened' });
-    expect(missedRunPast(true)).toEqual({ absent: 'while the server was down', back: 'when it was back' });
+    expect(missedRunPast(false)).toEqual({ absent: 'while MindsHub was closed' });
+    expect(missedRunPast(true)).toEqual({ absent: 'while the server was down' });
   });
 });
