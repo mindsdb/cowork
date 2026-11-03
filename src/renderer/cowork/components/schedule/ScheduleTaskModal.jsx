@@ -19,7 +19,9 @@ import {
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
 import ModelSelect from '../ModelSelect.jsx';
-import { buildModelPickerOptions, withModelPickerFallback } from '../../lib/modelPickerOptions';
+import { buildModelPickerOptions, offeredModels, withModelPickerFallback } from '../../lib/modelPickerOptions';
+import { modelPickerMode } from '../../../lib/modelPicker';
+import { PLATFORM_UI } from '../../../lib/deployment';
 import { productName } from '../../../lib/deploymentBrand';
 import { host } from '../../../platform/host';
 import { askToNotify } from '../../hooks/useAutoPauseNotifications';
@@ -116,14 +118,27 @@ export default function ScheduleTaskModal({
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
   const upcoming = useMemo(() => nextRuns(form, new Date(), 3), [form]);
   const zone = timeZoneLabel();
+  // The same models the chat composer offers. With platform UI off, the
+  // operator's picker decides: off shows no field at all (the operator's
+  // own models run), and otherwise only the models it offers.
+  const pickable = useMemo(() => {
+    if (PLATFORM_UI) return models;
+    return modelPickerMode() === 'off' ? [] : offeredModels(models, modelMeta?.modelEnabled);
+  }, [models, modelMeta?.modelEnabled]);
+  const showModel = PLATFORM_UI || pickable.length > 0;
   const modelOptions = useMemo(() => [
     { value: DEFAULT_MODEL, label: 'Account default', pin: 'top' },
-    // A pin the catalog no longer lists stays selectable as itself.
+    // A pin the catalog no longer lists stays selectable as itself, where
+    // the user picks freely; an operator's list offers only its own models.
     ...buildModelPickerOptions(
-      withModelPickerFallback(models, form.model === DEFAULT_MODEL ? '' : form.model),
+      PLATFORM_UI ? withModelPickerFallback(pickable, form.model === DEFAULT_MODEL ? '' : form.model) : pickable,
       modelMeta,
     ),
-  ], [models, modelMeta, form.model]);
+  ], [pickable, modelMeta, form.model]);
+  // What is sent: the pick when it's on offer, else the default.
+  const sentModel = !showModel
+    ? DEFAULT_MODEL
+    : (PLATFORM_UI || pickable.some((m) => m.id === form.model) ? form.model : DEFAULT_MODEL);
 
   async function handleSubmit({ runOnce = false } = {}) {
     if (!form.prompt.trim()) {
@@ -153,7 +168,7 @@ export default function ScheduleTaskModal({
       next_run_at:  first.toISOString(),
       project_id:   projectMatch?.id || null,
       // Sent even when it's the default, so an edit can clear a pin.
-      model:        form.model,
+      model:        sentModel,
     };
     // A one-off that already ran stays off when only its time changes, so a
     // new time in the future turns it back on: "from the next run" is true.
@@ -289,16 +304,18 @@ export default function ScheduleTaskModal({
                 ]}
               />
             </Field>
-            <Field label="Model">
-              <ModelSelect
-                value={form.model}
-                onValueChange={(v) => v && update('model', v)}
-                ariaLabel="Model"
-                variant="field"
-                style={fieldSelectStyle}
-                options={modelOptions}
-              />
-            </Field>
+            {showModel && (
+              <Field label="Model">
+                <ModelSelect
+                  value={sentModel}
+                  onValueChange={(v) => v && update('model', v)}
+                  ariaLabel="Model"
+                  variant="field"
+                  style={fieldSelectStyle}
+                  options={modelOptions}
+                />
+              </Field>
+            )}
           </div>
 
           {error && (
