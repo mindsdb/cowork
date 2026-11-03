@@ -89,11 +89,11 @@ export function dropNoticesFromTurn(notices, removedIds) {
 
 // ── One allowance notice per task ────────────────────────────────────────
 //
-// The free allowance steps down 20%, 10%, 5%, then runs out, and each step
-// used to add a notice of its own: four near-identical notices in one task.
-// The allowance is one figure, so a task keeps one notice for it: a new
-// allowance notice replaces the earlier one, and lands at the turn it
-// happened in. Auto top up failures are a separate event and are kept.
+// The allowance refills every few hours, so a long task can run it out more
+// than once, and tasks saved before running low left the chat still carry
+// those notices. The allowance is one figure, so a task keeps one notice for
+// it: a new one replaces the earlier one and lands at the turn it happened
+// in. Auto top up failures are a separate event and are kept.
 const isAllowanceNotice = (n) => n?.kind === 'free_low' || n?.kind === 'free_used';
 
 // `notices` with `added` appended, each new allowance notice replacing any

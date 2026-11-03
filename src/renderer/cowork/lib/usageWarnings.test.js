@@ -403,47 +403,16 @@ describe('usageTransitions', () => {
     freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
   });
 
-  it('tells a running task when it crosses into the low band', () => {
-    expect(usageTransitions(free(40), free(18))).toEqual([
-      { kind: 'free_low', fractionLeft: 0.18, resetsAt: RESET },
-    ]);
+  it('does not tell a running task it is running low', () => {
+    // Nothing about the task changes until the allowance is gone, and the
+    // composer bar carries the live count, so a crossing is not chat news.
+    for (const [from, to] of [[40, 18], [18, 8], [8, 4]]) {
+      expect(usageTransitions(free(from), free(to))).toEqual([]);
+    }
   });
 
-  it('reports each step it crosses, not each poll', () => {
-    // Draining inside one step is not news the task has not already had.
-    expect(usageTransitions(free(18), free(16))).toEqual([]);
-    // Crossing into the next one is.
-    expect(usageTransitions(free(18), free(8))).toEqual([
-      { kind: 'free_low', fractionLeft: 0.08, resetsAt: RESET },
-    ]);
-  });
-
-  it('says the tokens are gone rather than low when a task empties them', () => {
-    const t = usageTransitions(free(18), free(0));
-    expect(t.map((c) => c.kind)).toEqual(['free_used']);
-  });
-
-  it('stays quiet on the low crossing for a task on an explicit paid model', () => {
-    expect(usageTransitions(free(40), free(18), { model: 'claude-sonnet-4' })).toEqual([]);
-  });
-
-  it('does not read a grant appearing, or an uncapped one, as running low', () => {
-    // These hold on the step comparison alone: a read with no fraction to
-    // measure is the deepest step, which no later step can exceed. The
-    // explicit guards in the branch are belt and braces, so deleting them
-    // would not move this test — the comment there says as much.
-    const uncapped = usage({ freeTokens: { limit: -1, used: 30 } });
-    const none = usage({ freeTokens: null });
-    expect(usageTransitions(none, free(18))).toEqual([]);
-    expect(usageTransitions(uncapped, free(18))).toEqual([]);
-    expect(usageTransitions(free(18), uncapped)).toEqual([]);
-  });
-
-  it('reports the deepest crossing too, not just the first two', () => {
-    // 10% into 5%: the third mark, and the last one before free_used owns it.
-    expect(usageTransitions(free(8), free(4))).toEqual([
-      { kind: 'free_low', fractionLeft: 0.04, resetsAt: RESET },
-    ]);
+  it('says the tokens are gone when a task empties them', () => {
+    expect(usageTransitions(free(18), free(0))).toEqual([{ kind: 'free_used', resetsAt: RESET }]);
   });
 
   it('stays quiet for a BYOK task, the same silence the composer bar keeps', () => {
@@ -464,20 +433,7 @@ describe('usageTransitions', () => {
       usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } }),
       usage({ freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }),
     );
-    expect(t).toEqual([{ kind: 'free_used', resetsAt: RESET, balanceUsd: 42.1 }]);
-  });
-  it('names no balance amount when the balance cannot pay or is not known', () => {
-    const before = { freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } };
-    const after = { freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } };
-    for (const balance of [
-      null,
-      { usd: 0, canConsume: true, hasToppedUp: true, alert: '' },
-      { usd: 12, canConsume: false, hasToppedUp: true, alert: '' },
-      { usd: 12, canConsume: true, hasToppedUp: true, alert: 'depleted' },
-    ]) {
-      expect(usageTransitions(usage({ ...before, balance }), usage({ ...after, balance })))
-        .toEqual([{ kind: 'free_used', resetsAt: RESET }]);
-    }
+    expect(t).toEqual([{ kind: 'free_used', resetsAt: RESET }]);
   });
   it('skips the free-tokens news for a task on an explicit paid model, which was on the balance all along', () => {
     const before = usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });

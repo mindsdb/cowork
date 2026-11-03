@@ -67,7 +67,7 @@ import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, formatUsd, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
@@ -1264,14 +1264,6 @@ function ProviderLimitCard({ time, agentLabel, deleting }) {
 // viewer's timezone, and parsing it on the server shifts the day for some
 // users.
 
-/* " at 2:15 PM", or nothing when the gate gave no usable instant, so no
-   sentence promises a schedule the response never named. The guards are
-   `formatResetTime`'s, shared with the composer bar. */
-function refillClause(resetAt, lead) {
-  const time = formatResetTime(resetAt);
-  return time ? `${lead} at ${time}` : lead;
-}
-
 export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
@@ -1477,33 +1469,18 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
-// ENG-1782. Not an error: the turn kept going. Free tokens ran out and the
-// task moved onto the paid balance, or an auto top up failed. The composer
-// notice carries the same facts for the *next* task; this card explains why
-// *this* one's behaviour changed, in the timeline where it happened.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, balanceUsd, isBillingOwner }) {
+// ENG-1782. Not an error: the turn kept going. The composer bar above the
+// input carries the live state and the action for the *next* task; this marks
+// where *this* one's billing changed, so it still reads true when scrolled
+// back to after the bar has moved on or been closed.
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
   if (!PLATFORM_UI) return null;
-  const open = (action) => () => {
-    trackBillingOpened('usage_alert');
-    host.openExternal(usageActionUrl(action, { isBillingOwner }));
-  };
-  if (kind === 'free_low') {
-    // One quiet line, not a card: nothing about the task has changed yet, and
-    // the composer bar a few pixels below carries the live count and the
-    // "View usage" action. The task keeps one allowance notice, which this
-    // line is until the allowance runs out (lib/usageNoticePlacement).
-    // It says what is true of the allowance rather than of this turn: the
-    // router resolves per turn and can land on a paid model.
-    // No usable refill time drops the clause rather than leaving "refills".
-    const refillsAt = formatResetTime(resetsAt);
-    return (
-      <div className="my-3 flex items-center gap-1.5 font-body text-xs text-ink-3">
-        <Icon of={CircleAlert} size={14} />
-        <span>{`Free Air allowance ${formatPercentShort(fractionLeft)} left${refillsAt ? ` · refills at ${refillsAt}` : ''}`}</span>
-      </div>
-    );
-  }
   if (kind === 'auto_top_up_failed') {
+    // The one notice that asks for something, so it stays a card.
+    const open = (action) => () => {
+      trackBillingOpened('usage_alert');
+      host.openExternal(usageActionUrl(action, { isBillingOwner }));
+    };
     return (
       <ActionCard
         time={time}
@@ -1518,15 +1495,16 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, balanc
       />
     );
   }
+  // Tasks saved before running low left the chat still carry the notice.
+  if (kind !== 'free_used') return null;
+  // A quiet marker, not a card: the composer bar says the same with the
+  // balance and "View usage", so a second card here repeats it a few pixels up.
+  const refillsAt = formatResetTime(resetsAt);
   return (
-    <ActionCard
-      time={time}
-      agentLabel={agentLabel}
-      kind="Usage"
-      title="Free Air allowance used up"
-      body={`This task is now using your ${balanceUsd != null ? `${formatUsd(balanceUsd)} ` : ''}balance${refillClause(resetsAt, ' until your free allowance refills')}.`}
-      buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
-    />
+    <div className="my-3 flex items-center gap-1.5 font-body text-xs text-ink-3">
+      <Icon of={CircleAlert} size={14} />
+      <span>{`Free Air allowance used up · now using your balance${refillsAt ? ` until it refills at ${refillsAt}` : ''}`}</span>
+    </div>
   );
 }
 
@@ -2114,8 +2092,6 @@ export default function ChatView({
       agentLabel={agentLabel}
       kind={n.kind}
       resetsAt={n.resetsAt}
-      fractionLeft={n.fractionLeft}
-      balanceUsd={n.balanceUsd}
       isBillingOwner={isBillingOwner}
     />
   );

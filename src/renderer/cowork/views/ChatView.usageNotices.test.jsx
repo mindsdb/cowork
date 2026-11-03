@@ -33,38 +33,25 @@ const task = (usageNotices, extraMessages = []) => ({
 });
 
 describe('ChatView usage notices', () => {
-  it('renders the free-tokens alert after the reply, with the refill time', () => {
+  it('marks the allowance running out with one quiet line after the reply, not a card', () => {
     render(<ChatView task={task([{ kind: 'free_used', resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
-    const card = screen.getByText('Free Air allowance used up');
-    const reply = screen.getByText('Done. Here is the digest.');
-    expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText(/This task is now using your balance until your free allowance refills at Sep 1[12], 12:00 PM\./)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'View usage' })).toBeInTheDocument();
-  });
-
-  it('names the balance by amount when the allowance runs out', () => {
-    // Someone who sees a dollar figure on sign-in reads "your balance" alone
-    // as the allowance they were just told is gone.
-    render(<ChatView task={task([{ kind: 'free_used', balanceUsd: 190.66, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
-    expect(screen.getByText(/^This task is now using your \$190\.66 balance until your free allowance refills at Sep 1[12], 12:00 PM\.$/)).toBeInTheDocument();
-  });
-
-  it('renders the low allowance as one quiet line after the reply, not a card', () => {
-    render(<ChatView task={task([{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
     // Anchored at both ends, so dropping resetsAt (which would degrade the
     // clause to nothing) fails here rather than passing on a prefix match.
-    const line = screen.getByText(/^Free Air allowance 12% left · refills at Sep 1[12], 12:00 PM$/);
+    const line = screen.getByText(/^Free Air allowance used up · now using your balance until it refills at Sep 1[12], 12:00 PM$/);
     const reply = screen.getByText('Done. Here is the digest.');
     expect(reply.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The composer bar carries the live count and the action; nothing about
-    // the task has changed yet, so no card and no button here.
-    expect(screen.queryByText('Free Air allowance running low')).toBeNull();
+    // The composer bar says the same with the balance and the action.
     expect(screen.queryByRole('button', { name: 'View usage' })).toBeNull();
   });
 
-  it('drops the refill clause from the low line when there is no refill time', () => {
-    render(<ChatView task={task([{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z' }])} />);
-    expect(screen.getByText(/^Free Air allowance 12% left$/)).toBeInTheDocument();
+  it('drops the refill clause when there is no refill time', () => {
+    render(<ChatView task={task([{ kind: 'free_used', createdAt: '2099-08-28T10:00:00Z' }])} />);
+    expect(screen.getByText(/^Free Air allowance used up · now using your balance$/)).toBeInTheDocument();
+  });
+
+  it('shows nothing for a running-low notice a task saved earlier', () => {
+    render(<ChatView task={task([{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
+    expect(screen.queryByText(/Free Air allowance/)).toBeNull();
   });
 
   it('renders the auto top up failure with both actions', () => {
@@ -77,13 +64,13 @@ describe('ChatView usage notices', () => {
   // The cards used to be appended after every turn, so after a top-up a
   // "running low" card sat below the newer messages.
   it('leaves a notice at the turn it happened in when the conversation continues', () => {
-    const notices = [{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' }];
+    const notices = [{ kind: 'free_used', resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' }];
     const later = [
       { role: 'user', content: 'Added credits — carry on.' },
       { role: 'assistant', content: 'Picking it back up.' },
     ];
     render(<ChatView task={task(notices, later)} />);
-    const card = screen.getByText(/^Free Air allowance 12% left/);
+    const card = screen.getByText(/^Free Air allowance used up/);
     const nextQuestion = screen.getByText('Added credits — carry on.');
     expect(card.compareDocumentPosition(nextQuestion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -91,11 +78,11 @@ describe('ChatView usage notices', () => {
   // The anchor is the turn, not the row, so a card never splits a question from
   // its answer.
   it('keeps the reply next to its question', () => {
-    const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' }];
+    const notices = [{ kind: 'free_used', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' }];
     render(<ChatView task={task(notices, [{ role: 'user', content: 'Added credits — carry on.' }])} />);
     const question = screen.getByText('Pull last week into a digest.');
     const reply = screen.getByText('Done. Here is the digest.');
-    const card = screen.getByText(/^Free Air allowance 12% left/);
+    const card = screen.getByText(/^Free Air allowance used up/);
     expect(question.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -103,7 +90,7 @@ describe('ChatView usage notices', () => {
   // The streaming answer is a sibling of the transcript rows, so a trailing
   // card used to render above it, then move once the turn committed.
   it('keeps a live turn\'s notice below the answer still streaming', () => {
-    const notices = [{ kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', anchorId: 'u1' }];
+    const notices = [{ kind: 'free_used', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u1' }];
     const streaming = [
       { role: 'user', id: 'u1', content: 'One more thing.' },
       { role: '_streaming', content: 'Working on it', streamStatus: 'in_progress' },
@@ -113,7 +100,7 @@ describe('ChatView usage notices', () => {
     const { container } = render(<ChatView task={task(notices, streaming)} />);
     const questionIdx = container.textContent.indexOf('One more thing.');
     const replyIdx = container.textContent.indexOf('Working on it');
-    const cardIdx = container.textContent.indexOf('Free Air allowance 12% left');
+    const cardIdx = container.textContent.indexOf('Free Air allowance used up');
     expect(replyIdx).toBeGreaterThan(questionIdx);
     expect(cardIdx).toBeGreaterThan(replyIdx);
   });
@@ -127,10 +114,10 @@ describe('ChatView usage notices', () => {
     // After a delete resync only the newest page is loaded; the alert belongs
     // to a turn further back and must not read as one about the latest reply.
     render(<ChatView task={task([
-      { kind: 'free_used', resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u-older' },
-      { kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' },
+      { kind: 'auto_top_up_failed', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u-older' },
+      { kind: 'free_used', resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' },
     ])} />);
-    expect(screen.queryByText('Free Air allowance used up')).toBeNull();
-    expect(screen.getByText(/^Free Air allowance 12% left/)).toBeInTheDocument();
+    expect(screen.queryByText('Auto top up failed')).toBeNull();
+    expect(screen.getByText(/^Free Air allowance used up/)).toBeInTheDocument();
   });
 });
