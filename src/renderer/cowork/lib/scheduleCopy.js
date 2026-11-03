@@ -15,7 +15,7 @@ export function missedRunText(cadence, onServer = host.isWeb) {
   if (cadence === 'once') {
     return `If ${absent} at this time, the task runs when ${back} within the hour. After that it’s marked missed, and you can run it yourself.`;
   }
-  return `If ${absent} when this is due, the task runs once when ${back}, for the latest time it missed. Earlier missed times are skipped.`;
+  return `If ${absent} when this is due, the task runs once when ${back}, for the latest time it missed in the last 7 days. Other missed times are skipped.`;
 }
 
 // The accessible name of the control that shows missedRunText.

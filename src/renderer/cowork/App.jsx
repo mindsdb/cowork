@@ -83,6 +83,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -5680,15 +5681,9 @@ function AppCore() {
   // Stop a schedule's run in flight the way the chat's Stop does: cancel its
   // conversation's turn. The schedule list doesn't carry that conversation,
   // so it is read from the newest runs.
-  const handleStopScheduleRun = async (id) => {
-    const { runs = [] } = await fetchScheduleRuns(id, { limit: 5 });
-    const running = runs.find((r) => r.status === 'running' && r.conversationId);
-    if (running) {
-      const result = await cancelResponse(running.conversationId);
-      if (result.status === 'error') throw new Error('Couldn’t stop the run. Try again.');
-    }
-    await refreshSchedules();
-  };
+  const handleStopScheduleRun = (id) => stopScheduleRun(id, {
+    fetchRuns: fetchScheduleRuns, cancel: cancelResponse, refresh: refreshSchedules,
+  });
 
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
