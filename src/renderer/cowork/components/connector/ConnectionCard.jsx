@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { Badge, Button } from '../ui';
+import { ConfirmModal } from '../ConfirmModal';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from '../../lib/connectionIdentity';
 
@@ -34,14 +35,18 @@ function ConnectionLogo({ engine, label, custom, logoColor }) {
    share stays listed under its name, and cowork-server refuses a new
    connection under that name until the operator stops sharing it. */
 export function disconnectPrompt({ engine, name, shared }) {
-  const question = `Disconnect ${engine}/${name}?`;
-  return shared
-    ? `${question}\n\nIt's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.`
-    : question;
+  return {
+    title: `Disconnect ${engine}/${name}?`,
+    message: shared
+      ? "It's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it."
+      : undefined,
+  };
 }
 
 function useConnectionSlots({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
+  // ConfirmModal, not window.confirm: see CustomizeView's `confirming`.
+  const [confirming, setConfirming] = useState(false);
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
   const { title, subtitle } = connectionIdentity(connection);
@@ -67,7 +72,7 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const badge = shared ? 'Shared' : managed ? 'Managed' : null;
 
   const handleRemove = async () => {
-    if (!window.confirm(disconnectPrompt({ engine, name, shared }))) return;
+    setConfirming(false);
     setBusy(true);
     try {
       await onDelete?.(connection);
@@ -102,11 +107,19 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
             opens the details. */}
         {!managed && (
           <ItemActions className="ml-auto">
-            <Button variant="subtle" size="sm" onClick={handleRemove} disabled={busy}>
+            <Button variant="subtle" size="sm" onClick={() => setConfirming(true)} disabled={busy}>
               {busy ? 'Removing…' : 'Disconnect'}
             </Button>
           </ItemActions>
         )}
+        <ConfirmModal
+          open={confirming}
+          {...disconnectPrompt({ engine, name, shared })}
+          confirmLabel="Disconnect"
+          destructive
+          onConfirm={handleRemove}
+          onClose={() => setConfirming(false)}
+        />
       </>
     ),
   };
