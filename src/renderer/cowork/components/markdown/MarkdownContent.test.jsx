@@ -638,7 +638,7 @@ describe('MarkdownContent HTML comments', () => {
     const { container } = render(
       <MarkdownContent text={'intro\n\n<!-- topic:api -->\n\n<!-- TODO -->\n\nnext'} complete />,
     );
-    expect(container.querySelector('span.font-mono')?.textContent).toBe('topic: api');
+    expect(container.querySelector('span.rounded-md.bg-surface-2')?.textContent).toBe('topic: api');
     expect(container.textContent).toContain('intro');
     expect(container.textContent).toContain('next');
     expect(container.textContent).not.toContain('TODO');
@@ -650,7 +650,7 @@ describe('MarkdownContent HTML comments', () => {
       <MarkdownContent text={'- rate limit is 50/min <!-- topic:api -->'} complete />,
     );
     expect(container.querySelector('[title="Link blocked: unsupported URL scheme"]')).toBeNull();
-    expect(container.querySelector('span.font-mono')?.textContent).toBe('topic: api');
+    expect(container.querySelector('span.rounded-md.bg-surface-2')?.textContent).toBe('topic: api');
   });
 
   it('still blocks a link to an unsafe scheme', () => {
