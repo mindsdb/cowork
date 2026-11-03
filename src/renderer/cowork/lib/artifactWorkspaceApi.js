@@ -134,7 +134,7 @@ export async function loadArtifactDraftText(draftUrl, { withCredentials = true, 
     truncated,
     mime: response.headers.get('Content-Type') || '',
   };
-  if (truncated && typeof countRows === 'function') {
+  if (truncated && countRows) {
     preview.total_rows = Math.max(0, countRows(body) - 1);
   }
   return preview;

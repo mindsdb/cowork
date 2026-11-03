@@ -216,7 +216,7 @@ export function ArtifactViewerBody({
             gap: 12, flexWrap: 'wrap',
           }}>
             <span>
-              {csvPreview && csvPreview.truncated ? csvPreviewNotice(csvPreview) : 'Preview is truncated.'}
+              {csvPreviewNotice(csvPreview)}
             </span>
             <Button onClick={host.isWeb ? onDownload : onOpenOS}>
               {host.isWeb ? Ico.download(14) : Ico.externalLink(14)}

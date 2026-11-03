@@ -400,10 +400,10 @@ export function summarizeCsvPreview(text, { truncated = false, totalRows = null 
   const rows = parseCsv(source, CSV_PREVIEW_ROW_LIMIT);
   if (rows.length === 0) return null;
   const shownRows = rows.length - 1;
-  let total;
-  if (!truncated) total = Math.max(0, countCsvRows(text) - 1);
-  // "N of N" would claim the whole file is shown when the cut fell inside the last row.
-  else total = totalRows != null && totalRows > shownRows ? totalRows : null;
+  // On a cut text, "N of N" would claim the whole file is shown.
+  const total = truncated
+    ? (totalRows > shownRows ? totalRows : null)
+    : Math.max(0, countCsvRows(text) - 1);
   return {
     markdown: csvRowsToGfmTable(rows),
     shownRows,
@@ -412,9 +412,11 @@ export function summarizeCsvPreview(text, { truncated = false, totalRows = null 
   };
 }
 
-// The notice under a CSV table that does not show the whole file.
-export function csvPreviewNotice({ shownRows, totalRows }) {
-  if (shownRows === 0) return 'Preview is truncated.';
+// The notice under a cut preview. A CSV table that shows at least one data row
+// says how many; anything else gets the generic text.
+export function csvPreviewNotice(csvPreview) {
+  if (!csvPreview?.truncated || csvPreview.shownRows === 0) return 'Preview is truncated.';
+  const { shownRows, totalRows } = csvPreview;
   const shown = shownRows.toLocaleString();
   if (totalRows === null) {
     return `Showing first ${shown} ${shownRows === 1 ? 'row' : 'rows'}. The full file is larger than the preview.`;

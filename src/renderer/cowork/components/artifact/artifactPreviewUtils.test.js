@@ -635,17 +635,22 @@ describe('summarizeCsvPreview', () => {
 
 describe('csvPreviewNotice', () => {
   it('states the shown rows and the known total', () => {
-    expect(csvPreviewNotice({ shownRows: 100, totalRows: 20_000 })).toBe('Showing first 100 of 20,000 rows.');
+    expect(csvPreviewNotice({ shownRows: 100, totalRows: 20_000, truncated: true })).toBe('Showing first 100 of 20,000 rows.');
   });
 
   it('says the file is larger than the preview when the total is unknown', () => {
-    expect(csvPreviewNotice({ shownRows: 100, totalRows: null }))
+    expect(csvPreviewNotice({ shownRows: 100, totalRows: null, truncated: true }))
       .toBe('Showing first 100 rows. The full file is larger than the preview.');
-    expect(csvPreviewNotice({ shownRows: 1, totalRows: null }))
+    expect(csvPreviewNotice({ shownRows: 1, totalRows: null, truncated: true }))
       .toBe('Showing first 1 row. The full file is larger than the preview.');
   });
 
   it('falls back to the generic text when no data row is shown', () => {
-    expect(csvPreviewNotice({ shownRows: 0, totalRows: 20_000 })).toBe('Preview is truncated.');
+    expect(csvPreviewNotice({ shownRows: 0, totalRows: 20_000, truncated: true })).toBe('Preview is truncated.');
+  });
+
+  it('falls back to the generic text without a CSV table that leaves rows out', () => {
+    expect(csvPreviewNotice(null)).toBe('Preview is truncated.');
+    expect(csvPreviewNotice({ shownRows: 30, totalRows: 30, truncated: false })).toBe('Preview is truncated.');
   });
 });
