@@ -120,7 +120,7 @@
 .artifact-render-pane { border-left: 1px solid var(--line); }
 .artifact-pane-label { height: 34px; flex: 0 0 34px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); }
 .artifact-pane-label code,
-.artifact-pane-label em { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-4); font: 400 10px/1 var(--font-mono); }
+.artifact-pane-label em { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-4); font-style: normal; font-weight: 400; }
 .artifact-source-textarea { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; outline: 0; padding: 20px 22px 80px; color: var(--ink); background: var(--surface); caret-color: var(--accent); font: 12.5px/1.65 var(--font-mono); tab-size: 2; }
 .artifact-source-textarea::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .artifact-source-textarea:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }

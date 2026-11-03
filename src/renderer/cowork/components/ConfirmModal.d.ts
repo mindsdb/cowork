@@ -10,9 +10,11 @@ export interface ConfirmModalProps {
   note?: string;
   busyLabel?: string;
   error?: string;
-  layer?: 'default' | 'system';
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
 }
 
 export function ConfirmModal(props: ConfirmModalProps): JSX.Element | null;
+
+export type ConfirmOptions = Omit<ConfirmModalProps, 'open' | 'onClose' | 'onConfirm'>;
+export function useConfirm(): [(options: ConfirmOptions) => Promise<boolean>, JSX.Element];

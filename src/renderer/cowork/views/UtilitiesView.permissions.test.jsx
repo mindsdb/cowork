@@ -167,11 +167,9 @@ describe('UtilitiesView memory capability gates', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-
-    // The delete is behind a confirmation now.
-    const confirm = await screen.findByRole('dialog');
     expect(api.deleteMemory).not.toHaveBeenCalled();
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete "Rules" memory?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(api.deleteMemory).toHaveBeenCalledWith({
       scope: 'Project',
@@ -304,7 +302,8 @@ describe('UtilitiesView own memory on a deployment that saves it on its own', ()
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute('title', expect.not.stringContaining('shared'));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+    const confirm = await screen.findByRole('dialog', { name: /^Delete .* memory\?$/ });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(api.deleteMemory).toHaveBeenCalledWith({
       scope: 'Global',

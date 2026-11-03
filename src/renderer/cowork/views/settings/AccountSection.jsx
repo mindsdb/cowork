@@ -78,7 +78,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           {accountUser.username && (
             <div>
               <div className="section-label mb-0.5">Username</div>
-              <div className="text-[13px] text-ink-2 font-[family-name:var(--font-mono)]">{accountUser.username}</div>
+              <div className="text-[13px] text-ink-2">{accountUser.username}</div>
             </div>
           )}
           {orgName && (

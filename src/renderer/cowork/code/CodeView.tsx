@@ -741,7 +741,7 @@ export default function CodeView({
             value={{
               model: session.model,
               permission_mode: session.permission_mode,
-              reasoning_effort: session.reasoning_effort || 'high',
+              reasoning_effort: session.reasoning_effort ?? null,
               service_tier: session.service_tier || 'standard',
               personality: session.personality || 'pragmatic',
               network_access: !!session.network_access,
@@ -754,7 +754,13 @@ export default function CodeView({
             applyBlockedReason={isActiveStatus(session.status) ? 'Changes can be applied after the current turn finishes' : undefined}
             onClose={() => setControlsOpen(false)}
             onApply={async (value) => {
-              await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              try {
+                await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              } catch (reason) {
+                // The modal shows this failure; the page banner sits behind it.
+                setActionError('');
+                throw reason;
+              }
               setControlsOpen(false);
             }}
           />
