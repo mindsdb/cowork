@@ -149,9 +149,7 @@ export function useGoogleDrivePicker({
   // native Picker. Neither caller downloads/persists anything here.
   // `projectName`, when passed, tags any newly-picked files as belonging to
   // that project (see picked-files.ts / merge_picked_files) — omit it for
-  // flows with no project context (there are none among the callers below,
-  // but connection-details' own "Pick files" button calls
-  // host.pickDriveFiles directly and correctly omits it).
+  // flows with no project context.
   // `preFetchedConnections`, when passed, skips resolveGoogleDriveConnection's
   // own fetchDatasources() call — see fetchGoogleDriveConnections above.
   // No window/popup bookkeeping on web any more: the Picker renders as an
