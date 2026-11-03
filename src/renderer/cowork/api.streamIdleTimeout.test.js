@@ -347,6 +347,36 @@ describe('streamDataVaultSubmission idle timeout', () => {
     vi.unstubAllGlobals();
   });
 
+  it('reports an interruption, not a finished answer, when the stream closes with no terminal', async () => {
+    const enc = new TextEncoder();
+    const frames = [enc.encode('data: {"type":"response.output_text.delta","delta":"Testing"}\n\n')];
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => {
+          let i = 0;
+          return {
+            read: async () => (i < frames.length
+              ? { done: false, value: frames[i++] }
+              : { done: true, value: undefined }),
+          };
+        },
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamDataVaultSubmission({
+        formId: 'form-1',
+        onError: (message) => resolve({ kind: 'error', message }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.message).toMatch(/interrupted/i);
+  });
+
   it('aborts and reports a stall when the submission goes silent', async () => {
     let signal;
     vi.stubGlobal('fetch', vi.fn(async (_url, options) => {

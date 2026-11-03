@@ -1061,11 +1061,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         projectPath={project?.path}
         filePath={openFile?.path}
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
-        remover={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH && (
-          openFile?.synthetic || !host.isWeb
-        )
-          ? null
-          : undefined}
+        // Delete is the file row's own flow (its trash button + confirm).
+        remover={null}
         editable={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
           ? canUseSharedResource(openFile, 'canEdit')
             && canUseSharedResource(project, 'canEditInstructions')
@@ -1092,8 +1089,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           no server token.
           `filePath` is the name only (for the extension checks + header
           title), NOT a real project path, so there is nothing for Edit to
-          save to. `remover` reuses the same attachment delete the row's
-          menu and ConfirmModal use, then closes the modal. */}
+          save to. */}
       <ContextFileModal
         open={!!openAttachment}
         title={openAttachment?.name}
@@ -1103,22 +1099,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           : ''}
         showRawText
         showEditAction={false}
-        remover={async () => {
-          const target = openAttachment;
-          if (!target?.id) return;
-          setSessionAttachments((prev) => prev.filter((a) => a.id !== target.id));
-          try {
-            await deleteAttachment(target.id, {
-              projectName: project?.name,
-              sessionId: conversationId,
-            });
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_attachment_failed", '[context] delete attachment failed', err);
-            setTaskUploadError(err?.message || 'Could not delete attachment.');
-            bumpAttachments();
-          }
-        }}
+        // Delete is the attachment row's own flow (its menu + confirm).
+        remover={null}
         onClose={() => setOpenAttachment(null)}
         onChanged={() => setOpenAttachment(null)}
       />

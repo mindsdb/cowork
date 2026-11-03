@@ -81,11 +81,9 @@ describe('ContextFileModal shared-resource permissions', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-
-    // Asked first, in a dialog above this one rather than a browser box.
-    const confirm = await screen.findByRole('dialog', { name: /Delete .*anton\.md\?/i });
     expect(api.deleteProjectFile).not.toHaveBeenCalled();
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete .anton/anton.md?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => {
       expect(api.deleteProjectFile).toHaveBeenCalledWith('billing', '.anton/anton.md');

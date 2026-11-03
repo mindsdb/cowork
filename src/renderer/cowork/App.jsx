@@ -76,7 +76,7 @@ import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
-import { currentTurnAnchorId, dropNoticesFromTurn } from './lib/usageNoticePlacement';
+import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -1884,7 +1884,7 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const visible = appearanceSettings.showDots !== false;
+    const visible = appearanceSettings.showDots === true;
     document.body.classList.toggle('gf-dots-off', !visible);
     window.gravityField?.setActive?.(visible);
   }, [appearanceSettings.showDots]);
@@ -2177,7 +2177,7 @@ function AppCore() {
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
     reloadArtifacts().finally(() => setArtifactsLoaded(true));
     fetchPins().then((data) => setPins(data.pins || []));
-    refreshSchedules();
+    refreshSchedules().catch(() => {});
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
@@ -3298,7 +3298,7 @@ function AppCore() {
       const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
       if (!changes.length) return t;
       const anchorId = currentTurnAnchorId(t.messages);
-      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, anchorId }))] };
+      return { ...t, usageNotices: withUsageNotices(t.usageNotices, changes.map((c) => ({ ...c, createdAt, anchorId }))) };
     }));
   }, [hubUsage, hubUsageCtx.providerType]);
 
@@ -3365,7 +3365,7 @@ function AppCore() {
       setSelectedProject(null);
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     } else if (key === 'scheduled') {
-      refreshSchedules();
+      refreshSchedules().catch(() => {});
     }
   }, [refreshSchedules, reloadArtifacts]);
 
@@ -4159,6 +4159,17 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       releaseSlotClaim(id);
+      // The send marked the task in flight before uploading. Nothing ran, so
+      // clear it now rather than leave the sidebar's running dot on until the
+      // next in-flight poll.
+      markInFlightDone(id);
+      // Other tasks' messages were queued behind this reservation, so send
+      // the next one now. This task is skipped: retrying its failed upload
+      // straight away would fail again. A send the drain started carries the
+      // tasks its drain chain already skipped, so two tasks whose uploads keep
+      // failing don't hand the slot back and forth: each is tried once, and
+      // the next turn to finish drains them again.
+      drainNextQueuedMessage(null, [...(opts.drainSkipped || []), id]);
       // Make the failure impossible to miss. The inline composer error alone
       // was easy to overlook, so a file that couldn't upload just sat at
       // "Queued" with no visible reason (the exact shape of the stuck-upload
@@ -4396,7 +4407,8 @@ function AppCore() {
   // but queues are per-task — so after a turn ends we must sweep every
   // task's queue, not just the finishing one. `preferredTaskId` (the
   // finishing task) is tried first so its own follow-ups keep FIFO order.
-  const drainNextQueuedMessage = (preferredTaskId) => {
+  // `skipTaskIds` lists tasks a failed send already tried in this chain.
+  const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
     if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
@@ -4407,11 +4419,13 @@ function AppCore() {
      * stopped or having a turn deleted is skipped too: Stop drops what was
      * queued before the click, and Stop or the delete drains the rest itself.
      */
+    const skipped = new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere));
+    for (const skipTaskId of skipTaskIds) skipped.add(skipTaskId);
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
       preferredTaskId,
-      new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere)),
+      skipped,
     );
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
@@ -4426,6 +4440,7 @@ function AppCore() {
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
+      drainSkipped: skipped,
     })).catch(() => {
       enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
     });
@@ -4759,6 +4774,18 @@ function AppCore() {
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(resolvedId, id);
         releaseLiveSteps([resolvedId, id]);
+        // Only a completed response clears the form's spinner, so a failed
+        // or stalled test would otherwise spin with no way to retry.
+        const failedForm = getDataVaultForm(resolvedId || id);
+        if (failedForm?._is_probing) {
+          patchDataVaultForm(resolvedId || id, {
+            form_id: failedForm.form_id,
+            _is_probing: false,
+            _is_success: false,
+            status_text: null,
+            form_error: message || 'Form submission failed.',
+          });
+        }
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -5557,12 +5584,17 @@ function AppCore() {
     let cancelled = false;
     let timer = setTimeout(tick, nextPollDelay(scheduled));
     async function tick() {
-      const list = await refreshSchedules();
-      const known = new Set(tasksRef.current.map((t) => t.id));
-      const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
-      if (hasNewRun) await syncNewConversations();
+      // A failed fetch retries at the floor; letting it throw would end the
+      // poll for good, since only a later tick schedules the next one.
+      let list = null;
+      try {
+        list = await refreshSchedules();
+        const known = new Set(tasksRef.current.map((t) => t.id));
+        const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
+        if (hasNewRun) await syncNewConversations();
+      } catch { /* retried below */ }
       if (cancelled) return;
-      timer = setTimeout(tick, nextPollDelay(list));
+      timer = setTimeout(tick, list ? nextPollDelay(list) : SCHEDULE_POLL_MIN_DELAY_MS);
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
@@ -5726,7 +5758,9 @@ function AppCore() {
       case 'menu':
         return {
           label: 'Display settings',
-          icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
+          // Not sun/moon: this opens both controls, so it must not read as
+          // the direct theme flip.
+          icon: Ico.palette(14),
           onClick: () => setThemeModalOpen(true),
         };
       case 'theme':
@@ -5886,7 +5920,7 @@ function AppCore() {
           }}
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
-          showCounters={appearanceSettings.showCounters !== false}
+          showCounters={appearanceSettings.showCounters === true}
           navTitle={appearanceSettings.navTitle || null}
           navLogo={appearanceSettings.navLogo || null}
           updateBanner={updateBanner}

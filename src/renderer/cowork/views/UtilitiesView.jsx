@@ -27,6 +27,7 @@ import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
 import { productName } from '../../lib/deploymentBrand';
 import { STOCK_SHORT_NAME } from '../../../shared/product-name';
+import { useConfirm } from '../components/ConfirmModal';
 
 const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
@@ -155,7 +156,7 @@ const RESET_CONFIRM_COPY = {
 };
 
 function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
-  const [pendingDelete, setPendingDelete] = useState(null);
+  const [confirm, confirmModal] = useConfirm();
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');
@@ -256,18 +257,15 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
     }
   };
 
-  const remove = (file) => {
+  const remove = async (file) => {
     if (!canUseSharedResource(file, 'canDelete')) return;
-    setPendingDelete(file);
-  };
-
-  // Closes first, then deletes: the outcome is the status line, and a dialog
-  // held open would trap the page behind work the person need not watch.
-  const confirmDelete = async () => {
-    const file = pendingDelete;
-    setPendingDelete(null);
-    if (!file) return;
     const label = labelCategory(file.category);
+    if (!(await confirm({
+      title: `Delete "${label}" memory?`,
+      message: 'This clears the saved content.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    }))) return;
     try {
       await deleteMemory({
         scope: file.scope || 'Global',
@@ -422,15 +420,6 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         </div>
       </div>
       <ConfirmModal
-        open={pendingDelete !== null}
-        title={`Delete the ${labelCategory(pendingDelete?.category)} memory?`}
-        message="The saved content is cleared. What the agent already wrote from it stays in the conversations it wrote."
-        confirmLabel="Delete"
-        destructive
-        onConfirm={confirmDelete}
-        onClose={() => setPendingDelete(null)}
-      />
-      <ConfirmModal
         open={resetOpen}
         title={RESET_CONFIRM_COPY.title}
         message={RESET_CONFIRM_COPY.message}
@@ -442,6 +431,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         onConfirm={reset}
         onClose={() => setResetOpen(false)}
       />
+      {confirmModal}
     </>
   );
 }
@@ -476,7 +466,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
 
 
 function ConnectView({ data, setData, setStatus }) {
-  const [pendingRemove, setPendingRemove] = useState(null);
+  const [confirm, confirmModal] = useConfirm();
   const firstEngine = data.engines?.[0]?.engine || '';
   const initialEngine = (data.engines || []).find((item) => item.engine === firstEngine);
   const [engine, setEngine] = useState(firstEngine);
@@ -561,12 +551,13 @@ function ConnectView({ data, setData, setStatus }) {
     }
   };
 
-  const remove = (conn) => setPendingRemove(conn);
-
-  const confirmRemove = async () => {
-    const conn = pendingRemove;
-    setPendingRemove(null);
-    if (!conn) return;
+  const remove = async (conn) => {
+    if (!(await confirm({
+      title: 'Remove datasource?',
+      message: `${conn.engine}/${conn.name} will be removed.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    }))) return;
     try {
       await deleteDatasource(conn.engine, conn.name);
       const latest = await fetchDatasources();
@@ -656,15 +647,7 @@ function ConnectView({ data, setData, setStatus }) {
           {busyAction === 'save' ? 'Saving' : 'Save connection'}
         </Button>
       </form>
-      <ConfirmModal
-        open={pendingRemove !== null}
-        title={`Remove ${pendingRemove?.name || 'this connection'}?`}
-        message={`The saved ${pendingRemove?.engine || ''} connection and its stored credentials are deleted. You can add it again later.`}
-        confirmLabel="Remove"
-        destructive
-        onConfirm={confirmRemove}
-        onClose={() => setPendingRemove(null)}
-      />
+      {confirmModal}
     </div>
   );
 }

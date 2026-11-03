@@ -170,6 +170,7 @@ import {
 import {
   setForm as setDataVaultForm,
   clearForm as clearDataVaultForm,
+  getForm as getDataVaultForm,
 } from './components/datavault/formStore';
 import { __resetDraftsForTests } from './lib/draftStore';
 import { MINDSHUB_AIR_MODEL_ID } from './lib/modelCatalog';
@@ -1575,6 +1576,11 @@ describe('superseded data-vault stream', () => {
   // through the same updateLiveStepsAndDrainQueue and reduceStream.
   afterEach(() => clearDataVaultForm('conv-a'));
 
+  // The connect form is a modal, so the composer behind it is hidden from the
+  // accessibility tree while it is open. The stream it started is what these
+  // tests are about, so reach the composer's Stop through the hidden tree.
+  const stopBehindConnectForm = () => screen.findByRole('button', { name: /stop/i, hidden: true });
+
   /** Opens the connect form for conv-a and submits it, returning the stream. */
   async function submitConnectForm(user) {
     await act(async () => {
@@ -1609,7 +1615,7 @@ describe('superseded data-vault stream', () => {
     const vault = await submitConnectForm(user);
     expect(reply.abort).toHaveBeenCalled();
 
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopBehindConnectForm());
     await waitFor(() => expect(vault.abort).toHaveBeenCalled());
   });
 
@@ -1619,7 +1625,7 @@ describe('superseded data-vault stream', () => {
     const vault = await submitConnectForm(user);
 
     // Stop supersedes the stream: bump, then abort.
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopBehindConnectForm());
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
     await act(async () => { clearDataVaultForm('conv-a'); });
 
@@ -1634,12 +1640,27 @@ describe('superseded data-vault stream', () => {
     expect(spies.streamMessage.mock.calls[0][1]).toBe('a brand new message');
   });
 
+  it('stops the connection-test spinner when the submission fails', async () => {
+    const user = userEvent.setup();
+    await openTask(user);
+    const vault = await submitConnectForm(user);
+    await act(async () => {
+      setDataVaultForm('conv-a', { ...getDataVaultForm('conv-a'), _is_probing: true });
+    });
+
+    await act(async () => { vault.opts.onError('The form submission stalled and was ended. Please try again.'); });
+
+    const form = getDataVaultForm('conv-a');
+    expect(form._is_probing).toBe(false);
+    expect(form.form_error).toMatch(/stalled/);
+  });
+
   it('does not release a newer run when the dead stream finishes late', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
     const vault = await submitConnectForm(user);
 
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await user.click(await stopBehindConnectForm());
     await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
     await act(async () => { clearDataVaultForm('conv-a'); });
 
@@ -1770,6 +1791,84 @@ describe('a manual send racing another task mid-reserve (ENG-1378 parallel-strea
   });
 });
 
+describe('a send whose upload fails while another task is queued', () => {
+  beforeEach(() => uploadAttachments.mockClear());
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('sends the other task\'s queued message instead of leaving it queued', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+
+    // Beta's upload holds the slot, so Alpha's send queues behind it.
+    let failUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { failUpload = () => reject(new Error('Upload failed (500)')); }),
+    );
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await attach(user, 'beta-notes.txt');
+    await send(user, betaComposer, 'beta with file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+
+    await openByTitle(user, 'Alpha task');
+    await send(user, composer, 'queued alpha');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+
+    // No turn ever started, so no terminal will drain Alpha. The failure must.
+    await act(async () => { failUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-a');
+    expect(spies.streamMessage.mock.calls[0][1]).toBe('queued alpha');
+  });
+
+  it('clears the task\'s running dot when its upload fails', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+    let failUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { failUpload = () => reject(new Error('Upload failed (500)')); }),
+    );
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'with a file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+
+    // The send marks the task in flight before its upload, so the dot shows.
+    expect(await screen.findByLabelText('Active')).toBeInTheDocument();
+
+    // The failure must clear it itself. Waiting for the next in-flight poll
+    // would leave the dot on a task that isn't running for up to 5s.
+    await act(async () => { failUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(screen.queryByLabelText('Active')).toBeNull());
+  });
+});
+
+describe('the scheduled-task poll', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    fetchSchedules.mockReset();
+    fetchSchedules.mockResolvedValue([]);
+  });
+
+  it('keeps polling after a failed fetch', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+    render(<App />);
+    await waitFor(() => expect(fetchSchedules).toHaveBeenCalled());
+    const afterBoot = fetchSchedules.mock.calls.length;
+
+    // With nothing due, the first tick waits for the 10-minute heartbeat.
+    fetchSchedules.mockRejectedValueOnce(new Error('network down'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60 * 1000); });
+    expect(fetchSchedules.mock.calls.length).toBe(afterBoot + 1);
+
+    // The failed tick retries at the one-minute floor instead of stopping.
+    await act(async () => { await vi.advanceTimersByTimeAsync(60 * 1000); });
+    expect(fetchSchedules.mock.calls.length).toBe(afterBoot + 2);
+  });
+});
+
 describe('a drained message whose send fails (ENG-1378)', () => {
   afterEach(() => {
     uploadAttachments.mockReset();
@@ -1802,6 +1901,47 @@ describe('a drained message whose send fails (ENG-1378)', () => {
     await waitFor(() =>
       expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore),
     );
+  });
+
+  it('tries each task once when two tasks\' queued uploads keep failing', async () => {
+    const user = userEvent.setup();
+    const alpha = await openTask(user); // conv-a
+
+    // Turn 1 in Alpha holds the slot; Alpha and Beta each queue a file.
+    await send(user, alpha, 'first message');
+    const stream = streams[streams.length - 1];
+    await attach(user, 'alpha.txt');
+    await send(user, alpha, 'queued alpha');
+    const beta = await openByTitle(user, 'Beta task');
+    await attach(user, 'beta.txt');
+    await send(user, beta, 'queued beta');
+    await waitFor(() => expect(screen.getAllByLabelText('Remove from queue').length).toBeGreaterThan(0));
+    const streamCallsBefore = spies.streamMessage.mock.calls.length;
+
+    uploadAttachments.mockClear();
+    // Fail after a timer tick, as a real upload does. An immediate rejection
+    // would let a regression loop in microtasks alone, starving the timers
+    // waitFor and the test timeout need, so the run would hang, not fail.
+    uploadAttachments.mockImplementation(() => new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Upload failed (500)')), 0);
+    }));
+    await act(async () => { stream.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    // One upload attempt per task, then the drain chain stops.
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(2));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(uploadAttachments).toHaveBeenCalledTimes(2);
+    expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore);
+
+    // The next turn to finish drains them again, and a working upload sends.
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+    await openByTitle(user, 'Alpha task');
+    await send(user, alpha, 'second message');
+    await waitFor(() => expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore + 1));
+    const second = streams[streams.length - 1];
+    await act(async () => { second.opts.onDone('conv-a'); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore + 2));
   });
 });
 
