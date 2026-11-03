@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('antontron', {
   // switch explicitly disables it; hosted web receives no Electron bridge
   // and therefore cannot expose the feature.
   codeModeAvailable: process.env.COWORK_CODE_MODE_AVAILABLE !== 'false',
+  // This shell's main process guards the document preview frame
+  // (document-preview-guard.ts). The renderer previews .xlsx, .docx, .pptx
+  // and .pdf files only when this is true, so an older shell keeps opening
+  // them in the default app.
+  supportsDocumentPreview: true,
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),

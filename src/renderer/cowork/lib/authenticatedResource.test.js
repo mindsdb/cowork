@@ -40,7 +40,7 @@ describe('authenticated private file resources', () => {
 
     await expect(fetchAuthenticatedBlob('/api/v1/private/raw')).resolves.toBe(blob);
     await expect(fetchAuthenticatedBlob('/api/v1/private/raw')).rejects.toThrow('426');
-    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw');
+    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw', { signal: undefined });
   });
 
   it('carries the HTTP status on a failure, so a caller can tell a missing file apart', async () => {
@@ -53,6 +53,21 @@ describe('authenticated private file resources', () => {
     mocks.authFetch.mockResolvedValueOnce(response);
     await expect(fetchAuthenticatedResponse('/api/v1/files/f1/content')).resolves.toBe(response);
     expect(response.blob).not.toHaveBeenCalled();
+  });
+
+  it('hands its signal to authFetch, so an abort while the request waits rejects it', async () => {
+    /* Settles the way fetch does: never on its own, and with the signal's
+       reason once the signal it was given aborts. */
+    mocks.authFetch.mockImplementationOnce((_url, { signal } = {}) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const controller = new AbortController();
+
+    const response = fetchAuthenticatedResponse('/api/v1/private/raw', { signal: controller.signal });
+    controller.abort();
+
+    await expect(response).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw', { signal: controller.signal });
   });
 
   it('rejects a failed response with its status, and a URL outside the Cowork API before sending', async () => {
@@ -76,7 +91,7 @@ describe('authenticated private file resources', () => {
 
     await expect(downloadAuthenticatedResource('/api/v1/private/raw', 'report.bin')).resolves.toBe(true);
 
-    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw');
+    expect(mocks.authFetch).toHaveBeenCalledWith('/api/v1/private/raw', { signal: undefined });
     expect(click).toHaveBeenCalledOnce();
     expect(click.mock.instances[0]).toMatchObject({
       href: 'blob:private-file',
@@ -103,12 +118,69 @@ describe('authenticated private file resources', () => {
     expect(popup.location.href).not.toContain('/api/v1/');
   });
 
-  it('preserves Electron main-process authentication without fetching in the renderer', async () => {
+  it('saves a Blob on desktop too, and never hands the URL to the OS browser', async () => {
+    /*
+     * The OS browser carries no token, so the old hand-off answered 401 while
+     * this resolved true. The renderer's fetch carries the token the main
+     * process adds to requests for its local server.
+     */
     mocks.host.isWeb = false;
+    const blob = new Blob(['file'], { type: 'application/zip' });
+    mocks.authFetch.mockResolvedValue({ ok: true, status: 200, blob: async () => blob });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
-    await expect(openAuthenticatedResource('/api/v1/private/raw')).resolves.toBe(true);
+    await expect(downloadAuthenticatedResource('http://127.0.0.1:26866/api/v1/artifacts/drafts/local/a/data.parquet', 'data.parquet'))
+      .resolves.toBe(true);
 
-    expect(mocks.host.openExternal).toHaveBeenCalledWith('/api/v1/private/raw');
-    expect(mocks.authFetch).not.toHaveBeenCalled();
+    expect(mocks.authFetch).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledOnce();
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:private-file', download: 'data.parquet' });
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['web', true],
+    ['desktop', false],
+  ])('is true only for a 2xx on %s: any other status rejects and saves nothing', async (_name, isWeb) => {
+    mocks.host.isWeb = isWeb;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    for (const status of [204, 299]) {
+      mocks.authFetch.mockResolvedValueOnce({ ok: true, status, blob: async () => new Blob(['x']) });
+      await expect(downloadAuthenticatedResource('/api/v1/private/raw', 'f.bin')).resolves.toBe(true);
+    }
+    for (const status of [301, 401, 403, 404, 500]) {
+      mocks.authFetch.mockResolvedValueOnce({ ok: false, status });
+      await expect(downloadAuthenticatedResource('/api/v1/private/raw', 'f.bin')).rejects.toMatchObject({ status });
+    }
+    expect(click).toHaveBeenCalledTimes(2);
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('opens on desktop by saving a Blob, and never hands the URL to the OS browser', async () => {
+    /* The OS browser carries no token for the local server, so it got a 401. */
+    mocks.host.isWeb = false;
+    const blob = new Blob(['image'], { type: 'image/png' });
+    mocks.authFetch.mockResolvedValue({ ok: true, status: 200, blob: async () => blob });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const open = vi.spyOn(window, 'open');
+
+    await expect(openAuthenticatedResource('http://127.0.0.1:26866/api/v1/attachments/p/t/a/raw', { filename: 'chart.png' }))
+      .resolves.toBe(true);
+
+    expect(mocks.authFetch).toHaveBeenCalledTimes(1);
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:private-file', download: 'chart.png' });
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('rejects on desktop when the file is gone, and saves nothing', async () => {
+    mocks.host.isWeb = false;
+    mocks.authFetch.mockResolvedValue({ ok: false, status: 404 });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    await expect(openAuthenticatedResource('/api/v1/private/raw', { filename: 'f.bin' })).rejects.toMatchObject({ status: 404 });
+
+    expect(click).not.toHaveBeenCalled();
+    expect(mocks.host.openExternal).not.toHaveBeenCalled();
   });
 });

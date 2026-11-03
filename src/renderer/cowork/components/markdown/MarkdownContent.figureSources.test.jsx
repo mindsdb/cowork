@@ -510,6 +510,8 @@ describe('MarkdownContent marks on a live answer after narration and a tool call
 
 describe('MarkdownContent marks on a restored answer after a continuation tool call', () => {
   it('keeps sourced and unsourced restored and diagnosis figures identical to reload', () => {
+    // A reload shows the answer the live turn showed; the narration between
+    // rounds is a Note step on both, not part of either answer (ENG-3554).
     const events = restoredFigureEvents();
     const state = events.reduce((s, e) => reduceStream(s, e, () => 5000), initialStreamState());
     const [hydrated] = hydrateMessagesFromServerEvents([{
@@ -532,17 +534,15 @@ describe('MarkdownContent marks on a restored answer after a continuation tool c
       '📦 Site S1 holds [250] units; site S2 may need [99?] units.',
       'The [250]-unit count stands, up from [240]; I cannot confirm the [12?]-unit adjustment.',
     ]);
-    expect(reloadParagraphs).toEqual([
-      liveParagraphs[0],
-      'I will recheck [250] units and [99?] requested units.',
-      liveParagraphs[1],
-    ]);
+    expect(reloadParagraphs).toEqual(liveParagraphs);
+    expect(hydrated.steps.filter((step) => step.badge === 'Note').map((step) => step.label))
+      .toContain('I will recheck 250 units and 99 requested units.');
     expect(marks(live)).toHaveLength(5);
-    expect(marks(reload)).toHaveLength(7);
+    expect(marks(reload)).toHaveLength(5);
     for (const container of [live, reload]) {
       expect(within(container).getByRole('button', { name: '240, repeated from an earlier answer' })).toBeInTheDocument();
     }
-    // Live projection never mutates the event offsets needed by hydration.
-    expect(hydrated.figureSources).toEqual(state.figureSources);
+    // Both move the event offsets onto the shown answer the same way.
+    expect(hydrated.figureSources).toEqual(rebaseFigureSources(state.figureSources, state.answerText, state.bodyText, state.bodyTextMap));
   });
 });

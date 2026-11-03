@@ -12,6 +12,8 @@ const ICON_MAP = {
   memory:   Ico.brain,
   download: Ico.download,
   cube:     Ico.cube,
+  // Anton's narration between steps (ENG-3554).
+  note:     Ico.chats,
 };
 
 export function StepIcon({ type, size = 12 }) {

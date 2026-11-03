@@ -170,7 +170,7 @@ describe('figure marks in a finished answer', () => {
     await userEvent.click(within(popup).getByRole('button', { name: /View file/ }));
     const viewer = await screen.findByRole('dialog', { name: 'stock.csv' });
     expect(await within(viewer).findByText(/mug,40/)).toBeInTheDocument();
-    expect(authFetch).toHaveBeenCalledWith(`${BASE}/attachments/plantB/conv-a/file-123/raw`);
+    expect(authFetch).toHaveBeenCalledWith(`${BASE}/attachments/plantB/conv-a/file-123/raw`, { signal: undefined });
     expect(readProjectFile).not.toHaveBeenCalled();
     expect(within(viewer).queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(within(viewer).queryByRole('button', { name: /Delete/ })).toBeNull();

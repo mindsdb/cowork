@@ -219,6 +219,59 @@ afterEach(() => {
 });
 
 describe('startServer failure diagnostics', () => {
+  it.each(['SIGKILL', 'SIGSEGV'])('persists an unexpected %s after the backend is ready', async (signal) => {
+    let persisted = '';
+    const stream = makeLogStream();
+    stream.write = ((chunk: string) => { persisted += chunk; return true; }) as never;
+    vi.mocked(fs.createWriteStream).mockReturnValue(stream as never);
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return child as never;
+    }) as never);
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+      child.emit('exit', null, signal);
+      const events = persisted.trim().split('\n').map((line) => JSON.parse(line));
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ event: 'backend_exited', log_level: 'ERROR', exit_signal: signal });
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ exit_signal: signal });
+      expect(getServerDiagnostics().lastStopIntentional).toBe(false);
+      expect(isServerRunning()).toBe(false);
+    } finally {
+      output.mockRestore();
+      await stopServer();
+    }
+  });
+
+  it('keeps an intentional signal shutdown out of failure diagnostics', async () => {
+    let persisted = '';
+    const stream = makeLogStream();
+    stream.write = ((chunk: string) => { persisted += chunk; return true; }) as never;
+    vi.mocked(fs.createWriteStream).mockReturnValue(stream as never);
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return child as never;
+    }) as never);
+    vi.mocked(process.kill).mockImplementation((() => {
+      child.killed = true;
+      setTimeout(() => child.emit('exit', null, 'SIGTERM'), 0);
+      return true;
+    }) as never);
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+      await stopServer();
+      expect(persisted).toBe('');
+      expect(output).not.toHaveBeenCalled();
+      expect(getServerDiagnostics().lastStopIntentional).toBe(true);
+    } finally {
+      output.mockRestore();
+    }
+  });
+
   it('reports a spawn error instead of a health timeout, and keeps it in the log tail', async () => {
     // Regression: the spawn had no 'error' listener, so an AV-blocked or
     // missing executable was reported as "no /health within 15000ms" with an

@@ -264,6 +264,12 @@ describe('web mode (no bridge)', () => {
     expect(host.codeModeAvailable).toBe(false);
   });
 
+  it('supportsDocumentPreview is true on web, where no bridge decides it', async () => {
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(true);
+    expect(host.host.supportsDocumentPreview).toBe(true);
+  });
+
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
     const host = await importHost();
     expect(host.getApiOrigin()).toBe('http://localhost:3000');
@@ -331,6 +337,65 @@ describe('web mode (no bridge)', () => {
     },
   );
 
+  it('openPendingTab opens a blank tab with its opener already cut', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    open.mockClear();
+
+    const pending = host.openPendingTab();
+
+    expect(open).toHaveBeenCalledWith('', '_blank');
+    expect(pending).not.toBeNull();
+    expect(tab.opener).toBeNull();
+    expect(tab.location.replace).not.toHaveBeenCalled();
+  });
+
+  it('openPendingTab returns null when the browser blocks the tab', async () => {
+    const host = await importHost();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    expect(host.openPendingTab()).toBeNull();
+  });
+
+  it('a pending tab goes to an https address', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(host.openPendingTab()?.navigate('https://draft.example/_t/x/index.html')).toBe(true);
+    expect(tab.location.replace).toHaveBeenCalledWith('https://draft.example/_t/x/index.html');
+  });
+
+  it.each(['javascript:alert(document.domain)', 'file:///etc/passwd', 'not a url'])(
+    'a pending tab refuses what openExternal refuses, and stays where it is: %s',
+    async (url) => {
+      const host = await importHost();
+      const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+      vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+      expect(host.openPendingTab()?.navigate(url)).toBe(false);
+      expect(tab.location.replace).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a pending tab the user closed is left closed, and that is not a failure', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, closed: true, location: { replace: vi.fn() }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(host.openPendingTab()?.navigate('https://draft.example/_t/x/index.html')).toBe(true);
+    expect(tab.location.replace).not.toHaveBeenCalled();
+  });
+
+  it('closing a pending tab the user already closed throws nothing', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn(() => { throw new Error('gone'); }) };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(() => host.openPendingTab()?.close()).not.toThrow();
+    expect(tab.close).toHaveBeenCalled();
+  });
+
   it('MindsHub PKCE bridges refuse with a reason (web uses Keycloak redirect)', async () => {
     const host = await importHost();
     await expect(host.mindshubLogin()).resolves.toMatchObject({ ok: false });
@@ -369,6 +434,29 @@ describe('electron mode (bridge present)', () => {
     host = await importHost();
     expect(host.codeModeAvailable).toBe(false);
   });
+
+  it('supportsDocumentPreview is true only when the bridge reports literal true', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: true };
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(true);
+    expect(host.host.supportsDocumentPreview).toBe(true);
+  });
+
+  it('supportsDocumentPreview is false on a shell whose bridge omits the flag', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(false);
+    expect(host.host.supportsDocumentPreview).toBe(false);
+  });
+
+  it.each([false, 'true', 1, {}])(
+    'supportsDocumentPreview is false when the bridge reports %j',
+    async (value) => {
+      (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: value };
+      const host = await importHost();
+      expect(host.supportsDocumentPreview).toBe(false);
+    },
+  );
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {
     (window as unknown as Record<string, unknown>).antontron = { serverPort: 12345 };
@@ -935,6 +1023,34 @@ describe('electron mode (bridge present)', () => {
   });
 });
 
+describe('checkConfigured() on web reads the deployment flags from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => body }));
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  }
+
+  it('reports live apps only when /health says true', async () => {
+    const fetch = stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: false, live_apps: true });
+    const host = await importHost();
+
+    await expect(host.checkConfigured()).resolves.toEqual({
+      configured: true, provider: 'minds_cloud', orgMode: false, liveApps: true, draftLinks: false,
+    });
+    expect(String((fetch.mock.calls[0] as unknown[])[0])).toMatch(/\/api\/v1\/health\/$/);
+  });
+
+  it.each([
+    ['absent', {}],
+    ['false', { live_apps: false }],
+    ['a string', { live_apps: 'true' }],
+  ])('reports no live apps when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, ...flag });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ liveApps: false });
+  });
+});
+
 describe('web settings access — loopback-gated /raw (ENG-817)', () => {
   // In the console-hosted web build the browser reaches cowork-server from the
   // docker bridge, not loopback, so /settings/raw 403s. The .env is legacy and
@@ -1122,5 +1238,31 @@ describe('getShellSupport() — the supported desktop window (ENG-1047)', () => 
   it('is on the curated `host` object, which App.tsx and Settings call through', async () => {
     const mod = await importHost();
     expect(typeof mod.host.getShellSupport).toBe('function');
+  });
+});
+
+// toMatchObject, not toEqual: other deployment flags read from /health sit
+// next to this one in the same result.
+describe('checkConfigured() on web reads draft_links from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => body })));
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('reports draft links only when /health says true', async () => {
+    stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: true, draft_links: true });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ orgMode: true, draftLinks: true });
+  });
+
+  it.each([
+    ['absent', {}],
+    ['false', { draft_links: false }],
+    ['a string', { draft_links: 'true' }],
+  ])('reports no draft links when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, ...flag });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ draftLinks: false });
   });
 });

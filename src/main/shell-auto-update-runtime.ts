@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 import { app, type BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -108,7 +109,7 @@ function persistEvidence(evidence: DownloadedTargetEvidence): boolean {
     fs.writeFileSync(evidencePath(), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
     return true;
   } catch (error) {
-    console.warn('[shell-updater] could not persist downloaded target:', error);
+    diagnostic("main.shell-auto-update-runtime", "WARNING", "shell_updater_could_not_persist_downloaded_target", '[shell-updater] could not persist downloaded target:', error);
     return false;
   }
 }
@@ -172,7 +173,7 @@ function markBootInstallAttempt(snapshot: ShellUpdateSnapshot): boolean {
 function clearEvidence(): void {
   lastEvidenceVersion = null;
   try { fs.unlinkSync(evidencePath()); } catch (error: any) {
-    if (error?.code !== 'ENOENT') console.warn('[shell-updater] could not clear target evidence:', error);
+    if (error?.code !== 'ENOENT') diagnostic("main.shell-auto-update-runtime", "WARNING", "shell_updater_could_not_clear_target_evidence", '[shell-updater] could not clear target evidence:', error);
   }
 }
 
@@ -285,7 +286,7 @@ export function configureShellAutoUpdate(options: {
       // Full detail, stack included, to the app log ONLY — never the UI (which
       // shows the classified message) and never the analytics endpoint (no PII).
       const target = report.targetVersion ? ` → ${report.targetVersion}` : '';
-      console.error(
+      diagnostic("main.shell-auto-update-runtime", "ERROR", "shell_updater_failed_trigger_recoverable_on",
         `[shell-updater] ${report.phase} failed (${report.code}, trigger=${report.trigger ?? 'unknown'}, `
         + `recoverable=${report.recoverable}) on ${feed.channel} ${report.currentVersion}${target}:`,
         report.error,
@@ -307,7 +308,7 @@ export function configureShellAutoUpdate(options: {
       });
     },
   });
-  console.log(`[shell-updater] configured ${feed.channel} feed (${feed.url}, mode: ${mode})`);
+  diagnostic("main.shell-auto-update-runtime", "INFO", "shell_updater_configured_feed_mode", `[shell-updater] configured ${feed.channel} feed (${feed.url}, mode: ${mode})`);
   return currentSnapshot;
 }
 
@@ -343,7 +344,7 @@ async function stopServerForInstall(): Promise<void> {
     new Promise<boolean>(resolve => setTimeout(() => resolve(false), INSTALL_STOP_CEILING_MS)),
   ]);
   if (stopped) return;
-  console.warn('[shell-updater] sidecar did not stop before the install ceiling; force-reaping it');
+  diagnostic("main.shell-auto-update-runtime", "WARNING", "shell_updater_sidecar_did_not_stop_before_the_install_ceiling_force_reaping_it", '[shell-updater] sidecar did not stop before the install ceiling; force-reaping it');
   await Promise.race([
     forceReapServer(),
     new Promise<void>(resolve => setTimeout(resolve, 2_000)),
@@ -387,9 +388,9 @@ export async function installShellAutoUpdate(source: ShellInstallSource = 'user'
 async function restoreServerAfterAbortedInstall(): Promise<void> {
   try {
     const result = await startServer();
-    if (!result.ok) console.error('[shell-updater] sidecar did not restart after the aborted install:', result.reason);
+    if (!result.ok) diagnostic("main.shell-auto-update-runtime", "ERROR", "shell_updater_sidecar_did_not_restart_after_the_aborted_install", '[shell-updater] sidecar did not restart after the aborted install:', result.reason);
   } catch (error) {
-    console.error('[shell-updater] sidecar restart after the aborted install threw:', error);
+    diagnostic("main.shell-auto-update-runtime", "ERROR", "shell_updater_sidecar_restart_after_the_aborted_install_threw", '[shell-updater] sidecar restart after the aborted install threw:', error);
   }
 }
 
@@ -464,9 +465,9 @@ async function installStrandedShellUpdate(): Promise<boolean> {
   })) return false;
   if (!markBootInstallAttempt(snapshot)) return false;
 
-  console.log(`[shell-updater] installing ${snapshot.targetVersion}, downloaded by an earlier launch`);
+  diagnostic("main.shell-auto-update-runtime", "INFO", "shell_updater_installing_downloaded_by_an_earlier_launch", `[shell-updater] installing ${snapshot.targetVersion}, downloaded by an earlier launch`);
   return installShellAutoUpdate('boot').catch(error => {
-    console.error('[shell-updater] stranded install failed:', error);
+    diagnostic("main.shell-auto-update-runtime", "ERROR", "shell_updater_stranded_install_failed", '[shell-updater] stranded install failed:', error);
     return false;
   });
 }
@@ -493,7 +494,7 @@ export function startShellAutoUpdatePolling(
   if (!controller) return Promise.resolve();
   return rendererReady.then(async () => {
     void checkShellAutoUpdate('boot').catch(error => {
-      console.error('[shell-updater] boot check failed:', error);
+      diagnostic("main.shell-auto-update-runtime", "ERROR", "shell_updater_boot_check_failed", '[shell-updater] boot check failed:', error);
     });
     schedulePeriodicChecks();
     // Nothing an earlier launch left behind, so no boot install to decide.
@@ -539,7 +540,7 @@ function schedulePeriodicChecks(): void {
     if (Date.now() - lastCheckAt < due) return;
     lastCheckAt = Date.now();
     void checkShellAutoUpdate('periodic').catch(error => {
-      console.error('[shell-updater] periodic check failed:', error);
+      diagnostic("main.shell-auto-update-runtime", "ERROR", "shell_updater_periodic_check_failed", '[shell-updater] periodic check failed:', error);
     });
   }, PENDING_REFRESH_INTERVAL_MS);
   timer.unref?.();

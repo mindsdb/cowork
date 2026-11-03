@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Provisions the 15 static OAuth client id/secret values into the OS-native
 // secure store, and reads them back out on every server start (ENG-1241).
 //
@@ -136,11 +137,11 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
   try {
     parsed = JSON.parse(fs.readFileSync(stagingPath, 'utf8'));
   } catch (err) {
-    console.error(`[credentials] failed to read/parse staged file at ${stagingPath}:`, err);
+    diagnostic("main.credential-provisioning", "ERROR", "credentials_failed_to_read_parse_staged_file_at", `[credentials] failed to read/parse staged file at ${stagingPath}:`, err);
     return; // could be a transient read error — leave the file for the next launch to retry
   }
   if (!isCredentialRecord(parsed)) {
-    console.error(`[credentials] staged file at ${stagingPath} is not a JSON object — ignoring it`);
+    diagnostic("main.credential-provisioning", "ERROR", "credentials_staged_file_at_is_not_a_json_object_ignoring_it", `[credentials] staged file at ${stagingPath} is not a JSON object — ignoring it`);
     return;
   }
   const values = parsed;
@@ -151,7 +152,7 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
   try {
     storedGeneration = await getGenerationMarker();
   } catch (err) {
-    console.error('[credentials] failed to read the stored generation marker from the secure store:', err);
+    diagnostic("main.credential-provisioning", "ERROR", "credentials_failed_to_read_the_stored_generation_marker_from_the_secure_store", '[credentials] failed to read the stored generation marker from the secure store:', err);
     return; // can't safely decide whether a write is needed — retry next launch
   }
 
@@ -162,7 +163,7 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
     try {
       fs.unlinkSync(stagingPath);
     } catch (err) {
-      console.error(
+      diagnostic("main.credential-provisioning", "ERROR", "credentials_values_already_current_failed_to_remove_redundant_staged_file_at",
         `[credentials] values already current; failed to remove redundant staged file at ${stagingPath}:`,
         err,
       );
@@ -181,12 +182,12 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
     );
 
   if (failed.length > 0) {
-    console.error(
+    diagnostic("main.credential-provisioning", "ERROR", "credentials_failed_to_write_values_to_the_secure_store_leaving_the_staged_file_in_place_to_retry_nex",
       `[credentials] failed to write ${failed.length}/${STATIC_CREDENTIAL_KEYS.length} values to the secure` +
         ` store (${failed.map((f) => f.key).join(', ')}); leaving the staged file in place to retry next launch.`,
     );
     for (const { key, result } of failed) {
-      console.error(`[credentials]   ${key}:`, result.reason);
+      diagnostic("main.credential-provisioning", "ERROR", "credentials", `[credentials]   ${key}:`, result.reason);
     }
     return; // do not update the marker, do not delete the file — next launch retries all 15 from scratch
   }
@@ -199,7 +200,7 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
     // stored marker hasn't changed and re-run this same write — harmless,
     // since keytar.setPassword is an upsert — then try the marker update
     // again.
-    console.error('[credentials] wrote all values but failed to update the generation marker:', err);
+    diagnostic("main.credential-provisioning", "ERROR", "credentials_wrote_all_values_but_failed_to_update_the_generation_marker", '[credentials] wrote all values but failed to update the generation marker:', err);
     return;
   }
 
@@ -209,7 +210,7 @@ export async function provisionCredentialsFromStaging(): Promise<void> {
     // Provisioning fully succeeded — this is just cleanup. The next launch
     // will see the marker already matches and quietly delete the leftover
     // file itself (the branch above), so nothing is lost.
-    console.error(`[credentials] provisioning succeeded but failed to delete staged file at ${stagingPath}:`, err);
+    diagnostic("main.credential-provisioning", "ERROR", "credentials_provisioning_succeeded_but_failed_to_delete_staged_file_at", `[credentials] provisioning succeeded but failed to delete staged file at ${stagingPath}:`, err);
   }
 }
 
@@ -226,7 +227,7 @@ export async function loadStaticCredentials(): Promise<Record<string, string>> {
       try {
         return [key, await getStaticCredential(key)] as const;
       } catch (err) {
-        console.error(`[credentials] failed to read ${key} from the secure store:`, err);
+        diagnostic("main.credential-provisioning", "ERROR", "credentials_failed_to_read_from_the_secure_store", `[credentials] failed to read ${key} from the secure store:`, err);
         return [key, null] as const;
       }
     }),
@@ -252,7 +253,7 @@ export async function loadBundledServerCredentials(): Promise<Record<string, str
     // this is a last-resort guard so a truly unexpected failure (e.g. an
     // OS-level keytar crash) can never stop the server from starting with
     // whatever's already provisioned.
-    console.error('[credentials] unexpected error while provisioning from staging:', err);
+    diagnostic("main.credential-provisioning", "ERROR", "credentials_unexpected_error_while_provisioning_from_staging", '[credentials] unexpected error while provisioning from staging:', err);
   }
   const credentials = await loadStaticCredentials();
 
@@ -264,7 +265,7 @@ export async function loadBundledServerCredentials(): Promise<Record<string, str
   // copy, so this user's home has neither. macOS has the same hole. Without
   // this the only symptom is a connector reporting "not configured".
   if (Object.keys(credentials).length === 0) {
-    console.warn(
+    diagnostic("main.credential-provisioning", "WARNING", "credentials_no_oauth_credentials_are_provisioned_for_this_user_if_this_machine_was_set_up_by_a_diffe",
       '[credentials] no OAuth credentials are provisioned for this user. If this machine was set up'
         + ' by a different user account, the installer staged them into that account instead;'
         + ' reinstall as this user to provision them here.',

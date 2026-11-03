@@ -38,10 +38,13 @@ export interface MarkdownContentProps {
   animateStreamingWords?: boolean;
   isAssistant?: boolean;
   softBreaks?: boolean;
+  codeOverflowCue?: boolean;
   neutralizeLoopback?: boolean;
   figureSources?: MarkdownFigure[] | null;
   onOpenFigureStep?: ((stepId: string) => void) | null;
   onViewFigureFile?: ((source: MarkdownFigureSource) => void) | null;
+  /* Loads an image from the document's own folder; null when its `src` may not load. */
+  loadImage?: ((src: string) => Promise<Blob> | null) | null;
 }
 
 export const MarkdownContent: ComponentType<MarkdownContentProps>;

@@ -1,0 +1,27 @@
+{
+  "limits": {
+    "maxBytes": 33554432,
+    "maxInflatedBytes": 268435456,
+    "maxZipEntryInflatedBytes": 67108864,
+    "maxZipEntries": 10000,
+    "maxSheetRows": 2000,
+    "maxSheetColumns": 200,
+    "maxSheets": 256,
+    "maxSheetCellCharacters": 1000,
+    "maxNumberFormatLength": 255,
+    "maxDocxNodes": 2097152,
+    "maxDocxFontUrlCharacters": 16777216,
+    "maxPicturePixels": 67108864,
+    "maxPdfPages": 500,
+    "maxPdfCanvasPixels": 16777216,
+    "maxPdfCanvasSide": 16384,
+    "maxPdfCanvasesAlive": 6,
+    "maxSlides": 300,
+    "maxSlideElements": 100000,
+    "readyTimeoutMs": 10000,
+    "progressTimeoutMs": 20000
+  },
+  "touchLimits": {
+    "maxPdfCanvasPixels": 4194304
+  }
+}

@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 import { useState, useEffect, useCallback } from 'react';
 import { host } from '../../platform/host';
 
@@ -61,8 +62,8 @@ export function useAppUpdates() {
   }, []);
 
   const handleApplyUpdate = useCallback(async () => {
-    console.log('[ui-update] install clicked, applying update...');
-    if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
+    diagnostic("renderer.cowork.hooks.useAppUpdates", "INFO", "ui_update_install_clicked_applying_update", '[ui-update] install clicked, applying update...');
+    if (updateApplying) { diagnostic("renderer.cowork.hooks.useAppUpdates", "INFO", "ui_update_already_applying_skipping", '[ui-update] already applying, skipping'); return; }
     setUpdateApplying(true);
     const previous = updateStatus;
     const showProgress = () => setUpdateStatus({ phase: 'downloading', version: previous?.version });
@@ -75,7 +76,7 @@ export function useAppUpdates() {
     if (!previous?.serverUpdate) showProgress();
     try {
       const result = await host.applyUpdate({ onProceed: showProgress });
-      console.log('[ui-update] applyUpdate result:', result);
+      diagnostic("renderer.cowork.hooks.useAppUpdates", "INFO", "ui_update_applyupdate_result", '[ui-update] applyUpdate result:', result);
       if (result === 'cancelled') {
         // The person kept their running tasks (ENG-3291). Put the banner back
         // the way it was so the update is still offered.
@@ -85,7 +86,7 @@ export function useAppUpdates() {
       }
       // Window will reload with the new bundle — no further action needed
     } catch (err) {
-      console.error('[ui-update] applyUpdate failed:', err);
+      diagnostic("renderer.cowork.hooks.useAppUpdates", "ERROR", "ui_update_applyupdate_failed", '[ui-update] applyUpdate failed:', err);
       setUpdateApplying(false);
       // Keep the version so the sidebar can offer a labelled retry rather than
       // going silent until the next poll.

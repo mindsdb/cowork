@@ -5,9 +5,8 @@ import { act, renderHook } from '@testing-library/react';
 // end-session endpoint via window.location.replace(). If the hook ALSO calls
 // window.location.reload() on success, the reload runs first and cancels that
 // redirect — the SSO cookie survives, login-required silently re-auths, and
-// sign-out has no visible effect. Web success must reload on neither path; only
-// a REJECTION reloads immediately (the platform threw before its own
-// navigation).
+// sign-out has no visible effect. Web success does not reload; a failure
+// remains visible so a failed preview revocation cannot look like sign-out.
 //
 // Electron regression (stuck "Signing out…"): on Electron the ONLY thing that
 // clears the modal is main's single deferred webContents.reload(). If that one
@@ -49,13 +48,14 @@ describe('useLogout — web', () => {
     expect(reloadSpy).not.toHaveBeenCalled();
   });
 
-  it('reloads only when logout rejects (redirect never fired)', async () => {
+  it('shows a retryable error when web logout rejects before redirect', async () => {
     hostMock.host.logout.mockRejectedValue(new Error('keycloak logout failed'));
 
     const { result } = renderHook(() => useLogout());
     await act(() => result.current.logout());
 
-    expect(reloadSpy).toHaveBeenCalledTimes(1);
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(result.current.waitNote).toBe('Could not finish signing out. Please try again.');
     // A failed attempt must not rotate the analytics identity (ENG-537).
     expect(resetDeviceIdentity).not.toHaveBeenCalled();
   });

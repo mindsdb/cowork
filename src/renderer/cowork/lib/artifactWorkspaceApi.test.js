@@ -1,15 +1,22 @@
-import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { load } from 'js-yaml';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', () => ({ authFetch: vi.fn(), BASE: '/api/v1' }));
 
 import {
   artifactRef,
   canUseArtifactWorkspace,
+  createDraftLink,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
+  requestArtifactExport,
   setArtifactAccess,
 } from './artifactWorkspaceApi';
 import { authFetch } from '../api';
+
+const exportCases = load(readFileSync(resolve(__dirname, 'artifactWorkspaceApi.test.yaml'), 'utf8'));
 
 // The workspace API addresses an artifact by its one identity. A card built
 // before ids were widened cannot address it at all, so the viewer has to fall
@@ -214,6 +221,40 @@ describe('loadArtifactDraftDocument', () => {
   });
 });
 
+describe('createDraftLink', () => {
+  // A failing test must not leave its queued response to the next describe.
+  afterEach(() => { authFetch.mockReset(); });
+
+  it('asks the server for a signed draft link with a POST', async () => {
+    const link = { url: 'https://draft-staging.mindshub.co/_t/v1.a.b/index.html', expiresAt: 1_900_000_000 };
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(link) });
+
+    await expect(createDraftLink('proj 1', '7db94eb8f0a54c7e9c1d2b3a4f5e6d70')).resolves.toEqual(link);
+
+    expect(authFetch).toHaveBeenLastCalledWith(
+      '/api/v1/artifacts/drafts/proj%201/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/link',
+      { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } },
+    );
+  });
+
+  it('carries the server status and detail on failure', async () => {
+    authFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: () => Promise.resolve({ detail: 'Draft links are not available' }),
+    });
+
+    await expect(createDraftLink('proj-1', '7db94eb8f0a54c7e9c1d2b3a4f5e6d70')).rejects.toMatchObject({
+      status: 404,
+      message: 'Draft links are not available',
+    });
+  });
+
+  it('refuses to call without a full identity', async () => {
+    await expect(createDraftLink('', 'x')).rejects.toThrow('Artifact has no full identity');
+  });
+});
+
 // Callers branch on a refusal's code (409 artifact_owned_by_other_user), so it
 // sits on the error as `code`, the same field the desktop request helper sets.
 describe('workspace request errors', () => {
@@ -245,5 +286,80 @@ describe('workspace request errors', () => {
       code: null,
       message: 'Bad access',
     });
+  });
+
+  // A share with everyone the caller may not make: a string detail beside a
+  // top-level code (cowork.services.publish.ShareOrgRequired.refusal).
+  it("puts a refused share's top-level code beside its string detail", async () => {
+    const reason = 'Sharing an artifact with everyone in the organization requires the artifacts.share_org permission or an organization admin.';
+    refuse(403, { detail: reason, code: 'share_org_required' });
+
+    await expect(setArtifactAccess(ARTIFACT, { mode: 'restricted', org_allowed: true })).rejects.toMatchObject({
+      status: 403,
+      code: 'share_org_required',
+      message: reason,
+    });
+  });
+});
+
+/*
+ * The export route is addressed by the project and artifact segments of the
+ * card's draft URL, and its body names the format alone: the route always
+ * exports the primary file and answers 422 to a path or any other field.
+ */
+describe('requestArtifactExport', () => {
+  const ARTIFACT_ID = '7db94eb8f0a54c7e9c1d2b3a4f5e6d70';
+  const RESULT = {
+    filename: 'report.docx',
+    draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/report.docx`,
+    serveUrl: '',
+    omittedCount: 0,
+    scriptsDropped: false,
+  };
+
+  it('posts only the format to the route named by the draft URL', async () => {
+    authFetch.mockClear();
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(RESULT) });
+
+    const result = await requestArtifactExport(`/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/docs/report.md`, 'docx');
+
+    expect(result).toEqual(RESULT);
+    const [url, options] = authFetch.mock.calls[0];
+    expect(url).toBe(`/api/v1/artifacts/workspace/proj-1/${ARTIFACT_ID}/export`);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toStrictEqual({ format: 'docx' });
+  });
+
+  it('addresses a local-tenancy artifact through the local project ref', async () => {
+    authFetch.mockClear();
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(RESULT) });
+
+    await requestArtifactExport(`/api/v1/artifacts/drafts/local/${ARTIFACT_ID}/report.md`, 'html');
+
+    expect(authFetch.mock.calls[0][0]).toBe(`/api/v1/artifacts/workspace/local/${ARTIFACT_ID}/export`);
+  });
+
+  it('keeps an encoded segment one segment', async () => {
+    authFetch.mockClear();
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(RESULT) });
+
+    await requestArtifactExport(`/api/v1/artifacts/drafts/a%2Fb/${ARTIFACT_ID}/report.md`, 'html');
+
+    expect(authFetch.mock.calls[0][0]).toBe(`/api/v1/artifacts/workspace/a%2Fb/${ARTIFACT_ID}/export`);
+  });
+
+  it('carries the status of a refusal on the error', async () => {
+    authFetch.mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({ detail: 'busy' }) });
+
+    await expect(requestArtifactExport(`/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/report.md`, 'docx'))
+      .rejects.toMatchObject({ status: 429 });
+  });
+
+  it.each(exportCases.unaddressableDraftUrls)('sends nothing for $label', async ({ draftUrl }) => {
+    authFetch.mockClear();
+
+    await expect(requestArtifactExport(draftUrl, 'docx')).rejects.toThrow();
+
+    expect(authFetch).not.toHaveBeenCalled();
   });
 });

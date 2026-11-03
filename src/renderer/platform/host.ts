@@ -1,3 +1,4 @@
+import { diagnostic } from '../../shared/diagnostics';
 // Host platform abstraction for the cowork SPA.
 //
 // The cowork renderer ships in two shells:
@@ -44,6 +45,13 @@ export const isWeb: boolean = !isElectron;
 // remains unavailable until a future cloud capability is deliberately added.
 export const codeModeAvailable: boolean =
   isElectron && bridge.codeModeAvailable === true;
+
+/* Whether this shell may mount the sandboxed document preview frame. Web
+   always may. A desktop shell may only when its preload reports exactly true,
+   so an older shell, or one whose bridge omits the flag, keeps opening those
+   files in the default app. */
+export const supportsDocumentPreview: boolean =
+  isWeb || bridge.supportsDocumentPreview === true;
 
 // ---- Platform identity --------------------------------------------------
 
@@ -236,6 +244,40 @@ export async function openExternal(url: string): Promise<void> {
   // reach window.open.
   const browserUrl = normalizeExternalBrowserUrl(url);
   if (browserUrl) window.open(browserUrl, '_blank', 'noopener,noreferrer');
+}
+
+export interface PendingTab {
+  /**
+   * Points the tab at `url`; false, leaving the tab as it is, for a URL
+   * openExternal would refuse. A tab the user has closed meanwhile is left
+   * closed, and that is not a failure.
+   */
+  navigate(url: string): boolean;
+  close(): void;
+}
+
+// Web: a tab for an address known only after an await. It opens blank inside
+// the click, where popup blockers allow it, and its opener is cut at once:
+// `noopener` would make window.open return null and leave no tab to point at
+// the address. The address passes the same scheme rule as openExternal. Null
+// when the browser blocks the tab.
+export function openPendingTab(): PendingTab | null {
+  let tab: Window | null = null;
+  try { tab = window.open('', '_blank'); } catch { tab = null; }
+  if (!tab) return null;
+  const opened = tab;
+  opened.opener = null;
+  return {
+    navigate(url) {
+      const browserUrl = normalizeExternalBrowserUrl(url);
+      if (!browserUrl) return false;
+      if (!opened.closed) opened.location.replace(browserUrl);
+      return true;
+    },
+    close() {
+      try { opened.close(); } catch { /* the tab is already gone */ }
+    },
+  };
 }
 
 export async function openPath(path: string): Promise<{ ok: boolean; reason?: string }> {
@@ -513,6 +555,11 @@ export async function checkConfigured(): Promise<{
   provider: string;
   // Electron is desktop by definition, so the bridge path leaves this false.
   orgMode?: boolean;
+  // Only a server that runs live apps reports them; the bridge path never does.
+  liveApps?: boolean;
+  // Only a server that issues signed draft links reports them; the bridge
+  // path never does.
+  draftLinks?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
@@ -525,11 +572,15 @@ export async function checkConfigured(): Promise<{
     config_ready?: boolean;
     provider?: string;
     org_mode?: boolean;
+    live_apps?: boolean;
+    draft_links?: boolean;
   };
   return {
     configured: Boolean(h.config_ready),
     provider: h.provider ?? '',
     orgMode: Boolean(h.org_mode),
+    liveApps: h.live_apps === true,
+    draftLinks: h.draft_links === true,
   };
 }
 
@@ -1457,7 +1508,7 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
          * has no error branch to fall into — a rejection there strands sign-in on
          * the validating screen with nothing on it.
          */
-        console.warn('[host] could not read the MindsHub organizations', error);
+        diagnostic("renderer.platform.host", "WARNING", "host_could_not_read_the_mindshub_organizations", '[host] could not read the MindsHub organizations', error);
       }
     }
     return NO_ORGS;
@@ -1466,7 +1517,7 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
   const { listWebOrganizations } = await import('../lib/keycloak');
   const result = await listWebOrganizations();
   if (!result.ok) {
-    console.warn('[host] could not read the MindsHub organizations', result.reason);
+    diagnostic("renderer.platform.host", "WARNING", "host_could_not_read_the_mindshub_organizations", '[host] could not read the MindsHub organizations', result.reason);
     return { ...NO_ORGS, reachable: false };
   }
   return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
@@ -1482,7 +1533,7 @@ export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchM
          * A refusal is something the menu renders, so it has to arrive as a
          * value. Throwing past the toast leaves the row looking untouched.
          */
-        console.warn('[host] could not change the MindsHub organization', error);
+        diagnostic("renderer.platform.host", "WARNING", "host_could_not_change_the_mindshub_organization", '[host] could not change the MindsHub organization', error);
         return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
       }
     }
@@ -1672,6 +1723,7 @@ export const host = {
   isWeb,
   isElectron,
   codeModeAvailable,
+  supportsDocumentPreview,
   getPlatform,
   isMac,
   getApiOrigin,
@@ -1685,6 +1737,7 @@ export const host = {
   serverStop,
   serverDiagnostics,
   openExternal,
+  openPendingTab,
   openPath,
   showItemInFolder,
   pickCodeFolder,

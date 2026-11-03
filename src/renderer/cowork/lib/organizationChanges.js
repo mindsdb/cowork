@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 // Desktop switches organization in place after the credential handoff succeeds.
 // Notify mounted organization-scoped readers without waiting for a new subject
 // or a reload. The subject keeps a late switch out of another account's state.
@@ -22,7 +23,7 @@ export function notifyOrganizationChanged(subject) {
     try {
       listener(subject);
     } catch (err) {
-      console.error('[organization] a change listener threw', err);
+      diagnostic("renderer.cowork.lib.organizationChanges", "ERROR", "organization_a_change_listener_threw", '[organization] a change listener threw', err);
     }
   }
 }

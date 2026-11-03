@@ -5,9 +5,14 @@ import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
+import { useDraftImageLoader } from './draftImages';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
+import { LiveAppPreview } from './LiveAppPreview';
+import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
+import { LAUNCH_LIVE_APP_LABEL } from '../../lib/liveAppState';
+import { DocumentPreview } from '../../preview/DocumentPreview';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -39,6 +44,36 @@ function PreviewPlaceholder() {
   );
 }
 
+// Live apps keep their own origin while the pane hosts their trusted bootstrap.
+function LiveAppPanel({ notice, state, reloadKey, onOpen, onLaunch }) {
+  const origin = host.isWeb ? liveAppPreviewOrigin(state) : '';
+  if (origin) return <LiveAppPreview key={`${state.launchId}:${reloadKey}`} origin={origin} launchId={state.launchId} reloadKey={reloadKey} onOpen={onOpen} />;
+  if (!notice) return <PreviewPlaceholder />;
+  const address = notice.address ? new URL(notice.address) : null;
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
+      <div style={{
+        display: 'grid', justifyItems: 'center', gap: 12, maxWidth: 460,
+        textAlign: 'center', fontFamily: FONT_BODY,
+      }}>
+        <div style={{ color: 'var(--ink-2)', fontSize: 13 }}>{notice.text}</div>
+        {address && (
+          <Button onClick={onOpen} title={address.href}>
+            {Ico.arrowUpRight(14)}
+            {address.host}
+          </Button>
+        )}
+        {notice.canLaunch && onLaunch && (
+          <Button onClick={onLaunch}>
+            {Ico.play(14)}
+            {LAUNCH_LIVE_APP_LABEL}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ArtifactViewerBody({
   workspace,
   preview,
@@ -47,6 +82,8 @@ export function ArtifactViewerBody({
 }) {
   const {
     draftUrl: draftPreviewUrl,
+    contentVersion,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -62,6 +99,7 @@ export function ArtifactViewerBody({
     csv: csvPreview,
     onDownload,
     onOpenOS,
+    liveApp,
     url: previewUrl,
     doc: previewDoc = '',
     kind: previewKind,
@@ -103,6 +141,10 @@ export function ArtifactViewerBody({
   // until the user has been told exactly that and said yes.
   const [confirmRejectHead, setConfirmRejectHead] = useState(null);
   const [confirmRejectError, setConfirmRejectError] = useState('');
+  // One loader for Preview and Edit's split preview, so switching between
+  // them asks for no image twice. Keyed on the viewer's content version, so a
+  // change to the artifact or a Reload asks again.
+  const loadDraftImage = useDraftImageLoader(draftPreviewUrl, contentVersion);
 
   // Once the preview has painted, prepare the HTML editor during idle time.
   // The first Edit click is then a surface swap, not a second parse/download;
@@ -130,6 +172,7 @@ export function ArtifactViewerBody({
       onChange={workspace.setDraft}
       onSave={(content) => workspace.save('Edited artifact', content)}
       draftUrl={draftPreviewUrl}
+      loadImage={loadDraftImage}
     />
   ) : null;
 
@@ -137,6 +180,10 @@ export function ArtifactViewerBody({
     <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
       <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
     </div>
+  ) : liveApp ? (
+    <LiveAppPanel {...liveApp} />
+  ) : documentPreview ? (
+    <DocumentPreview {...documentPreview} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />
@@ -150,7 +197,7 @@ export function ArtifactViewerBody({
         }}
       >
         {textExt === '.md' ? (
-          <MarkdownContent text={textPreview.content} id={artifact.path} />
+          <MarkdownContent text={textPreview.content} id={artifact.path} loadImage={loadDraftImage} />
         ) : textExt === '.csv' && csvPreview ? (
           <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
         ) : (

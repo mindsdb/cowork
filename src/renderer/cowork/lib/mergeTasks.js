@@ -60,6 +60,9 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
     // fetchSession already established there's more history.
     const hasMoreMessages = l.hasMoreMessages ?? server.hasMoreMessages;
     const messagesCursor = l.messagesCursor ?? server.messagesCursor;
+    // The server never stores a chat's mutes: composer toggles and sends live
+    // only on the local record, possibly before the chat has any message.
+    const disabledConnections = l.disabledConnections ?? server.disabledConnections ?? [];
     if (!isStreaming && !hasLocalContent) {
       // Even without live messages, prefer the locally-bumped
       // updatedAt if it's newer — handleSendInTask stamps the task
@@ -67,7 +70,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
       // races between user-click-send and the first SSE event must
       // not overwrite the bump.
       return {
-        ...server, model, usageNotices, messagesStatus, hasMoreMessages, messagesCursor,
+        ...server, model, usageNotices, messagesStatus, hasMoreMessages, messagesCursor, disabledConnections,
         updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
       };
     }
@@ -80,7 +83,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
         hasMoreMessages,
         messagesCursor,
         updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
-        disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
+        disabledConnections,
         attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
           ? l.attachments
           : server.attachments,
@@ -100,9 +103,7 @@ export function mergeTasksFromServer(serverTasks, localTasks) {
       attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
         ? l.attachments
         : server.attachments,
-      // Muted-datasource toggles can change while a turn streams; keep
-      // the client list when present.
-      disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
+      disabledConnections,
       updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
     };
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { groupMemoryItems } from './memoryTransform';
+import { countNonEmptyMemory, groupMemoryItems, scopeToApi } from './memoryTransform';
 
 describe('groupMemoryItems shared-resource metadata', () => {
   it('retains attribution and capabilities on grouped memory entries', () => {
@@ -56,5 +56,32 @@ describe('groupMemoryItems shared-resource metadata', () => {
     expect(entry.preview).toBe('Keep responses concise.');
     expect(entry.attribution).toBeNull();
     expect(entry.capabilities).toBeNull();
+  });
+});
+
+describe('groupMemoryItems deployment rules', () => {
+  const items = [
+    { scope: 'project', project_id: 'project-1', category: 'lessons', content: 'Ships on Fridays.' },
+    { scope: 'managed', category: 'rules', content: 'Name packages only.' },
+    { scope: 'global', category: 'rules', content: 'Answer in pallets.' },
+  ];
+
+  it('files the managed scope under its own Deployment section, after Global', () => {
+    const grouped = groupMemoryItems(items, [{ id: 'project-1', name: 'billing' }]);
+
+    expect(grouped.sections.map((section) => section.scope)).toEqual(['Global', 'Deployment', 'Project']);
+    const [rule] = grouped.sections[1].files;
+    expect(rule).toMatchObject({ scope: 'Deployment', category: 'rules', path: 'Deployment:global:rules' });
+    expect(scopeToApi(rule.scope)).toBe('managed');
+  });
+
+  it('counts only learned memory', () => {
+    expect(countNonEmptyMemory(groupMemoryItems(items, []))).toBe(2);
+  });
+
+  it('still reads a scope it does not know as Global', () => {
+    const grouped = groupMemoryItems([{ scope: 'tenant', category: 'rules', content: 'x' }], []);
+
+    expect(grouped.sections.map((section) => section.scope)).toEqual(['Global']);
   });
 });

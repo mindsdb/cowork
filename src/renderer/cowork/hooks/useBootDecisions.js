@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 import { useState, useEffect, useRef } from 'react';
 import { host } from '../../platform/host';
 import { createProject, fetchProjects } from '../api';
@@ -96,7 +97,7 @@ export function useBootDecisions({
         if (created) setSelectedProject(created);
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.warn('[default-project] could not bootstrap general', e);
+        diagnostic("renderer.cowork.hooks.useBootDecisions", "WARNING", "default_project_could_not_bootstrap_general", '[default-project] could not bootstrap general', e);
         generalDefaultRef.current = false; // allow retry on next render
       }
     })();

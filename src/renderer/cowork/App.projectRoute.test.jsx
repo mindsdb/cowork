@@ -4,11 +4,25 @@ import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
   fetchProjects: vi.fn(),
+  fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
+  drivePickerProject: vi.fn(),
 }));
+
+// The real hook, with the project App hands it recorded.
+vi.mock('./hooks/useGoogleDrivePicker', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useGoogleDrivePicker: (context, deps) => {
+      spies.drivePickerProject(context.selectedProject);
+      return actual.useGoogleDrivePicker(context, deps);
+    },
+  };
+});
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
-  fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
+  fetchHealth: (...args) => spies.fetchHealth(...args),
   fetchSessions: vi.fn(async () => []),
   fetchSession: vi.fn(async () => ({ messages: [] })),
   fetchConversationList: vi.fn(async () => []),
@@ -29,18 +43,25 @@ vi.mock('./api', async (importOriginal) => ({
 }));
 
 vi.mock('./views/ProjectsView', () => ({
-  default: ({ projects, selectedProject }) => (
+  default: ({ projects, selectedProject, onSendInProject }) => (
     <div>
       <span>Selected project: {selectedProject?.name || 'none'}</span>
       {(projects || []).map((project) => (
         <span key={project.id}>Project: {project.name}</span>
       ))}
+      {selectedProject?.shared && <button onClick={(event) => {
+        const button = event.currentTarget;
+        onSendInProject('Run', { project: selectedProject }).catch((error) => { button.textContent = error.message; });
+      }}>Attempt recipient send</button>}
     </div>
   ),
 }));
 
 vi.mock('./views/HomeView', () => ({
-  default: ({ project }) => <div>Home project: {project?.name || 'none'}</div>,
+  default: ({ project, projects }) => <div>
+    <span>Home project: {project?.name || 'none'}</span>
+    {(projects || []).map((item) => <span key={item.id}>Runnable: {item.id}</span>)}
+  </div>,
 }));
 
 vi.mock('./views/ChatView', () => ({
@@ -88,9 +109,40 @@ async function settle() {
 
 beforeEach(() => {
   spies.fetchProjects.mockReset().mockResolvedValue([{ ...general }]);
+  spies.fetchHealth.mockClear();
+  spies.drivePickerProject.mockClear();
 });
 
 describe('the projects route on a cold load', () => {
+  it('opens shared projects by UUID, refuses sends, and excludes them from the home picker', async () => {
+    const user = userEvent.setup();
+    const shared = { id: 'shared-id', name: 'planning', shared: true, path: '', capabilities: { canRun: false } };
+    spies.fetchProjects.mockResolvedValue([general, shared]);
+    window.history.replaceState(null, '', '/projects/shared-id');
+    render(<App />);
+    await screen.findByText('Selected project: planning');
+    const healthCalls = spies.fetchHealth.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Attempt recipient send' }));
+    await screen.findByText('Only the owner can run tasks in this shared project.');
+    expect(spies.fetchHealth.mock.calls.length).toBe(healthCalls);
+    await user.click(screen.getByRole('button', { name: /New task/ }));
+    await screen.findByText(`Runnable: ${general.id}`);
+    expect(screen.queryByText('Runnable: shared-id')).not.toBeInTheDocument();
+  });
+
+  it('never hands a shared project to the Drive picker, so Drive files are not tagged with it', async () => {
+    const user = userEvent.setup();
+    const shared = { id: 'shared-id', name: 'planning', shared: true, path: '', capabilities: { canRun: false } };
+    spies.fetchProjects.mockResolvedValue([general, shared]);
+    window.history.replaceState(null, '', '/projects/shared-id');
+    render(<App />);
+    await screen.findByText('Selected project: planning');
+    await user.click(screen.getByRole('button', { name: /New task/ }));
+    await screen.findByText(`Runnable: ${general.id}`);
+    expect(spies.drivePickerProject).toHaveBeenCalled();
+    expect(spies.drivePickerProject.mock.calls.filter(([project]) => project?.id === shared.id)).toEqual([]);
+  });
+
   it("lands on the grid with no selection for a project link the caller can't open", async () => {
     window.history.replaceState(null, '', '/projects/not-mine');
     render(<App />);

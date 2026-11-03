@@ -118,8 +118,10 @@ export function withArtifactCommentFlag(url) {
   return appendPreviewParam(url, '__antonComments', '1');
 }
 
-const HAS_BASE_TAG_RE = /<base[\s/>]/i;
+// Only a base with an href decides resolution; `<base target>` alone doesn't.
+const HAS_BASE_TAG_RE = /<base\s[^>]*\bhref\s*=/i;
 const HEAD_OPEN_RE = /<head([^>]*)>/i;
+const LEADING_DOCTYPE_RE = /^(\s*<!doctype[^>]*>)/i;
 
 function escapeHtmlAttribute(value) {
   return String(value)
@@ -132,13 +134,32 @@ function escapeHtmlAttribute(value) {
 // fragment — so relative asset/link references inside HTML fetched via
 // `authFetch` resolve the same way they would if the iframe had navigated to
 // `fetchUrl` directly through `src`.
-function draftDirectoryUrl(fetchUrl) {
+export function draftDirectoryUrl(fetchUrl) {
   try {
     const parsed = new URL(fetchUrl);
     parsed.search = '';
     parsed.hash = '';
     parsed.pathname = parsed.pathname.replace(/[^/]*$/, '');
     return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+// A URL path segment, decoded. A bare `%` (`growth_100%.png`) is escaped
+// first, so the rest still decodes; one that still can't stays literal.
+export function decodePathSegment(seg) {
+  try {
+    return decodeURIComponent(seg.replace(/%(?![0-9a-f]{2})/gi, '%25'));
+  } catch {
+    return seg;
+  }
+}
+
+// The draft's file name, decoded.
+export function draftFileName(fetchUrl) {
+  try {
+    return decodePathSegment(new URL(fetchUrl).pathname.split('/').pop());
   } catch {
     return '';
   }
@@ -173,12 +194,14 @@ export const DRAFT_FRAGMENT_GUARD_SCRIPT = "(function(){document.addEventListene
 // `srcdoc` gives the iframe no base URL of its own, so relative
 // `<script src>` / `<link href>` / anchors in fetched draft HTML would
 // otherwise resolve against the parent app's origin instead of the draft's
-// own directory. No-op if the document already declares a `<base>` — a
+// own directory. No-op if the document already declares a `<base href>` — a
 // second one would be inert (the first `<base>` in document order wins) and
 // misleading to read.
-export function injectDraftBaseHref(html, fetchUrl) {
+// `hasBase` lets a caller that has parsed the page say whether it declares a
+// `<base href>`, where the regex could be fooled by the same text in a script.
+export function injectDraftBaseHref(html, fetchUrl, { hasBase } = {}) {
   const baseHref = draftDirectoryUrl(fetchUrl);
-  if (!baseHref || HAS_BASE_TAG_RE.test(html)) return html;
+  if (!baseHref || (hasBase ?? HAS_BASE_TAG_RE.test(html))) return html;
   // Precedent: cowork-server's comments_layer.py escapes `</script>` in its
   // own injected script for the same reason — a literal occurrence would
   // close the tag early. DRAFT_FRAGMENT_GUARD_SCRIPT is a fixed, hand-authored
@@ -191,6 +214,25 @@ export function injectDraftBaseHref(html, fetchUrl) {
   // touches no storage API and cannot throw — anything added here runs
   // ahead of the server's script and must keep that same property.
   const markup = `<base href="${escapeHtmlAttribute(baseHref)}"><script>${guardScript}</script>`;
+  if (HEAD_OPEN_RE.test(html)) return html.replace(HEAD_OPEN_RE, `<head$1>${markup}`);
+  // Never ahead of a doctype, which would drop the page into quirks mode.
+  return LEADING_DOCTYPE_RE.test(html)
+    ? html.replace(LEADING_DOCTYPE_RE, `$1${markup}`)
+    : `${markup}${html}`;
+}
+
+// The shell's frame sources before live apps. The shell also lists the
+// live-app origins so Cowork can frame a running app, and a srcdoc document
+// inherits that; this tag takes them back out, so an artifact page frames only
+// what it could before, whatever a browser makes of its opaque origin.
+const ARTIFACT_FRAME_SOURCES = "'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com";
+export const ARTIFACT_FRAME_POLICY = `frame-src ${ARTIFACT_FRAME_SOURCES}; child-src ${ARTIFACT_FRAME_SOURCES}`;
+
+// One line, like the base tag above: it adds no newline before inline scripts.
+// Only for a document shown, never one an editor saves back.
+export function limitArtifactFrames(html) {
+  if (typeof html !== 'string' || !html) return html;
+  const markup = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_FRAME_POLICY}">`;
   return HEAD_OPEN_RE.test(html)
     ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)
     : `${markup}${html}`;

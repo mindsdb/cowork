@@ -22,22 +22,27 @@ const OPTION_SELECTED = 'bg-accent-bg text-ink font-medium';
  * The answered state is driven by `step.data.answer`, which arrives on the
  * `response.ask_user_answered` event — never by the local click. That is what
  * makes the card correct after a reload and in a second tab.
+ *
+ * A `reopened` card belongs to a finished turn whose question timed out: no
+ * broker waits on it, so a pick goes out as a normal message instead.
  */
-export default function AskUserCard({ step, conversationId, onAnswered, expired = false }) {
+export default function AskUserCard({ step, conversationId, onAnswered, onAnswerAsMessage, expired = false, reopened = false, lateAnswer = null }) {
   const q = step?.data || {};
-  const answer = q.answer || null;
+  const answer = lateAnswer || q.answer || null;
   const isMany = q.select === 'many';
   const [picked, setPicked] = useState([]);
   const [gone, setGone] = useState(false);
   const [busy, setBusy] = useState(false);
   const promptId = useId();
 
-  const settled = Boolean(answer) || expired || gone;
+  const settled = !reopened && (Boolean(answer) || expired || gone);
 
   // Only a multi-line prompt is markdown: the ask_user tool asks for one
   // plain-text line, and markdown would lose text in it ("<div>" vanishes,
   // "__init__" turns bold). The multi-line PRD brief needs softBreaks for its
-  // single-newline lines; forms and charts stay off so a fence is plain code.
+  // single-newline lines; forms and charts stay off so a fence is plain code,
+  // and a code line too wide for the card is marked as scrolling, since the
+  // person approves what the brief shows.
   // Memoised: ChatView re-renders on every streamed delta, and each card
   // would otherwise re-parse its brief every time.
   const prompt = q.prompt || '';
@@ -46,6 +51,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
       <MarkdownContent
         text={prompt}
         softBreaks
+        codeOverflowCue
         neutralizeLoopback
         enableForms={false}
         enableCharts={false}
@@ -71,6 +77,12 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   const send = async (payload) => {
     if (settled || busy) return;
     setBusy(true);
+    if (reopened) {
+      // Stays busy: the sent message starts a new turn, which closes this card.
+      const labelOf = (v) => (q.options || []).find((o) => o.value === v)?.label || v;
+      onAnswerAsMessage?.(payload.values.map(labelOf).join(', '));
+      return;
+    }
     const result = await submitAnswer(conversationId, q.question_id, payload);
     // `busy` is cleared ONLY for a failure the user can retry. On success the
     // card stays disabled until `settled` flips, which needs the
@@ -117,12 +129,12 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   const actions = settled ? null : {
     leading: (
       <span className="font-body text-xs leading-snug text-ink-4">
-        {q.allow_custom
+        {q.allow_custom || reopened
           ? '…or type your own answer below.'
           : 'Pick an option above — a typed reply won\'t be accepted. Skip to type something else.'}
       </span>
     ),
-    secondary: { label: 'Skip', onClick: () => send({ skipped: true }), disabled: busy },
+    secondary: reopened ? null : { label: 'Skip', onClick: () => send({ skipped: true }), disabled: busy },
     primary: isMany
       ? { label: 'Send', onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
       : null,

@@ -3999,6 +3999,27 @@ body[data-theme="light"] .anton-inline-code {
   line-height: 1.55;
   color: var(--ink);
 }
+/* The cue MarkdownCode's overflowCue adds to a block whose line runs past
+   its right edge: the code fades out at that edge until scrolled to the end,
+   and a plain line under the code says it scrolls. */
+.anton-code-block-scroll {
+  position: relative;
+}
+.anton-code-block-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 48px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--surface-2));
+}
+.anton-code-block-overflow-note {
+  padding: 0 14px 10px;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
 
 /* Scoped highlight.js theme — dark (default). Only matches tokens
    inside our wrapper so the page can't accidentally inherit hljs
@@ -4173,4 +4194,34 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 }
 @container (max-width: 600px) {
   .artifacts-grid { grid-template-columns: 1fr; }
+}
+
+/* ─── Fold: a block that opens and closes by height + opacity (ENG-3554) ──
+   Used where content comes and goes mid-turn — the first take giving way to
+   the answer, the steps block opening and closing — so it eases instead of
+   jumping. Same duration/easing as the other layout motion, so reduced
+   motion makes it instant. The inner wrapper clips while the row animates. */
+.fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows var(--dur-layout) var(--ease-in-out),
+    opacity var(--dur-layout) var(--ease-in-out);
+}
+.fold.is-folded {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.fold__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+/* The first take leaving: the words fade first, then the space closes, so it
+   settles rather than snaps. Scaled from --dur-layout, so reduced motion
+   still makes it instant. */
+.fold--gentle {
+  transition:
+    grid-template-rows calc(var(--dur-layout) * 1.6) var(--ease-out),
+    opacity calc(var(--dur-layout) * 0.9) var(--ease-out);
 }

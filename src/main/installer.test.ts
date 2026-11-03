@@ -12,6 +12,9 @@ import type { BrowserWindow } from 'electron';
 // are stubbed to their contracts.
 vi.mock('fs');
 vi.mock('child_process');
+vi.mock('./server-release-install', () => ({
+  lockedServerInstallArgs: vi.fn((_uv: string, args: string[]) => args),
+}));
 vi.mock('electron', () => ({
   app: { isPackaged: true },
   BrowserWindow: class {},
@@ -43,6 +46,7 @@ import { IPC } from '../shared/ipc-channels';
 import { forgetServerCapability } from './server-process';
 import { resolvePypiInstallTarget } from './server-updater';
 import { runInstaller, inspectCoworkServerInstall } from './installer';
+import { lockedServerInstallArgs } from './server-release-install';
 
 const EXT = process.platform === 'win32' ? '.exe' : '';
 // Where the astral bootstrap script / findUv probe expects uv, and where
@@ -78,6 +82,8 @@ interface MachineOpts {
   uvOnPath?: string | null;
   /** Version `uv tool list` reports once the server is installed. */
   toolListVersion?: string;
+  /** stderr of a `uv tool list` that refuses to run (exits non-zero). */
+  toolListError?: string;
   /** Exit code for `uv tool install cowork-server` (default success). */
   installExit?: number;
   /** stderr the failing install emits. */
@@ -111,7 +117,9 @@ function setupMachine(opts: MachineOpts) {
       if (target === 'uv' && opts.uvOnPath) cb(null, `${opts.uvOnPath}\n`, '');
       else cb(new Error(`${target} not found`), '', '');
     } else if (isUvCmd(cmd) && args[0] === 'tool' && args[1] === 'list') {
-      if (state.serverInstalled && opts.toolListVersion) {
+      if (opts.toolListError) {
+        cb(Object.assign(new Error(`Command failed: ${cmd} tool list`), { code: 2 }), '', opts.toolListError);
+      } else if (state.serverInstalled && opts.toolListVersion) {
         cb(null, `cowork-server v${opts.toolListVersion}\n- cowork-server\n`, '');
       } else {
         cb(null, '', '');
@@ -179,6 +187,7 @@ describe('runInstaller — uv discovery scenarios', () => {
     // The install spawns the SAME binary the check resolved and logged —
     // "uv found at X" and the executed uv must never diverge.
     expect(spawnCalls[0].slice(0, 3)).toEqual([PATH_ONLY_UV, 'tool', 'install']);
+    expect(lockedServerInstallArgs).toHaveBeenCalledWith(PATH_ONLY_UV, spawnCalls[0].slice(1));
     expect(spawnCalls[0]).toContain('cowork-server==0.26.8.2.1');
     // Verification succeeds and reports where the binary landed.
     expect(log).toContain(`cowork-server found at ${SERVER_BIN}`);
@@ -258,20 +267,17 @@ describe('runInstaller — failure and fallback scenarios', () => {
     expect(events).not.toContain(IPC.INSTALL_DONE);
   });
 
-  it('falls back to the version-floor spec when PyPI cannot be resolved', async () => {
+  it('stops before changing the environment when PyPI cannot select an exact release', async () => {
     const { spawnCalls } = setupMachine({
       uvProbed: true,
       toolListVersion: '0.26.8.2.1',
     });
     vi.mocked(resolvePypiInstallTarget).mockResolvedValueOnce(null as never);
 
-    const { win, logs, errors } = fakeWindow();
-    await expect(runInstaller(win)).resolves.toBe(true);
-
-    expect(logs.join('')).toContain('Could not reach PyPI to resolve the latest version');
-    expect(spawnCalls[0]).toContain('cowork-server>=0.26.7.27.3');
-    expect(spawnCalls[0]).not.toContain('cowork-server==0.26.8.2.1');
-    expect(errors).toEqual([]);
+    const { win, errors } = fakeWindow();
+    await expect(runInstaller(win)).resolves.toBe(false);
+    expect(spawnCalls).toEqual([]);
+    expect(errors).toContain('Could not select a server release. Retry when PyPI is available.');
   });
 
   it('verification rejects an installed server below the minimum version and says so', async () => {
@@ -312,9 +318,26 @@ describe('runInstaller — failure and fallback scenarios', () => {
     const log = logs.join('');
     expect(log).toContain(`cowork-server was found at ${SERVER_BIN}`);
     expect(log).toContain('version could not be determined');
+    expect(log).toContain('Cause: uv tool list does not list cowork-server');
     expect(log).not.toContain('binary not found');
     expect(errors).toEqual(['Verification failed']);
     expect(events).not.toContain(IPC.INSTALL_DONE);
+  });
+
+  it('verification failure from a uv that refuses to list quotes uv\'s own error', async () => {
+    // A folder in uv's tool dir that is not a tool makes every `uv tool list`
+    // exit 2. The cause sat in uv's stderr while the user saw only that the
+    // version "could not be determined", so the line must carry uv's words.
+    const refusal = 'error: Not a valid package or extra name: ".cowork-release-contracts". Names must start and end with a letter or digit and may only contain -, _, ., and alphanumeric characters.';
+    setupMachine({ uvProbed: true, toolListError: `${refusal}\n` });
+
+    const { win, logs, errors } = fakeWindow();
+    await expect(runInstaller(win)).resolves.toBe(false);
+
+    const log = logs.join('');
+    expect(log).toContain(`cowork-server was found at ${SERVER_BIN}`);
+    expect(log).toContain(`Cause: uv tool list failed: ${refusal}\n`);
+    expect(errors).toEqual(['Verification failed']);
   });
 
   it('a user abort cancels cleanly before any child process runs', async () => {

@@ -17,7 +17,7 @@
  */
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
-import { mindsServesOpenAiCompatible, endpointHost } from '../../../shared/minds-endpoint';
+import { mindsServesOpenAiCompatible, endpointHost, mindsApiRoot } from '../../../shared/minds-endpoint';
 import { isModelLocked, knownModelDisabledReasons, orderByFamily, unavailableModelFields } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
@@ -640,7 +640,7 @@ function backfillProviders(result) {
   if (result.mindsApiKey === '***' && !hasType('minds-cloud')) {
     providers.push({
       type: 'minds-cloud', apiKey: '***',
-      mindsUrl: (result.mindsUrl || `${MINDS_API_BASE}/v1`).replace(/\/v1$/, ''),
+      mindsUrl: mindsApiRoot(result.mindsUrl) || MINDS_API_BASE,
       isDefault: planningType === 'minds-cloud',
     });
   }

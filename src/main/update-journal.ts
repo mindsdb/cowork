@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Durable journal of UI and server update outcomes, drained by the renderer.
 //
 // An apply outcome happens in main, and the window reloads in the middle of
@@ -206,7 +207,7 @@ export function createUpdateJournal(options: {
         };
         write(appendEntry(read(), entry, cap));
       } catch (error) {
-        console.warn('[update-journal] could not record an update outcome:', error);
+        diagnostic("main.update-journal", "WARNING", "update_journal_could_not_record_an_update_outcome", '[update-journal] could not record an update outcome:', error);
       }
     },
     drain() {
@@ -215,7 +216,7 @@ export function createUpdateJournal(options: {
         if (leased.length > 0) write(next);
         return leased;
       } catch (error) {
-        console.warn('[update-journal] could not drain the journal:', error);
+        diagnostic("main.update-journal", "WARNING", "update_journal_could_not_drain_the_journal", '[update-journal] could not drain the journal:', error);
         return [];
       }
     },
@@ -226,7 +227,7 @@ export function createUpdateJournal(options: {
         const next = ackEntries(entries, ids.filter((id): id is string => typeof id === 'string'));
         if (next.length !== entries.length) write(next);
       } catch (error) {
-        console.warn('[update-journal] could not ack journal entries:', error);
+        diagnostic("main.update-journal", "WARNING", "update_journal_could_not_ack_journal_entries", '[update-journal] could not ack journal entries:', error);
       }
     },
   };

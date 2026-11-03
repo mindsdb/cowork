@@ -43,8 +43,10 @@ export function isSafeExternalHref(href) {
 // real (the sidecar serves on `127.0.0.1:26866`, and a fullstack app's dev
 // server on `localhost:PORT` genuinely opens). The default is the desktop
 // behaviour so a bare call can never widen the net; remarkArtifactLocalLinks
-// in MarkdownContent passes the live surface.
-export function isArtifactLocalPath(href, { web = false } = {}) {
+// in MarkdownContent passes the live surface. `page` is the page this renders
+// in (its `location`), for the one loopback link that does open: see
+// servedByThisPagesEdge.
+export function isArtifactLocalPath(href, { web = false, page = globalThis.location } = {}) {
   if (!href || typeof href !== 'string') return false;
   const h = href.trim();
   if (/^[a-zA-Z]:[\\/]/.test(h)) return true; // C:\… or C:/… (Windows drive)
@@ -53,11 +55,12 @@ export function isArtifactLocalPath(href, { web = false } = {}) {
   // exactly the early-return that let `http://127.0.0.1:PORT` reach users as a
   // live link (ENG-2421).
   if (web && /^https?:/i.test(h)) {
-    let hostname = '';
-    try { hostname = new URL(h).hostname.toLowerCase(); } catch { return false; }
+    let url;
+    try { url = new URL(h); } catch { return false; }
     // A single trailing root dot is the same name (RFC 1034) — `localhost.`
     // and `127.0.0.1.` must not slip past the exact-match tests below.
-    hostname = hostname.replace(/\.$/, '');
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+    if (servedByThisPagesEdge(url, hostname, page)) return false;
     if (
       // RFC 6761 reserves `localhost` AND every name under `.localhost` as
       // loopback (`app.localhost` resolves to 127.0.0.1 in browsers), while
@@ -84,6 +87,19 @@ export function isArtifactLocalPath(href, { web = false } = {}) {
   // or `docs/mnt/x` clickable.
   if (/^(?:https?|mailto):/i.test(h)) return false;
   return /(?:^|\/)\.anton\/artifacts\//.test(h) || /(?:^|\/)\.cowork\//.test(h) || /^\/mnt\//.test(h);
+}
+
+// A self-hosted stack serves Cowork, its sign-in and its published pages at
+// names under `.localhost` on one port (`cowork.localhost`, `auth.localhost`,
+// `view.localhost`, `app<n>.view.localhost`), which the browser reaches
+// through the person's own tunnel. From a page on one of those names, a link
+// to another one on the same scheme and port goes to the same stack, so it
+// opens. Any other loopback address in the agent's reply is still the
+// runtime's own.
+function servedByThisPagesEdge(url, hostname, page) {
+  const pageHost = String(page?.hostname || '').toLowerCase().replace(/\.$/, '');
+  return pageHost.endsWith('.localhost') && hostname.endsWith('.localhost')
+    && url.protocol === page.protocol && url.port === page.port;
 }
 
 export function openMarkdownHref(href) {

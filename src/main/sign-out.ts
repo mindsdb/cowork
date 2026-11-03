@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 /*
  * The full MindsHub sign-out sequence.
  *
@@ -105,7 +106,7 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
   try {
     deps.markStoresForCredentialClear(signOutStores.stores, signOutStores.activeStore);
   } catch (err) {
-    console.warn('[logout] could not mark stores for their credential clear:', err);
+    diagnostic("main.sign-out", "WARNING", "logout_could_not_mark_stores_for_their_credential_clear", '[logout] could not mark stores for their credential clear:', err);
   }
 
   // Full sign-out: clear every credential + LLM-config key so the
@@ -151,7 +152,7 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
   try {
     await deps.forgetMindsCredential();
   } catch (err) {
-    console.warn('[logout] could not clear the MindsHub credential:', err);
+    diagnostic("main.sign-out", "WARNING", "logout_could_not_clear_the_mindshub_credential", '[logout] could not clear the MindsHub credential:', err);
   }
   // Tear down any sign-in still waiting on its browser tab. Without
   // this, the loopback server stays armed for up to 3 minutes and
@@ -186,9 +187,9 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
         ),
       ]);
       dbCleared = res.status >= 200 && res.status < 300;
-      if (!dbCleared) console.warn('[logout] POST /settings/logout returned', res.status);
+      if (!dbCleared) diagnostic("main.sign-out", "WARNING", "logout_post_settings_logout_returned", { status: res.status });
     } catch (err) {
-      console.warn('[logout] POST /settings/logout failed:', err);
+      diagnostic("main.sign-out", "WARNING", "logout_post_settings_logout_failed", '[logout] POST /settings/logout failed:', err);
     }
 
     // Fallback: if POST /settings/logout isn't available (404/405 on
@@ -196,7 +197,7 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
     // each credential key individually via DELETE. Without this, the
     // DB retains credentials and config_ready stays true after logout.
     if (!dbCleared) {
-      console.log('[logout] falling back to individual DELETE requests');
+      diagnostic("main.sign-out", "INFO", "logout_falling_back_to_individual_delete_requests", '[logout] falling back to individual DELETE requests');
       const deletes = DB_CREDENTIAL_KEYS.map((key) =>
         deps.httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
           method: 'DELETE',
@@ -230,7 +231,7 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
   try {
     await deps.scrubEnvCredentials(deps.getAntonEnvPath(signOutStores.accountRoot));
   } catch (err) {
-    console.warn('[logout] failed to scrub credential keys from .env (best-effort):', err);
+    diagnostic("main.sign-out", "WARNING", "logout_failed_to_scrub_credential_keys_from_env_best_effort", '[logout] failed to scrub credential keys from .env (best-effort):', err);
   }
   deps.clearStoredProviderState(signOutStores.accountRoot);
 
