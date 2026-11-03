@@ -86,6 +86,36 @@ describe('loadArtifactDraftText', () => {
     expect(preview.truncated).toBe(false);
   });
 
+  it('counts rows over the whole body when it cuts a body and is asked to', async () => {
+    const body = `id\n${'1\n'.repeat(150_000)}`;
+    respond(body);
+    const countRows = vi.fn(() => 150_001);
+
+    const preview = await loadArtifactDraftText('/api/v1/artifacts/drafts/p/1/data.csv', { countRows });
+
+    expect(countRows).toHaveBeenCalledWith(body);
+    expect(preview.content).toHaveLength(200_000);
+    expect(preview.total_rows).toBe(150_000);
+  });
+
+  it('leaves the total out when the body is whole', async () => {
+    respond('id\n1\n');
+    const countRows = vi.fn(() => 2);
+
+    const preview = await loadArtifactDraftText('/api/v1/artifacts/drafts/p/1/data.csv', { countRows });
+
+    expect(countRows).not.toHaveBeenCalled();
+    expect(preview).not.toHaveProperty('total_rows');
+  });
+
+  it('leaves the total out when nobody asked for one', async () => {
+    respond('x'.repeat(200_001));
+
+    const preview = await loadArtifactDraftText('/api/v1/artifacts/drafts/p/1/log.txt');
+
+    expect(preview).not.toHaveProperty('total_rows');
+  });
+
   it('refuses to attach credentials to a cross-origin draft URL', async () => {
     authFetch.mockClear();
     await expect(loadArtifactDraftText('https://evil.example/report.md')).rejects.toThrow();
