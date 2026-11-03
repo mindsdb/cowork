@@ -116,6 +116,13 @@ describe('UsageSection', () => {
     expect(screen.getByRole('button', { name: /Update payment method/ })).toBeInTheDocument();
   });
 
+  it('says a cap-paused auto top up is staying within the cap, not that the cap was hit', () => {
+    renderWith(usage({ autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'cap_reached' } }));
+    expect(
+      screen.getByText("Tops up to $20.00 when your balance drops below $5.00. Paused to stay within this month's cap.")
+    ).toBeInTheDocument();
+  });
+
   it('tells a member who can add funds, and sends the owner to the add-credits dialog', async () => {
     const user = userEvent.setup();
     const { unmount } = renderWith(usage({ isBillingOwner: false }));
