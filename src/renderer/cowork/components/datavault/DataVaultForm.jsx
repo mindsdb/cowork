@@ -367,11 +367,6 @@ export function DataVaultForm({
             )}
           </div>
         </div>
-        {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
-          <Alert variant="info" icon="ℹ️">
-            This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
-          </Alert>
-        )}
         <div className="flex justify-end gap-2">
           {/* On success we always offer two routes:
                  • secondary "Close" — just dismiss the panel

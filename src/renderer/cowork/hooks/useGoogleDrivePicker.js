@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { fetchDatasources, fetchSavedConnection, deletePickedFile, fetchConnector, startConnectorOAuth, pollConnectorOAuth } from '../api';
+import { fetchDatasources, fetchSavedConnection, deletePickedFile, fetchConnector, startConnectorOAuth, pollConnectorOAuth, savePickedFiles } from '../api';
+import { driveCanReadAll } from '../lib/googleDriveAccess';
 import { host } from '../../platform/host';
 
 // Web has no Electron main process to run the loopback PKCE flow, so
@@ -94,6 +95,12 @@ export function useGoogleDrivePicker({
   // renders.
   const [driveConnectPrompt, setDriveConnectPrompt] = useState(null);
 
+  // Non-null while the in-app Drive file chooser is open — { connection,
+  // resolve }, set by openGoogleDrivePicker for a connection that can read
+  // the whole Drive, and consumed by the DriveFilePickerModal the caller
+  // renders. Resolves to the chosen files, or null when dismissed.
+  const [driveFileChooser, setDriveFileChooser] = useState(null);
+
   // Used to decide whether a "+" menu should route through the "connect"
   // flow or straight to the (possibly account-picking) action. Returns the
   // matched connections (not just a boolean) so the "already connected"
@@ -149,9 +156,7 @@ export function useGoogleDrivePicker({
   // native Picker. Neither caller downloads/persists anything here.
   // `projectName`, when passed, tags any newly-picked files as belonging to
   // that project (see picked-files.ts / merge_picked_files) — omit it for
-  // flows with no project context (there are none among the callers below,
-  // but connection-details' own "Pick files" button calls
-  // host.pickDriveFiles directly and correctly omits it).
+  // flows with no project context.
   // `preFetchedConnections`, when passed, skips resolveGoogleDriveConnection's
   // own fetchDatasources() call — see fetchGoogleDriveConnections above.
   // No window/popup bookkeeping on web any more: the Picker renders as an
@@ -165,13 +170,31 @@ export function useGoogleDrivePicker({
     // `cancelled` lets handleAddGoogleDriveFiles/ProjectFiles treat this as
     // a silent no-op instead of surfacing an error.
     if (!conn) return { ok: false, cancelled: true };
-    let accountEmail = '';
+    let detail;
     try {
-      const detail = await fetchSavedConnection('google_drive', conn.name);
-      accountEmail = detail?.fields?.account_email || '';
+      detail = await fetchSavedConnection('google_drive', conn.name);
     } catch {
       return { ok: false, reason: 'Could not load the Google Drive connection.' };
     }
+    // A connection that can read the whole Drive gets the in-app chooser;
+    // one that only holds drive.file keeps the Google Picker, whose pick is
+    // what grants access to the file.
+    if (driveCanReadAll(detail?.fields?.scope)) {
+      const chosen = await new Promise((resolve) => setDriveFileChooser({ connection: conn, resolve }));
+      if (!chosen) return { ok: false, cancelled: true };
+      if (chosen.length === 0) return { ok: true, files: [], newFiles: [] };
+      const tagged = chosen.map(({ id, name, mimeType, iconUrl, url, resourceKey }) => ({
+        id, name, mimeType, iconUrl, url, resourceKey: resourceKey ?? null,
+        projects: projectName ? [projectName] : [],
+      }));
+      try {
+        const files = await savePickedFiles('google_drive', conn.name, tagged, projectName);
+        return { ok: true, files, newFiles: tagged };
+      } catch (err) {
+        return { ok: false, reason: err?.message || 'Could not save the Google Drive files.' };
+      }
+    }
+    const accountEmail = detail?.fields?.account_email || '';
     if (!accountEmail) {
       return { ok: false, reason: 'Google Drive connection is missing an account email.' };
     }
@@ -341,6 +364,15 @@ export function useGoogleDrivePicker({
   return {
     driveAccountChoice,
     driveConnectPrompt,
+    driveFileChooser,
+    resolveDriveFileChooser: (files) => {
+      driveFileChooser?.resolve(files);
+      setDriveFileChooser(null);
+    },
+    cancelDriveFileChooser: () => {
+      driveFileChooser?.resolve(null);
+      setDriveFileChooser(null);
+    },
     resolveDriveAccountChoice: (connection) => {
       driveAccountChoice?.resolve(connection);
       setDriveAccountChoice(null);

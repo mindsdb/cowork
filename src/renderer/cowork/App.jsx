@@ -60,6 +60,7 @@ import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import DriveFilePickerModal from './components/DriveFilePickerModal';
 import { useAccountUser } from './hooks/useAccountUser';
 import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
@@ -3085,6 +3086,9 @@ function AppCore() {
   const {
     driveAccountChoice,
     driveConnectPrompt,
+    driveFileChooser,
+    resolveDriveFileChooser,
+    cancelDriveFileChooser,
     resolveDriveAccountChoice,
     cancelDriveAccountChoice,
     confirmDriveConnect,
@@ -6584,6 +6588,15 @@ function AppCore() {
           </div>
         </ModalBody>
       </Modal>
+
+      {/* In-app Drive file chooser, for a connection that can read the whole
+          Drive — see useGoogleDrivePicker. */}
+      <DriveFilePickerModal
+        open={!!driveFileChooser}
+        connection={driveFileChooser?.connection}
+        onConfirm={resolveDriveFileChooser}
+        onClose={cancelDriveFileChooser}
+      />
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (

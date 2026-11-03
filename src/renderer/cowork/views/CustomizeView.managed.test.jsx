@@ -18,8 +18,9 @@ const OPERATOR_NOTE = "Your operator provides this connection, and it can't be c
 const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
 /* google_drive plus an MCP method so one panel would show every control the
-   managed state hides: the Drive picker, the access-mode select, Reconnect
-   and Remove. */
+   managed state hides: the limited Drive access warning, the access-mode
+   select, Reconnect and Remove. The stored scope lacks drive.readonly, so an
+   unmanaged panel shows that warning. */
 const CONNECTION = {
   engine: 'google_drive', name: 'google_drive-team', label: 'Google Drive',
   user_label: null, display_name: 'team@example.com',
@@ -30,7 +31,11 @@ const SPEC = {
 };
 const SAVED = {
   method: 'mcp',
-  fields: { _access_mode: 'read', account_email: 'team@example.com' },
+  fields: {
+    _access_mode: 'read',
+    account_email: 'team@example.com',
+    scope: 'openid https://www.googleapis.com/auth/drive.file',
+  },
   secureKeys: [],
 };
 
@@ -100,7 +105,7 @@ describe('CustomizeView managed and shared connections', () => {
     expect(within(dialog).queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Tool access')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole('button', { name: 'Select files from Google Drive' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Limited Google Drive access')).not.toBeInTheDocument();
     // What the connection is stays visible.
     expect(within(dialog).getByText('Engine')).toBeInTheDocument();
   });
@@ -133,7 +138,17 @@ describe('CustomizeView managed and shared connections', () => {
     expect(within(dialog).getByRole('button', { name: /Remove/ })).toBeInTheDocument();
     expect(within(dialog).getByText('Tool access')).toBeInTheDocument();
     expect(within(dialog).getByRole('combobox')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Select files from Google Drive' })).toBeInTheDocument();
+    expect(within(dialog).getByText('Limited Google Drive access')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Select files from Google Drive' })).not.toBeInTheDocument();
+  });
+
+  it('shows no limited-access warning once drive.readonly was granted', async () => {
+    const own = { ...CONNECTION, managed: false };
+    const scope = 'openid https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
+    const dialog = await openPanel([own], { ...SAVED, fields: { ...SAVED.fields, scope } });
+
+    expect(within(dialog).queryByText('Limited Google Drive access')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
   });
 
   it.each([
@@ -163,7 +178,7 @@ describe('CustomizeView managed and shared connections', () => {
     expect(within(dialog).getByRole('button', { name: /Remove/ })).toBeInTheDocument();
     expect(within(dialog).getByText('Tool access')).toBeInTheDocument();
     expect(within(dialog).getByRole('combobox')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Select files from Google Drive' })).toBeInTheDocument();
+    expect(within(dialog).getByText('Limited Google Drive access')).toBeInTheDocument();
     const card = screen.getByRole('article');
     expect(within(card).getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
     expect(within(card).queryByText('Managed')).not.toBeInTheDocument();

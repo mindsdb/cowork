@@ -1044,14 +1044,12 @@ export interface DrivePickerResult {
 // Electron-only: opens the Google Picker in the OS default browser (not
 // embedded — Google's sign-in step gets blocked inside Electron the same
 // way raw OAuth would) and resolves once the user picks files there or
-// cancels. Needed because drive.file alone only grants the app access to
-// files it created itself — the Picker is how a user grants access to
-// existing files without widening the OAuth scope. `fileIds`, when
-// known (e.g. from a pasted Drive link), pre-navigates the picker to
-// those files for faster consent. `projectName`, when passed, tags any
-// newly-picked files as belonging to that project (see DrivePickerFile);
-// omit it for connection-details' "Pick files" button, which has no
-// project context.
+// cancels. The Picker is how a user adds Drive files to a chat or a
+// project; for a connection that only holds drive.file it also grants
+// access to them. `fileIds`, when known (e.g. from a pasted Drive link),
+// pre-navigates the picker to those files for faster consent.
+// `projectName`, when passed, tags any newly-picked files as belonging to
+// that project (see DrivePickerFile).
 // Web: cancels the in-flight pick (hides its widget and resolves it) — a
 // settled call's finish() already no-ops, so calling this is always safe.
 let webPickerCancelPrevious: (() => void) | null = null;

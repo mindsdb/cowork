@@ -13,7 +13,6 @@ import Ico from '../components/Icons';
 import { Alert, Button, Select } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection, patchConnectionAccessMode } from '../api';
 import { host } from '../../platform/host';
-import Spinner from '../components/ui/Spinner';
 import {
   PageHeader,
   FilterRow,
@@ -29,6 +28,7 @@ import {
 import { cn } from '../lib/cn';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from '../components/sharepoint/SharePointSetupModal';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
+import { driveAccessIsLimited } from '../lib/googleDriveAccess';
 import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
@@ -101,28 +101,18 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect,
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [pickerState, setPickerState] = useState({ status: 'idle' });
   // "Edit access" (ENG-487) — no existing connector has an editable-
-  // after-connect setting, so this is its own small piece of state rather
-  // than reusing pickerState's shape.
+  // after-connect setting, so this is its own small piece of state.
   const [accessModeState, setAccessModeState] = useState({ status: 'idle' });
   // 'reconnect' | 'remove' while its confirm dialog is open. In-app dialogs,
   // not window.confirm: on Windows the native dialog leaves the page without
   // keyboard focus, so no text field takes typing afterwards.
   const [confirming, setConfirming] = useState(null);
-  // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
-  // a pick attempt's own continuation can tell whether it's still the
-  // active one — a single shared boolean "was cancel ever clicked" flag
-  // let a fast cancel-then-repick have the FIRST attempt's stale resolution
-  // clobber the second attempt's live state, since resetting the flag for
-  // the new attempt made the old attempt's cancelled-check pass too. Must
-  // be declared before the `if (!connection) return null;` below — every
-  // render must call the same hooks (Rules of Hooks).
-  const pickerAttemptRef = useRef(0);
-  // Same reasoning as pickerAttemptRef, found in code review: without it, an
-  // in-flight access-mode PATCH that resolves after the user has switched to
-  // a DIFFERENT connection would patch the wrong (now-displayed) connection's
-  // local state via the stale closure over `setSaved`.
+  // Without it, an in-flight access-mode PATCH that resolves after the user
+  // has switched to a DIFFERENT connection would patch the wrong
+  // (now-displayed) connection's local state via the stale closure over
+  // `setSaved`. Must be declared before the `if (!connection) return null;`
+  // below — every render must call the same hooks (Rules of Hooks).
   const accessModeAttemptRef = useRef(0);
 
   useEffect(() => {
@@ -130,7 +120,6 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect,
     setLoading(true);
     setSpec(null);
     setSaved(null);
-    setPickerState({ status: 'idle' });
     setAccessModeState({ status: 'idle' });
     accessModeAttemptRef.current++; // invalidate any in-flight PATCH from the connection we're leaving
     Promise.all([
@@ -140,15 +129,6 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect,
       setSpec(connSpec);
       setSaved(savedData);
       setLoading(false);
-      const rawPicked = savedData?.fields?._picked_files;
-      if (rawPicked) {
-        try {
-          setPickerState({ status: 'done', files: JSON.parse(rawPicked) });
-        } catch {
-          // Malformed field — behave as if nothing was picked yet rather
-          // than crash the panel.
-        }
-      }
     });
   }, [connection?.engine, connection?.name]);
 
@@ -176,38 +156,6 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect,
   }
   const specFields = bestMethod?.fields || spec?.form?.fields || [];
   const specKeys = new Set(specFields.map((f) => f.name));
-
-  const handlePickFiles = async () => {
-    const accountEmail = vaultFields.account_email;
-    if (!accountEmail) {
-      setPickerState({ status: 'error', reason: 'No account email on file for this connection — try reconnecting.' });
-      return;
-    }
-    // Claim this attempt's own id — a stale attempt's continuation (below)
-    // checks this against the CURRENT ref value, not a shared "was cancel
-    // ever clicked" boolean, so a fast cancel-then-repick can't have the
-    // first attempt's late resolution clobber the second attempt's state.
-    const attemptId = ++pickerAttemptRef.current;
-    setPickerState({ status: 'waiting' });
-    try {
-      const result = await host.pickDriveFiles(connection.engine, connection.name, accountEmail);
-      if (pickerAttemptRef.current !== attemptId) return; // superseded — cancelled or a newer pick started
-      if (!result.ok) {
-        setPickerState({ status: 'error', reason: result.reason || 'Could not open the Drive picker.' });
-        return;
-      }
-      setPickerState({ status: 'done', files: result.files || [], failed: result.failed || [] });
-    } catch (err) {
-      if (pickerAttemptRef.current !== attemptId) return;
-      setPickerState({ status: 'error', reason: err?.message || String(err) });
-    }
-  };
-
-  const handleCancelPicker = () => {
-    pickerAttemptRef.current++; // invalidates the in-flight attempt's eventual resolution
-    host.cancelDrivePicker();
-    setPickerState({ status: 'idle' });
-  };
 
   const handleChangeAccessMode = async (nextMode) => {
     const attemptId = ++accessModeAttemptRef.current;
@@ -330,78 +278,6 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect,
                 </>
               )}
 
-              {/* Drive file access — drive.file only grants the app files
-                  it creates itself; picking files here grants access to
-                  existing ones without widening the OAuth scope. */}
-              {connection.engine === 'google_drive' && !managed && (
-                <>
-                  <div className="section-label mb-2">
-                    Drive files
-                  </div>
-                  <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
-                    <div className="text-[12px] leading-normal text-ink-3">
-                      This connection can only read files it created itself. Select any files below —
-                      including several at once, or whole Shared Drives — to grant access to them too.
-                    </div>
-                    {pickerState.status === 'waiting' ? (
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        <Spinner className="text-ink-3" />
-                        <span className="text-[12px] text-ink-3">
-                          Opened in your browser — pick your files there, then come back. Confirming access can take a few seconds after you return.
-                        </span>
-                        <Button variant="subtle" size="sm" onClick={handleCancelPicker}>
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={handlePickFiles}
-                        className="self-start"
-                      >
-                        Select files from Google Drive
-                      </Button>
-                    )}
-                    {pickerState.status === 'error' && (
-                      <div className="text-[12px] text-danger">{pickerState.reason}</div>
-                    )}
-                    {pickerState.status === 'done' && pickerState.failed?.length > 0 && (
-                      <Alert variant="danger">
-                        Google didn't actually grant access to {pickerState.failed.length === 1 ? 'this file' : 'these files'} —
-                        try picking {pickerState.failed.length === 1 ? 'it' : 'them'} again:
-                        <ul className="mt-1 mx-0 mb-0 pl-[18px]">
-                          {pickerState.failed.map((f) => (
-                            <li key={f.id}>{f.name} ({f.reason})</li>
-                          ))}
-                        </ul>
-                      </Alert>
-                    )}
-                    {pickerState.status === 'done' && pickerState.files.length === 0 && (
-                      <div className="text-[12px] italic text-ink-4">No files selected.</div>
-                    )}
-                    {pickerState.status === 'done' && pickerState.files.length > 0 && (
-                      <div className="flex flex-col gap-1.5">
-                        <div className="text-[12px] text-ink-3">
-                          Granted access to {pickerState.files.length} file{pickerState.files.length === 1 ? '' : 's'}:
-                        </div>
-                        {pickerState.files.map((f) => (
-                          <a
-                            key={f.id}
-                            href={f.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-2 overflow-hidden rounded-md bg-surface-2 py-1 px-1.5 text-[12px] text-ink no-underline"
-                          >
-                            {f.iconUrl && <img src={f.iconUrl} alt="" className="h-3.5 w-3.5 shrink-0" />}
-                            <span className="truncate">{f.name}</span>
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
               {/* SharePoint keeps its key and sites behind its own routes,
                   which check the key with Microsoft before saving. */}
               {connection.engine === SHAREPOINT_ENGINE && !managed && (
@@ -474,6 +350,14 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect,
                 : shared
                   ? 'Access for this connection has expired or was revoked. Whoever shared it with you can reconnect it.'
                   : 'Access for this connection has expired or was revoked. Your operator can reconnect it.'}
+            </Alert>
+          )}
+          {connection.engine === 'google_drive' && !managed
+            && saved?.fields?.status !== 'needs_reconnect'
+            && driveAccessIsLimited(saved?.fields?.scope) && (
+            <Alert variant="warning" title="Limited Google Drive access">
+              Anton can only read files it created or that you add in a chat. Reconnect and tick
+              "See and download all your Google Drive files" to let it read your whole Drive.
             </Alert>
           )}
           {managed ? (
