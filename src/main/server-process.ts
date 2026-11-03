@@ -31,6 +31,7 @@ import {
 import { accountDataRoot, coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
+import { analyticsEnv } from './analytics-env';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
@@ -935,6 +936,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // build points at. Only set when the build is baked for a non-prod env
       // and the caller hasn't already pinned ENV explicitly.
       ...(MINDS_ENV_SLUG && !process.env.ENV ? { ENV: MINDS_ENV_SLUG } : {}),
+      // A staging, preview or dev build's turns are ours, not users'.
+      ...analyticsEnv(kind, process.env),
     };
 
     // detached: true on POSIX puts the child in its own process group so

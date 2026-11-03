@@ -22,13 +22,13 @@ vi.mock('electron', () => ({
 }));
 /** The account's dotenv. Empty for every test but the account-root one, which
  *  needs the value to CHANGE to see whether the cached token was re-read. */
-const envState = vi.hoisted(() => ({ authToken: null as string | null }));
+const envState = vi.hoisted(() => ({ authToken: null as string | null, kind: 'prod' }));
 vi.mock('./cowork-home', () => ({
   coworkHome: () => '/tmp/cowork-test-home',
   // The organization store root resolves through this. A mock without it fails
   // every test in this file, not only the organization ones.
   accountDataRoot: () => accountState.dataRoot,
-  buildKind: () => 'prod',
+  buildKind: () => envState.kind,
   readEnvFile: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
 }));
 /** Only the root resolution is faked; the rest of account-data stays real so
@@ -87,6 +87,7 @@ import {
   forgetServerCapability,
   activeStoreRoot,
 } from './server-process';
+import { NON_PROD_POSTHOG_KEY } from './analytics-env';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
 
 const PORT = 27903;
@@ -991,6 +992,41 @@ describe('the sidecar organization stores', () => {
     await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
 
     expect(spawnedEnv().DATABASE_URI).toBe('sqlite:////root/orgs/org-b/cowork.db');
+  });
+});
+
+describe('the sidecar analytics destination', () => {
+  afterEach(async () => {
+    envState.kind = 'prod';
+    if (isServerRunning()) await stopServer();
+  });
+
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  const spawnedEnv = (): Record<string, string> =>
+    (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> }).env;
+
+  it('points a staging build\'s anton at the non-production project', async () => {
+    envState.kind = 'stable';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv().ANTON_POSTHOG_KEY).toBe(NON_PROD_POSTHOG_KEY);
+    expect(spawnedEnv().ANTON_DEPLOYMENT_ENV).toBe('staging');
+  });
+
+  it('leaves a prod build on anton\'s own default, labelled prod', async () => {
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv().ANTON_POSTHOG_KEY).toBeUndefined();
+    expect(spawnedEnv().ANTON_DEPLOYMENT_ENV).toBe('prod');
   });
 });
 
