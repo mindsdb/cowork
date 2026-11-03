@@ -7,6 +7,7 @@ import { Badge, Button } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from '../../lib/connectionIdentity';
+import { isDatasourceRow } from '../../lib/datasourceConnectionRows';
 
 function ConnectionLogo({ engine, label, custom, logoColor }) {
   const [failed, setFailed] = useState(null);
@@ -115,6 +116,9 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
         <ConfirmModal
           open={confirming}
           {...disconnectPrompt({ engine, name, shared })}
+          {...(isDatasourceRow(connection)
+            ? { message: `${subtitle} will be removed and its stored credentials deleted. Conversations that use it lose access.` }
+            : {})}
           confirmLabel="Disconnect"
           destructive
           onConfirm={handleRemove}

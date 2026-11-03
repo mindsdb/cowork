@@ -155,6 +155,7 @@ const RESET_CONFIRM_COPY = {
 };
 
 function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
+  const [pendingDelete, setPendingDelete] = useState(null);
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');
@@ -255,10 +256,18 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
     }
   };
 
-  const remove = async (file) => {
+  const remove = (file) => {
     if (!canUseSharedResource(file, 'canDelete')) return;
+    setPendingDelete(file);
+  };
+
+  // Closes first, then deletes: the outcome is the status line, and a dialog
+  // held open would trap the page behind work the person need not watch.
+  const confirmDelete = async () => {
+    const file = pendingDelete;
+    setPendingDelete(null);
+    if (!file) return;
     const label = labelCategory(file.category);
-    if (!window.confirm(`Delete "${label}" memory? This clears the saved content.`)) return;
     try {
       await deleteMemory({
         scope: file.scope || 'Global',
@@ -413,6 +422,15 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         </div>
       </div>
       <ConfirmModal
+        open={pendingDelete !== null}
+        title={`Delete the ${labelCategory(pendingDelete?.category)} memory?`}
+        message="The saved content is cleared. What the agent already wrote from it stays in the conversations it wrote."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={confirmDelete}
+        onClose={() => setPendingDelete(null)}
+      />
+      <ConfirmModal
         open={resetOpen}
         title={RESET_CONFIRM_COPY.title}
         message={RESET_CONFIRM_COPY.message}
@@ -458,6 +476,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
 
 
 function ConnectView({ data, setData, setStatus }) {
+  const [pendingRemove, setPendingRemove] = useState(null);
   const firstEngine = data.engines?.[0]?.engine || '';
   const initialEngine = (data.engines || []).find((item) => item.engine === firstEngine);
   const [engine, setEngine] = useState(firstEngine);
@@ -542,8 +561,12 @@ function ConnectView({ data, setData, setStatus }) {
     }
   };
 
-  const remove = async (conn) => {
-    if (!window.confirm(`Remove datasource "${conn.engine}/${conn.name}"?`)) return;
+  const remove = (conn) => setPendingRemove(conn);
+
+  const confirmRemove = async () => {
+    const conn = pendingRemove;
+    setPendingRemove(null);
+    if (!conn) return;
     try {
       await deleteDatasource(conn.engine, conn.name);
       const latest = await fetchDatasources();
@@ -633,6 +656,15 @@ function ConnectView({ data, setData, setStatus }) {
           {busyAction === 'save' ? 'Saving' : 'Save connection'}
         </Button>
       </form>
+      <ConfirmModal
+        open={pendingRemove !== null}
+        title={`Remove ${pendingRemove?.name || 'this connection'}?`}
+        message={`The saved ${pendingRemove?.engine || ''} connection and its stored credentials are deleted. You can add it again later.`}
+        confirmLabel="Remove"
+        destructive
+        onConfirm={confirmRemove}
+        onClose={() => setPendingRemove(null)}
+      />
     </div>
   );
 }

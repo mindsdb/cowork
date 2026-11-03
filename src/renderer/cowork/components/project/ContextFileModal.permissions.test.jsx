@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 
 const api = vi.hoisted(() => ({
@@ -64,10 +64,6 @@ describe('ContextFileModal shared-resource permissions', () => {
 
   it('allows a capability-authorized canonical instructions delete', async () => {
     api.deleteProjectFile.mockResolvedValue({ status: 'deleted' });
-    Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      value: vi.fn(() => true),
-    });
     const onChanged = vi.fn();
     const onClose = vi.fn();
 
@@ -85,6 +81,11 @@ describe('ContextFileModal shared-resource permissions', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    // Asked first, in a dialog above this one rather than a browser box.
+    const confirm = await screen.findByRole('dialog', { name: /Delete .*anton\.md\?/i });
+    expect(api.deleteProjectFile).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => {
       expect(api.deleteProjectFile).toHaveBeenCalledWith('billing', '.anton/anton.md');
