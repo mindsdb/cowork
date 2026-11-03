@@ -6,6 +6,12 @@ import ConnectionCard, { ConnectionRow } from './ConnectionCard';
 const connection = { engine: 'github', label: 'GitHub', name: 'ianu82', display_name: 'ianu82' };
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+// Clicks a button in the in-app confirm dialog.
+async function answerConfirm(button) {
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: button }));
+}
+
 describe('ConnectionCard', () => {
   it('uses a bundled app logo and a text-labelled healthy state', () => {
     const { container } = render(<ConnectionCard connection={connection} />);
@@ -94,52 +100,35 @@ describe('ConnectionCard', () => {
     const onModify = vi.fn();
     render(<ConnectionCard connection={connection} onModify={onModify} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
-
-    // The card's own button only asks; nothing is deleted until the dialog is
-    // answered.
-    const confirm = await screen.findByRole('dialog', {name:/Disconnect GitHub\?/i});
     expect(onDelete).not.toHaveBeenCalled();
-    await userEvent.click(within(confirm).getByRole('button', {name:'Disconnect'}));
-
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName('Disconnect github/ianu82?');
+    await answerConfirm('Disconnect');
     expect(onDelete).toHaveBeenCalledExactlyOnceWith(connection);
     expect(onModify).not.toHaveBeenCalled();
-    // The dialog owns the in-flight state now: it says what is happening and
-    // its disabled button is what stops a second delete.
-    expect(within(confirm).getByRole('button', {name:'Disconnecting…'})).toBeDisabled();
+    expect(screen.getByRole('button', {name:'Removing…'})).toBeDisabled();
+    expect(screen.getByRole('button', {name:'Manage GitHub: ianu82'})).toBeDisabled();
     resolve();
     await waitFor(() => expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled());
+  });
+
+  it('asks in an in-app dialog, never the native window.confirm', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const onDelete = vi.fn();
+    render(<ConnectionCard connection={connection} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
+    await answerConfirm('Disconnect');
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith(connection);
   });
 
   it('leaves the connection untouched when the user cancels', async () => {
     const onDelete = vi.fn();
     render(<ConnectionCard connection={connection} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
-
-    const confirm = await screen.findByRole('dialog', {name:/Disconnect GitHub\?/i});
-    await userEvent.click(within(confirm).getByRole('button', {name:'Cancel'}));
-
+    await answerConfirm('Cancel');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(onDelete).not.toHaveBeenCalled();
     expect(screen.getByRole('button', {name:'Disconnect'})).toBeEnabled();
-  });
-
-  it('answers a failed disconnect in the dialog rather than silently', async () => {
-    const onDelete = vi.fn(() => Promise.reject(new Error('the relay refused')));
-    render(<ConnectionCard connection={connection} onDelete={onDelete} />);
-    await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
-
-    const confirm = await screen.findByRole('dialog', {name:/Disconnect GitHub\?/i});
-    await userEvent.click(within(confirm).getByRole('button', {name:'Disconnect'}));
-
-    expect(await within(confirm).findByText('the relay refused')).toBeInTheDocument();
-  });
-
-  it('names a database connection by what removing it costs', async () => {
-    const datasource = { ...connection, __datasource__: true, engine: 'postgres', name: 'Analytics' };
-    render(<ConnectionCard connection={datasource} onDelete={vi.fn()} />);
-    await userEvent.click(screen.getByRole('button', {name:'Disconnect'}));
-
-    const confirm = await screen.findByRole('dialog');
-    expect(within(confirm).getByText(/stored credentials deleted/i)).toBeInTheDocument();
   });
 
   it.each([
@@ -173,8 +162,7 @@ describe('ConnectionCard', () => {
     expect(screen.queryByText('Managed')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Manage GitHub: ianu82' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
-    const confirm = await screen.findByRole('dialog');
-    await userEvent.click(within(confirm).getByRole('button', { name: 'Disconnect' }));
+    await answerConfirm('Disconnect');
     expect(onDelete).toHaveBeenCalledExactlyOnceWith(shared);
   });
 
@@ -185,11 +173,11 @@ describe('ConnectionCard', () => {
     const onDelete = vi.fn();
     render(<Item connection={{ ...connection, shared: true }} onDelete={onDelete} />);
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
-    const confirm = await screen.findByRole('dialog');
-    expect(within(confirm).getByText(
-      /It's shared, so everyone it's shared with loses it too\. A new connection can't use its name until your operator stops sharing it\./,
-    )).toBeInTheDocument();
-    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAccessibleName('Disconnect github/ianu82?');
+    expect(dialog).toHaveTextContent(
+      "It's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.",
+    );
     expect(onDelete).not.toHaveBeenCalled();
   });
 
@@ -199,8 +187,9 @@ describe('ConnectionCard', () => {
   ])('asks only the plain question before disconnecting a connection %s', async (_, conn) => {
     render(<ConnectionCard connection={conn} onDelete={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
-    const confirm = await screen.findByRole('dialog');
-    expect(within(confirm).queryByText(/It's shared/)).not.toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAccessibleName('Disconnect github/ianu82?');
+    expect(dialog).not.toHaveTextContent("It's shared");
   });
 
   it.each([
@@ -224,5 +213,52 @@ describe('ConnectionCard', () => {
     expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Manage GitHub: ianu82' }));
     expect(onModify).toHaveBeenCalledExactlyOnceWith(connection);
+  });
+
+  it('names a database connection by what removing it costs', async () => {
+    const datasource = { ...connection, __datasource__: true, engine: 'postgres', name: 'Analytics' };
+    render(<ConnectionCard connection={datasource} onDelete={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+
+    const confirm = await screen.findByRole('dialog');
+    expect(within(confirm).getByText(/stored credentials deleted/i)).toBeInTheDocument();
+  });
+});
+
+describe('ConnectionCard for custom and legacy connectors', () => {
+  it('shows a custom connector by its own name, initials in its color and a Custom badge', () => {
+    const { container } = render(<ConnectionCard connection={{
+      engine: 'aminta', name: 'aminta-1a2b3c4d', label: 'Aminta Planner', custom: true, logo_color: '#3a7',
+    }} />);
+    expect(screen.getByText('Aminta Planner')).toBeInTheDocument();
+    expect(screen.getByText('Custom')).toBeInTheDocument();
+    const initials = screen.getByText('AP');
+    expect(initials).toHaveStyle({ color: '#3a7' });
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('names a legacy generated-id connection plainly and says how to repair it', () => {
+    render(<ConnectionCard connection={{ engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-2cf3a6' }} />);
+    expect(screen.getByText('Unrecognized connector')).toBeInTheDocument();
+    expect(screen.getByText('Saved by an older version. Disconnect it and connect again.')).toBeInTheDocument();
+    expect(screen.queryByText('Custom')).not.toBeInTheDocument();
+  });
+
+  it('tells a screen reader the card is custom, or how to repair a legacy one', () => {
+    const { unmount } = render(<ConnectionCard
+      connection={{ engine: 'aminta', name: 'aminta-1a2b3c4d', label: 'Aminta', custom: true }}
+      onModify={vi.fn()}
+    />);
+    expect(screen.getByRole('button', { name: 'Manage Aminta (custom connector): aminta-1a2b3c4d' })).toBeInTheDocument();
+    unmount();
+
+    render(<ConnectionCard connection={{ engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-2cf3a6' }} onModify={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Disconnect it and connect again/ })).toBeInTheDocument();
+  });
+
+  it('adds neither to a built-in connection', () => {
+    render(<ConnectionCard connection={connection} />);
+    expect(screen.queryByText('Custom')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Saved by an older version/)).not.toBeInTheDocument();
   });
 });

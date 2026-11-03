@@ -41,9 +41,11 @@ import {
   useCollectionView,
 } from '../components/collection';
 import { cn } from '../lib/cn';
+import SharePointSetupModal, { SHAREPOINT_ENGINE } from '../components/sharepoint/SharePointSetupModal';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
-import ConnectionCard, { ConnectionRow, SHARED_DISCONNECT_NOTE } from '../components/connector/ConnectionCard';
+import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -109,12 +111,7 @@ function MetaRow({ label, value }) {
   );
 }
 
-function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
-  //: 'reconnect' | 'disconnect' | null. One dialog serves both, because only
-  //: one of the two buttons can be answered at a time.
-  const [confirming, setConfirming] = useState(null);
-  const [confirmBusy, setConfirmBusy] = useState(false);
-  const [confirmError, setConfirmError] = useState('');
+function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect, onEditSharePoint }) {
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -123,6 +120,10 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   // after-connect setting, so this is its own small piece of state rather
   // than reusing pickerState's shape.
   const [accessModeState, setAccessModeState] = useState({ status: 'idle' });
+  // 'reconnect' | 'remove' while its confirm dialog is open. In-app dialogs,
+  // not window.confirm: on Windows the native dialog leaves the page without
+  // keyboard focus, so no text field takes typing afterwards.
+  const [confirming, setConfirming] = useState(null);
   // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
   // a pick attempt's own continuation can tell whether it's still the
   // active one — a single shared boolean "was cancel ever clicked" flag
@@ -173,6 +174,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const managed = connection.managed === true || saved?.managed === true;
   /* With `managed` false, the caller's own connection that others use. */
   const shared = connection.shared === true || saved?.shared === true;
+  const reconnectLabel = spec?.label || connection.engine;
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};
   const vaultKeys = new Set(Object.keys(vaultFields));
@@ -414,6 +416,24 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                 </>
               )}
 
+              {/* SharePoint keeps its key and sites behind its own routes,
+                  which check the key with Microsoft before saving. */}
+              {connection.engine === SHAREPOINT_ENGINE && !managed && (
+                <>
+                  <div className="section-label mb-2">
+                    Key and sites
+                  </div>
+                  <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
+                    <div className="text-[12px] leading-normal text-ink-3">
+                      Change the app key or the sites this connection may read. Cowork checks the key with Microsoft before saving.
+                    </div>
+                    <Button size="sm" onClick={() => onEditSharePoint?.(connection)} className="self-start">
+                      Edit key and sites
+                    </Button>
+                  </div>
+                </>
+              )}
+
               {/* Tool access — only MCP-based connections have this
                   (ENG-487, HubSpot first): every other connector's access
                   is fixed by whatever OAuth scopes it requested at connect
@@ -488,50 +508,44 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               <Button
                 variant="danger"
                 block
-                onClick={() => setConfirming('disconnect')}
+                onClick={() => setConfirming('remove')}
               >
                 {Ico.trash(14)}
                 Remove
               </Button>
+              {spec && (
+                <ConfirmModal
+                  open={confirming === 'reconnect'}
+                  title={`Reconnect ${reconnectLabel}?`}
+                  message={connection.engine === SHAREPOINT_ENGINE
+                    ? `You'll update this ${reconnectLabel} connection's key and sites. It stays as it is until the new key is checked and saved.`
+                    : shared
+                      ? `You'll connect ${reconnectLabel} again. It's shared, so connect the same account to update it in place for everyone it's shared with.`
+                      : `The existing ${reconnectLabel} connection will be removed and you'll connect it again from scratch.`}
+                  confirmLabel="Reconnect"
+                  onConfirm={() => {
+                    setConfirming(null);
+                    onReconnect?.(connection, spec, { shared });
+                  }}
+                  onClose={() => setConfirming(null)}
+                />
+              )}
+              <ConfirmModal
+                open={confirming === 'remove'}
+                {...disconnectPrompt({ engine: connection.engine, name: connection.name, shared })}
+                confirmLabel="Remove"
+                destructive
+                onConfirm={() => {
+                  setConfirming(null);
+                  onDisconnect?.(connection, saved);
+                  onClose();
+                }}
+                onClose={() => setConfirming(null)}
+              />
             </>
           )}
         </div>
       </div>
-      <ConfirmModal
-        open={confirming !== null}
-        title={confirming === 'disconnect' ? `Disconnect ${connection.name}?` : 'Connect this again from scratch?'}
-        message={confirming === 'disconnect'
-          ? `The saved ${connection.engine} connection is removed. ${shared ? SHARED_DISCONNECT_NOTE : 'You can connect it again later.'}`
-          : shared
-            ? `You'll connect ${spec?.label || connection.engine} again. It's shared, so connect the same account to update it in place for everyone it's shared with.`
-            : `The existing ${spec?.label || connection.engine} connection is removed first, then you connect it again.`}
-        confirmLabel={confirming === 'disconnect' ? 'Disconnect' : 'Reconnect'}
-        busyLabel={confirming === 'disconnect' ? 'Disconnecting…' : 'Reconnecting…'}
-        destructive={confirming === 'disconnect'}
-        busy={confirmBusy}
-        error={confirmError}
-        onConfirm={async () => {
-          setConfirmBusy(true);
-          setConfirmError('');
-          try {
-            // Both remove the connection first, so both wait for it: closing
-            // before the delete answers leaves a failure unhandled and the
-            // connection on screen with nothing said about it.
-            if (confirming === 'disconnect') {
-              await onDisconnect?.(connection, saved);
-              onClose();
-              return;
-            }
-            await onReconnect?.(connection, spec, { shared });
-            setConfirming(null);
-          } catch (e) {
-            setConfirmError(e?.message || 'That connection could not be removed.');
-          } finally {
-            setConfirmBusy(false);
-          }
-        }}
-        onClose={() => { setConfirming(null); setConfirmError(''); }}
-      />
     </>
   );
 }
@@ -560,6 +574,9 @@ export default function CustomizeView({
   const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
   const [selectedDatasource, setSelectedDatasource] = useState(null);
+  // Not alert(): it loses Windows focus the same way as window.confirm.
+  const [deleteError, setDeleteError] = useState(null);
+  const [sharePointEditing, setSharePointEditing] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
@@ -670,22 +687,28 @@ export default function CustomizeView({
     window.dispatchEvent(new CustomEvent('anton:connections-changed'));
   };
 
-  /* Resolves once the connection is gone and rejects when the delete failed,
-     so the confirm dialog that asked can say why; a caller that goes on to
-     reconnect must stop on a rejection. A 404 from the vault delete counts as
-     gone; the relay delete of a database connection still rejects on one. On
-     desktop, an OAuth or MCP connection resolves once main's keychain:revoke
-     handler (src/main/app.ts) ran: that handler always answers ok and doesn't
-     report whether its vault delete succeeded. */
+  /* Removes a cloud database connection through the relay. Rejects on any
+     failure, a 404 included, so the database panel's own dialog can say why. */
+  const removeDatasourceConnection = async (connection) => {
+    await deleteDatasourceConnection(connection.datasourceId);
+    await refreshDatasources.current();
+    window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+  };
+
+  /* Resolves true once the connection is gone and false when the delete
+     failed, after telling the person why; a caller that goes on to reconnect
+     must stop on false. A 404 from the vault delete counts as gone; the relay
+     delete of a database connection does not. On desktop, an OAuth or MCP
+     connection resolves true once main's keychain:revoke handler
+     (src/main/app.ts) ran: that handler always answers ok and doesn't report
+     whether its vault delete succeeded. */
   const handleDelete = async (connection, savedDetail) => {
     try {
       // A database connection lives behind the relay, not the OAuth vault:
       // the OAuth delete route would not find it.
       if (isDatasourceRow(connection)) {
-        await deleteDatasourceConnection(connection.datasourceId);
-        await refreshDatasources.current();
-        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
-        return;
+        await removeDatasourceConnection(connection);
+        return true;
       }
       // For builtin OAuth connections in Electron, keychain:revoke stops the
       // refresh loop, removes the keychain entry, and deletes the vault record.
@@ -701,7 +724,7 @@ export default function CustomizeView({
         if ((detail?.method === 'browser_oauth_builtin' || detail?.method === 'mcp') && accountEmail) {
           await host.keychainRevoke(connection.engine, connection.name, accountEmail);
           await syncAfterDelete();
-          return;
+          return true;
         }
       }
       try {
@@ -714,11 +737,11 @@ export default function CustomizeView({
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_delete_failed", '[connectors] delete failed', e);
-      // Rethrown, not alerted: the confirmation dialog is still open and
-      // answers there, where the person is looking.
-      throw e;
+      setDeleteError(String(e?.message || e));
+      return false;
     }
     await syncAfterDelete();
+    return true;
   };
 
   const visible = useMemo(() => {
@@ -818,7 +841,7 @@ export default function CustomizeView({
             setSelectedDatasource(null);
           }}
           onRemove={async (connection) => {
-            await handleDelete(connection);
+            await removeDatasourceConnection(connection);
             setSelectedDatasource(null);
           }}
           onEdit={(connection) => {
@@ -831,6 +854,21 @@ export default function CustomizeView({
           }}
         />
       )}
+      <Modal
+        open={deleteError != null}
+        onClose={() => setDeleteError(null)}
+        size="sm"
+        width="min(420px, 92vw)"
+        labelledBy="disconnect-error-title"
+      >
+        <ModalHeader id="disconnect-error-title" title="Could not disconnect" />
+        <ModalBody>
+          <div className="s-body">{deleteError}</div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setDeleteError(null)} autoFocus>OK</Button>
+        </ModalFooter>
+      </Modal>
 
       {selectedConn && (
         <ConnectionDetailPanel
@@ -840,7 +878,14 @@ export default function CustomizeView({
             await handleDelete(conn, savedDetail);
             setSelectedConn(null);
           }}
+          onEditSharePoint={(conn) => setSharePointEditing(conn.name)}
           onReconnect={async (conn, spec, { shared = false } = {}) => {
+            // SharePoint is edited in place: its key is checked before it
+            // replaces the stored one, so nothing is deleted first.
+            if (conn.engine === SHAREPOINT_ENGINE) {
+              setSharePointEditing(conn.name);
+              return;
+            }
             /* The creator's own shared connection is never deleted first:
                everyone it's shared with would lose it, and cowork-server
                refuses a new connection under the name the operator still shares
@@ -849,15 +894,26 @@ export default function CustomizeView({
                account again updates it in place, so its name rides along: a
                connector with no identity field would otherwise derive a fresh
                random slug and save a second, private connection. Otherwise a
-               failed delete rejects before a new connect flow starts, and the
-               panel's dialog says why. A connection that is already gone
-               counts as deleted. */
-            if (!shared) await handleDelete(conn);
+               failed delete leaves the old connection in place, so don't start
+               a new connect flow for it; the panel stays open. A connection
+               that is already gone counts as deleted. */
+            if (!shared && !await handleDelete(conn)) return;
             setSelectedConn(null);
             onReconnect?.(spec, shared ? { existingName: conn.name } : {});
           }}
         />
       )}
+
+      <SharePointSetupModal
+        open={sharePointEditing !== null}
+        name={sharePointEditing}
+        onClose={() => setSharePointEditing(null)}
+        onSaved={() => {
+          setSharePointEditing(null);
+          setSelectedConn(null);
+          void syncAfterDelete();
+        }}
+      />
     </div>
   );
 }

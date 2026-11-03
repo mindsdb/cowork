@@ -127,8 +127,75 @@ export function validateAndSaveConnector(
   payload: { method: string; name?: string; replace_existing?: boolean; values: Record<string, unknown> },
 ): Promise<SavedConnectorResult>;
 
+export const CONNECTIONS_VAULT_KEEP: string;
+export const SHAREPOINT_UNAVAILABLE_MESSAGE: string;
+
+export interface SharePointKey {
+  userLabel?: string;
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  siteUrls: string;
+}
+export interface SharePointSaved { ok: boolean; name: string; user_label: string | null }
+export interface SharePointLibrary { id: string; name: string }
+export interface SharePointItem {
+  id: string;
+  name: string;
+  size: number;
+  kind: 'file' | 'folder' | 'other';
+  modified: string | null;
+}
+export interface SharePointImportResult {
+  imported: { path: string; size: number }[];
+  skipped: { path: string; reason: string }[];
+}
+export function createSharePointConnection(key: SharePointKey & { name: string }): Promise<SharePointSaved>;
+export function editSharePointConnection(name: string, key: SharePointKey): Promise<SharePointSaved>;
+export function listSharePointLibraries(name: string, site: string): Promise<{ libraries: SharePointLibrary[] }>;
+export function listSharePointChildren(
+  name: string,
+  page: { site: string; driveId: string; itemId?: string; cursor?: string | null },
+): Promise<{ items: SharePointItem[]; cursor: string | null }>;
+export function importSharePointFiles(
+  projectName: string,
+  pick: { connection: string; site: string; driveId: string; folder?: string; itemIds: string[] },
+): Promise<SharePointImportResult>;
+
 export interface LiveAppPreviewLease { id: string; intent: string }
 export function createLiveAppPreview(launchId: string): Promise<LiveAppPreviewLease>;
 export function keepLiveAppPreview(id: string): Promise<void>;
 export function revokeLiveAppPreview(id: string): Promise<void>;
 export function revokeLiveAppPreviews(): Promise<void>;
+
+/** A team of the caller's MindsHub org, as the sharing pickers show it. */
+export interface MindsHubTeam { id: string; display_name: string; is_default: boolean }
+/** A person of the caller's MindsHub org: the id sharing stores, and what labels a row. */
+export interface MindsHubPerson { id: string; name: string | null; email: string | null }
+/** A MindsHub read's outcome: `reachable` false when it got no answer, and
+ *  `failure` saying why (null when it answered). */
+export interface MindsHubRead {
+  reachable: boolean;
+  failure: import('./lib/sharingContract').MindsHubFailure | null;
+}
+/** One `GET /hub/people/` lookup by ids or emails. `unanswered` could not be
+ *  asked yet; `invalid` are values cowork-server refused as malformed (an id
+ *  that isn't a UUID, an address MindsHub wouldn't take). */
+export interface MindsHubPeopleLookup extends MindsHubRead {
+  people: MindsHubPerson[];
+  unanswered: string[];
+  invalid: string[];
+}
+export function fetchSkillSharingCapabilities(): Promise<import('./lib/sharingContract').SharingCapabilities>;
+export function setSkillAccess(
+  slug: string,
+  access: import('./lib/sharingContract').SkillAccessPayload | import('./lib/sharingContract').SkillAlwaysOnPayload,
+): Promise<Record<string, unknown>>;
+export function fetchMindsHubTeams(): Promise<MindsHubRead & { teams: MindsHubTeam[] }>;
+export function fetchMindsHubDirectory(): Promise<MindsHubRead & { people: MindsHubPerson[]; truncated: boolean }>;
+export function fetchMindsHubPeopleByIds(ids: string[]): Promise<MindsHubPeopleLookup>;
+export function fetchMindsHubPeopleByEmails(emails: string[]): Promise<MindsHubPeopleLookup>;
+export function publishArtifact(
+  path: string,
+  access?: import('./lib/sharingContract').ArtifactAccessPayload | null,
+): Promise<Record<string, unknown>>;

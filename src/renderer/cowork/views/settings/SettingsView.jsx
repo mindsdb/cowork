@@ -697,7 +697,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
         const active = section === item.id;
         // A dead local server cannot accept most settings saves. Keep Backend
         // available as the recovery path and Coding agent available because
-        // the Code opt-in is device-local and works before the runtime starts.
+        // the Code switch is device-local and works before the runtime starts.
         // Hosted rows remain usable because those APIs are managed.
         const disabled = !host.isWeb
           && !serverOnline

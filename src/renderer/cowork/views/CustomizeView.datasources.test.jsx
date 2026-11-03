@@ -104,6 +104,34 @@ describe('the connections page in cloud', () => {
     expect(api.deleteDatasourceConnection).not.toHaveBeenCalled();
   });
 
+  it("answers a card's failed removal in the page's error dialog and keeps the card", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    api.deleteDatasourceConnection.mockRejectedValueOnce(Object.assign(new Error('the relay refused'), { status: 404 }));
+    render(<CustomizeView connectors={[]} />);
+    const card = (await screen.findByRole('button', { name: /Manage Postgres: Analytics/i })).closest('article');
+    await userEvent.click(within(card).getByRole('button', { name: 'Disconnect' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disconnect' }));
+
+    const error = await screen.findByRole('dialog', { name: 'Could not disconnect' });
+    expect(error).toHaveTextContent('the relay refused');
+    await userEvent.click(within(error).getByRole('button', { name: 'OK' }));
+    expect(screen.getByRole('button', { name: /Manage Postgres: Analytics/i })).toBeInTheDocument();
+  });
+
+  it("answers the panel's failed removal in its own dialog, not a second one", async () => {
+    api.deleteDatasourceConnection.mockRejectedValueOnce(new Error('the relay refused'));
+    render(<CustomizeView connectors={[]} />);
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Analytics/i }));
+    const panel = await screen.findByRole('dialog', { name: /Analytics connection/i });
+    await userEvent.click(within(panel).getByRole('button', { name: /^remove$/i }));
+
+    const confirm = await screen.findByRole('dialog', { name: /Remove Analytics\?/i });
+    await userEvent.click(within(confirm).getByRole('button', { name: /^remove$/i }));
+
+    expect(await within(confirm).findByText('the relay refused')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Could not disconnect' })).not.toBeInTheDocument();
+  });
+
   it('offers a retry only for a failed check, and says why it failed', async () => {
     api.listDatasourceConnections.mockResolvedValue([FAILED]);
     render(<CustomizeView connectors={[]} />);

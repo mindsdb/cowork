@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   composerRender: vi.fn(),
   trackBillingOpened: vi.fn(),
   openCodeExternalUrl: vi.fn(async () => true),
+  create: vi.fn(),
 }));
 
 const credentialListeners = vi.hoisted(() => new Set<() => void>());
@@ -65,6 +66,7 @@ vi.mock('./api', () => ({
     commit: mocks.commit,
     setGitIdentity: mocks.setGitIdentity,
     updateProject: mocks.updateProject,
+    create: mocks.create,
   },
   openCodingEventStream: vi.fn(() => () => {}),
   codingErrorCode: (reason: unknown) => (reason instanceof Error ? (reason as Error & { code?: string }).code : undefined),
@@ -99,7 +101,19 @@ vi.mock('./TaskBar', () => ({
     </>
   ),
 }));
-vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
+vi.mock('./NewTaskPanel', () => ({
+  NewTaskPanel: ({ error, onCreate, onConnectMindsHub }: {
+    error: string;
+    onCreate: (input: object) => Promise<void>;
+    onConnectMindsHub?: () => Promise<void>;
+  }) => (
+    <div data-testid="new-task-panel" data-error={error}>
+      New task panel
+      <button type="button" onClick={() => void onCreate({ path: '/work/app', prompt: 'Fix it', attachments: [] })}>Create stub</button>
+      {onConnectMindsHub && <button type="button" onClick={() => void onConnectMindsHub()}>Connect MindsHub stub</button>}
+    </div>
+  ),
+}));
 vi.mock('./useCodeProjects', () => ({
   useCodeProjects: () => ({
     projects: [{
@@ -317,6 +331,20 @@ describe('CodeView session-list reconciliation', () => {
     expect(props.onSelectionChange).toHaveBeenCalledWith('existing', false);
     expect(mocks.cancel).not.toHaveBeenCalled();
     expect(mocks.turn).not.toHaveBeenCalled();
+  });
+
+  it('clears the refused-task error once the user connects MindsHub', async () => {
+    mocks.create.mockRejectedValueOnce(new Error('MindsHub is not connected. Sign in or configure a MindsHub API key first.'));
+    const onConnectMindsHub = vi.fn(async () => {});
+    renderCode({ newTask: true, onConnectMindsHub });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create stub' }));
+    const panel = screen.getByTestId('new-task-panel');
+    await waitFor(() => expect(panel).toHaveAttribute('data-error', expect.stringMatching(/^MindsHub is not connected/)));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect MindsHub stub' }));
+
+    await waitFor(() => expect(panel).toHaveAttribute('data-error', ''));
+    expect(onConnectMindsHub).toHaveBeenCalledTimes(1);
   });
 
   it('creates a draft with the browsed project selected', async () => {

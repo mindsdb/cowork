@@ -6,6 +6,7 @@ type IconRenderer = (size?: IconSize) => ReactNode;
 declare const Ico: {
   attach: IconRenderer;
   brain: IconRenderer;
+  building: IconRenderer;
   arrowUpLeft: IconRenderer;
   arrowUpRight: IconRenderer;
   appWindow: IconRenderer;

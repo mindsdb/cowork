@@ -3999,6 +3999,27 @@ body[data-theme="light"] .anton-inline-code {
   line-height: 1.55;
   color: var(--ink);
 }
+/* The cue MarkdownCode's overflowCue adds to a block whose line runs past
+   its right edge: the code fades out at that edge until scrolled to the end,
+   and a plain line under the code says it scrolls. */
+.anton-code-block-scroll {
+  position: relative;
+}
+.anton-code-block-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 48px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--surface-2));
+}
+.anton-code-block-overflow-note {
+  padding: 0 14px 10px;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
 
 /* Scoped highlight.js theme — dark (default). Only matches tokens
    inside our wrapper so the page can't accidentally inherit hljs
