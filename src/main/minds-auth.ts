@@ -1,7 +1,6 @@
 import { diagnostic } from '../shared/diagnostics';
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores, ensureSidecarOnCurrentAccountRoot } from './server-process';
-import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
 import { claimDefaultRoot, writeActiveOrgSync } from './account-data';
 import { accountIdFromToken, activeOrgClaim, decodeJwtPayload, orgIdFromClaim } from './jwt';
@@ -1511,10 +1510,8 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     diagnostic("main.minds-auth", "INFO", "minds_auth_account_data_root_changed_restarting_the_sidecar", '[minds-auth] account data root changed — restarting the sidecar');
     dataRootChanged = true;
     await stopServer();
-    // The bearer token lives in the account's own dotenv, so a cached one from
-    // the previous root would be refused by the new sidecar. Dropped AFTER the
-    // stop: its shutdown checkpoint authenticates, which re-latches the cache.
-    resetServerAuthTokenCache();
+    // No token to drop: the replacement is handed the one the shell already
+    // holds. Clearing it would only strand the shell if this start then failed.
     await startServer();
   } else if (!isServerRunning() && !isServerStarting()) {
     await startServer();
