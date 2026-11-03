@@ -75,6 +75,52 @@ describe('ChannelTranscript', () => {
     expect(code).toContain('"engine":"postgres"');
   });
 
+  it('shows images as their alt text and never fetches them', async () => {
+    const messages = await loadRows([
+      row('user', 'alex: ![pixel](https://evil.example/p.png?c=1)'),
+      row('user', 'alex: ![ref pixel][r]\n\n[r]: https://evil.example/r.png'),
+      row('assistant', '![same origin](/api/v1/channel-conversations/)', {
+        events: [{ type: 'response.created' }, { type: 'response.completed' }],
+      }),
+    ]);
+
+    const { container } = render(<ChannelTranscript messages={messages} />);
+
+    expect(container.querySelector('img')).toBeNull();
+    for (const alt of ['pixel', 'ref pixel', 'same origin']) {
+      expect(screen.getByText(`[image: ${alt}]`)).toBeTruthy();
+    }
+  });
+
+  it('renders an error row as plain text, markup and all', async () => {
+    const messages = await loadRows([
+      row('user', 'alex: hi'),
+      row('assistant', '', {
+        events: [{ type: 'response.created' }, { type: 'response.failed', code: 'x', error: `boom [link](https://evil.example)\n${CHART}` }],
+      }),
+    ]);
+
+    const { container } = render(<ChannelTranscript messages={messages} />);
+
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.querySelector('canvas')).toBeNull();
+    expect(screen.getByText(/boom \[link\]\(https:\/\/evil\.example\)/)).toBeTruthy();
+  });
+
+  it('leaves out tool, system and role-less rows', async () => {
+    const messages = [
+      ...(await loadRows([row('user', 'alex: shown')])),
+      { id: 't1', role: 'tool', content: 'TOOL ROW' },
+      { id: 's1', role: 'system', content: 'SYSTEM ROW' },
+      { id: 'n1', content: 'NO ROLE' },
+    ];
+
+    render(<ChannelTranscript messages={messages} />);
+
+    expect(screen.getByText('alex: shown')).toBeTruthy();
+    for (const hidden of ['TOOL ROW', 'SYSTEM ROW', 'NO ROLE']) expect(screen.queryByText(hidden)).toBeNull();
+  });
+
   it("neutralises a loopback link in a person's message", async () => {
     const messages = await loadRows([row('user', 'alex: see [the preview](http://localhost:3000/)')]);
 

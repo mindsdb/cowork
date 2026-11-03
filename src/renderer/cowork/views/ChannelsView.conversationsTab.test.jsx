@@ -64,6 +64,28 @@ describe('ChannelsView — Conversations tab', () => {
     expect(screen.queryByText(/No routes yet/)).toBeNull();
   });
 
+  // The Routes panel is not mounted on this tab, so it reloads by remounting
+  // when Setup is opened again; the list has to be reloaded explicitly.
+  it('reloads the conversation list after a delete', async () => {
+    api.fetchChannelConversations
+      .mockResolvedValueOnce({ state: 'ok', items: [ITEM] })
+      .mockResolvedValue({ state: 'ok', items: [] });
+    api.fetchChannelConversation.mockResolvedValue({
+      status: 'ok', task: { id: 'c1', channelType: 'discord', messages: [], hasMoreMessages: false, messagesCursor: null },
+    });
+    api.deleteChannelConversation.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    render(<ChannelsView />);
+    await user.click(await screen.findByRole('tab', { name: 'Conversations' }));
+    await user.click(await screen.findByRole('button', { name: /discord: sales/ }));
+
+    await user.click(await screen.findByRole('button', { name: 'Delete conversation' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /discord: sales/ })).toBeNull());
+    expect(api.fetchChannelConversations).toHaveBeenCalledTimes(2);
+  });
+
   it('shows an outage with Retry, and drops the tab when Retry is refused', async () => {
     api.fetchChannelConversations
       .mockResolvedValueOnce({ state: 'error', items: [], error: 'API returned 503' })

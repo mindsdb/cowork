@@ -39,6 +39,7 @@ export default function ChannelConversations({ list, onReload, onChanged }) {
   useEffect(() => {
     if (!selectedId) return undefined;
     let cancelled = false;
+    setLoadingEarlier(false);
     setOpened({ status: 'loading' });
     fetchChannelConversation(selectedId).then((result) => {
       if (cancelled) return;
@@ -53,25 +54,32 @@ export default function ChannelConversations({ list, onReload, onChanged }) {
     const { task } = opened;
     setLoadingEarlier(true);
     const page = await fetchOlderChannelMessages(task.id, task.messagesCursor);
-    setLoadingEarlier(false);
-    if (!page) return;
-    // The cursor guarantees no overlap with the loaded page, so prepend as App does.
-    setOpened({
-      status: 'ok',
-      task: {
-        ...task,
-        messages: [...page.messages, ...task.messages],
-        hasMoreMessages: page.hasMoreMessages,
-        messagesCursor: page.messagesCursor,
-      },
+    // A page that lands after another conversation was opened belongs to the
+    // old one: drop it, or the pane would show one conversation while the
+    // list and Delete act on another.
+    setOpened((current) => {
+      if (!page || current.status !== 'ok' || current.task.id !== task.id) return current;
+      // The cursor guarantees no overlap with the loaded page, so prepend as App does.
+      return {
+        status: 'ok',
+        task: {
+          ...current.task,
+          messages: [...page.messages, ...current.task.messages],
+          hasMoreMessages: page.hasMoreMessages,
+          messagesCursor: page.messagesCursor,
+        },
+      };
     });
+    setLoadingEarlier(false);
   }
 
   async function confirmDelete() {
+    if (opened.status !== 'ok') return;
     setDeleting(true);
     setDeleteError(null);
     try {
-      await deleteChannelConversation(selectedId);
+      // The conversation on screen, which is what the person confirmed.
+      await deleteChannelConversation(opened.task.id);
       setConfirmOpen(false);
       setSelectedId(null);
       setOpened({ status: 'idle' });

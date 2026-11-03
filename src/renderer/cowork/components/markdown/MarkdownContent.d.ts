@@ -45,6 +45,8 @@ export interface MarkdownContentProps {
   onViewFigureFile?: ((source: MarkdownFigureSource) => void) | null;
   /* Loads an image from the document's own folder; null when its `src` may not load. */
   loadImage?: ((src: string) => Promise<Blob> | null) | null;
+  /* False renders every image as its alt text, never fetching it. */
+  showImages?: boolean;
 }
 
 export const MarkdownContent: ComponentType<MarkdownContentProps>;

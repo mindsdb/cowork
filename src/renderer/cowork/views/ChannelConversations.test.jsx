@@ -126,6 +126,34 @@ describe('ChannelConversations', () => {
     expect(screen.getByText('alex: hi')).toBeTruthy();
   });
 
+  it('drops an older page that lands after another conversation was opened, and deletes the one on screen', async () => {
+    const A = { id: 'c-a', title: 'discord: A', channelType: 'discord' };
+    const B = { id: 'c-b', title: 'slack: B', channelType: 'slack' };
+    let releaseOlder;
+    api.fetchChannelConversation.mockImplementation(async (id) => (id === 'c-a'
+      ? task('c-a', [{ id: 'a2', role: 'user', content: 'A-newer' }], { hasMoreMessages: true, messagesCursor: 'cur' })
+      : task('c-b', [{ id: 'b1', role: 'user', content: 'B-only' }])));
+    api.fetchOlderChannelMessages.mockImplementation(() => new Promise((resolve) => { releaseOlder = resolve; }));
+    api.deleteChannelConversation.mockResolvedValue({ ok: true });
+    renderTab({ list: { state: 'ok', items: [A, B] } });
+
+    fireEvent.click(screen.getByRole('button', { name: /discord: A/ }));
+    await screen.findByText('A-newer');
+    fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' }));
+    fireEvent.click(screen.getByRole('button', { name: /slack: B/ }));
+    await screen.findByText('B-only');
+    await act(async () => {
+      releaseOlder({ messages: [{ id: 'a1', role: 'user', content: 'A-older' }], hasMoreMessages: false, messagesCursor: null });
+    });
+
+    expect(screen.getByTestId('transcript').textContent).toBe('B-only');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete conversation' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    });
+    expect(api.deleteChannelConversation.mock.calls).toEqual([['c-b']]);
+  });
+
   it('shows an outage with Retry instead of an empty list', () => {
     const { onReload } = renderTab({ list: { state: 'error', items: [], error: 'API returned 503' } });
 

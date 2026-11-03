@@ -3,8 +3,9 @@
    Every row is untrusted: a person's row is their Discord or Slack message
    stored verbatim, and an answer may repeat it. So each row renders through
    MarkdownContent with charts and forms off (a chart block's config is
-   evaluated as code), with no conversation, figures or image loader, and
-   with loopback links neutralised. Steps, skill, artifact and question cards
+   evaluated as code), images shown as their alt text (a remote image is a
+   beacon), no conversation, figures or image loader, and loopback links
+   neutralised. Steps, skill, artifact and question cards
    are left out on purpose: they carry write actions this view must not have.
    The only control is "Load earlier"; paging state belongs to the caller. */
 import { MarkdownContent } from './markdown/MarkdownContent';
@@ -42,6 +43,7 @@ function RowBody({ message }) {
       complete
       enableCharts={false}
       enableForms={false}
+      showImages={false}
       neutralizeLoopback
     />
   );
