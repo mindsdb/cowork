@@ -2139,5 +2139,5 @@ app.on('before-quit', (event) => {
 });
 
 // Termination signals (Ctrl-C under `npm run dev`) go through the same drain,
-// once; see quit-signals.ts for why repeats must be swallowed.
-installQuitSignalHandlers(() => app.quit());
+// once. The helper waits for the app to be ready; see quit-signals.ts for why.
+void installQuitSignalHandlers(app);
