@@ -17,11 +17,11 @@ const DEPLOYMENT_LABEL: Record<BuildKind, string> = {
 
 /** Only prod builds count as real users' turns: every other kind sends to the
  *  non-production project instead of anton's built-in production one. A value
- *  already in `env` is left alone, so a developer can still point a run
- *  elsewhere. */
+ *  already in `env` is left alone, even an empty one, so a developer can still
+ *  point a run elsewhere or switch the PostHog sink off. */
 export function analyticsEnv(kind: BuildKind, env: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {};
-  if (kind !== 'prod' && !env.ANTON_POSTHOG_KEY) out.ANTON_POSTHOG_KEY = NON_PROD_POSTHOG_KEY;
-  if (!env.ANTON_DEPLOYMENT_ENV) out.ANTON_DEPLOYMENT_ENV = DEPLOYMENT_LABEL[kind];
+  if (kind !== 'prod' && env.ANTON_POSTHOG_KEY === undefined) out.ANTON_POSTHOG_KEY = NON_PROD_POSTHOG_KEY;
+  if (env.ANTON_DEPLOYMENT_ENV === undefined) out.ANTON_DEPLOYMENT_ENV = DEPLOYMENT_LABEL[kind];
   return out;
 }

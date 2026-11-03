@@ -36,4 +36,12 @@ describe('analyticsEnv', () => {
     const env = { ANTON_POSTHOG_KEY: 'phc_other', ANTON_DEPLOYMENT_ENV: 'eval' };
     expect(analyticsEnv('stable', env)).toEqual({});
   });
+
+  // An empty key is how anton's direct PostHog sink is switched off, so it is
+  // a value, not an absence.
+  it.each(['dev', 'preview', 'stable'] as const)(
+    'leaves values the environment sets to empty on a %s build', (kind) => {
+      const env = { ANTON_POSTHOG_KEY: '', ANTON_DEPLOYMENT_ENV: '' };
+      expect(analyticsEnv(kind, env)).toEqual({});
+    });
 });
