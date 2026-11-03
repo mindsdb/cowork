@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   commit: vi.fn(),
   setGitIdentity: vi.fn(),
   updateProject: vi.fn(),
+  updateSession: vi.fn(),
   projectsLoad: vi.fn(async () => {}),
   projectsReplace: vi.fn(),
   projectsSetSelectedId: vi.fn(),
@@ -67,6 +68,7 @@ vi.mock('./api', () => ({
     setGitIdentity: mocks.setGitIdentity,
     updateProject: mocks.updateProject,
     create: mocks.create,
+    updateSession: mocks.updateSession,
   },
   openCodingEventStream: vi.fn(() => () => {}),
   codingErrorCode: (reason: unknown) => (reason instanceof Error ? (reason as Error & { code?: string }).code : undefined),
@@ -85,16 +87,18 @@ vi.mock('./CodeCommandPalette', async (importOriginal) => {
 });
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
-  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview }: {
+  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview, onOpenControls }: {
     onDelete: () => void;
     onStatus: () => void;
     onToggleReview: () => void;
+    onOpenControls: () => void;
     onRunProjectAction: (action: { id: string; label: string; resource_id: string; resource_name: string; command: string; preview: boolean }) => void;
   }) => (
     <>
       <button type="button" onClick={onDelete}>Delete menu action</button>
       <button type="button" onClick={onStatus}>Status menu action</button>
       <button type="button" onClick={onToggleReview}>Review menu action</button>
+      <button type="button" onClick={onOpenControls}>Task controls menu action</button>
       <button type="button" onClick={() => onRunProjectAction({
         id: 'preview', label: 'Start preview', resource_id: 'resource-1', resource_name: 'App', command: 'npm run dev', preview: true,
       })}>Run project action</button>
@@ -725,6 +729,20 @@ describe('CodeView session-list reconciliation', () => {
     expect(await screen.findByText('The task computer did not acknowledge the stop request.')).toBeInTheDocument();
     expect(mocks.cancel).toHaveBeenCalledWith(active.id);
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
+  });
+
+  it('reports a rejected task settings update in the modal only and keeps it open', async () => {
+    const user = userEvent.setup();
+    mocks.updateSession.mockRejectedValueOnce(new Error('Stop the task terminal before changing task controls'));
+    renderCode({ sessions: [session('task-1')], selectedId: 'task-1' });
+
+    await user.click(screen.getByRole('button', { name: 'Task controls menu action' }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Stop the task terminal before changing task controls')).toBeInTheDocument();
+    expect(screen.getAllByText('Stop the task terminal before changing task controls')).toHaveLength(1);
+    expect(dialog).toBeInTheDocument();
   });
 
   it('does not present a local folder as a warning just because it is not a Git repository', async () => {

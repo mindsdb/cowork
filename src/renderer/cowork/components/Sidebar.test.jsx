@@ -632,3 +632,26 @@ describe('Sidebar — onboarding checklist rows', () => {
     expect(onStartChat).toHaveBeenCalledWith(OWN_WORK_PROMPT);
   });
 });
+
+describe('Sidebar — running dot survives a reload (ENG-3939)', () => {
+  // After Cmd+R the tasks come back without their `_streaming` placeholder,
+  // which only returns once the task is opened and re-attaches. The server's
+  // in-flight list is fetched at boot, so the dot must follow it too.
+  const task = { id: 't1', title: 'Sleeping task', messages: [], updatedAt: '2026-11-02T10:00:00Z' };
+
+  it('shows the running dot for a task the server lists as in flight', () => {
+    render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" inFlightIds={new Set(['t1'])} />);
+    expect(screen.getByLabelText('Active')).toBeTruthy();
+  });
+
+  it('still shows it for a task this window is streaming', () => {
+    const streaming = { ...task, messages: [{ role: '_streaming' }] };
+    render(<Sidebar {...baseProps} tasks={[streaming]} tasksStatus="ready" />);
+    expect(screen.getByLabelText('Active')).toBeTruthy();
+  });
+
+  it('shows no dot when neither signal says the task is running', () => {
+    render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" inFlightIds={new Set(['other'])} />);
+    expect(screen.queryByLabelText('Active')).toBeNull();
+  });
+});

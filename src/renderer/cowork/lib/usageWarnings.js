@@ -369,7 +369,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
         dismissKey,
         tone: 'warning',
         title,
-        body: `${usd} left and auto top up hit its monthly cap. Add funds to keep going.`,
+        body: `${usd} left and auto top up is paused to stay within its monthly cap. Add funds to keep going.`,
         actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.manageAutoTopUp],
       };
     }

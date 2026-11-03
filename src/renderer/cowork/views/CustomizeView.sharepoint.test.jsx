@@ -74,15 +74,17 @@ describe('CustomizeView SharePoint connections', () => {
   });
 
   it('Reconnect edits in place without deleting the connection', async () => {
-    const confirm = vi.fn(() => true);
-    vi.stubGlobal('confirm', confirm);
+    vi.stubGlobal('confirm', vi.fn(() => true));
     const dialog = await openPanel(CONNECTION, SAVED);
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
 
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm.mock.calls[0][0]).toContain('stays as it is until the new key is checked');
-    expect(confirm.mock.calls[0][0]).not.toContain('removed');
+    const confirm = await screen.findByRole('dialog', { name: 'Reconnect SharePoint?' });
+    expect(confirm).toHaveTextContent('stays as it is until the new key is checked');
+    expect(confirm).not.toHaveTextContent('removed');
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Reconnect' }));
+
+    expect(window.confirm).not.toHaveBeenCalled();
     expect(await screen.findByRole('dialog', { name: 'Edit SharePoint connection' })).toBeInTheDocument();
     expect(deleteDatasource).not.toHaveBeenCalled();
   });

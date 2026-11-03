@@ -5794,6 +5794,7 @@ function AppCore() {
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
           pins={pins}
+          inFlightIds={inFlightSet}
           scheduledCount={scheduled.length}
           projectsCount={projects.length}
           artifactsCount={artifacts.length}
