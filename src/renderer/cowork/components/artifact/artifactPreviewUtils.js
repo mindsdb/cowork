@@ -387,3 +387,37 @@ export function csvRowsToGfmTable(rows) {
 
   return lines.join('\n');
 }
+
+// Table and notice numbers for a CSV preview. A cut text (`truncated`) cannot
+// count its own rows, so its total comes from the source, which counted the
+// full file; `totalRows: null` means the total is unknown.
+export function summarizeCsvPreview(text, { truncated = false, totalRows = null } = {}) {
+  // The cut can fall inside a row: keep the text up to the last line break, so
+  // the table never shows a half row. A text with no line break at all is kept
+  // as it is, so a cut header still renders.
+  const lastBreak = Math.max(text.lastIndexOf('\n'), text.lastIndexOf('\r'));
+  const source = truncated && lastBreak >= 0 ? text.slice(0, lastBreak + 1) : text;
+  const rows = parseCsv(source, CSV_PREVIEW_ROW_LIMIT);
+  if (rows.length === 0) return null;
+  const shownRows = rows.length - 1;
+  let total;
+  if (!truncated) total = Math.max(0, countCsvRows(text) - 1);
+  // "N of N" would claim the whole file is shown when the cut fell inside the last row.
+  else total = totalRows != null && totalRows > shownRows ? totalRows : null;
+  return {
+    markdown: csvRowsToGfmTable(rows),
+    shownRows,
+    totalRows: total,
+    truncated: truncated || shownRows < total,
+  };
+}
+
+// The notice under a CSV table that does not show the whole file.
+export function csvPreviewNotice({ shownRows, totalRows }) {
+  if (shownRows === 0) return 'Preview is truncated.';
+  const shown = shownRows.toLocaleString();
+  if (totalRows === null) {
+    return `Showing first ${shown} ${shownRows === 1 ? 'row' : 'rows'}. The full file is larger than the preview.`;
+  }
+  return `Showing first ${shown} of ${totalRows.toLocaleString()} rows.`;
+}

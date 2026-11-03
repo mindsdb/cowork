@@ -10,10 +10,12 @@ import {
   canFetchDraftWithCredentials,
   draftNavigationIsAuthorized,
   countCsvRows,
+  csvPreviewNotice,
   csvRowsToGfmTable,
   CSV_PREVIEW_ROW_LIMIT,
   draftPreviewErrorMessage,
   parseCsv,
+  summarizeCsvPreview,
   DRAFT_FRAGMENT_GUARD_SCRIPT,
   limitArtifactFrames, ARTIFACT_FRAME_POLICY
 } from './artifactPreviewUtils';
@@ -584,5 +586,66 @@ describe('limitArtifactFrames', () => {
   it('passes an empty document through', () => {
     expect(limitArtifactFrames('')).toBe('');
     expect(limitArtifactFrames(undefined)).toBeUndefined();
+  });
+});
+
+describe('summarizeCsvPreview', () => {
+  const manyRows = (n) => `id,name\n${Array.from({ length: n }, (_, i) => `${i},row${i}\n`).join('')}`;
+
+  it('counts an uncut file itself', () => {
+    expect(summarizeCsvPreview(manyRows(150))).toMatchObject({ shownRows: 100, totalRows: 150, truncated: true });
+    expect(summarizeCsvPreview(manyRows(30))).toMatchObject({ shownRows: 30, totalRows: 30, truncated: false });
+  });
+
+  it('takes the total of a cut file from the source', () => {
+    const preview = summarizeCsvPreview(manyRows(150), { truncated: true, totalRows: 20_000 });
+
+    expect(preview).toMatchObject({ shownRows: 100, totalRows: 20_000, truncated: true });
+  });
+
+  it('leaves the total of a cut file unknown when the source gave none', () => {
+    const preview = summarizeCsvPreview(manyRows(150), { truncated: true, totalRows: null });
+
+    expect(preview).toMatchObject({ shownRows: 100, totalRows: null, truncated: true });
+  });
+
+  it('never claims a cut file is shown whole', () => {
+    const preview = summarizeCsvPreview(manyRows(30), { truncated: true, totalRows: 30 });
+
+    expect(preview).toMatchObject({ shownRows: 30, totalRows: null, truncated: true });
+  });
+
+  it('drops the row the cut fell inside', () => {
+    const preview = summarizeCsvPreview(`${manyRows(30)}30,par`, { truncated: true, totalRows: 20_000 });
+
+    expect(preview.shownRows).toBe(30);
+    expect(preview.markdown).not.toContain('par');
+  });
+
+  it('keeps the table when the cut leaves only part of the header', () => {
+    const preview = summarizeCsvPreview('id,na', { truncated: true, totalRows: 20_000 });
+
+    expect(preview).toMatchObject({ shownRows: 0, truncated: true });
+  });
+
+  it('returns null for nothing to show', () => {
+    expect(summarizeCsvPreview('')).toBeNull();
+  });
+});
+
+describe('csvPreviewNotice', () => {
+  it('states the shown rows and the known total', () => {
+    expect(csvPreviewNotice({ shownRows: 100, totalRows: 20_000 })).toBe('Showing first 100 of 20,000 rows.');
+  });
+
+  it('says the file is larger than the preview when the total is unknown', () => {
+    expect(csvPreviewNotice({ shownRows: 100, totalRows: null }))
+      .toBe('Showing first 100 rows. The full file is larger than the preview.');
+    expect(csvPreviewNotice({ shownRows: 1, totalRows: null }))
+      .toBe('Showing first 1 row. The full file is larger than the preview.');
+  });
+
+  it('falls back to the generic text when no data row is shown', () => {
+    expect(csvPreviewNotice({ shownRows: 0, totalRows: 20_000 })).toBe('Preview is truncated.');
   });
 });

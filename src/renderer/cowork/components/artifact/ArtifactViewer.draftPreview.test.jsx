@@ -108,6 +108,8 @@ import { ArtifactViewer } from './ArtifactViewer';
 import { ARTIFACT_FRAME_POLICY, countCsvRows } from './artifactPreviewUtils';
 import { previewArtifact } from '../../api';
 
+const manyRows = (n) => `id,name\n${Array.from({ length: n }, (_, i) => `${i},row${i}\n`).join('')}`;
+
 const artifact = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
   title: 'Launch brief',
@@ -414,8 +416,6 @@ describe('ArtifactViewer draft text preview', () => {
     expect(loadArtifactDraftText).toHaveBeenCalledWith(draftUrl, { withCredentials: false, countRows: countCsvRows });
   });
 
-  const manyRows = (n) => `id,name\n${Array.from({ length: n }, (_, i) => `${i},row${i}\n`).join('')}`;
-
   it('reports the total the loader counted over the full body', async () => {
     loadArtifactDraftText.mockResolvedValue({
       content: manyRows(150), truncated: true, mime: 'text/csv', total_rows: 20_000,
@@ -424,34 +424,6 @@ describe('ArtifactViewer draft text preview', () => {
     render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
 
     expect(await screen.findByText('Showing first 100 of 20,000 rows.')).toBeInTheDocument();
-  });
-
-  it('says the file is larger than the preview when no total came back', async () => {
-    loadArtifactDraftText.mockResolvedValue({ content: manyRows(150), truncated: true, mime: 'text/csv' });
-
-    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
-
-    expect(await screen.findByText('Showing first 100 rows. The full file is larger than the preview.'))
-      .toBeInTheDocument();
-  });
-
-  it('never claims a cut file is shown whole', async () => {
-    loadArtifactDraftText.mockResolvedValue({
-      content: manyRows(30), truncated: true, mime: 'text/csv', total_rows: 30,
-    });
-
-    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
-
-    expect(await screen.findByText('Showing first 30 rows. The full file is larger than the preview.'))
-      .toBeInTheDocument();
-  });
-
-  it('counts an uncut CSV itself', async () => {
-    loadArtifactDraftText.mockResolvedValue({ content: manyRows(150), truncated: false, mime: 'text/csv' });
-
-    render(<ArtifactViewer open artifact={csvArtifact} onClose={vi.fn()} />);
-
-    expect(await screen.findByText('Showing first 100 of 150 rows.')).toBeInTheDocument();
   });
 });
 
@@ -465,7 +437,6 @@ describe('ArtifactViewer local CSV preview', () => {
     canonicalPath: '/artifacts/launch/signups.csv',
     capabilities: { role: 'owner', canEdit: true },
   };
-  const manyRows = (n) => `id,name\n${Array.from({ length: n }, (_, i) => `${i},row${i}\n`).join('')}`;
 
   beforeEach(() => {
     previewArtifact.mockReset();
@@ -482,15 +453,6 @@ describe('ArtifactViewer local CSV preview', () => {
     expect(await screen.findByText('Showing first 100 of 20,000 rows.')).toBeInTheDocument();
     expect(previewArtifact).toHaveBeenCalledWith(localCsv.canonicalPath);
     expect(loadArtifactDraftText).not.toHaveBeenCalled();
-  });
-
-  it('says the file is larger than the preview against a server that sends no total', async () => {
-    previewArtifact.mockResolvedValue({ content: manyRows(150), truncated: true, mime: 'text/csv' });
-
-    render(<ArtifactViewer open artifact={localCsv} onClose={vi.fn()} />);
-
-    expect(await screen.findByText('Showing first 100 rows. The full file is larger than the preview.'))
-      .toBeInTheDocument();
   });
 });
 

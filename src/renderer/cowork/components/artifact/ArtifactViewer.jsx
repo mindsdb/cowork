@@ -66,8 +66,6 @@ import './artifactWorkspace.css';
 import {
   artifactExtension,
   countCsvRows,
-  csvRowsToGfmTable,
-  CSV_PREVIEW_ROW_LIMIT,
   draftNavigationIsAuthorized,
   draftPreviewErrorMessage,
   isTextArtifact,
@@ -77,7 +75,7 @@ import {
   draftDirectoryUrl,
   draftFileName,
   limitArtifactFrames,
-  parseCsv,
+  summarizeCsvPreview,
   withArtifactCommentFlag,
   withArtifactVersion,
 } from './artifactPreviewUtils';
@@ -805,25 +803,13 @@ export function ArtifactViewer({
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
-  // snappy on large files. A cut preview cannot count its own rows, so its
-  // total comes from the source; `totalRows: null` means it is unknown.
+  // snappy on large files.
   const csvPreview = useMemo(() => {
     if (!isText || textExt !== '.csv' || !textPreview?.content) return null;
-    const rows = parseCsv(textPreview.content, CSV_PREVIEW_ROW_LIMIT);
-    if (rows.length === 0) return null;
-    const shownRows = Math.max(0, rows.length - 1);
-    if (!textPreview.truncated) {
-      const totalRows = Math.max(0, countCsvRows(textPreview.content) - 1);
-      return { markdown: csvRowsToGfmTable(rows), totalRows, shownRows, truncated: shownRows < totalRows };
-    }
-    const known = textPreview.totalRows;
-    return {
-      markdown: csvRowsToGfmTable(rows),
-      // "N of N" would claim the whole file is shown when the cut fell inside the last row.
-      totalRows: known != null && known > shownRows ? known : null,
-      shownRows,
-      truncated: true,
-    };
+    return summarizeCsvPreview(textPreview.content, {
+      truncated: textPreview.truncated,
+      totalRows: textPreview.totalRows,
+    });
   }, [isText, textExt, textPreview?.content, textPreview?.truncated, textPreview?.totalRows]);
 
   // Keep these callbacks above the early return: the viewer remains mounted

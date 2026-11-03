@@ -13,6 +13,7 @@ import { LiveAppPreview } from './LiveAppPreview';
 import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
 import { LAUNCH_LIVE_APP_LABEL } from '../../lib/liveAppState';
 import { DocumentPreview } from '../../preview/DocumentPreview';
+import { csvPreviewNotice } from './artifactPreviewUtils';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -215,11 +216,7 @@ export function ArtifactViewerBody({
             gap: 12, flexWrap: 'wrap',
           }}>
             <span>
-              {!csvPreview || !csvPreview.truncated
-                ? 'Preview is truncated.'
-                : csvPreview.totalRows === null
-                  ? `Showing first ${csvPreview.shownRows.toLocaleString()} rows. The full file is larger than the preview.`
-                  : `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`}
+              {csvPreview && csvPreview.truncated ? csvPreviewNotice(csvPreview) : 'Preview is truncated.'}
             </span>
             <Button onClick={host.isWeb ? onDownload : onOpenOS}>
               {host.isWeb ? Ico.download(14) : Ico.externalLink(14)}
