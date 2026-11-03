@@ -25,6 +25,7 @@ import {
   markOptimisticConversation,
   clearOptimisticConversation,
   setKnownRowIdsProvider,
+  loadConversation,
 } from './CoworkRouter';
 
 function makeHarness(initialNav, opts = {}) {
@@ -114,6 +115,26 @@ describe('conversation loader failure handling (ENG-1233 Major 2)', () => {
       const [, loaded] = ctl.openConversation.mock.calls.at(-1);
       expect(loaded.knownIds).toEqual(new Set(['u1', 'a1']));
       expect(order).toEqual(['snapshot:known', 'fetch']);
+    } finally {
+      setKnownRowIdsProvider(null);
+    }
+  });
+
+  it('loads a conversation outside the router the same way, with a timeout', async () => {
+    const order = [];
+    setKnownRowIdsProvider((id) => { order.push(`snapshot:${id}`); return new Set(['u1']); });
+    fetchSessionResult.mockImplementation(async () => {
+      order.push('fetch');
+      return { status: 'ok', task: { id: 'known', messages: [] } };
+    });
+    try {
+      const loaded = await loadConversation('known', { timeoutMs: 1234 });
+      expect(loaded).toEqual({ status: 'ok', task: { id: 'known', messages: [] }, knownIds: new Set(['u1']) });
+      expect(order).toEqual(['snapshot:known', 'fetch']);
+      expect(fetchSessionResult).toHaveBeenCalledWith('known', { timeoutMs: 1234 });
+
+      fetchSessionResult.mockResolvedValue({ status: 'not_found' });
+      expect(await loadConversation('gone')).toEqual({ status: 'not_found' });
     } finally {
       setKnownRowIdsProvider(null);
     }

@@ -27,6 +27,7 @@ import {
   useCollectionView,
 } from '../components/collection';
 import { cn } from '../lib/cn';
+import SharePointSetupModal, { SHAREPOINT_ENGINE } from '../components/sharepoint/SharePointSetupModal';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 import ConnectionCard, { ConnectionRow, disconnectPrompt } from '../components/connector/ConnectionCard';
 
@@ -94,7 +95,7 @@ function MetaRow({ label, value }) {
   );
 }
 
-function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
+function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect, onEditSharePoint }) {
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -394,6 +395,24 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                 </>
               )}
 
+              {/* SharePoint keeps its key and sites behind its own routes,
+                  which check the key with Microsoft before saving. */}
+              {connection.engine === SHAREPOINT_ENGINE && !managed && (
+                <>
+                  <div className="section-label mb-2">
+                    Key and sites
+                  </div>
+                  <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
+                    <div className="text-[12px] leading-normal text-ink-3">
+                      Change the app key or the sites this connection may read. Cowork checks the key with Microsoft before saving.
+                    </div>
+                    <Button size="sm" onClick={() => onEditSharePoint?.(connection)} className="self-start">
+                      Edit key and sites
+                    </Button>
+                  </div>
+                </>
+              )}
+
               {/* Tool access — only MCP-based connections have this
                   (ENG-487, HubSpot first): every other connector's access
                   is fixed by whatever OAuth scopes it requested at connect
@@ -461,10 +480,13 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   variant="primary"
                   onClick={() => {
                     const label = spec.label || connection.engine;
-                    if (!window.confirm(shared
-                      ? `You'll connect ${label} again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?`
-                      : `The existing ${label} connection will be removed and you'll connect it again from scratch. Continue?`
-                    )) return;
+                    let prompt = `The existing ${label} connection will be removed and you'll connect it again from scratch. Continue?`;
+                    if (connection.engine === SHAREPOINT_ENGINE) {
+                      prompt = `You'll update this ${label} connection's key and sites. It stays as it is until the new key is checked and saved. Continue?`;
+                    } else if (shared) {
+                      prompt = `You'll connect ${label} again. It's shared, so connect the same account to update it in place for everyone it's shared with. Continue?`;
+                    }
+                    if (!window.confirm(prompt)) return;
                     onReconnect?.(connection, spec, { shared });
                   }}
                   className="w-full justify-center"
@@ -512,6 +534,7 @@ export default function CustomizeView({
   const [sort, setSort] = useState('recent');
   const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
+  const [sharePointEditing, setSharePointEditing] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
@@ -731,7 +754,14 @@ export default function CustomizeView({
             await handleDelete(conn, savedDetail);
             setSelectedConn(null);
           }}
+          onEditSharePoint={(conn) => setSharePointEditing(conn.name)}
           onReconnect={async (conn, spec, { shared = false } = {}) => {
+            // SharePoint is edited in place: its key is checked before it
+            // replaces the stored one, so nothing is deleted first.
+            if (conn.engine === SHAREPOINT_ENGINE) {
+              setSharePointEditing(conn.name);
+              return;
+            }
             /* The creator's own shared connection is never deleted first:
                everyone it's shared with would lose it, and cowork-server
                refuses a new connection under the name the operator still shares
@@ -749,6 +779,17 @@ export default function CustomizeView({
           }}
         />
       )}
+
+      <SharePointSetupModal
+        open={sharePointEditing !== null}
+        name={sharePointEditing}
+        onClose={() => setSharePointEditing(null)}
+        onSaved={() => {
+          setSharePointEditing(null);
+          setSelectedConn(null);
+          void syncAfterDelete();
+        }}
+      />
     </div>
   );
 }

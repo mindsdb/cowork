@@ -41,6 +41,11 @@ const hubWorkspacesMock = vi.hoisted(() => ({
 // group has its own test file.
 vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
 
+// The selector ships hidden. The placement tests below turn it on
+// to keep covering the code that stays behind the flag.
+const workspaceFlag = vi.hoisted(() => ({ WORKSPACE_SELECTOR_ENABLED: false }));
+vi.mock('../lib/workspaceSelectorFlag', () => workspaceFlag);
+
 // WorkspaceSelector calls `useToastManager()` unconditionally, before its own
 // early return, and Base UI requires a provider for it. The real tree has one
 // (App wraps AppCore, and the sidebar is inside it), so wrap here too rather
@@ -49,6 +54,8 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
+import { OWN_WORK_PROMPT } from './onboarding/steps';
+import { reset as resetOnboarding } from './onboarding/onboardingStore';
 
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
@@ -440,12 +447,14 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
   const CLIENT_A = { id: 'ws-client-a', displayName: 'Client A', isDefault: false, archivedAt: null, role: 'manager' };
 
   beforeEach(() => {
+    workspaceFlag.WORKSPACE_SELECTOR_ENABLED = true;
     getAccessTokenMock.mockResolvedValue(
       jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com', active_organization: { displayName: 'MindsDB' } })
     );
   });
 
   afterEach(() => {
+    workspaceFlag.WORKSPACE_SELECTOR_ENABLED = false;
     getAccessTokenMock.mockResolvedValue(null);
     // Back to the file's resting answer. Nothing below this block mentions
     // workspaces, so a leaked `mockReturnValue` would quietly hand them a
@@ -459,6 +468,16 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
       switchWorkspace: vi.fn(),
       refresh: vi.fn(),
     });
+  });
+
+  it('draws nothing while the selector is switched off', async () => {
+    workspaceFlag.WORKSPACE_SELECTOR_ENABLED = false;
+    withWorkspaces([DEFAULT_WS, CLIENT_A]);
+    const { container } = render(<Sidebar {...baseProps} serverOnline />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Workspace:/ })).toBeNull();
   });
 
   it('draws it below the New task CTA, against the footer', async () => {
@@ -589,5 +608,27 @@ describe('Sidebar — says why other work is missing (ENG-2169)', () => {
     failed.unmount();
     render(<Sidebar {...baseProps} serverOnline tasksStatus="ready" tasks={[{ id: 't1', title: 'Real task', messages: [] }]} />);
     expect(screen.queryByText(/stay there/)).toBeNull();
+  });
+});
+
+describe('Sidebar — onboarding checklist rows', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetOnboarding();
+    hostMock.isWeb = true;
+  });
+
+  it('starts a chat from the first step and opens Home from the example row', async () => {
+    const onStartChat = vi.fn().mockResolvedValue(true);
+    const onOpenExamples = vi.fn();
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} />);
+
+    await user.click(screen.getByText('Try an example'));
+    expect(onOpenExamples).toHaveBeenCalledTimes(1);
+    expect(onStartChat).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('Start with your own work'));
+    expect(onStartChat).toHaveBeenCalledWith(OWN_WORK_PROMPT);
   });
 });

@@ -34,6 +34,7 @@ import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
+import { connectionMuteKey } from '../lib/connectionMutes';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -141,6 +142,7 @@ export default function Composer({
   onNavigateToConnectors,
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddSharePointFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
   disabledConnections = [],
@@ -674,6 +676,16 @@ export default function Composer({
   }, [slashOpen, slashQuery, allSkills, project]);
 
   const closeSlash = useCallback(() => setSlashOpen((prev) => (prev ? false : prev)), []);
+  // Blur closes the menu after a short delay so a click on a menu row still
+  // lands. Focus cancels the pending close, so a quick click back into the box
+  // keeps the menu. The timer is cleared on unmount so it never sets state
+  // afterwards.
+  const closeSlashTimerRef = useRef(null);
+  const closeSlashSoon = () => {
+    clearTimeout(closeSlashTimerRef.current);
+    closeSlashTimerRef.current = setTimeout(closeSlash, 120);
+  };
+  useEffect(() => () => clearTimeout(closeSlashTimerRef.current), []);
 
   // Known skill names — the overlay colours only "/<known-skill>" tokens (not
   // arbitrary slashes like a file path), matching how the sent message tints
@@ -934,13 +946,9 @@ export default function Composer({
     handleAttachFiles(renameClipboardImages(files));
   };
 
-  function pairKey(engine, name) {
-    return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
-  }
-
   function isConnectionDisabled(connector) {
-    const k = pairKey(connector.engine, connector.name);
-    return (disabledConnections || []).some((d) => pairKey(d.engine, d.name) === k);
+    const k = connectionMuteKey(connector.engine, connector.name);
+    return (disabledConnections || []).some((d) => connectionMuteKey(d.engine, d.name) === k);
   }
 
   const canMuteConnectors = typeof onUpdateConnectorMute === 'function';
@@ -1118,8 +1126,8 @@ export default function Composer({
             value={value}
             onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
-            onBlur={() => { setFocused(false); setTimeout(() => closeSlash(), 120); }}
+            onFocus={() => { setFocused(true); clearTimeout(closeSlashTimerRef.current); }}
+            onBlur={() => { setFocused(false); closeSlashSoon(); }}
             onSelect={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onClick={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onScroll={handleScroll}
@@ -1322,6 +1330,17 @@ export default function Composer({
                       disabled={gdrivePickerBusy}
                     >
                       {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
+                    </button>
+                  )}
+                  {onAddSharePointFiles && project?.name && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        onAddSharePointFiles(project.name);
+                      }}
+                    >
+                      {Ico.folder(14)} Add files from SharePoint
                     </button>
                   )}
                   <button

@@ -139,6 +139,8 @@ vi.mock('./lib/analytics', () => ({
   trackDataSourceConnected: vi.fn(),
   trackArtifactBuilt: vi.fn(),
   trackAgentSessionStarted: vi.fn(),
+  trackNewTaskMessageSent: vi.fn(),
+  sendWithStartVia: vi.fn((via, send) => send()),
   trackAppInstalled: vi.fn(),
   trackFirstQuery: vi.fn(),
   classifyFirstResponse: vi.fn(() => ({})),
@@ -147,7 +149,8 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
-import { trackTurnFailed, classifyFirstResponse } from './lib/analytics';
+import { trackTurnFailed, classifyFirstResponse, trackNewTaskMessageSent, trackAgentSessionStarted } from './lib/analytics';
+import { OWN_WORK_PROMPT } from './components/onboarding/steps';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -161,6 +164,8 @@ import {
   SHORT_REQUEST_TIMEOUT_MS,
   deleteConversationTurn,
   fetchInFlightList,
+  fetchSchedules,
+  runScheduleNow,
 } from './api';
 import {
   setForm as setDataVaultForm,
@@ -1439,6 +1444,61 @@ describe('new-session stream (send from home)', () => {
   });
 });
 
+describe('the first message of a new task (analytics)', () => {
+  // This file does not clear its mocks between tests, and a failed assertion
+  // here must not leave upload calls or a queued result for the next one.
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('is described to analytics once, before the session event, as the kind of start it was', async () => {
+    // This file does not clear its mocks between tests, so count from here.
+    trackNewTaskMessageSent.mockClear();
+    trackAgentSessionStarted.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+
+    await send(user, composer, OWN_WORK_PROMPT);
+    await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
+
+    expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith({
+      text: OWN_WORK_PROMPT,
+      attachments: 0,
+      start: { start_kind: 'own_work', added_chars: 0 },
+    });
+    // It reads the console attribution that the session event clears, so it goes first.
+    expect(trackNewTaskMessageSent.mock.invocationCallOrder[0])
+      .toBeLessThan(trackAgentSessionStarted.mock.invocationCallOrder[0]);
+  });
+
+  it('counts the files that went with it', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'report.txt' }]);
+    await attach(user, 'report.txt');
+    await send(user, composer, 'summarize this file');
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({ attachments: 1 }));
+  });
+});
+
 describe('a queue filed under a pre-adoption tmp- id', () => {
   it('still reaches the composer of the adopted conversation', async () => {
     const user = userEvent.setup();
@@ -1494,12 +1554,9 @@ describe('two events in one synchronous burst', () => {
 
     const handle = streams[streams.length - 1];
     // Both events in the same tick, with no await between them — the burst the
-    // exactly-once property has to survive. It holds for two independent
-    // reasons: the drainedQuestionsRef entry added for this question_id, and
-    // the flushSync at the end of onEvent, which commits clearQueueForTask and
-    // resyncs messageQueueRef before the second event runs. This test locks the
-    // observable property; it does NOT isolate either mechanism (see the
-    // report's note on the drained-set write).
+    // exactly-once property has to survive. Two guards hold it, and this test
+    // does not isolate either: the drainedQuestionsRef entry for this
+    // question_id, and clearQueueForTask emptying messageQueueRef at once.
     await act(async () => {
       handle.opts.onEvent(ASK_EVENT);
       handle.opts.onEvent({ ...ASK_EVENT, question_id: 'ask:1' });
@@ -3132,7 +3189,7 @@ describe('a server-listed run whose messages load after its stream finished', ()
     const stalePage = spies.fetchSessionResult.getMockImplementation();
     spies.fetchSessionResult.mockImplementation((cid) => (cid === 'conv-a' ? held : stalePage(cid)));
     await user.click(await screen.findByText('Alpha task'));
-    await waitFor(() => expect(spies.fetchSessionResult).toHaveBeenLastCalledWith('conv-a'));
+    await waitFor(() => expect(spies.fetchSessionResult.mock.lastCall?.[0]).toBe('conv-a'));
 
     await emitOn(tail, { type: 'response.created', conversation_id: 'conv-a', user_message_id: 'u-scheduled' });
     await emitOn(tail, { type: 'response.output_text.delta', delta: 'The scheduled answer' });
@@ -3146,4 +3203,104 @@ describe('a server-listed run whose messages load after its stream finished', ()
     expect(await screen.findByText('The scheduled answer')).toBeInTheDocument();
     expect(screen.queryByText(/Running task/)).toBeNull();
   });
+});
+
+/* "Run now" answers with the run's conversation before the server starts the
+   run, so the probe the open makes finds nothing to attach to. The window must
+   keep asking until the run starts, or the answer never shows until the
+   conversation is opened again. */
+describe('"Run now" before the server has started the run', () => {
+  afterEach(() => {
+    fetchSchedules.mockImplementation(async () => []);
+    runScheduleNow.mockImplementation(async () => ({}));
+  });
+
+  /** Opens the Scheduled page and presses Run on its one schedule, whose run is conv-run. */
+  async function runNow(user) {
+    fetchSchedules.mockImplementation(async () => ({
+      schedules: [{
+        id: 'sched-1', title: 'Morning digest', prompt: 'Summarize my inbox',
+        enabled: true, cadence: 'daily', nextRunAt: '2099-01-01T09:00:00Z',
+      }],
+    }));
+    runScheduleNow.mockImplementation(async () => ({ conversation_id: 'conv-run' }));
+    spies.fetchSessionResult.mockImplementation(async (cid) => (cid === 'conv-run'
+      ? { status: 'ok', task: { id: 'conv-run', title: 'Morning digest', status: 'idle', projectName: 'general', messages: [] } }
+      : { status: 'unavailable', code: 0 }));
+    render(<App />);
+    await user.click((await screen.findAllByText('Scheduled Tasks'))[0]);
+    await user.click(await screen.findByRole('button', { name: /^Run$/ }));
+    await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
+  }
+
+  it('loads the answer of a run that started and ended between asks', async () => {
+    const user = userEvent.setup();
+    await runNow(user);
+    expect(screen.getByText(/Running task/)).toBeInTheDocument();
+
+    // The next ask finds the run already over: no producer, but its buffer.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false, has_buffer: true }));
+    spies.fetchSession.mockImplementation(async (cid) => ({
+      messages: cid === 'conv-run' ? [
+        { id: 'u-run', role: 'user', content: 'Summarize my inbox' },
+        { id: 'a-run', role: 'assistant', content: 'Nothing urgent today' },
+      ] : [],
+    }));
+
+    // Well inside the 30-second start grace, which would otherwise hide it.
+    expect(await screen.findByText('Nothing urgent today', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+  });
+
+  it('attaches to the run once the server starts it', async () => {
+    const user = userEvent.setup();
+    let started = false;
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => ({ in_flight: started && cid === 'conv-run' }));
+
+    // The open's own probe comes before the server has started the run.
+    await runNow(user);
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+
+    started = true;
+    const tail = await waitFor(() => {
+      const handle = streams.find((s) => s.kind === 'tail');
+      if (!handle) throw new Error('not attached yet');
+      return handle;
+    }, { timeout: 4000 });
+    await emitOn(tail, { type: 'response.created', conversation_id: 'conv-run', user_message_id: 'u-run' });
+    await emitOn(tail, { type: 'response.output_text.delta', delta: 'Three emails need a reply' });
+    await emitOn(tail, { type: 'response.completed', assistant_message_id: 'a-run' });
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    await act(async () => { tail.opts.onDone(); });
+
+    expect(await screen.findByText('Three emails need a reply')).toBeInTheDocument();
+    expect(screen.queryByText(/Running task/)).toBeNull();
+  });
+
+  it('loads the answer of a short run that started off screen and ended before a poll listed it', async () => {
+    const user = userEvent.setup();
+    await runNow(user);
+    await openByTitle(user, 'Alpha task');
+
+    // An ask sees the run going while it's off screen, then it ends at once.
+    // The in-flight list never names it.
+    let sawItRun;
+    const sawRunning = new Promise((resolve) => { sawItRun = resolve; });
+    spies.fetchInFlightStatus.mockImplementation(async (cid) => {
+      if (cid !== 'conv-run') return { in_flight: false };
+      sawItRun();
+      return { in_flight: true };
+    });
+    await sawRunning;
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    spies.fetchSession.mockClear();
+
+    // The next five-second poll loads it, well inside the 30-second start grace.
+    await waitFor(
+      () => expect(spies.fetchSession).toHaveBeenCalledWith('conv-run'),
+      { timeout: 7000 },
+    );
+    expect(streams.some((s) => s.kind === 'tail')).toBe(false);
+  }, 15000);
 });

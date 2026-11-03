@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  draftFileName,
   isAbsoluteArtifactPreviewUrl,
   TEXT_PREVIEW_EXTS,
   withArtifactCommentFlag,
@@ -127,6 +128,31 @@ describe('draftNavigationIsAuthorized', () => {
  * base from that URL; srcdoc needs the same base stated explicitly or every
  * relative <script src>/<link href>/anchor in the document breaks.
  */
+describe('draftFileName', () => {
+  it('names the file, decoded, without the query', () => {
+    expect(draftFileName('https://cowork.example/api/v1/artifacts/drafts/p/a/Q3%20report.html?v=2'))
+      .toBe('Q3 report.html');
+  });
+
+  it('keeps a name with a bare % literal', () => {
+    expect(draftFileName('https://cowork.example/api/v1/artifacts/drafts/p/a/100%.html')).toBe('100%.html');
+  });
+});
+
+describe('injectDraftBaseHref, base and doctype handling', () => {
+  const url = 'https://cowork.example/api/v1/artifacts/drafts/p/a/index.html';
+
+  it('adds the base when the page has only a <base target>', () => {
+    expect(injectDraftBaseHref('<html><head><base target="_blank"></head></html>', url))
+      .toContain('<base href="https://cowork.example/api/v1/artifacts/drafts/p/a/">');
+  });
+
+  it('puts the base after a doctype, never ahead of it, when there is no <head>', () => {
+    expect(injectDraftBaseHref('<!DOCTYPE html>\n<title>x</title>', url))
+      .toMatch(/^<!DOCTYPE html><base href=/);
+  });
+});
+
 describe('injectDraftBaseHref', () => {
   it('inserts a base tag pointing at the draft directory, inside <head>', () => {
     const html = '<html><head><title>Deck</title></head><body>Hi</body></html>';

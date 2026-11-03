@@ -3,6 +3,7 @@ import {
   type MindsOrg,
   PERSONAL_ORG_LABEL,
   chooseMindsOrg,
+  isIdOrganizationName,
   needsOrgPick,
   organizationLabel,
   personalOrgName,
@@ -108,6 +109,24 @@ describe('needsOrgPick', () => {
     expect(needsOrgPick([PERSONAL, ACME])).toBe(false);
     expect(needsOrgPick([PERSONAL])).toBe(false);
     expect(needsOrgPick([])).toBe(false);
+  });
+});
+
+describe('isIdOrganizationName', () => {
+  /* MindsHub names an organization its staff create `staff-org-<uuid>`, and
+     a user's own organization `personal_<uuid>`: ids, with the readable name
+     kept in the display name. */
+  it('spots the ids MindsHub gives a staff-created and a personal organization', () => {
+    expect(isIdOrganizationName('staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(true);
+    expect(isIdOrganizationName(personalOrgName('6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b'))).toBe(true);
+  });
+
+  it('leaves a name a person chose alone', () => {
+    expect(isIdOrganizationName('acme')).toBe(false);
+    expect(isIdOrganizationName('staff-org-acme')).toBe(false);
+    expect(isIdOrganizationName('personal_acme')).toBe(false);
+    expect(isIdOrganizationName('Acme staff-org-6f1e2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b')).toBe(false);
+    expect(isIdOrganizationName(null)).toBe(false);
   });
 });
 

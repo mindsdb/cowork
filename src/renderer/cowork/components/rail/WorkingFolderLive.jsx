@@ -41,6 +41,7 @@ import {
 import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { stopSharingNotice } from '../artifact/publish/linkLeftLive';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -399,13 +400,16 @@ export function WorkingFolderLive({
       // Unpublish first so deletion never leaves an orphaned public copy.
       // The server enforces the same rule as a backstop. Skipped in org mode —
       // see needsClientUnpublishBeforeDelete.
+      let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl })) {
-        await unpublishArtifact(a.path);
+        leftLive = stopSharingNotice(await unpublishArtifact(a.path));
       }
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete
       // guard always runs.
       await deleteArtifactAndSync(a);
+      // The page itself is still open to anyone with its link.
+      if (leftLive) setRowNote(leftLive);
     } catch (e) {
       setRowError(e?.message || 'Delete failed.');
       // Restore the row on failure.

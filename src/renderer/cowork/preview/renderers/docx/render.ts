@@ -10,6 +10,7 @@ import type { RendererModule } from '../../hooks';
 import { cleanRenderedNodes, keepLinksInPage } from './clean';
 import { dataUrlHead, declaredImageSize } from './imageSize';
 import { estimateOutputNodes } from './outputSize';
+import { drawSymbolBulletsAsUnicode } from './symbolBullets';
 
 /*
  * docx-preview's defaults put altChunk HTML in an unsandboxed iframe and hand
@@ -222,6 +223,7 @@ async function render(bytes: ArrayBuffer, ctx: RendererContext): Promise<RenderS
   ctx.progress(1, STEPS);
   loadPicturesFromFileOnly(wordDocument, ctx.limits);
   loadFontsWithinBudget(wordDocument, ctx.limits);
+  drawSymbolBulletsAsUnicode(wordDocument);
   const nodes = await libraryStep(() => renderDocument(wordDocument, DOCX_OPTIONS), ctx.signal);
   ctx.signal.throwIfAborted();
   ctx.progress(2, STEPS);

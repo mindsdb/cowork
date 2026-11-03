@@ -80,6 +80,7 @@ import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
 import { guardDocumentPreviewFrames } from './document-preview-guard';
 import { mainWindowWebPreferences } from './main-window-preferences';
+import { addRedoOnCmdY, EDIT_MENU_ID } from './edit-menu';
 import { serverTokenListener } from './server-token-listener';
 import {
   startCodingTerminal,
@@ -1725,7 +1726,7 @@ app.whenReady().then(async () => {
           ],
         } as Electron.MenuItemConstructorOptions]
       : [{ role: 'fileMenu' } as Electron.MenuItemConstructorOptions]),
-    { role: 'editMenu' },
+    { role: 'editMenu', id: EDIT_MENU_ID },
     {
       label: 'View',
       submenu: [
@@ -1769,7 +1770,9 @@ app.whenReady().then(async () => {
       ],
     },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  const appMenu = Menu.buildFromTemplate(template);
+  addRedoOnCmdY(appMenu);
+  Menu.setApplicationMenu(appMenu);
 
   ensureDefaultProject();
   setupIPC();

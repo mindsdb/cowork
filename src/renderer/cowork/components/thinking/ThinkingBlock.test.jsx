@@ -138,10 +138,9 @@ describe('ThinkingBlock — folding (ENG-3554)', () => {
     render(<ThinkingBlock steps={[tool]} isActive={false} startedAt={0} collapseOnMount />);
     // Painted open first, so the fold has somewhere to start from…
     expect(screen.getByText('Running code')).toBeInTheDocument();
-    // …then it folds.
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByRole('button', { expanded: false })).toBeInTheDocument();
+    // …then it folds. The fold renders outside act on React's own schedule,
+    // so wait for it rather than for a fixed number of ticks.
+    expect(await screen.findByRole('button', { expanded: false })).toBeInTheDocument();
   });
 
   it('an older turn mounts folded, with nothing to animate', () => {
