@@ -1894,7 +1894,12 @@ describe('a drained message whose send fails (ENG-1378)', () => {
     const streamCallsBefore = spies.streamMessage.mock.calls.length;
 
     uploadAttachments.mockClear();
-    uploadAttachments.mockRejectedValue(new Error('Upload failed (500)'));
+    // Fail after a timer tick, as a real upload does. An immediate rejection
+    // would let a regression loop in microtasks alone, starving the timers
+    // waitFor and the test timeout need, so the run would hang, not fail.
+    uploadAttachments.mockImplementation(() => new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Upload failed (500)')), 0);
+    }));
     await act(async () => { stream.opts.onDone('conv-a'); await Promise.resolve(); });
 
     // One upload attempt per task, then the drain chain stops.
