@@ -317,9 +317,10 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
-// Cheap full-file row count — we only need it to decide whether the
-// "showing N of M" notice should appear and what M is. Counting bytes
-// is fine since `previewArtifact` already capped the content at 200KB.
+// Record count, header included, for the "showing N of M" notice. On a cut
+// preview it would count only the cut text, so the sources count the full
+// text instead: the draft loader through `countRows`, and cowork-server's
+// `count_csv_rows`, which must return the same number for the same text.
 export function countCsvRows(text) {
   if (!text) return 0;
   let n = 0;

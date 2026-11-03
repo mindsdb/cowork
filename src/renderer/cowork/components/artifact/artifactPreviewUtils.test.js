@@ -502,6 +502,28 @@ describe('countCsvRows', () => {
   ])('agrees with parseCsv on the row count for %s', (_label, text) => {
     expect(countCsvRows(text)).toBe(parseCsv(text).length);
   });
+
+  // Keep in sync with SHARED_CASES in cowork-server tests/test_artifact_preview_csv.py:
+  // the server counts the rows of a cut CSV by these same rules.
+  const SHARED_CASES = [
+    ['', 0],
+    ['id,name', 1],
+    ['id,name\n', 1],
+    ['id,name\n1,Ada\n2,Grace\n', 3],
+    ['id,name\n1,Ada', 2],
+    ['\uFEFFid,name\n1,Ada\n', 2],
+    ['\uFEFF"a,b",c\n1,2\n', 2],
+    ['id,note\n1,"two\nlines"\n', 2],
+    ['id,note\n1,"say ""hi""\nthere"\n', 2],
+    ['id,note\n1,part"ial\n2,fine\n', 3],
+    ['id,name\r1,Ada\r2,Grace\r', 3],
+    ['id,name\r\n1,Ada\r\n', 2],
+    ['"abc\n', 0],
+  ];
+
+  it.each(SHARED_CASES)('counts %j as %i records', (text, expected) => {
+    expect(countCsvRows(text)).toBe(expected);
+  });
 });
 
 describe('csvRowsToGfmTable', () => {

@@ -215,9 +215,11 @@ export function ArtifactViewerBody({
             gap: 12, flexWrap: 'wrap',
           }}>
             <span>
-              {csvPreview && csvPreview.truncated
-                ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
-                : 'Preview is truncated.'}
+              {!csvPreview || !csvPreview.truncated
+                ? 'Preview is truncated.'
+                : csvPreview.totalRows === null
+                  ? `Showing first ${csvPreview.shownRows.toLocaleString()} rows. The full file is larger than the preview.`
+                  : `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`}
             </span>
             <Button onClick={host.isWeb ? onDownload : onOpenOS}>
               {host.isWeb ? Ico.download(14) : Ico.externalLink(14)}
