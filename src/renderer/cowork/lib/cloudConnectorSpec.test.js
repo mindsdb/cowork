@@ -215,9 +215,15 @@ const supabase = (cloudAvailable) => ({
         engine: 'postgres:host-port',
         description: 'Cloud copy',
         how_to: 'Cloud how-to',
+        // As cowork-server serves them: postgres's cloud fields.
         fields: [
           { name: 'host', label: 'Host', type: 'text', required: true },
-          { name: 'password', label: 'Password', type: 'password', secret: true, required: true },
+          { name: 'port', label: 'Port', type: 'text', required: true, default: '5432' },
+          { name: 'database', label: 'Database name', type: 'text', required: true },
+          { name: 'schema', label: 'Schema', type: 'text' },
+          { name: 'username', label: 'Username', type: 'text', required: true },
+          { name: 'password', label: 'Password', type: 'password', required: true, secret: true },
+          { name: 'tls_verify', label: 'Certificate', type: 'boolean', checkbox_label: 'Only connect if the certificate is signed by a public authority' },
         ],
       },
     },
@@ -235,7 +241,7 @@ describe('a connector with both a cloud form and an OAuth method', () => {
     expect(shaped.methods.map((m) => m.id)).toEqual(['browser_oauth_builtin', 'individual-credentials']);
     const [oauth, cloud] = shaped.methods;
     expect(oauth).toEqual(supabase(true).methods[0]);
-    expect(cloud.fields.map((f) => f.name)).toEqual(['host', 'password']);
+    expect(cloud.fields.map((f) => f.name)).toEqual(['host', 'port', 'database', 'schema', 'username', 'password', 'tls_verify']);
     expect(cloud).not.toHaveProperty('cloud');
   });
 

@@ -62,9 +62,15 @@ const supabase = (cloudAvailable) => ({
         engine: 'postgres:host-port',
         description: 'Cloud copy',
         how_to: 'Cloud how-to',
+        // As cowork-server serves them: postgres's cloud fields.
         fields: [
           { name: 'host', label: 'Host', type: 'text', required: true },
-          { name: 'password', label: 'Password', type: 'password', secret: true, required: true },
+          { name: 'port', label: 'Port', type: 'text', required: true, default: '5432' },
+          { name: 'database', label: 'Database name', type: 'text', required: true },
+          { name: 'schema', label: 'Schema', type: 'text' },
+          { name: 'username', label: 'Username', type: 'text', required: true },
+          { name: 'password', label: 'Password', type: 'password', required: true, secret: true },
+          { name: 'tls_verify', label: 'Certificate', type: 'boolean', checkbox_label: 'Only connect if the certificate is signed by a public authority' },
         ],
       },
     },
