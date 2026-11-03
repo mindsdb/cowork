@@ -86,6 +86,30 @@ describe('ScheduleTaskModal — what, then when', () => {
     expect(onSubmit.mock.calls[0][2]).toEqual({ runOnce: true });
   });
 
+  it('turns a one-off that already ran back on when it gets a new time', async () => {
+    const next = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const task = {
+      id: 's1', title: 'Once', prompt: 'do it', cadence: 'once', state: 'done', enabled: false,
+      nextRunAt: next.toISOString(),
+    };
+    const { onSubmit } = renderModal({ task });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ enabled: true });
+  });
+
+  it('leaves a paused one-off paused when its time changes', async () => {
+    const next = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const task = {
+      id: 's1', title: 'Once', prompt: 'do it', cadence: 'once', state: 'paused', enabled: false,
+      nextRunAt: next.toISOString(),
+    };
+    const { onSubmit } = renderModal({ task });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('enabled');
+  });
+
   it('has no pause switch; pausing lives on the task', () => {
     renderModal();
     expect(screen.queryByRole('switch')).toBeNull();
