@@ -108,6 +108,14 @@ function autoTopUpLine(auto) {
   }
 }
 
+// Mirrors the usage bar's balance_low copy, so "turn on" only shows when auto top up is off.
+function lowBalanceLine(auto) {
+  if (!auto?.enabled) return 'Running low. Add funds or turn on auto top up to keep tasks running.';
+  if (auto.status === 'ok') return 'Running low. Auto top up will refill it.';
+  if (auto.status === 'pending_action') return 'Running low. Auto top up is waiting on your bank.';
+  return 'Running low. Add funds to keep tasks running.';
+}
+
 function periodLabel(spend) {
   const fmt = (iso) => formatResetDate(iso);
   const a = fmt(spend?.periodStart);
@@ -135,7 +143,7 @@ function BalanceCard({ balance, auto, spend, isBillingOwner }) {
         {empty
           ? "Empty. Paid models won't run until you add funds."
           : low
-            ? 'Running low. Add funds or turn on auto top up to keep tasks running.'
+            ? lowBalanceLine(auto)
             : 'Used by paid models, and by MindsHub Air once the free tokens run out.'}
       </div>
       {spend && (

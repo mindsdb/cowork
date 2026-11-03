@@ -123,6 +123,17 @@ describe('UsageSection', () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    [{ enabled: false, thresholdUsd: null, rechargeToUsd: null, status: 'ok' }, 'Running low. Add funds or turn on auto top up to keep tasks running.'],
+    [{ enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'ok' }, 'Running low. Auto top up will refill it.'],
+    [{ enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'pending_action' }, 'Running low. Auto top up is waiting on your bank.'],
+    [{ enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'cap_reached' }, 'Running low. Add funds to keep tasks running.'],
+    [{ enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'payment_failed' }, 'Running low. Add funds to keep tasks running.'],
+  ])('only asks to turn on auto top up when it is off (%o)', (autoTopUp, line) => {
+    renderWith(usage({ balance: { usd: 3, canConsume: true, hasToppedUp: true, alert: 'low' }, autoTopUp }));
+    expect(screen.getByText(line)).toBeInTheDocument();
+  });
+
   it('tells a member who can add funds, and sends the owner to the add-credits dialog', async () => {
     const user = userEvent.setup();
     const { unmount } = renderWith(usage({ isBillingOwner: false }));
