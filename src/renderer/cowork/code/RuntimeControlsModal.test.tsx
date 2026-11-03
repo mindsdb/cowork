@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, it, vi } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
 
 const { pickCodeFolder } = vi.hoisted(() => ({
   pickCodeFolder: vi.fn(async () => ({ ok: true, path: 'C:\\work\\shared' })),
@@ -69,6 +69,10 @@ it('reuses the shared model picker and applies additional local folders', async 
 
 it('keeps a failed update actionable inside the modal', async () => {
   const user = userEvent.setup();
+  const originalScrollIntoView = Element.prototype.scrollIntoView;
+  const scrollIntoView = vi.fn();
+  Element.prototype.scrollIntoView = scrollIntoView;
+  onTestFinished(() => { Element.prototype.scrollIntoView = originalScrollIntoView; });
   render(
     <RuntimeControlsModal
       open
@@ -82,15 +86,15 @@ it('keeps a failed update actionable inside the modal', async () => {
       modelMeta={{ modelProviders: {}, modelFamilies: {}, modelEnabled: {} }}
       busy={false}
       onClose={vi.fn()}
-      onApply={vi.fn(async () => { throw new Error('Runtime is still active'); })}
+      onApply={vi.fn(async () => { throw new Error('Wait for the active turn to finish before changing task controls'); })}
     />,
   );
   await user.click(screen.getByRole('button', { name: 'Apply' }));
   const alert = await screen.findByRole('alert');
-  expect(alert).toHaveTextContent('Runtime is still active');
-  // The form scrolls inside the modal; the error must sit outside that region
-  // so it is in view without scrolling.
-  expect(alert.closest('.code-controls-grid')).toBeNull();
+  expect(alert).toHaveTextContent("Couldn't apply task settings");
+  expect(alert).toHaveTextContent('Wait for the active turn to finish before changing task controls');
+  // The form scrolls inside the modal, so the error is scrolled into view.
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
   expect(screen.getByRole('combobox', { name: 'Task model' })).toHaveTextContent('Claude Fable 5');
 });
 

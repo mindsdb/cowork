@@ -55,6 +55,12 @@ export function RuntimeControlsModal({
   const [sandboxBusy, setSandboxBusy] = useState(false);
   const wasOpen = useRef(false);
   const initializedSession = useRef('');
+  const errorRef = useRef<HTMLDivElement>(null);
+  // The form overflows the modal, so an error at its end can land below the
+  // fold. Scroll it into view, next to the footer where the user clicked Apply.
+  useEffect(() => {
+    if (submitError) errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [submitError]);
   useEffect(() => {
     const shouldInitialize = open && (!wasOpen.current || initializedSession.current !== sessionId);
     wasOpen.current = open;
@@ -112,7 +118,7 @@ export function RuntimeControlsModal({
       // back restores it; only the update drops it.
       await onApply(offersNoEffort ? { ...draft, reasoning_effort: null } : draft);
     } catch (reason) {
-      setSubmitError(reason instanceof Error ? reason.message : 'Could not update task settings.');
+      setSubmitError(reason instanceof Error && reason.message ? reason.message : 'Try again.');
     }
   };
 
@@ -242,11 +248,13 @@ export function RuntimeControlsModal({
               )}
             </div>
           )}
+          {submitError && (
+            <div ref={errorRef} className="code-controls-error">
+              <Alert variant="danger" title="Couldn't apply task settings">{submitError}</Alert>
+            </div>
+          )}
         </div>
       </ModalBody>
-      {/* Outside the scrolling body: the form overflows the modal, and an error
-          at the end of it lands below the fold. */}
-      {submitError && <div className="code-controls-error"><Alert variant="danger">{submitError}</Alert></div>}
       <ModalFooter>
         <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
         {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
