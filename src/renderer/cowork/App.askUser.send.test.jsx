@@ -1818,6 +1818,26 @@ describe('a send whose upload fails while another task is queued', () => {
     expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-a');
     expect(spies.streamMessage.mock.calls[0][1]).toBe('queued alpha');
   });
+
+  it('clears the task\'s running dot when its upload fails', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+    let failUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { failUpload = () => reject(new Error('Upload failed (500)')); }),
+    );
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'with a file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+
+    // The send marks the task in flight before its upload, so the dot shows.
+    expect(await screen.findByLabelText('Active')).toBeInTheDocument();
+
+    // The failure must clear it itself. Waiting for the next in-flight poll
+    // would leave the dot on a task that isn't running for up to 5s.
+    await act(async () => { failUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(screen.queryByLabelText('Active')).toBeNull());
+  });
 });
 
 describe('the scheduled-task poll', () => {

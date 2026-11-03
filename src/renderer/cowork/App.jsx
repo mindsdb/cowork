@@ -4098,6 +4098,10 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       releaseSlotClaim(id);
+      // The send marked the task in flight before uploading. Nothing ran, so
+      // clear it now rather than leave the sidebar's running dot on until the
+      // next in-flight poll.
+      markInFlightDone(id);
       // Other tasks' messages were queued behind this reservation, so send
       // the next one now. This task is skipped: retrying its failed upload
       // straight away would fail again. A send the drain started carries the
