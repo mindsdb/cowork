@@ -3142,11 +3142,13 @@ export async function recordTaskVisit(task, autoPin = false) {
   return req(`/pins/${encodeURIComponent(task.id)}/visit?${params.toString()}`, { method: 'POST' });
 }
 
+// Null when the list couldn't be read, so a caller can tell a failed read
+// from a server with no schedules.
 export async function fetchSchedules() {
   try {
     return await req('/schedules/');
   } catch {
-    return { schedules: [] };
+    return null;
   }
 }
 
