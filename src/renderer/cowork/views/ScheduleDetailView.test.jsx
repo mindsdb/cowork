@@ -290,6 +290,10 @@ describe('ScheduleDetailView — controls by state', () => {
     // An informational notice, not an error: a status, not an alert.
     const box = screen.getByText('Paused — the current run will finish').closest('[role="status"]');
     expect(within(box).getByText(/Stop run ends it now; anything it has already done stays done/)).toBeInTheDocument();
+    // A run that fails before it starts work can run again after resume, so
+    // the notice promises only that nothing else starts while paused.
+    expect(within(box).getByText(/Nothing else starts while it’s paused/)).toBeInTheDocument();
+    expect(within(box).queryByText(/Nothing runs after it/)).not.toBeInTheDocument();
   });
 
   it('shows a done one-off with no switch and no next run', async () => {

@@ -23,7 +23,7 @@ export function runAlert(task) {
       variant: 'info',
       title: 'Paused — the current run will finish',
       reason: null,
-      note: 'Nothing runs after it. Stop run ends it now; anything it has already done stays done.',
+      note: 'Nothing else starts while it’s paused. Stop run ends it now; anything it has already done stays done.',
     };
   }
   if (state === 'missed') {
