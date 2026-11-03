@@ -226,6 +226,64 @@ describe('ChannelConversations', () => {
     expect(screen.getByRole('button', { name: 'Load earlier messages' })).toBeTruthy();
   });
 
+  it('keeps the next conversation loading when the last one\'s older page lands first', async () => {
+    const A = { id: 'c-a', title: 'discord: A', channelType: 'discord' };
+    const B = { id: 'c-b', title: 'slack: B', channelType: 'slack' };
+    let releaseB;
+    let releaseOlder;
+    api.fetchChannelConversation.mockImplementation((id) => (id === 'c-a'
+      ? Promise.resolve(task('c-a', [{ id: 'a2', role: 'user', content: 'A-newer' }], { hasMoreMessages: true, messagesCursor: 'cur' }))
+      : new Promise((resolve) => { releaseB = resolve; })));
+    api.fetchOlderChannelMessages.mockImplementation(() => new Promise((resolve) => { releaseOlder = resolve; }));
+    renderTab({ list: { state: 'ok', items: [A, B] } });
+
+    fireEvent.click(screen.getByRole('button', { name: /discord: A/ }));
+    await screen.findByText('A-newer');
+    fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' }));
+    fireEvent.click(screen.getByRole('button', { name: /slack: B/ }));
+    await act(async () => {
+      releaseOlder({ messages: [{ id: 'a1', role: 'user', content: 'A-older' }], hasMoreMessages: false, messagesCursor: null });
+    });
+    await act(async () => { releaseB(task('c-b', [{ id: 'b1', role: 'user', content: 'B-only' }])); });
+
+    expect(screen.getByTestId('transcript').textContent).toBe('B-only');
+  });
+
+  it('keeps the transcript and offers "Load earlier" again when an older page fails', async () => {
+    api.fetchChannelConversation.mockResolvedValue(
+      task('c-new', [{ id: 'm2', role: 'user', content: 'second' }], { hasMoreMessages: true, messagesCursor: 'cur-1' }),
+    );
+    api.fetchOlderChannelMessages.mockResolvedValue(null);
+    renderTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /discord: sales/ }));
+    await screen.findByText('second');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' })); });
+
+    const rows = [...screen.getByTestId('transcript').querySelectorAll('p')].map((p) => p.textContent);
+    expect(rows).toEqual(['second']);
+    expect(screen.getByRole('button', { name: 'Load earlier messages' })).toBeTruthy();
+  });
+
+  it('walks back two pages with two "Load earlier" clicks', async () => {
+    api.fetchChannelConversation.mockResolvedValue(
+      task('c-new', [{ id: 'm3', role: 'user', content: '[3]' }], { hasMoreMessages: true, messagesCursor: 'c3' }),
+    );
+    api.fetchOlderChannelMessages.mockImplementation(async (id, cursor) => (cursor === 'c3'
+      ? { messages: [{ id: 'm2', role: 'user', content: '[2]' }], hasMoreMessages: true, messagesCursor: 'c2' }
+      : { messages: [{ id: 'm1', role: 'user', content: '[1]' }], hasMoreMessages: false, messagesCursor: null }));
+    renderTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /discord: sales/ }));
+    await screen.findByText('[3]');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' })); });
+
+    expect(screen.getByTestId('transcript').textContent).toBe('[1][2][3]');
+    expect(api.fetchOlderChannelMessages.mock.calls.map((call) => call[1])).toEqual(['c3', 'c2']);
+    expect(screen.queryByRole('button', { name: 'Load earlier messages' })).toBeNull();
+  });
+
   it('shows an outage with Retry instead of an empty list', () => {
     const { onReload } = renderTab({ list: { state: 'error', items: [], error: 'API returned 503' } });
 
