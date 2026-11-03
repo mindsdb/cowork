@@ -461,8 +461,27 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   if (!before.out && after.out && spendsFree) {
     out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
   }
-  // Running low is not this task's news: nothing about the task changes until
-  // the allowance is gone, and the composer bar carries the live count.
+  // A long task can cross the low band and empty it without the composer bar
+  // ever being looked at, so the crossing is this task's news too. Stepped on
+  // the same scale as the bar's dismissal, so a task that runs from 40% left to
+  // 8% left reports on each step rather than on each poll. Both reads have to be a
+  // capped grant, or a grant arriving mid-task would read as one draining, and
+  // `free_used` above owns the last step so reaching zero says the allowance is
+  // gone rather than that it is low.
+  // The first four terms are belt and braces, not load-bearing: `after.low`
+  // already implies a capped grant with allowance left, and `freeDismissStep`
+  // reads a null fraction as the deepest step, which no later step can exceed.
+  // They stay because the step comparison carrying all of that alone does not
+  // read as the rule it enforces.
+  if (!before.out && !after.out && after.low && spendsFree
+      && before.fractionLeft !== null && after.fractionLeft !== null
+      && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
+    out.push({
+      kind: 'free_low',
+      fractionLeft: after.fractionLeft,
+      resetsAt: next.freeTokens?.resetsAt || null,
+    });
+  }
   if (prev.autoTopUp?.status !== 'payment_failed' && next.autoTopUp?.status === 'payment_failed') {
     out.push({ kind: 'auto_top_up_failed' });
   }

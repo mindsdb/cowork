@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 // In-chat usage alerts live on `task.usageNotices` and render at the turn they
 // happened in, which for a one-turn task is after the reply.
@@ -16,7 +16,8 @@ const hostMock = vi.hoisted(() => ({
   isElectron: true, isWeb: false,
 }));
 vi.mock('../../platform/host', () => hostMock);
-vi.mock('../lib/analytics', () => ({ trackBillingOpened: vi.fn(), trackKeyProvisioningRefused: vi.fn() }));
+const analyticsMock = vi.hoisted(() => ({ trackBillingOpened: vi.fn(), trackKeyProvisioningRefused: vi.fn() }));
+vi.mock('../lib/analytics', () => analyticsMock);
 
 import ChatView from './ChatView';
 
@@ -37,21 +38,36 @@ describe('ChatView usage notices', () => {
     render(<ChatView task={task([{ kind: 'free_used', resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
     // Anchored at both ends, so dropping resetsAt (which would degrade the
     // clause to nothing) fails here rather than passing on a prefix match.
-    const line = screen.getByText(/^Free Air allowance used up · now using your balance until it refills at Sep 1[12], 12:00 PM$/);
+    const line = screen.getByText(/^Free Air allowance used up · now using your balance until Sep 1[12], 12:00 PM$/);
     const reply = screen.getByText('Done. Here is the digest.');
     expect(reply.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The composer bar says the same with the balance and the action.
-    expect(screen.queryByRole('button', { name: 'View usage' })).toBeNull();
+  });
+
+  it('marks the allowance running low with one quiet line after the reply, not a card', () => {
+    render(<ChatView task={task([{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
+    const line = screen.getByText(/^Free Air allowance 12% left · refills at Sep 1[12], 12:00 PM$/);
+    const reply = screen.getByText('Done. Here is the digest.');
+    expect(reply.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText('Free Air allowance running low')).toBeNull();
   });
 
   it('drops the refill clause when there is no refill time', () => {
-    render(<ChatView task={task([{ kind: 'free_used', createdAt: '2099-08-28T10:00:00Z' }])} />);
+    render(<ChatView task={task([
+      { kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' },
+      { kind: 'free_used', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' },
+    ])} />);
+    expect(screen.getByText(/^Free Air allowance 12% left$/)).toBeInTheDocument();
     expect(screen.getByText(/^Free Air allowance used up · now using your balance$/)).toBeInTheDocument();
   });
 
-  it('shows nothing for a running-low notice a task saved earlier', () => {
+  // Most people who reach billing from a chat notice never click the composer
+  // bar, so the line keeps its own link, and the click says which notice it was.
+  it('keeps a View usage link on the line and records which notice was clicked', () => {
+    analyticsMock.trackBillingOpened.mockClear();
     render(<ChatView task={task([{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
-    expect(screen.queryByText(/Free Air allowance/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'View usage' }));
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('usage_alert', undefined, 'free_low');
+    expect(hostMock.host.openExternal).toHaveBeenCalled();
   });
 
   it('renders the auto top up failure with both actions', () => {

@@ -67,7 +67,7 @@ import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 
@@ -1469,18 +1469,19 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
-// ENG-1782. Not an error: the turn kept going. The composer bar above the
-// input carries the live state and the action for the *next* task; this marks
-// where *this* one's billing changed, so it still reads true when scrolled
-// back to after the bar has moved on or been closed.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
+// ENG-1782. Not an error: the turn kept going. The composer bar carries the
+// live state for the *next* task; this marks the turn where *this* one's
+// allowance changed, and still reads true after the bar moves on or is closed.
+// It keeps its own link: most people who reach billing from a chat notice never
+// click the bar.
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
   if (!PLATFORM_UI) return null;
+  const open = (action) => () => {
+    trackBillingOpened('usage_alert', undefined, kind);
+    host.openExternal(usageActionUrl(action, { isBillingOwner }));
+  };
   if (kind === 'auto_top_up_failed') {
     // The one notice that asks for something, so it stays a card.
-    const open = (action) => () => {
-      trackBillingOpened('usage_alert');
-      host.openExternal(usageActionUrl(action, { isBillingOwner }));
-    };
     return (
       <ActionCard
         time={time}
@@ -1495,15 +1496,24 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
       />
     );
   }
-  // Tasks saved before running low left the chat still carry the notice.
-  if (kind !== 'free_used') return null;
-  // A quiet marker, not a card: the composer bar says the same with the
-  // balance and "View usage", so a second card here repeats it a few pixels up.
+  // One quiet line, not a card: the composer bar says the same a few pixels
+  // below. Running low says what is true of the allowance, not of this turn:
+  // the router resolves per turn and can land on a paid model.
+  // No usable refill time drops the clause rather than leaving "refills".
   const refillsAt = formatResetTime(resetsAt);
+  const text = kind === 'free_low'
+    ? `Free Air allowance ${formatPercentShort(fractionLeft)} left${refillsAt ? ` · refills at ${refillsAt}` : ''}`
+    : `Free Air allowance used up · now using your balance${refillsAt ? ` until ${refillsAt}` : ''}`;
   return (
-    <div className="my-3 flex items-center gap-1.5 font-body text-xs text-ink-3">
+    <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
       <Icon of={CircleAlert} size={14} />
-      <span>{`Free Air allowance used up · now using your balance${refillsAt ? ` until it refills at ${refillsAt}` : ''}`}</span>
+      <span>{text}</span>
+      <span aria-hidden="true">·</span>
+      <button
+        type="button"
+        onClick={open(USAGE_ACTIONS.viewUsage)}
+        className="border-0 bg-transparent p-0 m-0 font-body text-xs underline underline-offset-2 text-[color:inherit] cursor-pointer hover:text-ink-2"
+      >{USAGE_ACTIONS.viewUsage.label}</button>
     </div>
   );
 }
@@ -2092,6 +2102,7 @@ export default function ChatView({
       agentLabel={agentLabel}
       kind={n.kind}
       resetsAt={n.resetsAt}
+      fractionLeft={n.fractionLeft}
       isBillingOwner={isBillingOwner}
     />
   );
