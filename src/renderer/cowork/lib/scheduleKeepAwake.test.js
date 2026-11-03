@@ -16,7 +16,7 @@ describe('shouldKeepAwake', () => {
     // five, for its retry; its next slot is a day away.
     ['a daily task waiting 60s for a retry', [{ state: 'active', nextRunAt: at(1440), retryAt: at(1) }], true],
     ['a daily task waiting 300s for a retry', [{ state: 'active', nextRunAt: at(1440), retryAt: at(5) }], true],
-    ['a one-off whose run is waiting to retry', [{ state: 'done', cadence: 'once', retryAt: at(1) }], true],
+    ['a one-off whose run is waiting to retry (it stays active until its retries end)', [{ state: 'active', cadence: 'once', retryAt: at(1) }], true],
     ['a finished one-off', [{ state: 'done', cadence: 'once', nextRunAt: at(-60) }], false],
     ['a paused schedule due now', [{ state: 'paused', nextRunAt: at(1) }], false],
     ['a paused schedule with a retry the pause cancelled', [{ state: 'paused', retryAt: at(1) }], false],

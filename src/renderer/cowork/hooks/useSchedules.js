@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   fetchSchedules,
   createSchedule,
@@ -25,9 +25,20 @@ export function useSchedules() {
   // however long a schedule's history.
   const [scheduled, setScheduled] = useState([]);
 
+  const lastListRef = useRef([]);
+
   const refreshSchedules = useCallback(async () => {
     const data = await fetchSchedules();
+    if (!data) {
+      // A failed read keeps what was last known, so a run in flight still
+      // holds the machine awake. A new list (same items) says it again: the
+      // shell lets a hold lapse when it stops hearing it.
+      const kept = [...lastListRef.current];
+      setScheduled(kept);
+      return kept;
+    }
     const list = data.schedules || [];
+    lastListRef.current = list;
     setScheduled(list);
     return list;
   }, []);

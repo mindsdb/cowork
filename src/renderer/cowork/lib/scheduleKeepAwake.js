@@ -16,10 +16,7 @@ export function shouldKeepAwake(schedules, { now = Date.now(), windowMs, enabled
   };
   return (schedules || []).some((s) => {
     if (s.running) return true;
-    if (scheduleState(s) !== 'active') {
-      // A one-off is disabled by its own claim; its retry still runs.
-      return scheduleState(s) === 'done' && soon(s.retryAt);
-    }
+    if (scheduleState(s) !== 'active') return false;
     return soon(s.nextRunAt) || soon(s.retryAt);
   });
 }
