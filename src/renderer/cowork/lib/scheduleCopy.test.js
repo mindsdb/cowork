@@ -9,9 +9,9 @@ describe('missedRunText', () => {
 
   it.each(['hourly', 'daily', 'weekdays', 'weekly'])('runs a %s task once on return, never a backlog', (cadence) => {
     expect(missedRunText(cadence, false)).toMatch(/runs once when it reopens/);
-    expect(missedRunText(cadence, false)).toMatch(/Earlier missed times are skipped/);
+    expect(missedRunText(cadence, false)).toMatch(/Other missed times are skipped/);
     expect(missedRunText(cadence, true)).toMatch(/runs once when it’s back/);
-    expect(missedRunText(cadence, true)).toMatch(/Earlier missed times are skipped/);
+    expect(missedRunText(cadence, true)).toMatch(/Other missed times are skipped/);
   });
 
   it('blames a closed app on desktop and a down server on web', () => {

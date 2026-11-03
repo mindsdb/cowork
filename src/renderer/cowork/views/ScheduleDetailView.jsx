@@ -13,6 +13,7 @@ import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { PageHeader } from '../components/collection';
 import { Alert, Button } from '../components/ui';
+import RetryHold from '../components/schedule/RetryHold';
 import { Switch } from '../components/ui/Switch';
 import OverflowMenu from '../components/OverflowMenu';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -168,6 +169,15 @@ function RunRow({ run, onOpen }) {
 
 // ── view ──
 
+// A one-off with no time left to run at: it ran, it was missed, or it was
+// paused and its time has passed since. Resuming any of these would be refused.
+function oneOffWithoutTime(task, state) {
+  if (task.cadence !== 'once') return false;
+  if (state === 'done' || state === 'missed') return true;
+  const at = Date.parse(task.nextRunAt);
+  return state === 'paused' && Number.isFinite(at) && at <= Date.now();
+}
+
 export default function ScheduleDetailView({
   task,
   projects = [],
@@ -288,9 +298,10 @@ export default function ScheduleDetailView({
               </div>
             </div>
             <div className="sched-hero-actions inline-flex items-center gap-[10px] shrink-0">
-              {/* A one-off that has run, or was missed, has no time left to
-                  resume to: Run now, or Edit for a new time. */}
-              {!(task.cadence === 'once' && ['done', 'missed'].includes(state)) && (
+              {/* A one-off that has run, was missed, or is paused past its
+                  time has no time left to resume to (the server refuses):
+                  Run now, or Edit for a new time. */}
+              {!oneOffWithoutTime(task, state) && (
                 <EnableToggle
                   enabled={state === 'active'}
                   busy={busy}
@@ -311,15 +322,18 @@ export default function ScheduleDetailView({
                   {busy ? 'Stopping…' : 'Stop run'}
                 </Button>
               ) : (
-                <Button
-                  variant="primary"
-                  onClick={() => withBusy(() => onRunNow?.(task.id))}
-                  disabled={busy}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                >
-                  {Ico.send ? Ico.send(14) : null}
-                  {busy ? 'Running…' : 'Run now'}
-                </Button>
+                <RetryHold retrying={!!task.retryAt}>
+                  <Button
+                    variant="primary"
+                    onClick={() => withBusy(() => onRunNow?.(task.id))}
+                    // The server refuses Run now while a failed run waits for its retry.
+                    disabled={busy || !!task.retryAt}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    {Ico.send ? Ico.send(14) : null}
+                    {busy ? 'Running…' : 'Run now'}
+                  </Button>
+                </RetryHold>
               )}
               {/* Edit + Delete live in the overflow — Delete opens a confirm,
                   and never sits inside the edit form (ENG-1245). */}
