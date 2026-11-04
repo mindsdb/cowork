@@ -162,7 +162,7 @@ describe('TaskBar', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Show task details for isolated copy' }));
+    await user.click(screen.getByRole('button', { name: 'Show task details' }));
     expect(screen.getByText('Storage')).toBeInTheDocument();
     expect(screen.getByText('~1.2 GB')).toBeInTheDocument();
     expect(screen.getByText('All tasks')).toBeInTheDocument();
@@ -174,7 +174,7 @@ describe('TaskBar', () => {
     const user = userEvent.setup();
     render(<TaskBar {...barProps} />);
 
-    await user.click(screen.getByRole('button', { name: 'Show task details for original folder' }));
+    await user.click(screen.getByRole('button', { name: 'Show task details' }));
     expect(screen.queryByText('Storage')).not.toBeInTheDocument();
   });
 
