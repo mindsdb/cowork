@@ -131,6 +131,36 @@ describe('when following pauses', () => {
     act(() => { fireEvent.click(screen.getByText('Worked for 2m')); });
     expect(probe.isStuck()).toBe(false);
   });
+
+  // Paused at the end, the answer then grows below without a scroll.
+  const grow = () => {
+    fake.height = 3000;
+    act(() => probe.updateReserve());
+  };
+
+  it('offers the way back when the answer grows past a reader selecting at the end', () => {
+    render(<Probe />);
+    act(() => fake.scrollReaderTo(box(), 1400));
+    const text = screen.getByText('Conversation').firstChild as Node;
+    const getSelection = vi.spyOn(document, 'getSelection').mockReturnValue({ isCollapsed: false, anchorNode: text } as unknown as Selection);
+    try {
+      act(() => { document.dispatchEvent(new Event('selectionchange')); });
+      grow();
+      expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument();
+      expect(probe.isStuck()).toBe(false);
+    } finally {
+      getSelection.mockRestore();
+    }
+  });
+
+  it('offers the way back when the answer grows past a block the reader opened at the end', () => {
+    render(<Probe><details><summary>Worked for 2m</summary><p>Steps</p></details></Probe>);
+    act(() => fake.scrollReaderTo(box(), 1400));
+    act(() => { fireEvent.click(screen.getByText('Worked for 2m')); });
+    grow();
+    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument();
+    expect(probe.isStuck()).toBe(false);
+  });
 });
 
 describe('a sent message held at the top', () => {

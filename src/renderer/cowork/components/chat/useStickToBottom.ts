@@ -144,8 +144,11 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
         lastTop.current = target;
       }
       if (!reserve) anchor.current = anchor.current.active ? anchor.current : null;
-      if (anchored()) setIsAtBottom(distanceFromBottom(el) < STICK_THRESHOLD_PX);
     }
+    // Not following (held by an anchor, or paused by a selection or an opened
+    // block): the content can grow away from the reader, so re-measure without
+    // re-pinning.
+    if (!stuck.current) setIsAtBottom(distanceFromBottom(el) < STICK_THRESHOLD_PX);
     setIsFar(farFromEnd(el));
   }, [scrollRef]);
 
