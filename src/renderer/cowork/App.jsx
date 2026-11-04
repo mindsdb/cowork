@@ -6375,7 +6375,9 @@ function AppCore() {
           <CompareView
             models={models}
             modelMeta={modelMeta}
-            projects={projects}
+            // Only projects the person can run tasks in: a comparison copies
+            // its source's files, and Continue moves a side into one.
+            projects={runnableProjects}
             agentLabel={agentLabel}
             onOpenTask={(id) => { if (id) selectTask(id); }}
             onOpenSettings={openSettings}

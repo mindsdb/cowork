@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event';
 vi.mock('../lib/deployment', () => ({ PLATFORM_UI: false }));
 
 const spies = vi.hoisted(() => ({
+  fetchProjects: vi.fn(),
   fetchSessions: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
@@ -35,7 +36,8 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchOlderMessages: vi.fn(async () => ({ messages: [] })),
   fetchConversationList: vi.fn(async () => []),
-  fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
+  fetchProjects: (...args) => spies.fetchProjects(...args),
+  fetchComparisons: vi.fn(async () => ({ comparisons: [], hasMore: false })),
   fetchArtifacts: vi.fn(async () => []),
   fetchSettings: vi.fn(async () => SETTINGS),
   fetchPins: vi.fn(async () => ({ pins: [] })),
@@ -109,6 +111,7 @@ beforeEach(() => {
   __resetDraftsForTests();
   streams.length = 0;
   spies.fetchSessions.mockReset().mockResolvedValue([]);
+  spies.fetchProjects.mockReset().mockResolvedValue([{ name: 'general', path: '/tmp/general' }]);
   spies.fetchSession.mockReset().mockResolvedValue({ id: 'conv-a', messages: [], hasMoreMessages: false, messagesCursor: null });
   spies.fetchSessionResult.mockReset().mockResolvedValue({ status: 'ok', task: savedTask(null) });
 });
@@ -212,5 +215,24 @@ describe('a link to Compare Models where the operator picks every model', () => 
     render(<App />);
     expect(await screen.findByText("Compare Models isn't available here")).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Compare two models' })).toBeNull();
+  });
+});
+
+// A comparison copies its source project's files, and Continue moves a side
+// into a project: both need a project the person can run tasks in, never one
+// shared with them read-only.
+describe('Compare Models offers only projects the person can run', () => {
+  it("leaves a project shared with them out of the start screen's picker", async () => {
+    setMode('open');
+    spies.fetchProjects.mockResolvedValue([
+      { id: 'p-own', name: 'reports', display_name: 'Reports', path: '/tmp/reports' },
+      { id: 'p-shared', name: 'finance', display_name: 'Finance', path: '/tmp/finance', shared: true },
+    ]);
+    window.history.replaceState(null, '', '/compare');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Compare two models' });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Choose project' }));
+    expect(await screen.findByRole('button', { name: /Reports/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Finance/ })).toBeNull();
   });
 });
