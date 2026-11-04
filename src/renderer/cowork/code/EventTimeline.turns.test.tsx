@@ -74,4 +74,13 @@ describe('following new events', () => {
     rerender(<EventTimeline {...props([...live, event(3, 'agent_message', ' closer', { item_id: 'm', phase: 'progress' })])} session={session('running')} />);
     expect(timeline(container).scrollTop).toBe(300);
   });
+
+  it('brings a message the user sends to the top instead of the end', () => {
+    const { container, rerender } = render(<EventTimeline {...props(live)} session={session('running')} />);
+    expect(timeline(container).scrollTop).toBe(1400);
+    box.height = 2600;
+    rerender(<EventTimeline {...props([...live, event(3, 'user_message', 'Also fix the tests')])} session={session('running')} />);
+    // No layout in happy-dom, so the new turn measures at the current scroll position.
+    expect(timeline(container).scrollTop).toBe(1376);
+  });
 });
