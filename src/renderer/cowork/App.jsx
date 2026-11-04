@@ -5686,10 +5686,10 @@ function AppCore() {
     fetchRuns: fetchScheduleRuns, cancel: cancelResponse, refresh: refreshSchedules,
   });
 
-  // Hold off idle sleep while a scheduled run is in flight, about to fire, or
-  // waiting to retry, unless the user turned it off in Settings. Desktop only;
-  // a no-op on web. Said again on every poll (`scheduled` is a new list each
-  // time): the shell lets a hold lapse when it stops hearing it.
+  // Hold off idle sleep while a scheduled run is in flight or about to fire,
+  // unless the user turned it off in Settings. Desktop only; a no-op on web.
+  // Said again on every poll (`scheduled` is a new list each time): the shell
+  // lets a hold lapse when it stops hearing it.
   const keepAwake = shouldKeepAwake(scheduled, {
     windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
     enabled: settings.scheduleKeepAwake !== false,
