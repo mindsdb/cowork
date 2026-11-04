@@ -1,17 +1,19 @@
 import Ico from './Icons';
-import WorkspaceBrand from './WorkspaceBrand';
-import { Kbd, Tooltip } from './ui';
+import { WorkspaceSwitch } from './WorkspaceBrand';
+import { Tooltip } from './ui';
 import { useAppHeaderSlots } from './appHeader';
 
 // The desktop window's top band, split the way the window is: the sidebar
-// column owns its own band (the brand lives in the sidebar's head row, so it
-// grows and shrinks with the sidebar as one box), and this row heads the
-// content column. Zones:
+// column owns its own band (the workspace switch lives in the sidebar's head
+// row, so it grows and shrinks with the sidebar as one box), and this row
+// heads the content column. Zones:
 //
 //   lead  while the sidebar is hidden: a new-task shortcut and the compact
-//         brand, past the window controls and the sidebar toggle.
+//         workspace switch, past the window controls and the sidebar toggle.
+//         The brand goes away with the sidebar.
 //   view  the active view's header, portalled in through <AppHeader>.
-//   app   app-wide controls: search and the attention slot.
+//   app   while the sidebar is hidden, search and the attention slot (docked,
+//         both sit in the sidebar's brand row).
 //
 // The row is a drag region; its controls opt out through the global no-drag
 // rule for buttons.
@@ -42,18 +44,20 @@ export default function AppTitlebar({
               </button>
             </Tooltip>
           )}
-          <WorkspaceBrand {...brand} compact />
+          {brand?.showSwitch && <WorkspaceSwitch mode={brand.mode} onChange={brand.onChange} />}
         </div>
       )}
       <div className="app-titlebar__main">
         <div ref={setHeader} className="app-titlebar__slot" />
         <div className="app-titlebar__app">
-          <button type="button" className="app-titlebar__search" onClick={onOpenSearch} aria-label="Search">
-            {Ico.search(16)}
-            <span>Search</span>
-            <Kbd>{searchShortcut}</Kbd>
-          </button>
-          <div ref={setAttention} className="app-titlebar__attention" />
+          {!docked && (
+            <Tooltip content={searchShortcut ? `Search  (${searchShortcut})` : 'Search'}>
+              <button type="button" className="icon-btn" onClick={onOpenSearch} aria-label="Search">
+                {Ico.search(16)}
+              </button>
+            </Tooltip>
+          )}
+          {!docked && <div ref={setAttention} className="app-titlebar__attention" />}
         </div>
       </div>
     </div>

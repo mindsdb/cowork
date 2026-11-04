@@ -558,8 +558,7 @@ input, textarea { font-family: inherit; }
   z-index: 3;
 }
 /* The sidebar's share of the titlebar band: window controls, the slot the
-   toggle floats over, then the brand. It is the brand's container, so the
-   switch's labels hide when the sidebar is too narrow for them. */
+   toggle floats over, then the workspace switch at its end. */
 .app-sidebar__head {
   height: var(--titlebar-h);
   flex: none;
@@ -568,7 +567,6 @@ input, textarea { font-family: inherit; }
   gap: 2px;
   padding-right: 10px;
   box-sizing: border-box;
-  container: brand-zone / inline-size;
   -webkit-app-region: drag;
 }
 .app-sidebar__toggle-slot { flex: none; width: 32px; }
@@ -610,22 +608,6 @@ input, textarea { font-family: inherit; }
   background: var(--line);
 }
 .app-titlebar__attention:empty { display: none; }
-.app-titlebar__search {
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 7px 0 10px;
-  border: 0;
-  border-radius: var(--r-8);
-  background: var(--surface-2);
-  color: var(--ink-3);
-  font: 13px var(--font-body);
-  cursor: pointer;
-  transition: background .12s, color .12s;
-}
-.app-titlebar__search:hover { background: var(--surface-3); color: var(--ink); }
-.app-titlebar__search .kbd { margin-left: 8px; }
 
 /* A hairline between neighbouring right-rail sections; the rail's gap sits
    above it and this padding below, so the rule is centred between them. */
@@ -634,44 +616,57 @@ input, textarea { font-family: inherit; }
   padding-top: 12px;
 }
 
-/* Brand / workspace menu in the sidebar's head row. */
+/* The brand row at the top of the sidebar: the logo and the product's name,
+   with the sidebar's width to itself. A name longer than the row fades out
+   at its end. A custom nav title colour (--nav-title-color) still applies. */
 .app-brand {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  flex: 1 1 auto;
+  gap: 10px;
+  flex: none;
   min-width: 0;
-  overflow: hidden;
-  height: 32px;
-  margin-left: 4px;
-  color: var(--ink-2);
-  font: 500 13px var(--font-body);
+  height: 40px;
+  /* The left inset lines the logo up with the nav rows' icons below; the
+     right matches the head row's, so search lines up under the switch. */
+  padding: 0 10px 6px 26px;
 }
-/* In the titlebar the wordmark is the product name, set bold in title case
-   rather than the spaced caps label; the Cowork/Code switch beside it is
-   icon-only. A custom nav title colour (--nav-title-color) still applies. */
+.app-brand__mark { color: var(--accent); }
+.app-brand .icon-btn { width: 28px; height: 28px; border-radius: var(--r-8); }
+.app-brand__attention { display: flex; flex: none; }
+.app-brand__attention:empty { display: none; }
+.app-brand .anton-sidebar__logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+/* A wide logo carries the name itself, so it takes the row on its own. */
+.app-brand .anton-sidebar__logo.is-wide {
+  width: auto;
+  max-width: 100%;
+  height: 28px;
+  border-radius: 0;
+  object-position: left center;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+/* Bell and search sit together at the row's end, as one group. */
+.app-brand__actions { display: flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
+.app-brand__actions:empty { display: none; }
 .app-brand .anton-sidebar__wordmark {
   padding-right: 0;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 620;
   letter-spacing: -0.012em;
   text-transform: none;
-  /* A custom nav title longer than "MindsHub" ellipsizes instead of
-     running past the sidebar edge. */
+  /* Fills the row, so the fade lands at the row's end, not a short name's. */
+  flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
-.app-brand .anton-sidebar__logo,
-.app-brand__switch { flex: none; }
-/* The switch sits at the zone's right edge, over the sidebar's edge. */
-.app-brand__switch { margin-left: auto; }
-/* The switch shows its labels only where they fit beside the wordmark. The
-   query sees the zone's content box (the macOS window-controls inset is
-   already taken off); toggle, wordmark and labelled switch need ~280px. */
-@container brand-zone (max-width: 280px) {
-  .app-brand__switch-label { display: none; }
-}
+/* The workspace switch sits at the head row's right edge. */
+.app-brand__switch { flex: none; margin-left: auto; }
 body[data-theme="dark"] .app-brand .anton-sidebar__wordmark { text-shadow: none; }
 .drag-region { -webkit-app-region: drag; }
 /* The titlebar (.app-titlebar) is the window's drag region. Form controls
@@ -2074,29 +2069,8 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .first-artifact-tip-arrow[data-side="top"]    { bottom: -5px; }
 .first-artifact-tip-arrow[data-side="bottom"] { top: -5px; }
 
-/* New task CTA wrapper — the button itself is the tinted variant,
-   full width (<Button variant="tinted" block size="lg">). */
 .anton-sidebar__cta-wrap { padding: 2px 10px 10px; }
-/* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
-   Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the
-   default .btn.lg carries 0 16px, which pushed the +/label 6px past the nav
-   icons below it and its ⌘N past the nav badges. Tighten the horizontal
-   padding 16→10 so the CTA's content and shortcut line up exactly with the
-   denser nav rows (ENG-1038). A deliberately non-standard, rail-scoped button. */
-.anton-sidebar__cta-wrap .btn.lg {
-  padding-left: 10px;
-  padding-right: 10px;
-  /* Match the nav rows' 13px body (the standard .btn.lg is 14px) so the CTA
-     reads as part of the same rail, not a heavier element above it. The label
-     weight is set on the span in Sidebar.jsx. */
-  font-size: 13px;
-  /* Match the nav rows' box exactly — same 30px height and var(--r) radius as
-     .app-sidebar .nav-item (the standard .btn.lg is a taller 36px). The CTA
-     keeps its tinted colors but reads as the same size and shape as the menu
-     options below it, not a heavier element above them. */
-  height: 30px;
-  border-radius: var(--r);
-}
+
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {

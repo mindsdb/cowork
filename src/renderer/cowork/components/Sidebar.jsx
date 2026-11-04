@@ -1,7 +1,7 @@
 import { PLATFORM_UI } from '../../lib/deployment';
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd, Badge, Input, Button, Tooltip } from './ui';
+import { Spinner, Kbd, Badge, Input, Tooltip } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -18,7 +18,8 @@ import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
 import { surfaceCopy } from '../lib/surface';
 import { shortcutLabel } from '../lib/shortcut';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
-import WorkspaceBrand from './WorkspaceBrand';
+import { SidebarBrand, WorkspaceSwitch } from './WorkspaceBrand';
+import { useAppHeaderSlots } from './appHeader';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -253,7 +254,7 @@ export default function Sidebar({
   // spot, past the window controls (`lightsInset`).
   popout = false,
   lightsInset = 12,
-  // The brand and workspace switch for the head row (desktop only).
+  // The brand row and, in the head row, the workspace switch (desktop only).
   brand = null,
   // Display settings, docked in the footer (was a floating corner button):
   // { label, icon, onClick }, or null when both Appearance switches are off.
@@ -301,6 +302,7 @@ export default function Sidebar({
   onArtifactTipDismiss,
 }) {
   const codeRoute = activeWorkspace === 'code';
+  const { setAttention } = useAppHeaderSlots();
   // Signed-in account identity (null when signed out) — decides whether the
   // footer shows the account row + user menu or the plain Settings row.
   const accountUser = useAccountUser(isSsoConnected);
@@ -500,10 +502,11 @@ export default function Sidebar({
         pointerEvents: collapsed ? 'none' : 'auto',
       }}
     >
-      {/* Head row: the sidebar's share of the titlebar band, so the brand
-          opens and closes with the sidebar as one box. Docked, the window's
-          sidebar toggle floats over the slot at its start; the drawer covers
-          that toggle, so it puts its own close button in the same spot. */}
+      {/* Head row: the sidebar's share of the titlebar band, so the
+          workspace switch opens and closes with the sidebar as one box.
+          Docked, the window's sidebar toggle floats over the slot at its
+          start; the drawer covers that toggle, so it puts its own close
+          button in the same spot. */}
       <div className="app-sidebar__head" style={{ paddingLeft: lightsInset }}>
         {popout ? (
           <Tooltip content="Close sidebar">
@@ -519,8 +522,20 @@ export default function Sidebar({
         ) : (
           <span className="app-sidebar__toggle-slot" aria-hidden="true" />
         )}
-        {brand && <WorkspaceBrand {...brand} />}
+        {brand?.showSwitch && <WorkspaceSwitch mode={brand.mode} onChange={brand.onChange} />}
       </div>
+      {brand && (
+        <SidebarBrand
+          wordmark={brand.wordmark}
+          logo={brand.logo}
+          stockMark={brand.stockMark}
+          // Docked, the attention bell sits here beside search; hidden or as
+          // a drawer, it stays in the titlebar.
+          attentionRef={!popout && !collapsed ? setAttention : null}
+          onOpenSearch={brand.onOpenSearch}
+          searchShortcut={brand.searchShortcut}
+        />
+      )}
 
       {/* Body — fades in slightly behind the container so
           the motion staggers. On appearance the body lags two stagger
@@ -546,18 +561,19 @@ export default function Sidebar({
         {/* The primary action follows the active workspace. Code tasks stay
             distinct from Cowork conversations, but use the same shell grammar. */}
         <div className="anton-sidebar__cta-wrap">
-          <Button
-            variant="tinted"
-            block
-            size="lg"
+          {/* A row like the nav below it: the brand above carries the
+              emphasis, and the shortcut shows on hover and focus. */}
+          <button
+            type="button"
+            className="nav-item anton-sidebar__new-task"
             onClick={codeRoute ? onNewCodingTask : onNewTask}
-            // cascade-forced: .btn sets `gap: 6px`; match the nav rows' 9px.
-            style={{ gap: 9 }}
           >
-            {Ico.plus(14)}
-            <span className="flex-1 text-left font-medium">{codeRoute ? 'New code task' : 'New task'}</span>
-            <Kbd>{shortcutLabel('N')}</Kbd>
-          </Button>
+            <span className="nav-row__icon inline-flex shrink-0 items-center">{Ico.newTask(16)}</span>
+            <span className="nav-row__label flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+              {codeRoute ? 'New code task' : 'New task'}
+            </span>
+            <Kbd aria-hidden="true">{shortcutLabel('N')}</Kbd>
+          </button>
         </div>
 
         {/* One scroller from the nav down through the task lists, so a long

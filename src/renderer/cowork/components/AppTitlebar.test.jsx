@@ -22,13 +22,13 @@ const shell = (titlebar, children) => render(
 );
 
 describe('AppTitlebar', () => {
-  it('takes the new-task shortcut and compact brand only while the sidebar is hidden', () => {
-    const p = props({ brand: { ...props().brand, showSwitch: true } });
+  it('takes New task, the compact switch and search only while the sidebar is hidden', () => {
+    const p = props({ brand: { ...props().brand, wordmark: 'Lumen Labs', showSwitch: true } });
     const { rerender } = shell(p);
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-    expect(p.onOpenSearch).toHaveBeenCalledOnce();
-    // Docked, the brand and New task CTA live in the sidebar column.
+    // Docked, the brand, search and New task live in the sidebar column.
+    expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'New task' })).toBeNull();
+    expect(document.querySelector('.app-titlebar__attention')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Workspace' })).toBeNull();
 
     rerender(
@@ -37,8 +37,16 @@ describe('AppTitlebar', () => {
       </AppHeaderProvider>,
     );
     expect(screen.getByRole('group', { name: 'Workspace' })).toBeInTheDocument();
+    // The brand goes away with the sidebar rather than squeezing in here.
+    expect(screen.queryByText('Lumen Labs')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'New task' }));
     expect(p.onNewTask).toHaveBeenCalledOnce();
+    // Search moves to the row's end, beside the attention slot.
+    const search = screen.getByRole('button', { name: 'Search' });
+    expect(search.closest('.app-titlebar__app')).not.toBeNull();
+    expect(document.querySelector('.app-titlebar__attention')).not.toBeNull();
+    fireEvent.click(search);
+    expect(p.onOpenSearch).toHaveBeenCalledOnce();
   });
 
   it('pins the sidebar toggle beside the window controls', () => {
@@ -74,7 +82,8 @@ describe('AppTitlebar', () => {
   });
 
   it('shows app-wide attention regardless of workspace scope', () => {
-    shell(props(), (
+    // While the sidebar is hidden; docked, the slot is in the sidebar.
+    shell(props({ docked: false }), (
       <AppHeaderScope active={false}>
         <AppAttention><button type="button">1 task needs you</button></AppAttention>
       </AppHeaderScope>

@@ -5686,13 +5686,15 @@ function AppCore() {
   // Off macOS the toggle lines up with the sidebar's row icons below it.
   const titlebarLightsInset = !host.isWeb && host.isMac() ? 78 : 18;
   const sidebarDocked = !sidebarPopout && !sidebarCollapsedEffective;
-  // One brand, shown in the sidebar's head row or, while the sidebar is
-  // hidden, compact in the titlebar.
+  // The brand heads the sidebar; the workspace switch sits in the sidebar's
+  // head row or, while the sidebar is hidden, compact in the titlebar.
   const titlebarBrand = {
     ...navBrand(appearanceSettings.navTitle, appearanceSettings.navLogo),
     mode: effectiveWorkspaceMode,
     showSwitch: !host.isWeb && codeModeEnabled,
     onChange: changeWorkspace,
+    onOpenSearch: () => setSearchOpen(true),
+    searchShortcut: shortcutLabel('K'),
   };
 
   // Model Router isn't a real catalog model — Composer.jsx injects its own

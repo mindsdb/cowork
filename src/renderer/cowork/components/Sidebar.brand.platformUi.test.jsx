@@ -62,6 +62,9 @@ describe('Sidebar — deployment brand', () => {
     render(<Sidebar {...baseProps} tasksStatus="ready" brand={navBrand(null, null)} />);
     expect(document.querySelector('.anton-sidebar__wordmark')?.textContent).toBe('Acme Cowork');
     expect(document.querySelector('.anton-sidebar__logo')?.getAttribute('src')).toBe('/brand/logo.svg?v=1');
+    // A deployment's brand never sits beside the stock mark.
+    expect(navBrand(null, null).stockMark).toBe(false);
+    expect(document.querySelector('.app-brand__mark')).toBeNull();
   });
 
   it('lets a sidebar title and logo set in Settings win', () => {

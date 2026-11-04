@@ -95,17 +95,52 @@ describe('Sidebar — Code workspace and shell controls', () => {
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 
-  it('docked, heads its column with the brand and leaves the toggle to the window', () => {
+  it('docked, heads its column with the switch and the brand, and leaves the toggle to the window', () => {
     hostMock.isWeb = false;
     const brand = { wordmark: 'MindsHub', mode: 'cowork', showSwitch: true, onChange: vi.fn() };
     const { container } = render(<Sidebar {...baseProps} brand={brand} onToggleCollapsed={vi.fn()} />);
     const head = container.querySelector('.app-sidebar__head');
-    // The brand sits inside the sidebar, so it opens and closes with it.
+    // Both sit inside the sidebar, so they open and close with it.
     expect(head.closest('aside')).not.toBeNull();
-    expect(head).toHaveTextContent('MindsHub');
-    expect(screen.getByRole('group', { name: 'Workspace' })).toBeInTheDocument();
+    expect(head.querySelector('[role="group"][aria-label="Workspace"]')).not.toBeNull();
+    // The brand has its own row under the head, with the sidebar's width.
+    const brandRow = container.querySelector('.app-brand');
+    expect(head.contains(brandRow)).toBe(false);
+    expect(head.nextElementSibling).toBe(brandRow);
+    expect(brandRow).toHaveTextContent('MindsHub');
     expect(screen.queryByRole('button', { name: 'Close sidebar' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull();
+  });
+
+  it('starts a task from a plain row, and opens search from the brand row', () => {
+    hostMock.isWeb = false;
+    const onNewTask = vi.fn();
+    const onOpenSearch = vi.fn();
+    const brand = { wordmark: 'MindsHub', mode: 'cowork', showSwitch: false, onChange: vi.fn(), onOpenSearch, searchShortcut: '⌘K' };
+    const { container } = render(<Sidebar {...baseProps} brand={brand} onNewTask={onNewTask} />);
+    const newTask = screen.getByRole('button', { name: 'New task' });
+    // A nav row like the others, not a filled button.
+    expect(newTask).toHaveClass('nav-item');
+    expect(newTask).not.toHaveClass('btn');
+    fireEvent.click(newTask);
+    expect(onNewTask).toHaveBeenCalledOnce();
+    const search = screen.getByRole('button', { name: 'Search' });
+    expect(container.querySelector('.app-brand').contains(search)).toBe(true);
+    fireEvent.click(search);
+    expect(onOpenSearch).toHaveBeenCalledOnce();
+  });
+
+  it('hosts the attention slot in the brand row only while docked', () => {
+    hostMock.isWeb = false;
+    const brand = { wordmark: 'MindsHub', stockMark: true, mode: 'cowork', showSwitch: false, onChange: vi.fn() };
+    const { container, rerender } = render(<Sidebar {...baseProps} brand={brand} />);
+    expect(container.querySelector('.app-brand .app-brand__attention')).not.toBeNull();
+    expect(container.querySelector('.app-brand__mark')).not.toBeNull();
+    // As a drawer or hidden, the titlebar keeps it.
+    rerender(<Sidebar {...baseProps} brand={brand} popout onToggleCollapsed={vi.fn()} />);
+    expect(container.querySelector('.app-brand__attention')).toBeNull();
+    rerender(<Sidebar {...baseProps} brand={brand} collapsed />);
+    expect(container.querySelector('.app-brand__attention')).toBeNull();
   });
 
   it('as a drawer, repeats the close toggle in its own top row', () => {

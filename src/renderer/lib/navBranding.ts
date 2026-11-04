@@ -9,16 +9,18 @@ import type { DeploymentBrand } from './deploymentBrand';
 
 /**
  * The sidebar wordmark and logo. A title or logo set in Settings wins, then
- * the deployment brand's, then the stock wordmark (and no logo).
+ * the deployment brand's, then the stock wordmark (and no logo). `stockMark`
+ * is true only for the stock product, which shows its own mark beside the
+ * wordmark; a custom name without a logo stands alone, never beside the
+ * stock mark.
  */
 export function navBrand(
   navTitle: string | null | undefined,
   navLogo: string | null | undefined,
-): { wordmark: string; logo: string | null } {
-  return {
-    wordmark: navTitle || productName(STOCK_WORDMARK),
-    logo: navLogo || brandLogoUrl() || null,
-  };
+): { wordmark: string; logo: string | null; stockMark: boolean } {
+  const wordmark = navTitle || productName(STOCK_WORDMARK);
+  const logo = navLogo || brandLogoUrl() || null;
+  return { wordmark, logo, stockMark: !logo && !navTitle && wordmark === STOCK_WORDMARK };
 }
 
 /**
