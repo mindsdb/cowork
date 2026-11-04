@@ -66,6 +66,22 @@ describe('ChatView pane mode', () => {
     expect(screen.getAllByRole('button', { name: 'Edit and resend this message' }).length).toBeGreaterThan(0);
   });
 
+  // Cards added after pane mode: a turn the server lost mid-answer, and a
+  // server that stopped answering. Each offers a resend in a normal task.
+  it.each([
+    ['turn_lost', { role: 'error', content: 'lost', code: 'turn_lost' }, /answer was cut off/],
+    ['cowork_unavailable', { role: 'error', content: 'Busy right now.', code: 'cowork_unavailable' }, /isn't answering/],
+  ])('offers no resend from a %s card, though a normal task does', (_code, error, title) => {
+    const withError = { ...task, messages: [...failed.messages.slice(0, 3), error] };
+    const { unmount } = render(<ChatView pane task={withError} onSend={vi.fn()} />);
+    expect(screen.getAllByText(title).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    unmount();
+
+    render(<ChatView task={withError} onSend={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
   it('keeps the full task view by default', () => {
     const { container } = render(<ChatView task={task} onSend={vi.fn()} />);
     expect(container.querySelector('.chat-floating-composer')).not.toBeNull();

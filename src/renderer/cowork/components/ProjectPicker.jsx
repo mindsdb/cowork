@@ -8,7 +8,6 @@
 // state and closes on a press outside itself.
 
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import NewProjectModal from './project/NewProjectModal';
@@ -277,10 +276,9 @@ export default function ProjectPicker({
       )}
     </span>
 
-    {/* Portaled to <body>: the composer sits inside the boot-fadein
-        wrapper whose persistent transform would otherwise make this
-        fixed-position overlay anchor to the card, not the viewport. */}
-    {newProjectOpen && createPortal(
+    {/* <Modal> portals itself to <body>, clear of the boot-fadein
+        wrapper's transform. */}
+    {newProjectOpen && (
       <NewProjectModal
         open={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}
@@ -296,8 +294,7 @@ export default function ProjectPicker({
           }
           onChange?.(created);
         }}
-      />,
-      document.body,
+      />
     )}
     </>
   );

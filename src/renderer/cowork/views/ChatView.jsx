@@ -2138,7 +2138,9 @@ export default function ChatView({
     // follows a reader who was already at the end.
     if (action === 'hold') el.scrollTop += scrollHeightDelta;
     else if (action === 'end') scrollToBottom();
-    else if (action === 'sent') anchorLastTurn();
+    // In a comparison pane a follow-up arrives in both panes at once, so it
+    // follows the end rather than moving each pane to the new turn's top.
+    else if (action === 'sent') { if (pane) followEnd(); else anchorLastTurn(); }
     else followEnd();
     scrollAnchorRef.current = anchor;
     // visibleMessages is a fresh array every render (task.messages.filter(...),
@@ -2488,6 +2490,7 @@ export default function ChatView({
             reply always scrolls clear however tall the draft grows. */}
         <ChatScroller
           stick={stick}
+          minimap={!pane}
           scrollProps={{ 'data-scroll': 'true' }}
           className={`scroll-clean ${pane ? 'pt-4' : 'pt-8'} bg-transparent [-webkit-app-region:no-drag] select-text`}
         >
@@ -2942,8 +2945,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The answer was cut off"
                       body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -3045,8 +3048,8 @@ export default function ChatView({
                       title="The server isn't answering"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={unavailableResend
-                        ? () => onSend?.(unavailableResend.text, unavailableResend.attachments)
+                      onRetry={unavailableResend && sendAgain
+                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments)
                         : undefined}
                     />
                   );
