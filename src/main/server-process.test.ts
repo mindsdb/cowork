@@ -1021,6 +1021,23 @@ describe('the sidecar analytics destination', () => {
     expect(spawnedEnv().ANTON_DEPLOYMENT_ENV).toBe('staging');
   });
 
+  it('keeps an opt-out written in a dotenv file anton reads', async () => {
+    // anton ranks the process environment above its dotenv files, so a key
+    // injected here would override this empty one and switch PostHog back on.
+    const dotenv = path.join(os.homedir(), '.cowork', '.env');
+    const exists = vi.mocked(fs.existsSync).getMockImplementation();
+    const read = vi.mocked(fs.readFileSync).getMockImplementation();
+    vi.mocked(fs.existsSync).mockImplementation((p) => p === dotenv || (exists ? exists(p) : false));
+    vi.mocked(fs.readFileSync).mockImplementation(((p: fs.PathOrFileDescriptor, ...rest: unknown[]) =>
+      p === dotenv ? 'ANTON_POSTHOG_KEY=\n' : (read ? (read as (...a: unknown[]) => unknown)(p, ...rest) : 'owner-token\n')) as never);
+    envState.kind = 'stable';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv()).not.toHaveProperty('ANTON_POSTHOG_KEY');
+    expect(spawnedEnv().ANTON_DEPLOYMENT_ENV).toBe('staging');
+  });
+
   it('leaves a prod build on anton\'s own default, labelled prod', async () => {
     spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
