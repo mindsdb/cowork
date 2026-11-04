@@ -11,7 +11,6 @@ import { ItemActions, ListItem, StatusDot } from '../collection';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
 import { scheduleStatusBadge } from './ScheduleStatusBadge';
-import RetryHold from './RetryHold';
 
 function absoluteTime(iso) {
   if (!iso) return '';
@@ -97,12 +96,10 @@ export default function ScheduleRow({
                 Stop
               </Button>
             ) : (
-              <RetryHold retrying={!!task.retryAt}>
-                <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy || !!task.retryAt}>
-                  {busy ? <Spinner /> : Ico.send(14)}
-                  Run
-                </Button>
-              </RetryHold>
+              <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
+                {busy ? <Spinner /> : Ico.send(14)}
+                Run
+              </Button>
             )}
             <OverflowMenu
               items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
