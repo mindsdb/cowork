@@ -36,12 +36,77 @@ export function analyticsEnv(
   return out;
 }
 
+// python-dotenv's grammar (dotenv/parser.py), which is what decides whether a
+// line sets anything for anton. A line-by-line reader gets it wrong both ways:
+// it misses a single-quoted name, and it counts a line that sits inside a
+// multi-line quoted value.
+const DOTENV = {
+  multilineWhitespace: /\s*/y,
+  whitespace: /[^\S\r\n]*/y,
+  export: /(?:export[^\S\r\n]+)?/y,
+  singleQuotedKey: /'([^']+)'/y,
+  unquotedKey: /([^=#\s]+)/y,
+  equalSign: /(=[^\S\r\n]*)/y,
+  singleQuotedValue: /'((?:\\'|[^'])*)'/y,
+  doubleQuotedValue: /"((?:\\"|[^"])*)"/y,
+  unquotedValue: /([^\r\n]*)/y,
+  comment: /(?:[^\S\r\n]*#[^\r\n]*)?/y,
+  endOfLine: /[^\S\r\n]*(?:\r\n|\n|\r|$)/y,
+  restOfLine: /[^\r\n]*(?:\r|\n|\r\n)?/y,
+};
+
+/** The names a dotenv text assigns, as python-dotenv parses it. A name with
+ *  no `=` gets no value, and a statement that fails to parse sets nothing;
+ *  anton ignores both, so they are left out. */
+function dotenvAssignedNames(text: string): string[] {
+  let pos = 0;
+  const read = (re: RegExp): string | undefined => {
+    re.lastIndex = pos;
+    const m = re.exec(text);
+    if (!m) throw new Error('unparsable');
+    pos = re.lastIndex;
+    return m[1];
+  };
+  const names: string[] = [];
+  while (pos < text.length) {
+    const start = pos;
+    try {
+      read(DOTENV.multilineWhitespace);
+      if (pos >= text.length) break;
+      read(DOTENV.export);
+      const c = text[pos];
+      const key = c === '#' ? undefined
+        : read(c === "'" ? DOTENV.singleQuotedKey : DOTENV.unquotedKey);
+      read(DOTENV.whitespace);
+      let assigned = false;
+      if (text[pos] === '=') {
+        read(DOTENV.equalSign);
+        const v = text[pos];
+        if (v === "'") read(DOTENV.singleQuotedValue);
+        else if (v === '"') read(DOTENV.doubleQuotedValue);
+        else if (v !== undefined && v !== '\n' && v !== '\r') read(DOTENV.unquotedValue);
+        assigned = true;
+      }
+      read(DOTENV.comment);
+      read(DOTENV.endOfLine);
+      if (key !== undefined && assigned) names.push(key);
+    } catch {
+      // Like python-dotenv, skip the rest of the line from where parsing
+      // failed, not from where the statement began.
+      read(DOTENV.restOfLine);
+    }
+    // A match that consumes nothing at the end of the text would loop forever.
+    if (pos === start) break;
+  }
+  return names;
+}
+
 /** The names set in the dotenv files anton reads, upper-cased. Mirrors anton's
  *  `_build_env_files`: `.env` and `.anton/.env` under the server's working
  *  directory, then `~/.anton/.env` and `~/.cowork/.env`. anton ranks the
  *  process environment above all of them, so anything injected at spawn would
  *  silently override what they say. pydantic-settings matches names without
- *  regard to case and accepts an `export ` prefix, so both are normalised. */
+ *  regard to case, so they are normalised. */
 export function antonDotenvNames(cwd: string, home: string = os.homedir()): Set<string> {
   const files = [
     path.join(cwd, '.env'),
@@ -58,12 +123,7 @@ export function antonDotenvNames(cwd: string, home: string = os.homedir()): Set<
     } catch {
       continue;
     }
-    for (const raw of text.split('\n')) {
-      const line = raw.trim().replace(/^export\s+/, '');
-      if (!line || line.startsWith('#')) continue;
-      const eq = line.indexOf('=');
-      if (eq > 0) names.add(line.slice(0, eq).trim().toUpperCase());
-    }
+    for (const name of dotenvAssignedNames(text)) names.add(name.toUpperCase());
   }
   return names;
 }

@@ -79,6 +79,32 @@ describe('antonDotenvNames', () => {
       .toEqual(['ANTON_DEPLOYMENT_ENV', 'ANTON_POSTHOG_KEY']);
   });
 
+  it('reads a single-quoted name, as anton does', () => {
+    write('home/.cowork/.env', "'ANTON_POSTHOG_KEY'=\"\"\n");
+    expect(antonDotenvNames(path.join(root, 'cwd'), path.join(root, 'home')))
+      .toContain('ANTON_POSTHOG_KEY');
+  });
+
+  // Each of these looks like a setting line but anton ignores it, so the
+  // default still has to be injected.
+  it.each([
+    ['inside a multi-line quoted value', 'OTHER="a\nANTON_POSTHOG_KEY=\nb"\n'],
+    ['with a double-quoted name', '"ANTON_POSTHOG_KEY"=""\n'],
+    ['with no equals sign', 'ANTON_POSTHOG_KEY\n'],
+    ['on a line anton cannot parse', 'ANTON_POSTHOG_KEY="" junk\n'],
+    ['after a failed statement, on the line it failed on', "'a\nANTON_POSTHOG_KEY=1' z\n"],
+  ])('skips a name %s', (_label, text) => {
+    write('home/.cowork/.env', text);
+    expect(antonDotenvNames(path.join(root, 'cwd'), path.join(root, 'home')))
+      .not.toContain('ANTON_POSTHOG_KEY');
+  });
+
+  it('keeps reading after a line anton cannot parse', () => {
+    write('home/.cowork/.env', 'OTHER="unterminated\nANTON_POSTHOG_KEY=\n');
+    expect(antonDotenvNames(path.join(root, 'cwd'), path.join(root, 'home')))
+      .toContain('ANTON_POSTHOG_KEY');
+  });
+
   it('is empty when none of the files exist', () => {
     expect(antonDotenvNames(path.join(root, 'cwd'), path.join(root, 'home')).size).toBe(0);
   });
