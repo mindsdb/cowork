@@ -598,6 +598,9 @@ function AppCore() {
   // server's values within one fetch. This removes the hard-coded copy whose
   // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
   const [settings, setSettings] = useState(loadCachedSettings);
+  // Whether this session's settings have arrived from the server, so a choice
+  // that depends on them (such as the models an operator offers) is final.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [appearancePreview, setAppearancePreview] = useState({});
   const appearanceSettings = { ...settings, ...appearancePreview };
   const previewAppearance = useCallback((key, value) => {
@@ -2192,6 +2195,7 @@ function AppCore() {
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
+        setSettingsLoaded(true);
       }
     });
   }, [refreshSchedules, reloadArtifacts]);
@@ -6362,12 +6366,13 @@ function AppCore() {
         )}
 
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
-        {/* A link to Compare on a build where the operator picks every
-            question's model, which no load of settings can change. */}
-        {route === 'compare' && !PLATFORM_UI && pickerMode === 'off' && (
+        {/* A link to Compare where it isn't offered: the operator picks every
+            question's model (known from the build), or, once settings are in,
+            offers none to choose from. */}
+        {route === 'compare' && !showCompare && (settingsLoaded || pickerMode === 'off') && (
           <EmptyState
             title="Compare Models isn't available here"
-            description="Your operator picks the model for every task on this deployment, so there are no models to compare."
+            description="There are no models to choose from on this deployment, so there's nothing to compare. Your operator decides which models you can pick."
             action={{ label: 'New task', onClick: newTask, primary: true }}
           />
         )}

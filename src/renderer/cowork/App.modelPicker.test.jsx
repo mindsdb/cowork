@@ -209,8 +209,18 @@ describe("Compare Models under the operator's model picker", () => {
   });
 });
 
-describe('a link to Compare Models where the operator picks every model', () => {
-  it('says why instead of a blank page', async () => {
+describe('a link to Compare Models where users choose no model', () => {
+  const offered = { ...SETTINGS.modelEnabled };
+  afterEach(() => { Object.assign(SETTINGS.modelEnabled, offered); });
+
+  it.each([
+    ["the operator's picker off", null],
+    ["the operator's picker offering no model", 'open'],
+  ])('with %s, says why instead of a blank page', async (_case, mode) => {
+    if (mode) {
+      setMode(mode);
+      for (const id of Object.keys(SETTINGS.modelEnabled)) SETTINGS.modelEnabled[id] = false;
+    }
     window.history.replaceState(null, '', '/compare');
     render(<App />);
     expect(await screen.findByText("Compare Models isn't available here")).toBeTruthy();
