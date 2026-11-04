@@ -28,8 +28,6 @@ export function scheduleStatusBadge(task, failedLabel = 'Last failed') {
   if (state === 'paused') return { label: 'Paused', variant: 'muted' };
   // A one-off whose time passed while the app was closed; Run now runs it.
   if (state === 'missed') return { label: 'Missed', variant: 'warning' };
-  // A failed run waiting to be tried again.
-  if (task.retryAt) return { label: 'Retrying', variant: 'warning' };
   if (lastRunFailed(task)) return { label: failedLabel, variant: 'danger' };
   if (state === 'done') return { label: 'Done', variant: 'muted' };
   return { label: 'Active', variant: 'success' };
