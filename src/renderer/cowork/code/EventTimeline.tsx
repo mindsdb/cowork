@@ -734,7 +734,8 @@ export const EventTimeline = memo(function EventTimeline({
   const stick = useStickToBottom();
   const { follow, anchorLastTurn } = stick;
   // A message the user just sent moves to the top of the view, with room for
-  // the answer below it. The first render of a task only goes to its end.
+  // the answer below it. Opening a task only goes to its end, including when
+  // its history arrives after the first render.
   const latestUserSeq = useMemo(
     () => events.reduce((seq, event) => (event.type === 'user_message' ? event.seq : seq), 0),
     [events],
@@ -743,7 +744,7 @@ export const EventTimeline = memo(function EventTimeline({
   useEffect(() => {
     const previous = seenUserSeq.current;
     seenUserSeq.current = latestUserSeq;
-    if (previous != null && latestUserSeq > previous) anchorLastTurn();
+    if (previous && latestUserSeq > previous) anchorLastTurn();
   }, [latestUserSeq, anchorLastTurn]);
   useEffect(() => { follow(); }, [latestEventSeq, session.status, follow]);
   return (

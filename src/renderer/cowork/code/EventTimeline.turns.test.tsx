@@ -75,6 +75,13 @@ describe('following new events', () => {
     expect(timeline(container).scrollTop).toBe(300);
   });
 
+  it('opens at the end when the history arrives after the first render', () => {
+    const { container, rerender } = render(<EventTimeline {...props([])} session={session('completed')} />);
+    rerender(<EventTimeline {...props(live)} session={session('completed')} />);
+    expect(timeline(container).scrollTop).toBe(1400);
+    expect((container.querySelector('.chat-scroller__reserve') as HTMLElement).style.height).toBe('');
+  });
+
   it('brings a message the user sends to the top instead of the end', () => {
     const { container, rerender } = render(<EventTimeline {...props(live)} session={session('running')} />);
     expect(timeline(container).scrollTop).toBe(1400);
