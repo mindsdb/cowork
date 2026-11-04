@@ -41,6 +41,18 @@ describe('the turn minimap', () => {
     expect(screen.queryByRole('button', { name: /Plan the launch/ })).toBeNull();
   });
 
+  it('gives each tick its distance from the pointed one, and forgets it when the pointer leaves', () => {
+    render(<Transcript prompts={['Plan the launch', 'Draft the email', 'Price it', 'Book the venue']} />);
+    const nav = screen.getByRole('navigation', { name: 'Conversation turns' });
+    const ticks = Array.from(nav.querySelectorAll('button'));
+    fireEvent.pointerEnter(ticks[1]);
+    expect(nav).toHaveClass('is-pointed');
+    expect(ticks.map((t) => t.style.getPropertyValue('--tick-distance'))).toEqual(['1', '0', '1', '2']);
+    fireEvent.pointerLeave(nav);
+    expect(nav).not.toHaveClass('is-pointed');
+    expect(ticks[0].style.getPropertyValue('--tick-distance')).toBe('');
+  });
+
   it('scrolls the transcript to a turn when its tick is clicked', () => {
     const scrollTo = vi.fn();
     const original = HTMLElement.prototype.scrollTo;

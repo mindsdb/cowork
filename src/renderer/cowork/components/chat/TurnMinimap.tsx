@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties, type RefObject } from 'react';
 
 import Tooltip from '../ui/Tooltip';
 
@@ -72,6 +72,8 @@ export function TurnMinimap({
 }) {
   const [turns, setTurns] = useState<MinimapTurn[]>([]);
   const [active, setActive] = useState(0);
+  // The tick under the pointer; each tick's distance from it sets its length.
+  const [pointed, setPointed] = useState<number | null>(null);
 
   const refresh = useCallback(() => {
     const box = scrollRef.current;
@@ -107,11 +109,19 @@ export function TurnMinimap({
   };
 
   return (
-    <nav className={`chat-minimap${turns.length > 24 ? ' is-dense' : ''}`} aria-label="Conversation turns">
+    <nav
+      className={`chat-minimap${turns.length > 24 ? ' is-dense' : ''}${pointed != null ? ' is-pointed' : ''}`}
+      aria-label="Conversation turns"
+      onPointerLeave={() => setPointed(null)}
+    >
       {turns.map((turn, i) => (
         <Tooltip
           key={turn.id || i}
           side="right"
+          sideOffset={14}
+          delay={0}
+          unstyled
+          className="chat-minimap__card"
           content={(
             <span className="chat-minimap__preview">
               <span className="chat-minimap__prompt">{turn.snippet || 'Message'}</span>
@@ -124,6 +134,8 @@ export function TurnMinimap({
             className={`chat-minimap__tick${i === active ? ' is-active' : ''}`}
             aria-label={`Go to message ${i + 1}: ${turn.snippet}`}
             aria-current={i === active ? 'location' : undefined}
+            style={pointed != null ? { '--tick-distance': Math.abs(i - pointed) } as CSSProperties : undefined}
+            onPointerEnter={() => setPointed(i)}
             onClick={() => jump(turn)}
           />
         </Tooltip>
