@@ -5,10 +5,11 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { parseTooltipDelay } from './Tooltip';
 
-// The real :root motion-token block from globals.css, so the test breaks if
-// the stylesheet stops making tooltips instant.
-const globals = readFileSync(resolve(__dirname, '../../styles/globals.css'), 'utf8');
-const rootBlock = /:root \{[^}]*--tooltip-delay[^}]*\}/.exec(globals)?.[0];
+// The real :root motion-token block from the app's tokens (styles/tokens.css,
+// imported by globals.css), so the test breaks if the stylesheet stops making
+// tooltips instant.
+const tokens = readFileSync(resolve(__dirname, '../../styles/tokens.css'), 'utf8');
+const rootBlock = /:root \{[^}]*--tooltip-delay[^}]*\}/.exec(tokens)?.[0];
 
 let style: HTMLStyleElement | null = null;
 afterEach(() => {
@@ -51,7 +52,7 @@ describe('parseTooltipDelay', () => {
 });
 
 describe('Tooltip delay token', () => {
-  it('declares a 0ms tooltip delay on :root in globals.css', () => {
+  it('declares a 0ms tooltip delay on :root in the app tokens', () => {
     expect(rootBlock).toMatch(/--tooltip-delay:\s*0ms;/);
   });
 

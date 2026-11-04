@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STOCK_THEME_SURFACES, stockBackground } from './stockThemeTokens';
 
-const css = readFileSync(join(__dirname, '../cowork/styles/globals.css'), 'utf8');
+// The themes' colour tokens live in tokens.css, which globals.css imports.
+const css = readFileSync(join(__dirname, '../cowork/styles/tokens.css'), 'utf8');
 
 function themeBlock(selector: string): string {
   const start = css.indexOf(`${selector} {`);
@@ -21,7 +22,7 @@ describe('stock theme tokens', () => {
   it.each([
     ['light', 'body, body[data-theme="light"]'],
     ['dark', 'body[data-theme="dark"]'],
-  ] as const)('match globals.css for %s', (theme, selector) => {
+  ] as const)('match tokens.css for %s', (theme, selector) => {
     const block = themeBlock(selector);
     const s = STOCK_THEME_SURFACES[theme];
     expect(s.bg.toLowerCase()).toBe(token(block, '--bg').toLowerCase());
