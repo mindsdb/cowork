@@ -114,6 +114,16 @@ export function TurnMinimap({
 
   useEffect(() => { refresh(); }, [refresh, version]);
 
+  // Code Mode's column stays 720px wide while its surrounding margin changes.
+  // Observe the viewport too: a content resize alone won't refresh that fit.
+  useEffect(() => {
+    const box = scrollRef.current;
+    if (!box || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(refresh);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [scrollRef, refresh]);
+
   useEffect(() => {
     const box = scrollRef.current;
     if (!box) return undefined;

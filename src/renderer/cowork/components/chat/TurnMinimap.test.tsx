@@ -43,6 +43,39 @@ describe('the turn minimap', () => {
     expect(screen.queryByRole('navigation', { name: 'Conversation turns' })).toBeNull();
   });
 
+  it('refits when the scroll box resizes without changing the reading column size', () => {
+    const observers = new Map<Element, () => void>();
+    const OriginalObserver = globalThis.ResizeObserver;
+    class Observer {
+      constructor(private callback: () => void) {}
+      observe(target: Element) { observers.set(target, this.callback); }
+      disconnect() {}
+    }
+    globalThis.ResizeObserver = Observer as unknown as typeof ResizeObserver;
+    let margin = 140;
+    rect.mockImplementation(function (this: Element) {
+      return this.classList.contains('chat-column') ? new DOMRect(margin, 0, 720, 900) : new DOMRect(0, 0, 720 + margin * 2, 600);
+    });
+    try {
+      render(<Transcript prompts={['Plan the launch', 'Draft the email', 'Price it']} />);
+      const box = screen.getByRole('log');
+      const nav = () => screen.queryByRole('navigation', { name: 'Conversation turns' });
+      expect(nav()).toBeInTheDocument();
+      // Only the viewport changes; the 720px column never resizes.
+      margin = 40;
+      act(() => observers.get(box)?.());
+      expect(nav()).toBeNull();
+      margin = 56;
+      act(() => observers.get(box)?.());
+      expect(nav()?.style.getPropertyValue('--minimap-inset')).toBe('8px');
+      margin = 140;
+      act(() => observers.get(box)?.());
+      expect(nav()?.style.getPropertyValue('--minimap-inset')).toBe('14px');
+    } finally {
+      globalThis.ResizeObserver = OriginalObserver;
+    }
+  });
+
   it('lists each user turn by the start of its prompt', () => {
     render(<Transcript prompts={['Plan the launch', 'Draft the email', 'Price it']} />);
     const nav = screen.getByRole('navigation', { name: 'Conversation turns' });
