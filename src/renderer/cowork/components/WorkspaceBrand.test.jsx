@@ -26,6 +26,12 @@ describe('WorkspaceBrand', () => {
     expect(onChange).toHaveBeenCalledWith('code');
   });
 
+  it('names each mode on hover, where the labels may be hidden', async () => {
+    render(<WorkspaceBrand {...base} showSwitch compact />);
+    await userEvent.hover(screen.getByRole('button', { name: 'Code' }));
+    expect(await screen.findByText('Code mode')).toBeInTheDocument();
+  });
+
   it('does not re-select the current workspace', async () => {
     const onChange = vi.fn();
     render(<WorkspaceBrand {...base} mode="code" showSwitch onChange={onChange} />);

@@ -304,13 +304,21 @@ export default function Sidebar({
   const accountUser = useAccountUser(isSsoConnected);
   const workspaceReturnFocusRef = useRef(null);
 
-  // Footer states. The status pill wins over everything (Electron-only, the
-  // server needs attention); otherwise a signed-in user gets the account row.
-  // The quick toggles are keyed off "is the user menu actually rendered", not
-  // "is the user signed in" — while the pill shows, the menu (which hosts the
-  // theme switch) isn't on screen, so the toggles must stay.
+  // The backend status pill shows when the local server needs attention
+  // (Electron only).
   const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
-  const showsUserMenu = !showsStatusPill && !!accountUser;
+  const displayButton = displayToggle && (
+    <Tooltip content={displayToggle.label}>
+      <button
+        type="button"
+        className="chrome-btn--small anton-sidebar__footer-btn shrink-0 [-webkit-app-region:no-drag]"
+        onClick={displayToggle.onClick}
+        aria-label={displayToggle.label}
+      >
+        {displayToggle.icon}
+      </button>
+    </Tooltip>
+  );
   // Which app this is (ENG-2172), and the note that explains an empty list
   // to someone whose work lives in the other one (ENG-2169).
   const surface = surfaceCopy(host.isWeb);
@@ -864,51 +872,45 @@ export default function Sidebar({
             Hidden for now behind WORKSPACE_SELECTOR_ENABLED. */}
         {WORKSPACE_SELECTOR_ENABLED && PLATFORM_UI && accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
 
-        {/* Footer — the settings / backend-status controls stay
-            Electron-only: the FastAPI process IS the host on web, so
-            start/stop/diagnostics don't apply. Settings itself is NOT
-            Electron-only any more — the web shell used to hide it
-            entirely, which also hid the only workaround for ENG-1042;
-            see the gate below (ENG-932).
+        {/* Footer. Signed in, the account row is always here, and Settings
+            lives in its menu. Signed out there is no menu, so the footer
+            shows Settings directly. Display settings (light/dark, skin) end
+            the footer's last row in every state. Settings is reachable on web too: it
+            holds the reasoning-effort control, the user's workaround for a
+            turn that spends its whole output budget and returns nothing.
 
-            Normal state: a settings nav row — no server noise when everything
-            is working fine.
-            Disconnected / busy: the status pill replaces the settings row so
-            the problem is immediately visible. */}
+            The backend status pill is Electron-only: on web the FastAPI
+            process is the host, so there is no local server to report on.
+            When the server is down or busy, the pill sits in its own row
+            above the account row; signed out, it replaces the Settings row. */}
         <div className="anton-sidebar__footer">
-          {/* The status-pill variant is Electron-only — on web the FastAPI
-              process IS the host, so there is no local server lifecycle to
-              report on. But Settings itself must be reachable on web
-              (ENG-932): it holds the reasoning-effort control, which is the
-              only user-side workaround for a turn that burns its whole
-              output budget and returns nothing (ENG-1042). So web always
-              gets the plain Settings row; only the pill is gated. */}
-          {showsStatusPill ? (
-              <>
-                <Tooltip content="Backend status — click for details">
-                  <button
-                    type="button"
-                    className={
-                      'backend-status-control is-clickable flex-1 [-webkit-app-region:no-drag]' +
-                      (serverBusy ? ' is-busy' : '')
-                    }
-                    onClick={onShowServerHelp}
-                    aria-label="Backend status — click for details"
-                  >
-                    <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
-                    <span className="status-text">
-                      <span className="status-text__faded">backend ·</span>{' '}
-                      {serverBusy ? (
-                        <>
-                          <span className="status-text__live">{serverBusyKind}</span>{' '}
-                          <Spinner />
-                        </>
-                      ) : (
-                        <span className="status-text__faded">offline</span>
-                      )}
-                    </span>
-                  </button>
-                </Tooltip>
+          {showsStatusPill && (
+            <div className="anton-sidebar__footer-row">
+              <Tooltip content="Backend status — click for details">
+                <button
+                  type="button"
+                  className={
+                    'backend-status-control is-clickable flex-1 [-webkit-app-region:no-drag]' +
+                    (serverBusy ? ' is-busy' : '')
+                  }
+                  onClick={onShowServerHelp}
+                  aria-label="Backend status — click for details"
+                >
+                  <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                  <span className="status-text">
+                    <span className="status-text__faded">backend ·</span>{' '}
+                    {serverBusy ? (
+                      <>
+                        <span className="status-text__live">{serverBusyKind}</span>{' '}
+                        <Spinner />
+                      </>
+                    ) : (
+                      <span className="status-text__faded">offline</span>
+                    )}
+                  </span>
+                </button>
+              </Tooltip>
+              {!accountUser && (
                 <Tooltip content="Settings">
                   <button
                     ref={workspaceReturnFocusRef}
@@ -919,57 +921,33 @@ export default function Sidebar({
                     {Ico.settings(14)}
                   </button>
                 </Tooltip>
-              </>
-            ) : showsUserMenu ? (
-              // Signed in: the account row + user menu (ENG-1408), curated to
-              // the account destinations (Settings, Billing & Usage, Members,
-              // Help & Feedback, Logout).
-              <>
+              )}
+              {!accountUser && displayButton}
+            </div>
+          )}
+          {(accountUser || !showsStatusPill) && (
+            <div className="anton-sidebar__footer-row">
+              {accountUser ? (
+                // The account destinations (Settings, Billing & Usage,
+                // Members, Help & Feedback, Logout) live in this menu.
                 <UserMenu
                   user={accountUser}
                   onOpenSettings={() => onNavigate('settings')}
+                  buttonRef={workspaceReturnFocusRef}
                 />
-                {/* Quick shortcut — kept visible even with the user menu
-                    present, so Settings stays one click away rather than
-                    buried behind opening the menu first. The status-pill
-                    and signed-out states already show a Settings button
-                    directly, so this only adds value here. Display
-                    settings sit beside it, below. */}
-                <Tooltip content="Settings">
-                  <button
-                    ref={workspaceReturnFocusRef}
-                    className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
-                    onClick={() => onNavigate('settings')}
-                    aria-label="Open Settings"
-                  >
-                    {Ico.settings(16)}
-                  </button>
-                </Tooltip>
-              </>
-            ) : (
-              <button
-                ref={workspaceReturnFocusRef}
-                className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings')}
-                aria-label="Settings"
-              >
-                <span className="inline-flex shrink-0">{Ico.settings(14)}</span>
-                <span>Settings</span>
-              </button>
-            )}
-          {/* Display settings (light/dark, skin) — in every footer state, so
-              it is always one click away without floating over content. */}
-          {displayToggle && (
-            <Tooltip content={displayToggle.label}>
-              <button
-                type="button"
-                className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
-                onClick={displayToggle.onClick}
-                aria-label={displayToggle.label}
-              >
-                {displayToggle.icon}
-              </button>
-            </Tooltip>
+              ) : (
+                <button
+                  ref={workspaceReturnFocusRef}
+                  className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
+                  onClick={() => onNavigate('settings')}
+                  aria-label="Settings"
+                >
+                  <span className="inline-flex shrink-0">{Ico.settings(14)}</span>
+                  <span>Settings</span>
+                </button>
+              )}
+              {displayButton}
+            </div>
           )}
         </div>
 

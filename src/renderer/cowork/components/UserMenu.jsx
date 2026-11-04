@@ -23,14 +23,13 @@ import { PLATFORM_UI } from '../../lib/deployment';
  * disable while a switch is in flight and a refusal gets a written response.
  */
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   Building2,
   Check,
   CircleHelp,
   CreditCard,
-  EllipsisVertical,
   LogOut,
   Settings,
   UsersRound,
@@ -102,10 +101,16 @@ function Avatar({ user }) {
   );
 }
 
-export function UserMenu({ user, onOpenSettings }) {
+// `buttonRef` exposes the account row's button, for a caller that needs to
+// return focus to it.
+export function UserMenu({ user, onOpenSettings, buttonRef = null }) {
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef(null);
+  const setTriggerRef = useCallback((node) => {
+    triggerRef.current = node;
+    if (buttonRef) buttonRef.current = node;
+  }, [buttonRef]);
   const { loggingOut, waitNote, logout } = useLogout();
   const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
   // MindsHub UI lands a company member in a company organization.
@@ -285,7 +290,7 @@ export function UserMenu({ user, onOpenSettings }) {
 
   const trigger = (
     <button
-      ref={triggerRef}
+      ref={setTriggerRef}
       type="button"
       aria-haspopup="menu"
       aria-expanded={menuOpen}
@@ -308,9 +313,6 @@ export function UserMenu({ user, onOpenSettings }) {
             <span className="min-w-0 truncate text-[13px] text-ink-3">{activeOrgName}</span>
           </>
         )}
-      </span>
-      <span className="inline-flex shrink-0 text-ink-3">
-        <Icon of={EllipsisVertical} size={16} />
       </span>
     </button>
   );

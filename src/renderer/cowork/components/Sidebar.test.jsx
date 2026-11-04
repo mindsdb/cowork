@@ -375,11 +375,28 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     expect(await screen.findByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 
-  it('shows the backend status pill instead of the account row when the server is down', async () => {
+  it('offers Settings only through the account menu', async () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+    expect(screen.queryByRole('button', { name: /Settings/ })).toBeNull();
+  });
+
+  it('keeps display settings in the footer beside the account row', async () => {
+    hostMock.isWeb = false;
+    const onClick = vi.fn();
+    render(<Sidebar {...baseProps} serverOnline displayToggle={{ label: 'Display settings', icon: null, onClick }} />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Display settings' }));
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the account row under the backend status pill when the server is down', async () => {
     hostMock.isWeb = false;
     render(<Sidebar {...baseProps} serverOnline={false} />);
     expect(await screen.findByRole('button', { name: /Backend status/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Hazem Ahmed/ })).toBeNull();
+    expect(await screen.findByRole('button', { name: /Hazem Ahmed/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Settings/ })).toBeNull();
   });
 });
 
@@ -466,7 +483,7 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
     rerender(<Sidebar {...baseProps} serverOnline />);
 
     expect(screen.queryByRole('button', { name: /^Workspace:/ })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Open Settings' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /Hazem Ahmed/ })).toHaveFocus();
   });
 
   it.each([

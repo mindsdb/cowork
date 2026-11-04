@@ -29,7 +29,9 @@ export default function WorkspaceBrand({ wordmark, logo, mode, showSwitch, onCha
             value,
             icon,
             'aria-label': label,
-            title: label,
+            // The labels hide when the zone is narrow or the sidebar is
+            // collapsed, so hover and focus always name the mode.
+            tooltip: `${label} mode`,
             label: compact ? null : <span className="app-brand__switch-label">{label}</span>,
           }))}
         />

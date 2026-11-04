@@ -2212,11 +2212,19 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   /* The sidebar body is inset 6px (px-1.5); the divider still runs edge to
      edge, and the contents keep the same inset as the rows above. */
   margin-inline: -6px;
-  padding: 8px 16px;
+  /* More room below than above, so the account row sits clear of the
+     window's bottom edge. */
+  padding: 10px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: transparent;
+}
+.anton-sidebar__footer-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: transparent;
+  min-width: 0;
 }
 .anton-sidebar__footer-divider {
   display: inline-block;
@@ -2375,6 +2383,13 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   color: var(--accent);
   background: transparent;
   box-shadow: 0 0 14px rgba(34,211,238,0.30);
+}
+
+/* Footer controls stand as tall as the account row beside them (a 22px
+   avatar inside 6px of padding), with its 8px corners. */
+.anton-sidebar__footer-btn {
+  width: 34px; height: 34px;
+  border-radius: var(--r-8);
 }
 
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
