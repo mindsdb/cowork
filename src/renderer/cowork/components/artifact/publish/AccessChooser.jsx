@@ -308,6 +308,8 @@ export function AccessChooser({
   modes = DEFAULT_MODES,
   onSubmit,
   sharing = null,
+  // What is being shared, for the label: "app", or "doc" for a doc.
+  noun = 'app',
 }) {
   const draft = value;
   // Several patches can land in one event, so each builds on the last rather
@@ -353,7 +355,7 @@ export function AccessChooser({
 
   return (
     <AudiencePanel
-      ariaLabel="Who can access your app"
+      ariaLabel={`Who can access your ${noun}`}
       value={draft.mode}
       onValueChange={(m) => set({ mode: m })}
       options={options}
