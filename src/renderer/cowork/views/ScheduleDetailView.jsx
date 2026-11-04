@@ -13,7 +13,6 @@ import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { PageHeader } from '../components/collection';
 import { Alert, Button } from '../components/ui';
-import RetryHold from '../components/schedule/RetryHold';
 import { Switch } from '../components/ui/Switch';
 import OverflowMenu from '../components/OverflowMenu';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -322,18 +321,15 @@ export default function ScheduleDetailView({
                   {busy ? 'Stopping…' : 'Stop run'}
                 </Button>
               ) : (
-                <RetryHold retrying={!!task.retryAt}>
-                  <Button
-                    variant="primary"
-                    onClick={() => withBusy(() => onRunNow?.(task.id))}
-                    // The server refuses Run now while a failed run waits for its retry.
-                    disabled={busy || !!task.retryAt}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    {Ico.send ? Ico.send(14) : null}
-                    {busy ? 'Running…' : 'Run now'}
-                  </Button>
-                </RetryHold>
+                <Button
+                  variant="primary"
+                  onClick={() => withBusy(() => onRunNow?.(task.id))}
+                  disabled={busy}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  {Ico.send ? Ico.send(14) : null}
+                  {busy ? 'Running…' : 'Run now'}
+                </Button>
               )}
               {/* Edit + Delete live in the overflow — Delete opens a confirm,
                   and never sits inside the edit form (ENG-1245). */}

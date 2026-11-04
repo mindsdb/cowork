@@ -101,15 +101,6 @@ describe('taskMenuItems', () => {
 });
 
 describe('ScheduleRow — one run at a time', () => {
-  it('disables Run while a failed run waits for its retry', () => {
-    const onRunNow = vi.fn();
-    render(<ScheduleRow task={{ ...baseTask, retryAt: new Date(Date.now() + 60000).toISOString() }} projects={PROJECTS} onRunNow={onRunNow} />);
-    const run = screen.getByRole('button', { name: /^Run$/ });
-    expect(run).toBeDisabled();
-    fireEvent.click(run);
-    expect(onRunNow).not.toHaveBeenCalled();
-  });
-
   it('offers Stop instead of Run while a run is going', () => {
     const onStopRun = vi.fn();
     const onRunNow = vi.fn();

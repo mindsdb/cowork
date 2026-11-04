@@ -1,7 +1,8 @@
 // `<ScheduleRunAlert>` — what a schedule's detail page says about how its
 // last run went, when there is something to act on: a pause with a run still
-// finishing, a missed one-off, an auto-pause, or a run that failed. Each says what is known about whether the run did anything,
-// and offers the run's output (Review run) before anything that runs again.
+// finishing, a missed one-off, an auto-pause, or a run that failed. Each says
+// what is known about whether the run did anything, and offers the run's
+// output (Review run) before anything that runs again.
 //
 // Resume may catch up a pending run; Run now / Run again runs once,
 // now. Neither is offered while a run is still going.

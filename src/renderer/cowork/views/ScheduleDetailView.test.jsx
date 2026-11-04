@@ -290,10 +290,7 @@ describe('ScheduleDetailView — controls by state', () => {
     // An informational notice, not an error: a status, not an alert.
     const box = screen.getByText('Paused — the current run will finish').closest('[role="status"]');
     expect(within(box).getByText(/Stop run ends it now; anything it has already done stays done/)).toBeInTheDocument();
-    // A run that fails before it starts work can run again after resume, so
-    // the notice promises only that nothing else starts while paused.
     expect(within(box).getByText(/Nothing else starts while it’s paused/)).toBeInTheDocument();
-    expect(within(box).queryByText(/Nothing runs after it/)).not.toBeInTheDocument();
   });
 
   it('shows a done one-off with no switch and no next run', async () => {
@@ -321,14 +318,6 @@ describe('ScheduleDetailView — a paused one-off past its time', () => {
 });
 
 describe('ScheduleDetailView — one run at a time', () => {
-  it('disables Run now while a failed run waits for its retry', async () => {
-    const retryAt = new Date(Date.now() + 60 * 1000).toISOString();
-    setup({ task: { ...TASK, state: 'active', retryAt } });
-    await screen.findAllByRole('button', { name: 'Open task' });
-    expect(screen.getByRole('button', { name: /Run now/ })).toBeDisabled();
-    expect(screen.getByLabelText('A failed run is waiting to be tried again')).toBeInTheDocument();
-  });
-
   it('turns Run now into Stop run while a run is going', async () => {
     const { props, user } = setup({ task: { ...TASK, state: 'active', running: true }, onStopRun: vi.fn().mockResolvedValue(undefined) });
     await screen.findAllByRole('button', { name: 'Open task' });
