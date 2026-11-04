@@ -112,6 +112,7 @@ import {
 import { noteArtifactsFromSteps, onArtifactDeleted } from './lib/artifactsStore';
 import { createLatestLoader, withArtifactChange, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
+import { originConversationId } from './lib/artifactIdentity';
 import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
@@ -2552,13 +2553,15 @@ function AppCore() {
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and
   // stream reattach — so sidebar click / deep link / refresh / Back all run one
   // path.
-  const selectTask = (id) => {
+  const selectTask = (id, { keepStaged = false } = {}) => {
     if (sidebarPopout) setNavPopoutOpen(false);
     setWorkspaceMode('cowork');
     // Clear the composer here (the sync nav intent), not in openConversation:
     // that runs after the async loader and would wipe a queued-message redirect
-    // ChatView stages for the conversation. Matches staging's ordering.
-    setComposerAttachments([]);
+    // ChatView stages for the conversation. Matches staging's ordering. A send
+    // that brings the person here itself ("Edit with agent" from the library)
+    // keeps the staged files: they were never its to send or drop.
+    if (!keepStaged) setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
   };
@@ -3565,7 +3568,9 @@ function AppCore() {
     }
   };
 
-  // Send from the home screen — creates a new session
+  // Send from the home screen — creates a new session. `meta.docRequest` is a
+  // request sent from elsewhere ("Edit with agent" from the library), naming
+  // the doc it is about.
   const handleSendFromHome = async (text, meta) => {
     if (!canRunProject(meta?.project) || (route === 'projects' && !canRunProject(selectedProject))) {
       throw new Error('Only the owner can run tasks in this shared project.');
@@ -3580,7 +3585,9 @@ function AppCore() {
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
-      const taskId = `tmp-${Date.now()}`;
+      // A caller that keeps something beside this chat (a doc) names the
+      // placeholder's id ahead, so it finds the chat this makes.
+      const taskId = meta?.placeholderId || `tmp-${Date.now()}`;
       const generalFallback = runnableProjects.find((p) => p.name === 'general');
       const requestedProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null);
       const effectiveProjectName = requestedProject?.name || 'general';
@@ -3648,8 +3655,8 @@ function AppCore() {
     );
     const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
     setComposerAttachments([]);
-    // A new conversation has no doc beside it yet.
-    const docContext = takeDocContext(taskId);
+    // A new conversation has no doc view yet: this is just the request's.
+    const docContext = takeDocContext(taskId, meta?.docRequest);
 
     // Two-phase send so the new-task experience matches the in-chat
     // send. Previously we shipped the user message + placeholder in the
@@ -4513,18 +4520,40 @@ function AppCore() {
     return target.id;
   }, []);
 
+  const projectOfArtifact = (artifact) => projects.find((item) =>
+    String(item.id || '') === String(artifact?.projectId || ''))
+    || projects.find((item) => item.name === artifact?.projectName)
+    || null;
+  // Whether `id` already names a chat here. One is never handed to
+  // handleSendFromHome, which would build a second, empty task under that
+  // chat's key: its history gone from view, a new session streamed into it.
+  const namesChat = (id, artifact) => !!id
+    && (tasksRef.current.some((t) => String(t.id || '') === id) || id === originConversationId(artifact));
+
   const addressArtifactWithAgent = async ({ artifact, prompt, conversationId }) => {
-    const project = projects.find((item) =>
-      String(item.id || '') === String(artifact?.projectId || ''))
-      || projects.find((item) => item.name === artifact?.projectName)
-      || null;
-    const target = artifactRepairTargetRef.current;
+    const project = projectOfArtifact(artifact);
+    const id = String(conversationId || '');
+    let target = artifactRepairTargetRef.current;
     artifactRepairTargetRef.current = null;
+    // An existing chat the resolution held here is not for (another one
+    // landed in between): resolve it again rather than start a new chat
+    // under its id.
+    if (target?.id !== id && namesChat(id, artifact)) {
+      await resolveArtifactRepairConversation(artifact);
+      target = artifactRepairTargetRef.current;
+      artifactRepairTargetRef.current = null;
+    }
     // Only resume a chat the repair was actually minted against; anything else
-    // (no origin, unreachable chat, a stale resolution) starts a new one.
-    if (!target || !conversationId || target.id !== String(conversationId)) {
+    // (no origin, unreachable chat, a stale resolution) starts a new one, under
+    // the id the viewer minted for it when that one is new.
+    if (!target || !id || target.id !== id) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
+      return sendFromApp(prompt, {
+        project,
+        conversationId: namesChat(id, artifact) ? null : id || null,
+        disabledConnections: [],
+        attachments: [],
+      });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -4561,6 +4590,63 @@ function AppCore() {
       // Queued when the chat is busy, including a turn waiting on the agent's
       // question: the repair prompt is not the user's answer to it.
       started = await handleSendInTask(prompt, [], { targetTask, skipPendingAnswer: true });
+    } finally {
+      if (!started) clearOptimisticConversation(target.id);
+    }
+    return started;
+  };
+
+  // ── "Edit with agent" on a doc opened from the library ─────────────────
+  // Sent as the doc beside its chat would send it: a message in the chat the
+  // doc came from (queued there if a turn runs), with the same docRequest,
+  // the doc docked beside it, and none of the composer's staged files. A doc
+  // with no chat to go back to (made before provenance, its chat deleted,
+  // moved to another project or unreadable now) starts a new chat, the doc
+  // docked beside that.
+  const [docToDock, setDocToDock] = useState(null); // { taskId, artifact }, until that chat shows it
+  const editDocWithAgent = async ({ artifact, message, docRequest }) => {
+    const target = await resolveRepairConversation({
+      artifact,
+      tasks: tasksRef.current,
+      fetchConversation: fetchSessionResult,
+    });
+    // A listed chat this window has not read is read now: the turn about to
+    // start keeps the route loader off it, so it would show without its history.
+    let chat = target.id ? (tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task) : null;
+    if (chat && (chat.messagesStatus === 'loading' || chat.messagesStatus === 'unavailable')) {
+      const read = await fetchSessionResult(target.id);
+      chat = read.status === 'ok' ? { ...chat, ...read.task } : null;
+    }
+    if (!chat) {
+      // A real id from the start, so the doc docked beside the new chat stays
+      // there (a tmp- id changes, and the column follows the chat's id). With
+      // no provider set up the send stops at a placeholder chat that says so;
+      // the doc goes beside that one.
+      const id = allocateConversationId();
+      const placeholderId = `tmp-${Date.now()}`;
+      setDocToDock({ taskId: id, placeholderId, artifact });
+      return sendFromApp(message, {
+        project: projectOfArtifact(artifact), conversationId: id, placeholderId, docRequest, attachments: [],
+      });
+    }
+    const loaded = chat;
+    setTasks((prev) => (prev.some((t) => String(t.id || '') === target.id)
+      ? prev.map((t) => (String(t.id || '') === target.id ? loaded : t))
+      : [loaded, ...prev]));
+    // The `/c/:id` loader must not re-hydrate over the transcript we hold
+    // while the turn is in flight; the flag drops when the turn completes, or
+    // below when no turn starts.
+    markOptimisticConversation(target.id);
+    setDocToDock({ taskId: target.id, artifact });
+    selectTask(target.id, { keepStaged: true });
+    let started = false;
+    try {
+      // The chat's own connections: the composer's are still those of the
+      // chat it last showed, until this one renders. Queued behind a turn
+      // waiting on the agent's question, never taken as the answer to it.
+      started = await handleSendInTask(message, [], {
+        targetTask: loaded, docRequest, disabledConnections: loaded.disabledConnections ?? [], skipPendingAnswer: true,
+      });
     } finally {
       if (!started) clearOptimisticConversation(target.id);
     }
@@ -6093,6 +6179,8 @@ function AppCore() {
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
+            dockDoc={docToDock && [docToDock.taskId, docToDock.placeholderId].includes(currentTask.id) ? docToDock.artifact : null}
+            onDocDocked={() => setDocToDock(null)}
             onBack={() => {
               // Returning home = "new task in this project". Pre-select
               // the task's project so the home composer is ready to go.
@@ -6343,6 +6431,7 @@ function AppCore() {
             agentLabel={agentLabel}
             onAddressWithAgent={addressArtifactWithAgent}
             resolveRepairConversation={resolveArtifactRepairConversation}
+            onEditDocWithAgent={editDocWithAgent}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local

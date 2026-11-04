@@ -11,6 +11,7 @@
 // extension lettered in the middle (`GenericFileIcon`).
 
 import { useId } from 'react';
+import { isDocArtifact } from '../doc/docArtifact';
 
 // File-type icons are authored on a 16×14 canvas; the web-app globe on 16×16.
 // `width=height=size` + the natural viewBox scales uniformly (preserveAspectRatio
@@ -150,7 +151,8 @@ export function splitArtifactName(a) {
   const fname = fileNameOf(a);
   return {
     base: displayTitle(a),
-    secondary: isWebAppArtifact(a) ? null : (fname ? splitFileName(fname) : null),
+    // A doc's file (doc.cdoc.json) is storage, not something the person named.
+    secondary: isWebAppArtifact(a) || isDocArtifact(a) ? null : (fname ? splitFileName(fname) : null),
   };
 }
 
@@ -163,6 +165,8 @@ const EXT_BY_GROUP = {
 
 export function ArtifactIcon({ artifact, size = 16 }) {
   const ext = artifactExt(artifact);
+  // A doc (cowork docs) is stored as JSON but is a document to the person.
+  if (isDocArtifact(artifact)) return <DocxIcon size={size} />;
   // Live web apps / dashboards → teal globe.
   if (isWebAppArtifact(artifact)) {
     return <WebAppIcon size={size} />;
