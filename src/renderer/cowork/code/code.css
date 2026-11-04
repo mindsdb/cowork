@@ -1,6 +1,6 @@
 .code-page {
   --code-measure: 720px;
-  --code-gutter: 28px;
+  --code-gutter: 40px;
   display: flex;
   flex: 1;
   min-width: 0;
@@ -262,6 +262,9 @@
 .code-agent-message .code-message-label { color: var(--accent); }
 .code-agent-message p:first-child { margin-top: 0; }
 .code-agent-message p:last-child { margin-bottom: 0; }
+/* Chat mode's answer spaces its action row 14px below the text (a 10px gap
+   plus the row's own 4px); match it. */
+.code-agent-message > .turn-actions { margin-top: 14px; }
 /* Answer ink and heading rhythm mirror chat mode's .answer-turn rules. */
 .code-agent-message .markdown-content p,
 .code-agent-message .markdown-content li { color: color-mix(in srgb, var(--ink) 70%, var(--ink-2)); }
@@ -322,7 +325,12 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-line-counts .is-deletion { color: var(--danger); }
 .code-worked { margin: 14px 0; }
 .code-worked > summary { padding: 0 0 10px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--line); color: var(--ink-4); font-size: 14px; cursor: pointer; list-style: none; }
-.code-worked > summary:hover { color: var(--ink-3); }
+/* The divider spans the column, but only the label and chevron respond to
+   the pointer: hovering or clicking the empty run beside them does nothing. */
+.code-worked > summary { pointer-events: none; }
+.code-worked > summary > * { pointer-events: auto; }
+.code-worked > summary > .code-activity-group__chevron { margin-left: -6px; padding-left: 6px; }
+.code-worked > summary:hover { color: var(--ink); }
 .code-worked > summary::-webkit-details-marker { display: none; }
 .code-worked[open] > summary .code-activity-group__chevron { transform: rotate(180deg); }
 .code-worked__body { padding-top: 1px; }
