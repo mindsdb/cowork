@@ -121,7 +121,7 @@ import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
-import { modelPickerMode } from '../lib/modelPicker';
+import { modelPickerMode, usersPickModels } from '../lib/modelPicker';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -6355,7 +6355,7 @@ function AppCore() {
         )}
 
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
-        {route === 'compare' && (
+        {route === 'compare' && usersPickModels() && (
           <CompareView
             models={models}
             modelMeta={modelMeta}

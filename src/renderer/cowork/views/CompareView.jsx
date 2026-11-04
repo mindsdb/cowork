@@ -19,7 +19,8 @@ import { Alert, Badge, Button, CardRow, EmptyState, Select, Spinner, Tooltip } f
 import { ProviderIcon } from '../components/ProviderIcon';
 import { SearchInput, SortPill } from '../components/collection';
 import Ico from '../components/Icons';
-import { buildModelPickerOptions } from '../lib/modelPickerOptions';
+import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
+import { modelPickerMode } from '../../lib/modelPicker';
 import { modelMaker } from '../lib/modelCatalog';
 import { initialStreamState, reduceStream } from '../lib/responseStreamAdapter';
 import { relativeAge } from '../lib/formatTime';
@@ -76,7 +77,9 @@ import {
 } from '../lib/compareSides';
 
 // Web turns do not carry a reasoning effort yet, so offering the pick there
-// would show a setting that does nothing.
+// would show a setting that does nothing. When they do, a build under an
+// operator's picker must offer only its efforts (operatorEffortLevels), as
+// the composer does.
 const EFFORT_SUPPORTED = !host.isWeb;
 
 const EMPTY_START = '__empty__';
@@ -576,7 +579,15 @@ function SideIcon({ model, name }) {
 }
 
 function SidePicker({ label, value, onChange, models, modelMeta }) {
-  const options = useMemo(() => buildModelPickerOptions(models, modelMeta), [models, modelMeta]);
+  // Under an operator's picker, only the models the operator offers, as in
+  // the composer.
+  const options = useMemo(
+    () => buildModelPickerOptions(
+      modelPickerMode() !== 'off' ? offeredModels(models, modelMeta?.modelEnabled) : models,
+      modelMeta,
+    ),
+    [models, modelMeta],
+  );
   const efforts = EFFORT_SUPPORTED ? modelMeta?.modelEfforts || {} : undefined;
   return (
     <div className="flex-1 min-w-0 flex items-center gap-2 h-12 pl-3 pr-1.5 rounded-[12px] border border-solid border-line bg-surface">

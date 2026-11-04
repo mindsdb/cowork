@@ -9,6 +9,9 @@ const hostMock = vi.hoisted(() => ({
   openPath: vi.fn(),
   openExternal: vi.fn(),
 }));
+const deployment = vi.hoisted(() => ({ PLATFORM_UI: true }));
+vi.mock('../../lib/deployment', () => deployment);
+
 vi.mock('../../platform/host', () => ({
   host: hostMock,
   getAccessToken: vi.fn(async () => null),
@@ -219,6 +222,27 @@ describe('CompareView', () => {
       expect(seconds()).toBeGreaterThanOrEqual(before + 3);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  // A self-hosted build under an operator's picker offers only the operator's
+  // models, as the composer does; elsewhere the whole catalogue.
+  it.each([
+    ['without', null, ['kimi', 'qwen']],
+    ['under', 'open', ['kimi']],
+  ])("offers %s an operator's picker only the models it allows", async (_how, mode, offered) => {
+    const meta = mode && Object.assign(document.createElement('meta'), { name: 'cowork-model-picker', content: mode });
+    if (meta) document.head.append(meta);
+    deployment.PLATFORM_UI = !mode;
+    try {
+      mockHistory([]);
+      render(<CompareView models={models} modelMeta={{ modelEnabled: { qwen: false } }} projects={projects} />);
+      const [modelA] = await screen.findAllByLabelText('model');
+      const values = [...modelA.querySelectorAll('option')].map((o) => o.value).filter(Boolean);
+      expect(values).toEqual(offered);
+    } finally {
+      meta?.remove();
+      deployment.PLATFORM_UI = true;
     }
   });
 

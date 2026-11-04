@@ -9,6 +9,9 @@ import { ToastProvider } from './ui/Toast';
 // when signed in.
 const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false, logout: async () => {}, onWindowVisibility: () => () => {} }));
 const getAccessTokenMock = vi.hoisted(() => vi.fn(async () => null));
+const deployment = vi.hoisted(() => ({ PLATFORM_UI: true }));
+vi.mock('../../lib/deployment', () => deployment);
+
 vi.mock('../../platform/host', () => ({
   host: hostMock,
   getAccessToken: getAccessTokenMock,
@@ -673,6 +676,26 @@ describe('Sidebar — task row titles', () => {
     render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" showCounters />);
     fireEvent.mouseEnter(screen.getByRole('button', { name: task.title }).parentElement);
     expect(titleOf()).not.toHaveClass('is-clipped');
+  });
+});
+
+// Compare Models offers a model choice, so a build where the operator picks
+// every question's model (no platform UI, picker off) does not show it.
+describe('Sidebar — Compare models without the platform UI', () => {
+  afterEach(() => {
+    deployment.PLATFORM_UI = true;
+    document.head.querySelectorAll('meta[name="cowork-model-picker"]').forEach((node) => node.remove());
+  });
+
+  it.each([
+    ['with the platform UI', true, null, true],
+    ["under the operator's picker", false, 'default', true],
+    ["with the operator's picker off", false, null, false],
+  ])('%s: shown is %s', (_case, platformUi, picker, shown) => {
+    deployment.PLATFORM_UI = platformUi;
+    if (picker) document.head.append(Object.assign(document.createElement('meta'), { name: 'cowork-model-picker', content: picker }));
+    render(<Sidebar {...baseProps} />);
+    expect(!!screen.queryByRole('button', { name: 'Compare Models' })).toBe(shown);
   });
 });
 
