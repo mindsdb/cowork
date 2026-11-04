@@ -675,3 +675,12 @@ describe('Sidebar — task row titles', () => {
     expect(titleOf()).not.toHaveClass('is-clipped');
   });
 });
+
+describe('Sidebar — Compare models', () => {
+  it('sits in the Agent group and opens the compare route', () => {
+    const onNavigate = vi.fn();
+    render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
+    screen.getByRole('button', { name: 'Compare Models' }).click();
+    expect(onNavigate).toHaveBeenCalledWith('compare');
+  });
+});
