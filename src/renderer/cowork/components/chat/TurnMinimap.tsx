@@ -44,6 +44,33 @@ export function activeTurnIndex(tops: number[], scrollTop: number, clientHeight:
   return active;
 }
 
+// The rail's fit in the margin left of the reading column. It sits INSET_PX
+// in, or nearer the edge (down to EDGE_PX) when the margin is tighter, and
+// always keeps GAP_PX between its longest tick and the text. Without room for
+// that, it hides rather than crowd the conversation.
+const REST_PX = 6;
+const PEAK_PX = 24;
+const INSET_PX = 14;
+const EDGE_PX = 6;
+const GAP_PX = 24;
+// How many ticks either side of the pointer the slope reaches.
+const SLOPE_TICKS = 6;
+
+export interface RailFit { inset: number; peak: number }
+
+/** Where the rail goes in a margin of `margin` px, or null when it can't fit. */
+export function railFit(margin: number): RailFit | null {
+  const inset = Math.min(INSET_PX, margin - PEAK_PX - GAP_PX);
+  return inset < EDGE_PX ? null : { inset, peak: PEAK_PX };
+}
+
+/** The free margin left of the reading column the turns sit in. */
+function marginOf(box: HTMLElement): number {
+  const column = box.querySelector('[data-turn-id]')?.closest('.chat-column');
+  if (!column) return 0;
+  return column.getBoundingClientRect().left - box.getBoundingClientRect().left;
+}
+
 function collectTurns(box: HTMLElement): MinimapTurn[] {
   const boxTop = box.getBoundingClientRect().top;
   return Array.from(box.querySelectorAll<HTMLElement>('[data-turn-id]')).map((el) => ({
@@ -74,12 +101,14 @@ export function TurnMinimap({
   const [active, setActive] = useState(0);
   // The tick under the pointer; each tick's distance from it sets its length.
   const [pointed, setPointed] = useState<number | null>(null);
+  const [fit, setFit] = useState<RailFit | null>(null);
 
   const refresh = useCallback(() => {
     const box = scrollRef.current;
     if (!box) return;
     const next = collectTurns(box);
     setTurns(next);
+    setFit(railFit(marginOf(box)));
     setActive(activeTurnIndex(next.map((t) => t.top), box.scrollTop, box.clientHeight));
   }, [scrollRef]);
 
@@ -99,7 +128,7 @@ export function TurnMinimap({
     return () => { box.removeEventListener('scroll', onScroll); cancelAnimationFrame(frame); };
   }, [scrollRef]);
 
-  if (turns.length < MINIMAP_MIN_TURNS) return null;
+  if (turns.length < MINIMAP_MIN_TURNS || !fit) return null;
 
   const jump = (turn: MinimapTurn) => {
     const box = scrollRef.current;
@@ -112,13 +141,18 @@ export function TurnMinimap({
     <nav
       className={`chat-minimap${turns.length > 24 ? ' is-dense' : ''}${pointed != null ? ' is-pointed' : ''}`}
       aria-label="Conversation turns"
+      style={{
+        '--minimap-inset': `${fit.inset}px`,
+        '--minimap-peak': `${fit.peak}px`,
+        '--minimap-step': `${(fit.peak - REST_PX) / SLOPE_TICKS}px`,
+      } as CSSProperties}
       onPointerLeave={() => setPointed(null)}
     >
       {turns.map((turn, i) => (
         <Tooltip
           key={turn.id || i}
           side="right"
-          sideOffset={14}
+          sideOffset={10}
           delay={0}
           unstyled
           className="chat-minimap__card"

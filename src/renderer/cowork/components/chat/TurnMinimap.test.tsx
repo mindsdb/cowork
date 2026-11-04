@@ -1,24 +1,43 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatScroller } from './ChatScroller';
-import { activeTurnIndex, answerAfter, snippetOf } from './TurnMinimap';
+import { activeTurnIndex, answerAfter, railFit, snippetOf } from './TurnMinimap';
 import { useStickToBottom } from './useStickToBottom';
 
 function Transcript({ prompts }: { prompts: string[] }) {
   const stick = useStickToBottom();
   return (
     <ChatScroller stick={stick}>
-      {prompts.map((p, i) => (
-        <div key={p} className="user-turn" data-turn-id={`t${i}`}>
-          <div className="user-turn-bubble">{p}</div>
-        </div>
-      ))}
+      <div className="chat-column">
+        {prompts.map((p, i) => (
+          <div key={p} className="user-turn" data-turn-id={`t${i}`}>
+            <div className="user-turn-bubble">{p}</div>
+          </div>
+        ))}
+      </div>
     </ChatScroller>
   );
 }
 
 describe('the turn minimap', () => {
+  // happy-dom lays nothing out; give the reading column a roomy 120px margin
+  // so the rail has space to show.
+  let rect: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    const original = Element.prototype.getBoundingClientRect;
+    rect = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return this.classList.contains('chat-column') ? new DOMRect(120, 0, 720, 0) : original.call(this);
+    });
+  });
+  afterEach(() => rect.mockRestore());
+
+  it('stays out of a margin too narrow to hold it', () => {
+    rect.mockImplementation(() => new DOMRect(28, 0, 720, 0));
+    render(<Transcript prompts={['Plan the launch', 'Draft the email', 'Price it']} />);
+    expect(screen.queryByRole('navigation', { name: 'Conversation turns' })).toBeNull();
+  });
+
   it('stays out of short conversations', () => {
     render(<Transcript prompts={['One', 'Two']} />);
     expect(screen.queryByRole('navigation', { name: 'Conversation turns' })).toBeNull();
@@ -111,3 +130,18 @@ describe('answerAfter', () => {
   });
 });
 
+
+describe('railFit', () => {
+  it('sits 14px in when the margin is roomy', () => {
+    expect(railFit(120)).toEqual({ inset: 14, peak: 24 });
+  });
+
+  it('moves toward the edge to keep 24px clear of the text', () => {
+    expect(railFit(56)).toEqual({ inset: 8, peak: 24 });
+  });
+
+  it('hides when the margin cannot hold the rail and its gap', () => {
+    expect(railFit(53)).toBeNull();
+    expect(railFit(28)).toBeNull();
+  });
+});

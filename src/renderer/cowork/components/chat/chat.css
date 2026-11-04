@@ -76,15 +76,14 @@
 .chat-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Turn minimap (TurnMinimap): a rail of ticks on the transcript's left edge,
-   one per user turn, as ChatGPT, t3code and opencode do. Hidden where the
-   transcript is too narrow to spare the edge beside the reading column, and on
+   one per user turn, as ChatGPT, t3code and opencode do. It fits itself to
+   the margin beside the reading column (TurnMinimap's railFit), and hides on
    touch screens, where there is no hover to preview a tick. */
-.chat-scroller { container: chat-scroller / inline-size; }
 .chat-minimap {
   position: absolute;
   z-index: 3;
   top: 50%;
-  left: 20px;
+  left: var(--minimap-inset, 14px);
   transform: translateY(-50%);
   max-height: 60%;
   display: flex;
@@ -94,7 +93,7 @@
   padding: 4px 0;
 }
 .chat-minimap__tick {
-  width: 32px;
+  width: calc(var(--minimap-peak, 24px) + 4px);
   height: 12px;
   display: flex;
   align-items: center;
@@ -107,7 +106,7 @@
 .chat-minimap.is-dense .chat-minimap__tick { height: 7px; }
 .chat-minimap__tick::before {
   content: '';
-  width: 8px;
+  width: 6px;
   height: 2px;
   border-radius: 1px;
   background: var(--line-2);
@@ -116,17 +115,15 @@
 /* The turn being read: darker, not longer. */
 .chat-minimap__tick.is-active::before { background: var(--ink-4); }
 /* Pointing at the rail draws the ticks out in a slope: the tick under the
-   pointer longest and in full ink, each one further away 4px shorter, down to
-   the resting length. */
+   pointer longest (the peak) and in full ink, each one further away a step
+   shorter, down to the resting length. TurnMinimap sizes the peak and step to
+   the margin it has (railFit). */
 .chat-minimap.is-pointed .chat-minimap__tick::before {
-  width: max(8px, calc(28px - var(--tick-distance, 9) * 4px));
+  width: max(6px, calc(var(--minimap-peak, 24px) - var(--tick-distance, 99) * var(--minimap-step, 3px)));
 }
 .chat-minimap.is-pointed .chat-minimap__tick:hover::before,
-.chat-minimap__tick:focus-visible::before { width: 28px; background: var(--ink); }
+.chat-minimap__tick:focus-visible::before { width: var(--minimap-peak, 24px); background: var(--ink); }
 .chat-minimap__tick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
-@container chat-scroller (max-width: 560px) {
-  .chat-minimap { display: none; }
-}
 @media (pointer: coarse) {
   .chat-minimap { display: none; }
 }
@@ -134,7 +131,7 @@
    quieter ink, centred on the tick. */
 .chat-minimap__card {
   width: max-content;
-  max-width: 320px;
+  max-width: 310px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -152,5 +149,5 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.chat-minimap__prompt { -webkit-line-clamp: 2; font-weight: 500; }
+.chat-minimap__prompt { -webkit-line-clamp: 1; font-weight: 500; }
 .chat-minimap__answer { -webkit-line-clamp: 3; color: var(--ink-3); }
