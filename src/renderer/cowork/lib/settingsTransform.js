@@ -312,6 +312,14 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     // servers that resolve it apart from the router pick; an older server sends
     // nothing and the row falls back to describing what that server does.
     gate: (rec.gate && typeof rec.gate === 'object') ? rec.gate : (base.gate ?? null),
+    // Whether the composer offers the Chimera pseudo-model (modelCatalog's
+    // MODEL_CHIMERA). cowork-server reports `chimera_available`: true on
+    // MindsHub cloud, false on an openai_compatible deployment. Unlike the maps
+    // above, a live false does replace a held true, because the server decides
+    // it from the provider rather than from a MindsHub fetch that can fail (a
+    // failed request never reaches this function). Absent, as on an older
+    // server, reads as false.
+    chimeraAvailable: rec.chimera_available === true,
   };
 }
 

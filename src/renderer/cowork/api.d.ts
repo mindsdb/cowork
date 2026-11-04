@@ -38,6 +38,11 @@ export interface RecommendedModels {
    * moving alias this entry is a frozen version of.
    */
   modelFamilies?: Record<string, string>;
+  /**
+   * Whether this server offers the Chimera pseudo-model. Absent on older
+   * servers, which mergeRecommendedModels reads as false.
+   */
+  chimera_available?: boolean;
   [key: string]: unknown;
 }
 

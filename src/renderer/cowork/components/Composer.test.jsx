@@ -515,6 +515,62 @@ describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () =
   });
 });
 
+// ─── Chimera pseudo-model ────────────────────────────────────────────
+//
+// Listed right under Model Router, and only where the server advertises
+// `chimera_available` (settings.chimeraAvailable). Its id is a real request
+// model, so a pick hands `chimera` to the caller like any catalog model.
+
+describe('Composer — Chimera option', () => {
+  const CHIMERA_META = { ...MODEL_META, chimeraAvailable: true };
+
+  it('is not offered when the server does not advertise it', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.queryByRole('option', { name: 'Chimera' })).toBeNull();
+  });
+
+  it('sits under Model Router in the MindsHub group when the server offers it', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: CHIMERA_META, model: MODELS[0] });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    const listbox = screen.getByRole('listbox');
+    const rows = within(listbox).getAllByText(/^(MindsHub|Model Router|Chimera|MindsHub Air)$/);
+    expect(rows.map((r) => r.textContent)).toEqual(['MindsHub', 'Model Router', 'Chimera', 'MindsHub Air']);
+  });
+
+  it('hands the chimera id to the caller when picked', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: CHIMERA_META, model: MODELS[0], onModelChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: 'Chimera' }));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'chimera', name: 'Chimera' });
+  });
+
+  it('shows a Chimera pick on the pill', () => {
+    renderComposer({ models: MODELS, modelMeta: CHIMERA_META, model: { id: 'chimera', name: 'Chimera' } });
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Chimera');
+  });
+
+  it('is not offered once Claude Code is the harness about to send', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS, modelMeta: CHIMERA_META, model: MODELS[0], codingModeEnabled: true,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.queryByRole('option', { name: 'Chimera' })).toBeNull();
+  });
+});
+
 // ─── Claude Code falls back to the account's Coding model ────────────
 //
 // Model Router can't drive Claude Code (no auto-routing concept in the

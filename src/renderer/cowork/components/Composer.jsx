@@ -13,7 +13,7 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL, OPERATOR_DEFAULT_LABEL,
+  MODEL_CHIMERA, MODEL_ROUTER_ID, MODEL_ROUTER_LABEL, OPERATOR_DEFAULT_LABEL,
 } from '../lib/modelCatalog';
 import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
@@ -134,7 +134,8 @@ export default function Composer({
    * a one-item list (ChatView's read-only picker) gets, and what a role pointed at
    * a BYOK provider gets: `modelProviders` is keyed by model id and only ever
    * covers MindsHub's own catalog, so it says nothing about the ids a BYOK role
-   * lists even when a MindsHub key is configured.
+   * lists even when a MindsHub key is configured. `chimeraAvailable` adds the
+   * Chimera row under Model Router.
    */
   modelMeta,
   attachments = [],
@@ -511,6 +512,15 @@ export default function Composer({
           ),
         } : {}),
       },
+      // Chimera sits right under Model Router in the MindsHub group, and only
+      // where the server offers it (MindsHub cloud). Unlike Model Router its
+      // id goes to the server as the request model.
+      ...(modelMeta?.chimeraAvailable ? [{
+        value: MODEL_CHIMERA.id,
+        label: MODEL_CHIMERA.name,
+        maker: 'mindshub',
+        title: MODEL_CHIMERA.desc,
+      }] : []),
       ...catalogOptions,
     ];
   }, [models, modelMeta, isClaudeCode, onOpenSettings, operatorPicker, operatorModels]);

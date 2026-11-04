@@ -739,7 +739,9 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // MODEL_ROUTER_ID never leaves the renderer — it's how the
   // composer represents "let this account's Settings decide"
   // (modelCatalog.js). The server already treats a null/absent
-  // model as exactly that. With platform UI off, only the operator's
+  // model as exactly that. The Chimera pseudo-model is the opposite: its
+  // id ('chimera') is sent as-is, and the server runs the turn with
+  // Chimera on. With platform UI off, only the operator's
   // picker (lib/modelPicker) sends a model, and App hands it only the
   // models that picker offers. With it off, all callers use
   // operator-configured role settings, including restored tasks.

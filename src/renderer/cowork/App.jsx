@@ -114,7 +114,7 @@ import { recommendedModelOptions, providerValueToType,
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
 import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
-import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
+import { MODEL_ROUTER_ID, MODEL_ROUTER, MODEL_CHIMERA_ID, MODEL_CHIMERA, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { modelPickerMode } from '../lib/modelPicker';
 import {
@@ -1732,8 +1732,11 @@ function AppCore() {
     // the server falls back to this one (providers.build_llm_client), so the
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
+    // Whether the server offers the Chimera pseudo-model, so the composer can
+    // list it under Model Router (mergeRecommendedModels reads it).
+    chimeraAvailable: settings.chimeraAvailable,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, settings.chimeraAvailable, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -2282,7 +2285,9 @@ function AppCore() {
   const currentTaskModel = currentTask?.model
     ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
         ? MODEL_ROUTER
-        : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
+        : currentTask.model === MODEL_CHIMERA_ID
+          ? MODEL_CHIMERA
+          : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
   // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
   // it has one, else whatever the home composer currently shows.
@@ -5593,7 +5598,11 @@ function AppCore() {
   // Model Router isn't a real catalog model — Composer.jsx injects its own
   // pinned row directly, so it must not also get merged in here or it'd
   // show up twice (once pinned, once sorted into the "Other" maker group).
-  const modelOptions = selectedModel && selectedModel.id !== MODEL_ROUTER_ID && !models.some((m) => m.id === selectedModel.id)
+  // Chimera likewise, while the server offers it; a Chimera pick it no longer
+  // offers stays visible the way any other model it stopped listing does.
+  const modelOptions = selectedModel && selectedModel.id !== MODEL_ROUTER_ID
+    && !(selectedModel.id === MODEL_CHIMERA_ID && settings.chimeraAvailable)
+    && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
     : models;
 

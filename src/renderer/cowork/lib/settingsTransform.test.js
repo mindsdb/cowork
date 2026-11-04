@@ -1039,6 +1039,26 @@ describe('mergeRecommendedModels — the gate binding (ENG-1851)', () => {
   });
 });
 
+describe('mergeRecommendedModels — the Chimera flag', () => {
+  it('offers Chimera when the server says chimera_available', () => {
+    expect(mergeRecommendedModels({}, { chimera_available: true }).chimeraAvailable).toBe(true);
+  });
+
+  it('reads an older server that sends no flag as not offering it', () => {
+    expect(mergeRecommendedModels({}, { recommendedModels: {} }).chimeraAvailable).toBe(false);
+  });
+
+  it('lets a live false replace a held true, unlike the catalog maps', () => {
+    const held = { chimeraAvailable: true };
+    expect(mergeRecommendedModels(held, { chimera_available: false }).chimeraAvailable).toBe(false);
+    expect(mergeRecommendedModels(held, { recommendedModels: {} }).chimeraAvailable).toBe(false);
+  });
+
+  it('accepts only a real true', () => {
+    expect(mergeRecommendedModels({}, { chimera_available: 'true' }).chimeraAvailable).toBe(false);
+  });
+});
+
 describe('routerRoleSubtitle (ENG-1851)', () => {
   const labels = { 'minds-cloud': 'MindsHub', anthropic: 'Anthropic' };
 

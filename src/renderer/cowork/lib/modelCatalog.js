@@ -51,6 +51,20 @@ export const MODEL_ROUTER = {
   desc: "Routes to this account's configured model automatically",
 };
 
+// Pseudo-model for MindsHub Chimera: a frontier model plans and reviews while a
+// faster sidekick model does the delegated legwork. Unlike MODEL_ROUTER_ID this
+// id IS sent to the server as the request model — cowork-server runs a turn
+// whose model is `chimera` with Chimera on and stores `chimera` as the
+// conversation's model. Offered only where the server advertises
+// `chimera_available` (settings.chimeraAvailable, see mergeRecommendedModels).
+export const MODEL_CHIMERA_ID = 'chimera';
+export const MODEL_CHIMERA_LABEL = 'Chimera';
+export const MODEL_CHIMERA = {
+  id: MODEL_CHIMERA_ID,
+  name: MODEL_CHIMERA_LABEL,
+  desc: 'A frontier model plans and reviews; a faster model does the legwork',
+};
+
 // ─── Picker sections ────────────────────────────────────────────────
 //
 // Makers are the *icon* identity (one mark per company). Sections are the

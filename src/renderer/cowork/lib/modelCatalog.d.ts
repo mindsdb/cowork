@@ -16,6 +16,7 @@ export interface UnavailableModelFields {
 }
 
 export const MODEL_ROUTER_ID: 'model-router';
+export const MODEL_CHIMERA_ID: 'chimera';
 export const MODEL_RESTRICTED_REASON: 'model_restricted';
 export const RESTRICTED_MODEL_TITLE: string;
 

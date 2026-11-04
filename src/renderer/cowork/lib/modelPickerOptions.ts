@@ -16,6 +16,8 @@ export interface ModelPickerMeta {
   modelDisabledReasons?: Record<string, ModelDisabledReason>;
   /** Per-model reasoning effort levels the gateway advertises: id → { efforts, default }. */
   modelEfforts?: Record<string, { efforts: string[]; default?: string }>;
+  /** The server offers the Chimera pseudo-model (its `chimera_available`); false or absent hides it. */
+  chimeraAvailable?: boolean;
   onRefresh?: () => Promise<unknown> | unknown;
 }
 

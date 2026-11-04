@@ -24,7 +24,7 @@ const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn()
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
 import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles } from './api';
-import { MODEL_ROUTER_ID } from './lib/modelCatalog';
+import { MODEL_CHIMERA_ID, MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
 
@@ -816,6 +816,20 @@ describe('streamNewSession — Model Router translation', () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.model).toBe('sonnet');
+  });
+
+  // Unlike Model Router, the Chimera pseudo-model is the server's to read:
+  // cowork-server turns a request model of `chimera` into a Chimera turn.
+  it('sends the Chimera pseudo-model as model: "chimera"', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { model: MODEL_CHIMERA_ID, onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.model).toBe('chimera');
   });
 });
 

@@ -95,6 +95,13 @@ describe("the operator's model picker with platform UI off", () => {
     expect(screen.queryByText('Operator default')).not.toBeInTheDocument();
   });
 
+  it('offers no Chimera row, even from a server that advertises it', async () => {
+    const user = userEvent.setup();
+    renderComposer({ modelMeta: { ...modelMeta, chimeraAvailable: true } });
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.queryByRole('option', { name: 'Chimera' })).not.toBeInTheDocument();
+  });
+
   it('keeps the picker value for the operator row', () => {
     renderComposer({ model: { id: MODEL_ROUTER_ID, name: 'Model Router' } });
     expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Operator default');
