@@ -24,7 +24,7 @@
 /* The reading column: one measure and side gutter for both surfaces. */
 .chat-column {
   --chat-measure: 720px;
-  --chat-gutter: 28px;
+  --chat-gutter: 40px;
   width: min(var(--chat-measure), calc(100% - (var(--chat-gutter) * 2)));
   margin-inline: auto;
 }
