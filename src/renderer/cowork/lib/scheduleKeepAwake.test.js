@@ -12,14 +12,8 @@ describe('shouldKeepAwake', () => {
     ['a schedule due inside the window', [{ state: 'active', nextRunAt: at(10) }], true],
     ['an overdue schedule', [{ state: 'active', nextRunAt: at(-3) }], true],
     ['a schedule due later', [{ state: 'active', nextRunAt: at(60) }], false],
-    // A daily task whose run failed before it started waits a minute, then
-    // five, for its retry; its next slot is a day away.
-    ['a daily task waiting 60s for a retry', [{ state: 'active', nextRunAt: at(1440), retryAt: at(1) }], true],
-    ['a daily task waiting 300s for a retry', [{ state: 'active', nextRunAt: at(1440), retryAt: at(5) }], true],
-    ['a one-off whose run is waiting to retry (it stays active until its retries end)', [{ state: 'active', cadence: 'once', retryAt: at(1) }], true],
     ['a finished one-off', [{ state: 'done', cadence: 'once', nextRunAt: at(-60) }], false],
     ['a paused schedule due now', [{ state: 'paused', nextRunAt: at(1) }], false],
-    ['a paused schedule with a retry the pause cancelled', [{ state: 'paused', retryAt: at(1) }], false],
     ['an auto-paused schedule', [{ state: 'auto_paused', nextRunAt: at(1) }], false],
     ['a missed one-off', [{ state: 'missed', cadence: 'once', nextRunAt: at(-120) }], false],
     ['an older server without state', [{ enabled: true, nextRunAt: at(10) }], true],

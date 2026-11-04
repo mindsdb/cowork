@@ -2472,7 +2472,7 @@ export default function SettingsView({
       <SettingsGroup title="Desktop">
         <Section
           title="Stay awake for scheduled tasks"
-          subtitle="Keeps this computer from sleeping on its own while a scheduled task is running, about to run, or waiting to retry. The screen can still turn off. It can't wake a computer that's already asleep, and closing the lid or choosing Sleep still sleeps it."
+          subtitle="Keeps this computer from sleeping on its own while a scheduled task is running or about to run. The screen can still turn off. It can't wake a computer that's already asleep, and closing the lid or choosing Sleep still sleeps it."
         >
           <div className="flex items-center">
             <Switch
