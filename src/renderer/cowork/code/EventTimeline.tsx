@@ -27,8 +27,9 @@ import {
 } from './activitySummary';
 import { DiffPatchView } from './DiffPatchView';
 import { accountFailure } from './composerNotices';
-import { CopyResponseButton } from './CopyResponseButton';
 import { ChatScroller } from '../components/chat/ChatScroller';
+import { TurnActions } from '../components/chat/TurnActions';
+import { UserTurn } from '../components/chat/UserTurn';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, compactPath, isActiveStatus } from './presentation';
@@ -615,7 +616,14 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
 // actions, so the actions close the turn.
 function TimelineEvent({ event, copyable = false, changes }: { event: CodingEvent; copyable?: boolean; changes?: ReactNode }) {
   if (event.type === 'user_message') {
-    return <div className="code-user-message" aria-label="Your message">{event.text}</div>;
+    return (
+      <UserTurn
+        className="code-user-turn"
+        content={event.text}
+        turnId={`code-${event.seq}`}
+        actions={<TurnActions text={event.text} copyLabel="Copy message" align="right" />}
+      />
+    );
   }
   if (event.type === 'agent_message') {
     return (
@@ -627,7 +635,7 @@ function TimelineEvent({ event, copyable = false, changes }: { event: CodingEven
           animateStreamingWords={false}
         />
         {changes}
-        {copyable && <CopyResponseButton text={event.text} />}
+        {copyable && <TurnActions text={event.text} copyLabel="Copy response" isLast />}
       </article>
     );
   }
@@ -730,7 +738,7 @@ export const EventTimeline = memo(function EventTimeline({
     <ChatScroller
       stick={stick}
       className="code-timeline scroll-clean"
-      contentClassName="code-timeline__inner"
+      contentClassName="code-timeline__inner chat-column"
       scrollProps={{ 'aria-live': 'polite' }}
     >
       {hiddenCount > 0 && (
