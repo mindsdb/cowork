@@ -1,0 +1,6 @@
+/* Shared chat transcript primitives (components/chat), used by Cowork chat
+   and Code Mode. */
+
+/* The end of the transcript clears the composer floating over it; see
+   useDockInset for how --chat-dock-height is measured. */
+.chat-scroller__content { padding-bottom: calc(var(--chat-dock-height, 0px) + var(--chat-end-gap, 30px)); }
