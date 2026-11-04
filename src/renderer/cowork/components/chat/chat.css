@@ -15,3 +15,23 @@
 @media (max-width: 639.98px) {
   .chat-column { --chat-gutter: 14px; }
 }
+
+/* The composer card (ComposerFrame). One resting shadow token and one quiet
+   focus treatment: the border turns accent, with no ring, as in assistant-ui;
+   t3code and opencode show no focus state at all. */
+.composer-frame {
+  position: relative;
+  background: var(--surface-0);
+  border: 1px solid var(--border-01);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-1);
+  transition: border-color var(--dur-hover), box-shadow var(--dur-hover);
+}
+.composer-frame:has(:where(textarea:focus)),
+.composer-frame.is-focused {
+  border-color: var(--accent);
+}
+.composer-frame.is-dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--sh-1);
+}
