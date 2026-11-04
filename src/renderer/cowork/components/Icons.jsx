@@ -15,12 +15,14 @@
 // button design.
 import {
   AppWindow,
+  ArrowDown,
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
   Bot,
   Box,
   Brain,
+  Building2,
   CalendarClock,
   ChartColumn,
   Check,
@@ -170,6 +172,8 @@ const Ico = {
   key:      ico(KeyRound),
   lock:     ico(Lock),
   people:   ico(Users),
+  // Office block: "Everyone at ‹org›" when sharing.
+  building: ico(Building2),
   // A single person — "created by another member" marker (ENG-2979).
   // Not `people`: that one already means "Restricted" access.
   user:     ico(UserRound),
@@ -194,6 +198,7 @@ const Ico = {
   // Errors the previewed page reported about itself (ENG-3002).
   warning:      ico(TriangleAlert),
   // "Open in the default browser".
+  arrowDown: ico(ArrowDown),
   arrowUpRight: ico(ArrowUpRight),
   // "Insert into the input above" — task-mode sample prompts (ENG-1594).
   arrowUpLeft: ico(ArrowUpLeft, 14),

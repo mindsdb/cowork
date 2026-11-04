@@ -1,13 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', () => ({ authFetch: vi.fn(), BASE: '/api/v1' }));
 
 import {
   artifactRef,
   canUseArtifactWorkspace,
+  createDraftLink,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   requestArtifactExport,
@@ -220,6 +221,40 @@ describe('loadArtifactDraftDocument', () => {
   });
 });
 
+describe('createDraftLink', () => {
+  // A failing test must not leave its queued response to the next describe.
+  afterEach(() => { authFetch.mockReset(); });
+
+  it('asks the server for a signed draft link with a POST', async () => {
+    const link = { url: 'https://draft-staging.mindshub.co/_t/v1.a.b/index.html', expiresAt: 1_900_000_000 };
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(link) });
+
+    await expect(createDraftLink('proj 1', '7db94eb8f0a54c7e9c1d2b3a4f5e6d70')).resolves.toEqual(link);
+
+    expect(authFetch).toHaveBeenLastCalledWith(
+      '/api/v1/artifacts/drafts/proj%201/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/link',
+      { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } },
+    );
+  });
+
+  it('carries the server status and detail on failure', async () => {
+    authFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: () => Promise.resolve({ detail: 'Draft links are not available' }),
+    });
+
+    await expect(createDraftLink('proj-1', '7db94eb8f0a54c7e9c1d2b3a4f5e6d70')).rejects.toMatchObject({
+      status: 404,
+      message: 'Draft links are not available',
+    });
+  });
+
+  it('refuses to call without a full identity', async () => {
+    await expect(createDraftLink('', 'x')).rejects.toThrow('Artifact has no full identity');
+  });
+});
+
 // Callers branch on a refusal's code (409 artifact_owned_by_other_user), so it
 // sits on the error as `code`, the same field the desktop request helper sets.
 describe('workspace request errors', () => {
@@ -250,6 +285,19 @@ describe('workspace request errors', () => {
       status: 400,
       code: null,
       message: 'Bad access',
+    });
+  });
+
+  // A share with everyone the caller may not make: a string detail beside a
+  // top-level code (cowork.services.publish.ShareOrgRequired.refusal).
+  it("puts a refused share's top-level code beside its string detail", async () => {
+    const reason = 'Sharing an artifact with everyone in the organization requires the artifacts.share_org permission or an organization admin.';
+    refuse(403, { detail: reason, code: 'share_org_required' });
+
+    await expect(setArtifactAccess(ARTIFACT, { mode: 'restricted', org_allowed: true })).rejects.toMatchObject({
+      status: 403,
+      code: 'share_org_required',
+      message: reason,
     });
   });
 });

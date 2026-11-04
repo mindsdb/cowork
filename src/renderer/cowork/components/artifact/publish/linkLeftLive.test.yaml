@@ -1,0 +1,27 @@
+# Cases for linkLeftLive.test.js: a server result, and what the person is told.
+# `says` must all be in the message; `silent: true` means no message at all.
+
+stopSharing:
+  - name: a page with no owner record stays live
+    result: { status: ok, takenDown: false, liveLink: "https://view.example/view/a1/", reason: no_owner_record }
+    says: ["couldn’t take this page down", "https://view.example/view/a1/", "Ask your administrator"]
+  - name: another artifact's page id was in this artifact's record
+    result: { status: ok, takenDown: false, liveLink: "https://view.example/view/b2/", reason: other_artifact }
+    says: ["Nothing was taken down", "another artifact’s page", "https://view.example/view/b2/"]
+  - name: the page came down
+    result: { status: ok, takenDown: true, liveLink: null, reason: null }
+    silent: true
+  - name: a server from before these fields
+    result: { status: ok }
+    silent: true
+  - name: a record with no live link
+    result: { status: ok, takenDown: false, liveLink: null, reason: null }
+    silent: true
+
+republish:
+  - name: an Update that shared a new link beside one with no owner record
+    result: { url: "https://view.example/view/new/", replacedLink: "https://view.example/view/old/" }
+    says: ["Shared at a new link", "https://view.example/view/old/", "still shows the earlier version"]
+  - name: an Update that kept the link
+    result: { url: "https://view.example/view/same/", replacedLink: null }
+    silent: true

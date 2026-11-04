@@ -16,6 +16,7 @@ export function ContextBox({
   maxBodyHeight = 360,
   slim = true,
   onAddGoogleDriveFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveFiles,
   onRemoveGoogleDriveFile,
   onAddNotionPages,
@@ -30,6 +31,7 @@ export function ContextBox({
         conversationId={conversationId}
         refreshKey={refreshKey}
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+        onAddSharePointFiles={onAddSharePointFiles}
         onFetchGoogleDriveFiles={onFetchGoogleDriveFiles}
         onRemoveGoogleDriveFile={onRemoveGoogleDriveFile}
         onAddNotionPages={onAddNotionPages}

@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
+import { buildCustomConnectorRequest } from './lib/customConnectorRequest';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
@@ -16,7 +17,7 @@ import { displayToggleMode, nextToggledSkin, styleToggleLabel } from './lib/disp
 import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
-import { ConfirmModal } from './components/ConfirmModal';
+import { ConfirmModal, useConfirm } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
 import { Button, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
@@ -41,6 +42,8 @@ import { projectLabel } from './lib/projectLabel';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
+import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
+import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -60,6 +63,7 @@ import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useNotionPagePicker } from './hooks/useNotionPagePicker';
 import NotionPagePickerModal from './components/NotionPagePickerModal';
 import { useAccountUser } from './hooks/useAccountUser';
+import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
 import { skillScopeKey } from './lib/accountUser';
 import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccountChange } from './lib/accountLocalState';
 import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
@@ -71,7 +75,7 @@ import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
-import { currentTurnAnchorId, dropNoticesFromTurn } from './lib/usageNoticePlacement';
+import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -91,6 +95,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
 import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
 import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
+import { frameScheduler } from './lib/frameScheduler';
 import {
   stripStreaming,
   reconcileTaskMessages,
@@ -109,7 +114,8 @@ import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
@@ -723,16 +729,20 @@ function AppCore() {
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [composerPrefill, setComposerPrefill] = useState(null);
+  // Set by the checklist's "Try an example" row; Home answers it and clears it.
+  const [examplesRequest, setExamplesRequest] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // null = no section selected: the mobile master-detail shows its section
   // list; desktop (no list) falls back to 'agent' where it's read.
   const [settingsSection, setSettingsSection] = useState(null);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
+  const [sharePointSetupOpen, setSharePointSetupOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
+  const [confirmDialog, confirmDialogModal] = useConfirm();
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
   /* Keys (id, else name) of the projects whose DELETE is on the wire. The
@@ -1149,6 +1159,14 @@ function AppCore() {
     return () => clearInterval(timer);
   }, [inFlightSet.size, hasPendingReservationMiss, refreshInFlightSet]);
 
+  // Every queue write goes through here so messageQueueRef stays in step:
+  // stream events in one network read run before any commit, and the queue
+  // drain reads the ref between them. `update` must be pure.
+  const updateMessageQueue = (update) => {
+    setMessageQueue(update);
+    messageQueueRef.current = update(messageQueueRef.current);
+  };
+
   const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
@@ -1158,10 +1176,10 @@ function AppCore() {
     // send, not whatever the composer happens to show when it finally
     // drains (which, for a cross-task drain, belongs to another task).
     const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
-    setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
+    updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
-    setMessageQueue((prev) => {
+    updateMessageQueue((prev) => {
       const arr = (prev[taskId] || []).filter((q) => q.id !== itemId);
       const next = { ...prev };
       if (arr.length === 0) delete next[taskId];
@@ -1170,15 +1188,9 @@ function AppCore() {
     });
   };
   const popQueueHead = (taskId) => {
-    const arr = messageQueueRef.current[taskId] || [];
-    if (arr.length === 0) return null;
-    const [head, ...rest] = arr;
-    setMessageQueue((prev) => {
-      const next = { ...prev };
-      if (rest.length === 0) delete next[taskId];
-      else next[taskId] = rest;
-      return next;
-    });
+    const head = (messageQueueRef.current[taskId] || [])[0];
+    if (!head) return null;
+    removeFromQueue(taskId, head.id);
     return head;
   };
   // When the server mints a canonical id for a task that was streaming under
@@ -1186,13 +1198,13 @@ function AppCore() {
   // The drain finds a task by its queue key, so a queue left under a stale
   // id would never re-match the task (ENG-1378).
   const migrateQueuedMessages = (fromIds, toId) => {
-    setMessageQueue((prev) => mergeQueuesForAdoptedId(prev, fromIds, toId));
+    updateMessageQueue((queues) => mergeQueuesForAdoptedId(queues, fromIds, toId));
   };
 
   const clearQueueForTask = (taskId) => {
-    setMessageQueue((prev) => {
-      if (!prev[taskId]) return prev;
-      const next = { ...prev };
+    updateMessageQueue((queues) => {
+      if (!queues[taskId]) return queues;
+      const next = { ...queues };
       delete next[taskId];
       return next;
     });
@@ -1203,11 +1215,19 @@ function AppCore() {
   const stampUserMessageIdOnTasks = (taskIds, userMessageId) => {
     if (!userMessageId) return;
     const ids = new Set(taskIds.filter(Boolean).map(String));
-    setTasks((prev) => prev.map((t) => {
-      if (!ids.has(String(t.id))) return t;
-      const next = stampUserMessageId(t.messages, userMessageId);
-      return next === t.messages ? t : { ...t, messages: next };
-    }));
+    // Runs on every stream event: returning `prev` when nothing changed keeps
+    // it from re-rendering the app between the paced answer renders.
+    setTasks((prev) => {
+      let changed = false;
+      const next = prev.map((t) => {
+        if (!ids.has(String(t.id))) return t;
+        const messages = stampUserMessageId(t.messages, userMessageId);
+        if (messages === t.messages) return t;
+        changed = true;
+        return { ...t, messages };
+      });
+      return changed ? next : prev;
+    });
   };
 
   // Called from every stream's onEvent, right after reduceStream. Keeps
@@ -1443,13 +1463,8 @@ function AppCore() {
       else delete next[cidToCancel];
       return next;
     };
-    setMessageQueue(withoutQueuedAtClick);
-    /*
-     * Prune the ref in lockstep: the drain below reads messageQueueRef
-     * synchronously and the state→ref effect hasn't run yet, so without this
-     * it would still see (and could re-pick) the dropped messages.
-     */
-    messageQueueRef.current = withoutQueuedAtClick(messageQueueRef.current);
+    // The drain below reads messageQueueRef before the state→ref effect runs.
+    updateMessageQueue(withoutQueuedAtClick);
 
     // Re-read after the awaits above: only the holder clears the shared slot.
     releaseSlotClaim(cidToCancel);
@@ -1837,7 +1852,7 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const visible = appearanceSettings.showDots !== false;
+    const visible = appearanceSettings.showDots === true;
     document.body.classList.toggle('gf-dots-off', !visible);
     window.gravityField?.setActive?.(visible);
   }, [appearanceSettings.showDots]);
@@ -2130,7 +2145,7 @@ function AppCore() {
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
     reloadArtifacts().finally(() => setArtifactsLoaded(true));
     fetchPins().then((data) => setPins(data.pins || []));
-    refreshSchedules();
+    refreshSchedules().catch(() => {});
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
@@ -2350,6 +2365,7 @@ function AppCore() {
     let streamState = initialStreamState();
 
     const flushStreaming = () => {
+      if (!isCurrentStream(taskId, ctrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== taskId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -2367,6 +2383,8 @@ function AppCore() {
       }));
     };
 
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
+
     activeStreamingTaskIdRef.current = taskId;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
     const ctrl = tailInFlight(taskId, {
@@ -2383,9 +2401,10 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(taskId, open._scratchpadTabId);
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onDone() {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(taskId, ctrl);
         releaseStream(taskId, ctrl);
         if (superseded) return;
@@ -2453,6 +2472,7 @@ function AppCore() {
         drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         // Read first, drop second: the record is what answers "am I still the
         // live stream here", so releasing before reading would make every
         // terminal look superseded. Releasing is controller-guarded, so a
@@ -2870,7 +2890,7 @@ function AppCore() {
     } else {
       // No registry entry — fall back to the chat-agent flow. Anton
       // can still walk the user through the change.
-      Promise.resolve().then(() => handleSendFromHome(`Update connection ${connection.name} (${label}).`));
+      Promise.resolve().then(() => sendFromApp(`Update connection ${connection.name} (${label}).`));
     }
   };
   // Cancel a modify-flow task: drop the synthetic chat task we
@@ -2893,7 +2913,7 @@ function AppCore() {
   // to see the connection gone.
   const handleDisconnectFromModify = async (taskId, engine, name) => {
     if (!engine || !name) return;
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    if (!(await confirmDialog({ title: `Disconnect ${engine}/${name}?`, confirmLabel: 'Disconnect', destructive: true }))) return;
     try {
       await deleteDatasource(engine, name);
     } catch (e) {
@@ -2960,6 +2980,14 @@ function AppCore() {
   const handleConnectorPicked = async (connector, { existingName } = {}) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
+    // SharePoint saves only through its own routes, which check the key with
+    // Microsoft first, so it opens its own form instead of a connect chat.
+    if (connector.id === SHAREPOINT_ENGINE) {
+      // The SharePoint routes are refused in org mode; offer the desktop app.
+      if (orgMode) setComingSoonFeature(connector.label || 'SharePoint');
+      else setSharePointSetupOpen(true);
+      return;
+    }
     // Snapshot the origin now, before we switch into the connect task below.
     const originRoute = route;
     const originTaskId = activeTaskId;
@@ -3060,7 +3088,7 @@ function AppCore() {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
-      Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
+      Promise.resolve().then(() => sendFromApp(`Connect ${label}`));
     }
     return tempId;
   };
@@ -3096,6 +3124,15 @@ function AppCore() {
     fetchNotionProjectPages,
     removeNotionProjectPage,
   } = useNotionPagePicker({ selectedProject, setComposerAttachments });
+  const { startSharePointImport, sharePointModals } = useSharePointImport({
+    connections: connectors,
+    orgMode,
+    onConnectionsChanged: () => {
+      fetchDatasources()
+        .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+        .catch(() => setConnectors([]));
+    },
+  });
 
   // Cmd/Ctrl+N follows the workspace on screen while preserving the latest
   // Cowork new-task closure (which captures fresh setRoute/setTasks).
@@ -3223,7 +3260,7 @@ function AppCore() {
       const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
       if (!changes.length) return t;
       const anchorId = currentTurnAnchorId(t.messages);
-      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, anchorId }))] };
+      return { ...t, usageNotices: withUsageNotices(t.usageNotices, changes.map((c) => ({ ...c, createdAt, anchorId }))) };
     }));
   }, [hubUsage, hubUsageCtx.providerType]);
 
@@ -3290,7 +3327,7 @@ function AppCore() {
       setSelectedProject(null);
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     } else if (key === 'scheduled') {
-      refreshSchedules();
+      refreshSchedules().catch(() => {});
     }
   }, [refreshSchedules, reloadArtifacts]);
 
@@ -3637,6 +3674,7 @@ function AppCore() {
     let streamState = initialStreamState();
 
     const flushStreamingMessage = () => {
+      if (!isCurrentStream(resolvedId, sessionCtrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== resolvedId && t.id !== taskId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -3659,6 +3697,7 @@ function AppCore() {
     // stream. Two RAFs give React a guaranteed paint between phases
     // (one to commit the route+task, one to commit the empty mount).
     let sessionCtrl = null;
+    const streamFlush = frameScheduler(() => flushSync(flushStreamingMessage));
     const startConversation = () => {
       setTasks((prev) => prev.map((t) =>
         t.id === taskId
@@ -3687,6 +3726,8 @@ function AppCore() {
       activeStreamProducedRef.current = false; // fresh stream: no events yet
       markInFlight(taskId);
     };
+    // Before the session-start event, which clears the console attribution this reads.
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text) });
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
@@ -3714,7 +3755,7 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(resolvedId || taskId, open._scratchpadTabId);
         }
-        flushSync(() => flushStreamingMessage());
+        streamFlush.request();
       },
       onProgress(event, sid) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
@@ -3729,6 +3770,7 @@ function AppCore() {
         // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId, sessionCtrl);
         releaseStream(resolvedId, sessionCtrl);
         if (superseded) return;
@@ -3812,6 +3854,7 @@ function AppCore() {
         drainNextQueuedMessage(finalId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || taskId, sessionCtrl);
         releaseStream(resolvedId || taskId, sessionCtrl);
         if (superseded) return;
@@ -3834,6 +3877,10 @@ function AppCore() {
     requestAnimationFrame(() => requestAnimationFrame(startConversation));
     return true;
   };
+
+  // A task the app starts for the person (a connector button, an artifact
+  // repair), so analytics can tell it from one they typed.
+  const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
 
   // Send inside an existing task
   //
@@ -4075,6 +4122,17 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       releaseSlotClaim(id);
+      // The send marked the task in flight before uploading. Nothing ran, so
+      // clear it now rather than leave the sidebar's running dot on until the
+      // next in-flight poll.
+      markInFlightDone(id);
+      // Other tasks' messages were queued behind this reservation, so send
+      // the next one now. This task is skipped: retrying its failed upload
+      // straight away would fail again. A send the drain started carries the
+      // tasks its drain chain already skipped, so two tasks whose uploads keep
+      // failing don't hand the slot back and forth: each is tried once, and
+      // the next turn to finish drains them again.
+      drainNextQueuedMessage(null, [...(opts.drainSkipped || []), id]);
       // Make the failure impossible to miss. The inline composer error alone
       // was easy to overlook, so a file that couldn't upload just sat at
       // "Queued" with no visible reason (the exact shape of the stuck-upload
@@ -4154,6 +4212,7 @@ function AppCore() {
     };
 
     const flushStreaming = () => {
+      if (!isCurrentStream(resolvedId || id, ctrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== id && t.id !== resolvedId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -4184,6 +4243,7 @@ function AppCore() {
     // Tag this task as currently streaming so reconcileTaskMessages
     // can distinguish a real in-flight turn from a zombie placeholder.
     activeStreamingTaskIdRef.current = id;
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
     const ctrl = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectId: taskProjectId,
@@ -4206,9 +4266,10 @@ function AppCore() {
         if (open?._scratchpadTabId) {
           setStreamPad(resolvedId || id, open._scratchpadTabId);
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onDone() {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
@@ -4281,6 +4342,7 @@ function AppCore() {
         drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, ctrl);
         releaseStream(resolvedId || id, ctrl);
         if (superseded) return;
@@ -4308,7 +4370,8 @@ function AppCore() {
   // but queues are per-task — so after a turn ends we must sweep every
   // task's queue, not just the finishing one. `preferredTaskId` (the
   // finishing task) is tried first so its own follow-ups keep FIFO order.
-  const drainNextQueuedMessage = (preferredTaskId) => {
+  // `skipTaskIds` lists tasks a failed send already tried in this chain.
+  const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
     if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
@@ -4319,11 +4382,13 @@ function AppCore() {
      * stopped or having a turn deleted is skipped too: Stop drops what was
      * queued before the click, and Stop or the delete drains the rest itself.
      */
+    const skipped = new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere));
+    for (const skipTaskId of skipTaskIds) skipped.add(skipTaskId);
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
       preferredTaskId,
-      new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere)),
+      skipped,
     );
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
@@ -4338,6 +4403,7 @@ function AppCore() {
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
+      drainSkipped: skipped,
     })).catch(() => {
       enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
     });
@@ -4387,7 +4453,7 @@ function AppCore() {
     // (no origin, unreachable chat, a stale resolution) starts a new one.
     if (!target || !conversationId || target.id !== String(conversationId)) {
       // A new chat owes nothing to the composer of the chat that was open last.
-      return handleSendFromHome(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
+      return sendFromApp(prompt, { project, conversationId, disabledConnections: [], attachments: [] });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
     // Every refusal is settled while the viewer is still open to report it:
@@ -4491,6 +4557,7 @@ function AppCore() {
     };
 
     const flushStreaming = () => {
+      if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
       setTasks((prev) => prev.map((t) => {
         if (t.id !== id && t.id !== resolvedId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
@@ -4510,6 +4577,7 @@ function AppCore() {
 
     activeStreamingTaskIdRef.current = id;
     activeStreamProducedRef.current = false; // fresh stream: no events yet
+    const streamFlush = frameScheduler(() => flushSync(flushStreaming));
     // Same superseded guard the other three stream sites carry, in the same
     // order: read → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"
@@ -4574,7 +4642,7 @@ function AppCore() {
             }
           }
         }
-        flushSync(() => flushStreaming());
+        streamFlush.request();
       },
       onChunk(chunk, sid) {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
@@ -4592,6 +4660,7 @@ function AppCore() {
         }
       },
       onDone(sid) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
@@ -4661,12 +4730,25 @@ function AppCore() {
        * drains.
        */
       onError(message) {
+        streamFlush.flushPending();
         const superseded = !isCurrentStream(resolvedId || id, vaultCtrl);
         releaseStream(resolvedId || id, vaultCtrl);
         if (superseded) return;
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(resolvedId, id);
         releaseLiveSteps([resolvedId, id]);
+        // Only a completed response clears the form's spinner, so a failed
+        // or stalled test would otherwise spin with no way to retry.
+        const failedForm = getDataVaultForm(resolvedId || id);
+        if (failedForm?._is_probing) {
+          patchDataVaultForm(resolvedId || id, {
+            form_id: failedForm.form_id,
+            _is_probing: false,
+            _is_success: false,
+            status_text: null,
+            form_error: message || 'Form submission failed.',
+          });
+        }
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -5465,12 +5547,17 @@ function AppCore() {
     let cancelled = false;
     let timer = setTimeout(tick, nextPollDelay(scheduled));
     async function tick() {
-      const list = await refreshSchedules();
-      const known = new Set(tasksRef.current.map((t) => t.id));
-      const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
-      if (hasNewRun) await syncNewConversations();
+      // A failed fetch retries at the floor; letting it throw would end the
+      // poll for good, since only a later tick schedules the next one.
+      let list = null;
+      try {
+        list = await refreshSchedules();
+        const known = new Set(tasksRef.current.map((t) => t.id));
+        const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
+        if (hasNewRun) await syncNewConversations();
+      } catch { /* retried below */ }
       if (cancelled) return;
-      timer = setTimeout(tick, nextPollDelay(list));
+      timer = setTimeout(tick, list ? nextPollDelay(list) : SCHEDULE_POLL_MIN_DELAY_MS);
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
@@ -5634,7 +5721,9 @@ function AppCore() {
       case 'menu':
         return {
           label: 'Display settings',
-          icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
+          // Not sun/moon: this opens both controls, so it must not read as
+          // the direct theme flip.
+          icon: Ico.palette(14),
           onClick: () => setThemeModalOpen(true),
         };
       case 'theme':
@@ -5701,9 +5790,8 @@ function AppCore() {
         />
       )}
 
-      {/* Code has one deliberate entry point while it is opt-in: Settings.
-          Keeping this corner control exclusively about appearance prevents a
-          hidden product from leaking into ordinary Cowork. */}
+      {/* This corner control stays about appearance only. Code is reached
+          through the workspace switch, and turned off in Settings. */}
       {!isMobile && displayToggle && (
         <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
           <Tooltip content={displayToggle.label}>
@@ -5736,6 +5824,7 @@ function AppCore() {
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
           pins={pins}
+          inFlightIds={inFlightSet}
           scheduledCount={scheduled.length}
           projectsCount={projects.length}
           artifactsCount={artifacts.length}
@@ -5794,7 +5883,7 @@ function AppCore() {
           }}
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
-          showCounters={appearanceSettings.showCounters !== false}
+          showCounters={appearanceSettings.showCounters === true}
           navTitle={appearanceSettings.navTitle || null}
           navLogo={appearanceSettings.navLogo || null}
           updateBanner={updateBanner}
@@ -5806,6 +5895,12 @@ function AppCore() {
             // task isn't buried under it.
             if (sidebarPopout) setNavPopoutOpen(false);
             return handleSendFromHome(text);
+          }}
+          // The example row sends nothing: it opens Home with the examples
+          // showing. newTask also closes the popout drawer.
+          onOpenExamples={() => {
+            newTask();
+            setExamplesRequest(Date.now());
           }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
@@ -5887,6 +5982,7 @@ function AppCore() {
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
             onAddNotionPages={handleAddNotionPages}
+            onAddSharePointFiles={startSharePointImport}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
@@ -5904,6 +6000,8 @@ function AppCore() {
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
             onPrefillConsumed={() => setComposerPrefill(null)}
+            examplesRequest={examplesRequest}
+            onExamplesRequestConsumed={() => setExamplesRequest(0)}
             codingModeEnabled={false}
           />
         )}
@@ -5954,6 +6052,7 @@ function AppCore() {
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
             onAddNotionPages={handleAddNotionPages}
+            onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
@@ -6084,6 +6183,7 @@ function AppCore() {
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
             onAddNotionPages={handleAddNotionPages}
+            onAddSharePointFiles={startSharePointImport}
             onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
             onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
             onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
@@ -6265,6 +6365,7 @@ function AppCore() {
               onOpenTasks={openCodingTasks}
               onOpenSkills={openCodingSkills}
               onOpenNewTask={openNewCodingTask}
+              onConnectMindsHub={!ssoConnected && host.isElectron ? handleSsoSignIn : undefined}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
               onAttentionSelect={selectCodingSession}
@@ -6383,6 +6484,19 @@ function AppCore() {
         recents={searchOpen ? searchRecents(tasks, projects) : undefined}
       />
 
+      {sharePointModals}
+
+      <SharePointSetupModal
+        open={sharePointSetupOpen}
+        onClose={() => setSharePointSetupOpen(false)}
+        onSaved={() => {
+          setSharePointSetupOpen(false);
+          fetchDatasources()
+            .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+            .catch(() => setConnectors([]));
+        }}
+      />
+
       <ConnectorPicker
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
@@ -6393,6 +6507,10 @@ function AppCore() {
         onDesktopOnly={(c) => {
           setConnectorPickerOpen(false);
           setComingSoonFeature(c?.label || 'This connector');
+        }}
+        onBuildCustom={(query) => {
+          setConnectorPickerOpen(false);
+          sendFromApp(buildCustomConnectorRequest(query));
         }}
       />
 
@@ -6423,6 +6541,7 @@ function AppCore() {
       />
       )}
 
+      {confirmDialogModal}
       <ConfirmModal
         open={pendingDeleteTaskId != null}
         title="Delete this task?"
@@ -6603,6 +6722,7 @@ function AppCore() {
 
   return (
     <HubUsageContext.Provider value={hubUsageCtx}>
+      <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
       <CoworkProvider value={coworkValue}>
         <CoworkRouterProvider router={routerRef.current} />
       </CoworkProvider>

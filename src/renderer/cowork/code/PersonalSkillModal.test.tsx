@@ -28,6 +28,13 @@ beforeEach(() => {
 });
 
 describe('Personal skills', () => {
+  it('keeps the Write/Import tabs pinned outside the scrolling body', async () => {
+    open();
+    const scroller = (el: Element | null) => el?.closest('[style*="overflow-y: auto"]');
+    expect(scroller(await screen.findByRole('tablist'))).toBeNull();
+    expect(scroller(screen.getByRole('tabpanel'))).not.toBeNull();
+  });
+
   it('creates a skill without Git and does not submit incomplete instructions', async () => {
     open();
     expect(screen.getByRole('button', { name: 'Add skill' })).toBeDisabled();
@@ -105,19 +112,10 @@ describe('Personal skills', () => {
     await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue(skill.name));
   });
 
-  it('waits for delete confirmation and preserves the editor on failure', async () => {
-    vi.mocked(personalSkillsApi.remove).mockRejectedValueOnce(new Error('Cannot delete skill'));
-    const user = userEvent.setup();
+  it('leaves delete to its own flow outside the editor', async () => {
     open(skill.id);
-    await user.click(await screen.findByRole('button', { name: 'Delete skill' }));
-    expect(personalSkillsApi.remove).not.toHaveBeenCalled();
-    const dialog = screen.getByRole('dialog', { name: 'Delete personal skill?' });
-    await user.click(within(dialog).getByRole('button', { name: 'Delete skill' }));
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Cannot delete skill');
-    expect(onSaved).not.toHaveBeenCalled();
-    await user.click(within(dialog).getByRole('button', { name: 'Delete skill' }));
-    expect(personalSkillsApi.remove).toHaveBeenCalledWith(skill.id);
-    expect(onSaved).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue(skill.name));
+    expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument();
   });
 
   it('previews an import without persisting it until Add skill is clicked', async () => {

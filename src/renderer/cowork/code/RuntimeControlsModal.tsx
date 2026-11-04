@@ -55,6 +55,12 @@ export function RuntimeControlsModal({
   const [sandboxBusy, setSandboxBusy] = useState(false);
   const wasOpen = useRef(false);
   const initializedSession = useRef('');
+  const errorRef = useRef<HTMLDivElement>(null);
+  // The form overflows the modal, so an error at its end can land below the
+  // fold. Scroll it into view, next to the footer where the user clicked Apply.
+  useEffect(() => {
+    if (submitError) errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [submitError]);
   useEffect(() => {
     const shouldInitialize = open && (!wasOpen.current || initializedSession.current !== sessionId);
     wasOpen.current = open;
@@ -84,6 +90,10 @@ export function RuntimeControlsModal({
   // Switching to a model that lacks the current level moves to its default, so
   // the update never carries a level the new model cannot run.
   const effortLevels = useMemo(() => effortLevelsFor(draft.model, modelMeta.modelEfforts), [draft.model, modelMeta.modelEfforts]);
+  // The catalog lists levels only for models that have them, so a model
+  // missing from the listing (delisted, or not loaded yet) is unknown, not
+  // level-less. Only a listed model with no levels drops the stored effort.
+  const offersNoEffort = !effortLevels && models.some((model) => model.id === draft.model);
   const chooseModel = (next: string) => {
     setDraft((current) => {
       const levels = effortLevelsFor(next, modelMeta.modelEfforts);
@@ -103,19 +113,22 @@ export function RuntimeControlsModal({
   const apply = async () => {
     setSubmitError('');
     try {
-      await onApply(draft);
+      // A model with no levels rejects any effort, including one the task
+      // still stores from an earlier model. The draft keeps it so switching
+      // back restores it; only the update drops it.
+      await onApply(offersNoEffort ? { ...draft, reasoning_effort: null } : draft);
     } catch (reason) {
-      setSubmitError(reason instanceof Error ? reason.message : 'Could not update task settings.');
+      setSubmitError(reason instanceof Error && reason.message ? reason.message : 'Try again.');
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" dismissible={!busy}>
       <ModalHeader
         id="code-controls-title"
         title="Task settings"
         subtitle="These settings apply to future turns in this coding task."
-        onClose={busy ? undefined : onClose}
+        onClose={onClose}
       />
       <ModalBody>
         <div className="code-controls-grid">
@@ -235,11 +248,14 @@ export function RuntimeControlsModal({
               )}
             </div>
           )}
-          {submitError && <Alert variant="danger" className="code-controls-error">{submitError}</Alert>}
+          {submitError && (
+            <div ref={errorRef} className="code-controls-error">
+              <Alert variant="danger" title="Couldn't apply task settings">{submitError}</Alert>
+            </div>
+          )}
         </div>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>}>
         {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
             itself never shows. The wrapper takes the hover instead. */}
         <Tooltip content={applyBlockedReason}>

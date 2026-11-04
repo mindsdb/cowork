@@ -1,13 +1,13 @@
 import { diagnostic } from '../../shared/diagnostics';
-// The deployment brand a web build with the platform UI off reads at run
-// time. /brand/brand.js (see shared/deployment-brand.ts) sets the global
+// The deployment brand a web build reads at run time, with the platform UI on
+// or off. /brand/brand.js (see shared/deployment-brand.ts) sets the global
 // before the bundle runs; this module reads it once, checks each field on its
-// own, and keeps the result for every surface that asks. Hosted web and
-// desktop never read the global: their load is 'off', and every caller falls
-// back to its stock text, styles and icons.
+// own, and keeps the result for every surface that asks. Desktop never reads
+// the global: its load is 'off', and every caller falls back to its stock
+// text, styles and icons.
 
 import { BRAND_GLOBAL, BRAND_SCRIPT_PATH, PRODUCT_NAME_MAX_LENGTH } from '../../shared/deployment-brand';
-import { PLATFORM_UI } from './deployment';
+import { WEB_BUILD } from './buildTarget';
 
 export interface BrandSkin {
   /** body[data-skin] while the brand's style is on; brand.css styles that selector. */
@@ -32,7 +32,7 @@ export interface DeploymentBrand {
 
 /**
  * What the page got.
- * - off: a build that never loads a brand (platform UI on).
+ * - off: a build that never loads a brand (desktop).
  * - failed: the config didn't load or isn't an object (a 404, an HTML page, a
  *   script error). The page shows stock text and must not save style choices,
  *   since the brand's style isn't registered.
@@ -101,9 +101,9 @@ export function parseDeploymentBrand(raw: Record<string, unknown>): { brand: Dep
   return { brand, dropped };
 }
 
-/** The brand this page got, from the build's platform switch and the global the config set. */
-export function resolveBrandLoad(platformUi: boolean, raw: unknown): BrandLoad {
-  if (platformUi) return { status: 'off' };
+/** The brand this page got, from the build's target and the global the config set. */
+export function resolveBrandLoad(webBuild: boolean, raw: unknown): BrandLoad {
+  if (!webBuild) return { status: 'off' };
   if (!isRecord(raw)) return { status: 'failed' };
   return { status: 'loaded', ...parseDeploymentBrand(raw) };
 }
@@ -119,7 +119,7 @@ function reportBrandLoad(load: BrandLoad): void {
 }
 
 /** Read once, before any surface renders: the config script runs ahead of the bundle. */
-export const BRAND_LOAD: BrandLoad = resolveBrandLoad(PLATFORM_UI, PLATFORM_UI ? undefined : window[BRAND_GLOBAL]);
+export const BRAND_LOAD: BrandLoad = resolveBrandLoad(WEB_BUILD, WEB_BUILD ? window[BRAND_GLOBAL] : undefined);
 reportBrandLoad(BRAND_LOAD);
 
 /** The loaded brand, or null when there is none to apply. */

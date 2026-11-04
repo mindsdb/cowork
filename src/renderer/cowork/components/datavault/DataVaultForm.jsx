@@ -624,7 +624,7 @@ export function DataVaultForm({
                     type="button"
                     onClick={() => isSkipped ? updateField(f.name, values[f.name] ?? '') : skipField(f.name)}
                     disabled={busy}
-                    className="bg-transparent border-0 p-0 font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em]"
+                    className="bg-transparent border-0 p-0 text-xs text-ink-4"
                     style={{ cursor: busy ? 'not-allowed' : 'pointer' }}
                   >{isSkipped ? 'unskip' : 'skip'}</button>
                 )}
@@ -943,7 +943,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 <Badge
                   variant="accent"
                   size="sm"
-                  className="font-mono uppercase tracking-[0.04em]"
+                  className="uppercase tracking-[0.04em]"
                 >Recommended</Badge>
               )}
             </div>

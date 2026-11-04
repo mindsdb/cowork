@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+
+import { getDraftLinks, setDraftLinks } from '../../../lib/draftLinks';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: false,
@@ -25,6 +27,8 @@ const workspaceMock = vi.hoisted(() => ({
 
 const loadArtifactDraftDocument = vi.hoisted(() => vi.fn());
 const loadArtifactDraftText = vi.hoisted(() => vi.fn());
+const createDraftLink = vi.hoisted(() => vi.fn());
+const headerProps = vi.hoisted(() => ({ current: null }));
 const fetchAuthenticatedResponse = vi.hoisted(() => vi.fn());
 
 vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
@@ -41,11 +45,15 @@ vi.mock('../../api', () => ({
 }));
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
-vi.mock('../../lib/artifactWorkspaceApi', () => ({
+// The real artifactRef: a card without a full identity must stay on srcdoc.
+vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
+  artifactRef: (await importOriginal()).artifactRef,
   loadArtifactDraftText,
   loadArtifactDraftDocument,
+  createDraftLink,
 }));
-vi.mock('../../../platform/host', () => ({
+const checkConfigured = vi.hoisted(() => vi.fn());
+vi.mock('../../../platform/host', async (importOriginal) => ({
   host: {
     isElectron: false,
     isWeb: true,
@@ -53,6 +61,8 @@ vi.mock('../../../platform/host', () => ({
     getApiOrigin: () => 'https://cowork.example',
     openExternal: vi.fn(),
     openPath: vi.fn(),
+    openPendingTab: (await importOriginal()).openPendingTab,
+    checkConfigured,
   },
 }));
 vi.mock('./publish/usePublish', () => ({
@@ -84,7 +94,13 @@ vi.mock('./workspace/ArtifactSourceEditor', () => ({ ArtifactSourceEditor: () =>
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
-vi.mock('./ArtifactViewerHeader', () => ({ ArtifactViewerHeader: () => null }));
+// Captured, not rendered: the reload test drives the header's own handler.
+vi.mock('./ArtifactViewerHeader', () => ({
+  ArtifactViewerHeader: (props) => {
+    headerProps.current = props;
+    return null;
+  },
+}));
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
@@ -395,5 +411,304 @@ describe('ArtifactViewer draft text preview', () => {
 
     await screen.findByRole('table');
     expect(loadArtifactDraftText).toHaveBeenCalledWith(draftUrl, { withCredentials: false });
+  });
+});
+
+/*
+ * With draft links on (the deployment's flag from /health), org web navigates
+ * the frame to a signed link on the draft host instead of fetching the HTML
+ * into srcdoc, so the draft follows that host's CSP and CDN scripts, fonts and
+ * images load.
+ */
+describe('ArtifactViewer draft preview through a signed link', () => {
+  const LINK = 'https://draft-staging.mindshub.co/_t/v1.first.sig/index.html';
+  const NEXT_LINK = 'https://draft-staging.mindshub.co/_t/v1.second.sig/index.html';
+  const linked = { ...artifact, projectId: 'proj-1' };
+  let iframeLoading;
+
+  beforeEach(() => {
+    loadArtifactDraftDocument.mockReset();
+    createDraftLink.mockReset();
+    checkConfigured.mockReset();
+    checkConfigured.mockResolvedValue({ configured: true, provider: '', draftLinks: true });
+    headerProps.current = null;
+    setDraftLinks(true);
+    // The frames here point at a live draft host: keep happy-dom from loading them.
+    iframeLoading = window.happyDOM.settings.disableIframePageLoading;
+    window.happyDOM.settings.disableIframePageLoading = true;
+  });
+
+  // Unmount first: a mounted viewer would rerun its preview effect on the
+  // store's reset and fetch into srcdoc with a mock already reset. Spies are
+  // restored here, so a failed expectation never leaves window.open replaced.
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    setDraftLinks(false);
+    window.happyDOM.settings.disableIframePageLoading = iframeLoading;
+  });
+
+  it('navigates the frame to a fresh link and never fetches the draft into srcdoc', async () => {
+    createDraftLink.mockResolvedValue({ url: LINK, expiresAt: 1_900_000_000 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame).not.toHaveAttribute('srcdoc');
+    const src = new URL(frame.getAttribute('src'));
+    expect(`${src.origin}${src.pathname}`).toBe(LINK);
+    expect(src.searchParams.get('v')).toBeTruthy();
+    expect(src.searchParams.get('__antonComments')).toBe('1');
+    expect(createDraftLink).toHaveBeenCalledWith('proj-1', artifact.id);
+    expect(loadArtifactDraftDocument).not.toHaveBeenCalled();
+  });
+
+  it('opens a chat card, which carries no capabilities, through a link too', async () => {
+    createDraftLink.mockResolvedValue({ url: LINK, expiresAt: 1_900_000_000 });
+    const chatCard = { ...linked };
+    delete chatCard.capabilities;
+
+    render(<ArtifactViewer open artifact={chatCard} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame).not.toHaveAttribute('srcdoc');
+    expect(createDraftLink).toHaveBeenCalledWith('proj-1', artifact.id);
+  });
+
+  it('keeps the frame sandboxed without allow-same-origin', async () => {
+    createDraftLink.mockResolvedValue({ url: LINK, expiresAt: 1_900_000_000 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts allow-popups allow-forms allow-modals');
+  });
+
+  // Saving in Edit reloads the preview through this handler.
+  it('asks for a new link when the preview reloads', async () => {
+    createDraftLink
+      .mockResolvedValueOnce({ url: LINK, expiresAt: 1_900_000_000 })
+      .mockResolvedValueOnce({ url: NEXT_LINK, expiresAt: 1_900_000_100 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    act(() => { headerProps.current.actions.onReload(); });
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Launch brief').getAttribute('src')).toContain('/_t/v1.second.sig/');
+    });
+    expect(createDraftLink).toHaveBeenCalledTimes(2);
+  });
+
+  // The comment layer is in the first link already: the artifact's identity,
+  // which a link needs, also gives its comment key.
+  it('asks for no new link when comments are toggled after the preview loads', async () => {
+    createDraftLink.mockResolvedValue({ url: LINK, expiresAt: 1_900_000_000 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    const first = (await screen.findByTitle('Launch brief')).getAttribute('src');
+    act(() => { headerProps.current.review.onToggle(); });
+    await act(async () => { await Promise.resolve(); });
+    act(() => { headerProps.current.review.onToggle(); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(createDraftLink).toHaveBeenCalledTimes(1);
+    expect(screen.getByTitle('Launch brief').getAttribute('src')).toBe(first);
+  });
+
+  it('keeps the srcdoc path when the deployment issues no links', async () => {
+    setDraftLinks(false);
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame).toHaveAttribute('srcdoc');
+    expect(createDraftLink).not.toHaveBeenCalled();
+  });
+
+  // A 404 with links still on is about this artifact: links stay on.
+  it('shows the server error instead of an empty frame when no link is issued', async () => {
+    createDraftLink.mockRejectedValue(Object.assign(new Error('Artifact not found'), { status: 404 }));
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Artifact not found (HTTP 404)')).toBeInTheDocument();
+    expect(screen.queryByTitle('Launch brief')).not.toBeInTheDocument();
+    expect(checkConfigured).toHaveBeenCalled();
+    expect(getDraftLinks()).toBe(true);
+  });
+
+  // Rolled back while the page was open: the server serves no links, and the
+  // same server still serves the draft for srcdoc.
+  it('falls back to srcdoc when /health says links are off after a 404', async () => {
+    createDraftLink.mockRejectedValue(
+      Object.assign(new Error('Draft links are not available'), { status: 404 }),
+    );
+    checkConfigured.mockResolvedValue({ configured: true, provider: '', draftLinks: false });
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTitle('Launch brief')).toHaveAttribute('srcdoc'));
+    expect(screen.queryByText(/Draft links are not available/)).not.toBeInTheDocument();
+    expect(getDraftLinks()).toBe(false);
+    expect(createDraftLink).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls.map(([line]) => JSON.parse(line))).toContainEqual(
+      expect.objectContaining({ event: 'draft_links_off', status_code: 404 }),
+    );
+  });
+
+  // Fake clock: the link's lifetime is counted from when it arrives, so a
+  // real-time expiry a few milliseconds out would race a slow render.
+  it('offers a reload once the link expires, and the reload asks for a new link', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      createDraftLink
+        .mockResolvedValueOnce({ url: LINK, expiresAt: Date.now() / 1000 + 600 })
+        .mockResolvedValueOnce({ url: NEXT_LINK, expiresAt: Date.now() / 1000 + 1800 });
+
+      render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+      await screen.findByTitle('Launch brief');
+      expect(screen.queryByRole('button', { name: /link has expired/ })).not.toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(600_000); });
+      const notice = await screen.findByRole('button', { name: /link has expired/ });
+
+      act(() => { notice.click(); });
+
+      await waitFor(() => {
+        expect(screen.getByTitle('Launch brief').getAttribute('src')).toContain('/_t/v1.second.sig/');
+      });
+      expect(screen.queryByRole('button', { name: /link has expired/ })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows no expiry notice while the link is still valid', async () => {
+    createDraftLink.mockResolvedValue({ url: LINK, expiresAt: Date.now() / 1000 + 1800 });
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 100); }); });
+
+    expect(screen.queryByRole('button', { name: /link has expired/ })).not.toBeInTheDocument();
+  });
+
+  // Embedded content makes no request, so there is no draft on the server to
+  // link to: it renders from its own URL, as with links off.
+  it('keeps an embedded data: draft on its own URL', async () => {
+    const embedded = { ...linked, draftUrl: 'data:text/html;charset=utf-8,%3Ch1%3EHi%3C%2Fh1%3E' };
+
+    render(<ArtifactViewer open artifact={embedded} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame).toHaveAttribute('src', embedded.draftUrl);
+    expect(createDraftLink).not.toHaveBeenCalled();
+  });
+
+  it('keeps links on and shows the error when /health cannot be read', async () => {
+    createDraftLink.mockRejectedValue(
+      Object.assign(new Error('Draft links are not available'), { status: 404 }),
+    );
+    checkConfigured.mockRejectedValue(new Error('offline'));
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Draft links are not available (HTTP 404)')).toBeInTheDocument();
+    expect(getDraftLinks()).toBe(true);
+  });
+
+  it('asks /health nothing for an error other than a 404', async () => {
+    createDraftLink.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('You do not have access to this draft.')).toBeInTheDocument();
+    expect(checkConfigured).not.toHaveBeenCalled();
+    expect(getDraftLinks()).toBe(true);
+  });
+
+  // The link never reaches the frame, and this page's CSP could not frame
+  // another host anyway: links go off, with a warning that says why, and the
+  // preview falls back to srcdoc. Which links are refused: draftLinkRules.test.js.
+  it('refuses a link outside the draft hosts and falls back to srcdoc', async () => {
+    const url = 'https://evil.example/_t/v1.a.b/index.html';
+    createDraftLink.mockResolvedValue({ url, expiresAt: 1 });
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTitle('Launch brief')).toHaveAttribute('srcdoc'));
+    const frame = screen.getByTitle('Launch brief');
+    expect(frame.getAttribute('src') || '').not.toContain(url);
+    expect(frame.getAttribute('srcdoc')).not.toContain(url);
+    expect(getDraftLinks()).toBe(false);
+    expect(createDraftLink).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls.map(([line]) => JSON.parse(line));
+    expect(logged).toContainEqual(expect.objectContaining({ event: 'draft_link_refused', log_level: 'WARNING' }));
+    expect(JSON.stringify(logged)).not.toContain('evil.example');
+  });
+
+  it('keeps a card without a full identity on srcdoc', async () => {
+    loadArtifactDraftDocument.mockResolvedValue(htmlDoc());
+    // A card from before identities were widened: a short id, no stable id.
+    const shortCard = { ...linked, id: 'aaaaaaaa' };
+
+    render(<ArtifactViewer open artifact={shortCard} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame).toHaveAttribute('srcdoc');
+    expect(createDraftLink).not.toHaveBeenCalled();
+  });
+
+  it('keeps the preview on screen when the pop-up is blocked', async () => {
+    createDraftLink.mockResolvedValue({ url: LINK, expiresAt: 1 });
+    render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    vi.spyOn(window, 'open').mockReturnValue(null);
+
+    await act(async () => { await headerProps.current.actions.onOpenInBrowserTab(); });
+
+    expect(screen.getByTitle('Launch brief')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('The browser blocked the new tab.');
+  });
+
+  it('never shows a tab error of one artifact on the next one', async () => {
+    let rejectFirst;
+    createDraftLink
+      .mockResolvedValueOnce({ url: LINK, expiresAt: 1 })
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject; }))
+      .mockResolvedValue({ url: NEXT_LINK, expiresAt: 2 });
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValueOnce(tab).mockReturnValueOnce(null);
+    const { rerender } = render(<ArtifactViewer open artifact={linked} onClose={vi.fn()} />);
+    await screen.findByTitle('Launch brief');
+    let pending;
+    act(() => { pending = headerProps.current.actions.onOpenInBrowserTab(); });
+    // A second click is blocked, so this artifact has a notice before the switch.
+    await act(async () => { await headerProps.current.actions.onOpenInBrowserTab(); });
+    expect(await screen.findByText(/The browser blocked the new tab\./)).toBeInTheDocument();
+    const other = {
+      ...linked,
+      id: 'bbbbbbbbbbbb4bbb8bbbbbbbbbbbbbbb',
+      title: 'Other brief',
+      path: '/artifacts/other/index.html',
+      canonicalPath: '/artifacts/other/index.html',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/bbbbbbbbbbbb4bbb8bbbbbbbbbbbbbbb/index.html',
+    };
+    rerender(<ArtifactViewer open artifact={other} onClose={vi.fn()} />);
+    await screen.findByTitle('Other brief');
+    expect(screen.queryByText(/The browser blocked the new tab\./)).not.toBeInTheDocument();
+
+    await act(async () => {
+      rejectFirst(Object.assign(new Error('Draft links are not available'), { status: 404 }));
+      await pending;
+    });
+
+    expect(screen.queryByText('Draft links are not available (HTTP 404)')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Other brief')).toBeInTheDocument();
   });
 });
