@@ -40,6 +40,7 @@ vi.mock('../../lib/analytics', () => ({
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
+import { host } from '../../../platform/host';
 import { BUDGET_FIELDS, diffSettingsForWrite } from '../../lib/settingsTransform';
 
 // The budget group only renders when the server served every budget key — an
@@ -352,5 +353,40 @@ describe('SettingsView — Advanced Settings collapse', () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByLabelText('Max steps per task')).not.toBeInTheDocument();
+  });
+});
+
+
+describe('SettingsView — limits on hosted web', () => {
+  // Hosted web turns don't receive these limits until the web time limit and
+  // the PR that sends them ship; showing them there would describe limits
+  // those turns don't run under. This suite builds with PLATFORM_UI on, so a
+  // web host here is the hosted app; SettingsView.platformUi.test.jsx covers
+  // self-hosted web, which keeps them.
+  const onWeb = (fn) => () => {
+    host.isWeb = true;
+    try {
+      return fn();
+    } finally {
+      delete host.isWeb;
+    }
+  };
+
+  it('shows neither the switch nor the budgets on hosted web', onWeb(() => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: false, maxTurnTokens: '1250000' }))} />);
+    expect(screen.queryByRole('button', { name: 'Advanced Settings' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Limit how much a task can do' })).not.toBeInTheDocument();
+    for (const label of ['Max steps per task', 'Max auto-continues', 'Max tokens per task']) {
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    }
+  }));
+
+  it('still shows them on desktop', () => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: false, maxTurnTokens: '1250000' }))} />);
+    expandAdvanced();
+    expect(screen.getByRole('switch', { name: 'Limit how much a task can do' })).toBeInTheDocument();
+    for (const label of ['Max steps per task', 'Max auto-continues', 'Max tokens per task']) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument();
+    }
   });
 });

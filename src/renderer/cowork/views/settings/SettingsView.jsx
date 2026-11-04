@@ -1952,7 +1952,12 @@ export default function SettingsView({
           </Section>
         </SettingsGroup>
 
-        {hasBudgetSettings && (
+        {/* Not on hosted web yet: its turns run in a pod that doesn't receive
+            these limits until the web time limit and the PR that sends them
+            ship, so the switch and values here would not be what a hosted web
+            turn runs under. Self-hosted web runs turns in its own server, where
+            they apply. */}
+        {hasBudgetSettings && !(host.isWeb && PLATFORM_UI) && (
           <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
             {hasLimitsSwitch && (
               <Section
