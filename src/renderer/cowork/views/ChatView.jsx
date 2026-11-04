@@ -3140,8 +3140,10 @@ export default function ChatView({
                     conversationLive={false}
                     // Only the latest turn, with nothing in flight, can still
                     // take an answer to a question that timed out: once a newer
-                    // message is sent, the conversation has moved past it.
-                    reopenable={i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
+                    // message is sent, the conversation has moved past it. And
+                    // only where a message can be sent: a comparison pane whose
+                    // side takes no message right now gets no onSend.
+                    reopenable={!!onSend && i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
                     reply={visibleMessages[i + 1]?.role === 'user' && typeof visibleMessages[i + 1].content === 'string'
                       ? visibleMessages[i + 1].content
                       : null}

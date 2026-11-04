@@ -1160,7 +1160,12 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             projects={projects}
             agentLabel={agentLabel}
             onStop={() => stop(label)}
-            onSendHere={(text) => sendToSides(text, sendTargets(label, sideState))}
+            // What the pane itself sends (a pick on a question that timed out)
+            // follows the composer's rules for that side alone, so a pane never
+            // sends what the composer would refuse, or nothing at all.
+            onSendHere={composerBlock(label, sideState, names, { outOfCredits, starting })
+              ? undefined
+              : (text) => sendToSides(text, [label])}
             onContinue={() => setContinuing(label)}
             onCopyRest={async () => {
               // Reloaded either way: a failed retry can still clear the notice

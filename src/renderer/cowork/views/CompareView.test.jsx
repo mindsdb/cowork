@@ -684,6 +684,58 @@ describe('CompareView', () => {
     expect(await screen.findByText('Kimi was continued as a task. Send to Qwen only.')).toBeTruthy();
   });
 
+  // A question that timed out on a side's last turn can be answered from its
+  // pane only where the composer would send to that side: never on a continued
+  // side, where the pick would go nowhere and leave the card stuck.
+  it("answers a side's timed-out question from its pane only while that side takes messages", async () => {
+    const asked = (id) => [
+      { role: 'user', content: 'p', created_at: '2026-09-23T10:00:00Z' },
+      {
+        role: 'assistant',
+        content: 'which database?',
+        created_at: '2026-09-23T10:00:30Z',
+        startedAt: 1,
+        steps: [{
+          id: `question-${id}`,
+          label: 'Question for you',
+          badge: 'AskUser',
+          icon: 'question',
+          status: 'completed',
+          startedAt: 1,
+          completedAt: 2,
+          data: {
+            question_id: `ask:${id}`,
+            prompt: 'Which one?',
+            options: [{ value: 'pg', label: `Postgres ${id}`, detail: '' }],
+            select: 'one',
+            allow_custom: true,
+            timeout_s: 300,
+            answer: { status: 'timeout', values: [], text: '' },
+          },
+          output: null,
+          result: null,
+          _questionKey: `ask:${id}`,
+          _isScratchpad: false,
+          _scratchpadTabId: null,
+        }],
+      },
+    ];
+    const cmp = comparison({
+      sides: comparison().sides.map((side) => (side.label === 'a'
+        ? { ...side, turnCount: 1, continuedAt: '2026-09-30T10:00:00Z', continuedTurnCount: 1, continuedProjectId: 'p-real' }
+        : { ...side, turnCount: 1 })),
+    });
+    await openDetail(cmp, { 'conv-a': session('conv-a', asked('a')), 'conv-b': session('conv-b', asked('b')) });
+
+    const optionA = await screen.findByRole('button', { name: /Postgres a/ });
+    const optionB = screen.getByRole('button', { name: /Postgres b/ });
+    expect(optionA.disabled).toBe(true);
+    expect(optionB.disabled).toBe(false);
+    fireEvent.click(optionB);
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(1));
+    expect(api.streamMessage.mock.calls[0][0]).toBe('conv-b');
+  });
+
   it('takes no follow-up until the task has gone out to both sides, so it cannot overtake it', async () => {
     mockHistory([]);
     api.createComparison.mockResolvedValue(comparison());
