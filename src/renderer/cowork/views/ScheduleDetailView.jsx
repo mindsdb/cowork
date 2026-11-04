@@ -6,10 +6,9 @@
 // is going) and the overflow menu.
 // Summary: project, model and how many runs succeeded.
 // Runs: the collection kit's list, newest first; each row opens the run's
-// conversation, and slots skipped while the app was closed show inline. A
-// failed run's reason is on its status, so the same reason repeated over a
-// streak of failures doesn't fill the list; the alert above says the latest
-// one in full.
+// conversation. A failed run's reason is on its status, so the same reason
+// repeated over a streak of failures doesn't fill the list; the alert above
+// says the latest one in full.
 
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
@@ -23,7 +22,7 @@ import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import { scheduleState, scheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
 import ScheduleRunAlert from '../components/schedule/ScheduleRunAlert';
-import { missedRunPast, missedRunText } from '../lib/scheduleCopy';
+import { missedRunText } from '../lib/scheduleCopy';
 import { describeWhen, timeZoneLabel, whenFromDate } from '../lib/scheduleWhen';
 import { relativeTime } from '../lib/formatTime';
 
@@ -69,19 +68,6 @@ function nextRunText(task, state) {
   if (state !== 'active') return null;
   const when = relativeTime(task.nextRunAt);
   return when ? `Next run ${when}` : null;
-}
-
-function skippedText(period) {
-  const count = period.slotCount;
-  const runs = `${count} ${count === 1 ? 'run' : 'runs'}`;
-  const { absent } = missedRunPast();
-  if (period.reason === 'one_off_missed') return `Its time passed ${absent}.`;
-  const from = absoluteTime(period.firstSlot);
-  const to = absoluteTime(period.lastSlot);
-  const span = from && to && from !== to ? ` (${from} – ${to})` : from ? ` (${from})` : '';
-  // Whether the latest one then ran isn't known here: it ran only if it was
-  // from the last 7 days.
-  return `Skipped ${runs} ${absent}${span}.`;
 }
 
 // A one-off with no time left to run at: it ran, it was missed, or it was
@@ -266,7 +252,6 @@ export default function ScheduleDetailView({
           title={<h2>Runs</h2>}
           meta={loadingRuns ? 'Loading…' : (task.runCount ?? runs.length) || null}
         >
-          {task.lastSkipped && <ListNotice>{skippedText(task.lastSkipped)}</ListNotice>}
           {runs.length === 0 && !loadingRuns && (
             <ListNotice>No runs yet. Click Run now to try it.</ListNotice>
           )}

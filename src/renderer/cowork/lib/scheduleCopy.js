@@ -29,10 +29,3 @@ export function missedOnceTitle(onServer = host.isWeb) {
     ? 'This one-time task’s time passed while the server was down'
     : 'This one-time task’s time passed while MindsHub was closed';
 }
-
-// Why runs were skipped, in the past tense ("while MindsHub was closed").
-export function missedRunPast(onServer = host.isWeb) {
-  return onServer
-    ? { absent: 'while the server was down' }
-    : { absent: 'while MindsHub was closed' };
-}
