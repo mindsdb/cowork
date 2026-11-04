@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
-import { createPortal } from 'react-dom';
 import Ico from './Icons';
+import { ComposerFrame } from './chat/ComposerFrame';
 import { Tooltip } from './ui';
 import { ToggleGroup } from './ui/ToggleGroup';
 import NewProjectModal from './project/NewProjectModal';
@@ -1054,7 +1054,7 @@ export default function Composer({
             <UsageBar warning={reservedBar} />
           </div>
         )}
-        <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
+        <ComposerFrame className={`composer-wrap${inFence ? ' in-fence' : ''}`} focused={focused}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
               just above/below the textarea, not below the toolbar. */}
@@ -1363,6 +1363,11 @@ export default function Composer({
                         className="menu-connectors-accordion__scroll"
                         inert={!connectorsOpen || undefined}
                       >
+                        {connectors.length > 0 && (
+                          <div className="pt-1.5 px-[14px] pb-1 text-[11px] text-ink-4 leading-[1.5]">
+                            Turning one off applies from your next message in this chat.
+                          </div>
+                        )}
                         {connectors.length === 0 ? (
                           <div className="py-2 px-[14px] text-sm text-ink-3">
                             No connectors yet. Add one in{' '}
@@ -1582,7 +1587,7 @@ export default function Composer({
               </Tooltip>
             )}
           </div>
-        </div>
+        </ComposerFrame>
       </div>
 
       {!hideMeta && (
@@ -1777,10 +1782,9 @@ export default function Composer({
         </div>
       )}
 
-      {/* Portaled to <body>: the composer sits inside the boot-fadein
-          wrapper whose persistent transform would otherwise make this
-          fixed-position overlay anchor to the card, not the viewport. */}
-      {newProjectOpen && createPortal(
+      {/* <Modal> portals itself to <body>, clear of the boot-fadein
+          wrapper's transform. */}
+      {newProjectOpen && (
         <NewProjectModal
           open={newProjectOpen}
           onClose={() => setNewProjectOpen(false)}
@@ -1796,8 +1800,7 @@ export default function Composer({
             }
             onProjectChange?.(created);
           }}
-        />,
-        document.body,
+        />
       )}
     </div>
   );

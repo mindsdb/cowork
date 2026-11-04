@@ -4,6 +4,8 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
+import { toCloudSpec } from './lib/cloudConnectorSpec';
+import { toDatasourceRows } from './lib/datasourceConnectionRows';
 import { buildCustomConnectorRequest } from './lib/customConnectorRequest';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
@@ -67,13 +69,14 @@ import { legacyVerdictForSession, purgeStaleAccountState, shouldReloadForAccount
 import { reset as resetOnboardingProgress } from './components/onboarding/onboardingStore';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
+import { usePendingDatasourceRefresh } from './hooks/usePendingDatasourceRefresh';
 import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
-import { currentTurnAnchorId, dropNoticesFromTurn } from './lib/usageNoticePlacement';
+import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -89,7 +92,8 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
-         fetchRecommendedModels, createConversation, revealSettingKey, SHORT_REQUEST_TIMEOUT_MS } from './api';
+         fetchRecommendedModels, createConversation, revealSettingKey,
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
 import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -715,6 +719,11 @@ function AppCore() {
   } = useSchedules();
   const [pins, setPins] = useState([]);
   const [connectors, setConnectors] = useState([]);
+  // Cloud database connections, held apart from `connectors`. That array is
+  // the OAuth one and several paths replace it wholesale, so a datasource
+  // merged into it would vanish the next time one ran — including on a visit
+  // to the connections page.
+  const [datasourceConnectors, setDatasourceConnectors] = useState([]);
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
@@ -731,6 +740,9 @@ function AppCore() {
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
+  const [pendingDisconnect, setPendingDisconnect] = useState(null);
+  const [disconnectBusy, setDisconnectBusy] = useState(false);
+  const [disconnectError, setDisconnectError] = useState('');
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
@@ -1767,6 +1779,37 @@ function AppCore() {
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
+  // One list for the composer's per-conversation toggles: the OAuth
+  // connections and the cloud database ones, each keyed by (engine, name),
+  // which is the pair the server filters a turn's grants on.
+  const composerConnectors = useMemo(
+    // Only a verified database is offered here: the producer grants exactly
+    // those, so listing a pending or failed one with its toggle on would say a
+    // chat can use something it cannot.
+    () => [...connectors, ...datasourceConnectors.filter((c) => c.status === 'connected')],
+    [connectors, datasourceConnectors],
+  );
+  const refreshDatasourceConnectors = useCallback(() => {
+    if (!orgMode) return Promise.resolve();
+    return listDatasourceConnections()
+      .then((rows) => setDatasourceConnectors(toDatasourceRows(rows)))
+      .catch(() => setDatasourceConnectors([]));
+  }, [orgMode]);
+  // Connecting or removing a database happens in two other places — the
+  // connect form's panel and the connections page — and both already announce
+  // it with this event, which is also what the project Context card listens
+  // to. Without this the composer's toggles would keep the boot-time list for
+  // the rest of the session: a connection made now would never appear, and a
+  // removed one would never leave.
+  useEffect(() => {
+    const onChanged = () => { refreshDatasourceConnectors(); };
+    window.addEventListener('anton:connections-changed', onChanged);
+    return () => window.removeEventListener('anton:connections-changed', onChanged);
+  }, [refreshDatasourceConnectors]);
+  // That one refresh lands while a fresh connection can still be pending, and
+  // the composer offers verified connections only, so without this a database
+  // that passes its check a moment later stays absent until a reload.
+  usePendingDatasourceRefresh(datasourceConnectors, refreshDatasourceConnectors, orgMode);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1841,7 +1884,7 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const visible = appearanceSettings.showDots !== false;
+    const visible = appearanceSettings.showDots === true;
     document.body.classList.toggle('gf-dots-off', !visible);
     window.gravityField?.setActive?.(visible);
   }, [appearanceSettings.showDots]);
@@ -2134,10 +2177,11 @@ function AppCore() {
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
     reloadArtifacts().finally(() => setArtifactsLoaded(true));
     fetchPins().then((data) => setPins(data.pins || []));
-    refreshSchedules();
+    refreshSchedules().catch(() => {});
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
+    refreshDatasourceConnectors();
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
@@ -2900,17 +2944,27 @@ function AppCore() {
   // this is destructive and easy to mis-click. After success the
   // user lands back on the Connect Apps grid where they'd expect
   // to see the connection gone.
-  const handleDisconnectFromModify = async (taskId, engine, name) => {
+  const handleDisconnectFromModify = (taskId, engine, name) => {
     if (!engine || !name) return;
-    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    setPendingDisconnect({ taskId, engine, name });
+  };
+
+  const performDisconnect = async ({ taskId, engine, name }) => {
+    setDisconnectError('');
+    setDisconnectBusy(true);
     try {
       await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "WARNING", "connectors_disconnect_failed", '[connectors] disconnect failed', e);
-      alert(`Could not disconnect: ${e?.message || e}`);
+      // Answered in the dialog, which stays open: the connection is still
+      // there and the next thing the person does is try again or give up.
+      setDisconnectError(e?.message || String(e));
+      setDisconnectBusy(false);
       return;
     }
+    setDisconnectBusy(false);
+    setPendingDisconnect(null);
     if (taskId) {
       deletedTaskIdsRef.current.add(taskId);
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
@@ -2966,7 +3020,7 @@ function AppCore() {
     }
   };
 
-  const handleConnectorPicked = async (connector, { existingName } = {}) => {
+  const handleConnectorPicked = async (connector, { existingName, editingConnection = null } = {}) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
     // SharePoint saves only through its own routes, which check the key with
@@ -3042,7 +3096,12 @@ function AppCore() {
       // OAuth (and any other auth shape) submits through the
       // connector-aware save endpoint instead of the legacy
       // datasources path.
-      const connectSpec = {
+      // In cloud a connector whose methods carry a `cloud` block is shaped to
+      // it: that block replaces the desktop fields and copy whole, and a
+      // method without one is not offered, because the relay supports exactly
+      // one method per database connector and refuses the rest. Everything
+      // else, which is every OAuth connector, passes through untouched.
+      const baseSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code
         // (datavault_agent: "Trying to connect to **<engine>**…",
@@ -3059,6 +3118,7 @@ function AppCore() {
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
       };
+      const connectSpec = orgMode ? toCloudSpec(baseSpec, editingConnection) : baseSpec;
       setDataVaultForm(tempId, connectSpec);
       // Remember where to return if the user closes the connect modal
       // before actually connecting — the connect task above is throwaway
@@ -3237,7 +3297,7 @@ function AppCore() {
       const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
       if (!changes.length) return t;
       const anchorId = currentTurnAnchorId(t.messages);
-      return { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt, anchorId }))] };
+      return { ...t, usageNotices: withUsageNotices(t.usageNotices, changes.map((c) => ({ ...c, createdAt, anchorId }))) };
     }));
   }, [hubUsage, hubUsageCtx.providerType]);
 
@@ -3304,7 +3364,7 @@ function AppCore() {
       setSelectedProject(null);
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     } else if (key === 'scheduled') {
-      refreshSchedules();
+      refreshSchedules().catch(() => {});
     }
   }, [refreshSchedules, reloadArtifacts]);
 
@@ -4098,6 +4158,17 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       releaseSlotClaim(id);
+      // The send marked the task in flight before uploading. Nothing ran, so
+      // clear it now rather than leave the sidebar's running dot on until the
+      // next in-flight poll.
+      markInFlightDone(id);
+      // Other tasks' messages were queued behind this reservation, so send
+      // the next one now. This task is skipped: retrying its failed upload
+      // straight away would fail again. A send the drain started carries the
+      // tasks its drain chain already skipped, so two tasks whose uploads keep
+      // failing don't hand the slot back and forth: each is tried once, and
+      // the next turn to finish drains them again.
+      drainNextQueuedMessage(null, [...(opts.drainSkipped || []), id]);
       // Make the failure impossible to miss. The inline composer error alone
       // was easy to overlook, so a file that couldn't upload just sat at
       // "Queued" with no visible reason (the exact shape of the stuck-upload
@@ -4335,7 +4406,8 @@ function AppCore() {
   // but queues are per-task — so after a turn ends we must sweep every
   // task's queue, not just the finishing one. `preferredTaskId` (the
   // finishing task) is tried first so its own follow-ups keep FIFO order.
-  const drainNextQueuedMessage = (preferredTaskId) => {
+  // `skipTaskIds` lists tasks a failed send already tried in this chain.
+  const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
     if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
@@ -4346,11 +4418,13 @@ function AppCore() {
      * stopped or having a turn deleted is skipped too: Stop drops what was
      * queued before the click, and Stop or the delete drains the rest itself.
      */
+    const skipped = new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere));
+    for (const skipTaskId of skipTaskIds) skipped.add(skipTaskId);
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
       preferredTaskId,
-      new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere)),
+      skipped,
     );
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
@@ -4365,6 +4439,7 @@ function AppCore() {
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
+      drainSkipped: skipped,
     })).catch(() => {
       enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
     });
@@ -4698,6 +4773,18 @@ function AppCore() {
         if (activeStreamCtrlRef.current === vaultCtrl) activeStreamCtrlRef.current = null;
         releaseSlotClaim(resolvedId, id);
         releaseLiveSteps([resolvedId, id]);
+        // Only a completed response clears the form's spinner, so a failed
+        // or stalled test would otherwise spin with no way to retry.
+        const failedForm = getDataVaultForm(resolvedId || id);
+        if (failedForm?._is_probing) {
+          patchDataVaultForm(resolvedId || id, {
+            form_id: failedForm.form_id,
+            _is_probing: false,
+            _is_success: false,
+            status_text: null,
+            form_error: message || 'Form submission failed.',
+          });
+        }
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -5496,12 +5583,17 @@ function AppCore() {
     let cancelled = false;
     let timer = setTimeout(tick, nextPollDelay(scheduled));
     async function tick() {
-      const list = await refreshSchedules();
-      const known = new Set(tasksRef.current.map((t) => t.id));
-      const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
-      if (hasNewRun) await syncNewConversations();
+      // A failed fetch retries at the floor; letting it throw would end the
+      // poll for good, since only a later tick schedules the next one.
+      let list = null;
+      try {
+        list = await refreshSchedules();
+        const known = new Set(tasksRef.current.map((t) => t.id));
+        const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
+        if (hasNewRun) await syncNewConversations();
+      } catch { /* retried below */ }
       if (cancelled) return;
-      timer = setTimeout(tick, nextPollDelay(list));
+      timer = setTimeout(tick, list ? nextPollDelay(list) : SCHEDULE_POLL_MIN_DELAY_MS);
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
@@ -5665,7 +5757,9 @@ function AppCore() {
       case 'menu':
         return {
           label: 'Display settings',
-          icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
+          // Not sun/moon: this opens both controls, so it must not read as
+          // the direct theme flip.
+          icon: Ico.palette(14),
           onClick: () => setThemeModalOpen(true),
         };
       case 'theme':
@@ -5766,6 +5860,7 @@ function AppCore() {
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
           pins={pins}
+          inFlightIds={inFlightSet}
           scheduledCount={scheduled.length}
           projectsCount={projects.length}
           artifactsCount={artifacts.length}
@@ -5824,7 +5919,7 @@ function AppCore() {
           }}
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
-          showCounters={appearanceSettings.showCounters !== false}
+          showCounters={appearanceSettings.showCounters === true}
           navTitle={appearanceSettings.navTitle || null}
           navLogo={appearanceSettings.navLogo || null}
           updateBanner={updateBanner}
@@ -5918,7 +6013,7 @@ function AppCore() {
             models={modelOptions}
             modelMeta={modelMeta}
             attachments={composerAttachments}
-            connectors={connectors}
+            connectors={composerConnectors}
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
@@ -5988,7 +6083,7 @@ function AppCore() {
             models={modelOptions}
             modelMeta={modelMeta}
             attachments={composerAttachments}
-            connectors={connectors}
+            connectors={composerConnectors}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
             onAddSharePointFiles={startSharePointImport}
@@ -6114,7 +6209,7 @@ function AppCore() {
             onDeleteProject={handleDeleteProject}
             deletingProjectKeys={deletingProjectKeys}
             attachments={composerAttachments}
-            connectors={connectors}
+            connectors={composerConnectors}
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
@@ -6247,6 +6342,8 @@ function AppCore() {
         {route === 'customize' && (
           <CustomizeView
             connectors={connectors}
+            onEditDatasource={(connection) =>
+              handleConnectorPicked({ id: connection.engine, label: connection.engine }, { editingConnection: connection })}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
             onOpenSettings={openSettings}
@@ -6472,6 +6569,19 @@ function AppCore() {
         onStop={handleServerStop}
       />
       )}
+
+      <ConfirmModal
+        open={pendingDisconnect != null}
+        title={`Disconnect ${pendingDisconnect?.name || 'this connection'}?`}
+        message={`The saved ${pendingDisconnect?.engine || ''} connection and its stored credentials are deleted. You can connect it again later.`}
+        confirmLabel="Disconnect"
+        busyLabel="Disconnecting…"
+        destructive
+        busy={disconnectBusy}
+        error={disconnectError}
+        onClose={() => { setPendingDisconnect(null); setDisconnectError(''); }}
+        onConfirm={() => performDisconnect(pendingDisconnect)}
+      />
 
       <ConfirmModal
         open={pendingDeleteTaskId != null}

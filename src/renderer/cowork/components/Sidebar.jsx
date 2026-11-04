@@ -223,6 +223,7 @@ export default function Sidebar({
   tasksStatus = 'ready',
   onRetryTasks,
   pins = [],
+  inFlightIds = null,
   scheduledCount = 0,
   projectsCount = 0,
   artifactsCount = 0,
@@ -283,7 +284,7 @@ export default function Sidebar({
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
-  showCounters = true,
+  showCounters = false,
   // Settings → Appearance → Sidebar title/logo. Replaces the "MindsHub"
   // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,
@@ -329,14 +330,16 @@ export default function Sidebar({
   );
 
   // A task is "currently active" if any of its messages carries a
-  // live `_streaming` placeholder — the same signal the chat view
-  // uses to know a turn is in flight. Derived directly from messages
-  // so the dot lights up the moment the stream starts and clears the
-  // moment onDone/onError strips the placeholder. No new wire from
-  // App.jsx needed; `tasks` already carries the messages array.
+  // live `_streaming` placeholder (this window is streaming it) or the
+  // server lists its conversation as in flight. The placeholder alone
+  // isn't enough: a reload drops it, and it only comes back once the
+  // task is opened and re-attaches, so a still-running task lost its
+  // dot until then. The server list is fetched at boot, so it covers
+  // that gap, as well as turns started from another client.
   const activeTaskIds = new Set(
     tasks
-      .filter((t) => (t.messages || []).some((m) => m && m.role === '_streaming'))
+      .filter((t) => inFlightIds?.has?.(t.id)
+        || (t.messages || []).some((m) => m && m.role === '_streaming'))
       .map((t) => t.id)
   );
 
@@ -854,7 +857,7 @@ export default function Sidebar({
               className="recents-show-more mt-1.5 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-between gap-2 hover:bg-surface-2 hover:border-line hover:text-ink [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease]"
             >
               <span>Show more</span>
-              <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4">
+              <span className="text-xs tabular-nums text-ink-4">
                 +{recentsAll.length - recents.length}
               </span>
             </button>
@@ -879,7 +882,7 @@ export default function Sidebar({
             </span>
           );
           const action = updateBanner.actionLabel ? (
-            <span className={`text-2xs font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold ${tone.action}`}>
+            <span className={`text-2xs tracking-[0.03em] uppercase font-semibold ${tone.action}`}>
               {updateBanner.actionLabel}
             </span>
           ) : null;

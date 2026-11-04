@@ -798,10 +798,13 @@ export function trackTurnFailed(conversationId, event) {
 //
 // `workspaceMode` is 'code' when Code Mode sent them and omitted otherwise, so
 // every existing chat-side series keeps its meaning.
-export function trackBillingOpened(trigger, workspaceMode) {
+// `kind` names which in-chat usage notice was clicked ('free_low', 'free_used',
+// 'auto_top_up_failed'), so `usage_alert` can be split by notice.
+export function trackBillingOpened(trigger, workspaceMode, kind) {
   capture(EVENTS.BILLING_OPENED, {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,
+    kind: kind || undefined,
   });
 }
 

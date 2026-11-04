@@ -37,20 +37,31 @@ export default function ComingSoonModal({ feature, onClose }) {
             : 'available in this deployment.'}
         </p>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={onClose}>
-          {PLATFORM_UI ? 'Not now' : 'Close'}
-        </Button>
-        {PLATFORM_UI && <Button
-          variant="primary"
-          onClick={() => {
-            host.openExternal(DOWNLOAD_URL);
-            onClose();
-          }}
+      {PLATFORM_UI ? (
+        <ModalFooter
+          cancel={(
+            <Button variant="subtle" onClick={onClose}>
+              Not now
+            </Button>
+          )}
         >
-          Download the app
-        </Button>}
-      </ModalFooter>
+          <Button
+            variant="primary"
+            onClick={() => {
+              host.openExternal(DOWNLOAD_URL);
+              onClose();
+            }}
+          >
+            Download the app
+          </Button>
+        </ModalFooter>
+      ) : (
+        <ModalFooter>
+          <Button variant="subtle" onClick={onClose}>
+            Close
+          </Button>
+        </ModalFooter>
+      )}
     </Modal>
   );
 }

@@ -6,7 +6,7 @@
 // active theme automatically.
 
 import {
-  Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef,
+  Children, cloneElement, createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef,
 } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -623,7 +623,12 @@ export function MarkdownPlainText({ children }) {
   );
 }
 
-export function MarkdownContent({
+// Memoized because react-markdown re-runs its whole parse pipeline on every
+// render: without it, each streamed event re-parses every message already in
+// the transcript. Props are primitives apart from the figure props, which
+// callers keep referentially stable for a settled message, so the shallow
+// compare is exact.
+export const MarkdownContent = memo(function MarkdownContent({
   text,
   id,
   complete = true,
@@ -870,7 +875,7 @@ export function MarkdownContent({
       if (href.startsWith('engram:')) {
         return (
           <span
-            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-[10.5px] font-mono text-ink-3 leading-[1.4] no-underline"
+            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-xs text-ink-3 leading-[1.4] no-underline"
             // Strip the children's <a> wrapper styling — react-markdown
             // hands us the linkified text as plain text children, so
             // we render straight into the chip.
@@ -981,4 +986,4 @@ export function MarkdownContent({
       </FigureSourcesContext.Provider>
     </div>
   );
-}
+});

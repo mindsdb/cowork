@@ -311,7 +311,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
   };
 
   return (
-    <Modal open={open} onClose={onClose} width="549px" labelledBy="upload-skill-title">
+    <Modal open={open} onClose={onClose} width="min(549px, 92vw)" labelledBy="upload-skill-title" dismissible={!busy}>
       <ModalHeader id="upload-skill-title" title="Upload Skill Files" subtitle="Upload a .md or .skill file to import a skill." onClose={onClose} />
       <ModalBody padding="20px">
         <div className="flex flex-col gap-4">
@@ -386,8 +386,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError, canShare = false })
 
         </div>
       </ModalBody>
-      <ModalFooter align="space-between">
-        <Button variant="subtle" onClick={onClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>}>
         {file && (
           <Button variant="primary" disabled={busy} onClick={upload}>
             {!busy && Ico.upload(14)}
@@ -862,15 +861,18 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             subtitle="Extend Cowork's capabilities with task-specific skills"
             actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />}
           />
-          <FilterRow
-            search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" />}
-            sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
-            counts={skills === null || skills.length === 0 ? null : (
-              search.trim()
-                ? `${sorted.length} of ${skills.length} skills`
-                : `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`
-            )}
-          />
+
+          {(skills === null || skills.length > 0) && (
+            <FilterRow
+              search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" />}
+              sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
+              counts={skills === null || skills.length === 0 ? null : (
+                search.trim()
+                  ? `${sorted.length} of ${skills.length} skills`
+                  : `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`
+              )}
+            />
+          )}
           {mindsHubNotice && <div className={`${LIST_CLASS} mb-4`}>{mindsHubNotice}</div>}
           {sharingStatus === LOAD_STATUS.ERROR ? (
             <div className={LIST_CLASS}>
@@ -886,9 +888,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               skeleton="group"
               skeletonClassName={LIST_CLASS}
               empty={{
-                icon: <span className="inline-flex text-ink-4">{Ico.cube(32)}</span>,
+                icon: Ico.cube(20),
                 title: 'No saved skills yet',
-                style: { flex: 1 },
+                description: 'Write a skill, upload a SKILL.md, or ask Cowork to make one.',
+                action: { label: 'Write your first skill', onClick: startNew },
+                className: 'mx-8 mb-8',
               }}
             >
               {orgSharingOn ? (

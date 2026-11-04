@@ -2337,6 +2337,61 @@ export function importSharePointFiles(projectName, { connection, site, driveId, 
 
 // ─── Connector registry ─────────────────────────────────────────────
 //
+// ── Cloud datasource connections ─────────────────────────────────────────
+//
+// The relay at /connectors/datasources/ is the hosted path for PostgreSQL and
+// MySQL: auth holds the encrypted credential and this server never sees it
+// again after the create. Every route here is org-mode only (the server
+// answers 404 outside it by design), so the gate below keeps the desktop
+// connections page from showing an error banner it can do nothing about.
+//
+// A created or edited connection comes back `pending`: auth marks it so and
+// only the gateway's probe completion moves it to verified or failed, so a
+// caller shows that state and refreshes rather than waiting on the response.
+function requireOrgMode(what) {
+  if (!getOrgMode()) {
+    throw new Error(`${what} is a cloud-only feature`);
+  }
+}
+
+const DATASOURCES = '/connectors/datasources/';
+
+export async function listDatasourceConnections() {
+  requireOrgMode('Cloud database connections');
+  return req(DATASOURCES);
+}
+
+export async function createDatasourceConnection(payload) {
+  requireOrgMode('Connecting a cloud database');
+  return req(DATASOURCES, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getDatasourceConnection(connectionId) {
+  requireOrgMode('Cloud database connections');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`);
+}
+
+// `expectedRevision` is the connection revision the form was opened against;
+// auth moves it on every edit, a rename included. The relay refuses with code
+// `stale_version` when it has moved, the only way to tell a conflict apart.
+export async function editDatasourceConnection(connectionId, payload, expectedRevision) {
+  requireOrgMode('Editing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, expected_revision: expectedRevision }),
+  });
+}
+
+export async function deleteDatasourceConnection(connectionId) {
+  requireOrgMode('Removing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+export async function retryDatasourceValidation(connectionId) {
+  requireOrgMode('Retrying a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)
@@ -2554,7 +2609,9 @@ export function streamDataVaultSubmission({
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed: a partial answer is not a
+      // finished one, and the form is still waiting on its result.
+      onError?.('The form submission was interrupted before it finished. Please try again.');
     } catch (err) {
       // Our own idle abort surfaces as an AbortError too, so check it first.
       if (idledOut) onError?.('The form submission stalled and was ended. Please try again.');
@@ -2852,20 +2909,40 @@ export async function deleteChannelBinding(bindingId) {
 // ─── Attachments And Context ───────────────────────────────────────────────
 
 /** POST /v1/attachments/{project_name}/{session_id}/upload — response body is a JSON array of file attachments. */
-export async function uploadAttachments(files, { projectName, sessionId } = {}) {
+/* A send holds the app-wide stream slot while its files upload, so an upload
+   that never answers blocks every send until a reload. The bound grows with
+   the payload, so a large file on a slow link still has time to finish. */
+const UPLOAD_TIMEOUT_BASE_MS = 60_000;
+const UPLOAD_MIN_BYTES_PER_MS = 128; // ~1 Mbit/s
+
+export function uploadTimeoutMs(totalBytes) {
+  return UPLOAD_TIMEOUT_BASE_MS + Math.ceil((Number(totalBytes) || 0) / UPLOAD_MIN_BYTES_PER_MS);
+}
+
+export async function uploadAttachments(files, { projectName, sessionId, timeoutMs } = {}) {
   if (!projectName || !sessionId) {
     throw new Error('Open a saved task before attaching files (project and conversation id are required).');
   }
   const enc = encodeURIComponent;
   const form = new FormData();
-  Array.from(files).forEach((file) => form.append('files', file));
-  const res = await authFetch(
-    `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
-    { method: 'POST', body: form },
-  );
-  if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+  const list = Array.from(files);
+  list.forEach((file) => form.append('files', file));
+  const totalBytes = list.reduce((sum, file) => sum + (file?.size || 0), 0);
+  const { signal, cancel } = _timeoutSignal(null, timeoutMs ?? uploadTimeoutMs(totalBytes));
+  try {
+    const res = await authFetch(
+      `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
+      { method: 'POST', body: form, signal },
+    );
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (signal?.aborted) throw new Error('The file upload stopped responding. Please try again.');
+    throw err;
+  } finally {
+    cancel();
+  }
 }
 
 /** GET /v1/attachments/{project_name}/{session_id} — response body is a JSON array. */
@@ -3205,7 +3282,7 @@ export const MOCK_DATA = {
     // Flat background by default; opt back into the animated dot grid via
     // Settings → Personalization → Animated background.
     showDots: false,
-    showCounters: true,
+    showCounters: false,
     accentVariant: 'aqua',
     planningProvider: 'minds-cloud',
     planningModel: 'latest:sonnet',
