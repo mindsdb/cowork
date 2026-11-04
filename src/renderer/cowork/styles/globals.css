@@ -247,6 +247,19 @@ body, body[data-theme="light"] {
   --stone-200: var(--surface-3);
   --stone-300: var(--line-2);
   --stone-400: var(--ink-4);
+
+  /* Docs' status tones and chart series. With the theme, not on the doc pane:
+     a status cell's menu portals out of the pane and still needs them.
+     Status chips: each tone a tinted wash + an ink that clears 4.5:1 on it. */
+  --tone-gray-bg: #EEEFF0;   --tone-gray-ink: #4A4F55;
+  --tone-blue-bg: #E3EEFB;   --tone-blue-ink: #1C5296;
+  --tone-green-bg: #E1F3E6;  --tone-green-ink: #1C6236;
+  --tone-yellow-bg: #FBF0D5; --tone-yellow-ink: #6E5010;
+  --tone-red-bg: #FBE5E2;    --tone-red-ink: #922B20;
+  --tone-purple-bg: #EEE7FA; --tone-purple-ink: #553789;
+  /* Charts: the validated reference categorical order (dataviz palette.md). */
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #4a3aa7; --series-8: #e34948;
 }
 
 /* ─── Motion tokens ──────────────────────────────────────────────────────
@@ -414,6 +427,16 @@ body[data-theme="dark"] {
   /* Primary-tinted chips / nav.primary hover still point at the light
      --primary-50 ice colour; swap to the dark accent wash. */
   --primary-50: var(--accent-bg);
+
+  /* Status tones and chart series (docs), stepped for dark. */
+  --tone-gray-bg: #2C2F33;   --tone-gray-ink: #C9CDD2;
+  --tone-blue-bg: #18304D;   --tone-blue-ink: #A9CBF5;
+  --tone-green-bg: #173826;  --tone-green-ink: #9FDCB2;
+  --tone-yellow-bg: #3B3014; --tone-yellow-ink: #F0D08A;
+  --tone-red-bg: #45201C;    --tone-red-ink: #F4ADA4;
+  --tone-purple-bg: #2E2346; --tone-purple-ink: #CDB8F3;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
 }
 
 /* Emphasis in dark mode: bold is the brightest ink, italics stay italic.
