@@ -87,7 +87,7 @@ describe('postDocOps', () => {
   it('sends the body the local server reads', async () => {
     api.authFetch.mockResolvedValue({ ok: true, json: async () => ({ doc: { rev: 5 } }) });
     const ops = [{ op: 'delete', target: ['b_1'] }];
-    await postDocOps('p1', 'a1', { ops, tab: 't_1', clientId: 'client_1' });
+    await postDocOps('p1', 'a1', { ops, tab: 't_1', clientId: 'client_1', baseRev: 4 });
     const [url, init] = api.authFetch.mock.calls[0];
     expect(url).toBe('/api/v1/docs/p1/a1/ops');
     expect(init.method).toBe('POST');

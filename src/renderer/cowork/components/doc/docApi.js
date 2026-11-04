@@ -30,6 +30,8 @@ export const fetchDoc = (projectRef, artifactId) => call(docPath(projectRef, art
 // it is not known then, so useDoc rereads the doc rather than send it again.
 const OPS_TIMEOUT_MS = 30_000;
 
+// The local server rebases every edit onto the doc as it stands, so the
+// `baseRev` useDoc passes (for a transport with a stale guard) is not sent.
 export async function postDocOps(projectRef, artifactId, { ops, tab, clientId }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), OPS_TIMEOUT_MS);

@@ -34,6 +34,7 @@ import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
+import { docEditorEnv } from './doc-editor-env';
 import {
   hasPendingCredentialClear,
   installedServerClearsPendingCredentials,
@@ -917,6 +918,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // both dev (raw node_modules/electron) and packaged builds (the
       // shipped product binary), with no app.isPackaged branching needed.
       ANTON_HTML_LINT_BROWSER: process.execPath,
+      // The owner editor for shared docs' pages (see doc-editor-env).
+      ...docEditorEnv({
+        preset: process.env.COWORK_DOC_EDITOR_DIR,
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        distDir: path.join(__dirname, '..', '..'),
+        exists: fs.existsSync,
+      }),
       ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
       // Last, so an account's own root wins over the build-kind home. Empty for
       // the account that owns the default root, which is what leaves prod's
