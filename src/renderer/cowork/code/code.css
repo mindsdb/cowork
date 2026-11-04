@@ -81,7 +81,12 @@
 .code-sidebar-session-row:hover .code-sidebar-session__aside,
 .code-sidebar-session-row:focus-within .code-sidebar-session__aside,
 .code-sidebar-session-row:has(.code-sidebar-session__menu[data-popup-open]) .code-sidebar-session__aside { opacity: 0; }
-.code-sidebar-session__title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+.code-sidebar-session__title { min-width: 0; flex: 1; font-size: 13px; font-weight: 500; }
+/* The title fades out at its end like Cowork's rows (.recent-row__title).
+   Without an aside holding the row's end, the menu button floats over the
+   title, so while it shows the fade finishes clear of it. */
+.code-sidebar-session-row:not(.has-aside):is(:hover, :focus-within) .code-sidebar-session__title,
+.code-sidebar-session-row:not(.has-aside):has(.code-sidebar-session__menu[data-popup-open]) .code-sidebar-session__title { --title-clip: 20px; }
 .code-sidebar-session__aside { flex: none; max-width: 45%; display: inline-flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; color: var(--ink-4); font-size: 11px; font-variant-numeric: tabular-nums; transition: opacity var(--dur-hover) ease; }
 .code-sidebar-session__aside.is-warning { color: var(--warning); }
 .code-sidebar-session__aside.is-danger { color: var(--danger); }
