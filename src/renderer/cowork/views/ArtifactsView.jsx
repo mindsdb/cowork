@@ -43,8 +43,11 @@ import {
 } from '../lib/artifactKinds';
 import { canPreviewDocument } from '../preview/kinds';
 import { trackArtifactPublished } from '../lib/analytics';
+import { askAgentAbout } from '../lib/docViewContext';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
+import DocModal from '../components/doc/DocModal';
+import { docPageTarget, isDocArtifact } from '../components/doc/docArtifact';
 import {
   AccessChooser,
   accessDraftFromArtifact,
@@ -397,6 +400,9 @@ async function openUrl(url) {
   try { await host.openExternal(url); } catch {}
 }
 
+// The file to hand the OS for an artifact: a doc's is its page.
+const fileToOpen = (artifact) => docPageTarget(artifact) || artifact;
+
 // How a row or a grid card opens. `liveAppAddress` is where an unpublished
 // live app runs (liveAppOpenAddress), '' while it isn't running.
 function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppAddress = '' } = {}) {
@@ -413,10 +419,10 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
    * page, then to a download. Desktop hands an image to the default app; with
    * no shell to hand it to, the viewer shows it, as the chat card does. The
    * document types join both previews wherever the shared document gate
-   * allows them.
+   * allows them. A doc opens in the doc editor in both deployments.
    */
   const hasBridge = host.isElectron;
-  const canPreviewDoc = canPreviewDocument(artifact, host);
+  const canPreviewDoc = canPreviewDocument(artifact, host) || isDocArtifact(artifact);
   const target = artifactOpenTarget({
     orgMode,
     published,
@@ -436,7 +442,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
     if (target === 'preview') onOpenViewer?.(artifact);
     else if (target === 'download') downloadWithFeedback(artifact, toastManager, { note: noPreviewDownloadedNote() });
     else if (published) openUrl(artifact.publishedUrl);
-    else if (target === 'os') openArtifactFile(artifact);
+    else if (target === 'os') openArtifactFile(fileToOpen(artifact));
   };
   /* ↗ skips the viewer: the shared page, else the serve URL, else the file.
      Org mode has no serve URL and no local file, so there ↗ opens only the
@@ -449,7 +455,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
     }
     const url = published ? artifact.publishedUrl : privateUrl;
     if (url) await openUrl(url);
-    else if (!orgMode) openArtifactFile(artifact);
+    else if (!orgMode) openArtifactFile(fileToOpen(artifact));
   };
   /* Org mode offers ↗ only once a shared link exists, the same rule as its
      "Open shared link" menu item; an unshared file saves from the menu's
@@ -735,6 +741,8 @@ export default function ArtifactsView({
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
+  // "Edit with agent" in a doc opened here: `{ artifact, message, docRequest }`.
+  onEditDocWithAgent,
   agentLabel = 'the agent',
   // True until the app's first artifacts fetch settles; shows skeletons.
   loading = false,
@@ -1163,8 +1171,21 @@ export default function ArtifactsView({
         )}
       </CollectionState>
 
+      {/* A doc opens in the doc editor; every other artifact in the file viewer. */}
+      {viewer && isDocArtifact(viewer) && (
+        <DocModal
+          artifact={viewer}
+          onClose={() => setViewerPath(null)}
+          onAskAgent={onEditDocWithAgent ? (ask) => {
+            // Sent as the doc beside a chat sends it: the host takes it to the
+            // doc's chat (or a new one) with the doc docked there.
+            setViewerPath(null);
+            onEditDocWithAgent({ artifact: viewer, ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask) });
+          } : undefined}
+        />
+      )}
       <ArtifactViewer
-        open={!!viewer}
+        open={!!viewer && !isDocArtifact(viewer)}
         artifact={viewer}
         onClose={() => setViewerPath(null)}
         onChange={updateOne}
@@ -1269,7 +1290,7 @@ export default function ArtifactsView({
                 if (a.publishedUrl) {
                   try { await host.openExternal(a.publishedUrl); } catch {}
                 } else {
-                  openArtifactFile(a);
+                  openArtifactFile(fileToOpen(a));
                 }
               },
             });

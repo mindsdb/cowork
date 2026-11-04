@@ -1,4 +1,4 @@
-// DocPane — a doc open beside the chat.
+// DocPane — a doc open beside the chat (or in a modal from the library).
 //
 // Header: title, live state ("Agent is writing", "Saving…"), export, share,
 // expand and close. It saves itself as you type, like a Google Doc: no save
@@ -87,7 +87,7 @@ export function writeErrorText(e) {
 }
 
 export default function DocPane({
-  projectRef, artifactId, title: fallbackTitle, expanded = false, fillsWindow = false,
+  projectRef, artifactId, title: fallbackTitle, variant = 'side', expanded = false, fillsWindow = false,
   onToggleExpand, onClose, onAskAgent, onViewChange,
 }) {
   const {
@@ -352,7 +352,7 @@ export default function DocPane({
   return (
     <section
       ref={rootRef}
-      className={`doc-root doc-pane ${narrow ? 'doc-root--narrow' : ''}`}
+      className={`doc-root ${variant === 'modal' ? 'doc-pane--modal' : 'doc-pane'} ${narrow ? 'doc-root--narrow' : ''}`}
       data-corner={headerCorner({ fillsWindow, expanded })}
       aria-label={doc?.title || fallbackTitle || 'Doc'}
       onKeyDownCapture={onKeyDownCapture}
