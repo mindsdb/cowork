@@ -51,6 +51,8 @@ export interface TooltipProps {
   // Overrides the `--tooltip-delay` token for this one tooltip.
   delay?: number;
   className?: string;
+  // Skip the hint-bubble skin, for a richer preview its className styles.
+  unstyled?: boolean;
 }
 
 const POPUP_STYLE: CSSProperties = {
@@ -74,6 +76,7 @@ export interface TooltipBubbleProps {
   side?: 'top' | 'bottom' | 'left' | 'right';
   sideOffset?: number;
   className?: string;
+  unstyled?: boolean;
   // The element the bubble points at, when no Trigger of its Root does.
   anchor?: RefObject<Element | null>;
   onPointerEnter?: PointerEventHandler<HTMLDivElement>;
@@ -89,6 +92,7 @@ export function TooltipBubble({
   side = 'bottom',
   sideOffset = 8,
   className,
+  unstyled,
   anchor,
   onPointerEnter,
   onPointerLeave,
@@ -98,7 +102,7 @@ export function TooltipBubble({
       <BaseTooltip.Positioner anchor={anchor} side={side} sideOffset={sideOffset} style={{ zIndex: 2000 }}>
         <BaseTooltip.Popup
           className={className}
-          style={POPUP_STYLE}
+          style={unstyled ? undefined : POPUP_STYLE}
           onPointerEnter={onPointerEnter}
           onPointerLeave={onPointerLeave}
         >
@@ -116,6 +120,7 @@ export function Tooltip({
   sideOffset = 8,
   delay,
   className,
+  unstyled,
 }: TooltipProps) {
   // No content → render the trigger bare so callers can pass a
   // possibly-empty label without branching.
@@ -123,7 +128,7 @@ export function Tooltip({
   return (
     <BaseTooltip.Root>
       <BaseTooltip.Trigger delay={delay ?? tokenDelay()} render={children} />
-      <TooltipBubble side={side} sideOffset={sideOffset} className={className}>
+      <TooltipBubble side={side} sideOffset={sideOffset} className={className} unstyled={unstyled}>
         {content}
       </TooltipBubble>
     </BaseTooltip.Root>

@@ -38,6 +38,7 @@ export interface MarkdownContentProps {
   animateStreamingWords?: boolean;
   isAssistant?: boolean;
   softBreaks?: boolean;
+  codeOverflowCue?: boolean;
   neutralizeLoopback?: boolean;
   figureSources?: MarkdownFigure[] | null;
   onOpenFigureStep?: ((stepId: string) => void) | null;

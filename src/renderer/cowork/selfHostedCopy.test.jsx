@@ -4,6 +4,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+// The hosted build reads a deployment brand, so its name shows in the
+// platform wording where a surface names the product.
 vi.hoisted(() => {
   window.COWORK_DEPLOYMENT_BRAND = { productName: 'Acme Cowork' };
 });
@@ -67,17 +69,17 @@ describe('platform build', () => {
   it('says scheduled tasks run while the app is open', () => {
     render(<ScheduledView {...scheduledProps} />);
     expect(screen.getByText(
-      'Local scheduled Anton tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — Anton resumes from the next scheduled occurrence.',
+      "Scheduled tasks run while MindsHub Cowork is open. Runs missed while it's closed are skipped — Anton picks up at the next scheduled time.",
     )).toBeInTheDocument();
     expect(screen.getByText(
-      'Create a recurring Anton task — a Monday digest, an hourly log sweep, a daily KPI snapshot. Anton runs them while the desktop app is open.',
+      'Have Anton repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.',
     )).toBeInTheDocument();
   });
 
-  it('names the desktop app when scheduling', () => {
+  it('names the desktop app and the deployment brand when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
-    expect(screen.getByText('Anton runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Ask Anton to…')).toBeInTheDocument();
+    expect(screen.getByText('Acme Cowork runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ask Acme Cowork to…')).toBeInTheDocument();
   });
 
   it('points the empty artifacts list at the desktop app', () => {

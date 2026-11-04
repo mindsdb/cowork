@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Ico from '../components/Icons';
 import type { IconSize } from '../components/ui/Icon';
 import Button from '../components/ui/Button';
@@ -27,7 +27,10 @@ import {
 } from './activitySummary';
 import { DiffPatchView } from './DiffPatchView';
 import { accountFailure } from './composerNotices';
-import { CopyResponseButton } from './CopyResponseButton';
+import { ChatScroller } from '../components/chat/ChatScroller';
+import { TurnActions } from '../components/chat/TurnActions';
+import { UserTurn } from '../components/chat/UserTurn';
+import { useStickToBottom } from '../components/chat/useStickToBottom';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, compactPath, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
@@ -613,7 +616,14 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
 // actions, so the actions close the turn.
 function TimelineEvent({ event, copyable = false, changes }: { event: CodingEvent; copyable?: boolean; changes?: ReactNode }) {
   if (event.type === 'user_message') {
-    return <div className="code-user-message" aria-label="Your message">{event.text}</div>;
+    return (
+      <UserTurn
+        className="code-user-turn"
+        content={event.text}
+        turnId={`code-${event.seq}`}
+        actions={<TurnActions text={event.text} copyLabel="Copy message" align="right" />}
+      />
+    );
   }
   if (event.type === 'agent_message') {
     return (
@@ -625,7 +635,7 @@ function TimelineEvent({ event, copyable = false, changes }: { event: CodingEven
           animateStreamingWords={false}
         />
         {changes}
-        {copyable && <CopyResponseButton text={event.text} />}
+        {copyable && <TurnActions text={event.text} copyLabel="Copy response" isLast />}
       </article>
     );
   }
@@ -721,70 +731,58 @@ export const EventTimeline = memo(function EventTimeline({
     }
     return <TimelineEvent key={key} event={item.event} copyable={answers.has(item.event.seq)} />;
   };
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
+  const stick = useStickToBottom();
+  const { follow, anchorLastTurn } = stick;
+  // A message the user just sent moves to the top of the view, with room for
+  // the answer below it. The first render of a task only goes to its end.
+  const latestUserSeq = useMemo(
+    () => events.reduce((seq, event) => (event.type === 'user_message' ? event.seq : seq), 0),
+    [events],
+  );
+  const seenUserSeq = useRef<number | null>(null);
   useEffect(() => {
-    const element = scrollRef.current;
-    // Live deltas can arrive many times a second. Starting a new smooth-scroll
-    // animation for each one keeps layout and the GPU busy long after the text
-    // has rendered, and can make typing visibly lag. Batched updates should
-    // snap a pinned transcript to its new bottom immediately.
-    if (element && stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
-  }, [latestEventSeq, session.status]);
-  // Stay pinned when the dock grows, e.g. a decision tray opens.
-  useEffect(() => {
-    const element = scrollRef.current;
-    const inner = element?.firstElementChild;
-    if (!element || !inner || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      if (stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
-    });
-    observer.observe(inner, { box: 'border-box' });
-    return () => observer.disconnect();
-  }, []);
+    const previous = seenUserSeq.current;
+    seenUserSeq.current = latestUserSeq;
+    if (previous != null && latestUserSeq > previous) anchorLastTurn();
+  }, [latestUserSeq, anchorLastTurn]);
+  useEffect(() => { follow(); }, [latestEventSeq, session.status, follow]);
   return (
-    <div
-      ref={scrollRef}
+    <ChatScroller
+      stick={stick}
       className="code-timeline scroll-clean"
-      aria-live="polite"
-      onScroll={(event) => {
-        const element = event.currentTarget;
-        stickToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
-      }}
+      contentClassName="code-timeline__inner chat-column"
     >
-      <div className="code-timeline__inner">
-        {hiddenCount > 0 && (
-          <Button
-            size="xs"
-            className="code-timeline__earlier"
-            onClick={() => setVisibleCount((current) => current + TIMELINE_WINDOW_SIZE)}
-          >
-            Show {Math.min(hiddenCount, TIMELINE_WINDOW_SIZE)} earlier updates
-          </Button>
-        )}
-        {foldFinishedTurns(visibleItems, answers).map((item) => {
-          if (item.kind === 'worked') return <WorkedSummary key={item.key} label={item.label}>{() => item.items.map(renderItem)}</WorkedSummary>;
-          if (item.kind === 'answer') {
-            const changes = item.diff && <TurnChanges diff={item.diff} onOpenReview={onOpenReview} />;
-            return <TimelineEvent key={item.key} event={item.event} copyable changes={changes} />;
-          }
-          return renderItem(item);
-        })}
-        {session.status === 'running' && (
-          <LiveStatus
-            label={runningLabel(session, liveEvents)}
-            step={planPosition(latestTurnPlan(items))}
-            startedAt={turnStartedAt(items)}
-          />
-        )}
-        <TaskOutcome
-          session={session}
-          latestSession={latestEvents.session?.latest}
-          latestError={latestError}
-          recovering={recovering}
+      {hiddenCount > 0 && (
+        <Button
+          size="xs"
+          className="code-timeline__earlier"
+          onClick={() => setVisibleCount((current) => current + TIMELINE_WINDOW_SIZE)}
+        >
+          Show {Math.min(hiddenCount, TIMELINE_WINDOW_SIZE)} earlier updates
+        </Button>
+      )}
+      {foldFinishedTurns(visibleItems, answers).map((item) => {
+        if (item.kind === 'worked') return <WorkedSummary key={item.key} label={item.label}>{() => item.items.map(renderItem)}</WorkedSummary>;
+        if (item.kind === 'answer') {
+          const changes = item.diff && <TurnChanges diff={item.diff} onOpenReview={onOpenReview} />;
+          return <TimelineEvent key={item.key} event={item.event} copyable changes={changes} />;
+        }
+        return renderItem(item);
+      })}
+      {session.status === 'running' && (
+        <LiveStatus
+          label={runningLabel(session, liveEvents)}
+          step={planPosition(latestTurnPlan(items))}
+          startedAt={turnStartedAt(items)}
         />
-      </div>
-    </div>
+      )}
+      <TaskOutcome
+        session={session}
+        latestSession={latestEvents.session?.latest}
+        latestError={latestError}
+        recovering={recovering}
+      />
+    </ChatScroller>
   );
 }, (left, right) => (
   left.events === right.events

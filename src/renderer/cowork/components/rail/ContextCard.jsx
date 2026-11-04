@@ -33,6 +33,7 @@ import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 import { openAuthenticatedResource } from '../../lib/authenticatedResource';
 import { canUseSharedResource } from '../../lib/sharedResourceAccess';
+import { PROJECT_FILES_CHANGED } from '../sharepoint/SharePointImportModal';
 
 /*
   Ticket guard for the async loads that paint shared state. Every start claims
@@ -331,7 +332,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
   );
 }
 
-export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
+export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onAddSharePointFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
   projects = [],
 }) {
   const [sections, setSections] = useState([]);
@@ -554,6 +555,16 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     return () => window.removeEventListener('anton:connections-changed', reloadDriveFiles);
   }, [reloadDriveFiles]);
 
+  // A SharePoint import can start from the composer as well as here, so the
+  // import announces its project and this card refetches that project's files.
+  useEffect(() => {
+    const onProjectFilesChanged = (event) => {
+      if (event?.detail?.project === project?.name) reloadFiles({ forceFresh: true });
+    };
+    window.addEventListener(PROJECT_FILES_CHANGED, onProjectFilesChanged);
+    return () => window.removeEventListener(PROJECT_FILES_CHANGED, onProjectFilesChanged);
+  }, [project?.name, reloadFiles]);
+
   const sessionRelevant = conversationId
     && !String(conversationId).startsWith('tmp-')
     && !!project?.name;
@@ -706,6 +717,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                       .catch((err) => setUploadError(err?.message || 'Could not add Google Drive files.'))
                       .finally(() => setDrivePickerBusy(false));
                   },
+                },
+                onAddSharePointFiles && project?.name && {
+                  id: 'attach-sharepoint',
+                  label: 'Add files from SharePoint',
+                  icon: Ico.folder(14),
+                  onClick: () => onAddSharePointFiles(project.name),
                 },
               ].filter(Boolean)}
             />
@@ -1044,11 +1061,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         projectPath={project?.path}
         filePath={openFile?.path}
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
-        remover={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH && (
-          openFile?.synthetic || !host.isWeb
-        )
-          ? null
-          : undefined}
+        // Delete is the file row's own flow (its trash button + confirm).
+        remover={null}
         editable={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
           ? canUseSharedResource(openFile, 'canEdit')
             && canUseSharedResource(project, 'canEditInstructions')
@@ -1075,8 +1089,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           no server token.
           `filePath` is the name only (for the extension checks + header
           title), NOT a real project path, so there is nothing for Edit to
-          save to. `remover` reuses the same attachment delete the row's
-          menu and ConfirmModal use, then closes the modal. */}
+          save to. */}
       <ContextFileModal
         open={!!openAttachment}
         title={openAttachment?.name}
@@ -1086,22 +1099,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           : ''}
         showRawText
         showEditAction={false}
-        remover={async () => {
-          const target = openAttachment;
-          if (!target?.id) return;
-          setSessionAttachments((prev) => prev.filter((a) => a.id !== target.id));
-          try {
-            await deleteAttachment(target.id, {
-              projectName: project?.name,
-              sessionId: conversationId,
-            });
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_delete_attachment_failed", '[context] delete attachment failed', err);
-            setTaskUploadError(err?.message || 'Could not delete attachment.');
-            bumpAttachments();
-          }
-        }}
+        // Delete is the attachment row's own flow (its menu + confirm).
+        remover={null}
         onClose={() => setOpenAttachment(null)}
         onChanged={() => setOpenAttachment(null)}
       />

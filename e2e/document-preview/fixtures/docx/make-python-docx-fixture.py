@@ -1,10 +1,12 @@
 """Writes python-docx-report.docx, which fixtures.yaml lists.
 
-The agent writes Word files with python-docx, so this fixture comes from
-python-docx itself rather than from hand-built XML: a heading, a paragraph, a
-table in the Table Grid style and an inline picture, on python-docx's default
-template. That template brings its own styles, theme, numbering, settings and
-font table, as every python-docx document has.
+Export to Word writes Word files with python-docx, and so can the agent, so
+this fixture comes from python-docx itself rather than from hand-built XML: a
+heading, a paragraph, a two-level bulleted list, a table in the Table Grid
+style and an inline picture, on python-docx's default template. That template
+brings its own styles, theme, numbering, settings and font table, as every
+python-docx document has. Its List Bullet levels mark each item with Symbol's
+private-use bullet, U+F0B7.
 
 python-docx stamps no date into the parts below, but zipfile stamps the time
 of the run on every entry. So the package is written again with one fixed
@@ -40,6 +42,8 @@ def report() -> bytes:
     document = docx.Document()
     document.add_heading("Regional sales", level=1)
     document.add_paragraph("Totals for each region this quarter.")
+    document.add_paragraph("Ship the East order", style="List Bullet")
+    document.add_paragraph("Confirm the truck", style="List Bullet 2")
     table = document.add_table(rows=1, cols=2)
     table.style = "Table Grid"
     header_cells = table.rows[0].cells

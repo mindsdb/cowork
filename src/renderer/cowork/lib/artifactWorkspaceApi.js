@@ -187,6 +187,20 @@ export async function requestArtifactExport(draftUrl, format) {
   );
 }
 
+/*
+ * A signed link to the draft on the draft host. Org web only: /health's
+ * `draft_links` (lib/draftLinks.ts) says whether the server hands them out.
+ * The link expires in 30 minutes, so the viewer asks for a new one on every
+ * open, reload and "open in a browser tab" and never stores it.
+ */
+export function createDraftLink(projectRef, artifactId) {
+  if (!projectRef || !artifactId) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(
+    `/artifacts/drafts/${encodeURIComponent(projectRef)}/${encodeURIComponent(artifactId)}/link`,
+    { method: 'POST', body: '{}' },
+  );
+}
+
 export function loadArtifactSource(artifact, path = null) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
@@ -259,7 +273,9 @@ export function loadArtifactAccess(artifact) {
 
 // Setting an audience is a re-publish server-side: the target stores access
 // alongside the bundle and reuses the existing report_id, so the shared URL
-// survives the change and nothing has to be unpublished first.
+// survives the change and nothing has to be unpublished first. `access` goes
+// as given, `notify` included: the people this change newly adds whom
+// MindsHub emails.
 export function setArtifactAccess(artifact, access) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
