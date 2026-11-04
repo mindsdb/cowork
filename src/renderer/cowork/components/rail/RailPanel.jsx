@@ -23,13 +23,13 @@ export function RailToggle({ open, onToggle, className }) {
         aria-label={label}
         aria-pressed={open}
         className={cn(
-          'w-7 h-7 rounded-md inline-grid place-items-center shrink-0 cursor-pointer border-0',
+          'w-8 h-8 rounded-lg inline-grid place-items-center shrink-0 cursor-pointer border-0',
           // Same glyph, size and resting ink as the sidebar toggle opposite it.
           'bg-transparent text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]',
           className,
         )}
       >
-        {Ico.panel(14)}
+        {Ico.panel(16)}
       </button>
     </Tooltip>
   );

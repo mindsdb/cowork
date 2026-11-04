@@ -2,8 +2,8 @@ import Ico from './Icons';
 import { ToggleGroup } from './ui/ToggleGroup';
 
 const MODES = [
-  { value: 'cowork', label: 'Cowork', icon: Ico.mindsdb(14) },
-  { value: 'code', label: 'Code', icon: Ico.code(14) },
+  { value: 'cowork', label: 'Cowork', icon: Ico.mindsdb(16) },
+  { value: 'code', label: 'Code', icon: Ico.code(16) },
 ];
 
 // The brand in the titlebar's sidebar zone. Where Code is available it
@@ -20,7 +20,9 @@ export default function WorkspaceBrand({ wordmark, logo, mode, showSwitch, onCha
       {!compact && <span className="anton-sidebar__wordmark">{wordmark}</span>}
       {showSwitch && (
         <ToggleGroup
-          size="sm"
+          size="md"
+          // Usually icon-only beside the wordmark, so the items stay compact.
+          itemPadding="5px 8px"
           aria-label="Workspace"
           className="app-brand__switch"
           value={mode}

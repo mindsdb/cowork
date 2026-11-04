@@ -163,7 +163,7 @@ export function ToggleGroup({
               disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:text-ink-2',
             )}
             style={(state: { pressed: boolean }) => ({
-              padding: is.padding,
+              padding: itemPadding ?? is.padding,
               borderRadius: is.borderRadius,
               fontFamily: 'var(--font-body)',
               fontSize: is.fontSize,

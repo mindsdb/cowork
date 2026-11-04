@@ -544,6 +544,11 @@ input, textarea { font-family: inherit; }
    the band reads as one weight. */
 .app-titlebar__lead > .icon-btn,
 .app-sidebar-toggle > .icon-btn { flex: none; color: var(--ink-3); }
+/* Titlebar controls are 32px with 16px glyphs: the same glyph size as the
+   sidebar's nav icons, in a target that suits the 52px row. */
+.app-titlebar__lead > .icon-btn,
+.app-sidebar-toggle > .icon-btn,
+.app-titlebar__attention .icon-btn { width: 32px; height: 32px; border-radius: var(--r-8); }
 .app-sidebar-toggle {
   position: absolute;
   top: 0;
@@ -566,7 +571,7 @@ input, textarea { font-family: inherit; }
   container: brand-zone / inline-size;
   -webkit-app-region: drag;
 }
-.app-sidebar__toggle-slot { flex: none; width: 28px; }
+.app-sidebar__toggle-slot { flex: none; width: 32px; }
 .app-titlebar__main {
   flex: 1;
   min-width: 0;
@@ -606,16 +611,16 @@ input, textarea { font-family: inherit; }
 }
 .app-titlebar__attention:empty { display: none; }
 .app-titlebar__search {
-  height: 28px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 6px 0 9px;
+  gap: 8px;
+  padding: 0 7px 0 10px;
   border: 0;
   border-radius: var(--r-8);
   background: var(--surface-2);
   color: var(--ink-3);
-  font: 12px var(--font-body);
+  font: 13px var(--font-body);
   cursor: pointer;
   transition: background .12s, color .12s;
 }
@@ -637,7 +642,7 @@ input, textarea { font-family: inherit; }
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  height: 28px;
+  height: 32px;
   margin-left: 4px;
   color: var(--ink-2);
   font: 500 13px var(--font-body);
@@ -647,7 +652,7 @@ input, textarea { font-family: inherit; }
    icon-only. A custom nav title colour (--nav-title-color) still applies. */
 .app-brand .anton-sidebar__wordmark {
   padding-right: 0;
-  font-size: 14.5px;
+  font-size: 16px;
   font-weight: 620;
   letter-spacing: -0.012em;
   text-transform: none;
@@ -663,8 +668,8 @@ input, textarea { font-family: inherit; }
 .app-brand__switch { margin-left: auto; }
 /* The switch shows its labels only where they fit beside the wordmark. The
    query sees the zone's content box (the macOS window-controls inset is
-   already taken off); toggle, wordmark and labelled switch need ~253px. */
-@container brand-zone (max-width: 252px) {
+   already taken off); toggle, wordmark and labelled switch need ~280px. */
+@container brand-zone (max-width: 280px) {
   .app-brand__switch-label { display: none; }
 }
 body[data-theme="dark"] .app-brand .anton-sidebar__wordmark { text-shadow: none; }

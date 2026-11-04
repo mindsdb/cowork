@@ -38,7 +38,7 @@ export default function AppTitlebar({
           {onNewTask && (
             <Tooltip content={newTaskLabel}>
               <button type="button" className="icon-btn" onClick={onNewTask} aria-label={newTaskLabel}>
-                {Ico.newTask(14)}
+                {Ico.newTask(16)}
               </button>
             </Tooltip>
           )}
@@ -49,7 +49,7 @@ export default function AppTitlebar({
         <div ref={setHeader} className="app-titlebar__slot" />
         <div className="app-titlebar__app">
           <button type="button" className="app-titlebar__search" onClick={onOpenSearch} aria-label="Search">
-            {Ico.search(14)}
+            {Ico.search(16)}
             <span>Search</span>
             <Kbd>{searchShortcut}</Kbd>
           </button>
@@ -62,7 +62,7 @@ export default function AppTitlebar({
 
 // The toggle's footprint, button plus gap: the sidebar's head row and the
 // collapsed titlebar both leave this much room after the window controls.
-export const SIDEBAR_TOGGLE_SLOT = 30;
+export const SIDEBAR_TOGGLE_SLOT = 34;
 
 // The sidebar toggle, pinned beside the window controls over both columns so
 // it stays put while the sidebar opens and closes beneath it.
@@ -71,7 +71,7 @@ export function SidebarToggle({ lightsInset, label, shortcut, onToggle }) {
     <div className="app-sidebar-toggle" style={{ left: lightsInset }}>
       <Tooltip content={shortcut ? `${label}  (${shortcut})` : label}>
         <button type="button" className="icon-btn" onClick={onToggle} aria-label={label}>
-          {Ico.sidebar(14)}
+          {Ico.sidebar(16)}
         </button>
       </Tooltip>
     </div>
