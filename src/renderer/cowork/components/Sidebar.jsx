@@ -139,8 +139,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           className="flex-1 min-w-0"
         />
       ) : (
-      <button className={`recent-item${selected ? ' is-selected' : ''} flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
-        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1">
+      <button className={`recent-item${selected ? ' is-selected' : ''} relative flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
+        <span className={`recent-row__title flex-1 min-w-0${showKebab && !slotAtRest ? ' is-clipped' : ''}`}>
           {task.title || 'Untitled'}
           {/* Schedule-group entries — append a muted "· N runs"
               suffix so the title still reads clean while the count
@@ -159,14 +159,16 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         </span>
 
         {/* Right slot: as wide as the timestamp, and never narrower than the
-            kebab that cross-fades over it, so the title keeps the rest. The
-            negative right margin (-mr-1.5 = 6px) pulls the slot into the row's
-            10px right padding so both sit snug against the edge of the hover
-            fill, not a full gutter-width inside it. */}
-        <span className="relative min-w-[22px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
+            kebab that cross-fades over it. In the row it pulls 6px into the
+            row's 10px right padding (-mr-1.5); floating, it sits at the same
+            spot (right-1), so the kebab never moves between the two. */}
+        <span className={slotAtRest
+          ? 'relative min-w-[22px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end'
+          : 'absolute right-1 top-1/2 -translate-y-1/2 w-[22px] h-[18px] inline-flex items-center justify-end'}
+        >
           <span
             className="inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 whitespace-nowrap [transition:opacity_var(--dur-hover)_ease]"
-            style={{ opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1 }}
+            style={{ opacity: (showKebab || !slotAtRest) ? 0 : 1 }}
           >
             {isActive ? (
               <span
