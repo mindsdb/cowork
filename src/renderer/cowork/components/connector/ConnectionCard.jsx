@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Badge, Button } from '../ui';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from '../../lib/connectionIdentity';
+import { isDatasourceRow } from '../../lib/datasourceConnectionRows';
 import { useConfirm } from '../ConfirmModal';
 
 function ConnectionLogo({ engine, label, custom, logoColor }) {
@@ -70,7 +71,11 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const badge = shared ? 'Shared' : managed ? 'Managed' : null;
 
   const handleRemove = async () => {
-    if (!(await confirm({ ...disconnectPrompt({ engine, name, shared }), confirmLabel: 'Disconnect', destructive: true }))) return;
+    const prompt = disconnectPrompt({ engine, name, shared });
+    const message = isDatasourceRow(connection)
+      ? `${subtitle} will be removed and its stored credentials deleted. Conversations that use it lose access.`
+      : prompt.message;
+    if (!(await confirm({ ...prompt, message, confirmLabel: 'Disconnect', destructive: true }))) return;
     setBusy(true);
     try {
       await onDelete?.(connection);

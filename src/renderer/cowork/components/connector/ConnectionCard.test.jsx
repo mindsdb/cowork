@@ -214,6 +214,15 @@ describe('ConnectionCard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Manage GitHub: ianu82' }));
     expect(onModify).toHaveBeenCalledExactlyOnceWith(connection);
   });
+
+  it('names a database connection by what removing it costs', async () => {
+    const datasource = { ...connection, __datasource__: true, engine: 'postgres', name: 'Analytics' };
+    render(<ConnectionCard connection={datasource} onDelete={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+
+    const confirm = await screen.findByRole('dialog');
+    expect(within(confirm).getByText(/stored credentials deleted/i)).toBeInTheDocument();
+  });
 });
 
 describe('ConnectionCard for custom and legacy connectors', () => {

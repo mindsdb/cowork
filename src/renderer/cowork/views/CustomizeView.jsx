@@ -11,7 +11,21 @@ import { diagnostic } from '../../../shared/diagnostics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { Alert, Button, Select } from '../components/ui';
-import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection, patchConnectionAccessMode } from '../api';
+import {
+  CONNECTIONS_VAULT_KEEP,
+  deleteDatasource,
+  deleteDatasourceConnection,
+  fetchConnector,
+  fetchDatasources,
+  fetchSavedConnection,
+  listDatasourceConnections,
+  patchConnectionAccessMode,
+  retryDatasourceValidation,
+} from '../api';
+import { useOrgMode } from '../../lib/orgMode';
+import { isDatasourceRow, toDatasourceRows } from '../lib/datasourceConnectionRows';
+import { usePendingDatasourceRefresh } from '../hooks/usePendingDatasourceRefresh';
+import DatasourceDetailPanel from '../components/connector/DatasourceDetailPanel';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
 import {
@@ -493,16 +507,24 @@ export default function CustomizeView({
   connectors: initialConnectors = [],
   onConnectNew,
   onModifyConnection,
+  /** Opens the cloud connect form against an existing database connection. */
+  onEditDatasource,
   onReconnect,
   /** Called with the fresh connections array so App can update the sidebar badge + composer list. */
   onConnectionsSynced,
   agentLabel = 'the agent',
 }) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
+  // Cloud database connections, kept apart from `list`. That array is the
+  // OAuth one and every refresh of it replaces the whole thing, so merging
+  // these into it would drop them the next time an OAuth sync ran.
+  const [datasources, setDatasources] = useState([]);
+  const orgMode = useOrgMode();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
+  const [selectedDatasource, setSelectedDatasource] = useState(null);
   // Not alert(): it loses Windows focus the same way as window.confirm.
   const [deleteError, setDeleteError] = useState(null);
   const [sharePointEditing, setSharePointEditing] = useState(null);
@@ -521,6 +543,26 @@ export default function CustomizeView({
       })
       .catch(() => {});
   }, []);
+
+  // Cloud only: the relay's routes answer 404 anywhere else by design.
+  const refreshDatasources = useRef(() => {});
+  refreshDatasources.current = () => {
+    if (!orgMode) return Promise.resolve();
+    return listDatasourceConnections()
+      .then((rows) => setDatasources(toDatasourceRows(rows)))
+      .catch(() => {});
+  };
+  useEffect(() => { refreshDatasources.current(); }, [orgMode]);
+  // Connecting, editing or removing a database happens in the chat panel too,
+  // and this page can be open while it does.
+  useEffect(() => {
+    const onChanged = () => { refreshDatasources.current(); };
+    window.addEventListener('anton:connections-changed', onChanged);
+    return () => window.removeEventListener('anton:connections-changed', onChanged);
+  }, []);
+  // A row captured moments ago is still being checked, and this page is where
+  // its result is meant to appear.
+  usePendingDatasourceRefresh(datasources, () => refreshDatasources.current(), orgMode);
 
   // Keep local mirror in sync with prop changes — refresh after add /
   // remove flips the App-level state.
@@ -573,6 +615,11 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
+  const handleRetryValidation = async (connection) => {
+    await retryDatasourceValidation(connection.datasourceId);
+    await refreshDatasources.current();
+  };
+
   /* Re-reads the list after a delete. Best effort: the connection is already
      gone, so a failed refresh must never turn the delete into a failure. */
   const syncAfterDelete = async () => {
@@ -591,14 +638,29 @@ export default function CustomizeView({
     window.dispatchEvent(new CustomEvent('anton:connections-changed'));
   };
 
+  /* Removes a cloud database connection through the relay. Rejects on any
+     failure, a 404 included, so the database panel's own dialog can say why. */
+  const removeDatasourceConnection = async (connection) => {
+    await deleteDatasourceConnection(connection.datasourceId);
+    await refreshDatasources.current();
+    window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+  };
+
   /* Resolves true once the connection is gone and false when the delete
      failed, after telling the person why; a caller that goes on to reconnect
-     must stop on false. A 404 from the delete counts as gone. On desktop, an
-     OAuth or MCP connection resolves true once main's keychain:revoke handler
+     must stop on false. A 404 from the vault delete counts as gone; the relay
+     delete of a database connection does not. On desktop, an OAuth or MCP
+     connection resolves true once main's keychain:revoke handler
      (src/main/app.ts) ran: that handler always answers ok and doesn't report
      whether its vault delete succeeded. */
   const handleDelete = async (connection, savedDetail) => {
     try {
+      // A database connection lives behind the relay, not the OAuth vault:
+      // the OAuth delete route would not find it.
+      if (isDatasourceRow(connection)) {
+        await removeDatasourceConnection(connection);
+        return true;
+      }
       // For builtin OAuth connections in Electron, keychain:revoke stops the
       // refresh loop, removes the keychain entry, and deletes the vault record.
       if (host.isElectron) {
@@ -635,7 +697,11 @@ export default function CustomizeView({
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let out = (list || []).map((connection) => ({ connection, identity: connectionIdentity(connection) }));
+    // One grid: the OAuth connections this page has always shown, plus the
+    // cloud database ones. They are separate state (see above) and joined only
+    // for display, search and sort.
+    const all = [...(list || []), ...datasources];
+    let out = all.map((connection) => ({ connection, identity: connectionIdentity(connection) }));
     if (q) {
       out = out.filter(({ connection, identity }) =>
         [connection.name, connection.engine, identity.title, identity.subtitle]
@@ -656,9 +722,9 @@ export default function CustomizeView({
       }
     });
     return out.map(({ connection }) => connection);
-  }, [list, search, sort]);
+  }, [list, datasources, search, sort]);
 
-  const total = list.length;
+  const total = list.length + datasources.length;
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -705,18 +771,40 @@ export default function CustomizeView({
         {effectiveView === 'grid' ? (
           <CardGrid className="px-8 pb-[60px]">
             {visible.map((c) => (
-              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
+              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn} />
             ))}
           </CardGrid>
         ) : (
           <ListGroup className="mx-8 mb-[60px]">
             {visible.map((c) => (
-              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={setSelectedConn} />
+              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn} />
             ))}
           </ListGroup>
         )}
       </CollectionState>
 
+      {selectedDatasource && (
+        <DatasourceDetailPanel
+          connection={selectedDatasource}
+          onClose={() => setSelectedDatasource(null)}
+          onRetry={async (connection) => {
+            await handleRetryValidation(connection);
+            setSelectedDatasource(null);
+          }}
+          onRemove={async (connection) => {
+            await removeDatasourceConnection(connection);
+            setSelectedDatasource(null);
+          }}
+          onEdit={(connection) => {
+            setSelectedDatasource(null);
+            // The relay requires the password on every edit and nothing here
+            // can pre-fill it, so an edit re-opens the connect form — carrying
+            // the connection, so the form patches that one instead of creating
+            // a second connection under a new name.
+            onEditDatasource?.(connection);
+          }}
+        />
+      )}
       <Modal
         open={deleteError != null}
         onClose={() => setDeleteError(null)}
