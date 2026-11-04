@@ -740,12 +740,17 @@ export const EventTimeline = memo(function EventTimeline({
     () => events.reduce((seq, event) => (event.type === 'user_message' ? event.seq : seq), 0),
     [events],
   );
+  // Null until the history has arrived. Tracked apart from the user message
+  // itself: a long run can push every user message out of the retained
+  // events, and the next send must still anchor.
   const seenUserSeq = useRef<number | null>(null);
+  const historyLoaded = events.length > 0;
   useEffect(() => {
+    if (!historyLoaded) return;
     const previous = seenUserSeq.current;
     seenUserSeq.current = latestUserSeq;
-    if (previous && latestUserSeq > previous) anchorLastTurn();
-  }, [latestUserSeq, anchorLastTurn]);
+    if (previous != null && latestUserSeq > previous) anchorLastTurn();
+  }, [historyLoaded, latestUserSeq, anchorLastTurn]);
   useEffect(() => { follow(); }, [latestEventSeq, session.status, follow]);
   return (
     <ChatScroller

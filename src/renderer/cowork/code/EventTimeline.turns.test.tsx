@@ -82,6 +82,15 @@ describe('following new events', () => {
     expect((container.querySelector('.chat-scroller__reserve') as HTMLElement).style.height).toBe('');
   });
 
+  it('anchors a send after a long run has dropped every earlier user message', () => {
+    const run = [event(7000, 'agent_message', 'Done', { item_id: 'm' })];
+    const { container, rerender } = render(<EventTimeline {...props(run)} session={session('running')} />);
+    expect(timeline(container).scrollTop).toBe(1400);
+    box.height = 2600;
+    rerender(<EventTimeline {...props([...run, event(7001, 'user_message', 'Also fix the tests')])} session={session('running')} />);
+    expect(timeline(container).scrollTop).toBe(1376);
+  });
+
   it('brings a message the user sends to the top instead of the end', () => {
     const { container, rerender } = render(<EventTimeline {...props(live)} session={session('running')} />);
     expect(timeline(container).scrollTop).toBe(1400);
