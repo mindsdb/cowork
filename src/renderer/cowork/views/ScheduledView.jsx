@@ -240,8 +240,8 @@ export default function ScheduledView({
           className: 'mx-8 mb-8',
         }}
       >
-        {/* What needs you sits on top: auto-paused, missed, a failed last
-            run, or a retry waiting. The rest follow in the chosen order. */}
+        {/* What needs you sits on top: auto-paused, missed, or a failed last
+            run. The rest follow in the chosen order. */}
         {[
           ['attention', 'Needs attention', visible.filter(needsAttention)],
           ['rest', attentionCount ? 'Everything else' : null, visible.filter((t) => !needsAttention(t))],
@@ -296,11 +296,11 @@ export default function ScheduledView({
 }
 
 
-// A task that needs the user: paused by failures, a missed one-off, a last
-// run that failed, or a retry waiting.
+// A task that needs the user: paused by failures, a missed one-off, or a last
+// run that failed.
 export function needsAttention(task) {
   if (task.running) return false;
   const state = scheduleState(task);
-  return state === 'auto_paused' || state === 'missed' || !!task.retryAt
+  return state === 'auto_paused' || state === 'missed'
     || (state === 'active' && lastRunFailed(task));
 }
