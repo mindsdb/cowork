@@ -27,6 +27,7 @@ import {
   sideCost,
   turnUsageRows,
   usageTokens,
+  compareAvailable,
 } from './compareSides';
 
 const user = (content, created_at = null) => ({ role: 'user', content, created_at });
@@ -408,5 +409,20 @@ describe('historyCost', () => {
     expect(historyCost([side({ estimatedCostUsd: 0.2, partial: true }), side({ estimatedCostUsd: 0.1 })])).toBe('$0.3+');
     expect(historyCost([side(null), side({ estimatedCostUsd: null })])).toBeNull();
     expect(historyCost()).toBeNull();
+  });
+});
+
+// Compare offers a model choice, so it follows the composer's picker: always
+// with the platform UI; elsewhere only under the operator's picker, and only
+// while it offers a model (the composer hides its picker with none).
+describe('compareAvailable', () => {
+  const models = [{ id: 'kimi' }, { id: 'qwen' }];
+  it.each([
+    ['the platform UI', { platformUi: true, pickerMode: 'off', models: [] }, true],
+    ["the operator's picker with a model to offer", { platformUi: false, pickerMode: 'open', models, modelEnabled: { qwen: false } }, true],
+    ["the operator's picker offering none", { platformUi: false, pickerMode: 'default', models, modelEnabled: { kimi: false, qwen: false } }, false],
+    ["the operator's picker off", { platformUi: false, pickerMode: 'off', models }, false],
+  ])('with %s: %s', (_case, build, available) => {
+    expect(compareAvailable(build)).toBe(available);
   });
 });

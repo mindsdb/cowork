@@ -1,5 +1,4 @@
 import { PLATFORM_UI } from '../../lib/deployment';
-import { usersPickModels } from '../../lib/modelPicker';
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 import { Spinner, Kbd, Badge, Input, Button, Tooltip } from './ui';
@@ -231,6 +230,8 @@ export default function Sidebar({
   projectsCount = 0,
   artifactsCount = 0,
   connectorsCount = 0,
+  // Whether this build offers Compare Models (compareAvailable).
+  showCompare = false,
   activeRoute,
   activeTaskId,
   activeWorkspace = 'cowork',
@@ -719,7 +720,7 @@ export default function Sidebar({
         <div className="nav-list px-2.5 flex flex-col gap-px">
           <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
           <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
-          {usersPickModels() && (
+          {showCompare && (
             <NavItem icon={Ico.columns(16)} label="Compare Models" onClick={() => onNavigate('compare')} active={activeRoute === 'compare'} />
           )}
         </div>

@@ -9,9 +9,6 @@ import { ToastProvider } from './ui/Toast';
 // when signed in.
 const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false, logout: async () => {}, onWindowVisibility: () => () => {} }));
 const getAccessTokenMock = vi.hoisted(() => vi.fn(async () => null));
-const deployment = vi.hoisted(() => ({ PLATFORM_UI: true }));
-vi.mock('../../lib/deployment', () => deployment);
-
 vi.mock('../../platform/host', () => ({
   host: hostMock,
   getAccessToken: getAccessTokenMock,
@@ -679,22 +676,11 @@ describe('Sidebar — task row titles', () => {
   });
 });
 
-// Compare Models offers a model choice, so a build where the operator picks
-// every question's model (no platform UI, picker off) does not show it.
-describe('Sidebar — Compare models without the platform UI', () => {
-  afterEach(() => {
-    deployment.PLATFORM_UI = true;
-    document.head.querySelectorAll('meta[name="cowork-model-picker"]').forEach((node) => node.remove());
-  });
-
-  it.each([
-    ['with the platform UI', true, null, true],
-    ["under the operator's picker", false, 'default', true],
-    ["with the operator's picker off", false, null, false],
-  ])('%s: shown is %s', (_case, platformUi, picker, shown) => {
-    deployment.PLATFORM_UI = platformUi;
-    if (picker) document.head.append(Object.assign(document.createElement('meta'), { name: 'cowork-model-picker', content: picker }));
-    render(<Sidebar {...baseProps} />);
+// App decides whether the build offers Compare Models (compareAvailable); the
+// entry follows it.
+describe('Sidebar — Compare models entry', () => {
+  it.each([[true], [false]])('is shown when App offers it: %s', (shown) => {
+    render(<Sidebar {...baseProps} showCompare={shown} />);
     expect(!!screen.queryByRole('button', { name: 'Compare Models' })).toBe(shown);
   });
 });
@@ -702,7 +688,7 @@ describe('Sidebar — Compare models without the platform UI', () => {
 describe('Sidebar — Compare models', () => {
   it('sits in the Agent group and opens the compare route', () => {
     const onNavigate = vi.fn();
-    render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
+    render(<Sidebar {...baseProps} showCompare onNavigate={onNavigate} />);
     screen.getByRole('button', { name: 'Compare Models' }).click();
     expect(onNavigate).toHaveBeenCalledWith('compare');
   });

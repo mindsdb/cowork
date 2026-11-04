@@ -21,7 +21,7 @@ import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
-import { Button, Tooltip } from './components/ui';
+import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
@@ -121,7 +121,9 @@ import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
-import { modelPickerMode, usersPickModels } from '../lib/modelPicker';
+import { compareAvailable } from './lib/compareSides';
+import { modelPickerMode } from '../lib/modelPicker';
+import { PLATFORM_UI } from '../lib/deployment';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -1707,6 +1709,10 @@ function AppCore() {
   const sendableModelId = useCallback((id) => (
     pickerMode === 'off' ? (id ?? null) : offeredModelId(id, offeredModels(models, settings.modelEnabled))
   ), [pickerMode, models, settings.modelEnabled]);
+  const showCompare = useMemo(
+    () => compareAvailable({ platformUi: PLATFORM_UI, pickerMode, models, modelEnabled: settings.modelEnabled }),
+    [pickerMode, models, settings.modelEnabled],
+  );
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
@@ -5858,6 +5864,7 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          showCompare={showCompare}
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
           pins={pins}
@@ -6355,7 +6362,16 @@ function AppCore() {
         )}
 
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
-        {route === 'compare' && usersPickModels() && (
+        {/* A link to Compare on a build where the operator picks every
+            question's model, which no load of settings can change. */}
+        {route === 'compare' && !PLATFORM_UI && pickerMode === 'off' && (
+          <EmptyState
+            title="Compare Models isn't available here"
+            description="Your operator picks the model for every task on this deployment, so there are no models to compare."
+            action={{ label: 'New task', onClick: newTask, primary: true }}
+          />
+        )}
+        {route === 'compare' && showCompare && (
           <CompareView
             models={models}
             modelMeta={modelMeta}

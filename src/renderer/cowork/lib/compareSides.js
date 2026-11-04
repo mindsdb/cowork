@@ -2,7 +2,21 @@
 // tested directly. A "side" is one model's conversation; a "turn" is one user
 // message and whatever the agent answered to it.
 
+import { offeredModels } from './modelPickerOptions';
+
 export const SIDE_LABELS = ['a', 'b'];
+
+/**
+ * Whether this build offers Compare Models: always with the platform UI, and
+ * elsewhere only under the operator's model picker with at least one model it
+ * offers, as the composer shows its own picker. With the picker off every
+ * question runs on the operator's models, so nothing may offer a model choice.
+ */
+export function compareAvailable({ platformUi, pickerMode, models = [], modelEnabled = {} }) {
+  if (platformUi) return true;
+  if (pickerMode === 'off') return false;
+  return offeredModels(models, modelEnabled).length > 0;
+}
 
 const FAILED_ROLES = new Set(['error', 'provider_required']);
 

@@ -183,3 +183,34 @@ describe("the operator's model picker", () => {
     expect(stream.opts.model).toBe(sent);
   });
 });
+
+// Compare Models offers a model choice, so App shows it under the operator's
+// picker only while the picker offers a model, as the composer shows its own.
+describe("Compare Models under the operator's model picker", () => {
+  const offered = { ...SETTINGS.modelEnabled };
+  afterEach(() => { Object.assign(SETTINGS.modelEnabled, offered); });
+
+  it.each([
+    ['picker on, models offered', 'default', false, true],
+    ['picker on, none offered', 'default', true, false],
+    ['picker off', null, false, false],
+  ])('%s: entry shown is %s', async (_case, mode, noneOffered, shown) => {
+    if (mode) setMode(mode);
+    if (noneOffered) for (const id of Object.keys(SETTINGS.modelEnabled)) SETTINGS.modelEnabled[id] = false;
+    render(<App />);
+    await screen.findByRole('button', { name: /new task/i });
+    // Settings, and with them the offered models, land after the first paint.
+    await new Promise((resolve) => { setTimeout(resolve, 100); });
+    if (shown) expect(await screen.findByRole('button', { name: 'Compare Models' })).toBeTruthy();
+    else expect(screen.queryByRole('button', { name: 'Compare Models' })).toBeNull();
+  });
+});
+
+describe('a link to Compare Models where the operator picks every model', () => {
+  it('says why instead of a blank page', async () => {
+    window.history.replaceState(null, '', '/compare');
+    render(<App />);
+    expect(await screen.findByText("Compare Models isn't available here")).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Compare two models' })).toBeNull();
+  });
+});

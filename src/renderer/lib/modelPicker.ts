@@ -21,15 +21,6 @@ export function modelPickerMode(): ModelPickerMode {
 }
 
 /**
- * Whether users choose models on this build: always with the platform UI, and
- * elsewhere only under the operator's picker. With it off every question runs
- * on the operator's models, so nothing may offer a model choice.
- */
-export function usersPickModels(): boolean {
-  return PLATFORM_UI || modelPickerMode() !== 'off';
-}
-
-/**
  * The reasoning efforts the operator lets users pick under its picker: on each model, and with no
  * model, "Operator default", the ones both the planning and the coding model list, since the server
  * gives a question's effort to both.
