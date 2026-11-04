@@ -5,12 +5,12 @@
 
 import Ico from './Icons';
 
-export function UpToDateTag() {
+export function UpToDateTag({ label = 'Up to date' } = {}) {
   return (
     <span className="inline-flex items-center gap-[6px] py-[7px] px-1 font-body font-semibold text-sm text-ink-3">
       {/* var(--ok) has no config utility (distinct from the --success hex), so it stays inline. */}
       <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(14)}</span>
-      Up to date
+      {label}
     </span>
   );
 }
