@@ -285,8 +285,11 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 
 // ── Main control ─────────────────────────────────────────────────────────
 
-export function PublishMenu({ controller, disabled = false, disabledReason = '' }) {
+// `followsEdits`: the server republishes the shared copy after every save (a
+// doc), so there is nothing to update by hand and no versions to pick from.
+export function PublishMenu({ controller, disabled = false, disabledReason = '', noun = 'app', followsEdits = false }) {
   const { t } = useTranslation('artifacts');
+  const whoCanAccess = noun === 'app' ? t('publish.whoCanAccess') : `Who can access your ${noun}`;
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
   const [open, setOpen] = useState(false);
@@ -333,7 +336,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (isPublished) {
       setView('summary');
       setDraft(seedDraft());
-      pub.loadVersions();  // lazy-load history for the rollback section
+      if (!followsEdits) pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
       setDraft(newAccessDraft());
@@ -517,11 +520,11 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                 <>
                   <PanelHeader title={t('publish.shareToWeb')} />
                   <div className={`py-3 px-4 ${SCROLL_BODY}`} data-testid="publish-menu-body">
-                    <SectionLabel>{t('publish.whoCanAccess')}</SectionLabel>
+                    <SectionLabel>{whoCanAccess}</SectionLabel>
                     {sharingSettingsStatus || (
                       <>
                         {permissionsNotice}
-                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} />
+                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} noun={noun} />
                       </>
                     )}
                   </div>
@@ -556,7 +559,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       {view === 'summary' && (
                         <>
                           <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>
-                            {t('publish.whoCanAccess')}
+                            {whoCanAccess}
                           </SectionLabel>
                           {accessLoadStatus || <AccessSummaryCard pub={pub} sharing={sharing} orgName={orgName} />}
                           {pub.accessMode === 'password' && (
@@ -564,7 +567,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                               <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>{t('publish.changePassword')}</LinkButton>
                             </div>
                           )}
-                          {!orgMode && pub.versions.length > 1 && (
+                          {!followsEdits && !orgMode && pub.versions.length > 1 && (
                             <div className="mt-3">
                               <LinkButton onClick={() => setView('versions')}>{t('publish.versionHistoryCount', { count: pub.versions.length })}</LinkButton>
                             </div>
@@ -575,12 +578,12 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       {view === 'access' && (
                         <>
                           <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setNotifyPrompt(null); setView('summary'); }}>{t('publish.dismiss')}</LinkButton>}>
-                            {t('publish.whoCanAccess')}
+                            {whoCanAccess}
                           </SectionLabel>
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
+                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} noun={noun} />
                             </>
                           )}
                         </>
@@ -662,7 +665,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         <FooterButton primary disabled title={pub.accessLoaded || accessStatus === LOAD_STATUS.ERROR ? undefined : t('publish.loadingAccess')}>
                           {t('publish.update')}
                         </FooterButton>
-                      ) : (draftDiffers(draft, current) || pub.modified) ? (
+                      ) : (draftDiffers(draft, current) || (pub.modified && !followsEdits)) ? (
                         <FooterButton primary onClick={doApplyAccess}
                           disabled={pub.busy || !draftValid(draft)}
                           busy={pub.phase === 'publishing'} busyLabel={t('status.updating')}>
@@ -671,6 +674,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       ) : (
                         <UpToDateTag />
                       )
+                    ) : followsEdits ? (
+                      <UpToDateTag label="Updates as you edit" />
                     ) : (pub.modified && !orgMode) ? (
                       <FooterButton primary onClick={pub.update} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel={t('status.updating')}>

@@ -802,7 +802,7 @@ export function sendablePicks(model, reasoningEffort) {
   return { sendsPicks, model: sentModel, reasoningEffort: sendsEffort ? reasoningEffort : null };
 }
 
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, output, docContext, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
@@ -864,6 +864,16 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // The task's Browser switch is off (ENG-3188). Only sent then, so
           // an older server never sees the key.
           ...(browserOff ? { browser: 'off' } : {}),
+          // This app shows docs: the server gives the agent its doc tools
+          // only on a request that says so.
+          docs: true,
+          // The doc the person had open beside the conversation when they
+          // sent this message, with its own "Edit with agent" target, so
+          // "this section" means what they were looking at (the caller takes
+          // it then: a message that waited its turn keeps its own); and the
+          // composer's "Write it as a doc".
+          ...(docContext ? { doc_context: docContext } : {}),
+          ...(output ? { output } : {}),
         }),
         signal: ctrl.signal,
       });

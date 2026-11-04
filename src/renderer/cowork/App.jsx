@@ -67,6 +67,7 @@ import {
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
+import { takeDocContext } from './lib/docViewContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -1277,6 +1278,9 @@ function AppCore() {
       // is out, `addonOffer` for the slot a mid-task send holds from the
       // moment Enter is pressed, `addonLocalKey` to find it again, and
       // `paused` + `unconfirmed` when nobody can say whether it was added.
+      // A doc message's `output` ("Write it as a doc") and `docContext` (the
+      // doc beside the chat as it was when this was sent) ride here too, so
+      // they belong to this message and not to whichever turn starts first.
       ...(extra || {}),
     };
     updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
@@ -1988,6 +1992,9 @@ function AppCore() {
     const onKey = (e) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.altKey || e.shiftKey) return;
+      // A shortcut the focused control already took is not the app's: in a
+      // doc, Cmd+B bolds and Cmd+K adds a link.
+      if (e.defaultPrevented) return;
       const key = e.key.toLowerCase();
       if (key === 'b') {
         // Cowork mirrors Main's task-only affordance; Code treats the whole
@@ -3888,6 +3895,8 @@ function AppCore() {
     const notionTexts = await loadNotionPageTexts(reference);
     const sendText = reference.length ? `${text}\n\n${describeReferenceAttachments(reference, notionTexts)}` : text;
     setComposerAttachments([]);
+    // A new conversation has no doc beside it yet.
+    const docContext = takeDocContext(taskId);
 
     // Two-phase send so the new-task experience matches the in-chat
     // send. Previously we shipped the user message + placeholder in the
@@ -4038,6 +4047,8 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       browserOff: browserOffForSend,
+      output: meta?.output,
+      docContext,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
@@ -4211,7 +4222,9 @@ function AppCore() {
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     // opts.targetTask lets the queue drain re-send to a specific task the
     // user may not currently be viewing (ENG-1378); a fresh composer send
-    // defaults to the task on screen.
+    // defaults to the task on screen. opts.output and opts.docRequest are
+    // this message's doc choices (see enqueueMessage); a drained message
+    // brings the doc context it was sent with as opts.docContext.
     const targetTask = opts.targetTask || currentTask;
     if (!targetTask) return false;
     const targetProject = projects.find((project) => project.id === targetTask.projectId);
@@ -4312,6 +4325,13 @@ function AppCore() {
       retireLiveQuestion(id, answerOutcome.questionId);
     }
 
+    // The doc open beside this chat as it is now, taken for this message: it
+    // goes with it, through the queue if a turn is running, and the passage
+    // picked in it goes with this message only. Taken any later (as the queue
+    // drains, say), it would be whatever the pane shows then, or nothing once
+    // the person has moved to another chat.
+    const docContext = opts.docContext !== undefined ? opts.docContext : takeDocContext(id, opts.docRequest);
+
     // Anton-core can't run two turns in parallel against the same
     // conversation, so if a stream is in flight (or one is about to
     // start) for this task we queue the new message and let
@@ -4344,7 +4364,11 @@ function AppCore() {
       // first (ENG-4194). Only the person's own composer sends: a drained or
       // machine-written prompt (a repair) always queues, as before.
       let queuedReason = null;
-      if (!opts.targetTask && !opts.skipPendingAnswer && hasLiveTurnHere(id)) {
+      // A message that asks for a doc ("Write it as a doc") or acts on a
+      // passage ("Edit with agent") needs its own turn with that context:
+      // an add-on reaches the running turn as text alone.
+      const asksForDoc = Boolean(opts.output || docContext?.request || docContext?.selection);
+      if (!opts.targetTask && !opts.skipPendingAnswer && !asksForDoc && hasLiveTurnHere(id)) {
         const eligibility = addonEligibility({
           conversationId: id,
           text,
@@ -4369,6 +4393,7 @@ function AppCore() {
         queuedAttachments ?? composerAttachments,
         mutesForSend,
         queuedReason,
+        { ...(opts.output ? { output: opts.output } : {}), ...(docContext ? { docContext } : {}) },
       );
       if (queuedAttachments == null) setComposerAttachments([]);
       // Queued counts as sent: the drain runs it when the slot frees, so a
@@ -4578,6 +4603,8 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       browserOff: browserOffForSend,
+      output: opts.output,
+      docContext,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId || id, ctrl)) return;
         // Adopt the server's canonical id as soon as it lands. The
@@ -4735,12 +4762,16 @@ function AppCore() {
     // unhandled rejection AND silently lose the message + its file. Put it back
     // on the queue instead — it stays visible as "queued" rather than
     // vanishing, and handleSendInTask surfaces why it failed.
+    // null, not left out, for a message sent with no doc: it must not take
+    // the view as it is now.
+    const docChoices = { output: next.output, docContext: next.docContext ?? null };
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
       drainSkipped: skipped,
+      ...docChoices,
     })).catch(() => {
-      enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
+      enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || [], docChoices);
     });
   };
   // Keep the mount-frozen reconnect closure pointed at the current drain (and

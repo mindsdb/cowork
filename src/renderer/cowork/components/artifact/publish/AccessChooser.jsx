@@ -329,6 +329,8 @@ export function AccessChooser({
   modes = DEFAULT_MODES,
   onSubmit,
   sharing = null,
+  // What is being shared, for the label: "app", or "doc" for a doc.
+  noun = 'app',
 }) {
   const { t } = useTranslation('artifacts');
   const draft = value;
@@ -375,7 +377,7 @@ export function AccessChooser({
 
   return (
     <AudiencePanel
-      ariaLabel={t('publish.whoCanAccess')}
+      ariaLabel={noun === 'app' ? t('publish.whoCanAccess') : `Who can access your ${noun}`}
       value={draft.mode}
       onValueChange={(m) => set({ mode: m })}
       options={options}
