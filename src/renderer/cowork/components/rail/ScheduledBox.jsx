@@ -76,7 +76,7 @@ export function ScheduledBox({
   onSelect,
 }) {
   return (
-    <RailCard title="Scheduled tasks" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
+    <RailCard title="Scheduled tasks" defaultOpen={defaultOpen}>
       <ScheduledList items={items} onSelect={onSelect} />
     </RailCard>
   );

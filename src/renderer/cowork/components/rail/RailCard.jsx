@@ -15,7 +15,6 @@ const TITLE_CLASS = 'font-sans text-[13px] font-semibold text-ink-3 min-w-0 flex
 export function RailCard({
   title,
   defaultOpen = false,
-  maxBodyHeight = 320,
   // When true, the header is a plain (non-clickable) label and the
   // chevron disclosure widget is dropped. The body is always shown
   // (defaultOpen is implicitly true). Used by the data-vault Connect
@@ -24,9 +23,7 @@ export function RailCard({
   noChevron = false,
   children,
 }) {
-  // The body keeps its own cap and scroller inside the panel, so a long
-  // section scrolls rather than pushing the rail off-screen.
-  const body = <div className="overflow-y-auto" style={{ maxHeight: maxBodyHeight }}>{children}</div>;
+  const body = <div>{children}</div>;
   if (noChevron) {
     return (
       <div className="rail-section shrink-0 min-w-0">

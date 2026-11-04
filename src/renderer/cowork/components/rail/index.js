@@ -3,6 +3,7 @@
 //   import { RailCard, ProgressBox, WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
 
 export { RailCard } from './RailCard';
+export { RailShowMore } from './RailShowMore';
 export { RAIL_DOCKED_CLASS, RailToggle } from './RailPanel';
 export { ProgressBox } from './ProgressBox';
 export { WorkingFolderBox } from './WorkingFolderBox';

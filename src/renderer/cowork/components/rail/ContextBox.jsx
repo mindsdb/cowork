@@ -13,14 +13,13 @@ export function ContextBox({
   /** Bumps when the task transcript changes (turn finish, send, etc.) so attachments and memory stay in sync. */
   refreshKey,
   defaultOpen = true,
-  maxBodyHeight = 360,
   onAddGoogleDriveFiles,
   onAddSharePointFiles,
   onFetchGoogleDriveFiles,
   onRemoveGoogleDriveFile,
 }) {
   return (
-    <RailCard title="Context" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
+    <RailCard title="Context" defaultOpen={defaultOpen}>
       <ContextCard
         projects={projects}
         project={project}
