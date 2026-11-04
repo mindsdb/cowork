@@ -22,8 +22,7 @@ const scheduledProps = {
 describe('desktop app', () => {
   it('says scheduled tasks run while the app is open', () => {
     render(<ScheduledView {...scheduledProps} />);
-    expect(screen.getByText(/^Local scheduled Anton tasks run while .+ is open\. If a run was due while the app was closed, Anton runs the latest one from the last 7 days when it reopens\.$/)).toBeInTheDocument();
-    expect(screen.getByText(/Anton runs them while the desktop app is open\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Scheduled tasks run while .+ is open\. If a run was due while it was closed, Anton runs the latest one from the last 7 days when it reopens\.$/)).toBeInTheDocument();
   });
 
   it('names the desktop app when scheduling', () => {
