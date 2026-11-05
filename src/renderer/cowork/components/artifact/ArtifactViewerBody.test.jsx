@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./workspace/ArtifactSourceEditor', () => ({
@@ -110,13 +110,14 @@ describe('ArtifactViewerBody HTML mode retention', () => {
     vi.unstubAllGlobals();
   });
 
-  it('prepares the visual editor after preview paint and swaps modes without remounting', () => {
+  it('prepares the visual editor after preview paint and swaps modes without remounting', async () => {
     const { rerender } = render(renderBody('preview'));
     const previewFrame = screen.getByTitle('Deck preview');
     expect(screen.queryByTestId('source-editor')).toBeNull();
 
     act(() => idleCallback());
-    const editor = screen.getByTestId('source-editor');
+    // The editor is lazy-loaded, so it mounts once its chunk resolves.
+    const editor = await screen.findByTestId('source-editor');
     expect(editor.parentElement.hidden).toBe(true);
 
     rerender(renderBody('edit'));
@@ -129,7 +130,7 @@ describe('ArtifactViewerBody HTML mode retention', () => {
   // The workspace source loads separately from the preview, so on a slow
   // connection it arrives after the page painted. Recognizing the HTML source
   // must not move the preview into a new parent and reload it (ENG-3070).
-  it('keeps the painted preview when the HTML source arrives late', () => {
+  it('keeps the painted preview when the HTML source arrives late', async () => {
     const { rerender } = render(renderBody('preview', {}, { source: null }));
     const previewFrame = screen.getByTitle('Deck preview');
 
@@ -137,11 +138,18 @@ describe('ArtifactViewerBody HTML mode retention', () => {
     act(() => idleCallback());
 
     expect(screen.getByTitle('Deck preview')).toBe(previewFrame);
-    expect(screen.getByTestId('source-editor').parentElement.hidden).toBe(true);
+    expect((await screen.findByTestId('source-editor')).parentElement.hidden).toBe(true);
   });
 });
 
 describe('ArtifactViewerBody agent repair decisions', () => {
+  // The comparison is lazy-loaded; wait for it to mount and hand over props.
+  const renderWithComparison = async (tree) => {
+    comparison.props = null;
+    render(tree);
+    await waitFor(() => expect(comparison.props).not.toBeNull());
+  };
+
   const setup = (decideRepair) => {
     const tree = renderBody('preview');
     const workspace = tree.props.workspace;
@@ -155,7 +163,7 @@ describe('ArtifactViewerBody agent repair decisions', () => {
     // The whole of ENG-2327: both call sites read a null return as success, so
     // accept closed the review comment for a decision that never happened.
     const tree = setup(vi.fn().mockResolvedValue({ decided: false, reason: 'missing-repair' }));
-    render(tree);
+    await renderWithComparison(tree);
 
     await act(async () => { await comparison.props.onAccept(); });
 
@@ -164,7 +172,7 @@ describe('ArtifactViewerBody agent repair decisions', () => {
 
   it('resolves the comment once the decision has landed', async () => {
     const tree = setup(vi.fn().mockResolvedValue({ decided: true, repair: {} }));
-    render(tree);
+    await renderWithComparison(tree);
 
     await act(async () => { await comparison.props.onAccept(); });
 
@@ -182,7 +190,7 @@ describe('ArtifactViewerBody agent repair decisions', () => {
       .mockRejectedValueOnce(conflict)
       .mockReturnValueOnce(pending);
     const tree = setup(decideRepair);
-    render(tree);
+    await renderWithComparison(tree);
     await act(async () => { await comparison.props.onReject(); });
 
     const confirm = await screen.findByRole('button', { name: /Restore anyway/i });
@@ -203,7 +211,7 @@ describe('ArtifactViewerBody agent repair decisions', () => {
       .mockRejectedValueOnce(conflict)
       .mockRejectedValueOnce(second);
     const tree = setup(decideRepair);
-    render(tree);
+    await renderWithComparison(tree);
     await act(async () => { await comparison.props.onReject(); });
 
     const confirm = await screen.findByRole('button', { name: /Restore anyway/i });
@@ -217,7 +225,7 @@ describe('ArtifactViewerBody agent repair decisions', () => {
     const conflict = Object.assign(new Error('Artifact changed'), { status: 409 });
     const decideRepair = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValue({ decided: true });
     const tree = setup(decideRepair);
-    render(tree);
+    await renderWithComparison(tree);
 
     await act(async () => { await comparison.props.onReject(); });
 
