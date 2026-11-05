@@ -16,7 +16,9 @@ vi.mock('../../platform/host', () => ({
     getApiOrigin: () => 'http://localhost:1',
     openPath: vi.fn(),
     openExternal: vi.fn(),
+    serverDiagnostics: vi.fn(async () => ({ recentLog: 'tail of the sidecar log' })),
   },
+  getVersionInfo: vi.fn(async () => ({ app: '1.2.3', ui: null, source: 'bundled', buildKind: null })),
   getAccessToken: vi.fn(async () => null),
   isElectron: false,
 }));
@@ -690,6 +692,42 @@ describe('server_busy failure card', () => {
   });
 });
 
+/* A proxy in front of the server answers 503 `cowork_unavailable` when it can
+   open no connection to the server, as while the server starts again. It isn't
+   a code the server sends, so it stays out of WIRE_CODES below. */
+describe('cowork_unavailable failure card', () => {
+  const BODY = "Cowork isn't answering right now. Try again in a few seconds.";
+
+  it('names a server that isn\'t answering and shows the refusal\'s sentence', () => {
+    render(<ChatView task={taskWith(failedTurn('cowork_unavailable', BODY))} />);
+    expect(screen.getByText("The server isn't answering")).toBeInTheDocument();
+    expect(screen.getByText('Server')).toBeInTheDocument();
+    expect(screen.getByText(BODY)).toBeInTheDocument();
+    expect(screen.queryByText('Too many requests too quickly')).toBeNull();
+  });
+
+  it('gates Retry until the Retry-After instant, then resends the question', () => {
+    const onSend = vi.fn();
+    const { unmount } = render(
+      <ChatView
+        task={taskWith(failedTurn('cowork_unavailable', BODY, { retryAt: new Date(Date.now() + 5_000).toISOString() }))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+    unmount();
+
+    render(
+      <ChatView
+        task={taskWith(failedTurn('cowork_unavailable', BODY, { retryAt: new Date(Date.now() - 1_000).toISOString() }))}
+        onSend={onSend}
+      />,
+    );
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+  });
+});
+
 /* Every card whose action resends the failed message sends that message's own
    attachments with it. The composer's staged files belong to the next message. */
 describe('resend cards carry the failed question\'s files', () => {
@@ -702,6 +740,8 @@ describe('resend cards carry the failed question\'s files', () => {
     'worker_unresponsive',
     'model_timeout',
     'stalled',
+    'turn_lost',
+    'cowork_unavailable',
   ])('%s: Try again resends the text with its attachments', (code) => {
     const onSend = vi.fn();
     render(
@@ -875,6 +915,37 @@ describe('worker_unresponsive failure card', () => {
   });
 });
 
+describe('turn_lost failure card', () => {
+  it('says the server stopped and retries the failed message', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'turn_lost',
+          'The server stopped before this answer finished. The answer ends where it was cut off. Please send your question again.',
+        ))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByText('The answer was cut off')).toBeInTheDocument();
+    expect(screen.getByText(/Nothing was wrong with your question/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', []);
+  });
+
+  it('hides Try again when there is no user message to resend', () => {
+    render(
+      <ChatView
+        task={taskWith([{ role: 'error', content: 'cut off', code: 'turn_lost' }])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
 /* The two ways a quiet turn shows. `model_timeout`: the server ended a model
  * call that sent nothing until its deadline. `stalled`: the UI heard nothing
  * for its idle window and ended only its own reader, so the turn may still be
@@ -1027,6 +1098,51 @@ describe('anton_error / unmapped failure fallback', () => {
     expect(alert).not.toHaveTextContent('Reference:');
   });
 
+  it('offers Copy diagnostics beside the reference', async () => {
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'anton_error', 'An unexpected error occurred.', { requestId: 'corr-abc' },
+        ))}
+        health={{ server_version: '4.5.6', anton_version: '7.8.9' }}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Copy diagnostics' });
+    await userEvent.click(button);
+    const copied = await navigator.clipboard.readText();
+    expect(copied).toContain('Reference: corr-abc');
+    expect(copied).toContain('Error code: anton_error');
+    expect(copied).toContain('Server: 4.5.6');
+    expect(copied).toContain('tail of the sidecar log');
+  });
+
+  it('adds neither a reference nor a copy action to a carded failure', () => {
+    // The criterion is that a recognised failure keeps exactly its current
+    // card. That holds today only because every carded code returns before
+    // the generic branch; nothing else pins it, so a refactor that lifted the
+    // reference block above the code switch would go unnoticed.
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'rate_limited', 'Rate limit reached.', { requestId: 'corr-abc' },
+        ))}
+        health={{ server_version: '4.5.6', anton_version: '7.8.9' }}
+      />,
+    );
+    expect(screen.queryByText(/Reference:/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy diagnostics' })).toBeNull();
+    expect(screen.queryByText(/corr-abc/)).toBeNull();
+  });
+
+  it('offers no copy action when the failure carries no id', () => {
+    // The older-server-under-a-newer-UI case: a response.failed with no
+    // request_id has to render exactly as it did before this existed.
+    render(
+      <ChatView task={taskWith(failedTurn('anton_error', 'An unexpected error occurred.'))} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Copy diagnostics' })).toBeNull();
+  });
+
   it('survives a reload: a persisted response.failed carrying request_id still renders the Reference', () => {
     // The case that matters most: the user refreshes, THEN goes to copy the
     // id for support. Spans the real hydrate function, not a hand-built
@@ -1082,6 +1198,8 @@ const WIRE_CODES = [
   'model_restricted',
   // cowork-server found no free database connection in time; the user waits, then retries.
   'server_busy',
+  // The server stopped while the turn ran; the question itself was fine, so it can be sent again.
+  'turn_lost',
   'anton_error',
 ];
 

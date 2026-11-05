@@ -1,0 +1,125 @@
+import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+
+import Ico from '../Icons';
+import { TurnMinimap } from './TurnMinimap';
+
+import type { StickToBottom } from './useStickToBottom';
+import './chat.css';
+
+type ScrollAttributes = Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'onScroll' | 'onWheel' | 'onTouchStart' | 'onPointerDown' | 'onKeyDown' | 'onClickCapture'> & {
+  [data: `data-${string}`]: string | undefined;
+};
+
+/**
+ * The scrolling transcript shared by Cowork chat and Code Mode.
+ *
+ * Owns the scroll box and the stick-to-bottom behaviour (see
+ * useStickToBottom); each surface keeps its own content and spacing. The end
+ * of the content is padded by `--chat-dock-height` (see useDockInset) so the
+ * last message scrolls clear of a composer floating over the transcript.
+ * A reader scrolled away from the end gets a button back to it. Longer
+ * conversations get a turn minimap on the left edge (TurnMinimap). `overlay`
+ * renders over the scroll box too: the place for other controls that float
+ * rather than scroll.
+ */
+export function ChatScroller({
+  stick,
+  className = '',
+  contentClassName = '',
+  scrollProps,
+  overlay,
+  children,
+}: {
+  stick: StickToBottom;
+  className?: string;
+  contentClassName?: string;
+  scrollProps?: ScrollAttributes;
+  overlay?: ReactNode;
+  children: ReactNode;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const { isStuck, scrollToBottom, isAtBottom, isFar, updateReserve, releaseAnchor, pause, setSelecting } = stick;
+  // Bumped when the content changes size or its nodes change, so the minimap
+  // re-reads turns. Switching between two equally tall conversations swaps
+  // the turns without a resize.
+  const [layoutVersion, setLayoutVersion] = useState(0);
+  const versionFrame = useRef(0);
+  // Content that grows in place (a streamed answer, an opened tray) keeps a
+  // pinned reader at the end without the transcript re-rendering.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === 'undefined') return undefined;
+    const bump = () => {
+      cancelAnimationFrame(versionFrame.current);
+      versionFrame.current = requestAnimationFrame(() => setLayoutVersion((v) => v + 1));
+    };
+    const resize = new ResizeObserver(() => {
+      updateReserve();
+      if (isStuck()) scrollToBottom('auto');
+      bump();
+    });
+    resize.observe(content, { box: 'border-box' });
+    const mutation = new MutationObserver(bump);
+    mutation.observe(content, { childList: true, subtree: true });
+    return () => { resize.disconnect(); mutation.disconnect(); cancelAnimationFrame(versionFrame.current); };
+  }, [isStuck, scrollToBottom, updateReserve]);
+  // Stop following while the reader selects text in the transcript.
+  useEffect(() => {
+    const onSelection = () => {
+      const box = stick.scrollRef.current;
+      const selection = document.getSelection();
+      setSelecting(!!(box && selection && !selection.isCollapsed && selection.anchorNode && box.contains(selection.anchorNode)));
+    };
+    document.addEventListener('selectionchange', onSelection);
+    return () => document.removeEventListener('selectionchange', onSelection);
+  }, [stick.scrollRef, setSelecting]);
+  return (
+    <div className="chat-scroller relative flex flex-1 flex-col min-h-0 min-w-0">
+      <div
+        // A log: new entries are announced politely, as ai-elements does.
+        role="log"
+        {...scrollProps}
+        ref={stick.scrollRef}
+        onScroll={stick.onScroll}
+        onWheel={stick.onWheel}
+        onTouchStart={releaseAnchor}
+        // A press on the native scrollbar targets the box itself; a press on
+        // the content targets something inside it.
+        onPointerDown={(event) => { if (event.target === event.currentTarget) releaseAnchor(); }}
+        // Opening a collapsed block (a <details>, an aria-expanded toggle)
+        // pauses following, so the block opens where the reader clicked.
+        onClickCapture={(event) => {
+          const toggle = (event.target as Element | null)?.closest?.('summary, [aria-expanded="false"]');
+          if (toggle) pause();
+        }}
+        onKeyDown={(event) => {
+          if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) releaseAnchor();
+        }}
+        className={`chat-scroller__box flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden ${className}`}
+      >
+        <div ref={contentRef} className={`chat-scroller__content ${contentClassName}`}>
+          {children}
+          {/* Room below a just-sent message, so it can rest at the top while
+              the answer streams in (useStickToBottom.anchorLastTurn). */}
+          <div ref={stick.reserveRef} className="chat-scroller__reserve" aria-hidden="true" />
+        </div>
+      </div>
+      {!isAtBottom && isFar && (
+        <button
+          type="button"
+          className="chat-jump"
+          aria-label="Scroll to latest"
+          onClick={() => {
+            const reduce = typeof window.matchMedia === 'function'
+              && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            scrollToBottom(reduce ? 'auto' : 'smooth');
+          }}
+        >
+          {Ico.arrowDown(16)}
+        </button>
+      )}
+      <TurnMinimap scrollRef={stick.scrollRef} version={layoutVersion} />
+      {overlay}
+    </div>
+  );
+}

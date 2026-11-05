@@ -18,6 +18,7 @@ import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
+import { installQuitSignalHandlers } from './quit-signals';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
@@ -80,6 +81,7 @@ import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
 import { guardDocumentPreviewFrames } from './document-preview-guard';
 import { mainWindowWebPreferences } from './main-window-preferences';
+import { addRedoOnCmdY, EDIT_MENU_ID } from './edit-menu';
 import { serverTokenListener } from './server-token-listener';
 import {
   startCodingTerminal,
@@ -90,6 +92,9 @@ import {
   killAllCodingTerminals,
   removeCodingTask,
 } from './coding-terminal';
+import { installMainErrorDialog } from './main-error-dialog';
+
+installMainErrorDialog();
 
 /* Re-hand the MindsHub credential to every sidecar that comes up.
  *
@@ -1725,7 +1730,7 @@ app.whenReady().then(async () => {
           ],
         } as Electron.MenuItemConstructorOptions]
       : [{ role: 'fileMenu' } as Electron.MenuItemConstructorOptions]),
-    { role: 'editMenu' },
+    { role: 'editMenu', id: EDIT_MENU_ID },
     {
       label: 'View',
       submenu: [
@@ -1769,7 +1774,9 @@ app.whenReady().then(async () => {
       ],
     },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  const appMenu = Menu.buildFromTemplate(template);
+  addRedoOnCmdY(appMenu);
+  Menu.setApplicationMenu(appMenu);
 
   ensureDefaultProject();
   setupIPC();
@@ -2133,3 +2140,7 @@ app.on('before-quit', (event) => {
     app.quit();
   });
 });
+
+// Termination signals (Ctrl-C under `npm run dev`) go through the same drain,
+// once. The helper waits for the app to be ready; see quit-signals.ts for why.
+void installQuitSignalHandlers(app);

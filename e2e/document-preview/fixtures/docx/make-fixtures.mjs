@@ -471,6 +471,81 @@ function pictureBulletPerParagraphFixture() {
   });
 }
 
+/* One w:lvl of a list: its number format, its text, the fonts its marker
+   runs in, and its indent. */
+function listLevel({ level, format, text, fonts }) {
+  const indent = 720 * (level + 1);
+  return `<w:lvl w:ilvl="${level}"><w:start w:val="1"/><w:numFmt w:val="${format}"/><w:lvlText w:val="${text}"/>`
+    + `<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${indent}" w:hanging="360"/></w:pPr><w:rPr><w:rFonts ${fonts}/></w:rPr></w:lvl>`;
+}
+
+/* A list paragraph at level `level` of w:num `numId`. */
+function listParagraph(text, { numId, level = 0 }) {
+  return `<w:p><w:pPr><w:numPr><w:ilvl w:val="${level}"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${escapeXml(text)}</w:t></w:r></w:p>`;
+}
+
+function numberingWith(abstractNums, nums) {
+  return `<w:numbering xmlns:w="${NS_W}">${abstractNums.join('')}`
+    + nums.map(([numId, abstractNumId]) => `<w:num w:numId="${numId}"><w:abstractNumId w:val="${abstractNumId}"/></w:num>`).join('')
+    + '</w:numbering>';
+}
+
+/*
+ * Word's default bulleted list: a Symbol U+F0B7 bullet, a Courier New "o" and
+ * a Wingdings U+F0A7 square, as Word writes them. Two lists use the one
+ * w:abstractNum, as Word writes a list that starts again, so docx-preview's
+ * two copies of each level share their run properties. A numbered list whose
+ * marker runs in Symbol keeps its numbers.
+ */
+function wordBulletsFixture() {
+  const bullets = '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>'
+    + listLevel({ level: 0, format: 'bullet', text: '&#61623;', fonts: 'w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"' })
+    + listLevel({ level: 1, format: 'bullet', text: 'o', fonts: 'w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New" w:hint="default"' })
+    + listLevel({ level: 2, format: 'bullet', text: '&#61607;', fonts: 'w:ascii="Wingdings" w:hAnsi="Wingdings" w:hint="default"' })
+    + '</w:abstractNum>';
+  const numbers = '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>'
+    + listLevel({ level: 0, format: 'decimal', text: '%1.', fonts: 'w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"' })
+    + '</w:abstractNum>';
+  return wordPackage({
+    body: paragraph('Bullets as Word writes them')
+      + listParagraph('Order the parts', { numId: 1 })
+      + listParagraph('Check the supplier', { numId: 1, level: 1 })
+      + listParagraph('Confirm the dates', { numId: 1, level: 2 })
+      + paragraph('The same list started again')
+      + listParagraph('Review the plan', { numId: 2 })
+      + listParagraph('First step', { numId: 3 })
+      + LETTER_SECTION,
+    parts: [{
+      id: 'rIdNumbering', name: 'numbering.xml', relType: 'numbering', contentType: wordContentType('numbering'),
+      xml: numberingWith([bullets, numbers], [[1, 0], [2, 0], [3, 1]]),
+    }],
+  });
+}
+
+/* A bulleted list as LibreOffice exports one to Word: it swaps an OpenSymbol
+   bullet with a match in Symbol or Wingdings for that font's private-use
+   character, names the font for w:cs too, and keeps OpenSymbol for a bullet
+   with no match, such as the white bullet U+25E6. */
+function libreOfficeBulletsFixture() {
+  const fonts = (name) => `w:ascii="${name}" w:hAnsi="${name}" w:cs="${name}" w:hint="default"`;
+  const bullets = '<w:abstractNum w:abstractNumId="0">'
+    + listLevel({ level: 0, format: 'bullet', text: '&#61623;', fonts: fonts('Symbol') })
+    + listLevel({ level: 1, format: 'bullet', text: '&#9702;', fonts: fonts('OpenSymbol') })
+    + listLevel({ level: 2, format: 'bullet', text: '&#61607;', fonts: fonts('Wingdings') })
+    + '</w:abstractNum>';
+  return wordPackage({
+    body: paragraph('Bullets as LibreOffice exports them')
+      + listParagraph('Plan the week', { numId: 1 })
+      + listParagraph('Book the room', { numId: 1, level: 1 })
+      + listParagraph('Send the agenda', { numId: 1, level: 2 })
+      + LETTER_SECTION,
+    parts: [{
+      id: 'rIdNumbering', name: 'numbering.xml', relType: 'numbering', contentType: wordContentType('numbering'),
+      xml: numberingWith([bullets], [[1, 0]]),
+    }],
+  });
+}
+
 /* A top-level VML shape whose v:imagedata names a PNG the file holds, as
    Word writes a picture watermark or a legacy picture. docx-preview draws it
    as an SVG image. */
@@ -671,6 +746,8 @@ export async function docxFixtureFiles() {
     ['list-theme-table-header.docx', listThemeTableHeaderFixture()],
     ['picture-per-reference.docx', picturePerReferenceFixture()],
     ['picture-bullet-per-paragraph.docx', pictureBulletPerParagraphFixture()],
+    ['word-bullets.docx', wordBulletsFixture()],
+    ['libreoffice-bullets.docx', libreOfficeBulletsFixture()],
   ];
   return [
     ...await Promise.all(packages.map(async ([file, files]) => ({ file, bytes: await zipBytes(files) }))),

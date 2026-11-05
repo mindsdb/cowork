@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AskUserCard from './AskUserCard';
+import { MarkdownContent } from './markdown/MarkdownContent';
 
 const submitAnswer = vi.fn(async () => ({ accepted: true }));
 vi.mock('../api', async (importOriginal) => {
@@ -387,6 +388,68 @@ describe('AskUserCard', () => {
     expect(container.querySelector('canvas')).toBeNull();
     expect(screen.queryByText(/side panel/i)).toBeNull();
     expect(screen.queryByText(/Form spec did not parse/i)).toBeNull();
+  });
+
+  describe('a code line wider than the card', () => {
+    const CUE = 'Scroll sideways to see the rest of the line.';
+    const prompt = [
+      'Approve this change?',
+      '',
+      '```json',
+      '{"plan":"Q4-main","site":"TOR-01","sku":"A-100234","qty_before":5,"note":"x","qty":1000000}',
+      '```',
+    ].join('\n');
+
+    /* happy-dom does no layout, so a code block's widths come from here:
+       `content` px of code in a `box` px block. */
+    const widths = { content: 0, box: 0 };
+    const isCode = (el) => el.classList.contains('anton-code-block-pre');
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+        .mockImplementation(function scrollWidth() { return isCode(this) ? widths.content : 0; });
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+        .mockImplementation(function clientWidth() { return isCode(this) ? widths.box : 0; });
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
+
+    it('fades the right edge and says the block scrolls', () => {
+      Object.assign(widths, { content: 750, box: 500 });
+      const { container } = renderCard({ prompt });
+      expect(screen.getByText(CUE)).toBeInTheDocument();
+      expect(container.querySelector('.anton-code-block-fade')).not.toBeNull();
+    });
+
+    it('shows no cue for a block that fits', () => {
+      Object.assign(widths, { content: 500, box: 500 });
+      const { container } = renderCard({ prompt });
+      expect(container.querySelector('.anton-code-block-pre')).not.toBeNull();
+      expect(screen.queryByText(CUE)).toBeNull();
+      expect(container.querySelector('.anton-code-block-fade')).toBeNull();
+    });
+
+    it('checks again when the card is resized', () => {
+      let resized = null;
+      vi.stubGlobal('ResizeObserver', class {
+        constructor(callback) { resized = callback; }
+        observe() {}
+        disconnect() {}
+      });
+      Object.assign(widths, { content: 500, box: 500 });
+      renderCard({ prompt });
+      expect(screen.queryByText(CUE)).toBeNull();
+      Object.assign(widths, { box: 300 });
+      act(() => resized());
+      expect(screen.getByText(CUE)).toBeInTheDocument();
+    });
+
+    it('leaves the code block of an answer without the cue', () => {
+      Object.assign(widths, { content: 750, box: 500 });
+      render(<MarkdownContent text={prompt} complete />);
+      expect(screen.queryByText(CUE)).toBeNull();
+    });
   });
 
   describe('reopened after its turn timed out', () => {

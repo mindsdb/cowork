@@ -34,6 +34,10 @@ import { useLiveAppStates } from '../../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../artifacts/LiveAppShareDialog';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { railArtifactRows } from '../../lib/railArtifacts';
+import { RailShowMore } from './RailShowMore';
+
+// How many rows the Artifacts list shows before "+ N more".
+const RAIL_COLLAPSED_ROWS = 6;
 import {
   canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
   isInlinePreviewable,
@@ -41,6 +45,7 @@ import {
 import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { stopSharingNotice } from '../artifact/publish/linkLeftLive';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -128,6 +133,11 @@ export function WorkingFolderLive({
     () => railArtifactRows(artifacts, conversationId),
     [artifacts, conversationId],
   );
+  // Collapsed, the list shows this chat's artifacts and enough of the rest
+  // of the project to fill RAIL_COLLAPSED_ROWS.
+  const [expanded, setExpanded] = useState(false);
+  const collapsedCount = Math.max(RAIL_COLLAPSED_ROWS, currentCount);
+  const visibleRows = expanded ? rows : rows.slice(0, collapsedCount);
   const authorships = useMemo(() => rows.map((r) => artifactAuthorship(r.capabilities)), [rows]);
   // Sticky per project: once any row needed the authorship column, keep
   // reserving it for this project even once a later poll's rows happen to be
@@ -178,8 +188,8 @@ export function WorkingFolderLive({
 
   /*
    * A copy duplicated from "Shared with you" into this project shows at once,
-   * and its row scrolls into view: the card's body scrolls, and the copy may
-   * land out of sight above or below where the person was looking.
+   * and its row scrolls into view: the rail scrolls, and the copy may land
+   * out of sight, or past the collapsed list's end, where it would be hidden.
    */
   const listRef = useRef(null);
   const [revealPath, setRevealPath] = useState(null);
@@ -188,6 +198,7 @@ export function WorkingFolderLive({
     onReceivedCopyShown?.();
     if (receivedCopy.projectId && receivedCopy.projectId !== effectiveProjectId) return;
     setArtifacts((prev) => [receivedCopy, ...prev.filter((r) => r.path !== receivedCopy.path)]);
+    setExpanded(true);
     setRevealPath(receivedCopy.path);
   }, [receivedCopy]);
   useEffect(() => {
@@ -399,13 +410,16 @@ export function WorkingFolderLive({
       // Unpublish first so deletion never leaves an orphaned public copy.
       // The server enforces the same rule as a backstop. Skipped in org mode —
       // see needsClientUnpublishBeforeDelete.
+      let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl })) {
-        await unpublishArtifact(a.path);
+        leftLive = stopSharingNotice(await unpublishArtifact(a.path));
       }
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete
       // guard always runs.
       await deleteArtifactAndSync(a);
+      // The page itself is still open to anyone with its link.
+      if (leftLive) setRowNote(leftLive);
     } catch (e) {
       setRowError(e?.message || 'Delete failed.');
       // Restore the row on failure.
@@ -504,7 +518,7 @@ export function WorkingFolderLive({
         </p>
       ) : (
         <div ref={listRef} className="flex flex-col gap-0.5">
-          {rows.map((a, i) => {
+          {visibleRows.map((a, i) => {
             const isPublished = !!a.publishedUrl;
             const menuOpen = openMenuPath === a.path;
             const authorship = authorships[i];
@@ -620,6 +634,11 @@ export function WorkingFolderLive({
               </Fragment>
             );
           })}
+          <RailShowMore
+            hiddenCount={rows.length - collapsedCount}
+            expanded={expanded}
+            onToggle={() => setExpanded((open) => !open)}
+          />
         </div>
       )}
 

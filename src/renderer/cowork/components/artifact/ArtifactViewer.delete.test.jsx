@@ -73,7 +73,9 @@ vi.mock('./workspace/useArtifactWorkspace', () => ({
 vi.mock('./ArtifactViewerHeader', () => ({
   ArtifactViewerHeader: ({ actions }) => <button onClick={actions.onTrash}>Open delete</button>,
 }));
-vi.mock('./ArtifactViewerBody', () => ({ ArtifactViewerBody: () => null }));
+vi.mock('./ArtifactViewerBody', () => ({
+  ArtifactViewerBody: ({ preview }) => (preview?.error ? <p>{preview.error}</p> : null),
+}));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
 vi.mock('../ConfirmModal', () => ({
@@ -123,6 +125,31 @@ describe('published artifact deletion from the viewer', () => {
     setOrgMode(false);
     await deleteFromViewer();
     expect(unpublishArtifact).toHaveBeenCalledWith(artifact.path);
+  });
+
+  it('stays open and says so when the deleted artifact\'s page is still live', async () => {
+    setOrgMode(false);
+    unpublishArtifact.mockResolvedValueOnce({
+      status: 'ok', takenDown: false, liveLink: 'https://view.example/artifact', reason: 'no_owner_record',
+    });
+    const onClose = vi.fn();
+    render(<ArtifactViewer open artifact={artifact} onClose={onClose} />);
+    fireEvent.click(screen.getByText('Open delete'));
+    fireEvent.click(screen.getByText('Confirm delete'));
+    await waitFor(() => expect(deleteArtifactAndSync).toHaveBeenCalledWith(artifact));
+    expect(await screen.findByText(/couldn’t take this page down/)).toBeInTheDocument();
+    expect(screen.getByText(/https:\/\/view\.example\/artifact/)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('closes after deleting an artifact whose page came down', async () => {
+    setOrgMode(false);
+    unpublishArtifact.mockResolvedValueOnce({ status: 'ok', takenDown: true, liveLink: null, reason: null });
+    const onClose = vi.fn();
+    render(<ArtifactViewer open artifact={artifact} onClose={onClose} />);
+    fireEvent.click(screen.getByText('Open delete'));
+    fireEvent.click(screen.getByText('Confirm delete'));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
   it('does not remount an HTML preview when collaboration state finishes loading', async () => {

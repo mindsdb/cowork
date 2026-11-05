@@ -7,7 +7,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 // The host bridge is stubbed once, below, together with the `isWeb` gate.
 // Keep it that way: two `vi.mock()` calls for one path do not merge, they race,
 // and the loser taking `isWeb` with it fails every web case in this file.
-vi.mock('../../lib/skillsStore', () => ({ useSkillNames: () => new Set() }));
+// A spy, so the memo test below can count MarkdownContent renders.
+const useSkillNames = vi.hoisted(() => vi.fn(() => new Set()));
+vi.mock('../../lib/skillsStore', () => ({ useSkillNames }));
 vi.mock('./MarkdownCode', () => ({
   MarkdownCode: (props) => <code>{props.children}</code>,
 }));
@@ -591,6 +593,87 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
   });
 });
 
+describe('MarkdownContent HTML comments', () => {
+  it('keeps a comment inside a fenced code block', () => {
+    const { container } = render(
+      <MarkdownContent text={'```html\n<div><!-- keep me --></div>\n```'} complete />,
+    );
+    expect(container.querySelector('code').textContent).toContain('<div><!-- keep me --></div>');
+  });
+
+  it('keeps a comment inside an inline code span', () => {
+    const { container } = render(
+      <MarkdownContent text={'write `<!-- note -->` to leave a note'} complete />,
+    );
+    expect(container.querySelector('code').textContent).toBe('<!-- note -->');
+  });
+
+  it('shows every byte of fenced text that opens a comment and closes it later', () => {
+    const body = '{"plan":"A-1","qty":1,"note":"<!--","qty":100000,"x":"-->"}';
+    const { container } = render(<MarkdownContent text={'```\n' + body + '\n```'} complete />);
+    expect(container.querySelector('code').textContent).toContain(body);
+  });
+
+  it('keeps the rest of a code block after an unclosed comment mark', () => {
+    const { container } = render(
+      <MarkdownContent text={'```\nstart <!-- open\nqty: 100000\n```\n\nafter'} complete />,
+    );
+    expect(container.querySelector('code').textContent).toContain('qty: 100000');
+    expect(container.textContent).toContain('after');
+  });
+
+  /* Code forms a pattern over the raw text can't see as code. A code span's
+     line ending renders as a space, as CommonMark specifies. */
+  it.each([
+    ['a double-backtick code span', 'see ``a <!-- x --> b`` here', 'a <!-- x --> b'],
+    ['a code span across two lines', 'see `a <!--\nx --> b` here', 'a <!-- x --> b'],
+    ['an indented code block', 'intro\n\n    <div><!-- keep --></div>\n\nafter', '<div><!-- keep --></div>'],
+    ['a fence after a run of backticks in a line', 'type ``` <!-- x -->\n\n```\ncode <!-- y -->\n```', 'code <!-- y -->'],
+    ['a fence that never closes', '```\nline <!-- z -->\nmore', 'line <!-- z -->\nmore'],
+    ['a four-backtick fence holding three backticks', '````\n```\n<!-- w -->\n```\n````', '```\n<!-- w -->\n```'],
+  ])('keeps a comment inside %s', (_form, text, code) => {
+    const { container } = render(<MarkdownContent text={text} complete />);
+    expect(container.querySelector('code').textContent).toContain(code);
+  });
+
+  it('turns a key:value comment on its own line into a chip and drops a plain one', () => {
+    const { container } = render(
+      <MarkdownContent text={'intro\n\n<!-- topic:api -->\n\n<!-- TODO -->\n\nnext'} complete />,
+    );
+    expect(container.querySelector('span.rounded-md.bg-surface-2')?.textContent).toBe('topic: api');
+    expect(container.textContent).toContain('intro');
+    expect(container.textContent).toContain('next');
+    expect(container.textContent).not.toContain('TODO');
+    expect(container.textContent).not.toContain('<!--');
+  });
+
+  it('renders a key:value comment as a chip, not as a blocked link', () => {
+    const { container } = render(
+      <MarkdownContent text={'- rate limit is 50/min <!-- topic:api -->'} complete />,
+    );
+    expect(container.querySelector('[title="Link blocked: unsupported URL scheme"]')).toBeNull();
+    expect(container.querySelector('span.rounded-md.bg-surface-2')?.textContent).toBe('topic: api');
+  });
+
+  it('still blocks a link to an unsafe scheme', () => {
+    const { container } = render(
+      <MarkdownContent text={'[open](javascript:alert(1)) and ![x](engram:a?k=b)'} complete />,
+    );
+    expect(container.querySelector('[title="Link blocked: unsupported URL scheme"]')?.textContent).toBe('open');
+    expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(container.querySelector('img[src^="engram:"]')).toBeNull();
+  });
+
+  it('still turns a key:value comment in prose into a chip and drops a plain one', () => {
+    const { container } = render(
+      <MarkdownContent text={'- rate limit is 50/min <!-- topic:api -->\n- draft <!-- TODO -->'} complete />,
+    );
+    expect(container.textContent).toContain('topic: api');
+    expect(container.textContent).not.toContain('TODO');
+    expect(container.textContent).not.toContain('<!--');
+  });
+});
+
 describe('MarkdownContent streaming performance', () => {
   it('can render an incomplete coding-agent message without per-word DOM wrappers', () => {
     const { container } = render(
@@ -714,5 +797,18 @@ describe('MarkdownContent images', () => {
     );
     expect(container.querySelector('img').getAttribute('src')).toBe('https://cdn.example/logo.png');
     expect(loadImage).not.toHaveBeenCalled();
+  });
+});
+
+describe('MarkdownContent memoization', () => {
+  // A streamed event re-renders the whole transcript; settled messages must
+  // not re-run the markdown pipeline when their props have not changed.
+  it('skips re-rendering when the parent re-renders with the same props', () => {
+    const { rerender } = render(<MarkdownContent text="settled answer" id="m1" complete />);
+    const renders = useSkillNames.mock.calls.length;
+    rerender(<MarkdownContent text="settled answer" id="m1" complete />);
+    expect(useSkillNames.mock.calls.length).toBe(renders);
+    rerender(<MarkdownContent text="settled answer, edited" id="m1" complete />);
+    expect(useSkillNames.mock.calls.length).toBe(renders + 1);
   });
 });

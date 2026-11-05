@@ -16,7 +16,7 @@ const OPTIONS = [
 // query them by role exclusion instead of a test id, since they carry no
 // semantic role of their own.
 const dividers = (container: HTMLElement) =>
-  Array.from(container.querySelectorAll('[aria-hidden="true"]'));
+  Array.from(container.querySelectorAll('[aria-hidden="true"]:not([data-toggle-pill])'));
 
 describe('ToggleGroup — divider between options', () => {
   it('renders one fewer divider than there are options', () => {

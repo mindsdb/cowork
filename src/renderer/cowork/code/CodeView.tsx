@@ -14,9 +14,10 @@ import { CodeTasksView } from './CodeTasksView';
 import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
+import { useDockInset } from '../components/chat/useDockInset';
 import { ComposerLip } from './ComposerLip';
 import { PromptQueue } from './ComposerMenus';
-import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -28,6 +29,7 @@ import { ProjectSettingsModal } from './ProjectSettingsModal';
 import type { CodeTaskListActions } from './useCodeTaskMenu';
 import { RecoveryModal } from './RecoveryModal';
 import { TaskBar } from './TaskBar';
+import { taskDiskUsage, useWorkspaceUsage } from './workspaceUsage';
 import { TaskTerminal } from './TaskTerminal';
 import { useCodingSession } from './useCodingSession';
 import { supportsTaskCapability } from './taskCapabilities';
@@ -75,6 +77,7 @@ export default function CodeView({
   onOpenTasks = () => {},
   onOpenSkills = () => {},
   onOpenNewTask = () => {},
+  onConnectMindsHub,
   active = true,
   onSessionsChange,
   onSelectionChange,
@@ -103,6 +106,7 @@ export default function CodeView({
   onOpenTasks?: (projectId?: string | null) => void;
   onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
+  onConnectMindsHub?: () => Promise<void>;
   active?: boolean;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
@@ -118,17 +122,7 @@ export default function CodeView({
     setPreviewOpen(false);
   }, []);
   // The transcript reserves the floating dock's height so its end scrolls clear.
-  const dockObserver = useRef<ResizeObserver | null>(null);
-  const dockRef = useCallback((dock: HTMLDivElement | null) => {
-    dockObserver.current?.disconnect();
-    dockObserver.current = null;
-    const stage = dock?.parentElement;
-    if (!dock || !stage || typeof ResizeObserver === 'undefined') return;
-    const sync = () => stage.style.setProperty('--code-dock-height', `${dock.offsetHeight}px`);
-    sync();
-    dockObserver.current = new ResizeObserver(sync);
-    dockObserver.current.observe(dock);
-  }, []);
+  const dockRef = useDockInset();
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
   const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
@@ -269,6 +263,11 @@ export default function CodeView({
 
   const restoring = !!selectedId && !session;
   const taskBarSession = session;
+  // Only this computer's workspaces are measured; a task elsewhere has none here.
+  const workspaceUsage = useWorkspaceUsage(
+    taskBarSession && taskBarSession.computer_is_local !== false ? taskBarSession.id : null,
+    taskBarSession?.workspace_path || '',
+  );
   const automationError = selectedId ? automationErrors[selectedId] || '' : '';
   const conversationError = detail.error || (reviewOpen ? '' : actionError || automationError || taskList.error);
   // A local folder is a first-class Code workspace, not an exceptional state.
@@ -287,6 +286,7 @@ export default function CodeView({
       models.find((model) => model.id === session.model)?.name || session.model,
     ),
     recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+    releaseNotice(session),
     messageNotice('error', conversationError),
     messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
     queueNotice(session),
@@ -398,6 +398,7 @@ export default function CodeView({
               setReviewOpen(false);
             }}
             onRunProjectAction={(action) => void startProjectAction(action)}
+            diskUsage={taskDiskUsage(workspaceUsage, taskBarSession.id)}
             onOpenControls={() => setControlsOpen(true)}
             onFork={() => void forkTask()}
           />
@@ -483,6 +484,10 @@ export default function CodeView({
             modelMeta={modelMeta}
             catalog={catalog}
             onCreate={createTask}
+            onConnectMindsHub={onConnectMindsHub ? async () => {
+              await onConnectMindsHub();
+              setActionError('');
+            } : undefined}
             projects={projects.projects}
             selectedProjectId={projects.selectedId}
             connections={connections}
@@ -735,7 +740,7 @@ export default function CodeView({
             value={{
               model: session.model,
               permission_mode: session.permission_mode,
-              reasoning_effort: session.reasoning_effort || 'high',
+              reasoning_effort: session.reasoning_effort ?? null,
               service_tier: session.service_tier || 'standard',
               personality: session.personality || 'pragmatic',
               network_access: !!session.network_access,
@@ -748,7 +753,13 @@ export default function CodeView({
             applyBlockedReason={isActiveStatus(session.status) ? 'Changes can be applied after the current turn finishes' : undefined}
             onClose={() => setControlsOpen(false)}
             onApply={async (value) => {
-              await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              try {
+                await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              } catch (reason) {
+                // The modal shows this failure; the page banner sits behind it.
+                setActionError('');
+                throw reason;
+              }
               setControlsOpen(false);
             }}
           />

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Ico from '../../components/Icons';
 import { Alert, Button, Tooltip } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
+import { scrubLog } from '../../lib/diagnostics';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 // Port / Exit / Started chips in the status card.
@@ -97,7 +98,9 @@ export default function BackendSection({
   }
 
   const error = diag?.lastError;
-  const log = (diag?.recentLog || '').trim();
+  // Scrubbed: this is raw sidecar output and it is about to be on screen.
+  // Memoised because the scrub walks the whole 32KB tail on every render.
+  const log = useMemo(() => scrubLog(diag?.recentLog).trim(), [diag?.recentLog]);
   const port = diag?.port;
   const errorKind = diag?.lastErrorKind ?? null;
   const startedAt = diag?.lastStartAt
@@ -184,7 +187,7 @@ export default function BackendSection({
           </div>
 
           {/* Port + exit code + last attempt chips */}
-          <div className="flex gap-2 pt-0 px-4 pb-[14px] font-[family-name:var(--font-mono)] text-xs">
+          <div className="flex gap-2 pt-0 px-4 pb-[14px] text-xs tabular-nums">
             <div className={CHIP_CLASS}>
               <span className={CHIP_LABEL_CLASS}>Port</span>
               <span className="text-ink">{port ?? '—'}</span>

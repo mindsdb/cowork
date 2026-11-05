@@ -332,6 +332,27 @@ export function isFrozenAlias(id, families = {}) {
 }
 
 /**
+ * The moving aliases in `ids` that should say they are the latest: each one with a
+ * frozen version of its own listed beside it.
+ *
+ * A moving alias is labelled with its line only ("Claude Sonnet"), so next to its
+ * pinned twin ("Claude Sonnet 5.5") it reads as a duplicate unless it says it
+ * moves. Alone it reads fine, and marking every moving alias put the marker on
+ * most rows. Presence in `families` is required, so BYOK ids never qualify.
+ */
+export function latestAliasIds(ids, families = {}) {
+  const list = ids || [];
+  const latest = new Set();
+  if (!families) return latest;
+  for (const id of list) {
+    if (!isFrozenAlias(id, families)) continue;
+    const head = families[id];
+    if (families[head] === head && list.includes(head)) latest.add(head);
+  }
+  return latest;
+}
+
+/**
  * Order ids so each frozen version follows the alias it froze.
  *
  * Heads keep their position in the incoming order, which is meaningful upstream

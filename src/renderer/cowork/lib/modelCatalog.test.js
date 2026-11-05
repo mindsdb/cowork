@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   modelMaker, groupModelOptions, isModelLocked, isModelRestricted, unavailableModelFields,
-  knownModelDisabledReasons, orderByFamily, OTHER_MAKER,
+  knownModelDisabledReasons, orderByFamily, latestAliasIds, OTHER_MAKER,
 } from './modelCatalog';
 
 // The live minds-cloud catalog as of ENG-1096 (alias → MindsHub label).
@@ -315,5 +315,39 @@ describe('knownModelDisabledReasons', () => {
     ['an array', ['model_restricted']],
   ])('gives an empty map for %s', (_label, raw) => {
     expect(knownModelDisabledReasons(raw)).toEqual({});
+  });
+});
+
+describe('latestAliasIds', () => {
+  const FAMILIES = {
+    mindshub_air: 'mindshub_air',
+    sonnet: 'sonnet', 'sonnet-5-5': 'sonnet', 'sonnet-5': 'sonnet',
+    fable: 'fable',
+  };
+
+  it('marks a moving alias listed beside one of its pinned versions', () => {
+    expect([...latestAliasIds(['mindshub_air', 'sonnet', 'sonnet-5-5', 'sonnet-5', 'fable'], FAMILIES)])
+      .toEqual(['sonnet']);
+  });
+
+  it('leaves a moving alias with no pinned version listed unmarked', () => {
+    // Its name alone reads fine; marking it would put "latest" on most rows.
+    expect(latestAliasIds(['mindshub_air', 'sonnet', 'fable'], FAMILIES).size).toBe(0);
+  });
+
+  it('marks only the alias at the top of a chain, never a pinned version', () => {
+    const chain = { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', 'sonnet-4-1': 'sonnet-4-5' };
+    expect([...latestAliasIds(['sonnet', 'sonnet-4-5', 'sonnet-4-1'], chain)]).toEqual(['sonnet']);
+  });
+
+  it('marks nothing for a pin whose head is not in the list', () => {
+    expect(latestAliasIds(['sonnet-5-5'], FAMILIES).size).toBe(0);
+    expect(latestAliasIds(['sonnet-4-5'], { 'sonnet-4-5': 'sonet' }).size).toBe(0);
+  });
+
+  it('marks nothing the families map does not describe (BYOK, older servers)', () => {
+    expect(latestAliasIds(['claude-sonnet-4-5', 'claude-sonnet-4-5-20250929'], FAMILIES).size).toBe(0);
+    expect(latestAliasIds(['sonnet', 'sonnet-5-5'], {}).size).toBe(0);
+    expect(latestAliasIds(['sonnet', 'sonnet-5-5'], null).size).toBe(0);
   });
 });

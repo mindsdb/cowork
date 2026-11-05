@@ -11,6 +11,7 @@ import { relativeAge } from '../lib/formatTime';
 import { useAccountUser } from '../hooks/useAccountUser';
 import UserMenu from './UserMenu';
 import WorkspaceSelector from './WorkspaceSelector';
+import { WORKSPACE_SELECTOR_ENABLED } from '../lib/workspaceSelectorFlag';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
@@ -108,10 +109,12 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
     setMenuOpen(true);
   };
 
-  // Fixed-width right slot — both timestamp and kebab are always
-  // rendered (cross-fade on hover). Reserving the same width means
-  // the row height/width stays constant whether the kebab is visible
-  // or not — no jumping when moving between rows.
+  // The right slot holds the timestamp or active dot, with the kebab
+  // cross-fading over it on hover. It takes room in the row only while it
+  // shows something at rest; otherwise it floats over the row's end, so the
+  // title runs to the edge and fades out early only while the kebab shows.
+  const age = showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : '';
+  const slotAtRest = isActive || !!age;
   return (
     <div
       className="relative flex"
@@ -142,8 +145,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           className="flex-1 min-w-0"
         />
       ) : (
-      <button className={`recent-item${selected ? ' is-selected' : ''} flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
-        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1 pr-2">
+      <button className={`recent-item${selected ? ' is-selected' : ''} relative flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
+        <span className={`recent-row__title flex-1 min-w-0${showKebab && !slotAtRest ? ' is-clipped' : ''}`}>
           {task.title || 'Untitled'}
           {/* Schedule-group entries — append a muted "· N runs"
               suffix so the title still reads clean while the count
@@ -161,15 +164,17 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           })()}
         </span>
 
-        {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab. The
-            negative right margin (-mr-1.5 = 6px) pulls the slot into the row's
-            10px right padding so the kebab (and the timestamp it cross-fades
-            with) sit snug against the edge of the hover fill, not a full
-            gutter-width inside it. */}
-        <span className="relative w-[50px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
+        {/* Right slot: as wide as the timestamp, and never narrower than the
+            kebab that cross-fades over it. In the row it pulls 6px into the
+            row's 10px right padding (-mr-1.5); floating, it sits at the same
+            spot (right-1), so the kebab never moves between the two. */}
+        <span className={slotAtRest
+          ? 'relative min-w-[22px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end'
+          : 'absolute right-1 top-1/2 -translate-y-1/2 w-[22px] h-[18px] inline-flex items-center justify-end'}
+        >
           <span
-            className="absolute inset-0 inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 [transition:opacity_var(--dur-hover)_ease]"
-            style={{ opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1 }}
+            className="inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 whitespace-nowrap [transition:opacity_var(--dur-hover)_ease]"
+            style={{ opacity: (showKebab || !slotAtRest) ? 0 : 1 }}
           >
             {isActive ? (
               <span
@@ -177,9 +182,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
                 title={`${agentLabel || 'Anton'} is working on this task`}
                 aria-label="Active"
               />
-            ) : (
-              showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : ''
-            )}
+            ) : age}
           </span>
           <span
             ref={triggerRef}
@@ -222,6 +225,7 @@ export default function Sidebar({
   tasksStatus = 'ready',
   onRetryTasks,
   pins = [],
+  inFlightIds = null,
   scheduledCount = 0,
   projectsCount = 0,
   artifactsCount = 0,
@@ -282,7 +286,7 @@ export default function Sidebar({
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
-  showCounters = true,
+  showCounters = false,
   // Settings → Appearance → Sidebar title/logo. Replaces the "MindsHub"
   // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,
@@ -291,6 +295,8 @@ export default function Sidebar({
   // chat via this handler (App's send-from-home). Omit to hide the card
   // (tests, web shells that don't wire it).
   onStartChat = null,
+  // Takes the "Try an example" row to Home, where the examples are.
+  onOpenExamples = null,
   // First-artifact tip — App arms it (0 → 1 artifacts transition) and
   // owns the persistent dismissal; the sidebar anchors it to the Live
   // Artifacts nav row and adds the "clicking the row dismisses" path.
@@ -326,14 +332,16 @@ export default function Sidebar({
   );
 
   // A task is "currently active" if any of its messages carries a
-  // live `_streaming` placeholder — the same signal the chat view
-  // uses to know a turn is in flight. Derived directly from messages
-  // so the dot lights up the moment the stream starts and clears the
-  // moment onDone/onError strips the placeholder. No new wire from
-  // App.jsx needed; `tasks` already carries the messages array.
+  // live `_streaming` placeholder (this window is streaming it) or the
+  // server lists its conversation as in flight. The placeholder alone
+  // isn't enough: a reload drops it, and it only comes back once the
+  // task is opened and re-attaches, so a still-running task lost its
+  // dot until then. The server list is fetched at boot, so it covers
+  // that gap, as well as turns started from another client.
   const activeTaskIds = new Set(
     tasks
-      .filter((t) => (t.messages || []).some((m) => m && m.role === '_streaming'))
+      .filter((t) => inFlightIds?.has?.(t.id)
+        || (t.messages || []).some((m) => m && m.role === '_streaming'))
       .map((t) => t.id)
   );
 
@@ -695,6 +703,7 @@ export default function Sidebar({
               onRename={onRenameCodingSession}
               onSetArchived={onSetCodingSessionArchived}
               onDelete={onDeleteCodingSession}
+              showCounters={showCounters}
             />
           </>
         ) : (
@@ -851,7 +860,7 @@ export default function Sidebar({
               className="recents-show-more mt-1.5 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-between gap-2 hover:bg-surface-2 hover:border-line hover:text-ink [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease]"
             >
               <span>Show more</span>
-              <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4">
+              <span className="text-xs tabular-nums text-ink-4">
                 +{recentsAll.length - recents.length}
               </span>
             </button>
@@ -862,7 +871,7 @@ export default function Sidebar({
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
-        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
+        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} />}
 
         {/* One banner for all three update mechanisms, chosen by
             deriveUpdateBanner (shell-first). Exactly one banner or none. */}
@@ -876,7 +885,7 @@ export default function Sidebar({
             </span>
           );
           const action = updateBanner.actionLabel ? (
-            <span className={`text-2xs font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold ${tone.action}`}>
+            <span className={`text-2xs tracking-[0.03em] uppercase font-semibold ${tone.action}`}>
               {updateBanner.actionLabel}
             </span>
           ) : null;
@@ -929,8 +938,9 @@ export default function Sidebar({
             account row rather than at the top of the rail. A workspace is a
             container inside the organization, not the thing a reader starts a
             task from, and the top of the rail is where the first task begins.
-            Renders nothing until the org has a second workspace to move to. */}
-        {PLATFORM_UI && accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
+            Renders nothing until the org has a second workspace to move to.
+            Hidden for now behind WORKSPACE_SELECTOR_ENABLED. */}
+        {WORKSPACE_SELECTOR_ENABLED && PLATFORM_UI && accountUser && <WorkspaceSelector user={accountUser} returnFocusRef={workspaceReturnFocusRef} />}
 
         {/* Footer — the settings / backend-status controls stay
             Electron-only: the FastAPI process IS the host on web, so
