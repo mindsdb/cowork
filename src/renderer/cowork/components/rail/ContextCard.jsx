@@ -29,6 +29,7 @@ import {
 import ContextFileModal from '../project/ContextFileModal';
 import { ConfirmModal } from '../ConfirmModal';
 import { OverflowMenu } from '../OverflowMenu';
+import { RailShowMore } from './RailShowMore';
 import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 import { openAuthenticatedResource } from '../../lib/authenticatedResource';
@@ -986,7 +987,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {ordered.map((section) => {
         const max = showAll ? section.files.length : 4;
         const visible = section.files.slice(0, max);
-        const remaining = section.files.length - visible.length;
         if (visible.length === 0) return null;
         return (
           <div key={section.scope} className="flex flex-col gap-0.5">
@@ -1007,15 +1007,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 onOpen={() => openMemoryEntry(entry)}
               />
             ))}
-            {remaining > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowAll(true)}
-                className="ml-1 mt-1 self-start text-xs text-ink-3 hover:text-ink underline-offset-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
-              >
-                + {remaining} more
-              </button>
-            )}
+            <RailShowMore
+              hiddenCount={section.files.length - 4}
+              expanded={showAll}
+              onToggle={() => setShowAll((all) => !all)}
+            />
           </div>
         );
       })}

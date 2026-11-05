@@ -186,7 +186,7 @@ export function SharedLiveApps({ projectId, refreshKey = null, onDuplicated }) {
   return (
     <>
       {showCard && (
-        <RailCard title={SHARED_WITH_YOU_LABEL} defaultOpen maxBodyHeight={240}>
+        <RailCard title={SHARED_WITH_YOU_LABEL} defaultOpen>
           <section aria-label={SHARED_WITH_YOU_LABEL}>
             {loadError && <p className="text-xs px-1 pb-0.5 text-danger">{loadError}</p>}
             <ul className="m-0 p-0 list-none flex flex-col gap-0.5">
