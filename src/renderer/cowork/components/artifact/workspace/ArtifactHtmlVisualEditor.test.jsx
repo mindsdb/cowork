@@ -126,5 +126,21 @@ describe('ArtifactHtmlVisualEditor cancel', () => {
     sendFromFrame({ token, type: 'cancel', elementId: 'cowork-edit-1' });
 
     expect(onChange).toHaveBeenCalledTimes(1);
+
+    sendFromFrame({ token, type: 'cancel', elementId: 'cowork-edit-0' });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(VALUE);
+  });
+
+  it('replaces the snapshot when another element is selected', async () => {
+    const { onChange } = await renderReadyEditor();
+    const token = frameToken();
+
+    sendFromFrame({ token, type: 'selection', elementId: 'cowork-edit-0', label: 'Heading' });
+    sendFromFrame({ token, type: 'change', elementId: 'cowork-edit-0', html: 'Typed' });
+    sendFromFrame({ token, type: 'selection', elementId: 'cowork-edit-1', label: 'Paragraph' });
+    sendFromFrame({ token, type: 'cancel', elementId: 'cowork-edit-0' });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });

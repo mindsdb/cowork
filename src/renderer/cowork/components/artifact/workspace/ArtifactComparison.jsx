@@ -85,8 +85,9 @@ export function ArtifactComparison({
       : null),
     [afterContent, documentUrl, beforeContent, htmlComparison],
   );
-  // Only an HTML comparison has documents to inline.
-  const frameUrl = visualModel ? documentUrl : '';
+  // Only an open HTML comparison has documents to inline; the component stays
+  // mounted while no comparison is open.
+  const frameUrl = comparison && visualModel ? documentUrl : '';
   const inlinedBefore = useInlinedFrameDocument(visualModel?.before ?? '', frameUrl);
   const inlinedAfter = useInlinedFrameDocument(visualModel?.after ?? '', frameUrl);
 

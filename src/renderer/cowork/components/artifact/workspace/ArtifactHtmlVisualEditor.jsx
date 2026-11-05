@@ -110,9 +110,9 @@ export function ArtifactHtmlVisualEditor({
         if (!snapshot || snapshot.id !== message.elementId) return;
         cancelSnapshotRef.current = null;
         elementRangesRef.current = snapshot.elements;
+        setError('');
         if (snapshot.content !== visualValueRef.current) {
           visualValueRef.current = snapshot.content;
-          setError('');
           onChange(snapshot.content);
         }
       } else if (message.type === 'change' && message.elementId) {
