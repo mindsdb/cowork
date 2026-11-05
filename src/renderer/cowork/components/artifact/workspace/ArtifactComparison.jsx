@@ -3,6 +3,7 @@ import Ico from '../../Icons';
 import { Button } from '../../ui';
 import { ArtifactHtmlComparison } from './ArtifactHtmlComparison';
 import { createHtmlVisualComparisonDocuments } from './htmlVisualEditorDocument';
+import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
 
 function labelOf(revision, fallback) {
   if (!revision) return fallback;
@@ -77,12 +78,17 @@ export function ArtifactComparison({
     [afterContent, beforeContent],
   );
   const htmlComparison = isHtmlComparison(contentType, comparison?.before, comparison?.after);
+  const documentUrl = absoluteDraftUrl(baseUrl);
   const visualModel = useMemo(
     () => (htmlComparison
-      ? createHtmlVisualComparisonDocuments(beforeContent, afterContent, { baseUrl })
+      ? createHtmlVisualComparisonDocuments(beforeContent, afterContent, { baseUrl: documentUrl })
       : null),
-    [afterContent, baseUrl, beforeContent, htmlComparison],
+    [afterContent, documentUrl, beforeContent, htmlComparison],
   );
+  // Only an HTML comparison has documents to inline.
+  const frameUrl = visualModel ? documentUrl : '';
+  const inlinedBefore = useInlinedFrameDocument(visualModel?.before ?? '', frameUrl);
+  const inlinedAfter = useInlinedFrameDocument(visualModel?.after ?? '', frameUrl);
 
   useEffect(() => {
     for (const node of [beforeRef.current, afterRef.current]) {
@@ -134,6 +140,9 @@ export function ArtifactComparison({
         <ArtifactHtmlComparison
           key={`${before?.id || 'before'}:${after?.id || 'after'}`}
           model={visualModel}
+          beforeDocument={inlinedBefore.content}
+          afterDocument={inlinedAfter.content}
+          pending={inlinedBefore.pending || inlinedAfter.pending}
           beforeLabel={beforeLabel}
           afterLabel={afterLabel}
         />
