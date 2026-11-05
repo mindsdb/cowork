@@ -323,6 +323,9 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
 // OrbitProvider `size` for the chat orb — WorkingIndicator's anchor
 // box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
+// The width the chat needs to dock the right rail beside the conversation: a
+// reading column of at least 640px, its 40px gutters, and the 320px rail.
+const RAIL_DOCK_MIN_PX = 640 + 40 * 2 + 320;
 
 // Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
 const INCOMPLETE_REASON_TEXT = {
@@ -1920,10 +1923,12 @@ export default function ChatView({
     onComposerRedirectConsumed?.(task?.id, redirect.attachments);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerRedirects, task?.id]);
-  // Inline rail only active on wide screens.
-  const effectiveRailOpen = !isNarrow && railOpen;
-  // Narrow-screen overlay rail.
-  const railOverlayOpen = isNarrow && railNarrowOpen;
+  // The rail docks beside the conversation only when the conversation keeps
+  // its full reading width next to it; otherwise it opens over the top.
+  const [railFits, setRailFits] = useState(true);
+  const railFloats = isNarrow || !railFits;
+  const effectiveRailOpen = !railFloats && railOpen;
+  const railOverlayOpen = railFloats && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
   /* The figure source (a LinkedFigureSource) whose file is open in the
@@ -2181,6 +2186,13 @@ export default function ChatView({
   // (can't leak into the rail visually when a slot is near the right
   // edge). chatRef stays as the panel-level ancestor.
   const chatRef = useRef(null);
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(([entry]) => setRailFits(entry.contentRect.width >= RAIL_DOCK_MIN_PX));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const convRef = useRef(null);
 
   // The orb anchors to the ThinkingBlock header's WorkingIndicator box —
@@ -2242,7 +2254,7 @@ export default function ChatView({
         <Tooltip content="Expand panel">
           <button
             type="button"
-            onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
+            onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
             aria-label="Expand panel"
             // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
             // rail-open state, and the transition's per-state delay) stay inline —
@@ -3249,7 +3261,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div ref={dockRef} className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        <div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
@@ -3319,7 +3331,7 @@ export default function ChatView({
 
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
-      {isNarrow && (
+      {railFloats && (
         <div
           onClick={() => setRailNarrowOpen(false)}
           className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
@@ -3333,11 +3345,11 @@ export default function ChatView({
         // Narrow: fixed overlay that slides in from the right.
         // Wide: inline grid column.
         className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
-          isNarrow
+          railFloats
             ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
             : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
         }`}
-        style={isNarrow ? {
+        style={railFloats ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
         } : {
           visibility: effectiveRailOpen ? 'visible' : 'hidden',
@@ -3354,7 +3366,7 @@ export default function ChatView({
             <button
               type="button"
               className="chat-rail-close"
-              onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
+              onClick={() => railFloats ? setRailNarrowOpen(false) : setRailOpen(false)}
               aria-label="Collapse panel"
               // kept inline: same all:unset cascade-priority reason as ArtifactCard's
               // buttons — every property here stays co-located with the reset, and

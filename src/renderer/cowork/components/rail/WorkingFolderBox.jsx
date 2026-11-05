@@ -15,7 +15,6 @@ export function WorkingFolderBox({
   project,
   isStreaming = false,
   defaultOpen = true,
-  maxBodyHeight = 320,
   conversationId = null,
   onAddressWithAgent,
 }) {
@@ -32,7 +31,7 @@ export function WorkingFolderBox({
   const [receivedCopy, setReceivedCopy] = useState(null);
   return (
     <>
-      <RailCard title="Artifacts" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
+      <RailCard title="Artifacts" defaultOpen={defaultOpen}>
         <WorkingFolderLive
           project={project}
           isStreaming={isStreaming}

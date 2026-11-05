@@ -109,10 +109,12 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
     setMenuOpen(true);
   };
 
-  // Fixed-width right slot — both timestamp and kebab are always
-  // rendered (cross-fade on hover). Reserving the same width means
-  // the row height/width stays constant whether the kebab is visible
-  // or not — no jumping when moving between rows.
+  // The right slot holds the timestamp or active dot, with the kebab
+  // cross-fading over it on hover. It takes room in the row only while it
+  // shows something at rest; otherwise it floats over the row's end, so the
+  // title runs to the edge and fades out early only while the kebab shows.
+  const age = showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : '';
+  const slotAtRest = isActive || !!age;
   return (
     <div
       className="relative flex"
@@ -143,8 +145,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           className="flex-1 min-w-0"
         />
       ) : (
-      <button className={`recent-item${selected ? ' is-selected' : ''} flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
-        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1 pr-2">
+      <button className={`recent-item${selected ? ' is-selected' : ''} relative flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
+        <span className={`recent-row__title flex-1 min-w-0${showKebab && !slotAtRest ? ' is-clipped' : ''}`}>
           {task.title || 'Untitled'}
           {/* Schedule-group entries — append a muted "· N runs"
               suffix so the title still reads clean while the count
@@ -162,15 +164,17 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           })()}
         </span>
 
-        {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab. The
-            negative right margin (-mr-1.5 = 6px) pulls the slot into the row's
-            10px right padding so the kebab (and the timestamp it cross-fades
-            with) sit snug against the edge of the hover fill, not a full
-            gutter-width inside it. */}
-        <span className="relative w-[50px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
+        {/* Right slot: as wide as the timestamp, and never narrower than the
+            kebab that cross-fades over it. In the row it pulls 6px into the
+            row's 10px right padding (-mr-1.5); floating, it sits at the same
+            spot (right-1), so the kebab never moves between the two. */}
+        <span className={slotAtRest
+          ? 'relative min-w-[22px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end'
+          : 'absolute right-1 top-1/2 -translate-y-1/2 w-[22px] h-[18px] inline-flex items-center justify-end'}
+        >
           <span
-            className="absolute inset-0 inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 [transition:opacity_var(--dur-hover)_ease]"
-            style={{ opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1 }}
+            className="inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 whitespace-nowrap [transition:opacity_var(--dur-hover)_ease]"
+            style={{ opacity: (showKebab || !slotAtRest) ? 0 : 1 }}
           >
             {isActive ? (
               <span
@@ -178,9 +182,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
                 title={`${agentLabel || 'Anton'} is working on this task`}
                 aria-label="Active"
               />
-            ) : (
-              showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : ''
-            )}
+            ) : age}
           </span>
           <span
             ref={triggerRef}
@@ -701,6 +703,7 @@ export default function Sidebar({
               onRename={onRenameCodingSession}
               onSetArchived={onSetCodingSessionArchived}
               onDelete={onDeleteCodingSession}
+              showCounters={showCounters}
             />
           </>
         ) : (
