@@ -151,11 +151,128 @@ Local plugins aren't found by `cap sync`, so they are registered by hand:
 
 ## CI
 
-`.github/workflows/mobile-smoke.yml` runs on PRs that touch `mobile/`: an
-unsigned iOS simulator build (`xcodebuild -scheme App -configuration Release
--sdk iphonesimulator CODE_SIGNING_ALLOWED=NO`) and an Android
-`./gradlew assembleDebug`. Signed TestFlight / Play builds come in a follow-up
-PR.
+`.github/workflows/mobile-smoke.yml` runs on PRs that touch `mobile/` (called
+from `dev-build-deploy.yml`): an unsigned iOS simulator build (`xcodebuild
+-scheme App -configuration Release -sdk iphonesimulator
+CODE_SIGNING_ALLOWED=NO`), an Android `./gradlew assembleDebug`, and a
+`bundleRelease` signed with a throwaway key to keep the release signing config
+honest. Signed store builds are under [Releasing](#releasing).
+
+## Releasing
+
+`.github/workflows/mobile-release.yml` builds signed apps and hands them to
+testers. It calls one workflow per platform, both driven by fastlane
+(`fastlane/Fastfile`, run from `mobile/` with `bundle exec fastlane ...`):
+
+| Workflow | Lane | Runner | Result |
+|---|---|---|---|
+| `.github/workflows/build-ios.yml` | `ios beta` | macOS, newest stable Xcode | `.ipa` uploaded to TestFlight |
+| `.github/workflows/build-android.yml` | `android internal` | Ubuntu, JDK 21 | `.aab` uploaded to the Play internal testing track |
+
+`mobile-release.yml` runs on:
+
+- **A `mobile-v<version>` tag:** a **production** build (`cowork.mindshub.ai`)
+  of both apps. The tag must equal `mobile-v` + `version` in `package.json`,
+  or the run fails before building anything.
+- **`workflow_dispatch`** (Actions -> Mobile release -> Run workflow, any
+  branch): inputs `environment`, `staging` (default) or `prod`, and
+  `platform`, `both` (default), `ios` or `android`.
+
+The two platform jobs are independent; one failing doesn't stop the other.
+The `.ipa` (with dSYMs) and `.aab` are kept as run artifacts.
+
+The build number (iOS `CFBundleVersion`, Android `versionCode`) is the
+`mobile-release.yml` run number, so it only goes up and is the same on both
+platforms for one release. Re-running a run that already
+uploaded reuses its number and the store rejects it; start a new run instead.
+
+Staging and production builds use the same bundle id / package, so a staging
+build in TestFlight or Play internal testing is the same app pointed at
+`cowork.staging.mindshub.ai`. Installing one replaces the other. TestFlight's
+"What to Test" note and the Play release name say which environment a build
+is. (The iOS job waits for App Store Connect to finish processing, usually
+5-15 minutes, because that note can only be set after processing.)
+
+### Cutting a release
+
+```sh
+# 1. bump "version" in mobile/package.json (e.g. 1.0.1), merge it
+# 2. tag the merged commit and push the tag
+git tag mobile-v1.0.1 && git push origin mobile-v1.0.1
+```
+
+That builds and uploads both apps. Then, when the testers are happy, **promote by hand**:
+App Store Connect (TestFlight build -> new App Store version -> submit for
+review) and Play Console (internal testing -> promote to production or a wider
+track). Automating promotion is a later step.
+
+### Before the first run
+
+The workflows check their secrets first and fail with the list of missing
+names, so a run before the accounts exist fails in seconds and says what to add.
+
+- **Play: the first upload must be manual.** A new Play app accepts API uploads
+  only after one `.aab` has been uploaded by hand to internal testing. Run
+  Mobile release once with `platform: android` (it fails at the upload step), download the `.aab`
+  from the run's artifacts, and upload it in Play Console -> Testing -> Internal
+  testing. Use a staging dispatch, or a prod one if that first build should be
+  production. While the app is still a draft in Play Console, Play only accepts
+  draft releases: set the repository **variable** `PLAY_RELEASE_STATUS=draft`
+  until the first release is rolled out, then delete it (the default is
+  `completed`, which makes a build available to internal testers right away;
+  the internal track has no review).
+- **iOS: the app record must exist** in App Store Connect for
+  `ai.mindshub.cowork` before the first TestFlight upload.
+- **iOS signing:** the Fastfile switches the `App` target to manual signing with
+  the Apple Distribution identity and the installed profile, on the CI checkout
+  only (`update_code_signing_settings`). The committed project stays on
+  automatic signing for local development. If you run `fastlane ios beta`
+  locally, discard the `project.pbxproj` change afterwards.
+
+### Secrets
+
+Repository secrets (Settings -> Secrets and variables -> Actions). Base64 values
+are single-line: `base64 -i <file> | tr -d '\n' | pbcopy` on macOS,
+`base64 -w0 <file>` on Linux.
+
+**iOS** (read by `build-ios.yml`)
+
+| Secret | What | How to produce it |
+|---|---|---|
+| `IOS_DIST_CERT_B64` | Apple Distribution certificate with its private key, `.p12` | Certificates, IDs & Profiles -> Certificates -> Apple Distribution (from a CSR made in Keychain Access). Install the `.cer`, export certificate + key from Keychain Access as `.p12` with a password, then base64 it. Not the Developer ID certificate the Mac app uses. |
+| `IOS_DIST_CERT_PASSWORD` | The `.p12` export password | |
+| `IOS_PROFILE_APP_B64` | App Store provisioning profile for `ai.mindshub.cowork` | Profiles -> Distribution -> App Store Connect, App ID `ai.mindshub.cowork`, the certificate above. Download the `.mobileprovision`, base64 it. Regenerate it (and this secret) when the certificate changes or capabilities are added. |
+| `IOS_PROFILE_SHARE_B64` | Profile for `ai.mindshub.cowork.share` | **Later**, with the share extension. Not read yet. |
+| `ASC_API_KEY_ID` | App Store Connect API key id | Users and Access -> Integrations -> App Store Connect API -> Team Keys, role App Manager. |
+| `ASC_API_ISSUER_ID` | Issuer id shown on that page | |
+| `ASC_API_KEY_P8_B64` | The key's `AuthKey_<id>.p8` | Downloadable once. `base64 -i AuthKey_<id>.p8 \| tr -d '\n'`. |
+
+The team id and profile name are read from the profile itself; no
+`APPLE_TEAM_ID` is needed here.
+
+**Android** (read by `build-android.yml`)
+
+| Secret | What | How to produce it |
+|---|---|---|
+| `ANDROID_UPLOAD_KEYSTORE_B64` | Upload keystore | `keytool -genkeypair -v -keystore upload.jks -storetype PKCS12 -alias upload -keyalg RSA -keysize 2048 -validity 10000`, then base64 it. Keep the file and passwords in the team password manager; enroll in Play App Signing so a lost upload key can be reset. |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password | |
+| `ANDROID_KEY_ALIAS` | Key alias (`upload` above) | |
+| `ANDROID_KEY_PASSWORD` | Key password (same as the store password for PKCS12) | |
+| `PLAY_SERVICE_ACCOUNT_JSON_B64` | Play Developer API service account key | Google Cloud -> IAM -> Service accounts -> create, Keys -> add JSON key. In Play Console -> Users and permissions, invite its email with release permissions for the app. Base64 the JSON. |
+| `GOOGLE_SERVICES_JSON_B64` | Firebase config (optional) | Firebase -> project settings -> Android app `ai.mindshub.cowork` -> `google-services.json`, base64 it. When set, CI writes `android/app/google-services.json` and the google-services plugin is applied; when not, the build skips Firebase. Needed for FCM push, which isn't wired up yet. |
+
+Optional repository variable: `PLAY_RELEASE_STATUS` (`draft` until the Play
+app's first release is out; see above).
+
+### Signing locally
+
+Android: the release `signingConfig` in `android/app/build.gradle` is used
+only when a keystore path is given, from the environment
+(`ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+`ANDROID_KEY_PASSWORD`) or Gradle properties (`coworkKeystorePath`,
+`coworkKeystorePassword`, `coworkKeyAlias`, `coworkKeyPassword`, e.g. in
+`~/.gradle/gradle.properties`). Without one, `bundleRelease` produces an
+unsigned bundle and debug builds are unaffected.
 
 ## Not done yet (TODO)
 
@@ -168,8 +285,7 @@ PR.
   `group.ai.mindshub.cowork`): needs its App ID and provisioning profile.
 - **Universal links / app links:** `apple-app-site-association` and
   `assetlinks.json` on `cowork.mindshub.ai`, plus Associated Domains.
-- **Signed release CI** (`build-ios.yml`, `build-android.yml`) on `mobile-v*`
-  tags, with fastlane to TestFlight and Play internal testing.
+- **Store promotion** is manual (App Store Connect, Play Console).
 - **Keycloak** public client `cowork-mobile` (PKCE) with
   `ai.mindshub.cowork://auth/callback` as a redirect URI.
 
@@ -183,8 +299,4 @@ an account holder:
   Connect API key, app record and TestFlight groups.
 - Google: Play Console organization account and app, upload keystore with Play
   App Signing, Firebase project, Play Developer API service account.
-- GitHub secrets: `IOS_DIST_CERT_B64`, `IOS_DIST_CERT_PASSWORD`,
-  `IOS_PROFILE_APP_B64`, `IOS_PROFILE_SHARE_B64`, `ASC_API_KEY_ID`,
-  `ASC_API_ISSUER_ID`, `ASC_API_KEY_P8_B64`, `ANDROID_UPLOAD_KEYSTORE_B64`,
-  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`,
-  `PLAY_SERVICE_ACCOUNT_JSON_B64`, `GOOGLE_SERVICES_JSON_B64`.
+- GitHub secrets: see [Secrets](#secrets).
