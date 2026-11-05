@@ -1147,8 +1147,8 @@ describe('CompareView', () => {
   describe('analytics', () => {
     const pricedUsage = {
       sides: {
-        a: { available: true, estimatedCostUsd: 0.05, inputTokens: 1000, outputTokens: 100, turns: [] },
-        b: { available: true, estimatedCostUsd: 0.3, inputTokens: 2000, outputTokens: 100, turns: [] },
+        a: { available: true, estimatedCostUsd: 0.05, inputTokens: 1000, outputTokens: 100, turns: [{ turn: 1, estimatedCostUsd: 0.05 }] },
+        b: { available: true, estimatedCostUsd: 0.3, inputTokens: 2000, outputTokens: 100, turns: [{ turn: 1, estimatedCostUsd: 0.3 }] },
       },
     };
 
@@ -1187,6 +1187,21 @@ describe('CompareView', () => {
       fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() => expect(analytics.trackComparisonFollowUpSent).toHaveBeenCalledWith('cmp-1', 'both', 1));
+    });
+
+    it('sends no cost with a verdict while usage still describes an earlier turn', async () => {
+      // Two finished turns, but the last usage read covers only the first.
+      api.fetchComparisonUsage.mockResolvedValue(pricedUsage);
+      api.recordComparisonVerdict.mockResolvedValue(comparison({ verdict: 'b', verdicts: [{ turnIndex: 1, winner: 'b' }] }));
+      const twoTurns = [...finishedTurn('p'), ...finishedTurn('more')];
+      await openDetail(comparison(), { 'conv-a': session('conv-a', twoTurns), 'conv-b': session('conv-b', twoTurns) });
+      await screen.findByRole('button', { name: /Side A estimated cost \$0\.05/ });
+
+      fireEvent.click(within(screen.getByRole('group', { name: 'Which answer was better?' })).getByRole('button', { name: 'Qwen' }));
+      await waitFor(() => expect(analytics.trackComparisonVerdictRecorded).toHaveBeenCalledTimes(1));
+      const [, details] = analytics.trackComparisonVerdictRecorded.mock.calls[0];
+      expect(details.turnIndex).toBe(1);
+      expect(details.cost).toEqual({ cost_partial: true, cost_stale: true });
     });
 
     it('records Continue once, even when a partial carry is retried', async () => {

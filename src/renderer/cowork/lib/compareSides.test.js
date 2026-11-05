@@ -442,8 +442,17 @@ describe('comparisonCostProps', () => {
   it.each([
     ['a side cut by the gateway cap', { a: side(0.02, { truncated: true }), b: side(0.5) }],
     ['a side with calls it could not price', { a: side(0.02), b: side(0.5, { unpricedCalls: 2 }) }],
-  ])('marks the figures a floor for %s', (_case, sides) => {
-    expect(comparisonCostProps({ sides }).cost_partial).toBe(true);
+  ])('marks the figures a floor for %s, and names no cheaper side from them', (_case, sides) => {
+    const props = comparisonCostProps({ sides });
+    expect(props.cost_partial).toBe(true);
+    // A floor could reverse the order: A truncated at $0.02 may really cost more.
+    expect(props.cheaper_side).toBeUndefined();
+  });
+
+  it('leaves the figures out when the usage read is behind the turns each side finished', () => {
+    const usage = { sides: { a: side(0.02, { turns: [{ turn: 1 }] }), b: side(0.5, { turns: [{ turn: 1 }] }) } };
+    expect(comparisonCostProps(usage, { a: 2, b: 2 })).toEqual({ cost_partial: true, cost_stale: true });
+    expect(comparisonCostProps(usage, { a: 1, b: 1 })).toMatchObject({ cost_a_usd: 0.02, cheaper_side: 'a', cost_partial: false });
   });
 
   it('names no cheaper side when one side has no figure', () => {

@@ -37,6 +37,7 @@ export interface ComparisonCostProps {
   cost_b_usd?: number;
   cost_total_usd?: number;
   cost_partial: boolean;
+  cost_stale?: boolean;
   tokens_a?: number;
   tokens_b?: number;
   cheaper_side?: 'a' | 'b' | 'same';

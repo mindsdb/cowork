@@ -140,7 +140,7 @@ const EVENTS = {
   COMPARISON_FOLLOW_UP_SENT:'comparison_follow_up_sent',// { comparison_id, target: 'both'|'a'|'b', turn_index }
   COMPARISON_VERDICT_RECORDED:'comparison_verdict_recorded', // { comparison_id, turn_index, winner, winner_model?, other_model?, changed, ...cost }
   COMPARISON_CONTINUED:     'comparison_continued',     // { comparison_id, side, model, other_model, turns, carried_all, chose_winner?, ...cost }
-  // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same', cheaper_won?
+  // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, cost_stale?, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same' (complete figures only)
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';

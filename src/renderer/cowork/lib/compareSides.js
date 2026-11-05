@@ -431,14 +431,23 @@ export function historyCost(sides = []) {
   return `${formatEstimate(total)}${partial ? '+' : ''}`;
 }
 
-/** Both sides together, over the sides that have a figure. Null when neither does. */
 /**
  * A comparison's cost so far, as analytics event properties: each side's
  * estimate and tokens, the total, whether any figure is a floor (cut by the
  * gateway's cap, or with calls it couldn't price), and which side was cheaper.
- * A side the gateway had nothing for is left out, and then no side is cheaper.
+ *
+ * `turnCounts` is how many turns each side has finished. A usage read that
+ * covers fewer (one still in flight after a turn ends) describes an earlier
+ * point, so its figures are left out and the event says `cost_stale`. A
+ * cheaper side is named only when both figures are complete: a floor could
+ * reverse the order.
  */
-export function comparisonCostProps(usage) {
+export function comparisonCostProps(usage, turnCounts = {}) {
+  const stale = SIDE_LABELS.some((label) => {
+    const side = usage?.sides?.[label];
+    return side?.available && (side.turns?.length ?? 0) < (turnCounts[label] ?? 0);
+  });
+  if (stale) return { cost_partial: true, cost_stale: true };
   const props = { cost_partial: false };
   const costs = {};
   for (const label of SIDE_LABELS) {
@@ -458,11 +467,12 @@ export function comparisonCostProps(usage) {
   }
   if ('a' in costs && 'b' in costs) {
     props.cost_total_usd = costs.a + costs.b;
-    props.cheaper_side = costs.a === costs.b ? 'same' : costs.a < costs.b ? 'a' : 'b';
+    if (!props.cost_partial) props.cheaper_side = costs.a === costs.b ? 'same' : costs.a < costs.b ? 'a' : 'b';
   }
   return props;
 }
 
+/** Both sides together, over the sides that have a figure. Null when neither does. */
 export function combinedCost(usage) {
   const figures = SIDE_LABELS
     .map((label) => usage?.sides?.[label])

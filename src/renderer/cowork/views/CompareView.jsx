@@ -1098,7 +1098,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
         winner,
         models: { a: sides.a?.model, b: sides.b?.model },
         changed: Boolean(previous) && previous !== winner,
-        cost: comparisonCostProps(usage),
+        cost: comparisonCostProps(usage, { a: turns.a.length, b: turns.b.length }),
       });
     } catch (err) {
       setError(err?.message || 'Could not save the verdict.');
@@ -1318,7 +1318,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                 turns: turns[continuing].length,
                 carriedAll: result?.carriedAll !== false,
                 verdict: comparison?.verdict ?? null,
-                cost: comparisonCostProps(usage),
+                cost: comparisonCostProps(usage, { a: turns.a.length, b: turns.b.length }),
               });
             }
             // An older server says nothing about the files: it carried them or failed.
