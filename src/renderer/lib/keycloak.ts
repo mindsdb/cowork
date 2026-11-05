@@ -22,6 +22,8 @@ import {
   handleOrganizationBoundaryResponse,
 } from '../cowork/lib/organizationRequestBoundary';
 import { MINDS_KEYCLOAK_URL } from './mindsUrls';
+import { isMobileShell } from './mobileShell';
+import { MOBILE_KEYCLOAK_CLIENT_ID, createMobileShellAdapter } from './mobileAuth';
 
 // Single source of truth for the Keycloak host lives in mindsUrls.ts so the
 // login flow and the sign-up link (MINDS_REGISTER_URL) always agree on the
@@ -36,19 +38,32 @@ const redirectUri = typeof window !== 'undefined'
 // Web uses the `public-client` (browser redirect + web origins), same as the
 // MindsHub console. `anton-desktop` is the loopback-only PKCE client for the
 // native desktop app (redirectUris http://127.0.0.1:*) and can't serve a
-// browser origin, so it must not be used here.
+// browser origin, so it must not be used here. The mobile app (ENG-4023)
+// signs in through the system browser and returns on an app-scheme redirect,
+// which only its own client, `cowork-mobile`, allows.
 const keycloak = new Keycloak({
   url: keycloakUrl,
   realm: 'mindsdb',
-  clientId: 'public-client',
+  clientId: isMobileShell ? MOBILE_KEYCLOAK_CLIENT_ID : 'public-client',
 });
 
 keycloak.onAuthError = () => {
   keycloak.clearToken();
+  // In the app a login opens the browser sheet. Reopening it on every auth
+  // error would loop; the app's sign-in screen asks instead.
+  if (isMobileShell) return;
   keycloak.login({ redirectUri });
 };
 
 export { keycloak };
+
+/** The keycloak-js adapter for the mobile app; null in a browser. */
+export const mobileShellAdapter = isMobileShell
+  ? createMobileShellAdapter({
+    keycloak,
+    logoutUrl: `${MINDS_KEYCLOAK_URL.replace(/\/$/, '')}/realms/mindsdb/protocol/openid-connect/logout`,
+  })
+  : null;
 
 /* Half of SHORT_REQUEST_TIMEOUT_MS (api.js), so a bounded request made on a
    still-valid token reaches the server before its own deadline. */

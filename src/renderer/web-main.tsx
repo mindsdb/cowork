@@ -49,7 +49,10 @@ import {
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
-import { keycloak } from './lib/keycloak';
+import { keycloak, mobileShellAdapter } from './lib/keycloak';
+import { keycloakInitOptions } from './lib/mobileAuth';
+import { applyMobileShellDocument, mobileShell } from './lib/mobileShell';
+import { MobileShellRoot } from './MobileShellRoot';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin, seedBrandDefaults } from './lib/skins';
 import { DEPLOYMENT_BRAND } from './lib/deploymentBrand';
@@ -70,6 +73,9 @@ import { whenI18nReady } from './lib/i18n';
   document.body.dataset.skin = loadSkin();
   document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
   applyArcadePreset(document.body.dataset.skin);
+  // Inside the mobile app (ENG-4023): data-shell on <html> and
+  // viewport-fit=cover, so the safe-area padding applies. Browsers: untouched.
+  if (mobileShell) applyMobileShellDocument(mobileShell);
 })();
 
 // Before the redirect below drops the query string: a console link's
@@ -80,7 +86,9 @@ captureSettingsDeepLink();
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
-const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', checkLoginIframe: false, redirectUri: cleanRedirectUri };
+// In a browser, log in on load. In the mobile app, sign in from the app's own
+// screen through the system browser sheet (MobileShellRoot, lib/mobileAuth.ts).
+const initOptions = keycloakInitOptions(cleanRedirectUri, mobileShellAdapter);
 
 // Legacy per-user host (cw-<id>): canonical `cowork.*` and localhost dev are
 // unaffected — see the TRANSITION EXCEPTION note above and lib/legacyHost.ts.
@@ -104,14 +112,18 @@ void whenI18nReady().then(() => {
   createRoot(root).render(
     <StrictMode>
       {legacyTenant || codeFixture ? (
-        // Access is gated upstream; render directly without a Keycloak login.
         <App />
+      ) : mobileShell ? (
+        <MobileShellRoot
+          shell={mobileShell}
+          authClient={keycloak}
+          initOptions={initOptions}
+          onTokens={bindOrganizationCacheTokens}
+        >
+          <App />
+        </MobileShellRoot>
       ) : (
-        // LoadingComponent holds the mount until keycloak.init() resolves. Without
-        // it the provider renders App immediately, App's boot effect probes
-        // /api/v1/health before `authenticated` is set, getAccessToken() returns
-        // null so no Bearer is attached, the auth ingress 401s the probe, and
-        // resolveBootTarget lands a signed-in user on the auth screen.
+        // Hold mounting until auth resolves, so the first API probe has a token.
         <ReactKeycloakProvider
           authClient={keycloak}
           initOptions={initOptions}
