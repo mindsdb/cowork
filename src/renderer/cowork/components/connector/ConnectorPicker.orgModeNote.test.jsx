@@ -11,8 +11,12 @@ vi.mock('../../api', () => ({
   fetchConnectors: (...args) => fetchConnectors(...args),
 }));
 const openExternal = vi.fn();
+const hostState = vi.hoisted(() => ({ isMobileShell: false }));
 vi.mock('../../../platform/host', () => ({
-  host: { openExternal: (...args) => openExternal(...args) },
+  host: {
+    openExternal: (...args) => openExternal(...args),
+    get isMobileShell() { return hostState.isMobileShell; },
+  },
 }));
 
 import ConnectorPicker from './ConnectorPicker';
@@ -32,6 +36,17 @@ describe('ConnectorPicker org-mode desktop note', () => {
 
   afterEach(() => {
     setOrgMode(false);
+    hostState.isMobileShell = false;
+  });
+
+  // ENG-4023: the note stays, as plain text; a phone cannot install the app.
+  it('names the desktop app without a download link inside the mobile app', async () => {
+    hostState.isMobileShell = true;
+    setOrgMode(true);
+    render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
+
+    expect(await screen.findByText(NOTE_TEXT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cowork Desktop App' })).toBeNull();
   });
 
   it('renders the note and links to the desktop download page when org mode is on', async () => {

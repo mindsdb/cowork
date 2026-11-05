@@ -49,6 +49,25 @@ describe('useViewportZoomLock', () => {
     input.remove();
   });
 
+  // The mobile app (ENG-4023) relies on viewport-fit=cover for its safe-area
+  // padding; a lock that dropped it would shift the page on every focus.
+  it('keeps viewport-fit=cover while locked when the page set it', () => {
+    vi.useFakeTimers();
+    const app = `${ORIGINAL}, viewport-fit=cover`;
+    meta.setAttribute('content', app);
+    renderHook(() => useViewportZoomLock(true));
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+
+    focus(input);
+    expect(meta.getAttribute('content')).toBe(`${LOCKED}, viewport-fit=cover`);
+
+    blur(input);
+    vi.runAllTimers();
+    expect(meta.getAttribute('content')).toBe(app);
+    input.remove();
+  });
+
   it('ignores non-text inputs (checkbox, button, file)', () => {
     renderHook(() => useViewportZoomLock(true));
     for (const type of ['checkbox', 'button', 'file']) {

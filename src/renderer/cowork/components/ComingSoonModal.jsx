@@ -37,7 +37,9 @@ export default function ComingSoonModal({ feature, onClose }) {
             : 'available in this deployment.'}
         </p>
       </ModalBody>
-      {PLATFORM_UI ? (
+      {/* The mobile app (ENG-4023) offers no installer: a phone cannot run
+          the desktop app, so the note stands alone with a Close button. */}
+      {PLATFORM_UI && !host.isMobileShell ? (
         <ModalFooter
           cancel={(
             <Button variant="subtle" onClick={onClose}>
