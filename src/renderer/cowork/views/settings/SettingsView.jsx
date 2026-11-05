@@ -1987,20 +1987,11 @@ export default function SettingsView({
               </Section>
             )}
             {/* An org-level setting, like the budgets: who may change it is
-                the server's call. Under zero data retention MindsHub refuses
-                Jev, so the row says it is off instead of offering a switch. */}
-            {settings.routing?.mode === 'zdr' && (
-              <Section
-                title="Fast answers with Jev"
-                subtitle={`Off because your organization has zero data retention, which Jev isn't covered by. Every message runs ${agentLabel || 'Anton'}.`}
-              >
-                <span className="text-sm text-ink-3" data-testid="jev-zdr-off">Off</span>
-              </Section>
-            )}
+                the server's call. */}
             {showJevSwitch(settings.routing) && (
               <Section
                 title="Fast answers with Jev"
-                subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}. It is off automatically for organizations with zero data retention.`}
+                subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}.`}
               >
                 <Switch
                   checked={settings.jevDecisionsEnabled ?? true}
