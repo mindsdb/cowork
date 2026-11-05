@@ -20,6 +20,7 @@ import { ProviderIcon } from '../components/ProviderIcon';
 import { SearchInput, SortPill } from '../components/collection';
 import Ico from '../components/Icons';
 import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
+import { ComposerFrame } from '../components/chat/ComposerFrame';
 import { modelPickerMode } from '../../lib/modelPicker';
 import { modelMaker } from '../lib/modelCatalog';
 import { initialStreamState, reduceStream } from '../lib/responseStreamAdapter';
@@ -670,7 +671,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
             <p className="mt-2 mb-0 text-[14px] text-ink-3">Give the same task to two models and compare their answers and speed side by side.</p>
           </div>
 
-          <div className="composer-wrap w-full">
+          <ComposerFrame className="composer-wrap w-full">
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -715,7 +716,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
                 </button>
               </Tooltip>
             </div>
-          </div>
+          </ComposerFrame>
 
           <div className="w-full flex items-center gap-2 max-sm:flex-col">
             <SidePicker label="a" value={sides.a} onChange={(next) => setSides((prev) => ({ ...prev, a: next }))} models={models} modelMeta={modelMeta} />
@@ -1199,7 +1200,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
             onChoose={judge}
           />
         )}
-        <div className="composer-wrap w-full min-w-0 max-w-none">
+        <ComposerFrame className="composer-wrap w-full min-w-0 max-w-none">
           {block ? (
             // A message cannot go out right now. Say so where the text box
             // would be, rather than showing a box that looks usable.
@@ -1254,7 +1255,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
               </div>
             </>
           )}
-        </div>
+        </ComposerFrame>
       </div>
       <ConfirmModal
         open={confirmDelete}

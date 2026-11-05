@@ -184,6 +184,19 @@ describe('CompareView', () => {
     expect(screen.queryByText('Comparisons')).toBeNull();
   });
 
+  // The card around a composer (border, radius, shadow, focus) is the shared
+  // ComposerFrame's, as in chat; without it the box loses its outline.
+  it('frames both the start prompt and the follow-up box like the chat composer', async () => {
+    mockHistory([]);
+    render(<CompareView models={models} projects={projects} />);
+    const prompt = await screen.findByLabelText('Task for both models');
+    expect(prompt.closest('.composer-frame')).toBeTruthy();
+
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    const followUp = await screen.findByRole('textbox', { name: 'Follow-up message' });
+    expect(followUp.closest('.composer-frame')).toBeTruthy();
+  });
+
   it('swaps the two sides and fills the prompt from an example', async () => {
     mockHistory([]);
     render(<CompareView models={models} projects={projects} />);
