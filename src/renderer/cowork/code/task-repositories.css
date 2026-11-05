@@ -9,7 +9,7 @@
   flex-shrink: 0;
   padding-top: 24px;
 }
-.code-repository-drawer__header > .code-eyebrow {
+.code-repository-drawer__header > .section-label {
   display: block;
   padding: 0 24px 4px;
 }
@@ -42,10 +42,6 @@
 .code-repository-list__labels {
   display: flex;
   justify-content: space-between;
-  color: var(--ink-3);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
   margin: 4px 0 8px;
 }
 .code-repository-row {

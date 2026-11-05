@@ -1,3 +1,4 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchHubUsage } from '../api';
 
@@ -26,7 +27,7 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
 
   const refresh = useCallback(async () => {
     const mine = generation.current;
-    if (!sub) {
+    if (!PLATFORM_UI || !sub) {
       setUsage(DARK);
       return;
     }
@@ -45,7 +46,7 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
   useEffect(() => {
     generation.current += 1;
     refresh();
-    if (!sub) return undefined;
+    if (!PLATFORM_UI || !sub) return undefined;
     // Coming back from the console after a top up should clear the bar at
     // once, not on the next tick.
     const onFocus = () => { refresh(); };

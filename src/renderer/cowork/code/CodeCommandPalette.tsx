@@ -217,7 +217,7 @@ export function CodeCommandPalette({
       <div className="code-command-palette__list">
         {skills.length > 0 && (
           <section aria-label="MindsHub skills">
-            <div className="code-command-palette__section">
+            <div className="code-command-palette__section section-label">
               <span>MindsHub skills</span>
             </div>
             {skills.map(renderItem)}
@@ -225,7 +225,7 @@ export function CodeCommandPalette({
         )}
         {commands.length > 0 && (
           <section aria-label={`${agentLabel} commands`}>
-            <div className="code-command-palette__section">
+            <div className="code-command-palette__section section-label">
               <span>{agentLabel} commands</span>
             </div>
             {commands.map(renderItem)}

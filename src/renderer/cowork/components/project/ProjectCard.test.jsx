@@ -33,10 +33,8 @@ describe('visibleStats', () => {
   });
 });
 
-// Pin + menu overlay the item's end only while hover-revealed. Whenever they
-// show at rest (pinned) or during a rename they sit in flow, so they never
-// cover the name field, the title, or a row's meta. Position is pinned by
-// class: happy-dom computes no Tailwind.
+// Pin + menu always show, in flow, so they never cover the name field, the
+// title, or a row's meta. Pinned by class: happy-dom computes no Tailwind.
 describe.each([
   ['ProjectCard', ProjectCard],
   ['ProjectRow', ProjectRow],
@@ -44,9 +42,10 @@ describe.each([
   const project = { id: 'p1', name: 'alpha', path: '/p/alpha' };
   const cluster = () => screen.getByRole('button', { name: 'Project menu' }).closest('[data-item-actions]');
 
-  it('overlay only while hidden at rest', () => {
+  it('sit in flow and stay visible at rest', () => {
     render(<Item project={project} />);
-    expect(cluster()).toHaveClass('absolute', 'opacity-0');
+    expect(cluster()).not.toHaveClass('absolute');
+    expect(cluster()).not.toHaveClass('opacity-0');
   });
 
   it('sit in flow and stay visible on a pinned project', () => {

@@ -62,6 +62,7 @@ npm test                     # unit + component (fast, no Electron/network)
 npm run test:watch           # local TDD loop
 npm run test:coverage        # + enforces coverage floors (vitest.config.ts)
 npm run test:e2e             # Playwright Electron boot smoke (needs npm run build)
+npx playwright test --config playwright.document-preview.config.ts  # document preview suite (web harness + Electron; electron project needs npm run build)
 npm run check:cowork-purity  # no direct window.antontron outside platform/host.ts
 ```
 
@@ -81,10 +82,14 @@ npm run check:cowork-purity  # no direct window.antontron outside platform/host.
 - Test files never ship: production tsconfigs exclude `**/*.test.*`; keep it
   that way.
 - CI: `tests-unit.yml` gates PRs (typecheck + purity + coverage + renderer
-  build); `pack-smoke.yml` and `tests-e2e.yml` run nightly, non-blocking.
+  build); `document-preview.yml` runs the document preview Playwright suite
+  (web harness in Chromium, Electron under xvfb) on every PR and on pushes to
+  `main` and `staging`; `pack-smoke.yml` and `tests-e2e.yml` run nightly,
+  non-blocking.
 - The IPC channel map is snapshot-locked
   (`src/shared/__snapshots__/`) — renaming a channel is a **breaking protocol
-  change** (OTA renderers can lag main), not a refactor.
+  change** (an OTA renderer is routinely newer than the shell it runs on —
+  main never serves a UI older than its own), not a refactor.
 
 ### Python server
 
@@ -107,7 +112,7 @@ COWORK_REQUIRE_AUTH=false        # opt out (not recommended)
 COWORK_AUTH_TOKEN=<your-token>   # omit to auto-generate on first startup
 ```
 
-When `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. The `/api/v1/health/` endpoint is always exempt.
+When `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. It leaves the token off requests from the document preview frame, from frames inside it, and requests with no frame (`src/main/document-preview-guard.ts`). The `/api/v1/health/` endpoint is always exempt.
 
 #### Install source & channel
 

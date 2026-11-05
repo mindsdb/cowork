@@ -14,6 +14,7 @@ import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
 import { TaskList } from '../components/task';
 import { ProjectCard, ProjectRow } from '../components/project/ProjectCard';
 import NewProjectModal from '../components/project/NewProjectModal';
+import SharedProjectFiles from '../components/project/SharedProjectFiles';
 import {
   PageHeader,
   FilterRow,
@@ -21,10 +22,8 @@ import {
   SortPill,
   ViewToggle,
   CollectionState,
-  NewTile,
   CardGrid,
   ListGroup,
-  NewRow,
   useCollectionShortcut,
   useCollectionView,
 } from '../components/collection';
@@ -98,6 +97,7 @@ function usePinnedProjects() {
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 function timestampOfProject(project, tasks) {
+  if (project?.shared) return Date.parse(project.modified_at || '') || 0;
   const list = (tasks || []).filter((t) =>
     t.projectName === project?.name || t.projectPath === project?.path,
   );
@@ -256,6 +256,7 @@ function ProjectDetail({
   onAttachFiles,
   onAddGoogleDriveFiles,
   onAddGoogleDriveProjectFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
   onRemoveAttachment,
@@ -387,7 +388,7 @@ function ProjectDetail({
               {deleting && (
                 <span
                   aria-live="polite"
-                  className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em] shrink-0"
+                  className="text-xs text-ink-4 shrink-0"
                 >
                   Deleting…
                 </span>
@@ -447,6 +448,7 @@ function ProjectDetail({
                 onNavigateToConnectors={onNavigateToConnectors}
                 onAttachFiles={onAttachFiles}
                 onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+                onAddSharePointFiles={onAddSharePointFiles}
                 onRemoveAttachment={onRemoveAttachment}
                 disabledConnections={disabledConnections}
                 onUpdateConnectorMute={onUpdateConnectorMute}
@@ -469,6 +471,7 @@ function ProjectDetail({
                 <ContextBox
                   project={project}
                   onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+                  onAddSharePointFiles={onAddSharePointFiles}
                   onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
                   onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
                 />
@@ -477,10 +480,8 @@ function ProjectDetail({
 
             <TaskList
               tasks={projectTasks}
-              projects={projects || []}
               schedules={scheduled || []}
               scheduleRunsIndex={scheduleRunsIndex}
-              emptyMessage={`No tasks in this project yet — type a prompt above to start one.`}
               onSelectTask={onSelectTask}
               onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
@@ -509,6 +510,7 @@ function ProjectDetail({
             projects={projects}
             project={project}
             onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+            onAddSharePointFiles={onAddSharePointFiles}
             onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
             onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
           />
@@ -554,6 +556,7 @@ export default function ProjectsView({
   onAttachFiles,
   onAddGoogleDriveFiles,
   onAddGoogleDriveProjectFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
   onRemoveAttachment,
@@ -601,7 +604,9 @@ export default function ProjectsView({
         (current.id && project.id === current.id)
         || (!current.id && project.name === current.name)
       ));
-      if (!fresh) return current;
+      if (!fresh) return current.shared ? null : current;
+      // Recipients cannot rename locally; the owner's current descriptor wins.
+      if (current.shared) return sameServerField(current, fresh) ? current : fresh;
       if (
         sameServerField(current.capabilities, fresh.capabilities)
         && sameServerField(current.attribution, fresh.attribution)
@@ -669,7 +674,7 @@ export default function ProjectsView({
     /* The list is not the only place the project is known: detail can be seeded
        from selectedProject before the list loads, and a second rename is
        submitted before the refetch carrying the first one lands. */
-    const sourceProject = projects.find((project) => project.name === oldName)
+    const sourceProject = projects.find((project) => !project.shared && project.name === oldName)
       || (detailProject?.name === oldName ? detailProject : null);
     if (!sourceProject) return;
     if (!canUseSharedResource(sourceProject, 'canRename')) {
@@ -716,7 +721,7 @@ export default function ProjectsView({
     if (q) list = list.filter((p) => projectMatches(p, q));
 
     const ts = (p) => timestampOfProject(p, tasks);
-    const taskCountOf = (p) => (tasks || []).filter((t) =>
+    const taskCountOf = (p) => p.shared ? 0 : (tasks || []).filter((t) =>
       t.projectName === p.name || t.projectPath === p.path,
     ).length;
 
@@ -733,8 +738,8 @@ export default function ProjectsView({
     });
 
     // Pinned to top, preserving relative sort within each group.
-    const pinnedList   = list.filter((p) => pinned.has(p.name));
-    const unpinnedList = list.filter((p) => !pinned.has(p.name));
+    const pinnedList   = list.filter((p) => pinned.has(p.shared ? p.id : p.name));
+    const unpinnedList = list.filter((p) => !pinned.has(p.shared ? p.id : p.name));
     return [...pinnedList, ...unpinnedList];
   }, [projects, tasks, search, sort, pinned]);
 
@@ -743,19 +748,19 @@ export default function ProjectsView({
     project: p,
     tasks,
     scheduled,
-    pinned: pinned.has(p.name),
-    editing: editingProjectName === p.name,
+    pinned: pinned.has(p.shared ? p.id : p.name),
+    editing: !p.shared && editingProjectName === p.name,
     deleting: isDeleting(p),
     onOpen: handleOpen,
-    onTogglePin: (proj, next) => togglePin(proj.name, next),
+    onTogglePin: (proj, next) => togglePin(proj.shared ? proj.id : proj.name, next),
     onMenuOpen: (proj, rect) => setMenuFor({ project: proj, rect }),
-    isMenuOpen: menuFor?.project?.name === p.name,
     onRenameSubmit: (next) => handleRenameSubmit(p.name, next),
     onRenameCancel: handleRenameCancel,
-    // Pin and menu are the row's only controls; nothing is gained by hiding
-    // them until the pointer arrives.
-    alwaysShowActions: true,
   });
+
+  if (detailProject?.shared) {
+    return <SharedProjectFiles key={detailProject.id} project={detailProject} onShowAll={() => setDetailProject(null)} />;
+  }
 
   if (detailProject) {
     return (
@@ -781,6 +786,7 @@ export default function ProjectsView({
         onNavigateToConnectors={onNavigateToConnectors}
         onAttachFiles={onAttachFiles}
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+        onAddSharePointFiles={onAddSharePointFiles}
         onAddGoogleDriveProjectFiles={onAddGoogleDriveProjectFiles}
         onFetchGoogleDriveProjectFiles={onFetchGoogleDriveProjectFiles}
         onRemoveGoogleDriveProjectFile={onRemoveGoogleDriveProjectFile}
@@ -824,26 +830,28 @@ export default function ProjectsView({
         // the spacing immune to whatever the body below decides to do.
       />
 
-      <FilterRow
-        search={
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            inputRef={searchRef}
-            placeholder="Search projects"
-          />
-        }
-        sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-        view={<ViewToggle value={view} onValueChange={setView} />}
-        counts={loading ? null : (
-          <ProjectsCounts
-            search={search}
-            total={projects.length}
-            filtered={visibleProjects.length}
-            pinnedCount={visibleProjects.filter((p) => pinned.has(p.name)).length}
-          />
-        )}
-      />
+      {(loading || projects.length > 0) && (
+        <FilterRow
+          search={
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              inputRef={searchRef}
+              placeholder="Search projects"
+            />
+          }
+          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          view={<ViewToggle value={view} onValueChange={setView} />}
+          counts={loading ? null : (
+            <ProjectsCounts
+              search={search}
+              total={projects.length}
+              filtered={visibleProjects.length}
+              pinnedCount={visibleProjects.filter((p) => pinned.has(p.name)).length}
+            />
+          )}
+        />
+      )}
 
       <CollectionState
         loading={loading}
@@ -855,28 +863,25 @@ export default function ProjectsView({
         skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
         skeletonClassName={effectiveView === 'grid' ? GRID_CLASS : LIST_CLASS}
         empty={{
-          icon: <span className="inline-flex text-ink-4">{Ico.folder(32)}</span>,
+          icon: Ico.folder(20),
           title: 'No projects yet',
           description: 'Create your first project to start grouping conversations and outputs.',
-          action: <NewProjectButton onClick={handleNewProject} />,
-          style: { flex: 1 },
+          // proj-new-action: hidden on phones, where the FAB is the create entry.
+          action: { label: 'Create your first project', onClick: handleNewProject, className: 'proj-new-action' },
+          className: 'mx-8 mb-8',
         }}
       >
         {effectiveView === 'grid' ? (
           <CardGrid className={GRID_CLASS}>
             {visibleProjects.map((p) => (
-              <ProjectCard key={p.name || p.path} {...itemProps(p)} isSelected={selectedProject?.name === p.name} />
+              <ProjectCard key={p.id || p.name || p.path} {...itemProps(p)} isSelected={selectedProject?.id === p.id} />
             ))}
-            {/* Trailing dashed tile; opens the same NewProjectModal as the
-                header button. Hidden on phones, where the FAB is the create entry. */}
-            <NewTile label="New project" onClick={handleNewProject} className="proj-new-tile" />
           </CardGrid>
         ) : (
           <ListGroup className={LIST_CLASS}>
             {visibleProjects.map((p) => (
-              <ProjectRow key={p.name || p.path} {...itemProps(p)} />
+              <ProjectRow key={p.id || p.name || p.path} {...itemProps(p)} />
             ))}
-            <NewRow label="New project" onClick={handleNewProject} className="proj-new-tile" />
           </ListGroup>
         )}
       </CollectionState>
@@ -885,12 +890,12 @@ export default function ProjectsView({
         open={!!menuFor}
         anchorRect={menuFor?.rect}
         project={menuFor?.project}
-        pinned={menuFor ? pinned.has(menuFor.project.name) : false}
+        pinned={menuFor ? pinned.has(menuFor.project.shared ? menuFor.project.id : menuFor.project.name) : false}
         isReserved={isReservedProjectName(menuFor?.project?.name)}
         onClose={() => setMenuFor(null)}
         onOpen={handleOpen}
         onRename={handleRenameStart}
-        onTogglePin={(proj, next) => togglePin(proj.name, next)}
+        onTogglePin={(proj, next) => togglePin(proj.shared ? proj.id : proj.name, next)}
         onReveal={host.isWeb ? undefined : handleReveal}
         onDelete={(proj) => onDeleteProject?.(proj)}
       />

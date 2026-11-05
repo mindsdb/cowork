@@ -26,7 +26,22 @@ import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
+import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
+import {
+  // Aliased: the component keeps its own `artifactRef` (a React ref).
+  artifactRef as artifactWorkspaceRef,
+  createDraftLink,
+  loadArtifactDraftText,
+  loadArtifactDraftDocument,
+} from '../../lib/artifactWorkspaceApi';
+import {
+  RefusedDraftLink,
+  draftLinkLifetimeMs,
+  draftLinkUrl,
+  draftLinksWithdrawal,
+} from '../../lib/draftLinkRules';
+import { setDraftLinks, useDraftLinks } from '../../../lib/draftLinks';
+import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
@@ -34,13 +49,19 @@ import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { useLiveApps } from '../../../lib/liveApps';
+import { useLiveApp } from '../../hooks/useLiveApp';
+import { launchLiveAppPrompt, liveAppViewerNotice } from '../../lib/liveAppState';
 import { usePublish } from './publish/usePublish';
+import { stopSharingNotice } from './publish/linkLeftLive';
 import { useArtifactComments, useArtifactCommentLayer } from './comments';
 import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
 import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
+import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -53,6 +74,9 @@ import {
   isAbsoluteArtifactPreviewUrl,
   canFetchDraftWithCredentials,
   injectDraftBaseHref,
+  draftDirectoryUrl,
+  draftFileName,
+  limitArtifactFrames,
   parseCsv,
   withArtifactCommentFlag,
   withArtifactVersion,
@@ -64,6 +88,18 @@ import {
 // fall back to a monospace block.
 
 
+// Turns draft links off for this page when a failed request says so
+// (draftLinksWithdrawal), and logs why: a page that silently stops using
+// links would hide a misconfigured draft host. Every preview then reruns
+// through srcdoc. True when links went off.
+async function withdrawDraftLinks(error) {
+  const event = await draftLinksWithdrawal(error, host.checkConfigured);
+  if (!event) return false;
+  diagnostic('renderer.cowork.components.artifact.ArtifactViewer', 'WARNING', event, error);
+  setDraftLinks(false);
+  return true;
+}
+
 // Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
 // carry over from the artifact the report started from.
 function isSameArtifact(a, b) {
@@ -71,6 +107,23 @@ function isSameArtifact(a, b) {
   if (a.id || b.id) return a.id === b.id;
   return (a.path || '') === (b.path || '');
 }
+
+/* The prompt's text when a close would drop Edit text. While the workspace
+   status is 'saving', a request that has already gone out decides what
+   happens to the text: a save keeps it unless the save fails, and a revision
+   restore replaces it. So that prompt says the edits may be lost. */
+const CLOSE_PROMPTS = {
+  unsaved: {
+    title: 'Discard changes?',
+    message: 'Your unsaved edits to this artifact will be lost.',
+    confirmLabel: 'Discard changes',
+  },
+  saving: {
+    title: 'Close while saving?',
+    message: 'A save is still in progress. If you close now, your unsaved edits may be lost.',
+    confirmLabel: 'Close anyway',
+  },
+};
 
 export function ArtifactViewer({
   open,
@@ -83,13 +136,28 @@ export function ArtifactViewer({
   resolveRepairConversation = null,
 }) {
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
   const displayPath = artifact?.displayPath || actionPath;
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
   const draftPreviewUrl = artifact?.draftUrl || '';
+  // Org web: when the deployment serves drafts on a draft host through signed
+  // links (/health's draft_links), the HTML preview opens one; otherwise the
+  // srcdoc path below stays as it was.
+  const draftLinks = useDraftLinks();
+  // Only a draft on this server's drafts route has a link to ask for: an
+  // embedded (data:/blob:) or another origin's draft URL keeps its own route.
+  const draftLinkEnabled = host.isWeb && draftLinks
+    && !!draftPreviewUrl && canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin());
   const hasPreviewSource = hasActionPath || !!draftPreviewUrl;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
+  /* An .xlsx, .docx, .pptx or .pdf file with a renderer is read-only here:
+     no editable source, no comments and no agent repair. It previews in the
+     sandboxed document frame only where canPreviewDocument says this shell
+     may mount that frame. */
+  const documentType = documentPreviewType(artifact);
+  const showDocumentPreview = !!documentType && canPreviewDocument(artifact, host);
   // Backend artifacts treat the folder, not the entry html, as the
   // "thing" the user opens in their OS or browser. Prefer the server's
   // `folder` (the artifact's slug dir) — for fullstack apps the primary
@@ -121,12 +189,23 @@ export function ArtifactViewer({
   const [textPreview, setTextPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  // "Open in a browser tab" failures: shown beside the preview, never in its
+  // place, and cleared when another artifact opens.
+  const [tabError, setTabError] = useState('');
+  useEffect(() => { setTabError(''); }, [open, artifact?.id]);
+  // The preview's signed link has expired: pages and files the draft loads
+  // from now on are refused until a reload asks for a new link.
+  const [draftLinkExpired, setDraftLinkExpired] = useState(false);
   const [backendPort, setBackendPort] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   // Manual-reload counter — bumped by the link-pill reload button to
   // force a fresh mount/fetch even when the artifact's mtime is unchanged.
   const [reloadNonce, setReloadNonce] = useState(0);
+  const liveAppView = liveApps && isBackendArtifact;
+  const liveAppRead = useLiveApp(artifact, { enabled: open && liveAppView, refreshKey: reloadNonce });
+  const liveAppNotice = liveAppViewerNotice(liveAppRead);
+  const liveAppAddress = liveAppNotice?.address || '';
   // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
   // shows/hides the floating comments toolbar; the toolbar owns the rest —
   // comment-placement mode, the inbox sidebar, marker visibility, leaving.
@@ -146,6 +225,8 @@ export function ArtifactViewer({
   // instead of stating a fact the user cannot act on.
   const [blockedBy, setBlockedBy] = useState(null);
   const [pendingDiscard, setPendingDiscard] = useState(null);
+  // The CLOSE_PROMPTS entry showing before a close drops Edit text, or null.
+  const [closePrompt, setClosePrompt] = useState(null);
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -171,7 +252,11 @@ export function ArtifactViewer({
     onChangeRef.current?.(updated);
   }, []);
   const pub = usePublish(artifact, { onChange: reportChange, enabled: open });
-  const workspace = useArtifactWorkspace(artifact, { open, onChange: reportChange });
+  const workspace = useArtifactWorkspace(artifact, {
+    open,
+    onChange: reportChange,
+    previewOnly: !!documentType,
+  });
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
@@ -186,6 +271,11 @@ export function ArtifactViewer({
     setRepairNoticeError('');
     setBlockedBy(null);
   }, [workspace.repair?.id, artifact?.id]);
+  /* Hides the unsaved-edit prompt when the host closes the viewer or switches
+     the artifact, since the workspace resets that draft on the same change. */
+  useEffect(() => {
+    setClosePrompt(null);
+  }, [open, artifact?.id]);
 
   const notifyUnreadFeedback = useCallback(() => {
     setFeedbackNotice('New feedback arrived. Open Review to see the issue.');
@@ -202,14 +292,14 @@ export function ArtifactViewer({
   const artifactKey = artifact?.artifactKey
     || pub.artifactKey
     || artifactCommentsKey(artifactIdentity(artifact));
-  const commentsEnabled = !!artifactKey && (
+  const commentsEnabled = !documentType && !!artifactKey && (
     workspace.commentsReady
     || (!!pub.publishedUrl && pub.accessMode === 'restricted')
   );
   // Injecting the inert marker bridge only needs the stable comment identity;
   // it does not need to wait for the comments transport to finish provisioning.
   // Waiting used to remount the whole HTML artifact as commentsReady flipped.
-  const commentLayerRequested = !!artifactKey;
+  const commentLayerRequested = !documentType && !!artifactKey;
   // Read by the load effect below rather than listed as its dependency. The key
   // can arrive from the status refresh after the preview painted — late on a
   // slow connection — and swapping `src` then reloads the page the user is
@@ -283,7 +373,9 @@ export function ArtifactViewer({
     // Only accept mutation intents from the artifact frame while the user has
     // explicitly opened review controls. Agent-produced scripts otherwise get
     // no ambient path to act through the owner's comment session.
-    enabled: open && commentsEnabled && commentsOpen,
+    // A live app's pane holds the app's own code and no comment layer, so no
+    // frame there may drive comments.
+    enabled: open && commentsEnabled && commentsOpen && !liveAppView,
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
     onReply: comments.reply,
@@ -378,7 +470,9 @@ export function ArtifactViewer({
         }
         if (started === false) {
           await workspace.cancelRepair(requested.repair.id);
-          setErr('Connect an agent provider, then try addressing this comment again.');
+          // `false` has several causes (no provider, a project this user can't
+          // run, a chat deleted meanwhile), so the message names none of them.
+          setErr("The agent couldn't start on this comment. Check that an agent provider is connected and that you can run tasks in this project, then try again.");
         }
       }
     } catch (requestError) {
@@ -410,7 +504,13 @@ export function ArtifactViewer({
   const textExt = isText
     ? ((artifact?.ext || '').toLowerCase() || artifactExtension(actionPath))
     : '';
-  const publishable = isPublishableArtifact(artifact);
+  /*
+   * With live apps on, a full-stack app shares through "Share with…" on its
+   * card, and cowork-server refuses to publish one as a page, so the header
+   * offers no page Share until it is published (it never is, unless that
+   * happened before live apps were turned on).
+   */
+  const publishable = isPublishableArtifact(artifact) && !(liveApps && isBackendArtifact && !pub.publishedUrl);
   const canManage = workspace.capabilities
     ? workspace.capabilities.canEdit !== false
     : artifact?.capabilities
@@ -429,11 +529,13 @@ export function ArtifactViewer({
   // serve URL — same CSP workaround as AttachmentThumbnail (fetch + blob:,
   // since a direct loopback <img src> is blocked). `withArtifactVersion` busts the
   // fetch on a content change or a manual reload, matching the iframe/text
-  // cache-busting below.
+  // cache-busting below. A Markdown document's own images key on the same
+  // version (ArtifactViewerBody), so Reload fetches them again too.
+  const contentVersion = `${artifact?.mtime ?? 0}.${reloadNonce}`;
   const isImage = isImageArtifact(artifact);
   const imageRawUrl = isImage ? artifactServeUrl(artifact) : '';
   const imageUrl = imageRawUrl
-    ? withArtifactVersion(imageRawUrl, `${artifact?.mtime ?? 0}.${reloadNonce}`)
+    ? withArtifactVersion(imageRawUrl, contentVersion)
     : '';
   const { src: imageSrc, failed: imageFailed } = useBlobImageSrc({ url: imageUrl || null });
 
@@ -468,6 +570,7 @@ export function ArtifactViewer({
     setPreviewKind('');
     setBackendPort(null);
     setTextPreview(null);
+    setDraftLinkExpired(false);
     let cancelled = false;
     const withCommentLayer = commentLayerRequestedRef.current;
     commentLayerMountedRef.current = withCommentLayer;
@@ -502,6 +605,19 @@ export function ArtifactViewer({
       setLoading(false);
       return () => { cancelled = true; };
     }
+    if (liveAppView) {
+      // Nothing to mount here: LiveAppPanel shows a running app from its own
+      // address, or the notice, never the serve route's backend-less copy.
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+    if (showDocumentPreview) {
+      /* DocumentPreview fetches the file and renders it in its own frame. No
+         preview URL or document is set and iframeRef stays unattached, so
+         usePreviewDiagnostics and the comment bridge never see that frame. */
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
     // Cache-buster for the iframe so a content change (or just reopening /
     // a manual reload) fetches fresh content instead of the webview's
     // first-loaded copy. Prefer the server's content `mtime` — it changes
@@ -513,6 +629,37 @@ export function ArtifactViewer({
     const baseVersion = artifact?.mtime || (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
     if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
+      const linkRef = draftLinkEnabled ? artifactWorkspaceRef(artifact) : null;
+      if (linkRef) {
+        // Navigate the frame to a fresh signed link on the draft host. The
+        // document then carries that host's own CSP, so CDN scripts, web fonts
+        // and remote images load as in a browser tab, and the sandbox below
+        // still has no allow-same-origin. A new link on every open and reload:
+        // each expires in 30 minutes, and then the viewer offers a reload.
+        setPreviewKind('static');
+        let expiry = null;
+        createDraftLink(linkRef.projectRef, linkRef.artifactId)
+          .then((link) => {
+            if (cancelled) return;
+            const linked = draftLinkUrl(link);
+            setPreviewUrl(withCommentLayer
+              ? withArtifactCommentFlag(withArtifactVersion(linked, cacheVersion))
+              : withArtifactVersion(linked, cacheVersion));
+            expiry = setTimeout(() => setDraftLinkExpired(true), draftLinkLifetimeMs(link.expiresAt));
+          })
+          .catch(async (e) => {
+            if (cancelled) return;
+            // Links off reruns this effect, which then takes the srcdoc path.
+            if (await withdrawDraftLinks(e)) return;
+            if (cancelled) return;
+            setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
+          })
+          .finally(() => { if (!cancelled) setLoading(false); });
+        return () => {
+          cancelled = true;
+          clearTimeout(expiry);
+        };
+      }
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
@@ -557,11 +704,24 @@ export function ArtifactViewer({
       // previewUrl/previewDoc were both already reset to '' at the top of
       // this effect, so setting only one of them here is enough to keep them
       // mutually exclusive.
+      const reading = new AbortController();
       loadArtifactDraftDocument(fetchUrl)
-        .then((doc) => {
+        .then(async (doc) => {
           if (cancelled) return;
           if (doc.isHtml) {
-            setPreviewDoc(injectDraftBaseHref(doc.content, fetchUrl));
+            // The files the draft loads from its folder can't carry the token
+            // either, so inline them with it. The inliner never reads above the
+            // draft's own folder, so that folder is its root. If inlining fails,
+            // the draft still shows as it loaded. Goes once drafts are served
+            // by signed link (ENG-3215).
+            const html = await inlineHtmlFromApi(doc.content, {
+              rootUrl: draftDirectoryUrl(fetchUrl),
+              filePath: draftFileName(fetchUrl),
+              signal: reading.signal,
+              chatWorkspaces: false,
+            }).catch(() => injectDraftBaseHref(doc.content, fetchUrl));
+            if (cancelled) return;
+            setPreviewDoc(limitArtifactFrames(html));
           } else {
             // Non-HTML draft content type: org mode's draft preview only ever
             // offers .html here (md/txt/csv already took the isText branch
@@ -579,7 +739,7 @@ export function ArtifactViewer({
           setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
         })
         .finally(() => { if (!cancelled) setLoading(false); });
-      return () => { cancelled = true; };
+      return () => { cancelled = true; reading.abort(); };
     }
     mountArtifactPreview(actionPath)
       .then(async ({ kind, url, artifactDir, port, proxyUrl, backendRunning, launchError }) => {
@@ -630,7 +790,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
@@ -682,7 +842,6 @@ export function ArtifactViewer({
   // server, or in web, the path is on the server box, so we fall back to
   // the HTTP serve/published URL.
   const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
-  const canOpenInBrowser = isPublished || canOpenLocalFile || !!artifact?.serveUrl;
 
   // Open the artifact's containing folder in the OS file manager.
   const onOpenFolder = async () => {
@@ -693,14 +852,6 @@ export function ArtifactViewer({
     } catch (e) {
       setErr(e?.message || 'Could not open folder.');
     }
-  };
-
-  // Open the published URL in the default browser; falls back to a new
-  // window if the OS handoff is unavailable.
-  const onOpenPublished = async () => {
-    if (!pub.publishedUrl) return;
-    try { await host.openExternal(pub.publishedUrl); }
-    catch { window.open(pub.publishedUrl, '_blank', 'noreferrer'); }
   };
 
   // Open the local file / served preview (HTML → default browser, other
@@ -722,7 +873,7 @@ export function ArtifactViewer({
         : (pub.publishedUrl || '');
       if (url) {
         try { await host.openExternal(url); }
-        catch { window.open(url, '_blank', 'noreferrer'); }
+        catch (e) { setErr(e?.message || 'Open failed'); }
         return;
       }
       setErr('This artifact is served from a remote server and has no open URL yet.');
@@ -740,19 +891,38 @@ export function ArtifactViewer({
     }
   };
 
-  // The link-pill arrow: published → open the public URL; otherwise → open
-  // the local/served preview.
-  const onOpenInBrowser = () => (isPublished ? onOpenPublished() : onOpenOS());
+  // A running live app's own address; the controls that call this show only
+  // while there is one.
+  const onOpenLiveApp = async () => {
+    try { await host.openExternal(liveAppAddress); }
+    catch (e) { setErr(e?.message || 'Open failed'); }
+  };
+
+  // Launch asks the agent in a chat of the app's project, which launches it
+  // behind the usual card; the viewer closes so the chat shows.
+  const onLaunchLiveApp = async () => {
+    try {
+      const started = await onAddressWithAgent({ artifact, prompt: launchLiveAppPrompt(artifact), conversationId });
+      if (started === false) setErr("The agent couldn't launch this app. Check that an agent provider is connected and that you can run tasks in this project, then try again.");
+      else onClose?.();
+    } catch (e) {
+      setErr(e?.message || 'Could not ask the agent to launch this app');
+    }
+  };
 
   // "Open this artifact in a browser tab", for the control beside the mode
-  // tabs. It exists separately from the ⋯ menu's "Open in browser" because
-  // that menu is hidden in org mode, where this affordance still belongs.
+  // tabs, which org mode keeps too. No raw window.open fallback:
+  // host.openExternal is what restricts the agent-writable URL to
+  // http(s)/mailto, so a failure is reported instead of bypassing it.
   //
   // Preference order: the published URL is what the artifact *is* and what a
   // person would share; the served URL is desktop's local HTTP view; the
   // authenticated draft URL is org mode's route to an artifact nobody has
-  // published yet.
-  const browserTabTarget = pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
+  // published yet. A live app has one address, where it runs; a copy of its
+  // page anywhere else has no backend.
+  const browserTabTarget = liveAppView
+    ? liveAppAddress
+    : pub.publishedUrl || artifact?.serveUrl || draftPreviewUrl || '';
   // ...but only `publishedUrl` carries its own origin; the server returns
   // `serveUrl` and `draftUrl` origin-relative. Web tolerates that because
   // `window.open` resolves against the page, and desktop no longer reaches
@@ -763,14 +933,49 @@ export function ArtifactViewer({
   const browserTabUrl = !browserTabTarget || isAbsoluteArtifactPreviewUrl(browserTabTarget)
     ? browserTabTarget
     : `${host.getApiOrigin()}${browserTabTarget}`;
+
+  // Org web, unpublished: the authenticated draft URL cannot open in a tab (the
+  // tab carries no bearer), so open a fresh signed link instead, in a tab
+  // opened inside the click (host.openPendingTab), where popup blockers allow
+  // it. A failure is shown next to the preview, never in its place, and only
+  // while the same artifact is open.
+  const openDraftLinkInTab = async (ref) => {
+    const clicked = artifact;
+    setTabError('');
+    const tab = host.openPendingTab();
+    if (!tab) {
+      setTabError('The browser blocked the new tab. Allow pop-ups for this site and try again.');
+      return;
+    }
+    try {
+      const url = draftLinkUrl(await createDraftLink(ref.projectRef, ref.artifactId));
+      if (!tab.navigate(url)) throw new RefusedDraftLink();
+    } catch (e) {
+      tab.close();
+      await withdrawDraftLinks(e);
+      if (openRef.current && isSameArtifact(artifactRef.current, clicked)) {
+        setTabError(draftPreviewErrorMessage(e, 'Could not open this artifact in a browser.'));
+      }
+    }
+  };
+
+  // An unpublished draft the preview opens by link opens by link in a tab
+  // too. A live app opens where it runs, a backend artifact with an action
+  // path previews through its own runtime, and a card without a full identity
+  // cannot ask for a link: these keep the old route. So do text, images and
+  // Office and PDF files, whose own previews set their tab rules.
+  const draftLinkRef = !isPublished && !liveAppView && draftLinkEnabled
+    && !isText && !isImage && !documentType && !(isBackendArtifact && hasActionPath)
+    ? artifactWorkspaceRef(artifact)
+    : null;
+
   // On desktop an unpublished artifact CANNOT be opened over the served URL,
   // however well-formed it is: the loopback server requires a bearer token
   // (`require_auth` defaults on in local tenancy), and main injects that token
   // into this window's own session only (`app.ts` webRequest). shell.openExternal
   // launches a separate browser process, which carries no such header and gets
   // 401. The local file needs no credential, so hand it to the OS instead —
-  // the same route the ⋯ menu's "Open in browser" takes, which is exactly why
-  // that control kept working while this one did not. `onOpenOS` already owns
+  // the same route the header's Open button takes. `onOpenOS` already owns
   // the fullstack-backend and missing-path cases, so delegate rather than
   // restate them.
   //
@@ -784,7 +989,8 @@ export function ArtifactViewer({
   // This control leaves the window entirely, which is the one case that
   // injection does not reach.
   const onOpenInBrowserTab = () => {
-    if (!isPublished && canOpenLocalFile) return onOpenOS();
+    if (!isPublished && canOpenLocalFile && !liveAppView) return onOpenOS();
+    if (draftLinkRef) return openDraftLinkInTab(draftLinkRef);
     if (!browserTabUrl) return;
     host.openExternal(browserTabUrl).catch(() => {
       setErr('Could not open this artifact in a browser.');
@@ -819,12 +1025,19 @@ export function ArtifactViewer({
     try {
       // Desktop's path-addressed delete needs a client-side unpublish first.
       // SaaS performs both operations atomically on the scoped server route.
+      let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: isPublished })) {
-        await unpublishArtifact(actionPath);
+        leftLive = stopSharingNotice(await unpublishArtifact(actionPath));
       }
       await deleteArtifactAndSync(artifact);
       setConfirmDelete(false);
-      onDelete?.(actionPath);
+      onDelete?.(actionPath, { notice: leftLive });
+      // The artifact is gone but its page is still open to anyone with the
+      // link: say so here rather than close over it.
+      if (leftLive) {
+        setErr(leftLive);
+        return;
+      }
       onClose?.();
     } catch (e) {
       setConfirmDelete(false);
@@ -832,6 +1045,18 @@ export function ArtifactViewer({
     } finally {
       setDeleteBusy(false);
     }
+  };
+
+  /* Closing resets the workspace, which drops Edit text that was never saved,
+     so the Close button, Esc and the backdrop ask first while there is some.
+     The text stays unsaved until a save's reply arrives, so a close during a
+     save asks too, with the prompt for a save in flight. */
+  const requestClose = () => {
+    if (workspace.dirty) {
+      setClosePrompt(workspace.status === 'saving' ? CLOSE_PROMPTS.saving : CLOSE_PROMPTS.unsaved);
+      return;
+    }
+    onClose?.();
   };
 
   const headerReview = {
@@ -849,23 +1074,44 @@ export function ArtifactViewer({
     disabledReason,
   };
   const artifactActions = {
-    canOpenInBrowser,
     canOpenInBrowserTab: !!browserTabUrl,
     canOpenLocalFile,
     isBackendArtifact,
+    isLiveApp: liveAppView,
+    opensDraftLinkInTab: !!draftLinkRef,
     backendPort,
     artifact,
     deleteBusy,
     onReload,
-    onOpenInBrowser,
     onOpenInBrowserTab,
     onOpenFolder,
     onOpenOS,
     onDownload,
     onTrash,
   };
+  /* The document preview's plain source and callbacks. The draft URL is made
+     absolute here and versioned like the image URL, so a reload or a new
+     mtime remounts the preview with a new frame and token. fetchFile hands
+     DocumentPreview's abort signal to fetchAuthenticatedResponse as its
+     `signal` option. */
+  const documentPreview = showDocumentPreview ? {
+    source: {
+      url: withArtifactVersion(
+        isAbsoluteArtifactPreviewUrl(draftPreviewUrl) ? draftPreviewUrl : `${host.getApiOrigin()}${draftPreviewUrl}`,
+        contentVersion,
+      ),
+      previewType: documentType,
+      filename: title || 'file',
+    },
+    fetchFile: (url, signal) => fetchAuthenticatedResponse(url, { signal }),
+    download: () => downloadArtifactFile(artifact, { actionPath }),
+    openInDefaultApp: onOpenOS,
+    onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, 'Could not load this file')),
+  } : null;
   const previewModel = {
     draftUrl: draftPreviewUrl,
+    contentVersion,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -881,6 +1127,9 @@ export function ArtifactViewer({
     csv: csvPreview,
     onDownload,
     onOpenOS,
+    liveApp: liveAppView
+      ? { notice: liveAppNotice, state: liveAppRead.state, reloadKey: reloadNonce, onOpen: onOpenLiveApp, onLaunch: onAddressWithAgent ? onLaunchLiveApp : undefined }
+      : null,
     url: previewUrl,
     doc: previewDoc,
     kind: previewKind,
@@ -903,7 +1152,7 @@ export function ArtifactViewer({
     reportId: commentReportId,
     controller: comments,
     onStatus: setCommentStatus,
-    onAddressWithAgent: addressCommentWithAgent,
+    onAddressWithAgent: documentType ? undefined : addressCommentWithAgent,
     onCreate: createArtifactComment,
     textSelection,
     setTextSelection,
@@ -912,7 +1161,7 @@ export function ArtifactViewer({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       size="lg"
       width="min(1080px, 94vw)"
       height="min(820px, 88vh)"
@@ -926,7 +1175,7 @@ export function ArtifactViewer({
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
-        onClose={onClose}
+        onClose={requestClose}
       />
 
       {workspace.currentRevision && (
@@ -947,6 +1196,14 @@ export function ArtifactViewer({
             ? 'This draft changed elsewhere. Your text is still here; reload the latest revision before saving.'
             : workspace.error}
         </div>
+      )}
+      {tabError && (
+        <div className="artifact-workspace-notice" role="alert">{tabError}</div>
+      )}
+      {draftLinkExpired && (
+        <button type="button" className="artifact-feedback-notice" onClick={onReload}>
+          {Ico.reload(14)} <span>This preview&apos;s link has expired, so pages and files it opens from now on may not load. Reload to get a new link.</span>
+        </button>
       )}
       {feedbackNotice && (
         <button
@@ -1062,6 +1319,20 @@ export function ArtifactViewer({
           } finally {
             setRepairBusy(false);
           }
+        }}
+      />
+
+      <ConfirmModal
+        open={!!closePrompt}
+        title={closePrompt?.title}
+        message={closePrompt?.message}
+        confirmLabel={closePrompt?.confirmLabel}
+        cancelLabel="Keep editing"
+        destructive
+        onClose={() => setClosePrompt(null)}
+        onConfirm={() => {
+          setClosePrompt(null);
+          onClose?.();
         }}
       />
 

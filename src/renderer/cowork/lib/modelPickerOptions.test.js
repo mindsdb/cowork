@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildModelPickerOptions, withModelPickerFallback } from './modelPickerOptions';
+import { buildModelPickerOptions, offeredModelId, offeredModels, withModelPickerFallback } from './modelPickerOptions';
+import { MODEL_ROUTER_ID } from './modelCatalog';
 
 describe('buildModelPickerOptions', () => {
   it('produces the same provider, family order, and wallet metadata for every picker', () => {
@@ -77,5 +78,45 @@ describe('withModelPickerFallback', () => {
   it('does not duplicate a model already present in the live catalog', () => {
     const models = [{ id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol' }];
     expect(withModelPickerFallback(models, 'gpt-5.6-sol')).toEqual(models);
+  });
+});
+
+describe('offeredModels', () => {
+  const models = [
+    { id: 'gpt-5.6-luna', name: 'GPT 5.6 Luna' },
+    { id: 'opus-5-5', name: 'Opus 5.5' },
+    { id: 'gpt-luna-5-6', name: 'GPT Luna 5.6' },
+  ];
+
+  it('leaves out each model the catalog lists as not enabled', () => {
+    expect(offeredModels(models, { 'gpt-5.6-luna': true, 'opus-5-5': true, 'gpt-luna-5-6': false }))
+      .toEqual(models.slice(0, 2));
+  });
+
+  it('keeps a model the catalog says nothing about', () => {
+    expect(offeredModels(models, { 'gpt-luna-5-6': false })).toEqual(models.slice(0, 2));
+  });
+
+  it('offers nothing before the catalog loads', () => {
+    expect(offeredModels(undefined, undefined)).toEqual([]);
+  });
+});
+
+describe('offeredModelId', () => {
+  const offered = [{ id: 'gpt-5.6-luna', name: 'GPT 5.6 Luna' }, { id: 'opus-5-5', name: 'Opus 5.5' }];
+
+  it('keeps an offered model', () => {
+    expect(offeredModelId('opus-5-5', offered)).toBe('opus-5-5');
+  });
+
+  it("sends a model the picker no longer offers as the operator's own", () => {
+    expect(offeredModelId('gpt-luna-5-6', offered)).toBe(MODEL_ROUTER_ID);
+    expect(offeredModelId('opus-5-5', [])).toBe(MODEL_ROUTER_ID);
+  });
+
+  it('keeps no model, and the operator row, as they are', () => {
+    expect(offeredModelId(null, offered)).toBeNull();
+    expect(offeredModelId(undefined, offered)).toBeNull();
+    expect(offeredModelId(MODEL_ROUTER_ID, [])).toBe(MODEL_ROUTER_ID);
   });
 });

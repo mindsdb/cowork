@@ -6,3 +6,8 @@ import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
 afterEach(cleanup);
+
+// The stock deployment brand, as public/brand/brand.js sets it. Tests that
+// run as a web build then see a loaded, empty brand, as a real page does,
+// instead of a failed load.
+window.COWORK_DEPLOYMENT_BRAND = {};

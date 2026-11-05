@@ -1,5 +1,7 @@
 import type { ComponentType } from 'react';
 
+export type ArtifactExportFormat = 'html' | 'docx' | 'pdf';
+
 export interface ArtifactCapabilities {
   role?: 'owner' | 'editor' | 'reviewer' | 'viewer';
   canPreview?: boolean;
@@ -7,6 +9,16 @@ export interface ArtifactCapabilities {
   canEdit?: boolean;
   canAddressWithAgent?: boolean;
   canResolveComments?: boolean;
+  /**
+   * The formats the export route accepts for this caller and this artifact,
+   * each once, in the order html, docx, pdf. Missing or empty hides Export.
+   */
+  exportFormats?: ArtifactExportFormat[];
+}
+
+/** The export route's 200 answer. `draftUrl` is the new file's download link. */
+export interface ArtifactExportResult {
+  filename: string; draftUrl: string; serveUrl: string; omittedCount: number; scriptsDropped: boolean;
 }
 
 export interface ArtifactViewerArtifact {
@@ -47,7 +59,22 @@ export interface ArtifactViewerArtifact {
   modified?: boolean;
   publishedUrl?: string;
   accessMode?: string;
-  accessEmails?: string[];
+  /*
+   * Who a restricted artifact reaches. Null in a field means the answer
+   * doesn't know: cowork-server answers a MindsHub mode card of a restricted
+   * artifact that way, and only `GET .../access` says who it reaches
+   * (lib/sharingContract's readArtifactAudience reads it as unknown).
+   */
+  /** Restricted access: people outside the org by email in MindsHub mode
+   *  (`allowed_emails`), everyone named on desktop. */
+  accessEmails?: string[] | null;
+  /** Everyone in the org. */
+  orgAllowed?: boolean | null;
+  /** Only the owner can open it. */
+  ownerOnly?: boolean | null;
+  /** MindsHub mode: teams and people in the org (MindsHub user ids). */
+  allowedTeamIds?: string[] | null;
+  allowedUserIds?: string[] | null;
   updated?: string;
   live?: boolean;
   fileCount?: number;
@@ -101,7 +128,8 @@ export interface ArtifactViewerProps {
   artifact: ArtifactViewerArtifact | null;
   onClose: () => void;
   onChange?: (artifact: ArtifactViewerArtifact) => void;
-  onDelete?: (path: string) => void;
+  /** `notice` names a shared link the delete left live, or is ''. */
+  onDelete?: (path: string, outcome?: { notice: string }) => void;
   onAddressWithAgent?: (request: ArtifactAgentRepairRequest) => Promise<boolean | void>;
   /** The chat hosting the viewer, when there is one. */
   conversationId?: string | null;

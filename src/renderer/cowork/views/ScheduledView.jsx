@@ -1,11 +1,11 @@
-// `<ScheduledView>` — scheduled tasks as rows (default) or cards, with a
-// grid/list toggle, a create modal, and per-item hover actions.
+// `<ScheduledView>` — scheduled tasks as rows, with a create modal and
+// per-row actions.
 //
-// Click on a card → host opens the schedule detail page (set via
+// Click on a row → host opens the schedule detail page (set via
 // onOpenSchedule prop, wired in App.jsx to setRoute('schedule-detail')).
 //
 // Create + edit happen in <ScheduleTaskModal>. Per-task actions (Edit,
-// Pause/Resume, Delete) live in an overflow menu on each card or row; Delete
+// Pause/Resume, Delete) live in an overflow menu on each row; Delete
 // opens a <ConfirmModal> here rather than deleting from inside the edit form.
 //
 // Run-now happens inline (no modal) — optimistic UI at the host via the
@@ -15,25 +15,21 @@ import { useMemo, useRef, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import {
-  PageHeader, FilterRow, SearchInput, SortPill, ViewToggle, CollectionState,
-  CardGrid, ListGroup, useCollectionShortcut, useCollectionView,
+  PageHeader, FilterRow, SearchInput, SortPill, CollectionState,
+  ListGroup, useCollectionShortcut,
 } from '../components/collection';
 import { Alert, Button } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
-import ScheduleCard, { ScheduleRow } from '../components/schedule/ScheduleCard';
+import ScheduleRow from '../components/schedule/ScheduleRow';
+import { PLATFORM_UI } from '../../lib/deployment';
+import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 const SORT_OPTIONS = [
   { id: 'next', label: 'Next run' },
   { id: 'name', label: 'Name' },
   { id: 'created', label: 'Recently created' },
 ];
-
-// Same key convention as ArtifactsView / ProjectsView (`anton:<surface>-view`).
-// v2: the old `anton:scheduled-view` key was written on every mount, so a stored
-// 'grid' there was usually the old default, not a choice. A fresh key lets
-// everyone start on rows; only a choice made in this layout is remembered.
-const VIEW_MODE_KEY = 'anton:scheduled-view-v2';
 
 export default function ScheduledView({
   scheduled,
@@ -58,7 +54,6 @@ export default function ScheduledView({
   const [error, setError] = useState('');
   // Rows by default: a schedule is something you manage (status, next run,
   // run now), not a place you work in. Phones get rows too.
-  const { view: viewMode, setView: setViewMode, effectiveView } = useCollectionView(VIEW_MODE_KEY, { defaultView: 'list' });
   // Delete confirmation is a standalone ConfirmModal (not part of the edit
   // form). `deletingTask` holds the task awaiting confirmation.
   const [deletingTask, setDeletingTask] = useState(null);
@@ -143,28 +138,13 @@ export default function ScheduledView({
     finally { setBusyId(null); }
   }
 
-  // The card and the row take the same props.
-  const itemFor = (Item, task) => (
-    <Item
-      key={task.id}
-      task={task}
-      projects={projects}
-      busy={busyId === task.id}
-      onOpen={() => onOpenSchedule?.(task)}
-      onRunNow={() => runAction(task.id, onRunNow)}
-      onPause={() => runAction(task.id, onPause)}
-      onResume={() => runAction(task.id, onResume)}
-      onEdit={() => openEdit(task)}
-      onDelete={() => setDeletingTask(task)}
-      onOpenProject={onOpenProject}
-    />
-  );
-
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
+        subtitle={PLATFORM_UI
+          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. Runs missed while it's closed are skipped — ${agentLabel} picks up at the next scheduled time.`
+          : `Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — ${agentLabel} picks up at the next scheduled time.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
@@ -184,7 +164,6 @@ export default function ScheduledView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<ViewToggle value={viewMode} onValueChange={setViewMode} />}
           counts={
             <>
               {(search || '').trim().length > 0
@@ -207,34 +186,37 @@ export default function ScheduledView({
         <Alert variant="danger" className="mx-8 mb-3">{error}</Alert>
       )}
 
-      {/* Body — empty state, grid, or list. */}
+      {/* Body — empty state or list. */}
       <CollectionState
         total={scheduled.length}
         shown={visible.length}
         query={search}
         onClear={() => setSearch('')}
         empty={{
-          bordered: true,
-          icon: (
-            <span className="inline-grid place-items-center w-[48px] h-[48px] rounded-card bg-[color-mix(in_srgb,var(--accent)_12%,var(--surface-2))] text-accent">
-              {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
-            </span>
-          ),
+          icon: Ico.schedule ? Ico.schedule(20) : Ico.clock(20),
           title: 'No scheduled tasks yet',
-          description: `Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`,
-          action: (
-            <Button variant="primary" onClick={openCreate}>
-              {Ico.plus(14)} Schedule your first task
-            </Button>
-          ),
-          className: 'mx-8 my-10',
+          description: `Have ${agentLabel} repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.`,
+          action: { label: 'Schedule your first task', onClick: openCreate },
+          className: 'mx-8 mb-8',
         }}
       >
-        {effectiveView === 'grid' ? (
-          <CardGrid className="px-8 pb-8">{visible.map((task) => itemFor(ScheduleCard, task))}</CardGrid>
-        ) : (
-          <ListGroup className="mx-8 mb-8">{visible.map((task) => itemFor(ScheduleRow, task))}</ListGroup>
-        )}
+        <ListGroup className="mx-8 mb-8">
+          {visible.map((task) => (
+            <ScheduleRow
+              key={task.id}
+              task={task}
+              projects={projects}
+              busy={busyId === task.id}
+              onOpen={() => onOpenSchedule?.(task)}
+              onRunNow={() => runAction(task.id, onRunNow)}
+              onPause={() => runAction(task.id, onPause)}
+              onResume={() => runAction(task.id, onResume)}
+              onEdit={() => openEdit(task)}
+              onDelete={() => setDeletingTask(task)}
+              onOpenProject={onOpenProject}
+            />
+          ))}
+        </ListGroup>
       </CollectionState>
 
       <ScheduleTaskModal

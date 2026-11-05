@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayToggleMode, nextToggledSkin } from './displayToggle';
+import { displayToggleMode, nextToggledSkin, styleToggleLabel } from './displayToggle';
 
 describe('displayToggleMode', () => {
   it('opens the menu when both switches are on (the default)', () => {
@@ -26,5 +26,10 @@ describe('nextToggledSkin', () => {
     expect(nextToggledSkin('normal')).toBe('8bit');
     expect(nextToggledSkin('8bit')).toBe('normal');
     expect(nextToggledSkin('custom')).toBe('8bit');
+  });
+
+  it('names the style it switches to', () => {
+    expect(styleToggleLabel('normal')).toBe('Switch to 8-Bit style');
+    expect(styleToggleLabel('8bit')).toBe('Switch to Normal style');
   });
 });

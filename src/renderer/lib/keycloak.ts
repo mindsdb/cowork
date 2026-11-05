@@ -1,4 +1,5 @@
 import Keycloak from 'keycloak-js';
+import { closeLiveAppPreviews, closeLiveAppPreviewsForSignOut } from '../cowork/lib/liveAppPreview';
 import {
   type MindsOrg,
   PERSONAL_ORG_LABEL,
@@ -48,7 +49,50 @@ keycloak.onAuthError = () => {
 
 export { keycloak };
 
-export const getAccessToken = async (): Promise<string | null> => {
+/* Half of SHORT_REQUEST_TIMEOUT_MS (api.js), so a bounded request made on a
+   still-valid token reaches the server before its own deadline. */
+const TOKEN_REFRESH_DEADLINE_MS = 5_000;
+const REFRESH_DEADLINE = Symbol('refresh deadline');
+
+function tokenStillValid(): boolean {
+  try {
+    return Boolean(keycloak.token) && !keycloak.isTokenExpired();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Refresh a token that expires within 30 s. keycloak-js cannot abort its
+ * refresh request, so a Keycloak that never answers would hold every API
+ * request. Past the deadline a token that has not expired yet is good enough:
+ * this returns and the refresh finishes in the background. An expired token
+ * still waits for the refresh, since the server would refuse it.
+ */
+async function refreshWithinDeadline(): Promise<void> {
+  const refresh = keycloak.updateToken(30);
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+  const deadline = new Promise<typeof REFRESH_DEADLINE>((resolve) => {
+    timeout = globalThis.setTimeout(() => resolve(REFRESH_DEADLINE), TOKEN_REFRESH_DEADLINE_MS);
+  });
+  try {
+    if (await Promise.race([refresh, deadline]) === REFRESH_DEADLINE && tokenStillValid()) {
+      refresh.catch(() => {});
+      return;
+    }
+    await refresh;
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+  }
+}
+
+/**
+ * `waitForRefresh` waits for the whole refresh, with no deadline, even while
+ * the current token is still valid.
+ */
+export const getAccessToken = async (
+  { waitForRefresh = false }: { waitForRefresh?: boolean } = {},
+): Promise<string | null> => {
   /**
    * Once a switch request starts, the server-side session may name the new
    * tenant before this document can confirm and reload. Refuse every ordinary
@@ -59,7 +103,7 @@ export const getAccessToken = async (): Promise<string | null> => {
   if (!keycloak.authenticated) return null;
   if (keycloak.token) expectedOrganizationHeaders(keycloak.token);
   try {
-    await keycloak.updateToken(30);
+    await (waitForRefresh ? keycloak.updateToken(30) : refreshWithinDeadline());
   } catch {
     /**
      * A refresh failure may still leave the existing token usable, but only if
@@ -319,11 +363,14 @@ export async function switchWebOrganization(
   }
   let token: string | null;
   try {
-    token = await withinOrganizationDeadline(getAccessToken());
+    token = await withinOrganizationDeadline(getAccessToken({ waitForRefresh: true }));
   } catch {
     /**
      * keycloak-js cannot abort its refresh fetch. Reload so a timed-out
      * preflight cannot leave every later token request queued behind it.
+     * The preflight waits for the whole refresh: a switch that went ahead on
+     * a still-valid token would reach the PUT and then queue its confirming
+     * refresh below behind the stalled one.
      */
     prepareForOrganizationReload({ clearTenantState: false });
     return {
@@ -363,6 +410,7 @@ export async function switchWebOrganization(
   let response: Response;
   let transitionId: string;
   try {
+    await closeLiveAppPreviews();
     transitionId = await beginOrganizationTransition(
       nonEmptyString(keycloak.subject) ?? nonEmptyString(keycloak.tokenParsed?.sub),
     );
@@ -456,5 +504,8 @@ export function __resetOrganizationTransitionForTests(): void {
 // no-op on legacy tenant hosts that render without the Keycloak wrapper.
 export const logout = async (): Promise<void> => {
   if (!keycloak.authenticated) return;
+  // Never blocked by the preview revoke: a stuck sign-out would keep this
+  // browser's session for the next person at the machine.
+  await closeLiveAppPreviewsForSignOut();
   await keycloak.logout({ redirectUri });
 };

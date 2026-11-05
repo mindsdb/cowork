@@ -22,6 +22,28 @@ import {
   routerRoleSubtitle,
 } from './settingsTransform';
 
+describe('favicon settings translation', () => {
+  it('round-trips the image, commits it, and writes an empty removal', () => {
+    const favicon = 'data:image/png;base64,aWNvbg==';
+    expect(transformSettingsRows([{ key: 'favicon', value: favicon, is_sensitive: false }]).favicon).toBe(favicon);
+    expect(diffSettingsForWrite({ favicon }, { favicon: '' })).toEqual({ favicon });
+    expect(committedSettingsPatch({ favicon }, ['favicon'])).toEqual({ favicon });
+    expect(diffSettingsForWrite({ favicon: '' }, { favicon })).toEqual({ favicon: '' });
+    expect(diffSettingsForWrite({ favicon }, { favicon })).toEqual({});
+  });
+});
+
+describe('show_figure_sources translation', () => {
+  it('round-trips the switch both ways and commits it', () => {
+    expect(transformSettingsRows([{ key: 'show_figure_sources', value: 'False', is_sensitive: false }]).showFigureSources).toBe(false);
+    expect(transformSettingsRows([{ key: 'show_figure_sources', value: 'true', is_sensitive: false }]).showFigureSources).toBe(true);
+    expect(diffSettingsForWrite({ showFigureSources: false }, { showFigureSources: true })).toEqual({ show_figure_sources: 'false' });
+    expect(diffSettingsForWrite({ showFigureSources: true }, { showFigureSources: false })).toEqual({ show_figure_sources: 'true' });
+    expect(diffSettingsForWrite({ showFigureSources: true }, { showFigureSources: true })).toEqual({});
+    expect(committedSettingsPatch({ showFigureSources: false }, ['show_figure_sources'])).toEqual({ showFigureSources: false });
+  });
+});
+
 describe('modelLabel', () => {
   it('formats named GPT coding models without a version hyphen', () => {
     expect(modelLabel('gpt-codex')).toBe('GPT Codex');

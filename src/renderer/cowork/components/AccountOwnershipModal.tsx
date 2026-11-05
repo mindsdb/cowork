@@ -63,33 +63,35 @@ export default function AccountOwnershipModal({
       open={open}
       size="md"
       labelledBy="account-ownership-title"
-      onClose={busy ? () => {} : onDismiss}
+      onClose={onDismiss}
+      dismissible={!busy}
     >
       <ModalHeader
         id="account-ownership-title"
         title="Whose data is this?"
-        onClose={busy ? undefined : onDismiss}
+        onClose={onDismiss}
       />
       <ModalBody>
-        <p style={{ margin: 0, lineHeight: 1.5 }}>
+        <p className="s-body" style={{ margin: 0 }}>
           There is existing data on this computer from before accounts were kept
           separate, and we can&apos;t tell whether it belongs to {who}.
         </p>
-        <p style={{ margin: '12px 0 0', lineHeight: 1.5 }}>
+        <p className="s-body" style={{ margin: '12px 0 0' }}>
           It is more than past chats. Taking it also takes the provider API keys
           saved here and the credentials for any datasources that were connected.
         </p>
-        <p style={{ margin: '12px 0 0', lineHeight: 1.5 }}>
+        <p className="s-body" style={{ margin: '12px 0 0' }}>
           Nothing is deleted either way. If you start fresh, the existing data
           stays on this computer for whoever it belongs to.
         </p>
         {error && (
-          <p style={{ margin: '12px 0 0', lineHeight: 1.5, color: 'var(--danger, #c0392b)' }}>
+          <p className="s-body" style={{ margin: '12px 0 0', color: 'var(--danger, #c0392b)' }}>
             {error}
           </p>
         )}
       </ModalBody>
-      <ModalFooter align="space-between">
+      {/* A forced choice: both answers sit on the right, no Cancel. */}
+      <ModalFooter>
         <Button variant="subtle" disabled={busy !== null} onClick={() => decide(false)}>
           {busy === 'fresh' ? 'Starting fresh…' : 'Start fresh'}
         </Button>

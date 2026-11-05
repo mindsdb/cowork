@@ -60,6 +60,11 @@ import { Tooltip } from './Tooltip';
 // treatment while replacing the runtime-injected CSS mechanism.
 const MENU_POPUP_CLASSES = cn(
   'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
+  // The desktop shell makes the whole window a drag region and Electron
+  // swallows mouse-downs there by geometry, not paint order. The portal puts
+  // this popup outside every opted-out surface, so it opts out itself;
+  // otherwise its items only respond where a button or scroller sits beneath.
+  '[-webkit-app-region:no-drag]',
   'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
   // A long menu (the Filter menu's project list) scrolls within the space
   // Base UI measures below its anchor instead of running off-screen, as
@@ -162,7 +167,7 @@ function renderItems(items, z, onActivate) {
           <span className={cn('inline-flex shrink-0', it.danger ? 'text-danger' : 'text-ink-3')}>{it.icon}</span>
         )}
         <span className="flex-1 min-w-0 truncate">{it.label}</span>
-        {it.hint && <span className="font-mono text-[12px] text-ink-3">{it.hint}</span>}
+        {it.hint && <span className="text-[12px] text-ink-3">{it.hint}</span>}
       </BaseMenu.Item>
     );
   });

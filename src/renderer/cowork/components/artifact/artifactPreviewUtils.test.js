@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  draftFileName,
   isAbsoluteArtifactPreviewUrl,
   TEXT_PREVIEW_EXTS,
   withArtifactCommentFlag,
@@ -14,6 +15,7 @@ import {
   draftPreviewErrorMessage,
   parseCsv,
   DRAFT_FRAGMENT_GUARD_SCRIPT,
+  limitArtifactFrames, ARTIFACT_FRAME_POLICY
 } from './artifactPreviewUtils';
 import { TEXT_PREVIEW_EXTS as SHARED_TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
 
@@ -126,6 +128,31 @@ describe('draftNavigationIsAuthorized', () => {
  * base from that URL; srcdoc needs the same base stated explicitly or every
  * relative <script src>/<link href>/anchor in the document breaks.
  */
+describe('draftFileName', () => {
+  it('names the file, decoded, without the query', () => {
+    expect(draftFileName('https://cowork.example/api/v1/artifacts/drafts/p/a/Q3%20report.html?v=2'))
+      .toBe('Q3 report.html');
+  });
+
+  it('keeps a name with a bare % literal', () => {
+    expect(draftFileName('https://cowork.example/api/v1/artifacts/drafts/p/a/100%.html')).toBe('100%.html');
+  });
+});
+
+describe('injectDraftBaseHref, base and doctype handling', () => {
+  const url = 'https://cowork.example/api/v1/artifacts/drafts/p/a/index.html';
+
+  it('adds the base when the page has only a <base target>', () => {
+    expect(injectDraftBaseHref('<html><head><base target="_blank"></head></html>', url))
+      .toContain('<base href="https://cowork.example/api/v1/artifacts/drafts/p/a/">');
+  });
+
+  it('puts the base after a doctype, never ahead of it, when there is no <head>', () => {
+    expect(injectDraftBaseHref('<!DOCTYPE html>\n<title>x</title>', url))
+      .toMatch(/^<!DOCTYPE html><base href=/);
+  });
+});
+
 describe('injectDraftBaseHref', () => {
   it('inserts a base tag pointing at the draft directory, inside <head>', () => {
     const html = '<html><head><title>Deck</title></head><body>Hi</body></html>';
@@ -513,5 +540,27 @@ describe('CSV_PREVIEW_ROW_LIMIT', () => {
     expect(CSV_PREVIEW_ROW_LIMIT).toBe(100);
     expect(parseCsv(`id\n${'1\n'.repeat(500)}`, CSV_PREVIEW_ROW_LIMIT))
       .toHaveLength(CSV_PREVIEW_ROW_LIMIT + 1);
+  });
+});
+
+describe('limitArtifactFrames', () => {
+  const policy = (html) => new DOMParser().parseFromString(html, 'text/html')
+    .querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');
+
+  it('frames only what the shell allowed before live apps, in the head and on one line', () => {
+    const html = limitArtifactFrames('<!doctype html><html><head><title>x</title></head><body><script>a()</script></body></html>');
+    expect(policy(html)).toBe(ARTIFACT_FRAME_POLICY);
+    expect(ARTIFACT_FRAME_POLICY).not.toMatch(/view\.localhost/);
+    expect(html.split('\n')).toHaveLength(1);
+    expect(html.indexOf('Content-Security-Policy')).toBeLessThan(html.indexOf('<title>'));
+  });
+
+  it('heads a document that has no head of its own', () => {
+    expect(policy(limitArtifactFrames('<p>no head</p>'))).toBe(ARTIFACT_FRAME_POLICY);
+  });
+
+  it('passes an empty document through', () => {
+    expect(limitArtifactFrames('')).toBe('');
+    expect(limitArtifactFrames(undefined)).toBeUndefined();
   });
 });

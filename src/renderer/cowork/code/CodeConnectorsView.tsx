@@ -280,7 +280,7 @@ export function CodeConnectorsView({
           const providerBusy = busyKey.startsWith(`${provider.id}:`);
           const needsAttention = accounts.some((connection) => connection.status === 'needs_reconnect');
           return (
-            <ListGroup key={provider.id} density="compact" aria-labelledby={`code-connector-${provider.id}`}>
+            <ListGroup key={provider.id} aria-labelledby={`code-connector-${provider.id}`}>
               <ListItem
                 leading={<span className="inline-grid size-6 place-items-center overflow-hidden rounded-md border border-solid border-line bg-white" aria-hidden="true">
                   <img src={provider.logo} alt="" className="block size-3.5" />

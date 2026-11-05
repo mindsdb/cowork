@@ -45,6 +45,12 @@ describe('CodeTasksView', () => {
     expect(props.onOpen).toHaveBeenCalledWith('Older task');
   });
 
+  it('shows a status only when the task needs noticing', () => {
+    setup();
+    expect(screen.getByText('Needs approval')).toBeInTheDocument();
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+  });
+
   it('scopes project tasks by ID even when project names match; offers new task and settings separately', async () => {
     const { user, props } = setup({ projectId: 'p1' });
     expect(screen.getByRole('heading', { name: 'MindsHub' })).toBeInTheDocument();
@@ -77,7 +83,8 @@ describe('CodeTasksView', () => {
   });
 
   it('distinguishes duplicate names even when their locations match or are missing', async () => {
-    const { user } = setup({ sessions: [], projects: [
+    // One unrelated task, so the toolbar (hidden with no tasks at all) shows.
+    const { user } = setup({ sessions: [task('Solo')], projects: [
       ...projects.map(item => ({ ...item, resources: [{ kind: 'local_folder' as const, id: 'source', name: 'Source', path: '/work/shared', computer_id: 'local', commands: [] }] })),
       project('p3', 'Empty'), project('p4', 'Empty'), project('p5', 'Unique'),
     ] });
@@ -134,6 +141,21 @@ describe('CodeTasksView', () => {
     expect(screen.getByRole('button', { name: 'New task' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Older task' }));
     expect(props.onOpen).toHaveBeenCalledWith('Older task');
+  });
+
+  it('offers the first task and hides the toolbar when there are no tasks at all', async () => {
+    const { user, props } = setup({ sessions: [] });
+    expect(screen.getByText('No tasks yet')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Search tasks' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Filter/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Start your first task' }));
+    expect(props.onNewTask).toHaveBeenCalledWith(null);
+  });
+
+  it('keeps the toolbar when every task is archived, so the archived filter stays reachable', () => {
+    setup({ sessions: [task('Archived task', { archived: true })] });
+    expect(screen.getByText('No tasks yet')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Search tasks' })).toBeInTheDocument();
   });
 
   it('does not show an empty state as if a failed or pending load succeeded', async () => {

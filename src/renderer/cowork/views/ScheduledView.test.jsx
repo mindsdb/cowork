@@ -1,9 +1,9 @@
 // Characterization tests for the scheduled-tasks index: they pin search,
-// sort, the grid/list toggle and its persisted choice, run now, the overflow
+// sort, the row layout, run now, the overflow
 // actions (edit, pause/resume, delete with confirm) and the empty state, so
 // the collection-kit refactor can restyle the page without changing what it
 // does. Queries go by role, label and visible text, never by class.
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { orderOf, pickOption } from '../../../../tests/helpers/pickOption';
@@ -11,7 +11,6 @@ import { orderOf, pickOption } from '../../../../tests/helpers/pickOption';
 import ScheduledView from './ScheduledView';
 
 const VIEW_KEY = 'anton:scheduled-view-v2';
-const LEGACY_VIEW_KEY = 'anton:scheduled-view';
 const PROJECTS = [{ id: 'proj-metrics', name: 'metrics', display_name: 'Metrics', path: '/work/metrics' }];
 const SCHEDULED = [
   {
@@ -98,40 +97,17 @@ describe('ScheduledView — toolbar', () => {
     expect(orderOf(TITLES)).toEqual(['Weekly metrics']);
   });
 
-  // Rows and cards name their run action differently ("Run" vs "Run now"),
-  // which tells the two layouts apart without reaching for classes.
-  it('defaults to rows, switches to cards, and remembers the choice', async () => {
-    const { user, unmount } = setup();
-    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getAllByRole('button', { name: 'Run' })).toHaveLength(3);
-    expect(localStorage.getItem(VIEW_KEY)).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: 'Grid' }));
-    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getAllByRole('button', { name: 'Run now' })).toHaveLength(3);
-    expect(localStorage.getItem(VIEW_KEY)).toBe('grid');
-
-    unmount();
+  // Rows only: a grid preference saved before the toggle went away is ignored.
+  it('renders rows with no view toggle, even with a stored grid preference', () => {
+    localStorage.setItem(VIEW_KEY, 'grid');
     setup();
-    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getAllByRole('button', { name: 'Run now' })).toHaveLength(3);
-  });
-
-  // Staging wrote the old key on every mount, so its 'grid' is not a choice.
-  it('opens on rows even when the legacy key holds grid', () => {
-    localStorage.setItem(LEGACY_VIEW_KEY, 'grid');
-    setup();
-    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: 'Grid' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Run' })).toHaveLength(3);
   });
 });
 
-describe.each(['grid', 'list'])('ScheduledView — %s item actions', (mode) => {
-  beforeEach(() => {
-    localStorage.setItem(VIEW_KEY, mode);
-  });
-
-  const runLabel = mode === 'grid' ? 'Run now' : 'Run';
+describe('ScheduledView — row actions', () => {
+  const runLabel = 'Run';
 
   it('opens the schedule when the item is clicked', async () => {
     const { user, props } = setup();
@@ -215,18 +191,7 @@ describe.each(['grid', 'list'])('ScheduledView — %s item actions', (mode) => {
   });
 });
 
-describe('ScheduledView — phone width and no-match', () => {
-  const width = window.innerWidth;
-  afterEach(() => { window.innerWidth = width; });
-
-  it('gives phones rows and hides the toggle, keeping the stored choice', () => {
-    localStorage.setItem(VIEW_KEY, 'grid');
-    window.innerWidth = 390;
-    setup();
-    expect(screen.queryByRole('button', { name: 'Grid' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Run' })).toHaveLength(3);
-    expect(localStorage.getItem(VIEW_KEY)).toBe('grid');
-  });
+describe('ScheduledView — no match and empty', () => {
 
   it('says nothing matches the search and clears it on request', async () => {
     const { user } = setup();

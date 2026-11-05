@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { projectLabel, projectLabelByName } from '../lib/projectLabel';
 import Ico from './Icons';
 import { Badge } from './ui';
+import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
+import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 // Mobile chrome for the cowork SPA. Active at viewport widths < 640px
 // (see useBreakpoint.isMobile). Replaces the desktop sidebar + main
@@ -27,7 +29,7 @@ function titleForRoute(route, { selectedProject, currentTask } = {}) {
   if (route === 'settings') return 'Settings';
   if (route === 'memory') return 'Memories';
   if (route === 'skills') return 'Skills';
-  return 'MindsHub Cowork';
+  return productName(STOCK_PRODUCT_NAME);
 }
 
 function tasksForProject(tasks, project) {
@@ -300,10 +302,10 @@ export default function MobileShell({
       >
         <div className="mshell__drawer-head">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            {navLogo && (
-              <img src={navLogo} alt="" aria-hidden="true" className="mshell__drawer-logo" />
+            {(navLogo || brandLogoUrl()) && (
+              <img src={navLogo || brandLogoUrl()} alt="" aria-hidden="true" className="mshell__drawer-logo" />
             )}
-            <span className="mshell__drawer-title">{navTitle || 'MindsHub Cowork'}</span>
+            <span className="mshell__drawer-title">{navTitle || productName(STOCK_PRODUCT_NAME)}</span>
           </div>
           <button
             type="button"

@@ -24,8 +24,10 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
+import { PLATFORM_UI } from '../../../lib/deployment';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
 import { submitDataVaultForm } from '../../api';
@@ -189,13 +191,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     if (!spec) return;
     setError('');
 
-    // Success branch — two intents:
+    // Nothing left to submit branch — two intents:
     //   • view_connectors → route to the Connect Apps and Data page,
     //     then clear the panel
     //   • dismiss / cancel → just clear the panel
-    // The connection is already in the vault either way; nothing
-    // to dispatch back to anton.
-    if (spec._is_success) {
+    // The connection is already stored either way; nothing to dispatch back
+    // to anton. A pending cloud database belongs here too: its credential is
+    // in auth and a separate check decides the rest, so routing these buttons
+    // through the generic paths would send a chat message on Close and
+    // attempt a duplicate create on View connections.
+    if (spec._is_success || spec._datasource_pending) {
       if (id === 'view_connectors') {
         onNavigateToConnectors?.();
       }
@@ -393,7 +398,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       if (host.isWeb) {
         const connectorId = spec._connector_id || null;
         if (!connectorId) {
-          setError('This connector cannot be authorized in the browser (no connector id). Use the desktop app.');
+          setError(PLATFORM_UI
+            ? 'This connector cannot be authorized in the browser (no connector id). Use the desktop app.'
+            : 'This connector cannot be authorized in this web UI.');
           return;
         }
         setBusy(true);
@@ -574,7 +581,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           // route via `wireMethodId` so modify-flow submissions
           // resolve to the saved method's real id, not the
           // synthetic `__edit_current__`.
-          onSubmit({
+          await onSubmit({
             formId: spec.form_id,
             formSpec: wireMethodId
               ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
@@ -608,6 +615,64 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         }
         delete submissionValues.posthog_project_choice;
       }
+      // Cloud datasource: straight to the relay, never through the chat
+      // submission stream. The credential belongs to auth and this form is
+      // dedicated entry kept out of the conversation, so nothing about it is
+      // narrated into a turn. The relay answers with the connection, and its
+      // status decides what the user sees: auth creates one `pending` and
+      // only the gateway's probe completion moves it to verified or failed.
+      if (spec._cloud_datasource) {
+        const payload = buildDatasourcePayload({
+          spec,
+          method: wireMethodId || spec.selected_method || null,
+          values: submissionValues,
+          // The label field is the name, on an edit too: the relay renames a
+          // connection it is sent a new name for, so the stored name is only
+          // the fallback for a label left empty.
+          name: userLabel || connectionName,
+        });
+        const edit = spec._datasource_edit;
+        const connection = edit
+          ? await editDatasourceConnection(edit.id, payload, edit.expectedRevision)
+          : await createDatasourceConnection(payload);
+        const state = describeConnectionState(connection);
+        patchForm(conversationId, {
+          // Without the form id the store treats this as a different form and
+          // replaces the spec outright, which leaves a failed capture looking
+          // at an empty form with its fields and values gone.
+          form_id: spec.form_id,
+          _is_probing: false,
+          status_text: '',
+          // `state.detail` is auth's own "validation failed", which is all it
+          // stores; the hint is the only text that tells anyone what to change.
+          form_error: state.kind === 'failed' ? (state.hint || state.detail || state.title) : '',
+          // A failed connection is already stored, so submitting the corrected
+          // form again has to edit that one. Creating a second would earn a
+          // duplicate-name refusal and leave the first sitting there failed.
+          ...(state.kind === 'failed' && connection?.id
+            ? {
+              _datasource_edit: { id: connection.id, expectedRevision: connection.revision },
+              // The error card replaces the form, so returning to it starts
+              // from an empty one. Saying so beats letting someone press
+              // Connect on a blank password and read a second refusal.
+              subtitle: 'Try again reopens the form. The password has to be entered once more.',
+            }
+            : {}),
+          ...(state.kind === 'verified'
+            ? { _is_success: true, title: state.title, subtitle: `${connection.name} is ready to use in this workspace.` }
+            : {}),
+          ...(state.kind === 'pending'
+            ? { _datasource_pending: true, title: state.title, subtitle: state.detail }
+            : {}),
+          _datasource_connection_id: connection?.id ?? null,
+        });
+        if (state.kind === 'verified') trackDataSourceConnected(spec._connector_id || spec.engine || 'datasource');
+        // The connections page and the composer's per-conversation toggles
+        // both hold their own copy of this list; this is how they learn.
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+        setBusy(false);
+        return;
+      }
       // Endpoint-as-agent path: hand the submission off to the
       // host (App.jsx → handleSubmitDataVaultForm). It opens an SSE
       // stream against /v1/datavault/submissions and pipes the
@@ -615,7 +680,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       // The agent does the validation / save / patch decisions
       // server-side without round-tripping through the LLM.
       if (onSubmit) {
-        onSubmit({
+        await onSubmit({
           formId: spec.form_id,
           // Spread the chosen auth_method into the spec we send so
           // the server-side agent reads it from `spec.auth_method`
@@ -633,9 +698,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           name: connectionName,
           method: wireMethodId || null,
         });
-        // Don't await — the stream pumps events into ChatView state
-        // directly. We can drop the local busy flag; the Composer's
-        // streaming indicator picks up from here.
+        // The stream itself is not awaited; it pumps events into ChatView
+        // state directly. Only a submission the host holds back returns a
+        // promise, and the panel stays busy until that one has started.
       } else {
         // Legacy fallback — used by any host that hasn't wired
         // onSubmit (older tests, embeds). Stages the values without
@@ -657,7 +722,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         }));
       }
     } catch (e) {
-      setError(e?.message || 'Could not submit form');
+      // The relay names this one, and only this one, as a conflict: the
+      // connection moved on while this form was open, so the revision the
+      // form carries is no longer the one to edit.
+      setError(
+        e?.code === 'stale_version'
+          ? 'This connection changed since you opened it. Close this and open it again to edit the current version.'
+          : (e?.message || 'Could not submit form'),
+      );
     } finally {
       setBusy(false);
     }
@@ -705,19 +777,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // same form_id → no remount → no re-animation.
     <div
       key={appearKey}
-      // `shrink-0`: the panel sits in the right rail's flex column —
-      // without it, the rail squeezes the panel down to fit its own
-      // height, our `overflow-hidden` clips the content, and the rail's
-      // `overflow-y-auto` never sees anything to scroll. Pinning shrink
-      // to 0 makes the panel claim its full content height so the rail's
-      // scroll engages naturally.
-      className="relative bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0"
+      // The <Modal> around it draws the card (border, radius, shadow).
+      className="relative bg-surface"
       style={{
         // Highlight ring driven from outside (e.g. the chat's
-        // connect-intro bubble on hover) — accent border + soft
-        // halo so the form card draws the eye without layout shift.
+        // connect-intro bubble on hover). Inset, so the modal's clipping
+        // can't hide it.
         boxShadow: highlighted
-          ? '0 0 0 2px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent)'
+          ? 'inset 0 0 0 2px var(--accent)'
           : 'none',
         transition: 'box-shadow var(--dur-hover) ease',
         animation: 'dvf-appear var(--dur-layout) var(--ease-out) both',

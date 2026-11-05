@@ -28,6 +28,8 @@ async function request(path, options = {}) {
     const error = new Error(message);
     error.status = response.status;
     error.detail = detail;
+    // Same field `responseError` in api.js sets, so callers branch on one shape.
+    error.code = payload?.code || detail?.code || null;
     throw error;
   }
   if (response.status === 204) return { ok: true };
@@ -155,6 +157,50 @@ export async function loadArtifactDraftDocument(draftUrl) {
   };
 }
 
+/*
+ * A card's draft URL, `/api/v1/artifacts/drafts/{project_ref}/{artifact_id}/{path}`,
+ * names the project and the artifact the export route takes. Reading both from
+ * the URL addresses exactly the artifact whose file the card links to.
+ */
+const DRAFT_PATH_RE = /^\/api\/v1\/artifacts\/drafts\/([^/]+)\/([^/]+)\/[^/]/;
+
+function draftArtifactRef(draftUrl) {
+  const match = DRAFT_PATH_RE.exec(new URL(resolveSameOriginDraftUrl(draftUrl)).pathname);
+  if (!match) throw new Error('Artifact draft URL names no artifact');
+  return { projectRef: decodeURIComponent(match[1]), artifactId: decodeURIComponent(match[2]) };
+}
+
+/**
+ * Exports the artifact's primary file to `format`, written beside it. The body
+ * names the format and nothing else: the route always exports the primary
+ * file, and answers 422 to any other field.
+ *
+ * @param {string} draftUrl
+ * @param {import('../components/artifact').ArtifactExportFormat} format
+ * @returns {Promise<import('../components/artifact').ArtifactExportResult>}
+ */
+export async function requestArtifactExport(draftUrl, format) {
+  const { projectRef, artifactId } = draftArtifactRef(draftUrl);
+  return request(
+    `/artifacts/workspace/${encodeURIComponent(projectRef)}/${encodeURIComponent(artifactId)}/export`,
+    { method: 'POST', body: JSON.stringify({ format }) },
+  );
+}
+
+/*
+ * A signed link to the draft on the draft host. Org web only: /health's
+ * `draft_links` (lib/draftLinks.ts) says whether the server hands them out.
+ * The link expires in 30 minutes, so the viewer asks for a new one on every
+ * open, reload and "open in a browser tab" and never stores it.
+ */
+export function createDraftLink(projectRef, artifactId) {
+  if (!projectRef || !artifactId) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(
+    `/artifacts/drafts/${encodeURIComponent(projectRef)}/${encodeURIComponent(artifactId)}/link`,
+    { method: 'POST', body: '{}' },
+  );
+}
+
 export function loadArtifactSource(artifact, path = null) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
@@ -227,7 +273,9 @@ export function loadArtifactAccess(artifact) {
 
 // Setting an audience is a re-publish server-side: the target stores access
 // alongside the bundle and reuses the existing report_id, so the shared URL
-// survives the change and nothing has to be unpublished first.
+// survives the change and nothing has to be unpublished first. `access` goes
+// as given, `notify` included: the people this change newly adds whom
+// MindsHub emails.
 export function setArtifactAccess(artifact, access) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

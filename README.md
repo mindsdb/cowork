@@ -15,6 +15,10 @@ The frontend and backend are developed and released independently. At runtime, t
 
 ---
 
+## Shared projects
+
+On deployments with selective project sharing, a recipient sees shared projects in Projects with a read-only file view. Files are addressed by project UUID, so an owned project with the same name stays separate. Received projects show the last eight characters of that UUID on their cards and file views, with the full project ID in a tooltip, to distinguish equal names without revealing owner identities. Shared projects are excluded from task, schedule and move pickers, and send handlers reject them. HTML is shown as text; downloads use authenticated requests. The view rechecks access on focus and every 15 seconds, clearing its contents if access is revoked or a recheck gets no answer within 10 seconds. The server enforces these restrictions and must support `/shared-projects/{id}/files`; older deployments keep their existing project behavior.
+
 ## Environments
 
 MindsHub Cowork runs in several contexts. The React SPA is identical across all of them — only the shell and server lifecycle differ.
@@ -27,6 +31,26 @@ MindsHub Cowork runs in several contexts. The React SPA is identical across all 
 | **Docker** (web deployment) | Static files served by uvicorn | `cowork-server` installed in `/opt/venv` | `docker build` + `docker run` |
 
 ---
+
+### Docker builds with a supplied dependency lock
+
+For an exact server environment, put a hashed `requirements.lock` and Git source
+identities in [`server-lock/`](server-lock/README.md), then run:
+
+```bash
+docker build --build-arg COWORK_SERVER_LOCK=true -t cowork:locked .
+```
+
+The contract selects both server and anton, replacing the ordinary version/ref
+arguments. Registry packages install from exact hashed wheels before either app
+is imported. The installer checks the complete environment, source commits,
+dependency compatibility, and the PyJWT security floor. A missing artifact or a
+mismatch fails the build; it does not select a newer package. Change the supplied
+contract explicitly when updating dependencies.
+
+Builds without `COWORK_SERVER_LOCK=true` select a server version or Git ref and
+consume that release's dependency contract, as described below.
+Git build backends, apt packages, and the frontend have separate build inputs.
 
 ## Build Channels
 
@@ -56,7 +80,7 @@ A channel's state is not all under one folder. It spreads across several locatio
 | Location (non-prod / prod) | What lives there | How it's isolated |
 |----------------------------|------------------|-------------------|
 | **Data home** — `~/.cowork-<kind>` / `~/.cowork` | SQLite `cowork.db`, `.env`, `state.json`, `.master_key`, and the `projects/` `files/` `skills/` `data-vault/` trees ([full layout](https://github.com/mindsdb/cowork-server#data-layer)) | `COWORK_HOME` |
-| **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv) | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
+| **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv). Beside the `tools/` folder, never inside it: `.cowork-release-contracts/`, the release installer's rollback snapshots ([`install_release_server.py`](scripts/install_release_server.py)). uv reads every folder in `tools/` as a tool, and `uv tool list` fails on one it can't name | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
 | **Server logs** — `~/.cowork-<kind>/logs/` / `~/Library/Logs/anton` | `cowork-server.log` | Non-prod redirects to the data home |
 | **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs); on **Windows/Linux** the encrypted MindsHub refresh token (`mindshub-refresh.bin`, safe-storage) | `app.setName` per kind |
 | **MindsHub refresh token** — **macOS:** `~/.cowork-<kind>/refresh-token.dat` / `~/.cowork/refresh-token.dat`; **Windows/Linux:** userData `mindshub-refresh.bin` | The Keycloak refresh token | `COWORK_HOME` (macOS) / userData (Win/Linux) — see [`token-store.ts`](src/main/token-store.ts) |
@@ -223,6 +247,8 @@ component library, and two entrypoints.
 npm run dev:web
 ```
 
+Web development defaults to MindsHub UI off. In this build, Settings hides LLM Providers and Model Router, the composer hides model and reasoning-effort controls, and questions send `model: null` without a `reasoning_effort` override. The server uses its configured models and role-specific efforts. To configure providers and models in the development UI, run `VITE_PLATFORM_UI=true npm run dev:web`.
+
 This boots both processes:
 
 1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory).
@@ -231,7 +257,7 @@ This boots both processes:
 The dev server opens at `http://localhost:5173/` (a small Vite
 middleware rewrites `/` → `/index-web.html` so the bare URL is
 canonical). API calls hit the FastAPI sidecar via Vite's
-`/v1` and `/health` proxies. Press `Ctrl-C` once for a clean
+`/api` proxy. Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
 
 ### Build a production bundle
@@ -242,7 +268,69 @@ npm run build:web
 
 Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
 the Electron build). Drop this directory behind any static-file server
-and point its `/v1` requests at a running cowork-server process.
+and point its `/api` requests at a running cowork-server process.
+
+### Browser tab icon
+
+Settings > Appearance lets web users upload a browser tab icon independently
+of the sidebar logo. PNG, ICO, SVG, and WEBP files must be smaller than 100 KB;
+a square image of at least 32 × 32 pixels works best. Changes preview immediately
+and persist through the settings API. Removing the override restores the page's
+original icon, including a deployment's custom branding. Desktop does not show
+this control, and the browser's home-screen icon is unchanged.
+
+### Deployment brand
+
+A web build with MindsHub UI off (`BUILD_TARGET=web` and `VITE_PLATFORM_UI` not `true`) reads an optional brand from its own origin when the page loads. One build then serves any number of deployments, and a deployment changes its brand by serving different files, with no rebuild. Hosted web and desktop never load a brand: their HTML has no reference to it.
+
+| Path | What it is |
+|---|---|
+| `/brand/brand.js` | A classic script that only assigns `window.COWORK_DEPLOYMENT_BRAND = { ... };` |
+| `/brand/brand.css` | A stylesheet, loaded after the app's own CSS |
+| `/brand/<file>` | Any image the config names |
+
+The build marks the stock title, favicon comment and icon links with `<!-- cowork-deployment-brand:start -->` and `<!-- cowork-deployment-brand:end -->`. A deployment server can replace that entire region with its escaped title and literal icon links before sending the page. The markers appear only in web builds with MindsHub UI off. Without a replacement, the stock content stays.
+
+The blocking brand script and title line follow this region, before the app's
+bundle, so the first render already has the brand. The script must never be
+`async` or `defer`. The stylesheet goes last in `<head>`. Cowork ships empty
+stock files in `src/renderer/public/brand/`, and `scripts/spa_wrapper.py`
+and the frontend image's nginx (`scripts/nginx-frontend.conf`) serve them, so
+a deployment that serves nothing of its own looks stock. A hosted deployment
+that serves its own brand mounts its files over the image's `/brand/` folder.
+nginx sends them with `Cache-Control: no-cache` and an ETag, and answers a
+missing one with a 404.
+
+`scripts/spa_wrapper.py` marks its HTML shell responses with `X-Cowork-Spa-Shell: 1`,
+including `/`, `/index-web.html` and deep client routes. Assets, API responses
+and redirects have no such header. A deployment proxy can use the header to
+distinguish the shell from other HTML. The build rejects missing, duplicate or
+reordered title and icon anchors, and markers already present in the source.
+
+The hosted build adds the draft hosts to the page's CSP meta tag as well.
+That tag allows same-origin scripts, inline scripts, styles and images, so the
+brand's script, its title line, its stylesheet and its images load there too.
+Both changes are made at build time, and either order gives the same page.
+
+Every field is optional. A field that breaks its rule is ignored, with one
+console warning, and the rest still apply. Unknown keys are ignored, so the
+format only ever gains optional fields.
+
+| Field | Rule | Used for |
+|---|---|---|
+| `productName` | 1 to 64 characters after trimming | The tab title and the places that name the product |
+| `skin` | `{ "id", "label" }`: an id of lowercase letters, digits and single hyphens, up to 32 characters; a label of 1 to 32 characters | A style listed first in Settings > Appearance > Style. `brand.css` styles `body[data-skin="<id>"]` |
+| `theme` | `light` or `dark` | The theme a browser starts in |
+| `skinLocked` | `true` or `false` | `true` keeps every browser on the default style: the brand's `skin` when its id is not a stock style's (`normal`, `8bit` or `custom`), or Normal otherwise. Settings shows the style without a picker, and the corner and top-bar buttons switch only light and dark. A browser's saved style is kept and comes back once the lock is off. The theme stays each person's choice |
+| `logoUrl`, `iconUrl`, `appleTouchIconUrl` | `/brand/<file>`, with an optional `?v=<token>` | The sidebar logo, the tab icon and the home-screen icon |
+
+A person's own Settings win over the brand: a sidebar title, logo or tab icon
+set there is shown instead, and clearing the tab icon brings back the brand's.
+The style is the one exception while the brand sets `skinLocked: true`.
+If `brand.js` doesn't load, or doesn't set an object, the page shows stock
+names, styles and icons with no style lock, and logs one console error naming
+the file. A server that serves the brand should send `Cache-Control: no-cache`
+with an ETag, so a changed brand shows after a reload.
 
 ### Platform abstraction
 
@@ -380,15 +468,17 @@ the openai-compatible and anthropic ones, from the BYOK step. Main's MindsHub pr
 is kept in step with the sidecar anyway, because the drift is what caused this bug
 and a future caller should not have to rediscover it.
 
-Rollout is not symmetric between the two, and not in the obvious direction. On
-`prod` the renderer bundle hot-updates at boot while the Electron shell (so
-everything under `src/main/**`) only changes when a new installer is applied,
-because shell auto-update is opt-in there. On `stable` it is the other way round:
-UI OTA is prod-only (`otaUiEnabled` in `src/main/update-logic.ts`) and shell
-auto-update is on by default (`shellAutoUpdateEnabledFor` in
-`src/main/shell-auto-update-rollout.ts`), so the shell replaces itself in the
-background and applies on the next relaunch. Either way a main-process change lands
-a relaunch later than a sidecar change. See [Shell updates](#shell-updates-auto-update--installer).
+Rollout is not symmetric between the two. On `prod` the renderer bundle
+hot-updates at boot, while the Electron shell (so everything under `src/main/**`)
+downloads its own update in the background (`shellAutoUpdateEnabledFor` in
+`src/main/shell-auto-update-rollout.ts`, on by default for `prod` and `stable`)
+and only changes on the next relaunch — so each new UI first runs on the previous
+shell until the user quits. On `stable` only the shell moves: UI OTA is prod-only
+(`otaUiEnabled` in `src/main/update-logic.ts`). Either way a main-process change
+lands a relaunch later than a sidecar change, and how far a prod shell may fall
+behind before the UI says so is the "Supported desktop window" in
+[docs/update-behavior.md](docs/update-behavior.md). See
+[Shell updates](#shell-updates-auto-update--installer).
 
 ---
 
@@ -413,11 +503,7 @@ The GUI provides a visual `/connect` flow:
 
 ## MindsHub credentials
 
-**The app writes no MindsHub credential to disk.** Signing in gets you a Keycloak
-session (Authorization Code + PKCE, refresh token in OS secure storage, access
-token in memory), and that access token is what the sidecar presents to the
-gateway. Auth's `/v1/authenticate/` accepts a JWT and an `mdb_` key alike,
-picking the branch from the token's shape.
+**The app writes no MindsHub credential to disk.** Signing in gets you a Keycloak session (Authorization Code + PKCE, refresh token in OS secure storage, access token in memory), and that access token is what the sidecar presents to the gateway. MindsHub's `/v1/authenticate/` accepts a JWT and an `mdb_` key alike, picking the branch from the token's shape.
 
 The sidecar is a separate process, so the value has to cross that boundary. It
 crosses over loopback rather than through a file: main holds it and PUTs it to
@@ -478,34 +564,22 @@ if you need one for that.
 
 ### The MindsHub hub routes
 
-**Nothing under `/api/v1/hub/*` calls Django auth directly.** The renderer calls
-its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/`
-carries the free MindsHub Air allowance, the balance, the period's credit spend
-and auto top up state, and backs Settings → Usage and the stopped-task cards. `/api/v1/hub/workspaces/` answers the
-MindsHub workspace listing and backs the workspace selector described in the
-next section.
+**Nothing under `/api/v1/hub/*` calls MindsHub directly.** The renderer calls its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/` carries the free MindsHub Air allowance, the balance, the period's credit spend and auto top up state, and backs Settings → Usage and the stopped-task cards. `/api/v1/hub/workspaces/` answers the MindsHub workspace listing and backs the workspace selector described in the next section.
 
-Django auth's ingress allows the console origins and no Cowork host, and a
-per-PR Cowork host cannot be added to a static allow-list. A direct call would
-therefore work in the packaged app (`webSecurity` is off there) and fail in the
-web SPA. Going through the sidecar is what lets both hosts read the same thing,
-which is why Settings → Usage is offered on the hosted build and not filtered
-off it.
+MindsHub's ingress allows the console origins and no Cowork host, and a per-PR Cowork host cannot be added to a static allow-list. A direct call would therefore work in the packaged app (`webSecurity` is off there) and fail in the web SPA. Going through the sidecar is what lets both hosts read the same thing, which is why Settings → Usage is offered on the hosted build and not filtered off it.
 
 **The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
 main process overwrites `Authorization` on every loopback request with the
-sidecar's own token, so the Keycloak JWT cannot arrive under that name.
+sidecar's own token, so the Keycloak JWT cannot arrive under that name. The
+exceptions are requests from the document preview frame, from frames inside
+it, and requests with no frame: the main process adds no token to those
+(`src/main/document-preview-guard.ts`).
+
+Only `/api/v1/hub/usage/` and the `/api/v1/hub/workspaces/` routes send `X-MindsHub-Authorization`. The sharing reads, `/api/v1/hub/teams/` and `/api/v1/hub/people/`, send none, because cowork-server answers them from the `Authorization` the gateway validated (`cowork.principal.caller_bearer`).
 
 ### The MindsHub workspace selector
 
-A bordered control at the bottom of the sidebar, docked with the account row,
-names the MindsHub workspace you are working in and opens a menu listing every
-workspace you can use with a check on the active one. A **MindsHub Workspace**
-is an org-internal container that owns hub resources (API keys, artifacts, model
-entitlements) and lives in the auth service. It is not the working folder this
-app also calls a workspace, which is why the stored key and the code are named
-`hubWorkspace` throughout. There is no create entry: workspaces are created in
-the console, and the last row deep-links there.
+A bordered control at the bottom of the sidebar, docked with the account row, names the MindsHub workspace you are working in and opens a menu listing every workspace you can use with a check on the active one. A **MindsHub Workspace** is an org-internal container that owns MindsHub resources (API keys, artifacts, model entitlements) and lives in MindsHub. It is not the working folder this app also calls a workspace, which is why the stored key and the code are named `hubWorkspace` throughout. There is no create entry: workspaces are created in the console, and the last row deep-links there.
 
 **One workspace draws nothing.** Everyone starts in `Default` on their own, and
 a switch offering only the place you are already in asks a first-time reader to
@@ -531,21 +605,14 @@ inside a menu about identity.
 |-------|---------|
 | The gate is off | absent |
 | The read has not come back yet | absent |
-| The hub could not be reached | absent |
+| MindsHub could not be reached | absent |
 | Gate on and reachable, but the org has no workspace | absent |
 | One workspace, with nowhere to move to | absent |
 | One live workspace and an archived one you are not in | absent |
 | One live workspace and the archived one you are in | shown, so you can leave it |
 | Two or more, gate on | shown |
 
-A read that has not settled is retried three times over about forty seconds and
-then left alone. The renderer can mount before the sidecar is listening, so one
-attempt per session made an ordinary cold-start blip hide the control until the
-app was relaunched. Two shapes count as unsettled: a thrown transport error or
-5xx, and a 200 that says the gate is on but the hub could not be reached, which
-is how the sidecar reports a failed hop to auth in band. A 404 is not retried,
-because a sidecar without the route will not grow one, and neither is a
-gate-off answer, because it is definite.
+A read that has not settled is retried three times over about forty seconds and then left alone. The renderer can mount before the sidecar is listening, so one attempt per session made an ordinary cold-start blip hide the control until the app was relaunched. Two shapes count as unsettled: a thrown transport error or 5xx, and a 200 that says the gate is on but MindsHub could not be reached, which is how the sidecar reports a failed hop to MindsHub in band. A 404 is not retried, because a sidecar without the route will not grow one, and neither is a gate-off answer, because it is definite.
 
 After a successful desktop organization switch, `useMindsOrgs` notifies
 `useHubWorkspaces` to discard the old listing and read the new organization.
@@ -553,15 +620,7 @@ Late reads and workspace switches from the old organization cannot replace it.
 If leaving an archived workspace hides the focused selector, focus moves to the
 sidebar's Settings button. Focus already moved elsewhere stays there.
 
-**The switch is a server-side Statsig gate, not a build flag.** Auth declares
-`authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its
-server SDK, and reports the verdict; cowork-server reads it and passes it on. So
-one gate governs the console and this app, and turning the surface off does not
-need an installer. That matters here specifically: `src/main/**` reaches users
-only through a new installer, so a `CODING_MODE_OPTIONS_ENABLED`-style preload
-flag could not be switched off in an incident. `COWORK_HUB_WORKSPACES_FORCE_ON=true`
-on the sidecar is an ON-only development override for walking the surface where no
-rule targets you.
+**The switch is a server-side Statsig gate, not a build flag.** MindsHub declares `authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its server SDK, and reports the verdict; cowork-server reads it and passes it on. So one gate governs the console and this app, and turning the surface off does not need an installer. That matters here specifically: `src/main/**` reaches users only through a new installer, so a `CODING_MODE_OPTIONS_ENABLED`-style preload flag could not be switched off in an incident. `COWORK_HUB_WORKSPACES_FORCE_ON=true` on the sidecar is an ON-only development override for walking the surface where no rule targets you.
 
 **Picking a workspace changes what this app shows, not what a turn is billed to.**
 Attribution rides the credential a turn presents, and neither credential carries a
@@ -649,24 +708,9 @@ organization, so the fourth reload does not happen. That tab has already
 cleared its tenant caches and it goes on refusing access tokens, so it fails
 closed and visibly instead of reloading forever.
 
-Every authenticated browser API request also carries
-`X-Cowork-Expected-Organization-Id`, pinned to the organization in which that
-document started. In org tenancy, cowork-server always enforces this boundary
-for browser JWT requests. A missing header from a pre-protocol bundle receives
-HTTP 426; a malformed header or one that differs from the gateway-resolved
-organization receives HTTP 409. Both responses require a reload.
-This closes the gap between the token check and actual request dispatch, and it
-also catches a Keycloak session change made from another origin. The client
-clears tenant state and reloads before consuming such a response.
+Every authenticated browser API request also carries `X-Cowork-Expected-Organization-Id`, pinned to the organization in which that document started. In MindsHub mode, cowork-server always enforces this boundary for browser JWT requests. A missing header from a pre-protocol bundle receives HTTP 426; a malformed header or one that differs from the gateway-resolved organization receives HTTP 409. Both responses require a reload. This closes the gap between the token check and actual request dispatch, and it also catches a Keycloak session change made from another origin. The client clears tenant state and reloads before consuming such a response.
 
-Canonical-web attachment and project-file bytes use that same authenticated
-fetch path, then render, open, or download from a checked Blob URL; a native
-resource navigation cannot attach the expected-organization header. Project
-HTML preview URLs are the exception: the server mints a short-lived preview
-token bound to the requesting tenant scope, so a token requested in one
-organization returns no content after the principal changes. Private artifact
-`serveUrl` routes are unavailable in org tenancy and therefore are not part of
-the organization-switch protocol.
+Canonical-web attachment and project-file bytes use that same authenticated fetch path, then render, open, or download from a checked Blob URL; a native resource navigation cannot attach the expected-organization header. Project HTML preview URLs are the exception: the server mints a short-lived preview token bound to the requesting tenant scope, so a token requested in one organization returns no content after the principal changes. Private artifact `serveUrl` routes are unavailable in MindsHub mode and therefore are not part of the organization-switch protocol.
 
 The initial four-stage rollout was superseded by
 [cowork-server#524](https://github.com/mindsdb/cowork-server/pull/524), promoted
@@ -676,22 +720,11 @@ in the dev, staging, and production overlays. There is no audit setting that
 can reopen the boundary. The server still logs `organization boundary:` for
 refused requests.
 
-`COWORK_ORGANIZATION_SWITCH_ENABLED=false` remains the deployment control for
-hiding switch targets without weakening enforcement. The capability handshake
-still requires org tenancy and enforced identity before advertising switching.
-Verify every deployed replica and authenticated browser behavior when checking
-a rollout; an enabled source value alone does not prove the deployed state.
+`COWORK_ORGANIZATION_SWITCH_ENABLED=false` remains the deployment control for hiding switch targets without weakening enforcement. The capability handshake still requires MindsHub mode and enforced identity before advertising switching. Verify every deployed replica and authenticated browser behavior when checking a rollout; an enabled source value alone does not prove the deployed state.
 
 ### Shared-resource permissions come from the server
 
-Hosted Cowork never derives project, skill, project-memory, or instruction
-permissions from a role in the renderer. Each resource response carries its
-allowed actions, and a missing capability fails closed: the corresponding
-rename, edit, disable, or delete control stays unavailable until a fresh server
-response explicitly allows it. Packaged skills and the General project therefore
-remain immutable according to the same response contract. Packaged desktop mode
-keeps its local-owner fallback because its files have no organization principal
-or server-owned capability record.
+Hosted Cowork never derives project, skill, project-memory, or instruction permissions from a role in the renderer. Each resource response carries its allowed actions, and a missing capability fails closed: the corresponding rename, edit, disable, or delete control stays unavailable until a fresh server response explicitly allows it. Packaged skills and the General project therefore remain immutable according to the same response contract. The packaged desktop app keeps its local-owner fallback because its files have no organization principal or server-owned capability record.
 
 Attribution is display metadata, not authority. The UI may name the immutable
 creator and current last editor, but only the capability fields decide whether a
@@ -707,6 +740,87 @@ deployed reads every response as carrying no capabilities, and rename, delete,
 edit, and disable go unavailable for everyone, creators and organization admins
 included. Deploy cowork-server#417, confirm hosted responses carry
 `capabilities`, and only then deploy the renderer.
+
+A person can share their own skill with everyone, read-only, or stop sharing
+it. The skill's page and its Edit form show that "Who can use it" control only
+when the skill's `capabilities.canShare` is true; a change goes to
+`PUT /api/v1/skills/{skill}/sharing` (the Edit form sends it after saving the
+rest). Creating a skill (the Write form, Upload and the chat's skill card) asks
+the same question, with Only me preselected, only when the skills list's
+top-level `canShare` is true, and sends the answer as `shared`. The chat's
+skill card creates a skill shared with everyone without the chat's project
+scope, since a reader applies the creator's scope. Unlike the other capabilities, a missing `canShare` is false on
+every build, desktop included. cowork-server grants it only where each person
+keeps their own skills, so hosted Cowork, the desktop app and a deployment
+whose skills everyone already shares never show it. Deploy cowork-server
+first: against an older server the renderer shows no control and sends no
+`shared` field.
+
+The Connections page reads the same way. Each connection carries `managed` and
+`shared`, and the page keys its Reconnect, Remove and read-only note on them; a
+missing field keeps every control, and cowork-server's 403 enforces the rule
+when a change is refused.
+
+### MindsHub mode, single-tenant mode, single-user mode and MindsHub UI
+
+Two separate switches decide what the app shows: how the cowork-server it talks to keeps tenants, and whether the web build carries MindsHub UI. Neither implies the other. The cloud build turns both on; the self-hosted VM runs single-tenant mode with MindsHub UI off.
+
+| Name | Set where | How the app reads it | What changes |
+|---|---|---|---|
+| MindsHub mode | cowork-server `COWORK_TENANCY_MODE=org`: many organizations, many people | `/health`'s `org_mode`, read at boot (`host.checkConfigured`) into `src/renderer/lib/orgMode.ts` (`useOrgMode`). A web build that can't reach `/health` at boot takes itself for MindsHub mode (`App.tsx`). | Artifacts are addressed by project and id and shared through `PUT /api/v1/artifacts/workspace/{project}/{id}/access`; desktop's `/publish` routes (version history, Stop sharing, Update) are hidden; sharing inside the org can turn on (below). |
+| Single-tenant mode | cowork-server `COWORK_TENANCY_MODE=local` with `COWORK_TRUST_IDENTITY_HEADERS=true`: one organization, many people, each with their own space | `org_mode` false | No sharing inside the org: an artifact is shared with people by email, and a skill offers "Who can use it" (Only me, or Everyone (read-only)) where its `capabilities.canShare`, or the skills list's `canShare` for a new skill, is true. |
+| Single-user mode | cowork-server `COWORK_TENANCY_MODE=local` without trusted identity headers: the desktop app | `org_mode` false | No sharing inside the org; artifacts share by email. |
+| MindsHub UI | the web build flag `VITE_PLATFORM_UI=true`, baked in by `src/renderer/vite.config.ts` and read as `PLATFORM_UI` (`src/renderer/lib/deployment.ts`). The cloud image sets it (`Dockerfile.frontend`, `.github/workflows/build-deploy.yml`). | `PLATFORM_UI` | MindsHub's model, provider and workspace controls, the organization menu and its landing (`lib/orgLanding.js`), and Public as a first share's starting choice. |
+
+### Sharing inside the org
+
+In MindsHub mode, when `GET /api/v1/skills/sharing-capabilities` answers `enabled: true`, skills and artifacts are shared with Only me, Everyone at ‹org›, or Specific teams and people. An artifact also takes people outside the org by email, a password, or a public link. The org's default team ("All members") is never listed: an audience that names it reads as Everyone at ‹org›.
+
+- **Who may pick Everyone at ‹org›:** `canShareSkillsOrg` (`skills.share_org`) for a skill, `canShareArtifactsOrg` (`artifacts.share_org`) for an artifact. Without it the card is grayed with "Only admins can share with everyone in the organization". MindsHub refuses an artifact save that newly sets everyone without `artifacts.share_org`, whichever client sends it. cowork-server answers that refusal with 403 `{"detail": "<the reason>", "code": "share_org_required"}` on `PUT .../access`, `POST /publish`, and `POST /publish/update`, and `PUT .../access` answers its own check of the same that way, before anything publishes. The app shows the reason once, as it is, with no "Sharing failed:" or "Update failed:" in front and no Try again, since asking again gets the same answer: under the Share panel's choices, and in a toast on the Artifacts page, whose card keeps its state (`publishRefusalMessage` in `components/artifact/publish/publishErrors.js`; the code is `SHARE_ORG_REQUIRED_CODE` in `lib/sharingContract.js`).
+- **When MindsHub couldn't be asked:** `permissionsKnown: false` means the `can…` flags say nothing, so a locked control reads "Couldn't reach MindsHub" instead of a permission lock, and the artifact Share panel and the Skills page offer Retry. `teamsKnown: false` means skills shared with the caller's teams are left out of the list; the Skills page says so, with Retry. Such an answer is never cached.
+- **Always on:** a skill shared with everyone or with a team can be part of every task for everyone it reaches. The switch on a skill shared with everyone needs `canShareSkillsOrg`; on a team skill it needs edit rights (its owner, a member of one of its teams, or an admin). People named one by one always use a skill on demand.
+- **Waiting on reads:** the artifact Share panel waits for the capabilities read and, in MindsHub mode, for the access route. An artifact card there doesn't say who a restricted artifact reaches: cowork-server answers its `orgAllowed`, `ownerOnly`, `allowedTeamIds`, and `allowedUserIds` as null, and `lib/sharingContract.js`'s `readArtifactAudience` reads a null as unknown, never as an empty audience or "Only me". A failed read, or an access answer with nulls, offers Retry and saves nothing. Until the access route answers, the Share button and the panel title read "Share", never "Shared", a draft seeded from the card picks nothing and can't be saved, and the Artifacts list says "Restricted. Open Share to see who can open the link." The Skills page waits for the capabilities read too, and a failed read shows "Couldn't load the sharing settings." with Retry instead of the list.
+- **The people directory:** `GET /api/v1/hub/people/` lists the org's members, the caller left out, up to MindsHub's cap; `truncated: true` says there are more. `?ids=` names stored people and `?emails=` finds members past the cap. Typing filters the loaded list and asks nothing. An address the list has is that person. One a list over a minute old, or a capped one, doesn't have reads "Add …", with no claim about the org. Adding it (Enter, Tab, a comma, or a click) holds it as "Checking…" while the app reads the whole list again (`GET /hub/people/`, for a list over a minute old) or asks MindsHub about the address (`?emails=`, past a capped list's end, also once a list read again comes back capped). Then it is added as that member, added as an outside email ("Outside ‹org›"), or reported "Not added: … (not in ‹org›)" where only people in the org may be named; a check that gets no answer leaves it in the input with its reason, and Enter checks again. Only an address a list under a minute old answers for (the list is complete, or MindsHub has answered for that address) reads "Invite … (outside ‹org›)" or "Only people in ‹org›" while it is typed. Addresses are checked with `lib/emailAddress.js`, the rule MindsHub's lookup applies; one cowork-server still refuses (400 `invalid_email`) is reported as not an email, and the rest of its batch is asked again. A stored id cowork-server refuses as no UUID (400 `invalid_id`) reads as an Unknown person and is never asked about again; the rest of its batch is asked again.
+- **When MindsHub says no:** a people or teams read that MindsHub refused (403 or 400 `mindshub_refused`) or throttled (429 `mindshub_throttled`) says so in its own words, never as an outage. A refusal reads "MindsHub refused to list your organization's people" (the directory), "MindsHub refused to name some people." (stored people) or "MindsHub refused to list your teams.", with no Retry, since asking again gets the same answer; the next open asks again. A throttle reads "MindsHub is limiting requests. Try again in a minute.", with Retry where the field has one, and nothing asks again on a timer. An outage keeps its "Couldn't load …" line, and Retry where the field has one. `lib/sharingContract.js`'s `readMindsHubFailure` reads the code, and `lib/orgSharing.js`'s `mindsHubFailureText` picks the line.
+- **The organization's name:** "Everyone at ‹org›" reads the organization's name from the same two places as the account menu (`useSharingOrgName`, `sharingOrgName` in `lib/orgSharing.js`). The app's own organization list (`useMindsOrgs`' active organization) gives its display name. The browser reads that list only where `GET /api/v1/capabilities/organization-switch` answers enabled (`COWORK_ORGANIZATION_SWITCH_ENABLED`). Without the list, the access token's `activate_organization` claim gives the organization's Keycloak name, which can differ from its display name: it can be a slug, and for an organization MindsHub's staff created it is an id, `staff-org-<uuid>`. With no name known, it reads "Everyone in the organization": MindsHub UI off, the token not read yet, a personal organization (one named `personal_<the viewer's id>`), or a claim that names the organization only by an id: `staff-org-<uuid>`, or `personal_<uuid>` for someone else's personal organization. So where switching is off, the label of such an organization stays generic.
+
+Which file owns what, under `src/renderer/cowork/`:
+
+| File | Owns |
+|---|---|
+| `lib/sharingContract.js` (`.d.ts`) | The wire field names, one reader per answer field and one builder per request body, `LOAD_STATUS`, the bounds the app mirrors, and the refusal and lookup codes |
+| `lib/orgSharing.js` | What the capabilities allow (`isOrgSharingOn`, `orgShareLockReason`, `skillAlwaysOnLock`), the audience choices and their copy (`AUDIENCE_CHOICE`, "Only me", "Specific teams and people"), the default team, and the Share or Shared state |
+| `hooks/useOrgSharing.js` | The reads, once per organization: `useSharingCapabilities`, `useMindsHubTeams`, `useKnownPeople`, `useOrgDirectory`, and the organization's name (`useSharingOrgName`) |
+| `api.js` | `fetchSkillSharingCapabilities`, `setSkillAccess`, `fetchMindsHubTeams`, `fetchMindsHubDirectory`, `fetchMindsHubPeopleByIds`, `fetchMindsHubPeopleByEmails` |
+| `components/AudiencePanel.jsx`, `AudienceOption.jsx` | The cards both panels use (`onlyMeOption`, `everyoneOption`, `specificOption`) |
+| `components/RecipientField.jsx`, `hooks/useRecipientTokens.js` | The teams, people and emails picker, and how a typed or pasted address resolves |
+| `components/RecipientRows.jsx` | The read-only rows of who something is shared with |
+| `components/LoadStatus.jsx` | Loading, a failed read, and the Retry notices |
+| `components/SkillAudienceFields.jsx`, `SkillShareMenu.jsx`, `SkillModal.jsx`, `SkillDetail.jsx`, `views/SkillsView.jsx`, `views/useSkillSharing.js` | Skills |
+| `components/artifact/publish/AccessChooser.jsx`, `PublishMenu.jsx`, `useArtifactShareState.js`, `usePublish.js`, `publishErrors.js`, `components/artifacts/ArtifactStatus.jsx` | Artifacts |
+
+### Sharing wire names
+
+Requests take snake_case and answers come back camelCase only; `lib/sharingContract.js` reads no other spelling.
+
+| Request field | Answer field | Means |
+|---|---|---|
+| `org_allowed` | `orgAllowed` | Everyone at ‹org› |
+| `allowed_team_ids` | `allowedTeamIds` | Teams, by MindsHub team id |
+| `allowed_user_ids` | `allowedUserIds` | People in the org, by MindsHub user id |
+| `allowed_emails` (MindsHub mode), `emails` (desktop `POST /publish`) | `accessEmails` | People outside the org, artifacts only |
+| `owner_only` | `ownerOnly` | Only me, artifacts only |
+| `always_on` | `alwaysOn` | Part of every task, skills only |
+| `notify: { user_ids, emails }` | none | The individuals a save adds whom MindsHub emails |
+
+`GET /api/v1/skills/sharing-capabilities` answers `enabled`, `canShareSkillsOrg`, `canWriteSkillsOrg`, `canShareArtifactsOrg`, `permissionsKnown` and `teamsKnown`. It names no organization.
+
+| Sharing limit | Value | Mirrors |
+|---|---|---|
+| `MAX_IDS_PER_LOOKUP`: ids per `GET /hub/people/?ids=` batch | 50 | MindsHub's `MAX_IDS_PER_LOOKUP` |
+| `MAX_EMAILS_PER_LOOKUP`: addresses per `GET /hub/people/?emails=` batch | 50 | MindsHub's `MAX_EMAILS_PER_LOOKUP` |
+
+The per-rule caps (`MAX_TEAMS_PER_RULE` and `MAX_PEOPLE_PER_RULE`, 100 teams and 100 people a rule names, and `MAX_NOTIFY_EMAILS`, 100 outside addresses a save may notify) belong to cowork-server and MindsHub. The app doesn't check them before a save; a save past one shows the server's refusal.
 
 ### A model that can't run right now is not selectable
 
@@ -851,12 +965,21 @@ and open `/usage-bar-fixture.html`. It renders every state from the real
 `?theme=dark` for the dark pass. Each case carries an `id` off its label, so a
 screenshot run can crop to one state rather than a page too tall to read.
 
-A task that stops on a billing limit gets a card in its timeline, and the card names the limit that fired. The drained-wallet card (`token_limit`) reads the same usage view through `freeAllowanceState` in `lib/usageWarnings.js`, and stops speaking from it once that view shows a wallet that can pay (a balance `isBalanceEmpty` does not flag): the card stays in the task, and the view describes the account as it is now. A view with no balance, which cowork-server sends when its wallet read fails, leaves the stop standing. With free allowance left, it says the priced model is what stopped and offers Switch to MindsHub Air. With the allowance spent, it names both resources and the refill time, in the sentence the spent-allowance card uses for the same state (`allowanceStopCopy`). It keeps the fixed balance copy, with Add funds only, when the view gives it nothing to go on (usage unreachable, no grant, an uncapped grant, or no usable time), when there is no Switch to offer (the task already runs on MindsHub Air, Air is not offered or is locked, or there is no message to resend), and when the wallet can pay again, as it can after a top up. The spent-allowance card (`included_allowance_exhausted`) names the refill time the gate sent on the failure, on a desktop or a hosted turn. When the failure carries none, as a hosted turn from an older cowork-server does, the card takes the refill time from the usage view. With no usable time from either, it offers funds alone and promises no refill. For an org with no free grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when auth reports `free_grant_eligible: false`), `freeAllowanceState` answers `no_grant` and the card shows the console's no-grant sentence (`NO_FREE_GRANT_SENTENCE`) with no refill time, whatever time the gate sent. `free_serving_paused` has its own card: auth's daily spend fuse has paused free MindsHub Air for every org that cannot pay, which is not the user's allowance, so the card says so and names when it lifts, from the reset time on the failure. Without one, as on a hosted turn from an older cowork-server, it says the pause lasts until the daily budget resets. `model_restricted` is not a billing stop but shares the page: an org admin's model rule refused the model, so the card names the model and an admin, and offers Open Settings only.
+A task that stops on a billing limit gets a card in its timeline, and the card names the limit that fired. The drained-wallet card (`token_limit`) reads the same usage view through `freeAllowanceState` in `lib/usageWarnings.js`, and stops speaking from it once that view shows a wallet that can pay (a balance `isBalanceEmpty` does not flag): the card stays in the task, and the view describes the account as it is now. A view with no balance, which cowork-server sends when its wallet read fails, leaves the stop standing. With free allowance left, it says the priced model is what stopped and offers Switch to MindsHub Air. With the allowance spent, it names both resources and the refill time, in the sentence the spent-allowance card uses for the same state (`allowanceStopCopy`). It keeps the fixed balance copy, with Add funds only, when the view gives it nothing to go on (usage unreachable, no grant, an uncapped grant, or no usable time), when there is no Switch to offer (the task already runs on MindsHub Air, Air is not offered or is locked, or there is no message to resend), and when the wallet can pay again, as it can after a top up. The spent-allowance card (`included_allowance_exhausted`) names the refill time the gate sent on the failure, on a desktop or a hosted turn. When the failure carries none, as a hosted turn from an older cowork-server does, the card takes the refill time from the usage view. With no usable time from either, it offers funds alone and promises no refill. For an org with no free grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when MindsHub reports `free_grant_eligible: false`), `freeAllowanceState` answers `no_grant` and the card shows the console's no-grant sentence (`NO_FREE_GRANT_SENTENCE`) with no refill time, whatever time the gate sent. `free_serving_paused` has its own card: MindsHub's daily spend fuse has paused free MindsHub Air for every org that cannot pay, which is not the user's allowance, so the card says so and names when it lifts, from the reset time on the failure. Without one, as on a hosted turn from an older cowork-server, it says the pause lasts until the daily budget resets. `model_restricted` is not a billing stop but shares the page: an org admin's model rule refused the model, so the card names the model and an admin, and offers Open Settings only.
 
 To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's refill time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
 
-Settings > Agent tests each configured provider through the sidecar's
-`/settings/test-providers`. For a failed MindsHub probe the sidecar adds
+Settings > Agent tests configured providers by default on desktop and web, independently of `VITE_PLATFORM_UI`. For the Python-served Docker app, set `COWORK_PROVIDER_TESTS_ENABLED=false` in the container environment to skip provider tests on open, save and retry. Recreate the container and reload the page after changing it; the same image supports either value. The setting accepts `true` or `false` and defaults to `true`. The SPA wrapper supplies the value before the renderer starts. Static hosting and desktop retain enabled defaults.
+
+With MindsHub UI off, provider and model controls are hidden, but that does not disable background provider testing. Configure the runtime flag separately when the operator manages providers outside Cowork. Memory and Advanced Settings remain visible, and model or provider error cards direct users to the operator.
+
+An operator can show the composer's model picker in that build at run time. For the Python-served Docker app, set `COWORK_MODEL_PICKER` in the container environment to `default` or `open`; it defaults to `off`, which writes nothing into the page. The picker's first row, "Operator default", sends no model, so the question runs on the operator's role models. The other rows are the models the server lists for the planning provider, less any it lists with `enabled: false`. With none left, the composer shows no picker. In `default` mode each new conversation starts on "Operator default"; in `open` mode it starts on the user's last pick until the page reloads. A conversation saved on a model the picker no longer lists sends no model. Settings' model rows stay hidden in every mode. Recreate the container and reload the page after changing it.
+
+With the picker on, the operator can also let users pick a reasoning effort. Set `COWORK_MODEL_EFFORTS` to a JSON object of each model's efforts users may pick, such as `{"opus-5-5": ["xhigh"]}`. The composer then shows an effort control on a model the object lists, with "Default" first, which sends no effort, then those efforts. With "Operator default", it offers the efforts both `PLANNING_MODEL` and `CODING_MODEL` list there, since the question runs on both. A model the object doesn't list shows no effort control. The server applies the effort to the question's planning and coding calls, not to its router call. The app refuses to start when `COWORK_MODEL_EFFORTS` is set with the picker `off`, or holds anything but lists of lowercase efforts. Without it, the effort control stays hidden.
+
+The Share box in that build follows where cowork-server publishes. When `COWORK_PUBLISH_TOKEN` is set in the container environment, the server publishes with that one shared token, so Share offers no "Only me" (a shared token has no owner to let in) and Public says "Anyone with the URL". Without it, the server publishes to MindsHub with the person's own key, so Share offers "Only me" and Public says "Anyone on the internet with the URL". The SPA wrapper tells the page only whether the token is set, never its value. It reads only the container environment: cowork-server also takes the token from its `.env` files, so a token kept only there still publishes with the shared token while Share offers "Only me", which the publisher refuses. A page served without the wrapper keeps the shared-token choices. Share starts with nothing picked in either case. The wrapper doesn't read `ANTON_PUBLISH_URL` or a saved publish URL, so a deployment that points either at a publisher other than MindsHub, without a shared token, still sees the MindsHub choices.
+
+With testing disabled, Save still persists changes and validates configuration; its tooltip says "Save changes." and no provider test is reported as passed. Existing stored provider results remain available. This controls browser requests, not API authorization. For a failed MindsHub probe the sidecar adds
 `providerStatusReasons`, the gateway's own reason per provider type
 (`{ code, resetAt }`), and only for a response from the configured MindsHub host.
 `mindsProbeNotice` in `lib/providerStatus.js` turns it into the notice under each
@@ -877,6 +1000,29 @@ it from a type an old sidecar never classified). To see the notices, the Provide
 copy, the restricted hint and an open picker with a restricted row, open
 `/settings-agent-fixture.html` under the same dev server; `?theme=dark` and the
 per-case `id`s work the same way.
+
+Settings > Appearance carries "Show where figures came from", on by default and kept with the server's settings (`show_figure_sources`); the switch shows only when the server serves that key. With it on, each figure in a finished answer that cowork-server traced (the `response.figure_sources` event) is a button: a grey dotted underline when a step returned it, a solid amber one when no step did. A figure no step of this turn returned but one of the chat's earlier answers gave also gets the grey underline, and says "Repeated from an earlier answer" with no source listed. Hover or keyboard focus shows where it came from, and a click or Enter lists every source: its SQL and requests with a Copy button each, a web link, Open step, and View file. View file opens the file read only, as it is now: a project file by its path, offered only while the chat is in the project the answer ran in, or a file attached to the chat by its files-store id, offered only while the chat has a project, since the attachment route goes through it. Inside a table the figures share one tab stop and the arrow keys move between them. With the setting off, answers render with no marks.
+
+To see every mark without running such a turn, open `/figure-sources-fixture.html` under the same dev server; `?theme=dark` and the per-case `id`s work the same way. `npx playwright test --config playwright.figure-sources.config.ts` checks on that page that a figure's popover stays on screen on 375x667 and 320x568 phones and at 200% zoom.
+
+---
+
+## Live-app slot notices
+
+If a launch was refused because the app slots were full, Cowork shows a persistent
+notice when the server reports available capacity. You can then ask your agent
+to launch again. The notice does not reserve a slot or launch the app.
+
+The app checks `/api/v1/live-apps/availability` every 15 seconds while its tab is
+visible, and when you return to it. This works on every page without sending a
+chat message, including for someone who has never launched an app. It runs only
+when `/health` reports `live_apps`. The server retains each notice until a visible
+toast has displayed it and Cowork acknowledges its id. Failed reads and
+acknowledgements retry; after each failed read the next check waits twice as long,
+up to one minute, and a successful read returns to 15 seconds. Repeated replies do
+not create duplicate toasts. A new refusal closes a notice already acknowledged, so
+the next one shows as new. A change to the authenticated scope clears the previous
+person's notice.
 
 ---
 
@@ -1250,7 +1396,38 @@ CloudFront behavior:
 
 > **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. Nothing in the release calls for an invalidation, though the `mdb-prod` runner does hold `cloudfront:CreateInvalidation` on `*` already, through the inline sam-deploy policy attached to the same role.
 
-Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
+The upload, download, and setup checks watch different parts of this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
+
+[`macos-setup-smoke.yml`](.github/workflows/macos-setup-smoke.yml) installs the published macOS `.pkg` and runs its own setup through Start server. It runs after each successful Stable or prod macOS upload, independently of the other platforms, and nightly at 07:30 UTC on both channels. The nightly Stable run checks out `staging`, so its harness matches the Stable package. Post-publish runs require the manifest to name that upload's URL; prod also requires the tagged release version. This detects a broken published installer but does not prevent someone downloading it before the check finishes.
+
+Stable and prod pipelines finish their running release before starting a newer one, so a new push cannot cancel a published package's setup check. A setup failure fails `build-installers`; prod's dependent OTA UI publish and download smoke wait on that result and will skip on failure.
+
+The check verifies the package checksum, signature, and notarization assessment, then installs it on a disposable GitHub-hosted macOS runner. Playwright opens the installed executable with a fresh home and browser profile. The app must report that all its data paths stay in that profile and that it cannot find an existing `uv`, including in system package-manager directories. A runner that already has `uv` fails preparation; the check does not remove shared tools or silently skip bootstrap.
+
+The harness invokes the app's existing setup IPC without signing in or providing model credentials. It captures the real progress events and requires Install uv, Install cowork-server, Verify installation, and Start server to finish `done`, followed by a healthy server. A startup `warning`, error, cancellation, missing step, app exit, or 15-minute setup timeout fails. The installed renderer must remain bundled. Stable's filename version includes the channel and commit; the app's display version uses `git describe`, so the check correlates those forms instead of comparing them literally.
+
+Every run retains named setup logs, step statuses, package identity, diagnostics, screenshots, and a trace in `macos-setup-<channel>` artifacts for 14 days. It does not upload the profile or credential files. A separate job sends failures to the engineering channel with the failing step and a run link, including outside a release freeze. The installed app receives no CI tokens. The notification reuses existing organization secrets; callers grant `actions: read` for the existing notifier.
+
+Run the workflow from Actions, or after it reaches the default branch:
+
+```bash
+gh workflow run macos-setup-smoke.yml --ref staging -f channels=stable
+gh workflow run macos-setup-smoke.yml --ref main -f channels=prod
+```
+
+For a historical check, select `stable` and provide `snapshot-url` plus its independently recorded `snapshot-sha256`. The URL must name a public macOS Stable snapshot. A failure keeps the failing setup step and sends the same notification. `uv-tool-list.log` also records the resolver's underlying error when an older app's Verify message omits it; `uv-version.log` records the installed uv version. Pinning the app does not pin the uv bootstrap or server packages it downloads today, so an old app may no longer reproduce an older failure. A dependency replay must be recorded separately from the ordinary user path.
+
+This workflow does not cover authentication, chat, Windows, Linux, or every PR. Its fast failure/provenance tests run on PRs with `npm run test:macos-setup-contract`; `npm run test:macos-setup` itself refuses local execution because installing a package changes `/Applications`.
+
+[`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) does the same for the published Windows `.exe`. It runs after each successful Stable or prod Windows upload and nightly at 07:45 UTC on both channels, with the same manifest pinning, nightly `staging` checkout, setup verdict, artifacts (`windows-setup-<channel>`) and failure notice. It requires a valid Authenticode signature, installs the installer silently (`/S`) for the runner's user, finds the executable from its uninstall registration, and opens it with a fresh profile and an allowlisted environment: the home, app-data and temp variables point into the profile, and `PATH` holds only Windows' own folders, so the runner's uv, Python and git stay invisible. Electron's `home` path follows Windows' known folder and stays the runner's; every other path the app reports must be inside the profile.
+
+The Windows harness attaches an observer before entering the bundled setup screen, which starts installation exactly once. It supplies the renderer's onboarding consent and configured signal without saving credentials; the real installation checks, installer call and return value stay unchanged. Screenshots and traces show the actual setup UI, and `after.png` captures its success or failure before the screen advances.
+
+Before it opens the app, the check trims the runner's root store to what a fresh Windows trusts. Windows ships part of its root list and downloads the rest the first time a program verifies a chain through Windows, but Python's own TLS never asks it to. The hosted image instead holds over 500 roots, including GlobalSign Root CA - R3 (pypi.org) and ISRG Root X1 (raw.githubusercontent.com) among the 14 in `LocalMachine\AuthRoot`, and turns those downloads off with the `DisableRootAutoUpdate` policy. So the check empties `LocalMachine\AuthRoot`, removes both named roots wherever they remain, and confirms `LocalMachine\AuthRoot` is empty while the downloads are still off. It then turns the downloads back on, lists each root it removed, and fails at "Trim root store" if Python's view still holds either. From then on, any program on the runner can download the roots it needs, as on a fresh machine, setup's own Windows downloads such as the uv installer included; `roots-trimmed.json` and `roots-after-setup.json` record which. The other preinstalled roots stay, so a new dependency on one of them would still pass here.
+
+The harness backs up each removed root to `RUNNER_TEMP`, and an `if: always()` step restores the roots and the policy before the job ends. The runner reports the job's end over Windows TLS, so without that step the job stalls until GitHub cancels it.
+
+Hosted runners run Windows Server, not Windows 11, and x64 only; a person's check on Windows 11 stays in the release checklist. Run it the same way as the macOS check (`gh workflow run windows-setup-smoke.yml --ref staging -f channels=stable`); a historical check takes a public Windows Stable snapshot URL and its SHA-256. Its contract tests run on PRs with `npm run test:windows-setup-contract`; `npm run test:windows-setup` refuses local execution because it installs an app and edits the machine's root stores.
 
 ### Workflow files
 
@@ -1266,6 +1443,8 @@ Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upl
 | [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called | Build + sign `.exe` |
 | [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Publish to S3, write the updater feed and `latest.json`, verify both over the CDN |
 | [`release-smoke.yml`](.github/workflows/release-smoke.yml) | Called after a prod release / nightly | Download the published installers in a real Chromium and check them |
+| [`macos-setup-smoke.yml`](.github/workflows/macos-setup-smoke.yml) | After Stable/prod macOS upload / nightly / manual | Install the published `.pkg` on a fresh profile and require every setup step through Start server to succeed |
+| [`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) | After Stable/prod Windows upload / nightly / manual | Install the published `.exe` on a fresh profile and a fresh machine's root store, and require every setup step through Start server to succeed |
 | [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / `ui-v*` tag / manual | OTA UI bundle publish |
 
 ### Required GitHub Secrets
@@ -1308,6 +1487,22 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 
 ---
 
+## Server release dependencies
+
+Fresh installs, updates, repairs and rollback use `scripts/install_release_server.py`. It reads the exact dependency contract embedded in the selected server wheel, or from the same resolved Git commit. It verifies the server wheel against PyPI's SHA-256, checks that the complete dependency set resolves without additions, then verifies the installed versions and source identity. An unavailable pin or missing contract fails the operation.
+
+On Windows the app also hands the consumer the public root certificates bundled with Electron's Node (`tls.rootCertificates`), and the consumer trusts them beside the Windows certificate stores. Python on Windows sees only the roots Windows has already downloaded, and Windows downloads a missing root only when a program verifies through Windows, so a fresh machine couldn't verify PyPI or GitHub. Certificate checks stay on, and roots an organization installs in the Windows store keep working. macOS and Linux keep their platform roots alone. The `release-server-install` Windows jobs remove PyPI's and GitHub's roots from the runner and make real downloads with and without the bundle.
+
+Anton and registry dependencies move through a reviewed server release. A standalone Anton PyPI upload no longer changes an installed server. Normal application updates still select the build's stable or prerelease stream; selecting a release also selects its reviewed dependency set.
+
+Before replacing a healthy older installation that has no contract, the consumer retains its actual versions, official Git identities and server wheel for repair or rollback. This local snapshot is never used to invent a fresh installation. A healthy custom source that cannot be preserved stops migration before replacement. A broken installation keeps its last saved snapshot. Registry wheels and Git source still depend on uv's local cache for fully offline restoration.
+
+Desktop `uv tool install` enforces exact versions and checks the resulting inventory; it does not provide dependency-hash enforcement. Docker's native installer additionally uses `--require-hashes --no-deps --only-binary :all:` for registry packages. An explicit `ANTON_REF` selects code at one Git commit while retaining the server's registry versions. Preflight checks that source against the server's original Anton version requirement and the reviewed registry dependencies before replacing the environment. The supplied `server-lock/` Docker option continues to enforce its complete independent requirements and source contract.
+
+For a dependency update, review and publish the upstream server lock and its generated export, then select that server release. For a complete supplied Docker lock, regenerate and review it before rebuilding. Source-only releases never refresh either selection. Python, build backends, npm's existing lockfile and operating-system packages have their own update policies.
+
+`COWORK_SERVER_PACKAGE` and its optional `ANTON_PACKAGE` remain explicit development overrides. They bypass the release consumer and resolve the developer's custom source. Leave them unset for reviewed releases. The deprecated `scripts/install-anton.sh` refuses installation; use Anton's release installer or this application's server installer.
+
 ## Environment Variables
 
 | Variable | Source | Purpose |
@@ -1328,7 +1523,7 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 | `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
 | `UI_UPDATE_MODE` | Manual | OTA UI update behavior (`auto` / `manual`; default `auto`). Env-only support/QA escape hatch — no Settings UI control (ENG-858) |
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
-| `COWORK_SERVER_PACKAGE` | Manual | Override install source with a literal `uv` spec (local path, custom URL, etc.) — wins over all channel/ref logic |
+| `COWORK_SERVER_PACKAGE` | Manual | Development override with a literal `uv` spec; bypasses the release contract and channel/ref selection |
 | `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |
 
 ---
@@ -1413,3 +1608,8 @@ xattr -cr "/Applications/MindsHub Cowork.app"
 ---
 
 _Built by MindsDB._
+
+## Diagnostics
+
+See [structured logging](docs/structured-logging.md) for defaults, troubleshooting
+overrides, retained evidence streams and rollout requirements.

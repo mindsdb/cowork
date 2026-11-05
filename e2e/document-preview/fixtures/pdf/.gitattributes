@@ -1,0 +1,3 @@
+# Each PDF cross-reference entry is exactly 20 bytes and ends in a space before
+# the newline. Git keeps the bytes as written and does not flag that space.
+*.pdf -text -whitespace

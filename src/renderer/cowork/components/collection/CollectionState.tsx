@@ -18,10 +18,16 @@
 // `empty` takes `<EmptyState>` props, so each page keeps its own copy and CTA.
 // No-match reads "No results for “query”" with a Clear search action; pages
 // whose filters go beyond search pass `noMatchTitle` and `clearLabel`.
+//
+// Both states sit in a hairline frame where the list would be, so the
+// message is anchored to the page without filling the space: the frame has
+// no background. `empty.className` places the frame (page margins).
+
+// The ListGroup's outline without its surface: empty space, outlined.
+const FRAME = 'rounded-card border border-solid border-line';
 
 import type { ReactNode } from 'react';
 import Ico from '../Icons';
-import Button from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import type { EmptyStateProps } from '../ui/EmptyState';
 import { cn } from '../../lib/cn';
@@ -57,11 +63,11 @@ export function SkeletonRow() {
   );
 }
 
-/** A comfortable <ListItem> placeholder: leading icon, title over a
+/** A <ListItem> placeholder: leading icon, title over a
  *  description, and meta at the end. */
 export function SkeletonGroupRow() {
   return (
-    <div className="flex min-h-[60px] items-center gap-x-3 px-4 py-3">
+    <div className="flex items-center gap-x-3 px-4 py-2.5">
       <span className="inline-flex w-6 shrink-0 justify-center"><Bar className="size-3.5" /></span>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <Bar className="h-3.5 w-1/3" />
@@ -130,16 +136,21 @@ export function CollectionState({
       </div>
     );
   }
-  if (total === 0) return <EmptyState {...empty} />;
+  const { className: frameClassName, ...emptyProps } = empty;
+  if (total === 0) {
+    return <div className={cn(FRAME, frameClassName)}><EmptyState {...emptyProps} /></div>;
+  }
   if (shown === 0) {
     const q = query.trim();
     return (
-      <EmptyState
-        icon={<span className="inline-flex text-ink-4">{Ico.search(20)}</span>}
-        title={noMatchTitle ?? (q ? `No results for “${q}”` : 'No results')}
-        action={onClear && <Button variant="subtle" onClick={onClear}>{clearLabel}</Button>}
-        style={{ minHeight: 240 }}
-      />
+      <div className={cn(FRAME, frameClassName)}>
+        <EmptyState
+          icon={Ico.search(20)}
+          title={noMatchTitle ?? (q ? `No results for “${q}”` : 'No results')}
+          action={onClear && { label: clearLabel, onClick: onClear }}
+          style={{ minHeight: 240 }}
+        />
+      </div>
     );
   }
   return <>{children}</>;

@@ -7,8 +7,11 @@ import { useEffect, useMemo, useState } from 'react';
 import Ico from './Icons';
 import { Command, CommandFooter, CommandGroup, CommandInput, CommandItem, CommandList, CommandStatus, Kbd, Tooltip } from './ui';
 import { Modal } from './ui/Modal';
+import { productName } from '../../lib/deploymentBrand';
+import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
-const LABEL = 'Search MindsHub Cowork';
+const PRODUCT_NAME = productName(STOCK_PRODUCT_NAME);
+const LABEL = `Search ${PRODUCT_NAME}`;
 
 const TYPES = {
   task: { label: 'Tasks', icon: Ico.list },
@@ -104,7 +107,7 @@ export default function SearchModal({ open, onClose, onSearch, onSelect, recents
         </CommandList>
         {busy && <CommandStatus>Searching...</CommandStatus>}
         {error && <div className="dialog-error">{error}</div>}
-        {!busy && query.trim() && results.length === 0 && !error && <CommandStatus>No MindsHub Cowork results found.</CommandStatus>}
+        {!busy && query.trim() && results.length === 0 && !error && <CommandStatus>{`No ${PRODUCT_NAME} results found.`}</CommandStatus>}
         {!query.trim() && !showRecents && <CommandStatus>Tasks, projects, artifacts, attachments, schedules, and pins are searchable.</CommandStatus>}
         <CommandFooter>
           <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> to navigate</span>

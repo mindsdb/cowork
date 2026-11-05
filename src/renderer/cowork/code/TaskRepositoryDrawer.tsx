@@ -121,7 +121,7 @@ export function TaskRepositoryDrawer({
       labelledBy={titleId}
     >
       <div className="code-repository-drawer__header">
-        <span className="code-eyebrow">NEW TASK</span>
+        <span className="section-label">New task</span>
         <ModalHeader id={titleId} title="Repositories & folders" onClose={onClose} />
       </div>
       <ModalBody padding="24px" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -153,9 +153,9 @@ export function TaskRepositoryDrawer({
           </div>
         )}
         <section className="code-repository-list" aria-label="Include in this task">
-          <div className="code-repository-list__labels">
-            <span>INCLUDE IN THIS TASK</span>
-            <span>{local ? 'START FROM' : ''}</span>
+          <div className="code-repository-list__labels section-label">
+            <span>Include in this task</span>
+            <span>{local ? 'Start from' : ''}</span>
           </div>
           {resources.map((resource) => {
             const checked = ids.includes(resource.id);

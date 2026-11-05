@@ -102,9 +102,12 @@ function ToastBubble({ toast }: { toast: any }) {
         // — unlike `success`, which is a literal hex specifically so its
         // opacity modifier *would* resolve, but at the cost of staying the
         // same color in both themes).
-        'data-[type=success]:border-success-border data-[type=success]:bg-success-bg data-[type=success]:text-ink-2',
-        'data-[type=warning]:border-warning-border data-[type=warning]:bg-warning-bg data-[type=warning]:text-warning',
-        'data-[type=danger]:border-danger-border data-[type=danger]:bg-danger-bg data-[type=danger]:text-danger',
+        // In dark mode those -bg tokens are translucent tints, so the toast
+        // would show whatever it floats over. Paint the tint as a gradient
+        // layer over the opaque bg-surface color instead of replacing it.
+        'data-[type=success]:border-success-border data-[type=success]:[background-image:linear-gradient(var(--success-bg),var(--success-bg))] data-[type=success]:text-ink-2',
+        'data-[type=warning]:border-warning-border data-[type=warning]:[background-image:linear-gradient(var(--warning-bg),var(--warning-bg))] data-[type=warning]:text-warning',
+        'data-[type=danger]:border-danger-border data-[type=danger]:[background-image:linear-gradient(var(--danger-bg),var(--danger-bg))] data-[type=danger]:text-danger',
       )}
     >
       {icon && <span className="shrink-0 inline-flex">{icon}</span>}

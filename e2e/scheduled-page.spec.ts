@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// A long project name must truncate inside its row or card, not widen the page.
+// A long project name must truncate inside its row, not widen the page.
 // happy-dom has no layout, so this needs a real browser.
 
 async function checkProjectLinks(page: Page) {
@@ -25,34 +25,24 @@ async function checkProjectLinks(page: Page) {
   }
 }
 
-// Phones always get rows, so a grid preference at 390px still renders rows;
-// 640px is the narrowest width that shows cards.
-const CASES = [
-  { view: 'list', width: 320, rendered: 'list' },
-  { view: 'list', width: 390, rendered: 'list' },
-  { view: 'list', width: 1280, rendered: 'list' },
-  { view: 'grid', width: 390, rendered: 'list' },
-  { view: 'grid', width: 640, rendered: 'grid' },
-  { view: 'grid', width: 1280, rendered: 'grid' },
-];
+const WIDTHS = [320, 390, 1280];
 
-for (const { view, width, rendered } of CASES) {
-  test(`${view} preference at ${width}px: a long project name truncates inside its ${rendered === 'grid' ? 'card' : 'row'}`, async ({ page }) => {
+for (const width of WIDTHS) {
+  test(`${width}px: a long project name truncates inside its row`, async ({ page }) => {
     await page.setViewportSize({ width, height: width < 640 ? 800 : 900 });
-    await page.goto(`/?view=${view}`);
+    await page.goto('/');
     await expect(page.getByText('Weekly metrics')).toBeVisible();
-    // Cards say "Run now"; rows say "Run". Proves which layout rendered.
-    await expect(page.getByRole('button', { name: rendered === 'grid' ? 'Run now' : 'Run', exact: true })).toHaveCount(2);
+    await expect(page.getByRole('button', { name: 'Run', exact: true })).toHaveCount(2);
     await checkProjectLinks(page);
   });
 
-  test(`${view} preference at ${width}px: Run and the menu are visible without hovering`, async ({ page }) => {
+  test(`${width}px: Run and the menu are visible without hovering`, async ({ page }) => {
     await page.setViewportSize({ width, height: width < 640 ? 800 : 900 });
-    await page.goto(`/?view=${view}`);
+    await page.goto('/');
     await expect(page.getByText('Weekly metrics')).toBeVisible();
     await page.mouse.move(0, 0);
     const controls = [
-      ...(await page.getByRole('button', { name: rendered === 'grid' ? 'Run now' : 'Run', exact: true }).all()),
+      ...(await page.getByRole('button', { name: 'Run', exact: true }).all()),
       ...(await page.getByRole('button', { name: 'More actions' }).all()),
     ];
     expect(controls).toHaveLength(4);
@@ -67,8 +57,7 @@ for (const { view, width, rendered } of CASES) {
       });
       expect(shown).toBe(true);
     }
-    // Actions shown at rest must take their own space, not overlay the title
-    // (an absolutely positioned cluster covers long titles on cards).
+    // Actions shown at rest must take their own space, not overlay the title.
     for (const control of controls) {
       const overlaid = await control.evaluate((el) => {
         for (let n: Element | null = el.parentElement; n && !n.className.toString().includes('group/item'); n = n.parentElement) {

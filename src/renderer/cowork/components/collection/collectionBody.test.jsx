@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CollectionState } from './CollectionState';
 import { ViewToggle, useCollectionView } from './ViewToggle';
-import { NewTile } from './NewTile';
 
 const EMPTY = { title: 'Nothing yet', description: 'Make one.' };
 
@@ -28,6 +27,15 @@ describe('CollectionState', () => {
     expect(screen.getByText('Nothing yet')).toBeInTheDocument();
     expect(screen.getByText('Make one.')).toBeInTheDocument();
     expect(screen.queryByText('items')).not.toBeInTheDocument();
+  });
+
+  it('outlines the empty and no-match states with an unfilled frame placed by empty.className', () => {
+    const { rerender } = render(<CollectionState total={0} shown={0} empty={{ ...EMPTY, className: 'mx-8' }} />);
+    const frame = screen.getByText('Nothing yet').closest('.rounded-card');
+    expect(frame).toHaveClass('border', 'border-line', 'mx-8');
+    expect(frame).not.toHaveClass('bg-surface');
+    rerender(<CollectionState total={3} shown={0} empty={{ ...EMPTY, className: 'mx-8' }} />);
+    expect(screen.getByText('No results').closest('.rounded-card')).toHaveClass('border-line', 'mx-8');
   });
 
   it('names the query when nothing matches and clears it on request', async () => {
@@ -108,15 +116,5 @@ describe('ViewToggle + useCollectionView', () => {
     render(<Harness storageKey={KEY} defaultView="list" />);
     expect(screen.getByRole('status')).toHaveTextContent('list');
     expect(localStorage.getItem(KEY)).toBe('grid');
-  });
-});
-
-describe('NewTile', () => {
-  it('is a button named by its label', async () => {
-    const user = userEvent.setup();
-    const onClick = vi.fn();
-    render(<NewTile label="New project" onClick={onClick} />);
-    await user.click(screen.getByRole('button', { name: 'New project' }));
-    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });

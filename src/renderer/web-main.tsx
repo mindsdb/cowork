@@ -33,6 +33,10 @@ import { ReactKeycloakProvider } from '@react-keycloak/web';
 // the Electron bundle, where the App-subtree CSS imports execute before
 // main.tsx's tailwind.css import. Before this reorder the web bundle had
 // the opposite tie-resolution from Electron for every migrated component.
+/* KaTeX's stylesheet for the math MarkdownContent renders (remark-math and
+ * rehype-katex), before globals.css so its `.katex-display` tweaks win, as in
+ * main.tsx. Without it the browser shows each formula's MathML copy as text. */
+import 'katex/dist/katex.min.css';
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
@@ -46,10 +50,15 @@ import { prepareForOrganizationReload } from './cowork/lib/organizationTransitio
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
-import { loadSkin } from './lib/skins';
+import { loadSkin, seedBrandDefaults } from './lib/skins';
+import { DEPLOYMENT_BRAND } from './lib/deploymentBrand';
+import { applyBrandIcons } from './lib/navBranding';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 
 (() => {
+  applyBrandIcons(DEPLOYMENT_BRAND);
+  // Before reading either preference, so a changed brand default applies now.
+  seedBrandDefaults();
   let theme: 'light' | 'dark' = 'dark';
   try {
     const saved = window.localStorage.getItem('anton.theme');

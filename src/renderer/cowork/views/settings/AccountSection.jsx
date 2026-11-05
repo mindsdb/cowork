@@ -77,13 +77,13 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         <div className="border-t border-x-0 border-b-0 border-solid border-line py-2.5 px-[18px] flex gap-5">
           {accountUser.username && (
             <div>
-              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Username</div>
-              <div className="text-[13px] text-ink-2 font-[family-name:var(--font-mono)]">{accountUser.username}</div>
+              <div className="section-label mb-0.5">Username</div>
+              <div className="text-[13px] text-ink-2">{accountUser.username}</div>
             </div>
           )}
           {orgName && (
             <div>
-              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Organization</div>
+              <div className="section-label mb-0.5">Organization</div>
               <div className="text-[13px] text-ink-2">{orgName}</div>
             </div>
           )}
@@ -185,9 +185,9 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         {signInCard}
         {userCard}
         {accountUser && <div className={`${CARD} pt-0 px-[18px] pb-2`}>
-          <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
+          <Section title="Sign out" subtitle={LOGOUT_CONFIRM_COPY.paneSubtitle}>
             <div className="flex justify-end">
-              <Tooltip content="Sign out and clear stored credentials">
+              <Tooltip content={LOGOUT_CONFIRM_COPY.tooltip}>
                 <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut}>
                   <Icon of={LogOut} size={14} />
                   {loggingOut ? 'Signing out…' : 'Sign out'}

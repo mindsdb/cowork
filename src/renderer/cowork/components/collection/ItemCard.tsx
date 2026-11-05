@@ -2,7 +2,6 @@
 //
 //   <CardGrid className="px-8 pt-5 pb-14">
 //     {items.map((i) => <ItemCard key={i.id} {...slots(i)} />)}
-//     <NewTile label="New project" onClick={create} />
 //   </CardGrid>
 //
 // One card language: flat at rest (border only), lift on hover when it opens,
@@ -13,7 +12,7 @@ import { forwardRef } from 'react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { Card } from '../ui/Card';
 import { cn } from '../../lib/cn';
-import { ACTIONS_IN_FLOW_ON_TOUCH, HoverActions, ITEM_ROOT, ItemTitle } from './itemParts';
+import { ITEM_ROOT, ItemActions, ItemTitle } from './itemParts';
 import type { ItemElement, ItemSlots } from './itemParts';
 
 export interface CardGridProps {
@@ -33,7 +32,7 @@ export interface ItemCardProps extends ItemSlots, Omit<HTMLAttributes<HTMLElemen
 }
 
 export const ItemCard = forwardRef<HTMLElement, ItemCardProps>(function ItemCard({
-  as = 'div', leading, title, badges, description, meta, actions, revealActions,
+  as = 'div', leading, title, badges, description, meta, actions,
   onActivate, activateLabel, selected = false, busy = false, children, className, ...rest
 }, ref) {
   return (
@@ -58,22 +57,9 @@ export const ItemCard = forwardRef<HTMLElement, ItemCardProps>(function ItemCard
           className="font-body text-base font-medium text-ink has-[input]:flex-1"
         />
         {badges}
-        {/* Actions shown at rest (revealActions, touch) take their own width
-            at the end of the title row, so the title truncates beside them
-            instead of under them. Hover-only actions overlay the title's end
-            (aligned to the card padding), so the title keeps the full card at
-            rest. */}
-        {actions && (
-          <HoverActions
-            reveal={revealActions}
-            className={cn(
-              'ml-auto',
-              !revealActions && ['absolute right-[var(--card-pad-x)] top-[var(--card-pad-y)] rounded-md bg-surface pl-2', ACTIONS_IN_FLOW_ON_TOUCH],
-            )}
-          >
-            {actions}
-          </HoverActions>
-        )}
+        {/* Actions take their own width at the end of the title row, so the
+            title truncates beside them instead of under them. */}
+        {actions && <ItemActions className="ml-auto">{actions}</ItemActions>}
       </div>
       {description && <div className="line-clamp-2 font-body text-sm leading-normal text-ink-3">{description}</div>}
       {children}

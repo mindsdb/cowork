@@ -63,7 +63,9 @@ export function extractFormSpec(markdown) {
   }
   // `[ \t]*\r?\n` after the info string means `data-vault-form-patch`
   // won't match (its `-patch` suffix isn't whitespace/newline).
-  const re = /```data-vault-form[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```/g;
+  // cowork-server copies this regex (stream_formatter.py _FORM_BLOCK) to tell
+  // whether a reply already holds its form; change both together.
+  const re =/```data-vault-form[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```/g;
   let m;
   let lastBody = null;
   while ((m = re.exec(markdown)) !== null) lastBody = m[1];
@@ -75,6 +77,8 @@ export function extractFormSpec(markdown) {
 // Apply a series of cheap, deterministic fixups for common LLM
 // mistakes. Order matters — stripping comments before fixing
 // trailing commas, etc.
+// cowork-server copies every fixup here but comment stripping
+// (stream_formatter.py _loose_json); change both together.
 function _looseClean(s) {
   let out = String(s);
 

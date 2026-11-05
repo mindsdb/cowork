@@ -1,0 +1,11 @@
+# What the PDF frame bundle must not hold, as regular expressions. The frame
+# runs the bundle as one inline script under a hash-only policy: it can load no
+# module, its text must not end or open a script element or change under the
+# HTML parser, and it never runs in Node.
+bundle:
+  - { name: 'import(', pattern: '\bimport\s*\(' }
+  - { name: 'import.meta', pattern: '\bimport\s*\.\s*meta\b' }
+  - { name: '<script', pattern: '<script', flags: i }
+  - { name: '</script', pattern: '<\/script', flags: i }
+  - { name: 'NUL', pattern: '\x00' }
+  - { name: 'process.', pattern: '\bprocess\.' }

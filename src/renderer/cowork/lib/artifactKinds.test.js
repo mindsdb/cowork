@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { load } from 'js-yaml';
 import {
-  canDownloadOrgDraft,
+  canDownloadArtifact, canDownloadOrgDraft, canShowInBrowserTab,
   canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isInlinePreviewable,
 } from './artifactKinds';
+
+const FIXTURES = load(readFileSync(resolve(import.meta.dirname, 'artifactSurfaces.yaml'), 'utf-8'));
 
 // ENG-1998: the viewer/card layer needs a single, shared answer to "is this
 // an image artifact" — matching isHtmlArtifact's convention (declared `ext`
@@ -53,7 +58,7 @@ describe('isInlinePreviewable', () => {
 
   it('is false for a type the viewer has no renderer for', () => {
     expect(isInlinePreviewable({ ext: '.py', path: '/a/main.py' })).toBe(false);
-    expect(canPreviewLocally({ ext: '.docx', path: '/a/report.docx' })).toBe(false);
+    expect(canPreviewLocally({ ext: '.zip', path: '/a/report.zip' })).toBe(false);
   });
 });
 
@@ -109,5 +114,42 @@ describe('canDownloadOrgDraft', () => {
   it('is false without a draft URL — there is no primary file to stream', () => {
     expect(canDownloadOrgDraft({ draftUrl: '', ext: '.xlsx' })).toBe(false);
     expect(canDownloadOrgDraft(undefined)).toBe(false);
+  });
+});
+
+describe('canDownloadArtifact', () => {
+  const DRAFT = '/api/v1/artifacts/drafts/local/11111111111111111111111111111111/data.zip';
+  const SERVE = '/v1/artifacts/serve/data/data.zip';
+
+  it('is true when either URL carries the file', () => {
+    expect(canDownloadArtifact({ draftUrl: DRAFT, ext: '.zip' })).toBe(true);
+    expect(canDownloadArtifact({ serveUrl: SERVE, ext: '.zip' })).toBe(true);
+    expect(canDownloadArtifact({ serveUrl: SERVE, draftUrl: DRAFT, ext: '.zip' })).toBe(true);
+  });
+
+  it('is false for a fullstack app, on either URL', () => {
+    expect(canDownloadArtifact({ draftUrl: DRAFT, type: 'fullstack-stateless-app' })).toBe(false);
+    expect(canDownloadArtifact({ serveUrl: SERVE, type: 'fullstack-stateful-app' })).toBe(false);
+  });
+
+  it('is false for a card with no URL at all', () => {
+    expect(canDownloadArtifact({ ext: '.zip', path: '/a/data.zip' })).toBe(false);
+    expect(canDownloadArtifact({ serveUrl: '', draftUrl: '' })).toBe(false);
+    expect(canDownloadArtifact(undefined)).toBe(false);
+  });
+});
+
+describe('canShowInBrowserTab', () => {
+  it.each(FIXTURES.browserTab.opens)('is true for %s, which a tab renders', (ext) => {
+    expect(canShowInBrowserTab({ ext, path: `/a/file${ext}` })).toBe(true);
+    expect(canShowInBrowserTab({ path: `/a/file${ext}` })).toBe(true);
+  });
+
+  it.each(FIXTURES.browserTab.withheld)('is false for %s, which a surface keeps out of a tab', (ext) => {
+    expect(canShowInBrowserTab({ ext, path: `/a/file${ext}` })).toBe(false);
+  });
+
+  it('is false for a missing artifact', () => {
+    expect(canShowInBrowserTab(null)).toBe(false);
   });
 });

@@ -234,7 +234,7 @@ export function FilesPanel({
         />
         <header className="code-files__header">
           <div>
-            <div className="code-eyebrow">TASK CONTEXT</div>
+            <div className="section-label">Task context</div>
             <div className="code-files__title">Files</div>
           </div>
           <Button icon size="sm" variant="subtle" aria-label="Close files panel" onClick={onClose}>{Ico.close(14)}</Button>

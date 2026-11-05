@@ -55,7 +55,7 @@ export function PreviewPanel({
       <aside id="code-preview-panel" className="code-preview" aria-label="Live preview">
         <header className="code-preview__header">
           <div>
-            <div className="code-eyebrow">PROJECT ACTION</div>
+            <div className="section-label">Project action</div>
             <div className="code-preview__title">Preview</div>
           </div>
           <div className="code-preview__actions">

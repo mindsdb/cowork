@@ -205,7 +205,7 @@ export function ReviewPanel({
         />
         <header className="code-review__header">
           <div>
-            <div className="code-eyebrow">TASK OUTPUT</div>
+            <div className="section-label">Task output</div>
             <div className="code-review__title">Review changes</div>
           </div>
           <Button icon size="sm" variant="subtle" aria-label="Close review panel" onClick={onClose}>{Ico.close(14)}</Button>

@@ -1,0 +1,59 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+
+// A web build without the platform UI whose page has no SPA wrapper
+// publish-token tag, which keeps the shared-token choices: no "Only me", and
+// Public says "Anyone with the URL".
+vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
+
+import {
+  AccessChooser,
+  accessDraftFromArtifact,
+  isAccessDraftValid,
+  newAccessDraft,
+  ACCESS_LABELS,
+} from './AccessChooser';
+
+describe('AccessChooser with the platform UI off and no publish-token tag', () => {
+  it('starts a first share with nothing picked, and refuses it as it is', () => {
+    const draft = newAccessDraft();
+    expect(draft.mode).toBe('');
+    expect(isAccessDraftValid(draft)).toBe(false);
+  });
+
+  it('starts an unpublished artifact with nothing picked', () => {
+    expect(accessDraftFromArtifact({ publishedUrl: '' }).mode).toBe('');
+    expect(accessDraftFromArtifact(undefined).mode).toBe('');
+  });
+
+  it('ignores the access an earlier publish left on an unpublished artifact', () => {
+    const draft = accessDraftFromArtifact({ publishedUrl: '', accessMode: 'public' });
+    expect(draft.mode).toBe('');
+  });
+
+  it('keeps a published artifact on its live choice', () => {
+    expect(accessDraftFromArtifact({ publishedUrl: 'https://view.example/r/a', accessMode: 'public' }).mode)
+      .toBe('public');
+    expect(accessDraftFromArtifact({ publishedUrl: 'https://view.example/r/a' }).mode).toBe('public');
+  });
+
+  it('says who Public and Password reach without claiming the internet', () => {
+    expect(ACCESS_LABELS.public.desc).toBe('Anyone with the URL');
+    expect(ACCESS_LABELS.password.desc).toBe('Anyone with the URL and the password');
+  });
+
+  it('renders no choice selected and offers no "Only me"', () => {
+    render(<AccessChooser value={newAccessDraft()} onChange={() => {}} />);
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(3);
+    for (const radio of radios) expect(radio).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByText('Only me')).toBeNull();
+    expect(screen.getByText('Anyone with the URL')).toBeInTheDocument();
+  });
+
+  it('asks for an email without pointing to "Only me" when Specific people is empty', () => {
+    render(<AccessChooser value={{ ...newAccessDraft(), mode: 'specific' }} onChange={() => {}} />);
+    expect(screen.getByTestId('recipient-summary')).toHaveTextContent('Add at least one email.');
+    expect(screen.queryByText(/Only me/)).toBeNull();
+  });
+});

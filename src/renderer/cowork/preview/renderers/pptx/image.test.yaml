@@ -1,0 +1,191 @@
+# What image.test.ts checks: the type and the size image.ts reads from the
+# first bytes of a picture part.
+#
+#   hex    the part's first bytes, as hex; spaces only split the fields
+#   type   the type the signature names, or null for none of the five
+#   size   [width, height] the header declares, or null when it can't be read
+#
+# The 37 by 21 headers are the first bytes of pictures Pillow wrote, and
+# Chromium decodes each of those pictures at 37 by 21. The GIF whose first
+# frame passes its screen decodes in Chromium at 40 by 23.
+
+cases:
+  - name: a PNG IHDR
+    hex: 89504E470D0A1A0A 0000000D 49484452 00000025 00000015 0802000000
+    type: image/png
+    size: [37, 21]
+
+  - name: a PNG IHDR that declares 23170 by 23170 pixels
+    hex: 89504E470D0A1A0A 0000000D 49484452 00005A82 00005A82 0100000000
+    type: image/png
+    size: [23170, 23170]
+
+  - name: a PNG whose first chunk is not IHDR
+    hex: 89504E470D0A1A0A 00000004 43674249 50002006 0000000D 49484452 00000025 00000015
+    type: image/png
+    size: null
+
+  - name: a PNG cut off inside IHDR
+    hex: 89504E470D0A1A0A 0000000D 49484452 00000025 0000
+    type: image/png
+    size: null
+
+  - name: a PNG IHDR with a zero width
+    hex: 89504E470D0A1A0A 0000000D 49484452 00000000 00000015 0802000000
+    type: image/png
+    size: null
+
+  - name: a baseline JPEG frame header after JFIF and two quantization tables
+    hex: >-
+      FFD8 FFE0 0010 4A46494600 0101 00 0001 0001 00 00
+      FFDB 0004 0000 FFDB 0004 0100
+      FFC0 0011 08 0015 0025 03 012200 021101 031101
+    type: image/jpeg
+    size: [37, 21]
+
+  # The Exif and comment segments are skipped by their lengths, and a run of
+  # fill bytes may come before a marker.
+  - name: a progressive JPEG frame header after Exif, a comment and fill bytes
+    hex: >-
+      FFD8 FFE1 000A 457869660000 4D4D FFFE 0005 616263 FFFF
+      FFC2 0011 08 0015 0025 03 012200 021101 031101
+    type: image/jpeg
+    size: [37, 21]
+
+  # 0xC4 sits among the frame markers but is DHT. Read as a frame header, its
+  # bytes would declare 772 by 258.
+  - name: a JPEG Huffman table before the frame header
+    hex: FFD8 FFC4 0009 00 0102 0304 0000 FFC0 0011 08 0015 0025 03 012200 021101 031101
+    type: image/jpeg
+    size: [37, 21]
+
+  - name: a JPEG scan before any frame header
+    hex: FFD8 FFDA 0008 01 0100 003F00 FFC0 0011 08 0015 0025 03
+    type: image/jpeg
+    size: null
+
+  - name: a JPEG with a byte that is not a marker where one belongs
+    hex: FFD8 FFE0 0004 0000 00 FFC0 0011 08 0015 0025 03
+    type: image/jpeg
+    size: null
+
+  # libjpeg drops FF 00 as a stuffed zero and scans on, byte by byte, to the
+  # comment, which it skips by its length. So it reads the second frame header,
+  # 9000 by 8000. A jump by the two bytes after FF 00 lands on the first, 37 by
+  # 21, inside the comment.
+  - name: a JPEG stuffed zero before a comment that holds a frame header
+    hex: >-
+      FFD8 FF00 0006
+      FFFE 0015 FFC0 0011 08 0015 0025 03 012200 021101 031101
+      FFC0 0011 08 1F40 2328 03 012200 021101 031101
+    type: image/jpeg
+    size: null
+
+  # libjpeg stops at a marker it has no rule for, such as JPG0, and at a second
+  # SOI.
+  - name: a JPEG marker libjpeg stops at, before the frame header
+    hex: FFD8 FFF0 0004 0000 FFC0 0011 08 0015 0025 03 012200 021101 031101
+    type: image/jpeg
+    size: null
+
+  - name: a second JPEG SOI before the frame header
+    hex: FFD8 FFD8 FFC0 0011 08 0015 0025 03 012200 021101 031101
+    type: image/jpeg
+    size: null
+
+  - name: a JPEG segment that runs past the end
+    hex: FFD8 FFE0 0010 4A464946
+    type: image/jpeg
+    size: null
+
+  # A height of 0 leaves it to a DNL marker after the first scan.
+  - name: a JPEG frame header with no height
+    hex: FFD8 FFC0 0011 08 0000 0025 03 012200 021101 031101
+    type: image/jpeg
+    size: null
+
+  - name: a GIF logical screen and first frame
+    hex: >-
+      474946383761 2500 1500 82 00 00
+      003399 333399 006699 336699 0033CC 3333CC 0066CC 3366CC
+      2C 0000 0000 2500 1500 40
+    type: image/gif
+    size: [37, 21]
+
+  - name: a GIF whose first frame, after an extension, passes its 1 by 1 screen
+    hex: >-
+      474946383961 0100 0100 80 00 00 000000 FFFFFF
+      21F9 04 000A0000 00
+      2C 0300 0200 2500 1500 00
+    type: image/gif
+    size: [40, 23]
+
+  - name: a GIF with no frame before its trailer
+    hex: 474946383961 0100 0100 00 00 00 3B
+    type: image/gif
+    size: null
+
+  - name: a GIF extension whose data runs past the end
+    hex: 474946383961 0100 0100 00 00 00 21FE 10 6162
+    type: image/gif
+    size: null
+
+  - name: a GIF cut off inside its logical screen
+    hex: 474946383961 2500 15
+    type: image/gif
+    size: null
+
+  - name: a BMP info header
+    hex: 424D 66090000 0000 0000 36000000 28000000 25000000 15000000 0100 1800
+    type: image/bmp
+    size: [37, 21]
+
+  - name: a BMP info header whose negative height runs the rows top-down
+    hex: 424D 66090000 0000 0000 36000000 28000000 25000000 EBFFFFFF 0100 1800
+    type: image/bmp
+    size: [37, 21]
+
+  - name: a BMP OS/2 1.x core header with 16-bit width and height
+    hex: 424D 4A090000 0000 0000 1A000000 0C000000 2500 1500 0100 1800
+    type: image/bmp
+    size: [37, 21]
+
+  - name: a BMP info header with a negative width
+    hex: 424D 66090000 0000 0000 36000000 28000000 DBFFFFFF 15000000 0100 1800
+    type: image/bmp
+    size: null
+
+  - name: a BMP cut off inside its info header
+    hex: 424D 66090000 0000 0000 36000000 28000000 2500
+    type: image/bmp
+    size: null
+
+  - name: a lossy WebP (VP8)
+    hex: 52494646 48000000 57454250 56503820 3C000000 500300 9D012A 2500 1500
+    type: image/webp
+    size: [37, 21]
+
+  - name: a lossless WebP (VP8L)
+    hex: 52494646 1E000000 57454250 5650384C 11000000 2F 24000500
+    type: image/webp
+    size: [37, 21]
+
+  - name: an extended WebP (VP8X)
+    hex: 52494646 6C000000 57454250 56503858 0A000000 10000000 240000 140000
+    type: image/webp
+    size: [37, 21]
+
+  - name: a lossy WebP without the VP8 start code
+    hex: 52494646 48000000 57454250 56503820 3C000000 500300 000000 2500 1500
+    type: image/webp
+    size: null
+
+  - name: a WebP whose first chunk is none of the three
+    hex: 52494646 48000000 57454250 414C5048 0A000000 0000000000000000
+    type: image/webp
+    size: null
+
+  - name: an SVG
+    hex: 3C737667 20786D6C 6E733D22
+    type: null
+    size: null

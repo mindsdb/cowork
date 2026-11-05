@@ -5,8 +5,10 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
-import Markdown from 'react-markdown';
+import {
+  Children, cloneElement, createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef,
+} from 'react';
+import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -21,18 +23,22 @@ import {
   TableHeader,
   TableBody,
 } from './MarkdownTable';
+import { FigureMark } from './FigureMark';
+import { MarkdownImage } from './MarkdownImage';
 import { host } from '../../../platform/host';
+import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
 import { useSkillNames } from '../../lib/skillsStore';
+import { carryFigure, hasFigureMarks, locateFigure, placeFigures } from '../../lib/figureSources';
 
 // Shared walk for the text-splitting remark plugins below: every `text` node
-// is replaced by the nodes `splitText` returns (kept as-is when it returns
-// null), every other node is walked. `code` / `inlineCode` keep their source
-// in `value`, not in text children, so they are never split.
+// is replaced by the nodes `splitText(value, node)` returns (kept as-is when it
+// returns null), every other node is walked. `code` / `inlineCode` keep their
+// source in `value`, not in text children, so they are never split.
 function expandTextNodes(node, splitText) {
   if (!Array.isArray(node.children)) return;
   const next = [];
   for (const child of node.children) {
-    const parts = child.type === 'text' ? splitText(child.value) : null;
+    const parts = child.type === 'text' ? splitText(child.value, child) : null;
     if (parts) {
       next.push(...parts);
     } else {
@@ -92,86 +98,92 @@ function remarkSoftBreaks() {
   return (tree) => expandTextNodes(tree, splitText);
 }
 
-// Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
-// do NOT include javascript:, file:, data:, or anything that could
-// navigate the Electron renderer to a privileged location. mailto: is
-// allowed because `host.openExternal` routes it through the OS handler.
-const _SAFE_HREF_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+/* Nodes whose figures stay plain text: code and math keep their source
+   verbatim, and a link or image is already its own control. */
+const _FIGURE_SKIPPED_NODES = new Set([
+  'code', 'inlineCode', 'math', 'inlineMath',
+  'link', 'linkReference', 'image', 'imageReference', 'definition', 'html',
+]);
 
-function isSafeExternalHref(href) {
-  if (!href || typeof href !== 'string') return false;
-  let url;
-  try {
-    url = new URL(href, 'http://_local');
-  } catch {
-    return false;
+function _figureSkippedRanges(node, out) {
+  if (!Array.isArray(node.children)) return out;
+  for (const child of node.children) {
+    if (_FIGURE_SKIPPED_NODES.has(child.type)) {
+      const start = child.position?.start?.offset;
+      const end = child.position?.end?.offset;
+      if (start != null && end != null) out.push([start, end]);
+    } else {
+      _figureSkippedRanges(child, out);
+    }
   }
-  return _SAFE_HREF_SCHEMES.has(url.protocol);
+  return out;
 }
 
-// A finished artifact's local path or a fabricated sandbox: URL that anton emits
-// as a "download" link — inert in chat, so remarkArtifactLocalLinks neutralizes
-// it (ENG-1636).
-//
-// Asymmetric by design: ANY Windows drive path is caught, but a POSIX path only
-// under `.anton/artifacts/`, `.cowork/`, or the pod's `/mnt/` root. Scoping
-// POSIX to those shapes keeps a real web `/route` link from being swallowed;
-// the trade is a POSIX-shaped hole — a file anton writes elsewhere on
-// macOS/Linux still renders as a dead link. Artifacts live under
-// `.anton/artifacts` and every scratchpad-pod path starts at `/mnt/`, so the
-// canonical cases are covered; widening to bare-absolute-POSIX is where
-// over-matching would start. (`/mnt/` can be a real mount point on the Linux
-// desktop — but a bare-path chat link is dead on every desktop anyway:
-// `shell.openExternal` cannot open a schemeless path — so neutralising it into
-// panel-pointing text is an improvement there too, not a regression.)
-//
-// `web` gates the loopback test only: in a browser tab `127.0.0.1`/`localhost`
-// is the USER'S machine, so a loopback URL anton emits from the scratchpad pod
-// is dead by construction (ENG-2421) — but on desktop the same shape can be
-// real (the sidecar serves on `127.0.0.1:26866`, and a fullstack app's dev
-// server on `localhost:PORT` genuinely opens). The default is the desktop
-// behaviour so a bare call can never widen the net; the remark plugin below
-// passes the live surface.
-export function isArtifactLocalPath(href, { web = false } = {}) {
-  if (!href || typeof href !== 'string') return false;
-  const h = href.trim();
-  if (/^[a-zA-Z]:[\\/]/.test(h)) return true; // C:\… or C:/… (Windows drive)
-  if (/^(?:file|sandbox):/i.test(h)) return true; // file:… / sandbox:/mnt/data/…
-  // Loopback http(s) on web — MUST run before the https? bail below, which is
-  // exactly the early-return that let `http://127.0.0.1:PORT` reach users as a
-  // live link (ENG-2421).
-  if (web && /^https?:/i.test(h)) {
-    let hostname = '';
-    try { hostname = new URL(h).hostname.toLowerCase(); } catch { return false; }
-    // A single trailing root dot is the same name (RFC 1034) — `localhost.`
-    // and `127.0.0.1.` must not slip past the exact-match tests below.
-    hostname = hostname.replace(/\.$/, '');
-    if (
-      // RFC 6761 reserves `localhost` AND every name under `.localhost` as
-      // loopback (`app.localhost` resolves to 127.0.0.1 in browsers), while
-      // `localhost.example.com` is an ordinary name and stays live.
-      hostname === 'localhost' || hostname.endsWith('.localhost')
-      || hostname === '0.0.0.0'
-      || hostname === '[::1]' || hostname === '::1'
-      // Full dotted-quad only — `^127\.` alone would catch REGISTERED domains
-      // like `127.net` (review finding on #956). Loses no loopback coverage:
-      // new URL() normalises every shorthand (`127.1`, decimal `2130706433`,
-      // hex `0x7f000001`) to the dotted quad before this test runs.
-      || /^127(?:\.\d{1,3}){3}$/.test(hostname)
-    ) return true;
-  }
-  // POSIX artifact path (bare path — absolute or relative). A REAL web link
-  // (http/https/mailto) whose URL merely happens to contain the marker — e.g. a
-  // published `https://…/.cowork/…` URL — must stay clickable, so bail before
-  // the marker test. The `(?:^|/)` boundary matches both an absolute path
-  // (`/Users/…/.anton/artifacts/…`) and a leading-relative one
-  // (`.anton/artifacts/…`) while not matching a stray `foo.cowork/…`.
-  // `/mnt/…` is anchored to the string start: it is the pod's filesystem root
-  // on web (and at worst an already-dead bare-path link on a Linux desktop —
-  // see the header note); the anchor keeps route shapes like `/mnt-docs/x`
-  // or `docs/mnt/x` clickable.
-  if (/^(?:https?|mailto):/i.test(h)) return false;
-  return /(?:^|\/)\.anton\/artifacts\//.test(h) || /(?:^|\/)\.cowork\//.test(h) || /^\/mnt\//.test(h);
+/* remark plugin: mark each figure the server traced (lib/figureSources). The
+   figures' offsets index `text`, the answer as written; placeFigures carries
+   them onto the markdown source this plugin parses, which the normalizing
+   passes in MarkdownContent rewrote, and places none in code, math or a link.
+   Each placed figure is then split out of the text node that holds it into an
+   <anton-figure data-figure={index}> element, which the `components` map
+   renders as a FigureMark. Raw HTML in an answer never becomes an element, so
+   only this plugin can produce one. Runs before the other text-splitting
+   plugins: the nodes they create carry no source position. */
+function remarkFigureSources({ figures, text }) {
+  return (tree, file) => {
+    const source = String(file.value);
+    const marks = placeFigures(source, figures, { original: text, skipped: _figureSkippedRanges(tree, []) });
+    if (marks.length === 0) return;
+    expandTextNodes(tree, (value, node) => {
+      const from = node.position?.start?.offset;
+      const to = node.position?.end?.offset;
+      if (from == null || to == null) return null;
+      const out = [];
+      let last = 0;
+      for (const m of marks) {
+        if (m.start < from || m.end > to) continue;
+        const figure = { start: m.start - from, end: m.end - from, text: figures[m.index].text };
+        /* The node's value can be shorter than its source (an escape, a
+           blockquote marker): carry the figure over, else look near its
+           offset, past the marks already made. */
+        const at = carryFigure(source.slice(from, to), value, figure)
+          ?? locateFigure(value, figure, (start) => start >= last);
+        if (!at || at.start < last) continue;
+        if (at.start > last) out.push({ type: 'text', value: value.slice(last, at.start) });
+        out.push({
+          type: 'figureSource',
+          data: { hName: 'anton-figure', hProperties: { dataFigure: m.index } },
+          children: [{ type: 'text', value: figure.text }],
+        });
+        last = at.end;
+      }
+      if (out.length === 0) return null;
+      if (last < value.length) out.push({ type: 'text', value: value.slice(last) });
+      return out;
+    });
+  };
+}
+
+/**
+ * The figures of the answer being rendered and their openers, for the
+ * `anton-figure` renderer. Read through context so new figure data (a refetch
+ * hands over equal data as new objects) re-renders the marks without
+ * rebuilding `components`, which would remount the whole answer.
+ *
+ * @typedef {{
+ *   figures: import('../../lib/figureSources').LinkedFigure[] | null,
+ *   onOpenStep: ((stepId: string) => void) | null,
+ *   onViewFile: ((source: import('../../lib/figureSources').LinkedFigureSource) => void) | null,
+ * }} FigureSourcesContextValue
+ */
+const FigureSourcesContext = createContext(
+  /** @type {FigureSourcesContextValue} */ ({ figures: null, onOpenStep: null, onViewFile: null }),
+);
+
+function FigureSourceMark({ index, children }) {
+  const { figures, onOpenStep, onViewFile } = useContext(FigureSourcesContext);
+  const figure = figures?.[index];
+  if (!figure) return children;
+  return <FigureMark figure={figure} onOpenStep={onOpenStep} onViewFile={onViewFile}>{children}</FigureMark>;
 }
 
 const _ARTIFACT_LOCAL_LINK_TITLE =
@@ -245,23 +257,14 @@ function remarkArtifactLocalLinks({ web = false } = {}) {
   };
 }
 
-function openMarkdownHref(href) {
-  if (!isSafeExternalHref(href)) return;
-  // Prefer the host bridge (Electron routes through shell.openExternal;
-  // web falls back to window.open with noopener,noreferrer).
-  if (host && typeof host.openExternal === 'function') {
-    Promise.resolve(host.openExternal(href)).catch(() => {});
-    return;
-  }
-  try { window.open(href, '_blank', 'noopener,noreferrer'); } catch {}
-}
-
 // Allow the extra attributes our chart blocks need on <code>, and
 // permit the `engram:` URL scheme on links so the engram-comment
-// pre-processor (see `_renderEngramComments`) can route metadata
-// through the `a` component override into a styled chip.
+// plugin (see `remarkHtmlComments`) can route metadata
+// through the `a` component override into a styled chip. The figure
+// marks remarkFigureSources creates pass through with their index.
 const sanitizeSchema = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), 'anton-figure'],
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
@@ -270,6 +273,7 @@ const sanitizeSchema = {
     // Artifacts tooltip survives without a span entry, but ['*'] omits
     // className — which the engram chips and this plugin both set.
     span: [...(defaultSchema.attributes?.span || []), ['className']],
+    'anton-figure': ['dataFigure'],
   },
   protocols: {
     ...(defaultSchema.protocols || {}),
@@ -355,6 +359,8 @@ function _mergeInlineCodeLines(text) {
 // for the pattern wherever it appears and inject the missing
 // newlines around it so the markdown parser treats it as a real
 // fenced code block.
+// cowork-server reads a glued opening the same way (stream_formatter.py
+// _GLUED_FORM_FENCE) before it adds a form; change both together.
 function _normalizeFormFences(text) {
   if (!text || typeof text !== 'string') return text;
   // Catches both `data-vault-form` (full spec) and
@@ -478,66 +484,103 @@ function _convertMathDelimiters(text) {
 //   `- CoinGecko rate-limits at 50 req/min <!-- topic:api ts:2026-02-27 -->`.
 // react-markdown drops HTML by default, so the comment normally
 // disappears entirely, taking the engram's provenance with it. We
-// transform each comment into a sequence of markdown links with a
-// special `engram:` URL scheme — those survive sanitization, and the
-// `a` component override below picks the scheme up and renders each
-// pair as a small chip.
+// transform each comment into a sequence of links with a special
+// `engram:` URL scheme — those survive sanitization, and the `a`
+// component override below picks the scheme up and renders each pair
+// as a small chip.
 //
 // The scanner below is intentionally narrow: it only rewrites comment
 // bodies that look like one or more `key:value` pairs (e.g. `topic:foo`,
 // `ts:2026-02-27`, `source:consolidation`). Plain authorship comments
-// like `<!-- TODO -->` or `<!-- not sure -->` are stripped.
+// like `<!-- TODO -->` or `<!-- not sure -->` are stripped. It runs on the
+// parsed tree (remarkHtmlComments), where code blocks and code spans hold
+// their text as a value, so a comment inside code stays exactly as written.
 const _ENGRAM_BODY_RE = /^\s*([a-z][a-z0-9_-]*:[^\s<>]+(?:\s+[a-z][a-z0-9_-]*:[^\s<>]+)*)\s*$/i;
 
 function _engramCommentChips(body) {
   const match = _ENGRAM_BODY_RE.exec(body);
-  if (!match) return '';
+  if (!match) return [];
 
   const pairs = match[1].trim().split(/\s+/);
   return pairs
     .map((pair) => {
       const idx = pair.indexOf(':');
-      if (idx <= 0) return '';
+      if (idx <= 0) return null;
       const key = pair.slice(0, idx);
       const val = pair.slice(idx + 1);
       // The link text is what the user sees; the href carries the
       // engram scheme so the renderer can distinguish it from real
       // links. Encode the value so spaces / special chars don't
       // break the URL portion.
-      return `[${key}: ${val}](engram:${encodeURIComponent(val)}?k=${encodeURIComponent(key)})`;
+      return {
+        type: 'link',
+        url: `engram:${encodeURIComponent(val)}?k=${encodeURIComponent(key)}`,
+        children: [{ type: 'text', value: `${key}: ${val}` }],
+      };
     })
-    .filter(Boolean)
-    .join(' ');
+    .filter(Boolean);
 }
 
-function _renderEngramComments(text) {
-  if (!text || typeof text !== 'string') return text;
-
-  let out = '';
+/* The nodes that stand in for one `html` node that opens with a comment:
+   chips for a `key:value` comment, nothing for any other comment, and the
+   text the node holds outside its comments (a comment that starts a line is
+   an HTML block, which runs to the end of the line the comment closes on).
+   An unclosed comment drops the rest of the node. */
+function _commentNodes(value) {
+  const out = [];
   let cursor = 0;
 
-  while (cursor < text.length) {
-    const start = text.indexOf('<!--', cursor);
-    if (start === -1) {
-      out += text.slice(cursor);
-      break;
-    }
+  while (cursor < value.length) {
+    const start = value.indexOf('<!--', cursor);
+    const text = value.slice(cursor, start === -1 ? value.length : start);
+    if (text.trim()) out.push({ type: 'text', value: text });
+    if (start === -1) break;
 
-    out += text.slice(cursor, start);
-    const end = text.indexOf('-->', start + 4);
-    if (end === -1) {
-      break;
-    }
+    const end = value.indexOf('-->', start + 4);
+    if (end === -1) break;
 
-    const chips = _engramCommentChips(text.slice(start + 4, end));
-    if (chips) {
+    for (const chip of _engramCommentChips(value.slice(start + 4, end))) {
       // Leading space keeps the chip from glomming onto the preceding word.
-      out += ` ${chips}`;
+      out.push({ type: 'text', value: ' ' }, chip);
     }
     cursor = end + 3;
   }
 
   return out;
+}
+
+// Parents whose children are blocks, where a comment on its own line sits.
+const _FLOW_PARENTS = new Set(['root', 'blockquote', 'listItem', 'footnoteDefinition']);
+
+/* remark plugin: replace each HTML comment in prose with its chips (see
+   _commentNodes), in a paragraph of their own where the comment was a block.
+   Code blocks and code spans carry no children, so a comment inside code is
+   never reached. */
+function remarkHtmlComments() {
+  const walk = (node) => {
+    if (!Array.isArray(node.children)) return;
+    const next = [];
+    for (const child of node.children) {
+      if (child.type !== 'html' || !/^\s*<!--/.test(child.value)) {
+        walk(child);
+        next.push(child);
+        continue;
+      }
+      const nodes = _commentNodes(child.value);
+      if (!_FLOW_PARENTS.has(node.type)) next.push(...nodes);
+      else if (nodes.length > 0) next.push({ type: 'paragraph', children: nodes });
+    }
+    node.children = next;
+  };
+  return walk;
+}
+
+/* react-markdown empties a link to any scheme but http(s), irc(s), mailto and
+ * xmpp before the `a` override sees it, so the `engram:` links
+ * remarkHtmlComments writes would arrive empty and show as plain text.
+ * Keep them on links, and leave every other URL to react-markdown's check. */
+function _markdownUrlTransform(url, key) {
+  return key === 'href' && url.startsWith('engram:') ? url : defaultUrlTransform(url);
 }
 
 // Density-scoped class strings. `dense` halves the rhythm and shaves
@@ -562,7 +605,7 @@ const _SIZES = {
     p: 'font-body text-[12.5px] leading-[1.65] text-ink-2 my-0 first:mt-0 last:mb-0',
     h1: 's-h3 text-ink mt-3.5 mb-1.5',
     h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5',
-    h3: 'font-display text-[12px] font-semibold uppercase tracking-wider text-ink-3 mt-2.5 mb-1',
+    h3: 'font-display text-[12px] font-semibold text-ink-3 mt-2.5 mb-1',
     ul: 'list-disc pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     ol: 'list-decimal pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2 text-[12.5px]',
@@ -580,7 +623,12 @@ export function MarkdownPlainText({ children }) {
   );
 }
 
-export function MarkdownContent({
+// Memoized because react-markdown re-runs its whole parse pipeline on every
+// render: without it, each streamed event re-parses every message already in
+// the transcript. Props are primitives apart from the figure props, which
+// callers keep referentially stable for a settled message, so the shallow
+// compare is exact.
+export const MarkdownContent = memo(function MarkdownContent({
   text,
   id,
   complete = true,
@@ -606,13 +654,51 @@ export function MarkdownContent({
   // Render single newlines as line breaks (remarkSoftBreaks). Off by
   // default; the ask_user card turns it on for agent-authored prompts.
   softBreaks = false,
+  /* Mark a code block whose line runs past its right edge (MarkdownCode's
+     overflowCue). The ask_user card turns it on: a person approving a
+     request has to see every line whole. */
+  codeOverflowCue = false,
   // Neutralise loopback links on web (see remarkArtifactLocalLinks below).
   // Follows `isAssistant` by default; agent-authored text that must not get
   // the assistant-only inline-code rewrite (the ask_user prompt) sets it
   // on its own.
   neutralizeLoopback = isAssistant,
+  /* Where each figure in a finished answer came from, each source joined to
+     its step (linkFigureSteps in lib/figureSources). Null, an empty list, or
+     figures that all come from the question render the text exactly as
+     without it. */
+  figureSources = null,
+  /* Opens a figure source's step in the scratchpad, by step id; without it a
+     source's popover offers no "Open step". */
+  onOpenFigureStep = null,
+  /* Opens the file a figure source read in the file viewer, called with the
+     source (a project file by `path`, a conversation attachment by
+     `attachment_id`); without it the popover offers no "View file". */
+  onViewFigureFile = null,
+  /* Loads an image the document names from the document's own folder, for a
+     host that serves that folder (the artifact viewer's useDraftImageLoader).
+     Called with the image's `src`; returns a promise of its Blob, or null
+     when that `src` may not load. Without it images render as written, which
+     is what chat keeps (see remarkArtifactLocalLinks). */
+  loadImage = null,
 }) {
   const rootRef = useRef(null);
+  /* Read at click time, so a parent passing fresh callbacks every render
+     hands the marks the same openers. */
+  const openFigureStepRef = useRef(onOpenFigureStep);
+  const viewFigureFileRef = useRef(onViewFigureFile);
+  useEffect(() => {
+    openFigureStepRef.current = onOpenFigureStep;
+    viewFigureFileRef.current = onViewFigureFile;
+  });
+  const canOpenFigureStep = !!onOpenFigureStep;
+  const canViewFigureFile = !!onViewFigureFile;
+  const markFigures = hasFigureMarks(figureSources);
+  const figureContext = useMemo(() => /** @type {FigureSourcesContextValue} */ ({
+    figures: markFigures ? figureSources : null,
+    onOpenStep: canOpenFigureStep ? (stepId) => openFigureStepRef.current?.(stepId) : null,
+    onViewFile: canViewFigureFile ? (source) => viewFigureFileRef.current?.(source) : null,
+  }), [markFigures, figureSources, canOpenFigureStep, canViewFigureFile]);
   // Only run the form-fence normalization pass when forms are enabled.
   // User messages bypass it so a typed ```data-vault-form block stays
   // a normal fenced code block instead of getting auto-tidied for the
@@ -625,10 +711,9 @@ export function MarkdownContent({
       const source = variant === 'user' ? _dedentUserText(text) : text;
       const merged = isAssistant ? _mergeInlineCodeLines(source) : source;
       const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
-      const withEngrams = _renderEngramComments(formNormalized);
       // Applied to every variant so a formula pasted into the composer
       // renders too — not just assistant output.
-      return _normalizeMathDelimiters(withEngrams);
+      return _normalizeMathDelimiters(formNormalized);
     },
     [text, enableForms, isAssistant, variant],
   );
@@ -646,6 +731,8 @@ export function MarkdownContent({
     () => [
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
+      ...(markFigures ? [[remarkFigureSources, { figures: figureSources, text }]] : []),
+      remarkHtmlComments,
       [remarkSkillMentions, skillNames],
       // Loopback neutralisation is scoped to AGENT output on web —
       // a user typing http://localhost:3000 in their own turn, or a Markdown
@@ -658,7 +745,7 @@ export function MarkdownContent({
       // Last, so every transform above sees the unchanged tree.
       ...(softBreaks ? [remarkSoftBreaks] : []),
     ],
-    [skillNames, neutralizeLoopback, softBreaks],
+    [skillNames, neutralizeLoopback, softBreaks, markFigures, figureSources, text],
   );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
@@ -749,6 +836,7 @@ export function MarkdownContent({
         variant={variant}
         enableForms={enableForms}
         enableCharts={enableCharts}
+        overflowCue={codeOverflowCue}
         {...props}
       />
     ),
@@ -780,14 +868,14 @@ export function MarkdownContent({
     ),
     a: (props) => {
       const href = props.href || '';
-      // Engram metadata chip — see _renderEngramComments above. We
+      // Engram metadata chip — see remarkHtmlComments above. We
       // intercept the synthetic `engram:` href and render a small
       // pill instead of a link. Keying off the URL scheme keeps real
       // links untouched.
       if (href.startsWith('engram:')) {
         return (
           <span
-            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-[10.5px] font-mono text-ink-3 leading-[1.4] no-underline"
+            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-xs text-ink-3 leading-[1.4] no-underline"
             // Strip the children's <a> wrapper styling — react-markdown
             // hands us the linkified text as plain text children, so
             // we render straight into the chip.
@@ -838,6 +926,14 @@ export function MarkdownContent({
         </a>
       );
     },
+    'anton-figure': ({ node, children, ...rest }) => (
+      <FigureSourceMark index={Number(rest['data-figure'])}>{children}</FigureSourceMark>
+    ),
+    ...(loadImage ? {
+      img: ({ src, alt, title }) => (
+        <MarkdownImage src={src} alt={alt} title={title} loadImage={loadImage} />
+      ),
+    } : {}),
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
@@ -866,10 +962,11 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, codeOverflowCue, animateStreamingWords, loadImage]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
+      <FigureSourcesContext.Provider value={figureContext}>
       <Markdown
         remarkPlugins={remarkPlugins}
         // rehypeKatex runs AFTER rehypeSanitize: sanitize keeps the
@@ -882,9 +979,11 @@ export function MarkdownContent({
           [rehypeKatex, _KATEX_OPTIONS],
         ]}
         components={components}
+        urlTransform={_markdownUrlTransform}
       >
         {normalized || ''}
       </Markdown>
+      </FigureSourcesContext.Provider>
     </div>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   commit: vi.fn(),
   setGitIdentity: vi.fn(),
   updateProject: vi.fn(),
+  updateSession: vi.fn(),
   projectsLoad: vi.fn(async () => {}),
   projectsReplace: vi.fn(),
   projectsSetSelectedId: vi.fn(),
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   composerRender: vi.fn(),
   trackBillingOpened: vi.fn(),
   openCodeExternalUrl: vi.fn(async () => true),
+  create: vi.fn(),
 }));
 
 const credentialListeners = vi.hoisted(() => new Set<() => void>());
@@ -65,6 +67,8 @@ vi.mock('./api', () => ({
     commit: mocks.commit,
     setGitIdentity: mocks.setGitIdentity,
     updateProject: mocks.updateProject,
+    create: mocks.create,
+    updateSession: mocks.updateSession,
   },
   openCodingEventStream: vi.fn(() => () => {}),
   codingErrorCode: (reason: unknown) => (reason instanceof Error ? (reason as Error & { code?: string }).code : undefined),
@@ -83,23 +87,37 @@ vi.mock('./CodeCommandPalette', async (importOriginal) => {
 });
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
-  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview }: {
+  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview, onOpenControls }: {
     onDelete: () => void;
     onStatus: () => void;
     onToggleReview: () => void;
+    onOpenControls: () => void;
     onRunProjectAction: (action: { id: string; label: string; resource_id: string; resource_name: string; command: string; preview: boolean }) => void;
   }) => (
     <>
       <button type="button" onClick={onDelete}>Delete menu action</button>
       <button type="button" onClick={onStatus}>Status menu action</button>
       <button type="button" onClick={onToggleReview}>Review menu action</button>
+      <button type="button" onClick={onOpenControls}>Task controls menu action</button>
       <button type="button" onClick={() => onRunProjectAction({
         id: 'preview', label: 'Start preview', resource_id: 'resource-1', resource_name: 'App', command: 'npm run dev', preview: true,
       })}>Run project action</button>
     </>
   ),
 }));
-vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
+vi.mock('./NewTaskPanel', () => ({
+  NewTaskPanel: ({ error, onCreate, onConnectMindsHub }: {
+    error: string;
+    onCreate: (input: object) => Promise<void>;
+    onConnectMindsHub?: () => Promise<void>;
+  }) => (
+    <div data-testid="new-task-panel" data-error={error}>
+      New task panel
+      <button type="button" onClick={() => void onCreate({ path: '/work/app', prompt: 'Fix it', attachments: [] })}>Create stub</button>
+      {onConnectMindsHub && <button type="button" onClick={() => void onConnectMindsHub()}>Connect MindsHub stub</button>}
+    </div>
+  ),
+}));
 vi.mock('./useCodeProjects', () => ({
   useCodeProjects: () => ({
     projects: [{
@@ -317,6 +335,20 @@ describe('CodeView session-list reconciliation', () => {
     expect(props.onSelectionChange).toHaveBeenCalledWith('existing', false);
     expect(mocks.cancel).not.toHaveBeenCalled();
     expect(mocks.turn).not.toHaveBeenCalled();
+  });
+
+  it('clears the refused-task error once the user connects MindsHub', async () => {
+    mocks.create.mockRejectedValueOnce(new Error('MindsHub is not connected. Sign in or configure a MindsHub API key first.'));
+    const onConnectMindsHub = vi.fn(async () => {});
+    renderCode({ newTask: true, onConnectMindsHub });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create stub' }));
+    const panel = screen.getByTestId('new-task-panel');
+    await waitFor(() => expect(panel).toHaveAttribute('data-error', expect.stringMatching(/^MindsHub is not connected/)));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect MindsHub stub' }));
+
+    await waitFor(() => expect(panel).toHaveAttribute('data-error', ''));
+    expect(onConnectMindsHub).toHaveBeenCalledTimes(1);
   });
 
   it('creates a draft with the browsed project selected', async () => {
@@ -697,6 +729,20 @@ describe('CodeView session-list reconciliation', () => {
     expect(await screen.findByText('The task computer did not acknowledge the stop request.')).toBeInTheDocument();
     expect(mocks.cancel).toHaveBeenCalledWith(active.id);
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
+  });
+
+  it('reports a rejected task settings update in the modal only and keeps it open', async () => {
+    const user = userEvent.setup();
+    mocks.updateSession.mockRejectedValueOnce(new Error('Stop the task terminal before changing task controls'));
+    renderCode({ sessions: [session('task-1')], selectedId: 'task-1' });
+
+    await user.click(screen.getByRole('button', { name: 'Task controls menu action' }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Stop the task terminal before changing task controls')).toBeInTheDocument();
+    expect(screen.getAllByText('Stop the task terminal before changing task controls')).toHaveLength(1);
+    expect(dialog).toBeInTheDocument();
   });
 
   it('does not present a local folder as a warning just because it is not a Git repository', async () => {

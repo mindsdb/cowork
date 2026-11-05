@@ -1,0 +1,53 @@
+# Test data for the artifact click surfaces. Read by artifactSurfaces.test.js,
+# artifactKinds.test.js, ChatView.artifactCard.test.jsx,
+# WorkingFolderLive.test.jsx and ArtifactsView.noPreview.test.jsx.
+
+# Files that render an artifact. Each must call the shared click gates rather
+# than decide on its own. Paths are relative to src/renderer.
+surfaces:
+  - name: artifacts panel (grid + list)
+    file: cowork/views/ArtifactsView.jsx
+  - name: inline chat card
+    file: cowork/views/ChatView.jsx
+  - name: rail working-folder list
+    file: cowork/components/rail/WorkingFolderLive.jsx
+
+# The helpers a surface asks. A surface that names one must call it.
+gates:
+  - artifactOpenTarget
+  - isArtifactActionAvailable
+
+# Where a click on an artifact lands, grouped by the component that renders it.
+clickSurfaces:
+  chatCard: [card body, card title]
+  artifactsBox: [row]
+  liveArtifacts: [grid card, list row]
+
+# The web hosts a click runs on. Both download a file with no preview and then
+# show the note.
+webModes: [local web, org web]
+
+# The Live Artifacts menu item that opens the viewer on a document the gate
+# allows, per surface and web host. A local-web list row has no Preview item:
+# its Open item runs the same click.
+liveArtifactsPreviewItem:
+  grid card: { local web: Preview, org web: Preview }
+  list row: { local web: Open, org web: Preview }
+
+# Files the viewer has no preview for, with or without a renderer build.
+noPreviewExtensions: [.zip, .parquet, .json, .doc, .ppt, .xlsm]
+
+# Files that preview once their renderer is in the build and the shell
+# supports the document frame.
+documentPreviewExtensions: [.xlsx, .docx, .pptx, .pdf]
+
+# Fullstack app types. Their primary file is only the app's shell
+# static/index.html, so no surface offers it as a download or shows the note.
+fullstackAppTypes: [fullstack-stateless-app, fullstack-stateful-app]
+
+# On web, the files a surface opens in a browser tab, and the ones it keeps out
+# of a tab. A tab saves an Office file, an archive or a .csv (Chrome saves a
+# text/csv response) without a word.
+browserTab:
+  opens: [.html, .png, .svg, .md, .txt, .pdf]
+  withheld: [.csv, .xlsx, .docx, .pptx, .zip, .parquet, .json, .doc, .ppt, .xlsm]

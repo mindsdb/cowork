@@ -1,3 +1,7 @@
+import { diagnostic } from '../../shared/diagnostics';
+import { PLATFORM_UI } from '../lib/deployment';
+import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
+import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // API client — talks to the FastAPI backend at /v1/*.
 // The origin comes from the host abstraction: packaged Electron addresses
 // the loopback server on the per-OS-user port main resolved (ENG-439); Vite
@@ -6,6 +10,7 @@
 
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { isAntonConfigError } from './lib/antonErrors';
+import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
@@ -13,7 +18,14 @@ import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
+import { liveAppStatesFrom } from './lib/liveAppState';
+import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { SHARING_OFF } from './lib/orgSharing';
+import {
+  MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
+} from './lib/sharingContract';
 import {
   expectedOrganizationHeaders,
   handleOrganizationBoundaryResponse,
@@ -30,6 +42,22 @@ const API_ORIGIN = host.getApiOrigin();
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
+/* Settles with `promise`, or rejects with the abort reason, as fetch does,
+   once `signal` aborts first. A request's own deadline or Stop then also
+   covers the wait for its access token, which a stalled Keycloak refresh can
+   hold. */
+function _untilAborted(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 // Thin wrapper around fetch() for server calls.
 //
 // Web: attach the Keycloak access token as `Authorization: Bearer` so the
@@ -43,7 +71,7 @@ const ROOT_BASE = `${API_ORIGIN}`;
 // Keycloak token, so nothing is attached here.
 export async function authFetch(url, options = {}) {
   if (host.isWeb) {
-    const token = await host.getAccessToken();
+    const token = await _untilAborted(host.getAccessToken(), options.signal);
     if (token) {
       options = {
         ...options,
@@ -62,13 +90,15 @@ export async function authFetch(url, options = {}) {
   return response;
 }
 
-// Opt-in bound for a plain JSON request, so a dead server (a proxy holding
-// the socket open with nothing behind it) can't hang a caller forever. Only
-// callers on the "server may be dead" path opt in (Stop's cancelResponse,
-// the history reload after Stop/error) — everything else stays unbounded,
-// since some endpoints have their own longer server-side budget (e.g.
-// connector validation allows 15s). Streaming calls use authFetch directly
-// and manage their own longer-lived idle timeout (see _streamResponse/tailInFlight).
+/* Opt-in bound for a plain JSON request, so a dead server (a proxy holding
+   the socket open with nothing behind it) can't hang a caller forever. Only
+   callers on the "server may be dead" path opt in (Stop's cancelResponse and
+   cancelScratchpad, the history reload after Stop/error, the health check
+   every send waits on). Everything else stays unbounded, since some endpoints
+   have their own longer server-side budget (e.g. connector validation allows
+   15s). Streaming calls use authFetch directly and manage their own
+   longer-lived idle timeout (see _streamResponse, tailInFlight and
+   streamDataVaultSubmission). */
 export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
 
 function _timeoutSignal(existingSignal, timeoutMs) {
@@ -86,21 +116,9 @@ async function req(path, { timeoutMs, ...options } = {}) {
       signal,
       headers: { 'Content-Type': 'application/json', ...options.headers },
     });
-    if (!res.ok) {
-      let detail = '';
-      try {
-        const data = await res.json();
-        const raw = data?.detail;
-        detail = Array.isArray(raw)
-          ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
-          : (raw || data?.message || '');
-      } catch {
-        detail = await res.text().catch(() => '');
-      }
-      const err = new Error(detail || `API ${path} returned ${res.status}`);
-      err.status = res.status;  // let callers branch on the HTTP code (e.g. 404 fallbacks)
-      throw err;
-    }
+    /* responseError carries err.status, so callers can branch on the HTTP
+       code (e.g. 404 fallbacks). */
+    if (!res.ok) throw await responseError(res, `API ${path} returned ${res.status}`);
     if (res.status === 204) return { ok: true };
     return await res.json();
   } finally {
@@ -165,15 +183,68 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
   return promise;
 }
 
+/**
+ * A refused request, with what its body and headers said about it.
+ * @typedef {Error & {
+ *   status: number,
+ *   code: string|null,
+ *   retry_after: number|null,
+ *   retry_at: string|null,
+ *   body: Record<string, unknown>|null,
+ * }} RefusalError
+ */
+
+/**
+ * What a stream's onError gets beside its message. A response.failed frame
+ * arrives whole, so any other field the server sends rides along too.
+ * @typedef {object} StreamFailure
+ * @property {string} [code] Why the turn ended: a wire code such as
+ *   server_busy, or api.js's own stalled, interrupted, stream_error or
+ *   reconnect_error.
+ * @property {string} [type] `response.failed` when the server ended the turn.
+ * @property {string} [user_message_id] The question's id, from this stream's
+ *   response.created.
+ * @property {number} [http_status] The status of a question refused before
+ *   the stream. Present only on such a refusal.
+ * @property {number|null} [retry_after] Seconds the server asked to wait.
+ * @property {string|null} [retry_at] When that wait ends, as an offset-bearing
+ *   ISO 8601 instant.
+ * @property {string} [reset_at] When a spent allowance refills.
+ * @property {string} [request_id] The server's id for the failed request.
+ * @property {boolean} [reconnectable] The credential is MindsHub's, so
+ *   signing in again fixes it.
+ * @property {string} [provider_label] The model provider's display name.
+ * @property {string} [model] The model the failed turn asked for.
+ */
+
+/**
+ * Builds the Error a refused request throws. The message is the body's
+ * sentence, else the caller's fallback. status, code, retry_after and retry_at
+ * let a caller tell a busy server from a turn already running, and wait as
+ * long as the server asked. The body is read once, as text, and parsed from
+ * there: reading it as JSON first would consume it, and a body that isn't JSON
+ * would then have no text left to show.
+ *
+ * @param {Response} res
+ * @param {string} fallback
+ * @returns {Promise<RefusalError>}
+ */
 async function responseError(res, fallback) {
-  let detail = '';
+  let text = '';
   try {
-    const data = await res.json();
-    detail = data?.detail || data?.message || '';
+    text = await res.text();
   } catch {
-    detail = await res.text().catch(() => '');
+    /* An unreadable body leaves the fallback. */
   }
-  return new Error(detail || fallback);
+  const { message, code } = readRefusalBody(text);
+  const { retry_after, retry_at } = readRetryAfter(res.headers?.get?.('Retry-After'));
+  const err = /** @type {RefusalError} */ (new Error(message || fallback));
+  err.status = res.status;
+  err.code = code;
+  err.retry_after = retry_after;
+  err.retry_at = retry_at;
+  err.body = readRefusalObject(text);
+  return err;
 }
 
 // ─── Health ──────────────────────────────────────────────────────────────────
@@ -183,9 +254,13 @@ async function responseError(res, fallback) {
 // every health read passes through. Same shape as the `cacheSettings` call
 // below — a lib-level setter written from the transport layer.
 // `setAntonInstallId` self-gates to desktop.
-export async function fetchHealth() {
+export async function fetchHealth({ timeoutMs } = {}) {
   try {
-    const health = await rootReq('/api/v1/health');
+    /* Bounded, because every send waits on this check first: a server that
+       holds the request open would otherwise leave Send busy with no message.
+       A timeout reads as offline, the same answer as any other failure. The
+       Updates panel passes its own, longer bound (ENG-3291). */
+    const health = await rootReq('/api/v1/health', { timeoutMs: timeoutMs ?? SHORT_REQUEST_TIMEOUT_MS });
     // Isolated: analytics must never decide whether the server looks healthy.
     // This sits inside fetchHealth's try, so an exception here would fall to the
     // catch below and report `status: 'offline'` — making an analytics failure
@@ -248,8 +323,8 @@ function _failedEventMeta(events) {
 }
 
 // Replay the server-persisted SSE event log through the live stream
-// reducer to reconstruct `steps` + `startedAt` for each assistant
-// turn. The server saves raw events in a sidecar file and returns
+// reducer to reconstruct `steps`, `startedAt` and `figureSources` for each
+// assistant turn. The server saves raw events in a sidecar file and returns
 // them inline on `/conversations/{id}/items`; doing the replay
 // here keeps reducer logic single-source (lib/responseStreamAdapter).
 function _hydrateAssistantEvents(messages) {
@@ -272,7 +347,9 @@ function _hydrateAssistantEvents(messages) {
       ...(state.steps?.length > 0
         ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
         : {}),
+      ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
+      ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
@@ -301,7 +378,7 @@ function _hydrateAssistantEvents(messages) {
   return out;
 }
 
-function _conversationToTask(conv, messages = []) {
+function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
   // Server stores conversations under <project>/.anton/episodes/ and
   // returns the project NAME on each conversation meta. We carry both:
   //   projectName — the canonical id from the server
@@ -313,12 +390,15 @@ function _conversationToTask(conv, messages = []) {
   // the replay at the api boundary so the rest of the app sees a
   // consistent message shape regardless of whether the data came from
   // a fresh stream or a server reload.
+  // The server does not store a chat's mutes, so the field is normally absent.
+  // Leave it undefined then: an empty list would read as "no mutes" and wipe
+  // the ones the chat's last send recorded locally.
   const rawDisabled = conv.disabled_connections ?? conv.disabledConnections;
   const disabledConnections = Array.isArray(rawDisabled)
     ? rawDisabled
       .filter((x) => x && typeof x.engine === 'string' && typeof x.name === 'string')
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
-    : [];
+    : undefined;
 
   return {
     id: conv.id,
@@ -326,6 +406,13 @@ function _conversationToTask(conv, messages = []) {
     subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
+    // 'loading' until a real fetch resolves — every sidebar-listed
+    // task is built with an empty placeholder array before that happens, so
+    // the loading gate needs this to distinguish "not fetched yet" from
+    // "genuinely empty". Callers that hand over messages from a real fetch
+    // (fetchSession/fetchSessionResult) rely on the 'loaded' default; the
+    // conversation-list caller (fetchSessions) passes 'loading' explicitly.
+    messagesStatus,
     projectName: conv.project || null,
     projectId: conv.project_id || null,
     projectPath: conv.project_path || null,
@@ -381,6 +468,40 @@ export async function createConversation({ project, projectId, topic, harness, m
  * "deliberately not in scope" for why the depth is left alone. */
 const EAGER = 50;
 
+/** How many of those warm-up reads run at once. Every page load warms, so
+ * firing all 50 together turned each reload into a 50-request burst; one
+ * browser reloading staging up to 13 times a minute starved cowork-server's
+ * single process with them. A reload drops the reads still queued,
+ * so at most this many reach the server per load. */
+const WARM_CONCURRENCY = 4;
+
+/** Default page size for the paginated /items envelope. Matches
+ * the server's own default so the two agree without either side needing to
+ * repeat the number. */
+const MESSAGE_PAGE_LIMIT = 50;
+
+function _itemsPath(id, { limit, before } = {}) {
+  const params = new URLSearchParams();
+  if (limit != null) params.set('limit', String(limit));
+  if (before) params.set('before', before);
+  const qs = params.toString();
+  return `/conversations/${encodeURIComponent(id)}/items${qs ? `?${qs}` : ''}`;
+}
+
+/** Normalizes a /items response into one shape regardless of which branch
+ * the server took: the bare (unbounded) list — from a call with no params,
+ * or a version-skewed server during a rolling deploy — or the paginated
+ * envelope. Every caller that requests a page reads this instead of
+ * checking Array.isArray itself, so the envelope is never silently read as
+ * an empty transcript. */
+function _pageFromItemsResponse(raw) {
+  if (Array.isArray(raw)) return { items: raw, hasMore: false, nextBefore: null };
+  if (raw && Array.isArray(raw.items)) {
+    return { items: raw.items, hasMore: !!raw.hasMore, nextBefore: raw.nextBefore ?? null };
+  }
+  return { items: [], hasMore: false, nextBefore: null };
+}
+
 /** Resolves as soon as the conversation LIST lands — one request. Everything
  * the sidebar renders comes from that response (`_conversationToTask` reads
  * `messages` for nothing but `messages`), so waiting on the per-conversation
@@ -405,9 +526,11 @@ export async function fetchSessions({ onItems } = {}) {
   }
   if (conversations.length === 0) return [];
 
-  // Background: fire-and-forget, one callback per conversation as it lands.
-  // Failures are per-conversation and silent — a warm-up that misses costs a
-  // slower open, never a blocked list.
+  // Background: not awaited, one callback per conversation as it lands, at
+  // most WARM_CONCURRENCY reads in flight. A finished read starts the next.
+  // A failed one stops the warm-up: a server that could not answer one
+  // transcript will not answer the rest faster, and a warm-up that misses
+  // costs a slower open, never a blocked list.
   //
   // Only warmed when a caller is actually listening. Seven of the eight
   // `fetchSessions` call sites want the list and nothing else (every task
@@ -415,16 +538,36 @@ export async function fetchSessions({ onItems } = {}) {
   // every one away, which is 50 wasted requests on the app's most common
   // interaction.
   if (onItems) {
-    for (const c of conversations.slice(0, EAGER)) {
-      req(`/conversations/${encodeURIComponent(c.id)}/items`)
-        // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
-        // through _conversationToTask, so they got _hydrateAssistantEvents —
-        // which replays `events` into steps/startedAt and appends the synthetic
-        // `error` / `provider_required` message a failed turn renders its card
-        // from. Handing over the raw array silently dropped both.
-        .then((r) => onItems(c.id, _hydrateAssistantEvents(Array.isArray(r) ? r : [])))
+    const queue = conversations.slice(0, EAGER);
+    const warmNext = () => {
+      const c = queue.shift();
+      if (!c) return;
+      // Bounded like every other transcript fetch. Warming the FULL history of
+      // the 50 most recent conversations moved the unbounded fetch from
+      // task-open to startup rather than removing it — and it pre-filled a long
+      // conversation so completely that neither the loading state nor
+      // "load earlier" ever engaged for the tasks most likely to be opened.
+      req(_itemsPath(c.id, { limit: MESSAGE_PAGE_LIMIT }))
+        .then(
+          // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
+          // through _conversationToTask, so they got _hydrateAssistantEvents —
+          // which replays `events` into steps/startedAt and appends the synthetic
+          // `error` / `provider_required` message a failed turn renders its card
+          // from. Handing over the raw array silently dropped both.
+          (r) => {
+            warmNext();
+            const page = _pageFromItemsResponse(r);
+            onItems(c.id, _hydrateAssistantEvents(page.items), {
+              hasMoreMessages: page.hasMore,
+              messagesCursor: page.nextBefore,
+            });
+          },
+          () => { queue.length = 0; },
+        )
+        // An onItems error stays silent, as before; the next read has started.
         .catch(() => {});
-    }
+    };
+    for (let i = 0; i < WARM_CONCURRENCY; i += 1) warmNext();
   }
 
   // Guarded: the outer try/catch that used to wrap this whole function is gone,
@@ -435,12 +578,12 @@ export async function fetchSessions({ onItems } = {}) {
     .filter((c) => c && typeof c === 'object')
     .map((c) => {
       try {
-        return _conversationToTask(c, []);
+        return _conversationToTask(c, [], { messagesStatus: 'loading' });
       } catch (err) {
         // Dropping it beats stranding the whole list, but a conversation that
         // silently vanishes from the sidebar is un-diagnosable without this.
         // eslint-disable-next-line no-console
-        console.warn('[fetchSessions] skipped a malformed conversation row', c?.id, err);
+        diagnostic("renderer.cowork.api", "WARNING", "fetchsessions_skipped_a_malformed_conversation_row", '[fetchSessions] skipped a malformed conversation row', c?.id, err);
         return null;
       }
     })
@@ -449,14 +592,36 @@ export async function fetchSessions({ onItems } = {}) {
 
 export async function fetchSession(id, { timeoutMs } = {}) {
   try {
-    const [meta, msgs] = await Promise.all([
+    const [meta, raw] = await Promise.all([
       req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }).catch(() => null),
-      req(`/conversations/${encodeURIComponent(id)}/items`, { timeoutMs }).catch(() => null),
+      req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }).catch(() => null),
     ]);
     // A failed transcript read is unavailable, not an empty conversation.
     // Recovery must keep the visible transcript and its interruption notice.
-    if (!meta || !Array.isArray(msgs)) return null;
-    return _conversationToTask(meta, msgs);
+    if (!meta || !(Array.isArray(raw) || Array.isArray(raw?.items))) return null;
+    const page = _pageFromItemsResponse(raw);
+    return {
+      ..._conversationToTask(meta, page.items),
+      hasMoreMessages: page.hasMore,
+      messagesCursor: page.nextBefore,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Fetches the next OLDER page for a conversation already showing its most
+ * recent one — the "load earlier messages" affordance. `cursor` is the
+ * `messagesCursor`/`nextBefore` the previous page returned; the caller
+ * merges the result in ahead of what it already has (see
+ * lib/mergeMessagePage.js). Returns `null` on failure — same "caller
+ * decides how to degrade" convention as fetchSession. */
+export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
+  if (!cursor) return null;
+  try {
+    const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }), { timeoutMs });
+    const page = _pageFromItemsResponse(raw);
+    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
   } catch {
     return null;
   }
@@ -471,12 +636,16 @@ export async function fetchSession(id, { timeoutMs } = {}) {
  * treated as an empty conversation on a 404 (the one benign case); any other
  * items failure is 'unavailable' so a real transcript is never silently blanked.
  *
+ * A `timeoutMs` that elapses aborts both requests and reads as 'unavailable'.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
  * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
  */
-export async function fetchSessionResult(id) {
+export async function fetchSessionResult(id, { timeoutMs } = {}) {
   const [metaRes, msgsRes] = await Promise.allSettled([
-    req(`/conversations/${encodeURIComponent(id)}`),
-    req(`/conversations/${encodeURIComponent(id)}/items`),
+    req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }),
   ]);
   if (metaRes.status === 'rejected') {
     const err = metaRes.reason;
@@ -493,8 +662,13 @@ export async function fetchSessionResult(id) {
       return { status: 'unavailable', code: (err && err.status) || 0 };
     }
   }
-  const msgs = msgsRes.status === 'fulfilled' && Array.isArray(msgsRes.value) ? msgsRes.value : [];
-  return { status: 'ok', task: _conversationToTask(metaRes.value, msgs) };
+  const page = msgsRes.status === 'fulfilled' ? _pageFromItemsResponse(msgsRes.value) : { items: [], hasMore: false, nextBefore: null };
+  const task = {
+    ..._conversationToTask(metaRes.value, page.items),
+    hasMoreMessages: page.hasMore,
+    messagesCursor: page.nextBefore,
+  };
+  return { status: 'ok', task };
 }
 
 /**
@@ -525,6 +699,7 @@ export function allocateConversationId() {
 // a dead connection open) aborts rather than hangs forever. Shared with
 // tailInFlight; timed against producer frames, not raw keepalive bytes.
 const STREAM_IDLE_TIMEOUT_MS = 300_000;
+const STALLED_STREAM_MESSAGE = 'The connection stalled. The answer may still be running. Wait for it to finish before sending again.';
 
 // Server-side ask_user deadline, for a frame that doesn't state its own.
 const ASK_USER_DEFAULT_TIMEOUT_S = 300;
@@ -547,6 +722,7 @@ function idleWindowAfter(msg, idleTimeoutMs) {
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
+  /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
     ...event,
     ...(userMessageId ? { user_message_id: userMessageId } : {}),
@@ -560,6 +736,20 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
   };
+  // MODEL_ROUTER_ID never leaves the renderer — it's how the
+  // composer represents "let this account's Settings decide"
+  // (modelCatalog.js). The server already treats a null/absent
+  // model as exactly that. With platform UI off, only the operator's
+  // picker (lib/modelPicker) sends a model, and App hands it only the
+  // models that picker offers. With it off, all callers use
+  // operator-configured role settings, including restored tasks.
+  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
+  // A per-task effort is available with platform UI on, and under the
+  // operator's picker for an effort it lets users pick on the model this
+  // question sends, a retried task's saved effort included. Omit the key
+  // otherwise so this request cannot override role settings.
+  const sendsEffort = Boolean(reasoningEffort)
+    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
   (async () => {
     try {
       bumpIdle();
@@ -568,22 +758,13 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: text,
-          // MODEL_ROUTER_ID never leaves the renderer — it's how the
-          // composer represents "let this account's Settings decide"
-          // (modelCatalog.js). The server already treats a null/absent
-          // model as exactly that.
-          model: (model && model !== MODEL_ROUTER_ID) ? model : null,
+          model: sentModel,
           // Always named. This UI only knows Anton, so every send says so
           // rather than lean on the account default, which an older server
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          // Per-task reasoning-effort override (ENG-1940) — takes precedence
-          // over the account-wide per-role effort setting for this turn only.
-          // Same conditional-key pattern as `harness` just above: omitted
-          // entirely when the caller doesn't pass one, so older servers and
-          // effort-less models never see the field.
-          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -601,7 +782,19 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         }),
         signal: ctrl.signal,
       });
-      if (!res.ok) throw await responseError(res, `Response stream failed (${res.status})`);
+      if (!res.ok) {
+        /* Refused before the stream, so no turn started. Keep what the server
+           said: its status, its code, such as server_busy or
+           turn_in_progress, and when to try again. */
+        const refusal = await responseError(res, `Response stream failed (${res.status})`);
+        reportError(refusal.message, {
+          code: refusal.code || 'stream_error',
+          http_status: refusal.status,
+          retry_after: refusal.retry_after,
+          retry_at: refusal.retry_at,
+        });
+        return;
+      }
 
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -680,12 +873,16 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       // that's a drop mid-read, this is a clean close with no terminal.
       reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
     } catch (err) {
-      // Mirrors tailInFlight's idle-timeout handling: our own abort surfaces
-      // as an AbortError too, so check idledOut first to tell it apart from
-      // a caller-initiated cancel (Stop button, new send, navigation).
+      /* Our own idle abort surfaces as an AbortError too, so check idledOut
+         first to tell it apart from a caller-initiated cancel (Stop button,
+         new send, navigation). */
       if (idledOut) {
-        cancelResponse(cid);
-        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        /* End this reader locally. Even after our response.created, its turn
+           may have finished behind a stalled connection and a newer turn may
+           now own the conversation. The cancel API names only a conversation,
+           so it cannot safely cancel the turn this reader remembers. The
+           server's idle watchdog ends a producer that stays stuck. */
+        reportError(STALLED_STREAM_MESSAGE, { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         // Distinct code from tailInFlight's reconnect_error: this is a dropped
         // connection on the initial send, not a reconnect attempt.
@@ -745,6 +942,7 @@ export function tailInFlight(conversationId, {
 } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
+  /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
     ...event,
     ...(userMessageId ? { user_message_id: userMessageId } : {}),
@@ -848,13 +1046,11 @@ export function tailInFlight(conversationId, {
       // caller-initiated abort (a new send or navigation) it must release the
       // slot — so report it as an error the reconnect's onError acts on.
       if (idledOut) {
-        // Tell the server to actually drop the wedged turn. Aborting the tail
-        // only tears down our consumer; the producer keeps running and the next
-        // in-flight poll would re-select it and reopen a fresh tail, looping this
-        // message. cancelResponse is idempotent and swallows errors, so
-        // fire-and-forget is safe.
-        cancelResponse(conversationId);
-        reportError('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
+        /* End only this tab's view of the turn. A tail watches whatever turn
+           is running in the conversation, which can be another tester's, and
+           a cancel would stop it for everyone. The server's idle watchdog
+           ends a turn that stays stuck. */
+        reportError(STALLED_STREAM_MESSAGE, { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
         reportError(err.message, { code: 'reconnect_error' });
       }
@@ -941,9 +1137,11 @@ export async function revealProjectInFinder(projectPath) {
 export async function cancelScratchpad(name) {
   if (!name) return null;
   try {
+    // Stop awaits this before it drops the stopped turn's queue and live row.
     return await req('/scratchpad/cancel', {
       method: 'POST',
       body: JSON.stringify({ name }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
     });
   } catch {
     // 404 = pad already gone, treat as success.
@@ -968,12 +1166,17 @@ export async function cancelScratchpad(name) {
 //   'error' — network error / 5xx: the request never reached the server, so the
 //             cancel flag was NOT written and the turn may still be running (and
 //             still spending tokens). Callers must NOT report this as success.
-export async function cancelResponse(conversationId) {
+//
+// `reason` says why the turn is being cancelled; the server saves a 'stalled'
+// cancel as a stall instead of a Stop, and an older server ignores the field.
+// No caller in this app sets it: Stop sends none, and an idle stall ends only
+// this tab's reader and sends no cancel at all.
+export async function cancelResponse(conversationId, { reason } = {}) {
   if (!conversationId) return { status: 'gone', conversation_id: conversationId };
   try {
     const res = await req('/responses/cancel', {
       method: 'POST',
-      body: JSON.stringify({ conversation_id: conversationId }),
+      body: JSON.stringify({ conversation_id: conversationId, ...(reason ? { reason } : {}) }),
       timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
     });
     return { status: 'ok', ...res };
@@ -1023,11 +1226,7 @@ export async function unpublishArtifact(path) {
     headers: { 'Content-Type': 'application/json' },
   });
   if (res.status === 404) return { status: 'gone' };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Unpublish failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Unpublish failed (${res.status})`);
   return res.json();
 }
 
@@ -1047,11 +1246,7 @@ export async function deleteArtifact(artifact) {
         typeof artifact === 'string' ? artifact : (artifact?.folder || artifact?.path || ''),
       )}`;
   const res = await authFetch(BASE + url, { method: 'DELETE' });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return { status: 'deleted' };
 }
 
@@ -1072,11 +1267,7 @@ export async function deleteProject(projectOrName) {
   });
   if (res.status === 404) return { status: 'gone', name };
   if (res.status === 204) return { status: 'deleted', name };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return res.json();
 }
 
@@ -1147,14 +1338,32 @@ export async function readProjectFile(projectName, path) {
   return req(`/projects/${enc(projectName)}/files/${safe}`);
 }
 
+export function listSharedProjectFiles(projectId) {
+  // Bounded so one hung request can't stall the access recheck that runs after it.
+  return req(`/shared-projects/${enc(projectId)}/files`, { cache: 'no-store', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function readSharedProjectFile(projectId, path) {
+  const safe = path.split('/').map(enc).join('/');
+  return req(`/shared-projects/${enc(projectId)}/files/${safe}`, { cache: 'no-store' });
+}
+
+export async function downloadSharedProjectFile(projectId, path) {
+  const safe = path.split('/').map(enc).join('/');
+  const response = await authFetch(`${BASE}/shared-projects/${enc(projectId)}/files-raw/${safe}`, { cache: 'no-store' });
+  if (!response.ok) throw await responseError(response, 'Download unavailable');
+  return response.blob();
+}
+
 // HTML preview-mount for a project file — server registers the
-// parent dir under a token and returns a relative URL the iframe
-// should load with `src=`. Mirrors the artifact preview flow.
+// parent dir under a token and returns `relUrl`, relative to BASE.
+// `url` is the absolute iframe `src`.
 export async function mountProjectFilePreview(projectName, path) {
-  return req(`/projects/preview-mount-file`, {
+  const data = await req(`/projects/preview-mount-file`, {
     method: 'POST',
     body: JSON.stringify({ name: projectName, path }),
   });
+  return { ...data, url: data?.relUrl ? `${BASE}${data.relUrl}` : '' };
 }
 
 // Absolute URL for downloading a project file's raw bytes. Server
@@ -1172,11 +1381,7 @@ export async function writeProjectFile(projectName, path, content) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: content || '' }),
   });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Write failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Write failed (${res.status})`);
   return res.json();
 }
 
@@ -1190,11 +1395,7 @@ export async function uploadProjectFiles(projectName, files) {
     method: 'POST',
     body: form,
   });
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Upload failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
   return res.json();
 }
 
@@ -1204,11 +1405,7 @@ export async function deleteProjectFile(projectName, path) {
     method: 'DELETE',
   });
   if (res.status === 404) return { status: 'gone', path };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   return res.json();
 }
 
@@ -1362,12 +1559,6 @@ export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
-// Convert a document artifact (markdown/HTML) to pdf|docx|html. The server
-// writes the result into the same artifact folder and returns its path.
-export async function exportArtifact(path, format) {
-  return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
-}
-
 // Absolute "private" URL for an artifact's primary file: the
 // origin-relative `/v1/artifacts/serve/...` endpoint made absolute
 // against the current API origin. In the web build this is the
@@ -1393,7 +1584,7 @@ export async function openArtifactFile(artifact) {
     const url = artifactServeUrl(artifact) || artifact?.publishedUrl || '';
     if (!url) return { ok: false, reason: 'no-serve-url' };
     try { await host.openExternal(url); }
-    catch { window.open(url, '_blank', 'noreferrer'); }
+    catch { return { ok: false, reason: 'open-failed' }; }
     return { ok: true };
   }
   return openArtifact(artifact?.path || '');
@@ -1471,6 +1662,7 @@ async function hubHeaders() {
  * caller decides how many times to ask again.
  */
 export async function fetchHubWorkspaces() {
+  if (!PLATFORM_UI) return { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
   try {
     const data = await req('/hub/workspaces/', { headers: await hubHeaders() });
     if (data && typeof data === 'object') return data;
@@ -1489,6 +1681,7 @@ export async function fetchHubWorkspaces() {
  * three apart.
  */
 export async function setActiveHubWorkspace(workspaceId) {
+  if (!PLATFORM_UI) throw new Error('Workspace switching is unavailable.');
   return req('/hub/workspaces/active', {
     method: 'PUT',
     headers: await hubHeaders(),
@@ -1503,6 +1696,7 @@ export async function setActiveHubWorkspace(workspaceId) {
  * the composer notice and Settings tab render nothing for it.
  */
 export async function fetchHubUsage() {
+  if (!PLATFORM_UI) return { reachable: false };
   try {
     const data = await req('/hub/usage/', { headers: await hubHeaders() });
     if (data && typeof data === 'object') return data;
@@ -1725,6 +1919,25 @@ export async function deleteMemory(payload) {
   return req('/memory/', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
+/* Whether the server removes the caller's whole memory in one step. A server
+   without the route answers 404 or 405, which means it offers no reset; any
+   other failure is the caller's to report. */
+export async function fetchMemoryCapabilities() {
+  try {
+    const capabilities = await req('/memory/capabilities');
+    return { canReset: capabilities?.canReset === true };
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return { canReset: false };
+    throw err;
+  }
+}
+
+/* Removes all of the caller's learned memory: their profile, rules and
+   lessons, in every project of theirs. */
+export async function resetMemory() {
+  return req('/memory/all', { method: 'DELETE' });
+}
+
 export async function fetchSkills() {
   return req('/skills/');
 }
@@ -1736,12 +1949,230 @@ export async function saveSkill(payload, isEdit = false) {
   return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function uploadSkillFile(file) {
+/* `shared` is the create-time "Who can use it" answer. The form field goes
+   out only when the caller passes a boolean, so a caller that never asks
+   leaves it to the server's default, Only me. */
+export async function uploadSkillFile(file, { shared } = {}) {
   const form = new FormData();
   form.append('file', file, file.name);
+  if (typeof shared === 'boolean') form.append('shared', shared ? 'true' : 'false');
   const res = await authFetch(BASE + '/skills/upload', { method: 'POST', body: form });
   if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
   return res.json();
+}
+
+/* Turns a skill on or off for the caller alone. Any skill the caller can
+   see takes it, a built-in included; the skill's own `enabled` (on or off
+   for everyone) is untouched. Answers the updated skill. */
+export async function setSkillEnabledForMe(slug, enabled) {
+  return req(`/skills/${encodeURIComponent(slug)}/me`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled: enabled === true }),
+  });
+}
+
+/* Shares the caller's own skill with everyone, read-only, or stops sharing
+   it. The refusal's sentence comes back as the error message. */
+export async function setSkillSharing(label, shared) {
+  return req(`/skills/${encodeURIComponent(label)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify({ shared: shared === true }),
+  });
+}
+
+/* What sharing inside the org allows the caller, in MindsHub mode
+   (lib/sharingContract's SharingCapabilities). `enabled: false` is every
+   other build, and the sharing UI stays hidden there. A server without the
+   route answers 404 and reads the same. */
+export async function fetchSkillSharingCapabilities() {
+  try {
+    const data = await req('/skills/sharing-capabilities');
+    if (!data || typeof data !== 'object') return SHARING_OFF;
+    return readSharingCapabilities(data);
+  } catch (err) {
+    if (err?.status === 404) return SHARING_OFF;
+    throw err;
+  }
+}
+
+/* Sets who a skill reaches: everyone in the org, teams by id, people in the
+   org by user id. An empty audience is Only me. `always_on` makes a skill
+   shared with everyone or a team part of every task. The route keeps any
+   field left out, so someone who may switch only `always_on` sends it alone:
+   the people are listed only to the owner or an admin, and an empty list
+   from anyone else would read as removing them. The body comes from
+   lib/sharingContract's skillAccessRequest or skillAlwaysOnRequest. A refusal (400/403) throws
+   with the server's `detail` as its message. */
+export async function setSkillAccess(slug, access) {
+  return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify(access),
+  });
+}
+
+/* A MindsHub read's answer when it got none: `reachable` false, and
+   `failure` saying why (lib/sharingContract's MINDSHUB_ERROR_CODE). A 200
+   with `reachable: false` is cowork-server saying MindsHub couldn't be asked;
+   a refusal or a throttle comes as its own error code (readMindsHubFailure). */
+const MINDSHUB_NOT_ASKED = Object.freeze({ reachable: false, failure: MINDSHUB_ERROR_CODE.UNREACHABLE });
+const mindsHubReadFailed = (err) => ({ reachable: false, failure: readMindsHubFailure(err) });
+
+/* The caller's teams in the MindsHub org. `reachable: false` when MindsHub
+   gave no answer, so the picker can say why (`failure`) rather than show no
+   teams. This read and the two people reads below send no
+   X-MindsHub-Authorization (README, "The MindsHub hub routes", says why). */
+export async function fetchMindsHubTeams() {
+  try {
+    const data = await req('/hub/teams/');
+    if (data?.reachable === false) return { ...MINDSHUB_NOT_ASKED, teams: [] };
+    const teams = Array.isArray(data?.teams)
+      ? data.teams
+        .filter((team) => team && typeof team.id === 'string' && team.id)
+        .map((team) => ({
+          id: team.id,
+          display_name: mindsHubTeamName(team),
+          // The org's default "All members" team, which the server maps to
+          // sharing with everyone: the pickers leave it out for "Everyone at
+          // ‹org›".
+          is_default: team.isDefault === true,
+        }))
+      : [];
+    return { reachable: true, failure: null, teams };
+  } catch (err) {
+    return { ...mindsHubReadFailed(err), teams: [] };
+  }
+}
+
+/* A team's name to show; a raw id is never shown. */
+const UNNAMED_TEAM = 'Unnamed team';
+
+function mindsHubTeamName(team) {
+  const name = team.displayName;
+  return typeof name === 'string' && name.trim() ? name.trim() : UNNAMED_TEAM;
+}
+
+/* One person as MindsHub sends them, or null without an id. The id is what
+   sharing stores (`allowed_user_ids`); the name and email only label a row. */
+function mindsHubPerson(person) {
+  if (!person || typeof person.id !== 'string' || !person.id) return null;
+  const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
+  const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
+  return { id: person.id, name, email };
+}
+
+/* Everyone in the caller's active MindsHub org, read once so the recipient
+   picker can list and filter them locally (`GET /hub/people/`). MindsHub
+   caps the list; `truncated` says there are more than it sent. Parsed
+   tolerantly: a bare array is taken as the people, and any answer with no
+   list at all reads as unreachable, so the picker offers Retry. `failure`
+   says why there is no list. */
+export async function fetchMindsHubDirectory() {
+  try {
+    const data = await req('/hub/people/');
+    const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
+    if (!raw || data?.reachable === false) return { ...MINDSHUB_NOT_ASKED, people: [], truncated: false };
+    const seen = new Set();
+    const people = [];
+    for (const entry of raw) {
+      const person = mindsHubPerson(entry);
+      if (!person || (!person.email && !person.name) || seen.has(person.id)) continue;
+      seen.add(person.id);
+      people.push(person);
+    }
+    return { reachable: true, failure: null, people, truncated: data?.truncated === true };
+  } catch (err) {
+    return { ...mindsHubReadFailed(err), people: [], truncated: false };
+  }
+}
+
+/* The values of `asked` a refused lookup names as malformed: cowork-server
+   checks every value before it asks MindsHub and answers 400 with the
+   lookup's `invalidCode`, naming them in the body's `param` field (an id
+   that isn't a UUID, an address MindsHub wouldn't take) and asking about
+   none of the batch. Compared trimmed, and addresses lowercased, as
+   cowork-server compares them. Empty for any other failure. */
+function malformedValues(err, lookup, asked) {
+  if (err?.status !== 400 || err?.code !== lookup.invalidCode) return [];
+  const named = Array.isArray(err.body?.[lookup.param]) ? err.body[lookup.param] : [];
+  const fold = (value) => (lookup === PEOPLE_LOOKUP.EMAILS ? value.trim().toLowerCase() : value.trim());
+  const refused = new Set(named.filter((value) => typeof value === 'string').map(fold));
+  return asked.filter((value) => refused.has(fold(value)));
+}
+
+/* Asks one batch (`GET /hub/people/?ids=` or `?emails=`). A batch refused
+   for malformed values is asked again once without them, so the good values
+   beside a bad one still get an answer. A batch that got no answer says why
+   (`failure`). */
+async function askMindsHubPeople(lookup, batch) {
+  try {
+    const params = new URLSearchParams({ [lookup.param]: batch.join(',') });
+    const data = await req(`/hub/people/?${params}`);
+    const people = (Array.isArray(data?.people) ? data.people : []).map(mindsHubPerson).filter(Boolean);
+    if (data?.reachable === false) return { people, unanswered: batch, invalid: [], failure: MINDSHUB_NOT_ASKED.failure };
+    return { people, unanswered: [], invalid: [], failure: null };
+  } catch (err) {
+    const invalid = malformedValues(err, lookup, batch);
+    if (invalid.length === 0) return { people: [], unanswered: batch, invalid: [], failure: readMindsHubFailure(err) };
+    const rest = batch.filter((value) => !invalid.includes(value));
+    if (rest.length === 0) return { people: [], unanswered: [], invalid, failure: null };
+    const again = await askMindsHubPeople(lookup, rest);
+    return { ...again, invalid: [...invalid, ...again.invalid] };
+  }
+}
+
+/* The people MindsHub answers for `values` under one lookup (PEOPLE_LOOKUP),
+   asked in batches of its `batchSize` (the bound MindsHub sets per lookup).
+   A person is kept when `keyOf` gives one of the values asked; a value
+   MindsHub answered for but no member has is simply absent from `people`.
+   `unanswered` lists the values of any batch that got no answer (`reachable`
+   is then false, and `failure` says why): those are not known to be missing,
+   only not looked up yet. `invalid` lists the values cowork-server refused
+   as malformed, which no lookup will ever find. */
+async function fetchMindsHubPeopleBy(lookup, values, keyOf) {
+  const unique = [...new Set((values || []).filter((value) => typeof value === 'string' && value))];
+  if (unique.length === 0) return { reachable: true, failure: null, people: [], unanswered: [], invalid: [] };
+  const batches = [];
+  for (let i = 0; i < unique.length; i += lookup.batchSize) {
+    batches.push(unique.slice(i, i + lookup.batchSize));
+  }
+  const answers = await Promise.all(batches.map((batch) => askMindsHubPeople(lookup, batch)));
+  const wanted = new Set(unique);
+  const byKey = new Map();
+  const unanswered = [];
+  const invalid = [];
+  for (const answer of answers) {
+    unanswered.push(...answer.unanswered);
+    invalid.push(...answer.invalid);
+    for (const person of answer.people) {
+      const key = keyOf(person);
+      if (wanted.has(key) && !byKey.has(key)) byKey.set(key, person);
+    }
+  }
+  return {
+    reachable: unanswered.length === 0,
+    // Batches that failed differently report one failure (firstMindsHubFailure).
+    failure: firstMindsHubFailure(answers.map((answer) => answer.failure)),
+    people: [...byKey.values()],
+    unanswered,
+    invalid,
+  };
+}
+
+/* The people a stored audience names, by user id, so their rows can say who
+   they are. `invalid` holds ids cowork-server refused as no UUID, which name
+   nobody. */
+export async function fetchMindsHubPeopleByIds(ids) {
+  return fetchMindsHubPeopleBy(PEOPLE_LOOKUP.IDS, ids, (person) => person.id);
+}
+
+/* The members who hold these addresses. The directory the picker loads is
+   capped (`truncated`), so a member past the cap is not in it; asked here, a
+   typed address still names them, and sharing stores their user id rather
+   than an outside email. `unanswered` and `invalid` hold lowercased
+   addresses. */
+export async function fetchMindsHubPeopleByEmails(emails) {
+  const lowered = (emails || []).map((email) => (typeof email === 'string' ? email.trim().toLowerCase() : ''));
+  return fetchMindsHubPeopleBy(PEOPLE_LOOKUP.EMAILS, lowered, (person) => person.email);
 }
 
 export async function deleteSkill(label) {
@@ -1766,12 +2197,12 @@ export async function fetchDatasources() {
 // retired ConnectView still imports them; they are unreachable in the
 // current routing. Remove when ConnectView is fully deleted.
 export async function saveDatasource(_payload) {
-  console.warn('saveDatasource() is deprecated — use streamDataVaultSubmission instead');
+  diagnostic("renderer.cowork.api", "WARNING", "savedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'saveDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { ok: true };
 }
 
 export async function validateDatasource(_payload) {
-  console.warn('validateDatasource() is deprecated — use streamDataVaultSubmission instead');
+  diagnostic("renderer.cowork.api", "WARNING", "validatedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'validateDatasource() is deprecated — use streamDataVaultSubmission instead');
   return { valid: true };
 }
 
@@ -1832,8 +2263,135 @@ export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 // name, the two are deliberately distinct and must not be conflated.
 export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 
+// ─── SharePoint ─────────────────────────────────────────────────────
+//
+// SharePoint connections are created and edited only through these routes,
+// never the generic connector save: the server checks the key with
+// Microsoft before it stores anything.
+
+export const SHAREPOINT_UNAVAILABLE_MESSAGE = 'Update Cowork to use SharePoint.';
+
+/* A server older than the SharePoint routes answers with FastAPI's own
+   "Not Found" or a 405. The routes' own 404s carry their own detail
+   ("Connection not found.") and pass through unchanged. */
+async function sharePointReq(path, options) {
+  try {
+    return await req(path, options);
+  } catch (err) {
+    if (err?.status === 405 || (err?.status === 404 && err.message === 'Not Found')) {
+      const unavailable = /** @type {RefusalError} */ (new Error(SHAREPOINT_UNAVAILABLE_MESSAGE));
+      unavailable.status = err.status;
+      unavailable.code = 'sharepoint_unavailable';
+      throw unavailable;
+    }
+    throw err;
+  }
+}
+
+/**
+ * The key fields a SharePoint create or edit sends, in the routes' names.
+ * An empty label is left out: the server then keeps the label it has.
+ */
+function sharePointKeyBody({ userLabel, tenantId, clientId, clientSecret, siteUrls }) {
+  const body = { tenant_id: tenantId, client_id: clientId, client_secret: clientSecret, site_urls: siteUrls };
+  if (userLabel) body.user_label = userLabel;
+  return body;
+}
+
+/** Create a SharePoint connection; the server checks the key with Microsoft before saving. */
+export function createSharePointConnection({ name, ...key }) {
+  return sharePointReq('/connectors/sharepoint/connections', {
+    method: 'POST',
+    body: JSON.stringify({ name, ...sharePointKeyBody(key) }),
+  });
+}
+
+/** Replace a SharePoint connection's key and sites; `clientSecret` is CONNECTIONS_VAULT_KEEP to keep the stored one. */
+export function editSharePointConnection(name, key) {
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify(sharePointKeyBody(key)),
+  });
+}
+
+/** The document libraries of one site the connection names. */
+export function listSharePointLibraries(name, site) {
+  const query = new URLSearchParams({ site });
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/libraries?${query}`);
+}
+
+/** One page of a folder's items; pass the previous page's `cursor` for the next one. */
+export function listSharePointChildren(name, { site, driveId, itemId = 'root', cursor = null }) {
+  const query = new URLSearchParams({ site, drive_id: driveId, item_id: itemId });
+  if (cursor) query.set('cursor', cursor);
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/children?${query}`);
+}
+
+/** Import picked items into a project's root in one request; it can run for minutes, so no timeout. */
+export function importSharePointFiles(projectName, { connection, site, driveId, folder = '', itemIds }) {
+  return sharePointReq(`/projects/${encodeURIComponent(projectName)}/files/import/sharepoint`, {
+    method: 'POST',
+    body: JSON.stringify({ connection, site, drive_id: driveId, folder, item_ids: itemIds }),
+  });
+}
+
 // ─── Connector registry ─────────────────────────────────────────────
 //
+// ── Cloud datasource connections ─────────────────────────────────────────
+//
+// The relay at /connectors/datasources/ is the hosted path for PostgreSQL and
+// MySQL: auth holds the encrypted credential and this server never sees it
+// again after the create. Every route here is org-mode only (the server
+// answers 404 outside it by design), so the gate below keeps the desktop
+// connections page from showing an error banner it can do nothing about.
+//
+// A created or edited connection comes back `pending`: auth marks it so and
+// only the gateway's probe completion moves it to verified or failed, so a
+// caller shows that state and refreshes rather than waiting on the response.
+function requireOrgMode(what) {
+  if (!getOrgMode()) {
+    throw new Error(`${what} is a cloud-only feature`);
+  }
+}
+
+const DATASOURCES = '/connectors/datasources/';
+
+export async function listDatasourceConnections() {
+  requireOrgMode('Cloud database connections');
+  return req(DATASOURCES);
+}
+
+export async function createDatasourceConnection(payload) {
+  requireOrgMode('Connecting a cloud database');
+  return req(DATASOURCES, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getDatasourceConnection(connectionId) {
+  requireOrgMode('Cloud database connections');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`);
+}
+
+// `expectedRevision` is the connection revision the form was opened against;
+// auth moves it on every edit, a rename included. The relay refuses with code
+// `stale_version` when it has moved, the only way to tell a conflict apart.
+export async function editDatasourceConnection(connectionId, payload, expectedRevision) {
+  requireOrgMode('Editing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, expected_revision: expectedRevision }),
+  });
+}
+
+export async function deleteDatasourceConnection(connectionId) {
+  requireOrgMode('Removing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+export async function retryDatasourceValidation(connectionId) {
+  requireOrgMode('Retrying a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)
@@ -1861,6 +2419,18 @@ export async function fetchConnectors({ includeUnavailable = false } = {}) {
 
 export async function fetchConnector(id) {
   return req(`/connectors/specs/${encodeURIComponent(id)}`);
+}
+
+// Whether the caller can build a custom connector that is kept for reuse: only
+// in one person's own scope. A server without the route (404) keeps the old
+// answer, yes; any other failure says no, since the server would refuse the save.
+export async function fetchCanBuildCustomConnector() {
+  try {
+    const data = await req('/connectors/specs/custom-availability');
+    return data?.can_build !== false;
+  } catch (err) {
+    return err?.status === 404;
+  }
 }
 
 export async function matchConnector(query, maxCandidates = 3) {
@@ -1946,11 +2516,24 @@ export async function discoverPostHogProjects({ personalApiKey, host, customHost
 // Field VALUES never round-trip through the response.
 export function streamDataVaultSubmission({
   formId, conversationId, formSpec, values, skipped, name, method,
+  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
+  /*
+   * Same idle timer as _streamResponse. Without it a submission that never
+   * answers keeps its conversation's stream record forever, and every message
+   * sent to that conversation waits behind it.
+   */
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+  };
   (async () => {
     try {
+      bumpIdle();
       const res = await authFetch(`${BASE}/connectors/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1985,6 +2568,7 @@ export function streamDataVaultSubmission({
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
+          bumpIdle();
 
           onEvent?.(msg);
 
@@ -2025,9 +2609,15 @@ export function streamDataVaultSubmission({
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed: a partial answer is not a
+      // finished one, and the form is still waiting on its result.
+      onError?.('The form submission was interrupted before it finished. Please try again.');
     } catch (err) {
-      if (err.name !== 'AbortError') onError?.(err.message);
+      // Our own idle abort surfaces as an AbortError too, so check it first.
+      if (idledOut) onError?.('The form submission stalled and was ended. Please try again.');
+      else if (err.name !== 'AbortError') onError?.(err.message);
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
     }
   })();
   return ctrl;
@@ -2061,9 +2651,10 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 // `access` (optional): a publish-mode object, one of
 //   { mode: 'public' }
 //   { mode: 'password', password: '...' }
-//   { mode: 'restricted', emails: [...], org_allowed: bool }
+//   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
 // Public (or a falsy access) sends just `{ path }`, which clears any prior
-// protection on re-publish.
+// protection on re-publish. `notify` goes through as given: cowork-server
+// forwards it to MindsHub, which emails exactly the people it lists.
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
@@ -2100,6 +2691,106 @@ export async function activateArtifactVersion(path, md5) {
 export function publishTargetPath(artifact) {
   return artifact?.folder
     || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
+}
+
+// ─── Live-app sharing ───────────────────────────────────────────────────────
+/*
+ * Only a deployment that runs live apps has these routes; elsewhere they 404,
+ * and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
+ * A refusal's sentence comes back as the thrown error's message.
+ */
+
+export function createLiveAppPreview(launchId) {
+  return req('/live-apps/previews', { method: 'POST', body: JSON.stringify({ launchId }), timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function keepLiveAppPreview(id) {
+  return req(`/live-apps/previews/${encodeURIComponent(id)}/keepalive`, { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function revokeLiveAppPreview(id) {
+  return req(`/live-apps/previews/${encodeURIComponent(id)}`, { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS, keepalive: true });
+}
+
+export async function revokeLiveAppPreviews() {
+  try { await req('/live-apps/previews', { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS }); }
+  catch (error) { if (error.status !== 404) throw error; }
+}
+
+/** Availability is advisory; a subsequent launch still needs admission. */
+export async function fetchLiveAppAvailability() {
+  return liveAppAvailabilityFrom(await req('/live-apps/availability', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, cache: 'no-store' }));
+}
+
+/** Called only after a visible toast has displayed this durable notice. */
+export async function acknowledgeLiveAppAvailability(noticeId) {
+  return req(`/live-apps/availability/${encodeURIComponent(noticeId)}/ack`, {
+    method: 'POST',
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+/*
+ * The caller's own live apps and whether each is running, for the cards'
+ * state line. Shared by every card on screen through one in-flight request.
+ */
+export async function fetchMyLiveApps() {
+  return dedupe('live-apps-mine', async () => liveAppStatesFrom(await req('/live-apps/mine')));
+}
+
+/**
+ * The owner shares a full-stack app with one colleague, named by email, or
+ * with everyone on the stack. The body carries exactly one of the two. Sharing
+ * the same app with the same audience again returns the same share.
+ *
+ * @returns {Promise<import('./lib/liveAppSharing.js').LiveAppShare>}
+ */
+export async function shareLiveApp({ projectId, slug, email, everyone = false }) {
+  const audience = everyone ? { everyone: true } : { email };
+  return req('/artifacts/live-app-share', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, slug, ...audience }),
+  });
+}
+
+/*
+ * The owner's current shares of one app, newest first, for the share dialog's
+ * list. Throws, so the dialog can tell "shared with nobody" from "could not ask".
+ */
+export async function fetchLiveAppShares({ projectId, slug }) {
+  const query = `?projectId=${encodeURIComponent(projectId)}&slug=${encodeURIComponent(slug)}`;
+  return liveAppSharesFrom(await req(`/artifacts/live-app-shares${query}`));
+}
+
+/*
+ * The owner stops one share. It leaves the recipients' "Shared with you" at
+ * once; copies they already made stay theirs.
+ */
+export async function withdrawLiveAppShare(shareId) {
+  return req(`/artifacts/live-app-share/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+}
+
+/*
+ * What other people shared with the caller, newest first. Throws, so a caller
+ * can tell "nothing shared" from "could not ask".
+ */
+export async function fetchSharedLiveApps() {
+  return sharedLiveAppsFrom(await req('/artifacts/shared-live-apps'));
+}
+
+/**
+ * Copies a shared app into one of the caller's own projects and returns the
+ * new artifact card, with `receivedFrom` set. `confirmed` is the disclaimer's
+ * answer: the server refuses the copy without it, so only the dialog's
+ * confirm button calls this.
+ *
+ * @returns {Promise<object & { receivedFrom: import('./lib/liveAppSharing.js').ReceivedFrom }>}
+ */
+export async function duplicateLiveApp({ shareId, projectId }) {
+  return req('/artifacts/live-app-duplicate', {
+    method: 'POST',
+    body: JSON.stringify({ shareId, projectId, confirmed: true }),
+  });
 }
 
 // ─── Shared browser (ENG-3299) ──────────────────────────────────────────────
@@ -2238,20 +2929,40 @@ export async function deleteChannelBinding(bindingId) {
 // ─── Attachments And Context ───────────────────────────────────────────────
 
 /** POST /v1/attachments/{project_name}/{session_id}/upload — response body is a JSON array of file attachments. */
-export async function uploadAttachments(files, { projectName, sessionId } = {}) {
+/* A send holds the app-wide stream slot while its files upload, so an upload
+   that never answers blocks every send until a reload. The bound grows with
+   the payload, so a large file on a slow link still has time to finish. */
+const UPLOAD_TIMEOUT_BASE_MS = 60_000;
+const UPLOAD_MIN_BYTES_PER_MS = 128; // ~1 Mbit/s
+
+export function uploadTimeoutMs(totalBytes) {
+  return UPLOAD_TIMEOUT_BASE_MS + Math.ceil((Number(totalBytes) || 0) / UPLOAD_MIN_BYTES_PER_MS);
+}
+
+export async function uploadAttachments(files, { projectName, sessionId, timeoutMs } = {}) {
   if (!projectName || !sessionId) {
     throw new Error('Open a saved task before attaching files (project and conversation id are required).');
   }
   const enc = encodeURIComponent;
   const form = new FormData();
-  Array.from(files).forEach((file) => form.append('files', file));
-  const res = await authFetch(
-    `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
-    { method: 'POST', body: form },
-  );
-  if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+  const list = Array.from(files);
+  list.forEach((file) => form.append('files', file));
+  const totalBytes = list.reduce((sum, file) => sum + (file?.size || 0), 0);
+  const { signal, cancel } = _timeoutSignal(null, timeoutMs ?? uploadTimeoutMs(totalBytes));
+  try {
+    const res = await authFetch(
+      `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
+      { method: 'POST', body: form, signal },
+    );
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (signal?.aborted) throw new Error('The file upload stopped responding. Please try again.');
+    throw err;
+  } finally {
+    cancel();
+  }
 }
 
 /** GET /v1/attachments/{project_name}/{session_id} — response body is a JSON array. */
@@ -2358,10 +3069,14 @@ const DELETE_TURN_TIMEOUT_MS = 30000;
 
 // Delete one user→answer cycle (the question + the assistant
 // response, including any internal tool_use/tool_result blocks
-// anton generated during the turn). `turnIndex` is the 0-based
-// displayable bubble index — same value used to look up events
-// in the per-turn sidecar.
-export async function deleteConversationTurn(id, turnIndex) {
+// anton generated during the turn).
+/** `messageId` anchors the turn: the visible assistant message it produced,
+ * or (a turn stopped/failed before any answer) the opening user message
+ * itself — matching the server's two accepted anchor shapes.
+ * Positional (`turnIndex`) doesn't survive a lazily-loaded/paginated
+ * conversation, so this replaced that contract; both worktrees land
+ * together. */
+export async function deleteConversationTurn(id, messageId) {
   // The caller holds the turn in an in-flight state for the life of this
   // request and refuses further deletes in that conversation while it is out,
   // so a request that never settles would strand the conversation until a
@@ -2370,23 +3085,17 @@ export async function deleteConversationTurn(id, turnIndex) {
   const timer = setTimeout(() => ctrl.abort(), DELETE_TURN_TIMEOUT_MS);
   try {
     const res = await authFetch(
-      BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
+      BASE + `/conversations/${encodeURIComponent(id)}/turns/${encodeURIComponent(messageId)}`,
       {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         signal: ctrl.signal,
       },
     );
-    if (res.status === 404) return { status: 'gone', id, turnIndex };
-    if (!res.ok) {
-      let detail = '';
-      try { detail = (await res.json())?.detail || ''; } catch {}
-      const err = new Error(detail || `Delete turn failed (${res.status})`);
-      // Carried like req() does: the caller has to tell a refusal apart from a
-      // gateway giving up on a delete the server may still be running.
-      err.status = res.status;
-      throw err;
-    }
+    if (res.status === 404) return { status: 'gone', id, messageId };
+    /* responseError carries err.status: the caller has to tell a refusal apart
+       from a gateway giving up on a delete the server may still be running. */
+    if (!res.ok) throw await responseError(res, `Delete turn failed (${res.status})`);
     // Awaited inside the bound: a server that sends headers and then stalls the
     // body is the same hang the timeout exists for.
     return await res.json();
@@ -2419,11 +3128,7 @@ export async function deleteConversation(id) {
     headers: { 'Content-Type': 'application/json' },
   });
   if (res.status === 404) return { status: 'gone', id };
-  if (!res.ok) {
-    let detail = '';
-    try { detail = (await res.json())?.detail || ''; } catch {}
-    throw new Error(detail || `Delete failed (${res.status})`);
-  }
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
   if (res.status === 204) return { ok: true };
   return res.json();
 }
@@ -2537,8 +3242,8 @@ export const MOCK_DATA = {
       { role: 'user', content: 'Write website copy for agent platform' },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
-    { id: 't5', title: 'Create website copy for MindsHub Cowork', subtitle: '2 weeks ago', status: 'done', messages: [
-      { role: 'user', content: 'Create website copy for MindsHub Cowork' },
+    { id: 't5', title: `Create website copy for ${STOCK_PRODUCT_NAME}`, subtitle: '2 weeks ago', status: 'done', messages: [
+      { role: 'user', content: `Create website copy for ${STOCK_PRODUCT_NAME}` },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
     { id: 't6', title: 'Create MindsDB website copy positioning', subtitle: '3 weeks ago', status: 'done', messages: [] },
@@ -2549,7 +3254,7 @@ export const MOCK_DATA = {
   projects: [
     { id: 'p1', name: 'AI Fab launch', description: 'Hardware, infra, and brand for the AI Fab', taskCount: 14, fileCount: 23, updated: '2h ago', tint: 'rgba(31,156,176,0.12)', color: 'var(--primary-700)' },
     { id: 'p2', name: 'MindsDB website', description: 'Marketing site copy + positioning', taskCount: 9, fileCount: 41, updated: 'Yesterday', tint: 'rgba(72,190,227,0.14)', color: 'var(--ocean-700)' },
-    { id: 'p3', name: 'Cowork brand', description: 'Brand and identity for the MindsHub Cowork app', taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
+    { id: 'p3', name: 'Cowork brand', description: `Brand and identity for the ${STOCK_PRODUCT_NAME} app`, taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
     { id: 'p4', name: 'Operational ops', description: 'Internal ops, RIF, hiring plans', taskCount: 11, fileCount: 8, updated: '1w ago', tint: 'rgba(244,177,131,0.15)', color: '#B7522B' },
   ],
 
@@ -2574,7 +3279,7 @@ export const MOCK_DATA = {
     // Flat background by default; opt back into the animated dot grid via
     // Settings → Personalization → Animated background.
     showDots: false,
-    showCounters: true,
+    showCounters: false,
     accentVariant: 'aqua',
     planningProvider: 'minds-cloud',
     planningModel: 'latest:sonnet',
@@ -2604,7 +3309,7 @@ export const MOCK_DATA = {
   },
 };
 
-// ── Artifact comments (Plan 5) ────────────────────────────────────────────
+// ── Artifact comments ────────────────────────────────────────────
 // Renderer holds no token; cowork-server attaches the user's MindsHub creds and
 // proxies to the inference backend. Scope is the composite {userDir}/{reportId}.
 

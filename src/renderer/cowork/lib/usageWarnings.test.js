@@ -263,7 +263,7 @@ describe('deriveComposerWarning', () => {
       balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
       autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'cap_reached' },
     }), { model: 'claude-sonnet-4' });
-    expect(w.body).toContain('hit its monthly cap');
+    expect(w.body).toContain('paused to stay within its monthly cap');
     expect(labels(w)).toEqual(['Add funds', 'Manage auto top up']);
   });
 

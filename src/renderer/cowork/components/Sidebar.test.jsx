@@ -41,6 +41,11 @@ const hubWorkspacesMock = vi.hoisted(() => ({
 // group has its own test file.
 vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
 
+// The selector ships hidden. The placement tests below turn it on
+// to keep covering the code that stays behind the flag.
+const workspaceFlag = vi.hoisted(() => ({ WORKSPACE_SELECTOR_ENABLED: false }));
+vi.mock('../lib/workspaceSelectorFlag', () => workspaceFlag);
+
 // WorkspaceSelector calls `useToastManager()` unconditionally, before its own
 // early return, and Base UI requires a provider for it. The real tree has one
 // (App wraps AppCore, and the sidebar is inside it), so wrap here too rather
@@ -49,6 +54,8 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
+import { OWN_WORK_PROMPT } from './onboarding/steps';
+import { reset as resetOnboarding } from './onboarding/onboardingStore';
 
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
@@ -298,9 +305,11 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
         onUpdateAction={vi.fn()}
       />
     );
-    // The OTA "Update ready" pill never stacks under the shell banner anymore.
-    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /App update ready/ })).toBeInTheDocument();
+    // Both ready banners read "Update ready"; the shell's says "Restart now".
+    const pills = screen.getAllByRole('button', { name: /Update ready/ });
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveTextContent(/Restart now/);
+    expect(pills[0]).not.toHaveTextContent('1.2.3');
   });
 
   it('surfaces a labelled retry when an OTA apply failed (does not go silent)', () => {
@@ -329,7 +338,7 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
         onUpdateAction={onUpdateAction}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /App update ready/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Update ready.*Restart now/ }));
     expect(onUpdateAction).toHaveBeenCalledWith('shell-auto');
   });
 
@@ -438,12 +447,14 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
   const CLIENT_A = { id: 'ws-client-a', displayName: 'Client A', isDefault: false, archivedAt: null, role: 'manager' };
 
   beforeEach(() => {
+    workspaceFlag.WORKSPACE_SELECTOR_ENABLED = true;
     getAccessTokenMock.mockResolvedValue(
       jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com', active_organization: { displayName: 'MindsDB' } })
     );
   });
 
   afterEach(() => {
+    workspaceFlag.WORKSPACE_SELECTOR_ENABLED = false;
     getAccessTokenMock.mockResolvedValue(null);
     // Back to the file's resting answer. Nothing below this block mentions
     // workspaces, so a leaked `mockReturnValue` would quietly hand them a
@@ -457,6 +468,16 @@ describe('Sidebar — where the MindsHub workspace control sits', () => {
       switchWorkspace: vi.fn(),
       refresh: vi.fn(),
     });
+  });
+
+  it('draws nothing while the selector is switched off', async () => {
+    workspaceFlag.WORKSPACE_SELECTOR_ENABLED = false;
+    withWorkspaces([DEFAULT_WS, CLIENT_A]);
+    const { container } = render(<Sidebar {...baseProps} serverOnline />);
+    await screen.findByRole('button', { name: /Hazem Ahmed/ });
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Workspace:/ })).toBeNull();
   });
 
   it('draws it below the New task CTA, against the footer', async () => {
@@ -556,41 +577,12 @@ describe('Sidebar — recents tell loading, empty and failed apart (ENG-2246)', 
   });
 });
 
-describe('Sidebar — says which app this is, and why other work is missing (ENG-2172, ENG-2169)', () => {
-  // Web and desktop look the same but keep separate work. The product
-  // branched on host.isWeb everywhere and never said the answer out loud.
+describe('Sidebar — says why other work is missing (ENG-2169)', () => {
+  // Web and desktop look the same but keep separate work, so an empty
+  // task list points at the other app.
   afterEach(() => {
     getAccessTokenMock.mockResolvedValue(null);
     hostMock.isWeb = true;
-  });
-
-  it('labels the web app in the footer', () => {
-    hostMock.isWeb = true;
-    render(<Sidebar {...baseProps} />);
-    expect(screen.getByText('Web app')).toBeInTheDocument();
-    expect(screen.queryByText('Desktop app')).toBeNull();
-  });
-
-  it('labels the desktop app in the footer', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline />);
-    expect(screen.getByText('Desktop app')).toBeInTheDocument();
-    expect(screen.queryByText('Web app')).toBeNull();
-  });
-
-  it('keeps the label when signed in, under the account row', async () => {
-    getAccessTokenMock.mockResolvedValue(jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com' }));
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline />);
-    await screen.findByRole('button', { name: /Hazem Ahmed/ });
-    expect(screen.getByText('Desktop app')).toBeInTheDocument();
-  });
-
-  it('keeps the label while the desktop status pill is showing', async () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline={false} />);
-    await screen.findByRole('button', { name: /Backend status/i });
-    expect(screen.getByText('Desktop app')).toBeInTheDocument();
   });
 
   it('on web, an empty task list points at the desktop app', () => {
@@ -616,5 +608,70 @@ describe('Sidebar — says which app this is, and why other work is missing (ENG
     failed.unmount();
     render(<Sidebar {...baseProps} serverOnline tasksStatus="ready" tasks={[{ id: 't1', title: 'Real task', messages: [] }]} />);
     expect(screen.queryByText(/stay there/)).toBeNull();
+  });
+});
+
+describe('Sidebar — onboarding checklist rows', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetOnboarding();
+    hostMock.isWeb = true;
+  });
+
+  it('starts a chat from the first step and opens Home from the example row', async () => {
+    const onStartChat = vi.fn().mockResolvedValue(true);
+    const onOpenExamples = vi.fn();
+    const user = userEvent.setup();
+    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} />);
+
+    await user.click(screen.getByText('Try an example'));
+    expect(onOpenExamples).toHaveBeenCalledTimes(1);
+    expect(onStartChat).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('Start with your own work'));
+    expect(onStartChat).toHaveBeenCalledWith(OWN_WORK_PROMPT);
+  });
+});
+
+describe('Sidebar — running dot survives a reload (ENG-3939)', () => {
+  // After Cmd+R the tasks come back without their `_streaming` placeholder,
+  // which only returns once the task is opened and re-attaches. The server's
+  // in-flight list is fetched at boot, so the dot must follow it too.
+  const task = { id: 't1', title: 'Sleeping task', messages: [], updatedAt: '2026-11-02T10:00:00Z' };
+
+  it('shows the running dot for a task the server lists as in flight', () => {
+    render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" inFlightIds={new Set(['t1'])} />);
+    expect(screen.getByLabelText('Active')).toBeTruthy();
+  });
+
+  it('still shows it for a task this window is streaming', () => {
+    const streaming = { ...task, messages: [{ role: '_streaming' }] };
+    render(<Sidebar {...baseProps} tasks={[streaming]} tasksStatus="ready" />);
+    expect(screen.getByLabelText('Active')).toBeTruthy();
+  });
+
+  it('shows no dot when neither signal says the task is running', () => {
+    render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" inFlightIds={new Set(['other'])} />);
+    expect(screen.queryByLabelText('Active')).toBeNull();
+  });
+});
+
+describe('Sidebar — task row titles', () => {
+  const task = { id: 't1', title: 'A task title long enough to reach the end of the row', updatedAt: new Date().toISOString(), messages: [] };
+  const titleOf = () => screen.getByRole('button', { name: task.title }).querySelector('.recent-row__title');
+
+  it('fades the title out early only while the menu button floats over its end', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" />);
+    expect(titleOf()).not.toHaveClass('is-clipped');
+    fireEvent.mouseEnter(screen.getByRole('button', { name: task.title }).parentElement);
+    expect(titleOf()).toHaveClass('is-clipped');
+  });
+
+  it('leaves the title alone when a timestamp already holds the row end', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" showCounters />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: task.title }).parentElement);
+    expect(titleOf()).not.toHaveClass('is-clipped');
   });
 });

@@ -120,7 +120,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
     {
       id: 'workspace-group',
       heading: (
-        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">
+        <div className="section-label">
           Workspace
         </div>
       ),

@@ -5,22 +5,29 @@ import { Alert, Button, Card, Field, EmptyState, Select, Input, Textarea } from 
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { copyText } from '../lib/clipboard';
+import { host } from '../../platform/host';
 import {
   deleteDatasource,
   deleteMemory,
   fetchDatasources,
   fetchMemory,
+  fetchMemoryCapabilities,
   fetchPublishable,
   findMemoryEntry,
   labelCategory,
   publishArtifact,
+  resetMemory,
   saveDatasource,
   saveMemory,
   validateDatasource,
 } from '../api';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { trackArtifactPublished } from '../lib/analytics';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
+import { productName } from '../../lib/deploymentBrand';
+import { STOCK_SHORT_NAME } from '../../../shared/product-name';
+import { useConfirm } from '../components/ConfirmModal';
 
 const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
@@ -108,10 +115,52 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts, proje
   );
 }
 
+/* A project tier whose project the caller can't see, such as another
+   person's project on a deployment that shares memory, has no name to show. */
+function memoryScopeLabel(memory, projects) {
+  if (memory.scope !== 'Project') return memory.scope;
+  if (!memory.projectName) return 'Project memory';
+  return `Project · ${projectLabelByName(projects, memory.projectName)}`;
+}
+
+// A deployment's brand names the product on the pages where memory is a
+// person's own, so the copy below reads it instead of saying Cowork.
+const PRODUCT_NAME = productName(STOCK_SHORT_NAME);
+
+/* Why an entry can't be edited. Memory that is the person's own but only
+   deletable is memory their agent saves on its own: the server lets nobody
+   hand-write it there. */
+function memoryReadOnlyCopy(memory) {
+  if (memory.scope === 'Deployment') {
+    return {
+      note: 'Read only. Your operator sets these rules for everyone, and every answer follows them.',
+      editTitle: undefined,
+    };
+  }
+  if (canUseSharedResource(memory, 'canDelete')) {
+    return {
+      note: `Yours alone. ${PRODUCT_NAME} saves this on its own as you work, so it can't be edited. You can delete it.`,
+      editTitle: `${PRODUCT_NAME} saves this memory on its own, so it can't be edited.`,
+    };
+  }
+  return {
+    note: 'Read only. Only the memory author or an organization admin can change it.',
+    editTitle: 'You do not have permission to edit this shared memory.',
+  };
+}
+
+const RESET_CONFIRM_COPY = {
+  title: 'Reset your memory?',
+  message: `This deletes everything ${PRODUCT_NAME} has learned for you: your profile, rules and lessons, in every project of yours. Your next question starts with nothing learned. The deployment's rules stay. This can't be undone.`,
+  confirmLabel: 'Reset my memory',
+};
+
 function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
+  const [confirm, confirmModal] = useConfirm();
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');
+  const deploymentSection = sections.find((s) => s.scope === 'Deployment');
   const totalFiles = sections.reduce((acc, s) => acc + (s.files?.length || 0), 0);
 
   // `selected` holds the sidebar selection; after save `data.sections`
@@ -126,6 +175,20 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
   const [draft, setDraft] = useState({
     path: null, scope: 'Global', category: '', content: '', projectName: null, projectId: null,
   });
+  const [canReset, setCanReset] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+
+  // The reset is offered only where the server carries it out. A failed check
+  // leaves it hidden: the page itself still works.
+  useEffect(() => {
+    let cancelled = false;
+    fetchMemoryCapabilities()
+      .then((capabilities) => { if (!cancelled) setCanReset(capabilities.canReset); })
+      .catch(() => { if (!cancelled) setCanReset(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // The editor writes the slot the draft was seeded from, which is not
   // necessarily whatever the sidebar has selected by the time Save runs.
@@ -197,7 +260,12 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
   const remove = async (file) => {
     if (!canUseSharedResource(file, 'canDelete')) return;
     const label = labelCategory(file.category);
-    if (!window.confirm(`Delete "${label}" memory? This clears the saved content.`)) return;
+    if (!(await confirm({
+      title: `Delete "${label}" memory?`,
+      message: 'This clears the saved content.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    }))) return;
     try {
       await deleteMemory({
         scope: file.scope || 'Global',
@@ -213,13 +281,39 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
     }
   };
 
+  const reset = async () => {
+    setResetting(true);
+    setResetError('');
+    try {
+      await resetMemory();
+      setResetOpen(false);
+      setEditing(null);
+      onSelect(null);
+      setStatus('Your memory is reset. Nothing learned is left.');
+      await refresh({ forceFresh: true });
+    } catch (err) {
+      setResetError(err.message || 'Could not reset your memory.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const displayedCopy = displayed ? memoryReadOnlyCopy(displayed) : null;
+
   return (
     <>
       <CollectionPageHeader
         title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
+        actions={canReset ? (
+          <Button variant="subtle" onClick={() => { setResetError(''); setResetOpen(true); }}>
+            Reset my memory
+          </Button>
+        ) : null}
       />
-      <div className="h-[14px]" />
+      {/* shrink-0: a flex child of the page column — without it the spacer
+          collapses when the content below needs the height. */}
+      <div className="h-[14px] shrink-0" />
       <div className="util-split flex-1 min-h-0 grid grid-cols-[300px_1fr] px-8 pb-6 gap-6">
         <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
@@ -233,10 +327,18 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
               onSelect={selectEntry}
             />
           )}
+          {deploymentSection && (
+            <MemorySectionList
+              heading="Deployment"
+              files={deploymentSection.files || []}
+              selected={selected}
+              onSelect={selectEntry}
+            />
+          )}
           {projectSections.map((section, idx) => (
             <MemorySectionList
               key={`${section.projectName}-${idx}`}
-              heading={`Project · ${projectLabelByName(projects, section.projectName)}`}
+              heading={memoryScopeLabel(section, projects)}
               files={section.files || []}
               selected={selected}
               onSelect={selectEntry}
@@ -254,9 +356,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                     {labelCategory(selected.category)}
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
-                    {selected.scope === 'Project' && selected.projectName
-                      ? `Project · ${projectLabelByName(projects, selected.projectName)}`
-                      : selected.scope}
+                    {memoryScopeLabel(selected, projects)}
                   </div>
                   <SharedResourceAttribution resource={displayed || selected} className="mt-1" />
                 </div>
@@ -277,29 +377,31 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
                     {labelCategory(displayed.category)}
                   </div>
                   <div className="text-[12px] text-[var(--frost-600)]">
-                    {displayed.scope === 'Project' && displayed.projectName
-                      ? `Project · ${projectLabelByName(projects, displayed.projectName)}`
-                      : displayed.scope}
+                    {memoryScopeLabel(displayed, projects)}
                   </div>
                   <SharedResourceAttribution resource={displayed} className="mt-1" />
                   {!canUseSharedResource(displayed, 'canEdit') && (
                     <div className="mt-1 text-[12px] text-ink-3" role="note">
-                      Read only. Only the memory author or an organization admin can change it.
+                      {displayedCopy.note}
                     </div>
                   )}
                 </div>
-                <Button
-                  variant="subtle"
-                  disabled={!canUseSharedResource(displayed, 'canEdit')}
-                  title={!canUseSharedResource(displayed, 'canEdit') ? 'You do not have permission to edit this shared memory.' : undefined}
-                  onClick={() => startEdit(displayed)}
-                >Edit</Button>
-                <Button
-                  variant="subtle"
-                  disabled={!canUseSharedResource(displayed, 'canDelete')}
-                  title={!canUseSharedResource(displayed, 'canDelete') ? 'You do not have permission to delete this shared memory.' : undefined}
-                  onClick={() => remove(displayed)}
-                >Delete</Button>
+                {displayed.scope !== 'Deployment' && (
+                  <>
+                    <Button
+                      variant="subtle"
+                      disabled={!canUseSharedResource(displayed, 'canEdit')}
+                      title={!canUseSharedResource(displayed, 'canEdit') ? displayedCopy.editTitle : undefined}
+                      onClick={() => startEdit(displayed)}
+                    >Edit</Button>
+                    <Button
+                      variant="subtle"
+                      disabled={!canUseSharedResource(displayed, 'canDelete')}
+                      title={!canUseSharedResource(displayed, 'canDelete') ? 'You do not have permission to delete this shared memory.' : undefined}
+                      onClick={() => remove(displayed)}
+                    >Delete</Button>
+                  </>
+                )}
               </div>
               <div className={memoryViewerClass}>
                 <MarkdownContent
@@ -317,6 +419,19 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={resetOpen}
+        title={RESET_CONFIRM_COPY.title}
+        message={RESET_CONFIRM_COPY.message}
+        confirmLabel={RESET_CONFIRM_COPY.confirmLabel}
+        destructive
+        busy={resetting}
+        busyLabel="Resetting…"
+        error={resetError}
+        onConfirm={reset}
+        onClose={() => setResetOpen(false)}
+      />
+      {confirmModal}
     </>
   );
 }
@@ -324,10 +439,10 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
 function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
   return (
     <div className="flex flex-col gap-px">
-      <div className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-4 font-semibold px-1 pb-1 flex items-center gap-[6px]">
+      <div className="section-label px-1 pb-1 flex items-center gap-[6px]">
         <span>{heading}</span>
-        {isActive && <span className="text-accent tracking-[0] normal-case font-[family-name:var(--font-body)] text-[10.5px]">· active</span>}
-        <span className="ml-auto text-ink-4 tracking-[0] normal-case font-[family-name:var(--font-body)]">{files.length}</span>
+        {isActive && <span className="text-accent">· active</span>}
+        <span className="ml-auto text-ink-4 tabular-nums">{files.length}</span>
       </div>
       {files.length === 0 ? (
         <div className="px-[6px] py-[2px] text-ink-4 text-[12px]">—</div>
@@ -351,6 +466,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
 
 
 function ConnectView({ data, setData, setStatus }) {
+  const [confirm, confirmModal] = useConfirm();
   const firstEngine = data.engines?.[0]?.engine || '';
   const initialEngine = (data.engines || []).find((item) => item.engine === firstEngine);
   const [engine, setEngine] = useState(firstEngine);
@@ -436,7 +552,12 @@ function ConnectView({ data, setData, setStatus }) {
   };
 
   const remove = async (conn) => {
-    if (!window.confirm(`Remove datasource "${conn.engine}/${conn.name}"?`)) return;
+    if (!(await confirm({
+      title: 'Remove datasource?',
+      message: `${conn.engine}/${conn.name} will be removed.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    }))) return;
     try {
       await deleteDatasource(conn.engine, conn.name);
       const latest = await fetchDatasources();
@@ -526,6 +647,7 @@ function ConnectView({ data, setData, setStatus }) {
           {busyAction === 'save' ? 'Saving' : 'Save connection'}
         </Button>
       </form>
+      {confirmModal}
     </div>
   );
 }
@@ -566,7 +688,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
             {artifact.publishedUrl && <div className="text-[12px] text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
           </div>
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>Copy URL</Button>}
-          {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => host.openExternal(artifact.publishedUrl)}>Open</Button>}
           <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
         </div>
       )) : <EmptyState size="sm" title="No HTML artifacts found in output folders." />}

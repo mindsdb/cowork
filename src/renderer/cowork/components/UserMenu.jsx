@@ -1,3 +1,4 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 /**
  * `<UserMenu>` — the signed-in sidebar footer row: avatar (or initials
  * placeholder), display name, and org, opening a dropdown with the account
@@ -41,6 +42,7 @@ import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
+import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
 import { organizationLabel } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened } from '../lib/analytics';
@@ -106,6 +108,8 @@ export function UserMenu({ user, onOpenSettings }) {
   const triggerRef = useRef(null);
   const { loggingOut, waitNote, logout } = useLogout();
   const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
+  // MindsHub UI lands a company member in a company organization.
+  useOrgLanding({ sub: user.sub ?? null, orgs, activeOrg, switchOrg });
   const toastManager = useToastManager();
 
   const displayName = user.name || user.username || user.email;
@@ -119,7 +123,7 @@ export function UserMenu({ user, onOpenSettings }) {
   // `Personal` whether or not the listing has landed. Reading `displayName`
   // directly here is what made the row paint `Personal` and then swap to auth's
   // long `<email>'s organization` (ENG-2109).
-  const activeOrgName = organizationLabel(activeOrg) || user.org || null;
+  const activeOrgName = PLATFORM_UI ? organizationLabel(activeOrg) || user.org || null : null;
   /* Console links say which organization and account they were opened for
      (ENG-3274), so the browser lands on this organization's page rather than
      whatever its own session has active. The listing's id is the one the
@@ -159,7 +163,15 @@ export function UserMenu({ user, onOpenSettings }) {
      * A possibly committed web switch reloads immediately. Do not paint an
      * error into the old tenant while navigation is tearing that UI down.
      */
-    if (result?.ok || result?.reloadRequired) return;
+    if (result?.ok || result?.reloadRequired) {
+      /* The pick is where landing goes from now on, in every tab and window,
+         personal included, once the switch went through or may have. A
+         refused switch leaves the last organization as it was. The write is
+         synchronous and runs before the reload the switch asked for takes
+         the document down: location.reload() only queues the navigation. */
+      rememberLastOrg(user.sub ?? null, organizationId);
+      return;
+    }
     toastManager.add({
       title: result?.error || 'We could not change organization. Please try again.',
       type: 'danger',
@@ -167,7 +179,7 @@ export function UserMenu({ user, onOpenSettings }) {
   };
 
   const sectionHeading = (text) => (
-    <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">{text}</div>
+    <div className="section-label">{text}</div>
   );
 
   const activeRowHint = <Icon of={Check} size={14} className="text-accent" />;
@@ -226,7 +238,7 @@ export function UserMenu({ user, onOpenSettings }) {
   }] : [];
 
   const organizationRows = listedOrgRows.length ? listedOrgRows : claimOnlyOrgRow;
-  const orgRows = organizationRows.length ? [
+  const orgRows = PLATFORM_UI && organizationRows.length ? [
     { id: 'organization-group', heading: sectionHeading('Organization') },
     ...organizationRows,
     { divider: true },
@@ -257,9 +269,9 @@ export function UserMenu({ user, onOpenSettings }) {
     // went looking. It has to be recorded — it is a real route to the billing
     // page, and a capped user who dismisses the card and uses the menu instead
     // is otherwise invisible — but any upgrade-intent analysis must exclude it.
-    externalItem(CreditCard, 'Billing & Usage', consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
-    externalItem(UsersRound, 'Members', consoleLink(MINDS_MEMBERS_URL)),
-    externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
+    PLATFORM_UI && externalItem(CreditCard, 'Billing & Usage', consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
+    PLATFORM_UI && externalItem(UsersRound, 'Members', consoleLink(MINDS_MEMBERS_URL)),
+    PLATFORM_UI && externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
     // Creating or leaving an organization is a full console flow, so the menu
     // deep-links out rather than growing a second one that would open a
     // browser anyway. Shown whenever there is an organization to manage.

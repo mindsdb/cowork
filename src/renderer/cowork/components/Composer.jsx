@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
-import { createPortal } from 'react-dom';
 import Ico from './Icons';
+import { ComposerFrame } from './chat/ComposerFrame';
 import { Tooltip } from './ui';
 import { ToggleGroup } from './ui/ToggleGroup';
 import NewProjectModal from './project/NewProjectModal';
@@ -13,13 +13,15 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
+  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL, OPERATOR_DEFAULT_LABEL,
 } from '../lib/modelCatalog';
-import { buildModelPickerOptions } from '../lib/modelPickerOptions';
+import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
 import Select from './ui/Select.jsx';
-import { effortLevelsFor, effortOptions, resolveEffort } from '../code/reasoning';
+import {
+  MODEL_DEFAULT_VALUE, effortLevelsFor, effortOptions, operatorEffortOptions, resolveEffort,
+} from '../code/reasoning';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
@@ -27,9 +29,12 @@ import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
+import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
+import { connectionMuteKey } from '../lib/connectionMutes';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -137,6 +142,7 @@ export default function Composer({
   onNavigateToConnectors,
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddSharePointFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
   disabledConnections = [],
@@ -185,8 +191,8 @@ export default function Composer({
   draftKey = null,
   // Coding mode (MVP, ENG-1656 follow-up): when true, show a harness pill
   // (Anton / Claude Code) independent of `metaReadOnly` (which only locks
-  // the project pill). Model selection is a separate, always-on capability
-  // below — it applies to whichever harness is picked, Anton included.
+  // the project pill). Model selection is separate and requires platform UI;
+  // it applies to whichever harness is picked, Anton included.
   codingModeEnabled = false,
   // Whether onSend's 2nd argument carries {harness, model}. Must default to
   // false: ChatView's onSend is handleSendInTask(text, queuedAttachments,
@@ -410,13 +416,25 @@ export default function Composer({
     ? (resolveEffort(effort, modelMeta?.planningReasoningEffort, effortLevels) ?? effortLevels.levels[0])
     : '';
 
+  // With platform UI off, the operator's picker (lib/modelPicker) also sets
+  // which efforts users may pick: on the picked model, or with "Operator
+  // default" on both role models. The pill leads with "Default", which
+  // sends no effort, so it never names a level the question won't run at.
+  const operatorPicker = modelPickerMode() !== 'off';
+  const operatorLevels = useMemo(
+    () => (operatorPicker ? operatorEffortLevels(model?.id && model.id !== MODEL_ROUTER_ID ? model.id : null) : []),
+    [operatorPicker, model?.id],
+  );
+
   // Drop a pick the current model does not offer, so the pill never names a
   // level the request will not send (Code mode does the same in
   // useNewTaskDraft). Only a known entry can veto a pick: a model missing
   // from the map may mean the catalog has not loaded, or that the MindsHub
   // bucket failed and the server sent only the direct-provider entries, and
-  // neither is a reason to throw away a saved choice.
-  const knownLevels = modelMeta?.modelEfforts?.[model?.id]?.efforts;
+  // neither is a reason to throw away a saved choice. The operator's list
+  // is in the page from the start, so there a model missing from it offers
+  // no level.
+  const knownLevels = operatorPicker ? operatorLevels : modelMeta?.modelEfforts?.[model?.id]?.efforts;
   useEffect(() => {
     if (effort && knownLevels && !knownLevels.includes(effort)) onEffortChange?.('');
   }, [effort, knownLevels, onEffortChange]);
@@ -427,12 +445,34 @@ export default function Composer({
   // so this only applies to the Anton-routed picker.
   const noRealModels = !isClaudeCode && (models?.length || 0) === 0 && !!onOpenSettings;
 
+  // With platform UI off, the operator's picker (lib/modelPicker) shows only
+  // the models the operator offers. With none offered it shows nothing at
+  // all, never the Settings shortcut, which that build hides.
+  const operatorModels = useMemo(
+    () => (operatorPicker ? offeredModels(models, modelMeta?.modelEnabled) : []),
+    [operatorPicker, models, modelMeta?.modelEnabled],
+  );
+  const showModelControl = PLATFORM_UI || operatorModels.length > 0;
+
   // Flat options for <ModelSelect> — the same searchable, bounded-height,
   // provider-grouped picker the Settings model rows use (ui/Combobox).
   // ModelSelect groups internally (lib/modelCatalog), so this only builds the
   // per-row tag/provider metadata, mirroring settingsTransform's
   // buildModelOptions so the two pickers can't drift apart again.
   const modelPickerOptions = useMemo(() => {
+    if (operatorPicker && !isClaudeCode) {
+      // The operator's own model leads, pinned above every section: no
+      // MindsHub group and no settings gear, since this build has neither.
+      return [
+        {
+          value: MODEL_ROUTER_ID,
+          label: OPERATOR_DEFAULT_LABEL,
+          title: 'Runs on the model your operator set',
+          pin: 'top',
+        },
+        ...buildModelPickerOptions(operatorModels, modelMeta),
+      ];
+    }
     const catalogOptions = buildModelPickerOptions(models, modelMeta);
     // "Model Router" (defer to this account's Settings) leads the list,
     // inside the MindsHub group rather than pinned above every section —
@@ -473,7 +513,7 @@ export default function Composer({
       },
       ...catalogOptions,
     ];
-  }, [models, modelMeta, isClaudeCode, onOpenSettings]);
+  }, [models, modelMeta, isClaudeCode, onOpenSettings, operatorPicker, operatorModels]);
 
   // True once the picked model isn't valid for Claude Code — nothing
   // picked yet, or still Model Router (hidden from the picker once this
@@ -636,6 +676,16 @@ export default function Composer({
   }, [slashOpen, slashQuery, allSkills, project]);
 
   const closeSlash = useCallback(() => setSlashOpen((prev) => (prev ? false : prev)), []);
+  // Blur closes the menu after a short delay so a click on a menu row still
+  // lands. Focus cancels the pending close, so a quick click back into the box
+  // keeps the menu. The timer is cleared on unmount so it never sets state
+  // afterwards.
+  const closeSlashTimerRef = useRef(null);
+  const closeSlashSoon = () => {
+    clearTimeout(closeSlashTimerRef.current);
+    closeSlashTimerRef.current = setTimeout(closeSlash, 120);
+  };
+  useEffect(() => () => clearTimeout(closeSlashTimerRef.current), []);
 
   // Known skill names — the overlay colours only "/<known-skill>" tokens (not
   // arbitrary slashes like a file path), matching how the sent message tints
@@ -896,13 +946,9 @@ export default function Composer({
     handleAttachFiles(renameClipboardImages(files));
   };
 
-  function pairKey(engine, name) {
-    return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
-  }
-
   function isConnectionDisabled(connector) {
-    const k = pairKey(connector.engine, connector.name);
-    return (disabledConnections || []).some((d) => pairKey(d.engine, d.name) === k);
+    const k = connectionMuteKey(connector.engine, connector.name);
+    return (disabledConnections || []).some((d) => connectionMuteKey(d.engine, d.name) === k);
   }
 
   const canMuteConnectors = typeof onUpdateConnectorMute === 'function';
@@ -1008,7 +1054,7 @@ export default function Composer({
             <UsageBar warning={reservedBar} />
           </div>
         )}
-        <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
+        <ComposerFrame className={`composer-wrap${inFence ? ' in-fence' : ''}`} focused={focused}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
               just above/below the textarea, not below the toolbar. */}
@@ -1017,7 +1063,7 @@ export default function Composer({
               role="listbox"
               aria-label="Skills and actions"
               onMouseDown={(e) => e.preventDefault()}
-              className="menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto"
+              className={`menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto${slashMenuBelow ? ' menu--drop-down' : ''}`}
               style={{
                 ...(slashMenuBelow
                   ? { top: 'calc(100% + 8px)', bottom: 'auto' }
@@ -1080,8 +1126,8 @@ export default function Composer({
             value={value}
             onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
-            onBlur={() => { setFocused(false); setTimeout(() => closeSlash(), 120); }}
+            onFocus={() => { setFocused(true); clearTimeout(closeSlashTimerRef.current); }}
+            onBlur={() => { setFocused(false); closeSlashSoon(); }}
             onSelect={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onClick={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onScroll={handleScroll}
@@ -1286,6 +1332,17 @@ export default function Composer({
                       {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
                     </button>
                   )}
+                  {onAddSharePointFiles && project?.name && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        onAddSharePointFiles(project.name);
+                      }}
+                    >
+                      {Ico.folder(14)} Add files from SharePoint
+                    </button>
+                  )}
                   <button
                     className="menu-item"
                     onClick={() => setConnectorsOpen((o) => !o)}
@@ -1306,6 +1363,11 @@ export default function Composer({
                         className="menu-connectors-accordion__scroll"
                         inert={!connectorsOpen || undefined}
                       >
+                        {connectors.length > 0 && (
+                          <div className="pt-1.5 px-[14px] pb-1 text-[11px] text-ink-4 leading-[1.5]">
+                            Turning one off applies from your next message in this chat.
+                          </div>
+                        )}
                         {connectors.length === 0 ? (
                           <div className="py-2 px-[14px] text-sm text-ink-3">
                             No connectors yet. Add one in{' '}
@@ -1386,7 +1448,7 @@ export default function Composer({
                 lives in one place. `modelReadOnly` (defaults to
                 `metaReadOnly`) keeps ChatView's existing "model is fixed
                 once a task starts" behavior. */}
-            {modelReadOnly ? (
+            {showModelControl && (modelReadOnly ? (
               <span className="meta-pill" title="Model is fixed for this task">
                 <span>{model?.name ?? 'Model'}</span>
               </span>
@@ -1423,8 +1485,12 @@ export default function Composer({
                 // Falls back to unselected (rather than a synthesized
                 // "model-router" row) if the current pick isn't a valid
                 // option right now — e.g. Model Router was picked, then the
-                // harness pill switched to Claude Code, which hides it.
-                value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
+                // harness pill switched to Claude Code, which hides it. Under
+                // the operator's picker, a model it no longer offers shows as
+                // the operator's own, which is what App then sends.
+                value={modelPickerOptions.some((o) => o.value === model?.id)
+                  ? model.id
+                  : (operatorPicker ? MODEL_ROUTER_ID : '')}
                 onValueChange={(id) => {
                   const found = modelPickerOptions.find((o) => o.value === id);
                   onModelChange({ id, name: found?.label || id });
@@ -1437,17 +1503,28 @@ export default function Composer({
                 ariaLabel="Choose model"
                 placeholder="Select model"
               />
-            )}
+            ))}
             {/* Reasoning effort as its own pill (ENG-2591), the same
                 <Select> Code mode's composer uses. Fixed with the model
                 once a task's model is read-only, and absent with no
                 provider connected, where the model pill is only a
                 shortcut to Settings. */}
-            {!modelReadOnly && !noRealModels && effortLevels && (
+            {PLATFORM_UI && !modelReadOnly && !noRealModels && effortLevels && (
               <Select
                 value={resolvedEffort}
                 onValueChange={onEffortChange}
                 options={effortOptions(effortLevels)}
+                variant="unstyled"
+                className="meta-pill"
+                ariaLabel="Reasoning effort"
+                menuLabel="Reasoning effort"
+              />
+            )}
+            {operatorPicker && !modelReadOnly && operatorLevels.length > 0 && (
+              <Select
+                value={operatorLevels.includes(effort) ? effort : MODEL_DEFAULT_VALUE}
+                onValueChange={(value) => onEffortChange?.(value === MODEL_DEFAULT_VALUE ? '' : value)}
+                options={operatorEffortOptions(operatorLevels)}
                 variant="unstyled"
                 className="meta-pill"
                 ariaLabel="Reasoning effort"
@@ -1510,7 +1587,7 @@ export default function Composer({
               </Tooltip>
             )}
           </div>
-        </div>
+        </ComposerFrame>
       </div>
 
       {!hideMeta && (
@@ -1705,10 +1782,9 @@ export default function Composer({
         </div>
       )}
 
-      {/* Portaled to <body>: the composer sits inside the boot-fadein
-          wrapper whose persistent transform would otherwise make this
-          fixed-position overlay anchor to the card, not the viewport. */}
-      {newProjectOpen && createPortal(
+      {/* <Modal> portals itself to <body>, clear of the boot-fadein
+          wrapper's transform. */}
+      {newProjectOpen && (
         <NewProjectModal
           open={newProjectOpen}
           onClose={() => setNewProjectOpen(false)}
@@ -1724,8 +1800,7 @@ export default function Composer({
             }
             onProjectChange?.(created);
           }}
-        />,
-        document.body,
+        />
       )}
     </div>
   );

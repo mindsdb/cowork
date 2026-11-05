@@ -25,11 +25,13 @@ const rendered = {
   identityRequired: false,
   identityToken: null as string | null,
   identityReadyAtApp: false,
+  iconAtApp: null as string | null,
 };
 
 // Mirrors @react-keycloak/core's provider: LoadingComponent until init resolves.
 const keycloakState = { initialized: true };
-const skinState = { skin: 'normal' };
+const skinState = { skin: 'normal', seed: () => {} };
+const brandState = { brand: null as { iconUrl: string } | null };
 
 vi.mock('@react-keycloak/web', () => ({
   ReactKeycloakProvider: ({ children, onTokens, LoadingComponent }: {
@@ -49,6 +51,7 @@ vi.mock('./App', () => ({
   default: () => {
     rendered.app = true;
     rendered.identityReadyAtApp = rendered.identityToken === 'initial-token';
+    rendered.iconAtApp = document.querySelector('link[rel="icon"]')?.getAttribute('href') ?? null;
     return null;
   },
 }));
@@ -70,7 +73,14 @@ vi.mock('./cowork/lib/organizationTransition', () => ({
 // client. Same for the skin loader (localStorage) and the CSS side-effect
 // imports, which Vite handles in a real build but not here.
 vi.mock('./lib/keycloak', () => ({ keycloak: { onAuthError: null } }));
-vi.mock('./lib/skins', () => ({ loadSkin: () => skinState.skin }));
+vi.mock('./lib/skins', () => ({
+  loadSkin: () => skinState.skin,
+  seedBrandDefaults: () => skinState.seed(),
+}));
+vi.mock('./lib/deploymentBrand', () => ({
+  get DEPLOYMENT_BRAND() { return brandState.brand; },
+  productName: (stock: string) => stock,
+}));
 vi.mock('./cowork/styles/tailwind.css', () => ({}));
 vi.mock('./cowork/styles/globals.css', () => ({}));
 vi.mock('./cowork/styles/skin-8bit.css', () => ({}));
@@ -83,6 +93,7 @@ async function renderOnHost(hostname: string, search = '') {
   rendered.identityRequired = false;
   rendered.identityToken = null;
   rendered.identityReadyAtApp = false;
+  rendered.iconAtApp = null;
 
   // happy-dom's location is read-only; replace the descriptor for the case.
   Object.defineProperty(window, 'location', {
@@ -244,5 +255,50 @@ describe('web-main console handoff', () => {
     const r = await renderOnHost('cowork.mindshub.ai');
 
     expect(r.handoffAtProvider).toBeNull();
+  });
+});
+
+describe('web-main deployment brand', () => {
+  const realLocation = window.location;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('link').forEach((link) => link.remove());
+    document.head.innerHTML += '<link rel="icon" type="image/svg+xml" href="/minds-icon.svg">';
+    keycloakState.initialized = true;
+  });
+
+  afterEach(() => {
+    brandState.brand = null;
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: realLocation });
+  });
+
+  it("puts the brand's icon in the tab before the app renders", async () => {
+    brandState.brand = { iconUrl: '/brand/icon.png' };
+    const r = await renderOnHost('cowork.mindshub.ai');
+    expect(r.app).toBe(true);
+    expect(r.iconAtApp).toBe('/brand/icon.png');
+  });
+
+  it('leaves the stock icon without a brand', async () => {
+    const r = await renderOnHost('cowork.mindshub.ai');
+    expect(r.iconAtApp).toBe('/minds-icon.svg');
+  });
+
+  it("applies the brand's defaults before reading the theme and style", async () => {
+    window.localStorage.setItem('anton.theme', 'dark');
+    skinState.seed = () => {
+      window.localStorage.setItem('anton.theme', 'light');
+      skinState.skin = 'acme';
+    };
+    try {
+      await renderOnHost('cowork.mindshub.ai');
+      expect(document.body.dataset.theme).toBe('light');
+      expect(document.body.dataset.skin).toBe('acme');
+    } finally {
+      skinState.seed = () => {};
+      skinState.skin = 'normal';
+      window.localStorage.removeItem('anton.theme');
+    }
   });
 });

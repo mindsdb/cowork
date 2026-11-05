@@ -9,10 +9,10 @@
 // - Orphans resolve the active project name → { name, path } via the
 //   projects list, so the path-prefix filter works.
 // - Polls every 3s while streaming, plus once when streaming ends.
-// - Click → HTML opens in-app viewer; other types → OS openPath.
+// - Click → the in-app viewer for what it previews; other types → OS openPath
+//   on desktop, or a download on web.
 
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import {
@@ -22,16 +22,30 @@ import {
   unpublishArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
-import { Tooltip } from '../ui';
+import { OverflowMenu } from '../OverflowMenu';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
-import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { useLiveApps } from '../../../lib/liveApps';
+import { NO_PREVIEW_DOWNLOADED_NOTE, artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../../lib/liveAppSharing';
+import { liveAppLines, liveAppOpenAddress } from '../../lib/liveAppState';
+import { useLiveAppStates } from '../../hooks/useLiveAppStates';
+import { LiveAppShareDialog } from '../artifacts/LiveAppShareDialog';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { railArtifactRows } from '../../lib/railArtifacts';
-import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
+import { RailShowMore } from './RailShowMore';
+
+// How many rows the Artifacts list shows before "+ N more".
+const RAIL_COLLAPSED_ROWS = 6;
+import {
+  canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
+  isInlinePreviewable,
+} from '../../lib/artifactKinds';
+import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { stopSharingNotice } from '../artifact/publish/linkLeftLive';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -68,8 +82,23 @@ function iconForRow(row) {
 }
 
 
-export function WorkingFolderLive({ project, isStreaming, conversationId = null, onAddressWithAgent }) {
+export function WorkingFolderLive({
+  project,
+  isStreaming,
+  conversationId = null,
+  onAddressWithAgent,
+  /*
+   * Live apps: the parent hears which project the rail resolved, and hands
+   * back, once, a copy duplicated into it from "Shared with you".
+   */
+  onProjectResolved,
+  receivedCopy = null,
+  onReceivedCopyShown,
+}) {
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
+  // Re-read when a turn starts or ends; the end is when the agent launches an app.
+  const liveAppStates = useLiveAppStates(liveApps, isStreaming);
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
     if (project) return;
@@ -92,6 +121,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   }, [project]);
 
   const effectiveProject = project || resolvedProject;
+  const effectiveProjectId = effectiveProject?.id || null;
+  useEffect(() => {
+    onProjectResolved?.(effectiveProjectId);
+  }, [effectiveProjectId]);
 
   // Full server response; rows are derived so a chat switch inside the same
   // project regroups without a refetch.
@@ -100,6 +133,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     () => railArtifactRows(artifacts, conversationId),
     [artifacts, conversationId],
   );
+  // Collapsed, the list shows this chat's artifacts and enough of the rest
+  // of the project to fill RAIL_COLLAPSED_ROWS.
+  const [expanded, setExpanded] = useState(false);
+  const collapsedCount = Math.max(RAIL_COLLAPSED_ROWS, currentCount);
+  const visibleRows = expanded ? rows : rows.slice(0, collapsedCount);
   const authorships = useMemo(() => rows.map((r) => artifactAuthorship(r.capabilities)), [rows]);
   // Sticky per project: once any row needed the authorship column, keep
   // reserving it for this project even once a later poll's rows happen to be
@@ -148,6 +186,30 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       .catch(() => { if (ticket === loadVersion.current) setArtifacts([]); });
   }, [effectiveProject?.name, effectiveProject?.id, effectiveProject?.path]);
 
+  /*
+   * A copy duplicated from "Shared with you" into this project shows at once,
+   * and its row scrolls into view: the rail scrolls, and the copy may land
+   * out of sight, or past the collapsed list's end, where it would be hidden.
+   */
+  const listRef = useRef(null);
+  const [revealPath, setRevealPath] = useState(null);
+  useEffect(() => {
+    if (!receivedCopy?.path) return;
+    onReceivedCopyShown?.();
+    if (receivedCopy.projectId && receivedCopy.projectId !== effectiveProjectId) return;
+    setArtifacts((prev) => [receivedCopy, ...prev.filter((r) => r.path !== receivedCopy.path)]);
+    setExpanded(true);
+    setRevealPath(receivedCopy.path);
+  }, [receivedCopy]);
+  useEffect(() => {
+    if (!revealPath) return;
+    const row = Array.from(listRef.current?.querySelectorAll('[data-artifact-path]') || [])
+      .find((el) => el.dataset.artifactPath === revealPath);
+    if (!row) return;
+    row.scrollIntoView?.({ block: 'nearest' });
+    setRevealPath(null);
+  }, [revealPath, rows]);
+
   // Streaming poll — every 3s while live, plus once shortly after
   // streaming ends (catches artifacts written near the very end of
   // the turn). Each tick allocates a fresh ticket so its response
@@ -188,80 +250,24 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       return fresh && fresh.mtime !== cur.mtime ? { ...cur, ...fresh } : cur;
     });
   }, [artifacts]);
-  // Per-row kebab menu state (single-open) + portal coords.
-  //
-  // Why a portal: the rail-card body wraps this component with
-  // `overflow-y: auto` (RailCard.jsx). A `position: absolute`
-  // dropdown child of an artifact row gets visually clipped by that
-  // ancestor's overflow — so the menu appeared to "hide behind" the
-  // card. createPortal escapes to document.body, where no ancestor
-  // overflow can touch it. We compute viewport-fixed coords from the
-  // clicked kebab's getBoundingClientRect() and close on scroll +
-  // resize since the kebab might move under a stale menu.
+  // Which row's kebab menu is open. Single-open, and it hides that row's
+  // timestamp so the kebab stays visible while its menu is up.
   const [openMenuPath, setOpenMenuPath] = useState(null);
-  const [menuPos, setMenuPos] = useState(null);
+  // Forget a menu whose row left the list, or it would reopen if the row came back.
+  useEffect(() => {
+    if (openMenuPath != null && !rows.some((r) => r.path === openMenuPath)) setOpenMenuPath(null);
+  }, [rows, openMenuPath]);
   const [busyPath, setBusyPath] = useState(null);
   const [rowError, setRowError] = useState('');
+  /* The neutral counterpart of rowError: what a click did, when it did
+     something other than what a click usually does. */
+  const [rowNote, setRowNote] = useState('');
   // Pending artifact-delete payload — drives the ConfirmModal, same
   // lifted-state pattern as the project-files / task-uploads deletes
   // in ContextCard and the task / project deletes in App.jsx.
   const [pendingDeleteArtifact, setPendingDeleteArtifact] = useState(null);
-  const menuRef = useRef(null);
-  // Map of artifact.path → kebab button DOM node. Stored in a ref
-  // so renders don't replace the map; cleaned up implicitly when
-  // rows unmount via the ref callback's null branch.
-  const kebabRefs = useRef(new Map());
-  const setKebabRef = (path) => (el) => {
-    if (el) kebabRefs.current.set(path, el);
-    else kebabRefs.current.delete(path);
-  };
-
-  // Menu opens just below the kebab, right-anchored so it can't
-  // extend past the right edge of the viewport. `position: fixed`
-  // applies these directly to viewport coordinates.
-  const menuPosFor = (btn) => {
-    const r = btn.getBoundingClientRect();
-    return { top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) };
-  };
-
-  const openMenuFor = (path) => {
-    const btn = kebabRefs.current.get(path);
-    if (!btn) return;
-    setMenuPos(menuPosFor(btn));
-    setOpenMenuPath(path);
-  };
-
-  useEffect(() => {
-    if (openMenuPath == null) return undefined;
-    const onClick = (e) => {
-      if (menuRef.current && menuRef.current.contains(e.target)) return;
-      setOpenMenuPath(null);
-    };
-    // The kebab that's anchoring the menu might scroll out from
-    // under it (rail-card body has overflow-y:auto) or the window
-    // may resize — close in either case so the menu doesn't dangle.
-    const onClose = () => setOpenMenuPath(null);
-    // Defer one tick so the click that OPENED the menu doesn't
-    // propagate up and immediately close it.
-    const id = setTimeout(() => document.addEventListener('click', onClick), 0);
-    window.addEventListener('resize', onClose);
-    document.addEventListener('scroll', onClose, true); // capture catches all scrollers
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', onClick);
-      window.removeEventListener('resize', onClose);
-      document.removeEventListener('scroll', onClose, true);
-    };
-  }, [openMenuPath]);
-  // Rows move under an open menu (a chat switch regroups them, a poll adds
-  // new ones on top): keep the menu on its row, or close it once the row is gone.
-  useLayoutEffect(() => {
-    if (openMenuPath == null) return;
-    const btn = kebabRefs.current.get(openMenuPath);
-    if (btn) setMenuPos(menuPosFor(btn));
-    else setOpenMenuPath(null);
-  }, [rows]);
-
+  // The live app whose "Share with…" dialog is open.
+  const [shareTarget, setShareTarget] = useState(null);
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
   };
@@ -274,7 +280,92 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   //     HTTP (origin-relative → hits whatever server we're talking to).
   //     Falls back to publishedUrl, then a clear error.
   const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
+
+  // Kebab menu rows for one artifact.
+  const menuItemsFor = (a) => {
+    /*
+     * Where the Open item goes: the OS on desktop; a tab when there is a serve
+     * or shared URL. A separate Download item saves the file, so the two never
+     * say the same thing.
+     */
+    const canOpenRemote = !!(a.serveUrl || a.publishedUrl);
+    /*
+     * canDownloadArtifact leaves out fullstack apps on BOTH routes: on a
+     * non-org web deployment a fullstack app has a serveUrl too, and saving it
+     * would save its shell index.html.
+     */
+    const canDownload = !canOpenLocalFile && canDownloadArtifact(a);
+    /*
+     * On web a tab shows only what canShowInBrowserTab allows; on any other
+     * file it saves without a word, so those files get Download and no tab. An
+     * unshared fullstack app with nothing to save keeps the tab item, which
+     * says why it cannot open rather than promise a download. A live app opens
+     * only where it runs, so it offers the tab only while it runs: the serve
+     * URL's copy of its page has no backend.
+     */
+    const liveAppAddress = liveAppOpenAddress(a, { liveApps, states: liveAppStates });
+    const canOpenTab = !canOpenLocalFile && (isLiveAppCard(a, liveApps)
+      ? Boolean(liveAppAddress)
+      : (!host.isWeb || canShowInBrowserTab(a)) && (canOpenRemote || !canDownload));
+    const busy = busyPath === a.path;
+    return [
+      // The document types preview first wherever the shared gate allows them.
+      canPreviewDocument(a, host) && {
+        label: 'Preview',
+        icon: (Ico.eye?.(13) || Ico.sparkle(14)),
+        disabled: busy,
+        onClick: () => {
+          setRowError('');
+          setRowNote('');
+          setPreviewArt(a);
+        },
+      },
+      canOpenLocalFile && {
+        label: 'Open in OS',
+        icon: (Ico.externalLink || Ico.upload)(13),
+        disabled: busy,
+        onClick: () => openArtifactExternal(a),
+      },
+      canOpenTab && {
+        label: 'Open in new tab',
+        icon: (Ico.externalLink || Ico.upload)(13),
+        disabled: busy,
+        onClick: () => (liveAppAddress ? openLiveApp(liveAppAddress) : openArtifactExternal(a)),
+      },
+      canDownload && {
+        label: 'Download',
+        icon: Ico.download(14),
+        disabled: busy,
+        /* Clears both lines as it starts, like a row click, so an earlier
+           error never sits above a download that worked. */
+        onClick: async () => {
+          setRowError('');
+          setRowNote('');
+          if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
+        },
+      },
+      canShareLiveApp(a, liveApps) && {
+        label: SHARE_LIVE_APP_LABEL,
+        icon: Ico.userPlus(14),
+        disabled: busy,
+        onClick: () => setShareTarget(a),
+      },
+      // Confirm first, like the project-file, upload, task and project deletes.
+      a.capabilities?.canEdit !== false && { divider: true },
+      a.capabilities?.canEdit !== false && {
+        label: 'Delete', icon: Ico.trash(14), danger: true, disabled: busy,
+        onClick: () => setPendingDeleteArtifact(a),
+      },
+    ].filter(Boolean);
+  };
+  const openLiveApp = async (address) => {
+    setRowNote('');
+    try { await host.openExternal(address); } catch {}
+  };
   const openArtifactExternal = async (a) => {
+    /* An earlier click's note says nothing about this action, so it never
+       sits beside the error this one may raise. */
+    setRowNote('');
     if (!canOpenLocalFile) {
       // `serveUrl` is origin-relative (`/v1/...`). In a web tab a
       // relative URL resolves against the page origin (the server) —
@@ -289,14 +380,8 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
         try { await host.openExternal(url); } catch {}
         return;
       }
-      // Org mode, non-HTML artifact: nothing above exists — no serve URL by
-      // design, no published page because autopublish skips binaries — but the
-      // authenticated draft URL still carries the bytes, so save the file
-      // rather than dead-end (ENG-2044). Awaited: the download now runs an
-      // authFetch (a navigation cannot attach the Authorization header), so
-      // the result is a promise. Not for a fullstack app: its primary is a
-      // shell index.html, not the app — the message below is the honest answer.
-      if (canDownloadOrgDraft(a) && await downloadArtifactFile(a)) return;
+      /* Nothing to open and nothing to save: an unshared fullstack app, whose
+         draft is only its shell index.html, or a card with no primary file. */
       setRowError('This artifact has no servable file yet.');
       return;
     }
@@ -314,6 +399,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     if (!a?.path || a?.capabilities?.canEdit === false) return;
     setBusyPath(a.path);
     setRowError('');
+    setRowNote('');
     // Optimistic remove — mirrors the Project Files / Task Uploads
     // deletes so the row vanishes the same frame the user confirms.
     // Reached only after the ConfirmModal is accepted (see the
@@ -324,13 +410,16 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       // Unpublish first so deletion never leaves an orphaned public copy.
       // The server enforces the same rule as a backstop. Skipped in org mode —
       // see needsClientUnpublishBeforeDelete.
+      let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl })) {
-        await unpublishArtifact(a.path);
+        leftLive = stopSharingNotice(await unpublishArtifact(a.path));
       }
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete
       // guard always runs.
       await deleteArtifactAndSync(a);
+      // The page itself is still open to anyone with its link.
+      if (leftLive) setRowNote(leftLive);
     } catch (e) {
       setRowError(e?.message || 'Delete failed.');
       // Restore the row on failure.
@@ -342,35 +431,49 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // Inline-previewable artifacts open the ArtifactViewer modal; the
   // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
   // the inline text path. Anything else falls through to the OS
-  // handler so the user's default app picks it up.
+  // handler so the user's default app picks it up, or on web to a
+  // download.
   const onOpenArtifact = async (artifact) => {
     /*
      * In org mode the viewer renders the authenticated draft instead of local
      * bytes, and an artifact whose draft it cannot render keeps the published
-     * URL. Local OS handoff remains a desktop-only capability.
+     * URL. Local OS handoff remains a desktop-only capability. Desktop hands
+     * an image to the default app; with no shell to hand it to, the viewer
+     * shows it, as the chat card does. The document types join both previews
+     * wherever the shared document gate allows them.
      */
+    const hasBridge = host.isElectron;
+    const canPreviewDoc = canPreviewDocument(artifact, host);
     const target = artifactOpenTarget({
       orgMode,
       published: !!artifact.publishedUrl,
-      canPreviewInline: isInlinePreviewable(artifact),
-      canPreviewDraft: canPreviewOrgDraft(artifact),
-      hasBridge: host.isElectron,
+      canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
+      canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
+      hasBridge,
       hasDraft: canDownloadOrgDraft(artifact),
+      canDownload: canDownloadArtifact(artifact),
     });
+    /* Cleared as the click starts, so a download that resolves late never
+       erases an error another action raised in the meantime. */
+    setRowError('');
+    setRowNote('');
     if (target === 'published') {
       /*
-       * Awaited so the catch can see a rejected bridge call — the same reason
-       * `openArtifactExternal` above awaits it. A synchronous try around an
-       * async call leaves the fallback unreachable and the rejection loose.
+       * Awaited so a rejected bridge call is caught rather than left loose.
+       * No raw window.open fallback: host.openExternal is what restricts the
+       * agent-writable URL to http(s)/mailto.
        */
-      try { await host.openExternal(artifact.publishedUrl); }
-      catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
+      try { await host.openExternal(artifact.publishedUrl); } catch {}
     } else if (target === 'preview') {
       setPreviewArt(artifact);
     } else if (target === 'download') {
-      // The draft the viewer cannot render, nobody shared: its bytes are still
-      // one authenticated request away (ENG-2044).
-      if (!(await downloadArtifactFile(artifact))) setRowError('This artifact has no servable file yet.');
+      /* Nothing here renders the file and nobody shared it: its bytes are
+         still one request away, and the note says why it saved. */
+      if (await downloadArtifactFile(artifact)) {
+        setRowNote(NO_PREVIEW_DOWNLOADED_NOTE);
+      } else {
+        setRowError('This artifact has no servable file yet.');
+      }
     } else if (target === 'os') {
       onOpen(artifact.path);
     }
@@ -400,17 +503,29 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
           {rowError}
         </p>
       )}
+      {/* Mounted while empty so a screen reader hears the note arrive. */}
+      <div role="status" aria-live="polite">
+        {rowNote && (
+          <p className="text-xs px-1 pb-0.5 text-ink-3">
+            {rowNote}
+          </p>
+        )}
+      </div>
       {rows.length === 0 ? (
         <p className="text-sm text-ink-4 px-1 pb-1">
           No artifacts yet — the agent will save dashboards, reports, and
           datasets here as it produces them.
         </p>
       ) : (
-        <div className="flex flex-col gap-0.5">
-          {rows.map((a, i) => {
+        <div ref={listRef} className="flex flex-col gap-0.5">
+          {visibleRows.map((a, i) => {
             const isPublished = !!a.publishedUrl;
             const menuOpen = openMenuPath === a.path;
             const authorship = authorships[i];
+            const title = a.title || (a.path?.split('/').pop() || '');
+            // A live app's state, then whom a copy came from, under the title.
+            const lines = liveAppLines(a, { liveApps, states: liveAppStates });
+            const sublines = lines ? [lines.state, lines.received].filter(Boolean) : [];
             return (
               <Fragment key={a.path}>
                 {i > 0 && i === currentCount && (
@@ -423,6 +538,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                 <div
                   role="button"
                   tabIndex={0}
+                  data-artifact-path={a.path}
                   onClick={() => onOpenArtifact(a)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -462,9 +578,16 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                   ) : (
                     <span aria-hidden="true" />
                   ))}
-                  <span className="text-sm text-ink truncate">
-                    {a.title || (a.path?.split('/').pop() || '')}
-                  </span>
+                  {sublines.length > 0 ? (
+                    <span className="flex flex-col min-w-0">
+                      <span className="text-sm text-ink truncate">{title}</span>
+                      {sublines.map((line) => (
+                        <span key={line} className="text-[11px] leading-[1.35] text-ink-4 [overflow-wrap:anywhere]">{line}</span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-ink truncate">{title}</span>
+                  )}
                   {/* Trailing slot: timestamp normally, kebab on hover
                       or while THIS row's menu is open. Shared-slot
                       trick keeps row width stable. */}
@@ -480,142 +603,47 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                           rather than a sentence. */}
                       {String(a.updated || '').replace(/^updated\s+/i, '')}
                     </span>
-                    <Tooltip content="More actions">
-                      <button
-                        ref={setKebabRef(a.path)}
-                        type="button"
-                        aria-label="More actions"
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpen}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (menuOpen) setOpenMenuPath(null);
-                          else openMenuFor(a.path);
-                        }}
-                        className={clsx(
-                          // `justify-end` (not center) pins the kebab to
-                          // the right edge of the trailing slot so it sits
-                          // flush against the row's right margin — matching
-                          // where the project-files trash icon lands. The
-                          // artifact timestamp ("3h ago") is wider than the
-                          // project-file one ("3h"), so a centered kebab
-                          // floated noticeably left of the edge.
+                    {/* `contents` keeps the trigger positioned against the slot;
+                        the handlers stop menu clicks and keys, which bubble
+                        through the portal, from also opening the row. */}
+                    <span
+                      className="contents"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <OverflowMenu
+                        open={menuOpen}
+                        onOpenChange={(next) => setOpenMenuPath(next ? a.path : null)}
+                        ariaLabel="Artifact actions"
+                        icon={Ico.moreVert(14)}
+                        width={180}
+                        items={menuItemsFor(a)}
+                        // `justify-end` (not center) pins the kebab to the
+                        // right edge of the trailing slot, flush with where
+                        // the project-files trash icon lands; the artifact
+                        // timestamp ("3h ago") is wider than the project-file
+                        // one ("3h"), so a centered kebab floated left.
+                        triggerClassName={clsx(
                           'absolute inset-0 inline-flex items-center justify-end',
                           menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-                          'transition-opacity rounded',
-                          'text-ink-4 hover:text-ink',
-                          'bg-transparent border-0 cursor-pointer p-0',
                         )}
-                      >
-                        {Ico.moreVert(14)}
-                      </button>
-                    </Tooltip>
+                      />
+                    </span>
                   </span>
                 </div>
               </Fragment>
             );
           })}
+          <RailShowMore
+            hiddenCount={rows.length - collapsedCount}
+            expanded={expanded}
+            onToggle={() => setExpanded((open) => !open)}
+          />
         </div>
       )}
 
-      {/* Portaled menu for the currently-open kebab. Lives at
-          document.body so the rail-card body's overflow:auto can't
-          clip it. `position: fixed` uses viewport coords computed
-          from the kebab's getBoundingClientRect() in openMenuFor. */}
-      {openMenuPath != null && menuPos != null && createPortal(
-        (() => {
-          const a = rows.find((r) => r.path === openMenuPath);
-          if (!a) return null;
-          // Where the Open item goes: the OS on desktop; a tab when there is a
-          // serve or shared URL; otherwise (org mode, non-HTML) it saves the
-          // file, since `openArtifactExternal` falls through to the download.
-          // A separate Download item is only worth a row when Open goes
-          // somewhere else, so the two never say the same thing (ENG-2044).
-          const canOpenRemote = !!(a.serveUrl || a.publishedUrl);
-          // The fullstack-app exclusion applies to BOTH routes:
-          // canDownloadOrgDraft checks it, but on a non-org web deployment a
-          // fullstack app has a serveUrl too, and the `a.serveUrl ||`
-          // short-circuit was saving its shell index.html (review pass 2).
-          const canDownload = !canOpenLocalFile && !isBackendArtifact(a)
-            && !!(a.serveUrl || canDownloadOrgDraft(a));
-          const openLabel = canOpenLocalFile
-            ? 'Open in OS'
-            // 'Download' only when the click can actually deliver one: an
-            // unshared fullstack app or a card with no primary file falls
-            // through to the dead-end message, and labelling THAT 'Download'
-            // promises a save that cannot happen (review finding on #764).
-            : (canOpenRemote || !canDownload ? 'Open in new tab' : 'Download');
-          const canDelete = a.capabilities?.canEdit !== false;
-          return (
-            <div
-              ref={menuRef}
-              role="menu"
-              onClick={(e) => e.stopPropagation()}
-              className="menu"
-              style={{
-                position: 'fixed',
-                top: menuPos.top,
-                right: menuPos.right,
-                minWidth: 180,
-                zIndex: 100,
-              }}
-            >
-              <button
-                type="button"
-                className="menu-item"
-                disabled={busyPath === a.path}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpenMenuPath(null);
-                  openArtifactExternal(a);
-                }}
-              >
-                <span className="inline-flex text-[var(--frost-700)]">
-                  {(openLabel === 'Download' ? Ico.download : (Ico.externalLink || Ico.upload))(13)}
-                </span>
-                <span>{openLabel}</span>
-              </button>
-              {canDownload && canOpenRemote && (
-                <button
-                  type="button"
-                  className="menu-item"
-                  disabled={busyPath === a.path}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    setOpenMenuPath(null);
-                    if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
-                  }}
-                >
-                  <span className="inline-flex text-[var(--frost-700)]">{Ico.download(14)}</span>
-                  <span>Download</span>
-                </button>
-              )}
-              {canDelete && (
-                <>
-                  <div className="h-px bg-[var(--border-0)] my-1" />
-                  <button
-                    type="button"
-                    className="menu-item"
-                    disabled={busyPath === a.path}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenMenuPath(null);
-                      // Open the confirm modal rather than deleting
-                      // immediately — matches the project files / task
-                      // uploads / task / project delete flows.
-                      setPendingDeleteArtifact(a);
-                    }}
-                    style={{ color: 'var(--danger)' }}
-                  >
-                    <span className="inline-flex text-danger">{Ico.trash(14)}</span>
-                    <span>Delete</span>
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })(),
-        document.body,
+      {shareTarget && (
+        <LiveAppShareDialog artifact={shareTarget} onClose={() => setShareTarget(null)} />
       )}
 
       <ConfirmModal

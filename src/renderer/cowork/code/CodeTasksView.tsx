@@ -1,14 +1,15 @@
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import {
-  CollectionState, FilterChips, FilterMenu, FilterRow, HoverActions, ListGroup, ListItem, PageHeader, SearchInput, SortPill,
-  StatusDot, useCollectionShortcut, type Filter, type StatusTone,
+  CollectionState, FilterChips, FilterMenu, FilterRow, ListGroup, PageHeader, SearchInput, SortPill,
+  useCollectionShortcut, type Filter, type StatusTone,
 } from '../components/collection';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
 import { projectResources, type CodeProject, type CodingSession } from './api';
-import { codingSessionStatus, relativeTime } from './presentation';
+import { codingSessionStatus } from './presentation';
+import { TaskRow } from '../components/task/TaskRows';
 import { projectActions } from './projectActions';
 import { useCodeTaskMenu, type CodeTaskListActions } from './useCodeTaskMenu';
 import './code-tasks.css';
@@ -129,6 +130,10 @@ export function CodeTasksView({
   const total = useMemo(() => sessions.filter(task => !!task.archived === archived
     && (!projectId || task.project_id === projectId)).length, [sessions, archived, projectId]);
 
+  // Nothing at all to search or filter (archived included): the toolbar would
+  // only offer controls that can't change the result.
+  const hasNoTasks = !loading && !error && !sessions.some(task => !projectId || task.project_id === projectId);
+
   const clearFilters = () => { setProjectFilter('all'); setStatusFilter('all'); setArchived(false); };
   const filters: Filter[] = [
     // A project's own page is already scoped, so it has no project facet.
@@ -154,7 +159,7 @@ export function CodeTasksView({
           <Button variant="primary" disabled={!canCreate || loading} onClick={() => onNewTask(newTaskProjectId)}>{Ico.plus(14)} New task</Button>
         </div>}
       /></div>
-      <FilterRow
+      {!hasNoTasks && <FilterRow
         search={<SearchInput value={query} onChange={setQuery} inputRef={inputRef} placeholder="Search tasks" />}
         filter={<FilterMenu filters={filters} />}
         chips={<FilterChips filters={filters} onClear={clearFilters} />}
@@ -162,7 +167,7 @@ export function CodeTasksView({
         counts={!loading && !error ? (filtered.length === total
           ? `${total} ${total === 1 ? 'task' : 'tasks'}`
           : `${filtered.length} of ${total} tasks`) : undefined}
-      />
+      />}
       <div className="mx-8 grid gap-4">
         {actionError && <Alert variant="danger">{actionError}</Alert>}
         {error && <Alert variant="danger">{error}<div className="mt-2"><Button variant="subtle" size="sm" onClick={onRetry}>Try again</Button></div></Alert>}
@@ -178,32 +183,27 @@ export function CodeTasksView({
           onClear={() => { setQuery(''); setProjectFilter('all'); setStatusFilter('all'); }}
           empty={archived
             ? { title: 'No archived tasks', description: 'Tasks you archive will appear here.' }
-            : { icon: Ico.code(20), title: 'No tasks yet', description: 'Start a task to begin working on your code.' }}
+            : {
+                icon: Ico.code(20),
+                title: 'No tasks yet',
+                description: 'A task keeps one coding conversation and the changes it makes to a folder or repository.',
+                action: canCreate ? { label: 'Start your first task', onClick: () => onNewTask(newTaskProjectId) } : undefined,
+              }}
         >
-          <ListGroup density="compact" aria-label={projectId ? 'Project tasks' : 'Code tasks'}>
+          <ListGroup aria-label={projectId ? 'Project tasks' : 'Code tasks'}>
             {filtered.map(task => {
               const status = codingSessionStatus(task);
               const name = task.project_id ? projectNames.get(task.project_id) : undefined;
-              return <ListItem
+              return <TaskRow
                 key={task.id}
-                title={task.title || 'Untitled task'}
-                onActivate={() => onOpen(task.id)}
-                activateLabel={task.title || 'Untitled task'}
-                revealActions
-                actions={taskActions && <Menu
-                  trigger={<Button icon variant="subtle" size="sm" aria-label={`Actions for ${task.title || 'untitled task'}`}>{Ico.moreVert(14)}</Button>}
-                  items={taskMenu.items(task)}
-                />}
-                meta={<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                  {!projectId && (name
-                    ? <HoverActions reveal className="min-w-0 max-w-[12rem] shrink max-sm:max-w-[8rem]">
-                      <button type="button" title={name} onClick={() => onOpenProject(task.project_id!)}
-                        className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 hover:text-accent hover:underline hover:underline-offset-2">{name}</button>
-                    </HoverActions>
-                    : <span>No project</span>)}
-                  <StatusDot tone={TONE[status.tone]}>{status.label}</StatusDot>
-                  <time dateTime={task.updated_at} title={new Date(task.updated_at).toLocaleString()}>{relativeTime(task.updated_at)}</time>
-                </span>}
+                title={task.title}
+                onOpen={() => onOpen(task.id)}
+                project={!projectId && name ? { label: name, onOpen: () => onOpenProject(task.project_id!) } : null}
+                // Ready, stopped and completed are the resting states; the
+                // row shows status only when there's something to notice.
+                status={status.tone === 'neutral' || status.tone === 'success' ? null : { label: status.label, tone: TONE[status.tone] }}
+                updatedAt={task.updated_at}
+                menuItems={taskActions ? taskMenu.items(task) : undefined}
               />;
             })}
           </ListGroup>
