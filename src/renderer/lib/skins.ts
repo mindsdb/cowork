@@ -21,6 +21,7 @@
  */
 
 import type { BrandTheme } from './deploymentBrand';
+import type { DeploymentLook } from './orgBranding';
 import { BRAND_LOAD, DEPLOYMENT_BRAND } from './deploymentBrand';
 
 export interface Skin {
@@ -56,6 +57,19 @@ export const DEFAULT_SKIN = SKINS[0].id;
  * there.
  */
 export const SKIN_LOCKED = DEPLOYMENT_BRAND?.skinLocked === true;
+
+/**
+ * What the deployment brand sets, for the one place that weighs it against
+ * the org's branding and the member's choices (orgBranding.ts resolveLook).
+ */
+export const DEPLOYMENT_LOOK: DeploymentLook = {
+  skinLocked: SKIN_LOCKED,
+  defaultSkin: DEFAULT_SKIN,
+  skin: BRAND_SKIN?.id ?? null,
+  theme: DEPLOYMENT_BRAND?.theme ?? null,
+  logoUrl: DEPLOYMENT_BRAND?.logoUrl ?? null,
+  iconUrl: DEPLOYMENT_BRAND?.iconUrl ?? null,
+};
 
 const STORAGE_KEY = 'anton.skin';
 const THEME_KEY = 'anton.theme';

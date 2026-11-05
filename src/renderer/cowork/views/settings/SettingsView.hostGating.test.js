@@ -47,6 +47,12 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     expect(ids(navItemsForHost(true, true, true))).toEqual(['agent', 'appearance', 'channels', 'usage']);
   });
 
+  it('adds Branding after Appearance on web for an org admin only (ENG-4020)', () => {
+    expect(ids(navItemsForHost(true, true, true, { branding: true }))).toEqual(['agent', 'appearance', 'branding', 'channels', 'usage']);
+    expect(ids(navItemsForHost(true, true, true, { branding: false }))).not.toContain('branding');
+    expect(ids(navItemsForHost(false, true, true, { branding: true }))).not.toContain('branding');
+  });
+
   it('keeps Agent on web — it carries the reasoning-effort control', () => {
     // The whole point of the ticket: reasoning effort is the only user-side
     // workaround for a turn that spends its entire output budget on internal

@@ -8,6 +8,7 @@ import { isSpaNavigation } from './web-spa-fallback';
 import { platformUiEnabled } from '../shared/ui-capabilities';
 import { withDeploymentBrand } from '../shared/deployment-brand';
 import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
+import { withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -111,6 +112,13 @@ const deploymentBrand = webEntryTransform('cowork-deployment-brand', withDeploym
 // (shared/deployment-brand.test.ts).
 const draftLinkFrameSources = webEntryTransform('cowork-draft-link-frame-sources', withDraftLinkFrameSources);
 
+// The hosted build also shows an org's logo and icon (ENG-4020), served by
+// auth, so its page's img-src names the auth hosts
+// (shared/org-brand-image-origins.ts). Same reasoning as the draft hosts:
+// build time, hosted only. It rewrites only img-src, which neither transform
+// above touches.
+const orgBrandImageSources = webEntryTransform('cowork-org-brand-image-sources', withOrgBrandImageSources);
+
 // The build's platform switch: on for desktop, and for web only when
 // VITE_PLATFORM_UI is exactly "true" (shared/ui-capabilities.ts).
 function platformUiFor(mode: string): boolean {
@@ -131,7 +139,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback, deploymentBrand] : []),
-    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources] : []),
+    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSources] : []),
   ],
   customLogger: logger,
   define: {

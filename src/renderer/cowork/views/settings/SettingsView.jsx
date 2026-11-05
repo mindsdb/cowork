@@ -28,6 +28,7 @@ import AccountSection from './AccountSection';
 import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
+import BrandingSection from './BrandingSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
@@ -57,6 +58,10 @@ const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'i
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
+// Under an org's locked look (ENG-4020), what a member's own control says.
+const SET_BY_ORG = 'Set by your organization.';
+const NO_ORG_LOCKS = { style: false, theme: false, greeting: false, logo: false, favicon: false };
+
 const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
 
 /* The notice under each Settings > Agent role row after the MindsHub health
@@ -281,7 +286,7 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   );
 }
 
-function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
+function TextInput({ value, onChange, placeholder, title, ariaLabel, disabled }) {
   return (
     <Input
       value={value ?? ''}
@@ -289,6 +294,7 @@ function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
       placeholder={placeholder}
       title={title}
       aria-label={ariaLabel}
+      disabled={disabled}
     />
   );
 }
@@ -762,6 +768,12 @@ export default function SettingsView({
   onDownloadShellAutoUpdate,
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
+  // Company branding (ENG-4020): the org-branding read (lib/orgBranding.ts),
+  // what to call with an admin's saved answer, and the resolved look, whose
+  // `lockedByOrg` turns off the member's own controls the org has set.
+  orgBranding = null,
+  onOrgBrandingSaved,
+  look = null,
 }) {
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -776,7 +788,9 @@ export default function SettingsView({
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
+    { branding: Boolean(orgBranding?.enabled && orgBranding?.canEdit) },
   );
+  const orgLocks = look?.lockedByOrg ?? NO_ORG_LOCKS;
   const orgMode = useOrgMode();
   const providerTestsAvailable = providerTestsEnabled(host.isWeb);
   // The `/hub/usage/` view App polls: the probe notice reads it for the
@@ -2166,10 +2180,11 @@ export default function SettingsView({
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
           </Section>
         ) : (
-          <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+          <Section title="Style" subtitle={orgLocks.style ? SET_BY_ORG : 'Normal, 8-Bit, or design your own with Custom. Combines with light and dark.'}>
             <ToggleGroup
               value={normalizeSkin(skin)}
               onValueChange={(v) => onSkinChange?.(v)}
+              disabled={orgLocks.style}
               aria-label="Style"
               options={SKINS.map((s) => ({
                 value: s.id,
@@ -2182,10 +2197,11 @@ export default function SettingsView({
             />
           </Section>
         )}
-        <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
+        <Section title="Theme" subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
           <ToggleGroup
             value={theme || 'dark'}
             onValueChange={(v) => onThemeChange?.(v)}
+            disabled={orgLocks.theme}
             aria-label="Theme"
             options={[
               {
@@ -2210,6 +2226,7 @@ export default function SettingsView({
                 type="color"
                 value={customTheme.accent}
                 onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
+                disabled={orgLocks.style}
                 aria-label="Custom accent color"
                 className={COLOR_SWATCH_INPUT}
               />
@@ -2220,7 +2237,7 @@ export default function SettingsView({
                   type="color"
                   value={customTheme.bgLight || '#fafafa'}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
-                  disabled={customTheme.bgLight === null}
+                  disabled={orgLocks.style || customTheme.bgLight === null}
                   aria-label="Custom background color — Light mode"
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgLight === null ? 0.45 : 1 }}
@@ -2229,6 +2246,7 @@ export default function SettingsView({
                   <Checkbox
                     checked={customTheme.bgLight === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
+                    disabled={orgLocks.style}
                     aria-label="Default Light background"
                   />
                   Default
@@ -2241,7 +2259,7 @@ export default function SettingsView({
                   type="color"
                   value={customTheme.bgDark || '#080d18'}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
-                  disabled={customTheme.bgDark === null}
+                  disabled={orgLocks.style || customTheme.bgDark === null}
                   aria-label="Custom background color — Dark mode"
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgDark === null ? 0.45 : 1 }}
@@ -2250,6 +2268,7 @@ export default function SettingsView({
                   <Checkbox
                     checked={customTheme.bgDark === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
+                    disabled={orgLocks.style}
                     aria-label="Default Dark background"
                   />
                   Default
@@ -2260,6 +2279,7 @@ export default function SettingsView({
               <ToggleGroup
                 value={String(customTheme.radius)}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
+                disabled={orgLocks.style}
                 aria-label="Corner radius"
                 options={[
                   { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
@@ -2272,6 +2292,7 @@ export default function SettingsView({
               <ToggleGroup
                 value={customTheme.font}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
+                disabled={orgLocks.style}
                 aria-label="Custom typeface"
                 options={[
                   { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
@@ -2283,17 +2304,19 @@ export default function SettingsView({
               <Switch
                 checked={customTheme.scanlines}
                 onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
+                disabled={orgLocks.style}
                 aria-label="Scanline overlay"
               />
             </Section>
           </>
         )}
-        <Section title="Greeting" subtitle="The line shown when you start a new task.">
+        <Section title="Greeting" subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
-                value={settings.greeting}
+                value={orgLocks.greeting ? look.greeting : settings.greeting}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
+                disabled={orgLocks.greeting}
                 title="Shown above the task input when you start a new task."
                 ariaLabel="Greeting text"
               />
@@ -2337,7 +2360,7 @@ export default function SettingsView({
             <AutoSaveTag settingKey="navTitleColor" />
           </div>
         </Section>
-        <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
+        <Section title="Sidebar logo" subtitle={orgLocks.logo ? SET_BY_ORG : 'An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.'}>
           <div className="flex items-center gap-3">
             {settings.navLogo && (
               <img
@@ -2349,6 +2372,7 @@ export default function SettingsView({
             <Button
               variant="subtle"
               onClick={() => logoInputRef.current?.click()}
+              disabled={orgLocks.logo}
             >
               {settings.navLogo ? 'Change logo' : 'Upload logo'}
             </Button>
@@ -2356,6 +2380,7 @@ export default function SettingsView({
               <Button
                 variant="danger"
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
+                disabled={orgLocks.logo}
               >
                 {Ico.trash(14)}
                 Remove
@@ -2375,12 +2400,12 @@ export default function SettingsView({
           )}
         </Section>
         {host.isWeb && (
-          <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
+          <Section title="Browser tab icon" subtitle={orgLocks.favicon ? SET_BY_ORG : 'PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.'}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               {settings.favicon && (
                 <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
               )}
-              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
+              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()} disabled={orgLocks.favicon}>
                 {settings.favicon ? 'Change icon' : 'Upload icon'}
               </Button>
               {settings.favicon && (
@@ -2389,7 +2414,7 @@ export default function SettingsView({
                   faviconReadRef.current = null;
                   autoSaveSetting('favicon', '');
                   setFaviconError(null);
-                }} aria-label="Remove browser tab icon">
+                }} aria-label="Remove browser tab icon" disabled={orgLocks.favicon}>
                   {Ico.trash(14)} Remove
                 </Button>
               )}
@@ -2465,6 +2490,10 @@ export default function SettingsView({
     </SettingsSectionPanel>
   );
 
+  const renderBrandingSection = () => (orgBranding?.enabled && orgBranding?.canEdit ? (
+    <BrandingSection branding={orgBranding} onSaved={onOrgBrandingSaved} />
+  ) : null);
+
   const renderChannelsSection = () => (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <ChannelsView />
@@ -2529,6 +2558,7 @@ export default function SettingsView({
       codingAgent: renderCodingAgentSection,
       computers: renderComputersSection,
       appearance: renderAppearanceSection,
+      branding: renderBrandingSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
@@ -2618,6 +2648,7 @@ export default function SettingsView({
       {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
       {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'branding' && renderBrandingSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}

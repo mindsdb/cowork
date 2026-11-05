@@ -49,7 +49,8 @@ import { useSharePointImport } from './components/sharepoint/useSharePointImport
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
-import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
+import { applyFavicon, applyNavTitleColor, applyOrgFavicon } from '../lib/navBranding';
+import { PLATFORM_UI } from '../lib/deployment';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canRunProject, canUseSharedResource } from './lib/sharedResourceAccess';
@@ -78,6 +79,7 @@ import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
+import { useOrgBranding } from './hooks/useOrgBranding';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
@@ -1767,18 +1769,25 @@ function AppCore() {
     sidebarCollapsibleRoutes,
     sidebarPopout,
   } = useSidebarNav({ isNarrow });
+  const orgMode = useOrgMode();
+  // The org's branding (ENG-4020): hosted org mode only. Read at startup, on
+  // an org switch or sign-in, and each time Settings opens; never polled.
+  const orgBranding = useOrgBranding({ enabled: PLATFORM_UI && host.isWeb && orgMode, settingsOpen });
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
-  // effects that keep them applied — all live in useThemeSkin.
+  // effects that keep them applied — all live in useThemeSkin. `look` is the
+  // deployment brand, the org's branding and the member's choices resolved
+  // in one place (lib/orgBranding.ts): the greeting, sidebar logo and tab
+  // icon below read it rather than the raw settings.
   const {
     theme, setTheme,
     skin, setSkin,
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
-  } = useThemeSkin();
+    look,
+  } = useThemeSkin({ orgBranding: orgBranding.branding, settings: appearanceSettings });
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
-  const orgMode = useOrgMode();
   // One list for the composer's per-conversation toggles: the OAuth
   // connections and the cloud database ones, each keyed by (engine, name),
   // which is the pair the server filters a turn's grants on.
@@ -1874,9 +1883,15 @@ function AppCore() {
     applyNavTitleColor(appearanceSettings.navTitleColor);
   }, [appearanceSettings.navTitleColor]);
 
+  // The tab icon: the member's own, the org's, or the page's own (the
+  // deployment brand's or stock), as resolved in `look`.
+  const faviconHref = look.favicon?.href ?? null;
+  const faviconFromOrg = look.favicon?.source === 'org';
   useEffect(() => {
-    if (host.isWeb) applyFavicon(appearanceSettings.favicon);
-  }, [appearanceSettings.favicon]);
+    if (!host.isWeb) return;
+    if (faviconFromOrg) applyOrgFavicon(faviconHref);
+    else applyFavicon(faviconHref);
+  }, [faviconHref, faviconFromOrg]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -5732,7 +5747,8 @@ function AppCore() {
       }, 60);
     },
     navTitle: appearanceSettings.navTitle || null,
-    navLogo: appearanceSettings.navLogo || null,
+    navLogo: look.logo,
+    navLogoWide: look.logoSource === 'org',
     // Mobile has no room for the desktop floating-toggle-row (bottom-right,
     // over the FAB) — the theme toggle moves into the top bar, opposite the
     // hamburger, and the coding-mode toggle is dropped entirely rather than
@@ -5921,7 +5937,8 @@ function AppCore() {
           serverBusyKind={serverBusyKind}
           showCounters={appearanceSettings.showCounters === true}
           navTitle={appearanceSettings.navTitle || null}
-          navLogo={appearanceSettings.navLogo || null}
+          navLogo={look.logo}
+          navLogoWide={look.logoSource === 'org'}
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
@@ -5997,7 +6014,7 @@ function AppCore() {
         >
         {route === 'home' && (
           <HomeView
-            greeting={appearanceSettings.greeting}
+            greeting={look.greeting}
             showDots={showDots}
             activeTasks={activeTasks}
             onSelectTask={selectTask}
@@ -6426,6 +6443,9 @@ function AppCore() {
               skin={skin} onSkinChange={setSkin}
               customTheme={customTheme} onCustomThemeChange={setCustomTheme}
               agentLabel={agentLabel}
+              orgBranding={orgBranding.branding}
+              onOrgBrandingSaved={orgBranding.apply}
+              look={look}
               section={settingsSection}
               onSectionChange={setSettingsSection}
               serverOnline={serverOnline}
@@ -6479,6 +6499,9 @@ function AppCore() {
                 skin={skin} onSkinChange={setSkin}
                 customTheme={customTheme} onCustomThemeChange={setCustomTheme}
                 agentLabel={agentLabel}
+                orgBranding={orgBranding.branding}
+                onOrgBrandingSaved={orgBranding.apply}
+                look={look}
                 section={settingsSection || 'agent'}
                 onSectionChange={setSettingsSection}
                 serverOnline={serverOnline}
@@ -6550,6 +6573,7 @@ function AppCore() {
         onThemeChange={setTheme}
         skin={skin}
         onSkinChange={setSkin}
+        orgLocks={look.lockedByOrg}
       />
 
       <ComingSoonModal

@@ -243,6 +243,29 @@ describe('getAccessToken()', () => {
 });
 
 describe('listWebOrganizations()', () => {
+  it("carries each organization's brand_icon_url attribute as its icon (ENG-4020)", async () => {
+    const subject = 'user-1';
+    signedIn({ subject, token: accessToken('org-acme'), activeOrganization: { id: 'org-acme', name: 'acme.example' } });
+    stubFetchWithCapability(vi.fn(async () => jsonResponse(200, [
+      {
+        id: 'org-acme',
+        name: 'acme.example',
+        displayName: 'Acme',
+        attributes: { brand_icon_url: ['https://auth.acme.com/v1/organizations/org-acme/branding/icon?v=1'] },
+      },
+      { id: 'org-globex', name: 'globex.example', displayName: 'Globex', attributes: {} },
+    ])));
+
+    const result = await listWebOrganizations();
+    expect(result.ok && result.orgs).toEqual([
+      {
+        id: 'org-acme', name: 'acme.example', displayName: 'Acme', isPersonal: false,
+        iconUrl: 'https://auth.acme.com/v1/organizations/org-acme/branding/icon?v=1',
+      },
+      { id: 'org-globex', name: 'globex.example', displayName: 'Globex', isPersonal: false },
+    ]);
+  });
+
   it('lists the authenticated subject, normalizes labels, and ranks personal last', async () => {
     const subject = 'user/one ?';
     const token = accessToken(ORG_PERSONAL);

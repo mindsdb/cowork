@@ -1704,6 +1704,27 @@ export async function fetchHubUsage() {
   return { reachable: false };
 }
 
+/**
+ * The org's branding (ENG-4020): its logo and icon URLs, its look, and whether
+ * the caller may edit it. Org mode only; the server answers `enabled: false`
+ * outside an org or in a personal one. Rejects on failure so the caller can
+ * keep what it has (the cached answer) rather than painting stock.
+ */
+export async function fetchOrgBranding() {
+  requireOrgMode('Company branding');
+  return req('/org-branding');
+}
+
+/**
+ * Save the org's look (admins only; the server answers 403 otherwise). Takes
+ * the snake_case body (lib/orgBranding.ts appearancePayload) and resolves to
+ * the same body as fetchOrgBranding.
+ */
+export async function updateOrgAppearance(payload) {
+  requireOrgMode('Company branding');
+  return req('/org-branding/appearance', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
 // The lock-owning wrappers decide how to handle failure. A save must never
 // publish offline/mock defaults as if they were the canonical persisted values.
 async function readSettings({ validate = true } = {}) {

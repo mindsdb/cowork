@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { id: 'codingAgent', label: 'Coding agent', icon: 'code', group: 'Code' },
   { id: 'computers', label: 'Computers', icon: 'computer', group: 'Code' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App' },
+  { id: 'branding', label: 'Branding', icon: 'building', group: 'App' },
   { id: 'channels', label: 'Channels', icon: 'chats', group: 'App' },
   { id: 'updates', label: 'Updates', icon: 'refresh', group: 'System' },
   { id: 'backend', label: 'Backend', icon: 'database', group: 'System' },
@@ -18,13 +19,23 @@ const NAV_ITEMS = [
 // Usage is none of those: it reads the same sidecar route both hosts already
 // call and its every control opens the console in a browser, so a hosted user
 // gets a working surface rather than a misleading one.
-const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels', 'usage']);
+const WEB_NAV_IDS = new Set(['agent', 'appearance', 'branding', 'channels', 'usage']);
 
-export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = false) {
-  if (isWeb) return NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id) && (PLATFORM_UI || item.id !== 'usage'));
-  if (!codeModeAvailable) {
-    return NAV_ITEMS.filter((item) => item.id !== 'codingAgent' && item.id !== 'computers');
+/**
+ * `branding` is the org's look (ENG-4020): offered only to an org admin on a
+ * hosted org, where the org-branding read said `canEdit`. Everyone else edits
+ * only their own look, in Appearance.
+ */
+export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = false, { branding = false } = {}) {
+  if (isWeb) {
+    return NAV_ITEMS.filter((item) => WEB_NAV_IDS.has(item.id)
+      && (PLATFORM_UI || item.id !== 'usage')
+      && (branding || item.id !== 'branding'));
   }
-  if (!codeModeEnabled) return NAV_ITEMS.filter((item) => item.id !== 'computers');
-  return [...NAV_ITEMS];
+  const desktop = NAV_ITEMS.filter((item) => item.id !== 'branding');
+  if (!codeModeAvailable) {
+    return desktop.filter((item) => item.id !== 'codingAgent' && item.id !== 'computers');
+  }
+  if (!codeModeEnabled) return desktop.filter((item) => item.id !== 'computers');
+  return desktop;
 }

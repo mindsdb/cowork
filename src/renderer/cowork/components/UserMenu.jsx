@@ -40,6 +40,8 @@ import Menu from './ui/Menu';
 import Spinner from './ui/Spinner';
 import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
+import { OrgIcon } from './OrgIcon';
+import { trustedBrandImageUrl } from '../../lib/orgBranding';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
 import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
@@ -205,6 +207,8 @@ export function UserMenu({ user, onOpenSettings }) {
     const label = organizationLabel(org);
     return {
       id: `organization-${org.id}`,
+      // The org's own icon (ENG-4020) where it has one, else its initial.
+      icon: <OrgIcon iconUrl={org.iconUrl} label={label} />,
       label,
       // Long names truncate in the row, so hover carries the whole one.
       title: label,
@@ -231,6 +235,7 @@ export function UserMenu({ user, onOpenSettings }) {
    */
   const claimOnlyOrgRow = activeOrgName ? [{
     id: 'organization-active',
+    icon: <OrgIcon label={activeOrgName} />,
     label: activeOrgName,
     title: activeOrgName,
     hint: activeRowHint,
@@ -305,6 +310,13 @@ export function UserMenu({ user, onOpenSettings }) {
         {activeOrgName && (
           <>
             <span aria-hidden="true" className="text-ink-4">·</span>
+            {/* Only an org with an icon shows one here, so the row reads as
+                before for everyone else. */}
+            {trustedBrandImageUrl(activeOrg?.iconUrl) && (
+              <span className="self-center inline-flex">
+                <OrgIcon iconUrl={activeOrg.iconUrl} label={activeOrgName} size={14} fallback={false} />
+              </span>
+            )}
             <span className="min-w-0 truncate text-[13px] text-ink-3">{activeOrgName}</span>
           </>
         )}

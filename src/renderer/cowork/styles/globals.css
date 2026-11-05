@@ -1762,6 +1762,14 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   flex-shrink: 0;
 }
 
+/* The org's logo (ENG-4020) is a wordmark: keep the row's height, let the
+   width follow the image up to a cap so a long one can't push the title out. */
+.anton-sidebar__logo--wide {
+  width: auto;
+  max-width: 112px;
+  object-position: left center;
+}
+
 .anton-sidebar__wordmark {
   font-family: var(--font-display);
   font-weight: 500;
@@ -2785,6 +2793,11 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   height: 22px;
   object-fit: contain;
   flex-shrink: 0;
+}
+.mshell__drawer-logo--wide {
+  width: auto;
+  max-width: 128px;
+  object-position: left center;
 }
 .mshell__drawer-title {
   font-family: var(--font-display);
