@@ -6,6 +6,7 @@
 // text, never by class.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import ToastProvider from '../components/ui/Toast';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('../api', () => ({
@@ -40,7 +41,7 @@ function setup(overrides = {}) {
     onRunNow: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
-  return { ...render(<ScheduleDetailView {...props} />), props, user: userEvent.setup() };
+  return { ...render(<ScheduleDetailView {...props} />, { wrapper: ToastProvider }), props, user: userEvent.setup() };
 }
 
 beforeEach(() => {

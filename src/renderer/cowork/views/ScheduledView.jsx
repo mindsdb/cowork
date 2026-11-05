@@ -19,6 +19,7 @@ import {
   ListGroup, useCollectionShortcut,
 } from '../components/collection';
 import { Alert, Button } from '../components/ui';
+import { useToastManager } from '../components/ui/Toast';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
@@ -58,7 +59,8 @@ export default function ScheduledView({
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState(null);
-  const [error, setError] = useState('');
+  const toastManager = useToastManager();
+  const showError = (title) => toastManager.add({ type: 'danger', title });
   // Rows by default: a schedule is something you manage (status, next run,
   // run now), not a place you work in. Phones get rows too.
   // Delete confirmation is a standalone ConfirmModal (not part of the edit
@@ -110,13 +112,11 @@ export default function ScheduledView({
 
   function openCreate() {
     setEditing(null);
-    setError('');
     setModalOpen(true);
   }
 
   function openEdit(task) {
     setEditing(task);
-    setError('');
     setModalOpen(true);
   }
 
@@ -132,19 +132,18 @@ export default function ScheduledView({
     try {
       await onRunNow(created.id, { trial: true });
     } catch (err) {
-      setError(`Saved “${payload.title}”, but its trial run didn’t start: ${err?.message || 'try Run now.'}`);
+      showError(`Saved “${payload.title}”, but its trial run didn’t start: ${err?.message || 'try Run now.'}`);
     }
   }
 
   async function confirmDelete() {
     if (!deletingTask) return;
     setDeleteBusy(true);
-    setError('');
     try {
       await onDelete(deletingTask.id);
       setDeletingTask(null);
     } catch (err) {
-      setError(err?.message || 'Could not delete schedule.');
+      showError(err?.message || 'Could not delete schedule.');
     } finally {
       setDeleteBusy(false);
     }
@@ -152,9 +151,8 @@ export default function ScheduledView({
 
   async function runAction(id, action) {
     setBusyId(id);
-    setError('');
     try { await action(id); }
-    catch (err) { setError(err?.message || 'Schedule action failed.'); }
+    catch (err) { showError(err?.message || 'Schedule action failed.'); }
     finally { setBusyId(null); }
   }
 
@@ -220,10 +218,6 @@ export default function ScheduledView({
             ))}
           </div>
         </Alert>
-      )}
-
-      {error && (
-        <Alert variant="danger" className="mx-8 mb-3">{error}</Alert>
       )}
 
       {/* Body — empty state or list. */}
