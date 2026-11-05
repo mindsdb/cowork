@@ -66,8 +66,6 @@ import './artifactWorkspace.css';
 import {
   artifactExtension,
   countCsvRows,
-  csvRowsToGfmTable,
-  CSV_PREVIEW_ROW_LIMIT,
   draftNavigationIsAuthorized,
   draftPreviewErrorMessage,
   isTextArtifact,
@@ -77,7 +75,7 @@ import {
   draftDirectoryUrl,
   draftFileName,
   limitArtifactFrames,
-  parseCsv,
+  summarizeCsvPreview,
   withArtifactCommentFlag,
   withArtifactVersion,
 } from './artifactPreviewUtils';
@@ -581,6 +579,8 @@ export function ArtifactViewer({
             // data:/blob: or cross-origin draft renders here too instead of
             // failing only for text.
             withCredentials: canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin()),
+            // Only the full body can be counted; the viewer gets the cut text.
+            countRows: textExt === '.csv' ? countCsvRows : undefined,
           })
         : previewArtifact(actionPath);
       previewRequest
@@ -593,6 +593,7 @@ export function ArtifactViewer({
             content: data.content,
             truncated: !!data.truncated,
             mime: data.mime || '',
+            totalRows: Number.isInteger(data.total_rows) && data.total_rows >= 0 ? data.total_rows : null,
           });
         })
         .catch((e) => { if (!cancelled) setErr(draftPreviewErrorMessage(e)); })
@@ -790,7 +791,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
@@ -802,21 +803,14 @@ export function ArtifactViewer({
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
-  // snappy on large files; the total row count is computed separately
-  // so we can show a "showing N of M" notice.
+  // snappy on large files.
   const csvPreview = useMemo(() => {
     if (!isText || textExt !== '.csv' || !textPreview?.content) return null;
-    const rows = parseCsv(textPreview.content, CSV_PREVIEW_ROW_LIMIT);
-    if (rows.length === 0) return null;
-    const totalRows = Math.max(0, countCsvRows(textPreview.content) - 1);
-    const shownRows = Math.max(0, rows.length - 1);
-    return {
-      markdown: csvRowsToGfmTable(rows),
-      totalRows,
-      shownRows,
-      truncated: shownRows < totalRows,
-    };
-  }, [isText, textExt, textPreview?.content]);
+    return summarizeCsvPreview(textPreview.content, {
+      truncated: textPreview.truncated,
+      totalRows: textPreview.totalRows,
+    });
+  }, [isText, textExt, textPreview?.content, textPreview?.truncated, textPreview?.totalRows]);
 
   // Keep these callbacks above the early return: the viewer remains mounted
   // while `open` changes, so every render must execute the same hook sequence.
