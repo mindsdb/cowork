@@ -183,7 +183,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
           </Button>
         ) : (
           <Switch
-            checked={settings.browserEnabled ?? false}
+            checked={settings.browserEnabled ?? true}
             onCheckedChange={(v) => setSetting('browserEnabled', v)}
             disabled={mode === MODE_STANDALONE && !standaloneReady && !settings.browserEnabled}
             aria-label="Shared browser"

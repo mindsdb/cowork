@@ -73,6 +73,12 @@ describe('BrowserSettingsSection', () => {
     expect(screen.getByText(/Ready\./)).toBeInTheDocument();
   });
 
+  it('the shared browser is on until someone turns it off', async () => {
+    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
+    render(<BrowserSettingsSection settings={{}} setSetting={vi.fn()} />);
+    expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeChecked();
+  });
+
   it('switching to your own server shows the address and key fields', async () => {
     fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running', mode: 'mindshub' });
     const setSetting = vi.fn();
