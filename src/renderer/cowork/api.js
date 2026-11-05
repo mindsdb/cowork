@@ -2444,6 +2444,22 @@ export async function matchConnector(query, maxCandidates = 3) {
 // schema (bypasses Anton-core's built-in registry — needed for
 // OAuth + service-account flows where the legacy email/password
 // engine would reject the credential shape).
+// The saved connection a new form submission would overwrite ({ name, label }), or null.
+export async function fetchSubmissionReplaces({ formId, formSpec, values, skipped, method } = {}) {
+  const res = await req('/connectors/submissions/replaces', {
+    method: 'POST',
+    body: JSON.stringify({
+      form_id: formId,
+      name: '',
+      method: method || null,
+      values: values || {},
+      skipped: skipped || [],
+      form_spec: formSpec || null,
+    }),
+  });
+  return res?.replaces || null;
+}
+
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
   return req('/connectors/connections/save', { method: 'POST', body });
