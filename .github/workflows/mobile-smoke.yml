@@ -7,19 +7,15 @@ name: Mobile smoke
 #
 # Node 22, not 20: Capacitor 8's CLI requires Node >= 22.
 
+# `workflow_call` from the PR pipeline (dev-build-deploy.yml, only when the PR
+# touches mobile/ or this file), so every PR event lands in one run tree.
+# Concurrency belongs to the caller. `workflow_dispatch` for a manual run.
 on:
-  pull_request:
-    paths:
-      - 'mobile/**'
-      - '.github/workflows/mobile-smoke.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   ios:
