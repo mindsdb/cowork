@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Section } from './settingsLayout';
 import { Switch } from '../../components/ui/Switch';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
-import { Button, Input } from '../../components/ui';
-import { fetchBrowseStatus, provisionBrowser, updateSettings } from '../../api';
+import { Button, Input, Select } from '../../components/ui';
+import { fetchBrowseLocations, fetchBrowseStatus, provisionBrowser, updateSettings } from '../../api';
 
 // Settings → Agent → Shared browser (ENG-3299). Two ways to get one:
 //
@@ -14,11 +14,29 @@ import { fetchBrowseStatus, provisionBrowser, updateSettings } from '../../api';
 // The on/off switch and the mode save with the rest of the form. Setup, and
 // "Save and test" for your own server, apply at once so the status line can
 // say whether it worked.
+//
+// In MindsHub mode, when the deployment has a home-connection proxy, two more
+// settings: browse through it (on by default) and from which city. Both save
+// at once and are pushed to the browser with a provision call, since they
+// only apply to tasks started after the browser learns them.
 
 export const MODE_MINDSHUB = 'mindshub';
 export const MODE_STANDALONE = 'standalone';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+// The city select's value for "pick one from my time zone" (stored as '').
+const AUTO_CITY = 'auto';
+
+export const PROXY_HELP = 'Websites see a normal home connection in your city instead of a data center, so fewer of them block the browser. Turning it off can make some sites, like travel and shopping sites, refuse the browser.';
+
+// The city line's subtitle: which city "Automatic" landed on, when known.
+export function cityHelp(city, locations) {
+  if (!city && locations?.effective_city) {
+    const label = (locations.cities || []).find((c) => c.id === locations.effective_city)?.label;
+    if (label) return `Automatic uses ${label}. Applies to new tasks.`;
+  }
+  return 'Applies to new tasks.';
+}
 
 // Same rule cowork-server and anton apply: https anywhere, plain http only on
 // this machine (the API key would otherwise cross the network in the clear),
@@ -64,6 +82,10 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [urlError, setUrlError] = useState('');
+  // null until /browse/locations answers, and on any failure: then the proxy
+  // settings stay hidden.
+  const [locations, setLocations] = useState(null);
+  const [proxyError, setProxyError] = useState('');
 
   const mode = settings.browserMode === MODE_STANDALONE ? MODE_STANDALONE : MODE_MINDSHUB;
 
@@ -77,6 +99,30 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadLocations = useCallback(async () => {
+    try {
+      setLocations(await fetchBrowseLocations());
+    } catch {
+      setLocations(null);
+    }
+  }, []);
+
+  useEffect(() => { loadLocations(); }, [loadLocations]);
+
+  const saveProxySetting = async (key, value) => {
+    setSetting(key, value);
+    setProxyError('');
+    try {
+      await updateSettings({ [key]: value });
+      // Only a browser that exists needs telling now; a new one gets the
+      // settings when it starts.
+      if (status?.provisioned) setStatus(await provisionBrowser());
+      await loadLocations();
+    } catch (err) {
+      setProxyError(`Couldn't save: ${String(err?.message || 'unavailable').replace(/\.$/, '')}.`);
+    }
+  };
 
   const setUp = async () => {
     setBusy(true);
@@ -121,6 +167,9 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
 
   const provisioned = !!status?.provisioned && !pendingModeChange;
   const standaloneReady = mode === MODE_STANDALONE && statusMode === MODE_STANDALONE && status?.status === 'running';
+  const showProxy = mode === MODE_MINDSHUB && !!locations?.proxy_available;
+  const proxyOn = settings.browserProxy !== false;
+  const city = settings.browserCity || '';
 
   return (
     <>
@@ -152,6 +201,29 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
           ]}
         />
       </Section>
+      {showProxy && (
+        <>
+          <Section title="Browse through a home internet connection" subtitle={proxyError || `${PROXY_HELP} Applies to new tasks.`}>
+            <Switch
+              checked={proxyOn}
+              onCheckedChange={(v) => saveProxySetting('browserProxy', v)}
+              aria-label="Browse through a home internet connection"
+            />
+          </Section>
+          <Section title="City" subtitle={cityHelp(city, locations)}>
+            <Select
+              value={city || AUTO_CITY}
+              onValueChange={(v) => saveProxySetting('browserCity', v === AUTO_CITY ? '' : v)}
+              options={[
+                { value: AUTO_CITY, label: 'Automatic (from your time zone)' },
+                ...(locations.cities || []).map((c) => ({ value: c.id, label: c.label })),
+              ]}
+              disabled={!proxyOn}
+              ariaLabel="Browser city"
+            />
+          </Section>
+        </>
+      )}
       {mode === MODE_STANDALONE && (
         <>
           <Section

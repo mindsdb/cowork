@@ -2,13 +2,14 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('../../api', () => ({
+  fetchBrowseLocations: vi.fn(),
   fetchBrowseStatus: vi.fn(),
   provisionBrowser: vi.fn(),
   updateSettings: vi.fn(),
 }));
 
-import { fetchBrowseStatus, provisionBrowser, updateSettings } from '../../api';
-import BrowserSettingsSection, { browserStatusLine, serverUrlProblem } from './BrowserSettingsSection';
+import { fetchBrowseLocations, fetchBrowseStatus, provisionBrowser, updateSettings } from '../../api';
+import BrowserSettingsSection, { browserStatusLine, cityHelp, serverUrlProblem } from './BrowserSettingsSection';
 
 describe('browserStatusLine', () => {
   it('says what state the browser is in', () => {
@@ -42,6 +43,8 @@ describe('serverUrlProblem', () => {
 
 describe('BrowserSettingsSection', () => {
   beforeEach(() => {
+    fetchBrowseLocations.mockReset();
+    fetchBrowseLocations.mockResolvedValue({ proxy_available: false, prefs: null, cities: [], effective_city: '' });
     fetchBrowseStatus.mockReset();
     provisionBrowser.mockReset();
     updateSettings.mockReset();
@@ -115,5 +118,60 @@ describe('BrowserSettingsSection', () => {
     render(<BrowserSettingsSection settings={settings} setSetting={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Save and test' }));
     expect(await screen.findByText(/rejected the API key/)).toBeInTheDocument();
+  });
+
+  it('hides the home connection settings when the deployment has no proxy', async () => {
+    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
+    render(<BrowserSettingsSection settings={{}} setSetting={vi.fn()} />);
+    await screen.findByRole('switch', { name: 'Shared browser' });
+    await waitFor(() => expect(fetchBrowseLocations).toHaveBeenCalled());
+    expect(screen.queryByRole('switch', { name: 'Browse through a home internet connection' })).not.toBeInTheDocument();
+  });
+
+  it('hides them when the locations call fails', async () => {
+    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
+    fetchBrowseLocations.mockRejectedValue(new Error('nope'));
+    render(<BrowserSettingsSection settings={{}} setSetting={vi.fn()} />);
+    await screen.findByRole('switch', { name: 'Shared browser' });
+    await waitFor(() => expect(fetchBrowseLocations).toHaveBeenCalled());
+    expect(screen.queryByLabelText('Browser city')).not.toBeInTheDocument();
+  });
+
+  it('turns the home connection off, saves it and tells the browser', async () => {
+    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running', mode: 'mindshub' });
+    fetchBrowseLocations.mockResolvedValue({
+      proxy_available: true, prefs: null, cities: [{ id: 'us-los_angeles', label: 'Los Angeles, US' }], effective_city: 'us-los_angeles',
+    });
+    provisionBrowser.mockResolvedValue({ provisioned: true, status: 'running', mode: 'mindshub' });
+    updateSettings.mockResolvedValue({});
+    const setSetting = vi.fn();
+    render(<BrowserSettingsSection settings={{}} setSetting={setSetting} />);
+    const toggle = await screen.findByRole('switch', { name: 'Browse through a home internet connection' });
+    expect(toggle).toBeChecked();
+    expect(screen.getByText('Automatic uses Los Angeles, US. Applies to new tasks.')).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(setSetting).toHaveBeenCalledWith('browserProxy', false);
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ browserProxy: false }));
+    await waitFor(() => expect(provisionBrowser).toHaveBeenCalled());
+  });
+
+  it('greys out the city while the home connection is off, and in your own server mode shows neither', async () => {
+    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running', mode: 'mindshub' });
+    fetchBrowseLocations.mockResolvedValue({ proxy_available: true, prefs: null, cities: [], effective_city: '' });
+    const { rerender } = render(<BrowserSettingsSection settings={{ browserProxy: false }} setSetting={vi.fn()} />);
+    const toggle = await screen.findByRole('switch', { name: 'Browse through a home internet connection' });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByLabelText('Browser city')).toBeDisabled();
+    rerender(<BrowserSettingsSection settings={{ browserMode: 'standalone' }} setSetting={vi.fn()} />);
+    expect(screen.queryByLabelText('Browser city')).not.toBeInTheDocument();
+  });
+});
+
+describe('cityHelp', () => {
+  const locations = { cities: [{ id: 'gb-london', label: 'London, GB' }], effective_city: 'gb-london' };
+  it('names the automatic pick only when automatic', () => {
+    expect(cityHelp('', locations)).toBe('Automatic uses London, GB. Applies to new tasks.');
+    expect(cityHelp('gb-london', locations)).toBe('Applies to new tasks.');
+    expect(cityHelp('', null)).toBe('Applies to new tasks.');
   });
 });

@@ -2803,9 +2803,33 @@ export async function fetchBrowseStatus() {
   return req('/browse/status', { headers: await hubHeaders() });
 }
 
+// The browser's time zone and language, so the shared browser's pages match
+// the user's and its home connection can default to a city near them.
+export function browserClientHints() {
+  const hints = {};
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (timezone) hints.timezone = timezone;
+  } catch {
+    // No Intl time zone: the server keeps whatever it had.
+  }
+  if (typeof navigator !== 'undefined' && navigator.language) hints.locale = navigator.language;
+  return hints;
+}
+
 // Creates (or wakes) the instance and remembers where it is. Same answer shape.
 export async function provisionBrowser() {
-  return req('/browse/provision', { method: 'POST', headers: await hubHeaders() });
+  return req('/browse/provision', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify(browserClientHints()),
+  });
+}
+
+// { proxy_available, prefs, cities: [{ id, label }], effective_city }: whether
+// the shared browser can browse through a home connection, and from where.
+export async function fetchBrowseLocations() {
+  return req('/browse/locations', { headers: await hubHeaders() });
 }
 
 // { session_id, view_url, expires_at }: a fresh viewer URL for the side pane.

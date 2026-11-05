@@ -69,6 +69,8 @@ export const SETTINGS_KEY_MAP = {
   browser_mode: 'browserMode',
   browser_service_url: 'browserServiceUrl',
   browser_service_api_key: 'browserServiceApiKey',
+  browser_proxy: 'browserProxy',
+  browser_city: 'browserCity',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
   max_tool_rounds: 'maxToolRounds',
