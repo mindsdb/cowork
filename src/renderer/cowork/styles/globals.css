@@ -2023,6 +2023,20 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
+/* A task title runs to the row's end and fades out there instead of
+   ellipsizing. While the row's menu button floats over its end, the fade
+   finishes --title-clip earlier, clear of the button. A mask, so the fade
+   holds over the row's hover and selected fills in either theme. */
+.recent-row__title,
+.code-sidebar-session__title {
+  --title-clip: 0px;
+  overflow: hidden;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--title-clip) - 28px), transparent calc(100% - var(--title-clip)));
+          mask-image: linear-gradient(to right, #000 calc(100% - var(--title-clip) - 28px), transparent calc(100% - var(--title-clip)));
+}
+.recent-row__title.is-clipped { --title-clip: 20px; }
+
 /* Currently-open task — same quiet neutral fill as the active nav item,
    so "which conversation am I in" reads without shouting. */
 .app-sidebar .recent-item.is-selected,

@@ -246,6 +246,33 @@ describe('CodeSidebarSessions', () => {
     expect(container.querySelectorAll('.code-status-dot.is-unread')).toHaveLength(1);
   });
 
+  it('shows row dates and group counts only with nav-panel counters on, as Cowork does', () => {
+    const sessions = [
+      { ...session('done', 'completed', '2026-08-21T12:00:00Z'), pinned: true },
+      session('approval', 'awaiting_approval', '2026-08-21T12:00:00Z'),
+    ];
+    const props = {
+      sessions,
+      selectedId: null,
+      onSelect: vi.fn(),
+      onSetPinned: vi.fn().mockResolvedValue(undefined),
+      ...rowActions(),
+    };
+    const { container, rerender } = render(<CodeSidebarSessions {...props} />);
+    const row = (id: string) => screen.getByRole('button', { name: new RegExp(`^Task ${id},`) }).closest('.code-sidebar-session-row')!;
+
+    // Off: no date and no count, so a resting title has the row to itself.
+    expect(row('done').querySelector('.code-sidebar-session__aside')).toBeNull();
+    expect(row('done')).not.toHaveClass('has-aside');
+    expect(container.querySelector('.code-sidebar-session-group__label b')).toBeNull();
+    // Live status is not a counter: what needs the user still shows.
+    expect(row('approval')).toHaveTextContent('Needs approval');
+
+    rerender(<CodeSidebarSessions {...props} showCounters />);
+    expect(row('done').querySelector('.code-sidebar-session__aside-label')).not.toBeNull();
+    expect(container.querySelector('.code-sidebar-session-group__label b')).toHaveTextContent('1');
+  });
+
   it('keeps each row to one line without repeating the shared project name', () => {
     render(
       <CodeSidebarSessions
