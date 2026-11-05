@@ -1,6 +1,6 @@
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
 import { parseFigureSources } from './figureSources';
-import { GENERATE_IMAGE_TOOL, parseGeneratedImageResult } from './generatedImage';
+import { GENERATE_IMAGE_TOOL, generatedImagesFromEvent } from './generatedImage';
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -910,28 +910,28 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     };
   }
 
-  // An image Anton's generate_image tool wrote into the workspace (ENG-4024).
-  // The result carries the file's path, never its bytes; the chat shows the
-  // file inline where the tool finished, like a tool's message. Its own role
+  // Images Anton's generate_image tool wrote (ENG-4024). The result carries
+  // file paths, never bytes; the chat shows each file inline where the tool
+  // finished, like a tool's message, one step per image (see
+  // generatedImagesFromEvent for which path each is read by). Its own role
   // (`thought.tool_call.result`), and also accepted on the scratchpad result's
   // role, which is where a server with no branch for this tool relays a tool
-  // result: matched by tool name ahead of the scratchpad handlers below, so the
+  // result: matched by tool name ahead of the scratchpad handlers below, so an
   // image is never filed into the last scratchpad cell. Deduped by
-  // tool_use_id + path so a replayed event can't double the picture.
+  // tool_use_id + path so a replayed event can't double a picture.
   if ((role === 'thought.tool_call.result' || role === 'thought.scratchpad.result')
     && event.tool_name === GENERATE_IMAGE_TOOL) {
-    const image = event.ok === false ? null : parseGeneratedImageResult(event.content);
-    if (!image) return state;
     const toolUseId = event.tool_use_id || null;
-    if (state.steps.some((s) => s.badge === 'Image' && s._toolUseId === toolUseId && s.data?.path === image.path)) {
-      return state;
-    }
-    // The tool's progress row is done once its picture shows.
-    const closed = toolUseId ? closeOpenToolProgress(state.steps, eventTs, toolUseId) : state.steps;
-    return {
-      ...state,
-      steps: [...closed, {
-        id: `step-${closed.length + 1}`,
+    const shown = (path) => state.steps.some((s) => s.badge === 'Image' && s._toolUseId === toolUseId && s.data?.path === path);
+    const images = generatedImagesFromEvent(event).filter((image) => !shown(image.path));
+    if (images.length === 0) return state;
+    // The tool's progress row is done once its pictures show. A copy either
+    // way: closeOpenToolProgress hands back the state's own array when it
+    // closed nothing.
+    const steps = [...(toolUseId ? closeOpenToolProgress(state.steps, eventTs, toolUseId) : state.steps)];
+    for (const image of images) {
+      steps.push({
+        id: `step-${steps.length + 1}`,
         label: image.name,
         badge: 'Image',
         icon: 'image',
@@ -944,8 +944,9 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         _isScratchpad: false,
         _isToolCall: false,
         _toolUseId: toolUseId,
-      }],
-    };
+      });
+    }
+    return { ...state, steps };
   }
 
   // New scratchpad cell starts. We push a placeholder step now so the

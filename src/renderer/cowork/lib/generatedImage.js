@@ -8,11 +8,19 @@
 // the file inline, read through the project's files route like any other file
 // the agent wrote. Pure helpers, so the parsing and the path rule are tested
 // directly.
+//
+// That path is the workspace's, and the workspace is not always the project
+// folder: on web and in the cloud it is the conversation's folder inside the
+// project. So cowork-server also sends `generated_images: [{path}]` on the
+// event, each path already mapped to the project-relative one the files route
+// serves, and that list wins whenever it is there. Only an older server (the
+// desktop, where the workspace is the project folder) leaves it out.
 
 /** The tool's name on the wire (`tool_name` on its result event). */
 export const GENERATE_IMAGE_TOOL = 'generate_image';
 
 const positiveInt = (value) => (Number.isInteger(value) && value > 0 ? value : null);
+const baseName = (path) => path.split(/[\\/]/).filter(Boolean).pop() || path;
 
 /**
  * The image a `generate_image` result describes, or null when it describes
@@ -37,7 +45,7 @@ export function parseGeneratedImageResult(content) {
   if (mimeType && !mimeType.toLowerCase().startsWith('image/')) return null;
   return {
     path,
-    name: path.split(/[\\/]/).filter(Boolean).pop() || path,
+    name: baseName(path),
     width: positiveInt(result.width),
     height: positiveInt(result.height),
     mimeType,
@@ -48,10 +56,45 @@ export function parseGeneratedImageResult(content) {
 }
 
 /**
+ * The images one `generate_image` result event shows, in order; [] for none.
+ *
+ * Each image's `path` is the one to read it by: the event's
+ * `generated_images[i].path` (project-relative, mapped by cowork-server) when
+ * the event carries that list, else the tool result's own `path`. A list that
+ * is present but empty means the server placed no image in the project, so the
+ * workspace path is not tried in its stead. The tool result still supplies the
+ * size, type and model where an entry doesn't carry its own.
+ *
+ * @param {{ ok?: boolean, content?: unknown, generated_images?: unknown }} event
+ * @returns {Array<NonNullable<ReturnType<typeof parseGeneratedImageResult>>>}
+ */
+export function generatedImagesFromEvent(event) {
+  if (!event || event.ok === false) return [];
+  const result = parseGeneratedImageResult(event.content);
+  if (!Array.isArray(event.generated_images)) return result ? [result] : [];
+  return event.generated_images.flatMap((entry) => {
+    const path = typeof entry?.path === 'string' ? entry.path.trim() : '';
+    if (!path) return [];
+    const mimeType = typeof entry.mime_type === 'string' ? entry.mime_type : (result?.mimeType || '');
+    if (mimeType && !mimeType.toLowerCase().startsWith('image/')) return [];
+    return [{
+      path,
+      name: baseName(path),
+      width: positiveInt(entry.width) ?? result?.width ?? null,
+      height: positiveInt(entry.height) ?? result?.height ?? null,
+      mimeType,
+      model: result?.model || '',
+      prompt: result?.prompt || '',
+    }];
+  });
+}
+
+/**
  * `path` as a path inside the project folder, or null when it is not in it.
  *
- * Anton's workspace is the project folder, so a relative path already is one.
- * An absolute path is kept only under `projectPath`; anything else (another
+ * A relative path is taken as one: cowork-server's mapped paths are, and so
+ * is a desktop tool path, the workspace there being the project folder. An
+ * absolute path is kept only under `projectPath`; anything else (another
  * folder, a scratchpad pod's own filesystem) can't be read through the
  * project's files route, and the card says the image can't be shown rather
  * than ask for it. A `..` segment is refused outright: the server would refuse

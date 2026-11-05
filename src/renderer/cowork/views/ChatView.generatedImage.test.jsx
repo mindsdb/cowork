@@ -29,7 +29,7 @@ import { reduceAll } from '../lib/responseStreamAdapter';
 const PROJECT = { id: 'proj-1', name: 'general', path: '/home/u/Cowork/general' };
 const RAW_URL = 'http://127.0.0.1:26866/api/v1/projects/general/files-raw/images/cat.png';
 
-const imageResult = (path = 'images/cat.png') => ({
+const imageResult = (path = 'images/cat.png', over = {}) => ({
   type: 'response.in_progress',
   thought_role: 'thought.tool_call.result',
   tool_name: 'generate_image',
@@ -39,6 +39,7 @@ const imageResult = (path = 'images/cat.png') => ({
     usage: { input_tokens: 16, output_tokens: 824 },
   }),
   at_ms: 20,
+  ...over,
 });
 
 const taskWith = (events) => ({
@@ -78,6 +79,31 @@ describe('inline generated image', () => {
     // Above the answer text: the picture shows where it was made.
     const text = document.body.textContent;
     expect(text.indexOf('cat.png')).toBeLessThan(text.indexOf('Here is your cat.'));
+  });
+
+  it("reads the server's project-relative paths over the workspace path (web, cloud)", async () => {
+    // There the workspace is the conversation's folder, so the tool's own
+    // `cat.png` would 404 at the project's root; the server maps each image.
+    const fetched = [];
+    globalThis.fetch = vi.fn(async (url) => {
+      fetched.push(String(url));
+      return { ok: true, blob: async () => new Blob(['png-bytes'], { type: 'image/png' }) };
+    });
+
+    render(<ChatView
+      task={taskWith([imageResult('cat.png', {
+        generated_images: [{ path: 'conversations/conv-a/cat.png' }, { path: 'conversations/conv-a/cat-2.png' }],
+      })])}
+      project={PROJECT}
+      projects={[PROJECT]}
+    />);
+
+    await screen.findByRole('img', { name: 'Generated image cat.png' });
+    await screen.findByRole('img', { name: 'Generated image cat-2.png' });
+    const projectFiles = 'http://127.0.0.1:26866/api/v1/projects/general/files-raw';
+    expect(fetched).toContain(`${projectFiles}/conversations/conv-a/cat.png`);
+    expect(fetched).toContain(`${projectFiles}/conversations/conv-a/cat-2.png`);
+    expect(fetched).not.toContain(`${projectFiles}/cat.png`);
   });
 
   it('places an absolute workspace path inside the project', async () => {

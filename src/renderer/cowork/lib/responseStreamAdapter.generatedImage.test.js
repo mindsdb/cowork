@@ -85,6 +85,34 @@ describe('responseStreamAdapter — generate_image result', () => {
     expect(state.steps.map((s) => s.data.path)).toEqual(['images/cat.png', 'images/dog.png']);
   });
 
+  it("reads each picture by the server's project-relative path, one step per image", () => {
+    // Web/cloud: the tool's own path is the conversation folder's, and the
+    // server maps each image into the project for the files route.
+    const state = reduceAll([progress('Generating images', 10), result(JSON.stringify({ ...RESULT, path: 'cat.png' }), {
+      generated_images: [{ path: 'conversations/conv-a/cat.png' }, { path: 'conversations/conv-a/cat-2.png' }],
+    })]);
+    const images = state.steps.filter((s) => s.badge === 'Image');
+    expect(images.map((s) => s.data.path)).toEqual(['conversations/conv-a/cat.png', 'conversations/conv-a/cat-2.png']);
+    expect(images.map((s) => s.label)).toEqual(['cat.png', 'cat-2.png']);
+    expect(new Set(state.steps.map((s) => s.id)).size).toBe(state.steps.length);
+    expect(images[0].data).toMatchObject({ width: 1024, height: 1024, model: 'gpt-image-2.6-flare' });
+    expect(splitTurnSegments(state.steps).map((s) => s.kind)).toEqual(['steps', 'image', 'steps', 'image', 'steps']);
+  });
+
+  it('adds no image when the server maps none into the project', () => {
+    const before = initialStreamState();
+    expect(reduceStream(before, result(JSON.stringify(RESULT), { generated_images: [] }))).toBe(before);
+  });
+
+  it('dedupes a replayed multi-image event per image, without touching the held steps', () => {
+    const event = result(JSON.stringify(RESULT), { generated_images: [{ path: 'a/1.png' }, { path: 'a/2.png' }] });
+    const once = reduceAll([event]);
+    const held = once.steps;
+    expect(reduceStream(once, event)).toBe(once);
+    expect(once.steps).toBe(held);
+    expect(once.steps).toHaveLength(2);
+  });
+
   it('splits the turn around the picture, so it renders where it was made', () => {
     const state = reduceAll([progress('Generating an image', 10), result()]);
     const kinds = splitTurnSegments(state.steps).map((s) => s.kind);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GENERATE_IMAGE_TOOL, parseGeneratedImageResult, projectRelativeImagePath } from './generatedImage';
+import { GENERATE_IMAGE_TOOL, generatedImagesFromEvent, parseGeneratedImageResult, projectRelativeImagePath } from './generatedImage';
 
 const RESULT = {
   path: 'images/cat.png',
@@ -44,6 +44,59 @@ describe('parseGeneratedImageResult (ENG-4024)', () => {
     expect(parseGeneratedImageResult({ path: 'notes.txt', mime_type: 'text/plain' })).toBeNull();
     expect(parseGeneratedImageResult(['cat.png'])).toBeNull();
     expect(parseGeneratedImageResult(null)).toBeNull();
+  });
+});
+
+describe('generatedImagesFromEvent (ENG-4024)', () => {
+  const event = (over = {}) => ({ content: JSON.stringify({ ...RESULT, path: 'cat.png' }), ...over });
+
+  it("reads each image by the server's project-relative path, not the workspace one", () => {
+    // On web the workspace is the conversation's folder, so the tool's own
+    // `cat.png` is not a path the project's files route serves.
+    const images = generatedImagesFromEvent(event({
+      generated_images: [{ path: 'conversations/conv-a/cat.png' }],
+    }));
+    expect(images).toEqual([{
+      path: 'conversations/conv-a/cat.png',
+      name: 'cat.png',
+      width: 1024,
+      height: 1536,
+      mimeType: 'image/png',
+      model: 'gpt-image-2.6-flare',
+      prompt: '',
+    }]);
+  });
+
+  it('shows every image the server lists, in order, with their own size where given', () => {
+    const images = generatedImagesFromEvent(event({
+      generated_images: [
+        { path: 'conversations/conv-a/cat-1.png' },
+        { path: 'conversations/conv-a/cat-2.webp', width: 1536, height: 1024, mime_type: 'image/webp' },
+      ],
+    }));
+    expect(images.map((i) => [i.path, i.width, i.height, i.mimeType])).toEqual([
+      ['conversations/conv-a/cat-1.png', 1024, 1536, 'image/png'],
+      ['conversations/conv-a/cat-2.webp', 1536, 1024, 'image/webp'],
+    ]);
+  });
+
+  it("still lists the server's images when the tool result itself can't be read", () => {
+    expect(generatedImagesFromEvent({ content: 'Saved 1 image.', generated_images: [{ path: 'a/cat.png' }] }))
+      .toMatchObject([{ path: 'a/cat.png', name: 'cat.png', width: null, height: null, model: '' }]);
+  });
+
+  it("falls back to the tool result's path only when the server sends no list (an older server)", () => {
+    expect(generatedImagesFromEvent(event()).map((i) => i.path)).toEqual(['cat.png']);
+    // An empty list is the server's answer, not a missing one.
+    expect(generatedImagesFromEvent(event({ generated_images: [] }))).toEqual([]);
+  });
+
+  it('skips entries with no usable path and shows nothing for a failed call', () => {
+    expect(generatedImagesFromEvent(event({
+      generated_images: [{ path: '' }, null, { path: 42 }, { path: 'notes.txt', mime_type: 'text/plain' }, { path: 'ok.png' }],
+    })).map((i) => i.path)).toEqual(['ok.png']);
+    expect(generatedImagesFromEvent(event({ ok: false, generated_images: [{ path: 'a/cat.png' }] }))).toEqual([]);
+    expect(generatedImagesFromEvent(null)).toEqual([]);
   });
 });
 
