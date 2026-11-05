@@ -123,6 +123,10 @@ const MYSQL_UNVERIFIED_CERTIFICATE = 'The server\'s certificate could not be ver
   + 'authority" under "Certificate" and paste that authority\'s certificate. "Encrypt when offered, '
   + 'don\'t check the certificate" also connects, but a login can then fail whenever the server asks '
   + 'for the password itself, for example after it restarts.';
+// The user already chose their own authority, so the pasted one or the host name is what failed.
+const MYSQL_CUSTOM_CA_MISMATCH = 'The server\'s certificate could not be verified against the CA '
+  + 'certificate you pasted. Check that it is the authority that signed this server\'s certificate, '
+  + 'and that the host you entered is a name on that certificate.';
 
 // The code's advice, except that `tls_failed` depends on whether the connection
 // checked the server and on which form the engine has. '' when there is none.
@@ -133,7 +137,8 @@ function hintFor(connection) {
   if (Object.hasOwn(UNVERIFIED_CAUSES, connection?.tls_mode)) {
     return UNVERIFIED_CAUSES[connection.tls_mode] + TURN_CHECKS_ON[mysql ? 'mysql' : 'checkbox'];
   }
-  return mysql ? MYSQL_UNVERIFIED_CERTIFICATE : HINTS.tls_failed;
+  if (!mysql) return HINTS.tls_failed;
+  return connection?.tls_mode === 'custom_ca' ? MYSQL_CUSTOM_CA_MISMATCH : MYSQL_UNVERIFIED_CERTIFICATE;
 }
 
 // auth creates a connection `pending` and only the gateway's probe completion

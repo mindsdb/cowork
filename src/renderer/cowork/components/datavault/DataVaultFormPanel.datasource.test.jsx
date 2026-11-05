@@ -405,4 +405,19 @@ describe('a MySQL login the gateway refused to send the password to', () => {
     expect(shown.textContent).not.toMatch(/turn off|Only connect if/i);
     expect(screen.queryByText(/password was not sent/i)).toBeNull();
   });
+
+  it('gives a managed MySQL service the MySQL wording, since the server saves it as its engine', async () => {
+    // The relay saves an RDS form as `mysql`, so the response names the engine, not the service.
+    const RDS_SPEC = { ...MYSQL_SPEC, form_id: 'aws-rds-mysql-connector', _connector_id: 'aws_rds_mysql' };
+    api.createDatasourceConnection.mockResolvedValue({ ...REFUSED, tls_mode: 'prefer' });
+    setForm(CID, toCloudSpec(RDS_SPEC));
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
+    await userEvent.type(await screen.findByLabelText(/^Password$/i), TYPED_SECRET);
+    await userEvent.type(await screen.findByLabelText(/^Label$/i), 'Analytics');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    const shown = await screen.findByText(/password was not sent/i);
+    expect(shown.textContent).toMatch(/Under "Certificate", choose/);
+    expect(shown.textContent).not.toMatch(/Only connect if/);
+  });
 });

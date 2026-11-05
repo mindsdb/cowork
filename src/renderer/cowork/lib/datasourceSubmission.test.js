@@ -201,7 +201,14 @@ describe('describeConnectionState', () => {
         expect(hint).not.toMatch(/Only connect if/);
       });
 
-      it.each(['system', 'custom_ca', undefined])('under %s, leads with pasting the CA and warns that unchecked can fail again', (mode) => {
+      it('under custom_ca, points at the pasted authority and the host name, not at choosing what was chosen', () => {
+        const { hint } = mysqlTlsFailed('custom_ca');
+        expect(hint).toMatch(/against the CA certificate you pasted/);
+        expect(hint).toMatch(/host you entered is a name on that certificate/);
+        expect(hint).not.toMatch(/choose "Signed by my own certificate authority"/);
+      });
+
+      it.each(['system', undefined])('under %s, leads with pasting the CA and warns that unchecked can fail again', (mode) => {
         const { hint } = mysqlTlsFailed(mode);
         expect(hint).toMatch(/^The server's certificate could not be verified\. If the server signs its own certificate/);
         expect(hint).toMatch(/paste that authority's certificate/);
