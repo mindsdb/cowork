@@ -37,6 +37,7 @@ describe('buildMindsEnvContent (MindsHub sign-in .env)', () => {
     const out = buildMindsEnvContent('', 'https://mdb.ai');
     expect(out).not.toMatch(/ANTON_PLANNING_MODEL=/);
     expect(out).not.toMatch(/ANTON_CODING_MODEL=/);
+    expect(out).not.toMatch(/ANTON_IMAGE_MODEL=/);
   });
 
   // ─── ENG-739 review: re-login must NOT wipe an intentional model line ─
@@ -47,12 +48,14 @@ describe('buildMindsEnvContent (MindsHub sign-in .env)', () => {
       // prefix is not provable provenance, so we must not silently drop it.
       'ANTON_PLANNING_MODEL=latest:opus',
       'ANTON_CODING_MODEL=latest:opus',
+      'ANTON_IMAGE_MODEL=gpt-image-2.6-sunburst',
       'SOME_OTHER_KEY=keepme',
     ].join('\n');
     const out = buildMindsEnvContent(existing, 'https://mdb.ai');
     // The intentional model lines survive verbatim.
     expect(out).toMatch(/ANTON_PLANNING_MODEL=latest:opus/);
     expect(out).toMatch(/ANTON_CODING_MODEL=latest:opus/);
+    expect(out).toMatch(/ANTON_IMAGE_MODEL=gpt-image-2\.6-sunburst/);
     // Unrelated keys are preserved.
     expect(out).toMatch(/SOME_OTHER_KEY=keepme/);
   });
@@ -101,6 +104,7 @@ describe('mindsSignInSettingWrites (DB sync on sign-in)', () => {
     expect(keys).not.toContain('planning_model');
     expect(keys).not.toContain('coding_model');
     expect(keys).not.toContain('router_model');
+    expect(keys).not.toContain('image_model');
   });
 
   it('uses the DB enum provider value (minds_cloud, underscore) — matching the picker', () => {

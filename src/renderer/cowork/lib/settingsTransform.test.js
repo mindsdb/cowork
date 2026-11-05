@@ -20,6 +20,8 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  resolveImageModel,
+  IMAGE_MODEL_FALLBACK,
 } from './settingsTransform';
 
 describe('favicon settings translation', () => {
@@ -1044,6 +1046,116 @@ describe('mergeRecommendedModels — the gate binding (ENG-1851)', () => {
     const held = { gate: { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false } };
     expect(mergeRecommendedModels(held, { recommendedModels: {} }).gate).toEqual(held.gate);
     expect(mergeRecommendedModels({}, { recommendedModels: {} }).gate).toBeNull();
+  });
+});
+
+describe('image model settings (ENG-4024)', () => {
+  const FLARE = 'gpt-image-2.6-flare';
+  const SUNBURST = 'gpt-image-2.6-sunburst';
+
+  it('round-trips image_model like the other model settings', () => {
+    expect(transformSettingsRows([{ key: 'image_model', value: SUNBURST }]).imageModel).toBe(SUNBURST);
+    expect(diffSettingsForWrite({ imageModel: SUNBURST }, { imageModel: FLARE })).toEqual({ image_model: SUNBURST });
+    expect(committedSettingsPatch({ imageModel: SUNBURST }, ['image_model'])).toEqual({ imageModel: SUNBURST });
+  });
+
+  it('starts a settings load with an empty image list and default', () => {
+    const transformed = transformSettingsRows([]);
+    expect(transformed.imageModels).toEqual([]);
+    expect(transformed.imageModelDefault).toBe('');
+  });
+
+  describe('mergeRecommendedModels keeps image models out of every chat list', () => {
+    it('takes the image list and catalog default the server sends', () => {
+      const merged = mergeRecommendedModels({}, {
+        recommendedModels: { 'minds-cloud': ['mindshub_air', 'sonnet'] },
+        imageModels: [FLARE, SUNBURST],
+        imageModelDefault: FLARE,
+      });
+      expect(merged.imageModels).toEqual([FLARE, SUNBURST]);
+      expect(merged.imageModelDefault).toBe(FLARE);
+      expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet']);
+    });
+
+    it('strips an image model a chat bucket lists anyway, in every bucket', () => {
+      const merged = mergeRecommendedModels({}, {
+        recommendedModels: {
+          'minds-cloud': ['mindshub_air', FLARE, 'sonnet', SUNBURST],
+          'openai-compatible': [FLARE, 'local-llm'],
+        },
+        imageModels: [FLARE, SUNBURST],
+      });
+      expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet']);
+      expect(merged.recommendedModels['openai-compatible']).toEqual(['local-llm']);
+      // So the composer's picker, built from that bucket, offers no image model.
+      expect(recommendedModelOptions(merged.recommendedModels, 'minds-cloud').map((o) => o.id))
+        .toEqual(['mindshub_air', 'sonnet']);
+    });
+
+    it('strips by the held image list when a refresh sends none', () => {
+      const merged = mergeRecommendedModels(
+        { imageModels: [FLARE], imageModelDefault: FLARE },
+        { recommendedModels: { 'minds-cloud': ['mindshub_air', FLARE] }, imageModels: [] },
+      );
+      // An empty live list is a failed fetch, not "no image models".
+      expect(merged.imageModels).toEqual([FLARE]);
+      expect(merged.imageModelDefault).toBe(FLARE);
+      expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air']);
+    });
+
+    it('keeps the held image order on an on-open refresh', () => {
+      const merged = mergeRecommendedModels(
+        { imageModels: [FLARE, SUNBURST] },
+        { imageModels: [SUNBURST, FLARE] },
+        { keepOrder: true },
+      );
+      expect(merged.imageModels).toEqual([FLARE, SUNBURST]);
+    });
+
+    it('ignores an image list that is not a list of ids (older or odd server)', () => {
+      expect(mergeRecommendedModels({}, { imageModels: 'gpt-image-2.6-flare' }).imageModels).toEqual([]);
+      expect(mergeRecommendedModels({}, { imageModels: [FLARE, 7, null, ''] }).imageModels).toEqual([FLARE]);
+      expect(mergeRecommendedModels({}, { recommendedModels: {} }).imageModelDefault).toBe('');
+    });
+  });
+
+  describe('resolveImageModel', () => {
+    it('shows the saved choice', () => {
+      expect(resolveImageModel(SUNBURST, [FLARE, SUNBURST], { catalogDefault: FLARE })).toBe(SUNBURST);
+    });
+
+    it('keeps a saved id the catalog no longer lists, so the picker can show it as stale', () => {
+      expect(resolveImageModel('gpt-image-1-mini', [FLARE, SUNBURST])).toBe('gpt-image-1-mini');
+    });
+
+    it("defaults to the catalog's image-role default", () => {
+      expect(resolveImageModel('', [FLARE, SUNBURST], { catalogDefault: SUNBURST })).toBe(SUNBURST);
+      expect(resolveImageModel(null, [FLARE, SUNBURST], { catalogDefault: SUNBURST })).toBe(SUNBURST);
+    });
+
+    it('falls back to the compiled default when the catalog names none', () => {
+      expect(IMAGE_MODEL_FALLBACK).toBe(FLARE);
+      expect(resolveImageModel(undefined, [SUNBURST, FLARE])).toBe(FLARE);
+      // A catalog default the list does not carry is no default.
+      expect(resolveImageModel(undefined, [SUNBURST, FLARE], { catalogDefault: 'nano-banana' })).toBe(FLARE);
+    });
+
+    it('otherwise takes the first model the wallet can pay for', () => {
+      expect(resolveImageModel('', ['img-a', 'img-b'], { modelEnabled: { 'img-a': false } })).toBe('img-b');
+      expect(resolveImageModel('', ['img-a'], { modelEnabled: { 'img-a': false } })).toBe('img-a');
+      expect(resolveImageModel('', [])).toBe('');
+    });
+
+    it('pairs with the picker helpers: the shown value is always a rendered option', () => {
+      for (const stored of ['', SUNBURST, 'gone-model']) {
+        const list = [FLARE, SUNBURST];
+        const cur = resolveImageModel(stored, list, { catalogDefault: FLARE });
+        const { showStalePin, selectValue } = resolveModelPickerValue(cur, list, false);
+        const values = buildModelOptions(cur, list, false, showStalePin).map((o) => o.value);
+        expect(values).toContain(selectValue);
+        expect(values).not.toContain('__custom__');
+      }
+    });
   });
 });
 

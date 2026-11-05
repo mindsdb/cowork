@@ -14,6 +14,7 @@ const ANSWER = { status: 'answered', values: ['accept'], text: '' };
 const shape = (segments) => segments.map((s) => {
   if (s.kind === 'question') return `Q:${s.step.id}`;
   if (s.kind === 'message') return `M:${s.step.id}`;
+  if (s.kind === 'image') return `I:${s.step.id}`;
   return s.steps.map((x) => x.id);
 });
 
@@ -22,6 +23,13 @@ describe('splitTurnSegments', () => {
     const segments = splitTurnSegments([work('a'), work('b')], { startedAt: 10 });
     expect(shape(segments)).toEqual([['a', 'b']]);
     expect(segments[0]).toMatchObject({ kind: 'steps', key: 'seg-0', startedAt: 10 });
+  });
+
+  it('makes a generated image a boundary, like a tool message (ENG-4024)', () => {
+    const image = (id) => ({ id, label: `${id}.png`, badge: 'Image', status: 'completed', data: { path: `${id}.png` } });
+    const segments = splitTurnSegments([work('a'), image('i1'), image('i2'), work('b')]);
+    expect(shape(segments)).toEqual([['a'], 'I:i1', [], 'I:i2', ['b']]);
+    expect(segments[1]).toMatchObject({ kind: 'image', key: 'i1' });
   });
 
   it('returns one empty segment for missing steps', () => {

@@ -38,6 +38,14 @@ export interface RecommendedModels {
    * moving alias this entry is a frozen version of.
    */
   modelFamilies?: Record<string, string>;
+  /**
+   * MindsHub's image models (`kind: "image"` rows), in catalog order (ENG-4024).
+   * Never in a `recommendedModels` bucket; mergeRecommendedModels strips any
+   * that a bucket lists anyway.
+   */
+  imageModels?: string[];
+  /** The catalog's `default_for: ["image"]` model, when it declares one. */
+  imageModelDefault?: string;
   [key: string]: unknown;
 }
 

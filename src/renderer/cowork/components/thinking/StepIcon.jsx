@@ -14,6 +14,8 @@ const ICON_MAP = {
   cube:     Ico.cube,
   // Anton's narration between steps (ENG-3554).
   note:     Ico.chats,
+  // A picture generate_image wrote (ENG-4024).
+  image:    Ico.image,
 };
 
 export function StepIcon({ type, size = 12 }) {
