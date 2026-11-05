@@ -124,13 +124,14 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
-  /* Selected segment in a ToggleGroup / segmented control. The surface ramp
-     inverts between themes (light: --surface is the *lightest*; dark:
-     --surface-3 is), so the token that lifts the pill above the --surface-2
-     track differs per theme. Light = --surface + the shared elevation shadow;
-     the old --surface-3 (darker than the track here) sank into it. */
+  /* ToggleGroup / segmented control: a faint ink-tinted track with no
+     visible edge, and a selected segment lifted by colour and a hairline
+     alone, no shadow. The border stays (transparent) so sizes don't move.
+     Light: --surface is the lightest step, so it lifts the pill. */
+  --toggle-track-bg:        color-mix(in srgb, var(--ink) 5%, transparent);
+  --toggle-track-border:    1px solid transparent;
   --toggle-selected-bg:     var(--surface);
-  --toggle-selected-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
+  --toggle-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
   /* Transcript cards (user message, turn changes): white just above the page. */
   --surface-raised:         var(--surface);
   /* Sidebar surface — a light --surface-2 rail (not the muddier
@@ -305,10 +306,11 @@ body[data-theme="dark"] {
   --surface-3:    #1A2640;
   --line:         #1E2A44;
   --line-2:       #2A3957;
-  /* Dark keeps the raised-surface approach: --surface-3 already sits
-     *lighter* than the --surface-2 track, so the active pill lifts. */
-  --toggle-selected-bg:     var(--surface-3);
-  --toggle-selected-shadow: inset 0 0 0 1px var(--line-2);
+  /* Dark: a lighter ink tint over the track lifts the pill. */
+  --toggle-track-bg:        color-mix(in srgb, var(--ink) 5%, transparent);
+  --toggle-track-border:    1px solid transparent;
+  --toggle-selected-bg:     color-mix(in srgb, var(--ink) 9%, transparent);
+  --toggle-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
   /* --surface sits almost on the dark page, so transcript cards step up one. */
   --surface-raised:         var(--surface-2);
   /* Sidebar base — a hint of cyan over the surface navy, sized
@@ -2021,6 +2023,20 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
+/* A task title runs to the row's end and fades out there instead of
+   ellipsizing. While the row's menu button floats over its end, the fade
+   finishes --title-clip earlier, clear of the button. A mask, so the fade
+   holds over the row's hover and selected fills in either theme. */
+.recent-row__title,
+.code-sidebar-session__title {
+  --title-clip: 0px;
+  overflow: hidden;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--title-clip) - 28px), transparent calc(100% - var(--title-clip)));
+          mask-image: linear-gradient(to right, #000 calc(100% - var(--title-clip) - 28px), transparent calc(100% - var(--title-clip)));
+}
+.recent-row__title.is-clipped { --title-clip: 20px; }
+
 /* Currently-open task — same quiet neutral fill as the active nav item,
    so "which conversation am I in" reads without shouting. */
 .app-sidebar .recent-item.is-selected,

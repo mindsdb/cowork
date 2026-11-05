@@ -65,14 +65,16 @@
 // since the footer is plain content, not a selectable item (see
 // ui/Combobox.jsx's `footer` slot docs).
 //
-// Option shape: { value, label, disabled?, locked?, restricted?, title?, tag?, maker?, provider?, pin? }.
+// Option shape: { value, label, disabled?, locked?, restricted?, title?, tag?, note?, maker?, provider?, pin? }.
 //   - `provider`: MindsHub's serving-vendor field (the ENG-1111 backend
 //     contract), which decides the section.
 //   - `maker`: explicit maker key, trusted over inference when present. It is
 //     the icon identity only, never the section.
-//   - `tag`: compact right-aligned pill on the row (the version state, the
-//     "Needs credits" wallet state, or both), kept out of the label so the
-//     trigger and the search see the bare name.
+//   - `tag`: compact right-aligned pill on the row (availability: "Needs
+//     credits" or "Restricted"), kept out of the label so the trigger and the search see
+//     the bare name.
+//   - `note`: muted "(latest)" text after the name on the row only, kept out
+//     of the label for the same reason.
 //   - `locked`: the wallet can't pay for this model. Both option builders set
 //     it beside `disabled: true`, and this component turns it into the "Add
 //     credits" button on the row — see `creditsAction` below for why the

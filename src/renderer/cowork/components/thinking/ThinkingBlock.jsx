@@ -139,7 +139,9 @@ export function ThinkingBlock({
           onClick={toggleExpanded}
           aria-expanded={isExpanded}
           className={clsx(
-            'group flex w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
+            // Only as wide as its label, so hovering empty space beside it does
+            // nothing.
+            'group flex w-fit max-w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
             'border-0 bg-transparent'
           )}
         >
@@ -161,12 +163,12 @@ export function ThinkingBlock({
             <>
               {/* Same size as the answer body (14.5px) — the header reads
                   as part of the message, not as fine print. */}
-              <span className="flex-none text-[14.5px] text-ink-3">
+              <span className="flex-none text-[14.5px] text-ink-3 group-hover:text-ink">
                 {finalDuration ? `Worked for ${finalDuration}` : 'Thought process'}
               </span>
               <span
                 className={clsx(
-                  'inline-flex flex-none items-center self-center text-ink-4',
+                  'inline-flex flex-none items-center self-center text-ink-4 group-hover:text-ink',
                   'transition-transform duration-layout',
                   isExpanded && 'rotate-180'
                 )}
