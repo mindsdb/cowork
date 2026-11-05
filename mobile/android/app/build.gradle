@@ -7,6 +7,18 @@ apply plugin: 'com.android.application'
 def coworkVersionName = new groovy.json.JsonSlurper().parse(file('../../package.json')).version
 def coworkVersionCode = (System.getenv('COWORK_BUILD_NUMBER') ?: project.findProperty('coworkBuildNumber') ?: '1').toString().trim().toInteger()
 
+// Release signing (ENG-4023): the Play upload key, from the environment
+// (build-android.yml) or the matching -P/gradle.properties names for a local
+// build. Configured only when a keystore path is given, so an unsigned
+// assembleDebug (mobile-smoke.yml) and local builds need none of it. Passwords
+// are never read from the command line in CI: fastlane echoes the gradle
+// command it runs.
+def coworkSigning = { String envName, String propName ->
+    def v = System.getenv(envName) ?: project.findProperty(propName)
+    v == null ? null : v.toString()
+}
+def coworkKeystorePath = coworkSigning('ANDROID_KEYSTORE_PATH', 'coworkKeystorePath')
+
 android {
     namespace = "ai.mindshub.cowork"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -23,8 +35,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (coworkKeystorePath) {
+            release {
+                storeFile file(coworkKeystorePath)
+                storePassword coworkSigning('ANDROID_KEYSTORE_PASSWORD', 'coworkKeystorePassword')
+                keyAlias coworkSigning('ANDROID_KEY_ALIAS', 'coworkKeyAlias')
+                keyPassword coworkSigning('ANDROID_KEY_PASSWORD', 'coworkKeyPassword')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (coworkKeystorePath) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

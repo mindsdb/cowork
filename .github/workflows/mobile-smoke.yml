@@ -26,6 +26,8 @@ jobs:
         working-directory: mobile
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -67,6 +69,8 @@ jobs:
         working-directory: mobile
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -98,3 +102,24 @@ jobs:
           badging="$("$aapt" dump badging "$apk")"
           echo "$badging" | grep '^package:'
           echo "$badging" | grep -q "^package: name='ai.mindshub.cowork' versionCode='1' versionName='1.0.0'"
+      # Exercises the release signingConfig build-android.yml relies on, with a
+      # throwaway key, so a break there shows up on the PR rather than on the
+      # first tag. Nothing is uploaded.
+      - name: Bundle a release AAB signed with a throwaway key
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/smoke-upload.jks
+          ANDROID_KEYSTORE_PASSWORD: smoke-only
+          ANDROID_KEY_ALIAS: smoke
+          ANDROID_KEY_PASSWORD: smoke-only
+        run: |
+          keytool -genkeypair -keystore "$ANDROID_KEYSTORE_PATH" -storetype PKCS12 \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 1 \
+            -dname 'CN=mobile smoke' -noprompt
+          ./gradlew bundleRelease --no-daemon --stacktrace
+          aab=app/build/outputs/bundle/release/app-release.aab
+          test -f "$aab"
+          jarsigner -verify -verbose -certs "$aab" > "$RUNNER_TEMP/verify.txt"
+          grep -m1 'jar verified' "$RUNNER_TEMP/verify.txt"
+          grep -m1 'CN=mobile smoke' "$RUNNER_TEMP/verify.txt"

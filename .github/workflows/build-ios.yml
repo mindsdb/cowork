@@ -1,0 +1,210 @@
+name: Build iOS (TestFlight)
+
+# Signed App Store build of the Capacitor shell in mobile/ (ENG-4023), uploaded
+# to TestFlight by fastlane (mobile/fastlane/Fastfile, lane `ios beta`).
+#
+# Called by mobile-release.yml, the entry point for a `mobile-v*` tag and for
+# manual runs, so a release shows iOS and Android in one run. Concurrency
+# belongs to that caller.
+#
+# Staging and production builds share the bundle id; the TestFlight "What to
+# Test" note says which backend a build talks to. The build number is the
+# caller's run number. Promotion to the App Store is manual in App Store
+# Connect. Setup and secrets: mobile/README.md, "Releasing".
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: staging | prod (the backend the app loads)
+        required: true
+        type: string
+    # Optional on purpose: the first step names every missing one, which reads
+    # better than GitHub refusing the call over the first it finds.
+    secrets:
+      IOS_DIST_CERT_B64:
+        required: false
+      IOS_DIST_CERT_PASSWORD:
+        required: false
+      IOS_PROFILE_APP_B64:
+        required: false
+      ASC_API_KEY_ID:
+        required: false
+      ASC_API_ISSUER_ID:
+        required: false
+      ASC_API_KEY_P8_B64:
+        required: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  testflight:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      COWORK_ENV: ${{ inputs.environment }}
+      COWORK_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      # First, because missing secrets are what everyone hits before the Apple
+      # account setup is finished. Lists names only, never values.
+      # IOS_PROFILE_SHARE_B64 is not required until the share extension exists.
+      - name: Check required secrets
+        env:
+          IOS_DIST_CERT_B64: ${{ secrets.IOS_DIST_CERT_B64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROFILE_APP_B64: ${{ secrets.IOS_PROFILE_APP_B64 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_P8_B64: ${{ secrets.ASC_API_KEY_P8_B64 }}
+        run: |
+          missing=()
+          for name in IOS_DIST_CERT_B64 IOS_DIST_CERT_PASSWORD IOS_PROFILE_APP_B64 \
+                      ASC_API_KEY_ID ASC_API_ISSUER_ID ASC_API_KEY_P8_B64; do
+            [ -n "${!name//[[:space:]]/}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Missing iOS signing secrets::Add these repository secrets, then re-run: ${missing[*]}. How to produce each one: mobile/README.md, section Releasing."
+            exit 1
+          fi
+          echo "All required iOS secrets are set."
+
+      - name: Check the environment
+        run: |
+          case "$COWORK_ENV" in
+            staging|prod) echo "Environment: $COWORK_ENV, build number: $COWORK_BUILD_NUMBER" ;;
+            *) echo "::error::environment must be staging or prod, got '$COWORK_ENV'"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Capacitor 8 needs Xcode 26+. Same selection as mobile-smoke.yml.
+      - name: Select Xcode
+        run: |
+          xcode="$(printf '%s\n' /Applications/Xcode_*.app | grep -viE 'beta|rc' | sort -V | tail -1)"
+          echo "Selecting $xcode"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+          working-directory: mobile
+
+      - name: Sync iOS
+        working-directory: mobile
+        run: npx cap sync ios
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: mobile
+
+      # Same temporary-keychain pattern as build-macos-pkg.yml, with the Apple
+      # Distribution identity (not the Developer ID one the Mac app uses).
+      - name: Import the Apple Distribution certificate
+        env:
+          IOS_DIST_CERT_B64: ${{ secrets.IOS_DIST_CERT_B64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          CERT_PATH="$RUNNER_TEMP/ios_dist_cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/ios-build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          printf '%s' "$IOS_DIST_CERT_B64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$IOS_DIST_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+          rm -f "$CERT_PATH"
+
+          identities="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH")"
+          echo "$identities"
+          if ! grep -q '"Apple Distribution' <<< "$identities"; then
+            echo "::error::IOS_DIST_CERT_B64 holds no Apple Distribution identity. It must be the Apple Distribution certificate exported as .p12 with its private key (not Developer ID)."
+            exit 1
+          fi
+
+      - name: Install the App Store provisioning profile
+        env:
+          IOS_PROFILE_APP_B64: ${{ secrets.IOS_PROFILE_APP_B64 }}
+        run: |
+          set -euo pipefail
+          profile="$RUNNER_TEMP/app.mobileprovision"
+          plist="$RUNNER_TEMP/app-profile.plist"
+          printf '%s' "$IOS_PROFILE_APP_B64" | base64 --decode > "$profile"
+          security cms -D -i "$profile" > "$plist"
+
+          uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$plist")"
+          name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$plist")"
+          team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$plist")"
+          app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$plist")"
+          echo "Profile: $name ($uuid), team $team, app id $app_id"
+          if [ "$app_id" != "$team.ai.mindshub.cowork" ]; then
+            echo "::error::IOS_PROFILE_APP_B64 is for $app_id, not $team.ai.mindshub.cowork."
+            exit 1
+          fi
+          if /usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices' "$plist" > /dev/null 2>&1; then
+            echo "::error::IOS_PROFILE_APP_B64 is a development or ad hoc profile (it lists devices). Use an App Store distribution profile."
+            exit 1
+          fi
+
+          # Xcode 16+ reads UserData; older tooling reads MobileDevice.
+          for dir in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" \
+                     "$HOME/Library/MobileDevice/Provisioning Profiles"; do
+            mkdir -p "$dir"
+            cp "$profile" "$dir/$uuid.mobileprovision"
+          done
+          rm -f "$profile" "$plist"
+
+          {
+            echo "IOS_PROFILE_APP_NAME=$name"
+            echo "IOS_PROFILE_APP_UUID=$uuid"
+            echo "IOS_TEAM_ID=$team"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and upload to TestFlight
+        working-directory: mobile
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_P8_B64: ${{ secrets.ASC_API_KEY_P8_B64 }}
+        run: bundle exec fastlane ios beta
+
+      - name: Upload the .ipa and dSYMs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ inputs.environment }}-${{ github.run_number }}
+          path: |
+            mobile/build/ios/*.ipa
+            mobile/build/ios/*.dSYM.zip
+            mobile/build/ios/logs/
+          if-no-files-found: ignore
+
+      - name: Remove the keychain and profiles
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/ios-build.keychain-db" 2>/dev/null || true
+          if [ -n "${IOS_PROFILE_APP_UUID:-}" ]; then
+            rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$IOS_PROFILE_APP_UUID.mobileprovision" \
+                  "$HOME/Library/MobileDevice/Provisioning Profiles/$IOS_PROFILE_APP_UUID.mobileprovision"
+          fi
