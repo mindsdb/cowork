@@ -157,6 +157,43 @@ describe('the connections page in cloud', () => {
     await waitFor(() => expect(api.retryDatasourceValidation).toHaveBeenCalledWith(8));
   });
 
+  it('shows the hint a retry returned when the panel is opened again, though the list carries no code', async () => {
+    const REFUSED = { ...FAILED, tls_mode: 'prefer', validation_error: 'validation failed' };
+    api.listDatasourceConnections.mockResolvedValue([REFUSED]);
+    // The retry route answers with the re-read connection plus the gateway's code.
+    api.retryDatasourceValidation.mockResolvedValue({ ...REFUSED, validation_code: 'tls_failed' });
+    render(<CustomizeView connectors={[]} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    let panel = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    await userEvent.click(within(panel).getByRole('button', { name: /try again/i }));
+    await waitFor(() => expect(api.listDatasourceConnections).toHaveBeenCalledTimes(2));
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    panel = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    expect(within(panel).getByText(/kind of login this connection does not allow without checking/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/turn off/i)).toBeNull();
+  });
+
+  it('drops a kept code once the connection has been edited since the retry', async () => {
+    const REFUSED = { ...FAILED, tls_mode: 'prefer', validation_error: 'validation failed' };
+    api.listDatasourceConnections.mockResolvedValue([REFUSED]);
+    api.retryDatasourceValidation.mockResolvedValue({ ...REFUSED, validation_code: 'tls_failed' });
+    render(<CustomizeView connectors={[]} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    const panel = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    // By the time the list is read again, an edit elsewhere has moved the revision on.
+    api.listDatasourceConnections.mockResolvedValue([{ ...REFUSED, revision: REFUSED.revision + 1 }]);
+    await userEvent.click(within(panel).getByRole('button', { name: /try again/i }));
+    await waitFor(() => expect(api.listDatasourceConnections).toHaveBeenCalledTimes(2));
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    const reopened = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    expect(within(reopened).queryByText(/kind of login/)).toBeNull();
+    expect(within(reopened).getByText('validation failed')).toBeInTheDocument();
+  });
+
   it('shows no retry for a healthy connection', async () => {
     render(<CustomizeView connectors={[]} />);
     await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Analytics/i }));

@@ -544,12 +544,19 @@ export default function CustomizeView({
       .catch(() => {});
   }, []);
 
+  // The list carries no gateway code, since auth stores a verdict and not a cause,
+  // so the code a retry returned is kept per connection until its revision moves on.
+  const retryCodes = useRef(new Map());
   // Cloud only: the relay's routes answer 404 anywhere else by design.
   const refreshDatasources = useRef(() => {});
   refreshDatasources.current = () => {
     if (!orgMode) return Promise.resolve();
     return listDatasourceConnections()
-      .then((rows) => setDatasources(toDatasourceRows(rows)))
+      .then((rows) => setDatasources(toDatasourceRows(rows).map((row) => {
+        const kept = retryCodes.current.get(row.datasourceId);
+        const applies = kept && row.status === 'failed' && !row.validationCode && kept.revision === row.revision;
+        return applies ? { ...row, validationCode: kept.code } : row;
+      })))
       .catch(() => {});
   };
   useEffect(() => { refreshDatasources.current(); }, [orgMode]);
@@ -616,7 +623,12 @@ export default function CustomizeView({
   }, [list]);
 
   const handleRetryValidation = async (connection) => {
-    await retryDatasourceValidation(connection.datasourceId);
+    const checked = await retryDatasourceValidation(connection.datasourceId);
+    if (checked?.validation_code) {
+      retryCodes.current.set(connection.datasourceId, { code: checked.validation_code, revision: checked.revision });
+    } else {
+      retryCodes.current.delete(connection.datasourceId);
+    }
     await refreshDatasources.current();
   };
 
