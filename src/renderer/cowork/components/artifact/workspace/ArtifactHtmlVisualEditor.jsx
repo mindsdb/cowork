@@ -49,6 +49,7 @@ export function ArtifactHtmlVisualEditor({
   // into the source, and parse5 never parses the inlined document.
   const inlined = useInlinedFrameDocument(frame.content, documentUrl);
   const elementRangesRef = useRef(frame.elements);
+  const cancelSnapshotRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [editableCount, setEditableCount] = useState(frame.editableCount);
   const [selection, setSelection] = useState(null);
@@ -58,6 +59,7 @@ export function ArtifactHtmlVisualEditor({
     visualValueRef.current = content;
     const nextFrame = buildFrame(content, documentUrl);
     elementRangesRef.current = nextFrame.elements;
+    cancelSnapshotRef.current = null;
     setFrame(nextFrame);
     setEditableCount(nextFrame.editableCount);
     setReady(false);
@@ -94,6 +96,25 @@ export function ArtifactHtmlVisualEditor({
         setEditableCount(message.editableCount || 0);
       } else if (message.type === 'selection') {
         setSelection(message.elementId ? { id: message.elementId, label: message.label } : null);
+        if (message.elementId) {
+          // Escape returns the source to this point. The DOM can't serve as the
+          // original: artifact scripts may have rewritten the element's text.
+          cancelSnapshotRef.current = {
+            id: message.elementId,
+            content: visualValueRef.current,
+            elements: elementRangesRef.current,
+          };
+        }
+      } else if (message.type === 'cancel') {
+        const snapshot = cancelSnapshotRef.current;
+        if (!snapshot || snapshot.id !== message.elementId) return;
+        cancelSnapshotRef.current = null;
+        elementRangesRef.current = snapshot.elements;
+        if (snapshot.content !== visualValueRef.current) {
+          visualValueRef.current = snapshot.content;
+          setError('');
+          onChange(snapshot.content);
+        }
       } else if (message.type === 'change' && message.elementId) {
         try {
           const next = applyHtmlVisualEditAtRanges(

@@ -92,3 +92,39 @@ describe('ArtifactHtmlVisualEditor folder files', () => {
     expect(onChange).toHaveBeenLastCalledWith(VALUE.replace('Title', 'New title'));
   });
 });
+
+describe('ArtifactHtmlVisualEditor cancel', () => {
+  it('restores the source on cancel after a change', async () => {
+    const { onChange } = await renderReadyEditor();
+    const token = frameToken();
+
+    sendFromFrame({ token, type: 'selection', elementId: 'cowork-edit-0', label: 'Heading' });
+    sendFromFrame({ token, type: 'change', elementId: 'cowork-edit-0', html: 'Typed' });
+    sendFromFrame({ token, type: 'cancel', elementId: 'cowork-edit-0' });
+
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(VALUE);
+  });
+
+  it('changes nothing on cancel without a change', async () => {
+    const { onChange } = await renderReadyEditor();
+    const token = frameToken();
+
+    sendFromFrame({ token, type: 'selection', elementId: 'cowork-edit-0', label: 'Heading' });
+    sendFromFrame({ token, type: 'cancel', elementId: 'cowork-edit-0' });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('ignores a cancel with another token or for another element', async () => {
+    const { onChange } = await renderReadyEditor();
+    const token = frameToken();
+
+    sendFromFrame({ token, type: 'selection', elementId: 'cowork-edit-0', label: 'Heading' });
+    sendFromFrame({ token, type: 'change', elementId: 'cowork-edit-0', html: 'Typed' });
+    sendFromFrame({ token: 'forged', type: 'cancel', elementId: 'cowork-edit-0' });
+    sendFromFrame({ token, type: 'cancel', elementId: 'cowork-edit-1' });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+});
