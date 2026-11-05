@@ -189,6 +189,35 @@ describe('describeConnectionState', () => {
       expect(tlsFailed('prefer').hint).not.toMatch(/password (is|was) (correct|right|fine)/i);
     });
 
+    describe('for MySQL, whose form asks which certificate to trust instead of a yes-or-no box', () => {
+      const mysqlTlsFailed = (tlsMode) => describeConnectionState({
+        status: 'failed', validation_code: 'tls_failed', tls_mode: tlsMode, connector_id: 'mysql',
+      });
+
+      it.each(['prefer', 'disabled', 'encrypted'])('under %s, names the Certificate choices, not the box', (mode) => {
+        const { hint } = mysqlTlsFailed(mode);
+        expect(hint).toMatch(/password was not sent/);
+        expect(hint).toMatch(/Under "Certificate", choose "Signed by a public authority", or "Signed by my own certificate authority"/);
+        expect(hint).not.toMatch(/Only connect if/);
+      });
+
+      it.each(['system', 'custom_ca', undefined])('under %s, leads with pasting the CA and warns that unchecked can fail again', (mode) => {
+        const { hint } = mysqlTlsFailed(mode);
+        expect(hint).toMatch(/^The server's certificate could not be verified\. If the server signs its own certificate/);
+        expect(hint).toMatch(/paste that authority's certificate/);
+        expect(hint).toMatch(/can then fail whenever the server asks for the password itself/);
+        expect(hint).not.toMatch(/Only connect if|turn off/i);
+      });
+
+      it('leaves PostgreSQL on its box', () => {
+        const state = describeConnectionState({
+          status: 'failed', validation_code: 'tls_failed', tls_mode: 'prefer', connector_id: 'postgres',
+        });
+        expect(state.hint).toMatch(/turn on "Only connect if the certificate is signed by a public authority"/);
+        expect(state.hint).not.toMatch(/Under "Certificate"/);
+      });
+    });
+
     it('leaves a refused password as a refused password, whatever the mode', () => {
       const state = describeConnectionState({ status: 'failed', validation_code: 'authentication_failed', tls_mode: 'prefer' });
       expect(state.hint).toBe('The server refused the username or password.');
