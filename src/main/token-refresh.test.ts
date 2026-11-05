@@ -126,9 +126,23 @@ describe('tick — refresh outcomes', () => {
     vi.mocked(getRefreshToken).mockResolvedValue(null);
     const { tokenCalls, patches } = mockServer([]);
 
-    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() - 1000).toISOString(), TOKEN_URL);
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() - 1000).toISOString(), TOKEN_URL, undefined, true);
 
     await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
+    expect(tokenCalls).toHaveLength(0);
+  });
+
+  it('leaves an expired connection alone when its connector always issues a refresh token', async () => {
+    // A missing token here is a keychain miss (locked or denied after sleep),
+    // not a dead grant: the next tick tries again.
+    vi.mocked(getRefreshToken).mockResolvedValue(null);
+    const { tokenCalls, patches } = mockServer([]);
+
+    startRefreshLoop('google_drive', 'my-drive', 'user@example.com', new Date(Date.now() - 1000).toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(vi.mocked(getRefreshToken)).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(patches).toEqual([]);
     expect(tokenCalls).toHaveLength(0);
   });
 
@@ -137,7 +151,7 @@ describe('tick — refresh outcomes', () => {
     const { patches } = mockServer([]);
 
     // Inside the pre-refresh window, but not expired.
-    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() + 60_000).toISOString(), TOKEN_URL);
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() + 60_000).toISOString(), TOKEN_URL, undefined, true);
 
     await vi.waitFor(() => expect(vi.mocked(getRefreshToken)).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 20));

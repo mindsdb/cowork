@@ -16,6 +16,9 @@ interface LoopState {
   name: string;
   tokenUrl: string;
   tokenAuthStyle?: 'body' | 'basic';
+  // The spec's `refresh_token_optional`: only such a connector may lack a
+  // refresh token by design, so only for it does a missing one mean "dead".
+  refreshTokenOptional: boolean;
   expiresAt: number; // epoch ms
   failureCount: number;
   notifiedFailure: boolean;
@@ -42,6 +45,7 @@ export function startRefreshLoop(
   expiresAtIso: string,
   tokenUrl: string,
   tokenAuthStyle?: 'body' | 'basic',
+  refreshTokenOptional = false,
 ): void {
   const key = loopKey(engine, accountEmail);
   stopRefreshLoop(engine, accountEmail);
@@ -55,6 +59,7 @@ export function startRefreshLoop(
     name,
     tokenUrl,
     tokenAuthStyle,
+    refreshTokenOptional,
     expiresAt: expiresAtMs,
     failureCount: 0,
     notifiedFailure: false,
@@ -122,7 +127,9 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
     diagnostic("main.token-refresh", "ERROR", "token_refresh_no_refresh_token_in_keychain_for", `[token-refresh] no refresh token in keychain for ${key}`);
     // A provider can legitimately omit the refresh token (Notion sometimes
     // does), so once the access token has expired the connection is dead.
-    if (state.expiresAt <= Date.now()) {
+    // For any other connector a missing token may be a keychain miss, which
+    // the next tick retries.
+    if (state.refreshTokenOptional && state.expiresAt <= Date.now()) {
       await patchToken(engine, state.name, { status: 'needs_reconnect' });
       notifyRenderer({ engine, name: state.name, accountEmail, permanent: true });
       stopRefreshLoop(engine, accountEmail);

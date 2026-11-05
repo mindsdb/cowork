@@ -924,7 +924,7 @@ function setupIPC() {
       // refreshes (GitHub) gets no loop, which would otherwise mark it
       // needs_reconnect once its nominal expiry passes.
       if (supportsRefresh) {
-        startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style);
+        startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style, oauthBlock.refresh_token_optional === true);
       }
       return { ok: true, name: vaultSlug, account_email: accountEmail };
     }
@@ -2061,7 +2061,7 @@ async function startOrphanRefreshLoops(): Promise<void> {
         // Without a refresh token the loop only marks the connection
         // needs_reconnect at expiry, which matters for refresh_token_optional.
         if (!refreshToken && oauthBlock?.refresh_token_optional !== true) continue;
-        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style);
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style, oauthBlock?.refresh_token_optional === true);
         diagnostic("main.app", "INFO", "token_refresh_resumed_loop_for", `[token-refresh] resumed loop for ${engine}:${accountEmail}`);
       } catch (err) {
         diagnostic("main.app", "WARNING", "token_refresh_could_not_resume_loop_for", `[token-refresh] could not resume loop for ${engine}/${name}:`, err);
