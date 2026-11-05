@@ -108,7 +108,16 @@ const REFUSED_LOGIN = 'The server asked for the password itself, and this connec
 const REFUSED_LOGIN_OR_HANDSHAKE = 'Either the server did not complete an encrypted connection, or it '
   + 'asked for the password itself and, since this connection does not check the server\'s certificate, '
   + 'the password was not sent.';
-const UNVERIFIED_CAUSES = { prefer: REFUSED_LOGIN, disabled: REFUSED_LOGIN, encrypted: REFUSED_LOGIN_OR_HANDSHAKE };
+// PostgreSQL also refuses a login asking for no password, Kerberos, or an unsigned SCRAM exchange there.
+const REFUSED_PG_LOGIN = 'The server asked for a kind of login this connection does not allow without '
+  + 'checking the server\'s certificate, so the password was not sent.';
+const REFUSED_PG_LOGIN_OR_HANDSHAKE = 'Either the server did not complete an encrypted connection, or it '
+  + 'asked for a kind of login this connection does not allow without checking the server\'s '
+  + 'certificate. The password was not sent.';
+const UNVERIFIED_CAUSES = {
+  mysql: { prefer: REFUSED_LOGIN, disabled: REFUSED_LOGIN, encrypted: REFUSED_LOGIN_OR_HANDSHAKE },
+  checkbox: { prefer: REFUSED_PG_LOGIN, disabled: REFUSED_PG_LOGIN, encrypted: REFUSED_PG_LOGIN_OR_HANDSHAKE },
+};
 
 // MySQL's form asks which certificate to trust; the other engines' ask one yes-or-no question.
 const TURN_CHECKS_ON = {
@@ -134,8 +143,9 @@ function hintFor(connection) {
   const code = connection?.validation_code || connection?.validationCode;
   if (code !== 'tls_failed') return HINTS[code] || '';
   const mysql = connection?.connector_id === 'mysql';
-  if (Object.hasOwn(UNVERIFIED_CAUSES, connection?.tls_mode)) {
-    return UNVERIFIED_CAUSES[connection.tls_mode] + TURN_CHECKS_ON[mysql ? 'mysql' : 'checkbox'];
+  const form = mysql ? 'mysql' : 'checkbox';
+  if (Object.hasOwn(UNVERIFIED_CAUSES[form], connection?.tls_mode)) {
+    return UNVERIFIED_CAUSES[form][connection.tls_mode] + TURN_CHECKS_ON[form];
   }
   if (!mysql) return HINTS.tls_failed;
   return connection?.tls_mode === 'custom_ca' ? MYSQL_CUSTOM_CA_MISMATCH : MYSQL_UNVERIFIED_CERTIFICATE;

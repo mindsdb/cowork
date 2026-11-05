@@ -216,6 +216,22 @@ describe('describeConnectionState', () => {
         expect(hint).not.toMatch(/Only connect if|turn off/i);
       });
 
+      it.each(['prefer', 'disabled', 'encrypted'])('under %s, never tells PostgreSQL the server asked for the password', (mode) => {
+        // PostgreSQL also refuses a login asking for no password, Kerberos, or an unsigned SCRAM exchange.
+        const { hint } = describeConnectionState({
+          status: 'failed', validation_code: 'tls_failed', tls_mode: mode, connector_id: 'postgres',
+        });
+        expect(hint).toMatch(/asked for a kind of login this connection does not allow without checking the server's certificate/);
+        expect(hint).toMatch(/password was not sent/);
+        expect(hint).not.toMatch(/asked for the password itself/);
+      });
+
+      it.each(['prefer', 'disabled', 'encrypted'])('under %s, keeps saying the MySQL server asked for the password, its only refusal', (mode) => {
+        const { hint } = mysqlTlsFailed(mode);
+        expect(hint).toMatch(/asked for the password itself/);
+        expect(hint).not.toMatch(/kind of login/);
+      });
+
       it('leaves PostgreSQL on its box', () => {
         const state = describeConnectionState({
           status: 'failed', validation_code: 'tls_failed', tls_mode: 'prefer', connector_id: 'postgres',
