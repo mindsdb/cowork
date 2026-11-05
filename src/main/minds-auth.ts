@@ -1258,8 +1258,8 @@ const MINDS_KEYS = [
   // them out means a user's own OpenAI key survives a MindsHub login,
   // the same way the Anthropic key already does.
   'ANTON_MINDS_API_KEY',
-  // NOTE: ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT
-  // stripped (ENG-739). They may hold a value the user set deliberately for
+  // NOTE: ANTON_PLANNING_MODEL / ANTON_CODING_MODEL / ANTON_IMAGE_MODEL are
+  // intentionally NOT stripped (ENG-739). They may hold a value the user set deliberately for
   // the standalone `anton` CLI (e.g. `ANTON_PLANNING_MODEL=latest:opus` via a
   // hand-edited .env or the settings PUT API). A `latest:` prefix is not
   // provable provenance, so wiping these on re-login silently mutates the
@@ -1311,9 +1311,10 @@ export function runsOwnEndpoint(existingEnv: string, mindsHost: string): boolean
 // What is still written is the non-credential half — the MindsHub URL and, when
 // the user is not on an endpoint of their own, the provider selection.
 //
-// Deliberately writes NO ANTON_PLANNING_MODEL / ANTON_CODING_MODEL, and (as of
-// ENG-739) no longer strips them either — MINDS_KEYS omits both model keys, so
-// any model line the user set for the standalone CLI survives re-login. Pinning
+// Deliberately writes NO ANTON_PLANNING_MODEL / ANTON_CODING_MODEL /
+// ANTON_IMAGE_MODEL, and (as of ENG-739) no longer strips them either —
+// MINDS_KEYS omits every model key, so any model line the user set for the
+// standalone CLI survives re-login. Pinning
 // `latest:sonnet` / `latest:haiku` here (an ENG-436-era guard against
 // deprecated-alias 500s) became fatal once tier gating shipped: it made every
 // sign-in an *explicit* model pick, so the server's enabled-aware default
@@ -1341,9 +1342,9 @@ export function buildMindsEnvContent(existing: string, host: string): string {
 // holder instead of stored, which is the whole point of this change. Everything
 // here is non-secret configuration.
 //
-// Deliberately excludes planning_model / coding_model (ENG-739). The old sign-
-// in path POSTed the whole `.env` to `/settings/raw`, which re-reads the full
-// `.env` from disk and syncs EVERY recognised key — so a legacy `.env` model
+// Deliberately excludes planning_model / coding_model / image_model (ENG-739).
+// The old sign-in path POSTed the whole `.env` to `/settings/raw`, which re-reads
+// the full `.env` from disk and syncs EVERY recognised key — so a legacy `.env` model
 // line (or a stale login-written `latest:` pin) would clobber a model the user
 // just fixed via the picker, with no way to leave the model untouched. Writing
 // only these keys leaves the DB's model rows (and any picker fix) alone.

@@ -37,19 +37,23 @@
 // rather than highlighting options the user may not have picked.
 //
 // A tool's message to the user (a `Message` step) is a boundary too: it renders
-// as an agent message between the work before and after it.
+// as an agent message between the work before and after it. So is a picture
+// generate_image wrote (an `Image` step, ENG-4024): it shows where it was made,
+// not folded into the steps around it.
 
 const isQuestion = (step) => step?.badge === 'AskUser';
 const isMessage = (step) => step?.badge === 'Message';
+const isImage = (step) => step?.badge === 'Image';
 
 /**
  * Returns, in event order:
  *   { kind: 'steps', key, steps, startedAt }
  *   { kind: 'question', key, step, expired, reopened, lateAnswer }
  *   { kind: 'message', key, step }
+ *   { kind: 'image', key, step }
  * Always starts and ends with a steps segment, and puts one (possibly empty)
- * between any two boundaries (questions or messages), so callers can always
- * pick the live one.
+ * between any two boundaries (questions, messages or images), so callers can
+ * always pick the live one.
  */
 export function splitTurnSegments(steps, { startedAt = null, conversationLive = false, reopenable = false, reply = null } = {}) {
   const list = Array.isArray(steps) ? steps : [];
@@ -77,13 +81,13 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
   };
   let current = { kind: 'steps', key: 'seg-0', steps: [], startedAt };
   for (const step of list) {
-    if (!isQuestion(step) && !isMessage(step)) {
+    if (!isQuestion(step) && !isMessage(step) && !isImage(step)) {
       current.steps.push(step);
       continue;
     }
     pushSteps(current);
-    segments.push(isMessage(step)
-      ? { kind: 'message', key: step.id, step }
+    segments.push(isMessage(step) || isImage(step)
+      ? { kind: isImage(step) ? 'image' : 'message', key: step.id, step }
       : {
         kind: 'question',
         key: step.id,

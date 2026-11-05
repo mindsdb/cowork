@@ -23,7 +23,8 @@ const ENV_TO_SETTING: Record<string, string> = {
   // any other. Without this key a role repointed elsewhere is never restored,
   // so it stays on whatever it was last set to forever.
   ANTON_ROUTER_PROVIDER: 'router_provider',
-  // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are deliberately absent (ENG-739).
+  // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL / ANTON_IMAGE_MODEL are
+  // deliberately absent (ENG-739).
   // This helper runs on every login, post-install, and web token-refresh from
   // the *full* .env, so mapping the model keys here re-pins a user who just
   // recovered via the picker (their .env still holds the legacy `latest:` line,
@@ -105,6 +106,10 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
 const MODEL_ENV_TO_SETTING: Record<string, string> = {
   ANTON_PLANNING_MODEL: 'planning_model',
   ANTON_CODING_MODEL: 'coding_model',
+  // The model `generate_image` runs on (ENG-4024). Never the bulk re-sync,
+  // and not onboarding's either (see modelLinesFrom): the Settings pick is
+  // what writes it.
+  ANTON_IMAGE_MODEL: 'image_model',
 };
 
 // Own-key check — NOT `key in MODEL_ENV_TO_SETTING` / bracket access, which also
@@ -113,11 +118,19 @@ const MODEL_ENV_TO_SETTING: Record<string, string> = {
 const isModelEnvKey = (key: string): boolean =>
   Object.prototype.hasOwnProperty.call(MODEL_ENV_TO_SETTING, key);
 
-/** The `ANTON_*_MODEL` lines from a set of "KEY=value" lines. */
+// The roles onboarding picks a model for, so the only model lines it may hand
+// to syncModelsToDb. The image model is not one: it is picked in Settings and
+// saved through the settings PUT. Onboarding's lines can carry a hand-edited
+// `.env` ANTON_IMAGE_MODEL over (the MindsHub-then-BYOK path merges the
+// existing file), and that line is the standalone CLI's config, which must not
+// reach the DB from here (ENG-739).
+const ONBOARDING_MODEL_ENV_KEYS = new Set(['ANTON_PLANNING_MODEL', 'ANTON_CODING_MODEL']);
+
+/** The model lines onboarding chose (planning + coding) from a set of "KEY=value" lines. */
 export function modelLinesFrom(lines: string[]): string[] {
   return lines.filter((l) => {
     const eq = l.indexOf('=');
-    return eq > 0 && isModelEnvKey(l.slice(0, eq));
+    return eq > 0 && ONBOARDING_MODEL_ENV_KEYS.has(l.slice(0, eq));
   });
 }
 

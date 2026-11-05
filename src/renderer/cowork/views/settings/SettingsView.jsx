@@ -4,7 +4,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -811,7 +811,7 @@ export default function SettingsView({
   // Per-role "refetching model list on dropdown open" flag — drives the
   // trigger's spinner so a still-open dropdown showing possibly-stale
   // locked/unlocked state doesn't read as done loading.
-  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
+  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false, image: false });
   // Start by distrusting a persisted provider failure. The mount-time check
   // below decides whether it is still real before failure UI is shown. A deployment
   // with testing disabled keeps the stored result without running connectivity tests.
@@ -1586,6 +1586,49 @@ export default function SettingsView({
                   visibleProviders[0];
                 const multipleProviders = visibleProviders.length > 1;
 
+                // Plain bold field label. Note: no dotted underline — that reads as
+                // a "hover for a tooltip" affordance, and none is wired here.
+                const fieldLabel = (text) => (
+                  <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}:</span>
+                );
+
+                // A model picker's onOpenChange, for `role`'s row.
+                const refreshModelsOnOpen = (role) => (isOpen) => {
+                  // Opening re-checks the wallet, so a top-up made in an
+                  // external tab unlocks its models here without an app restart.
+                  // The popup opens immediately on the list we already hold and
+                  // reconciles in place when the response lands, rather than
+                  // withholding itself until then: the trigger is a click target,
+                  // and a click that produces nothing for the length of a network
+                  // round trip reads as a broken control. Briefly showing a
+                  // model as locked that a top-up has just unlocked is safe —
+                  // this list is an affordance, not the authority. Auth decides
+                  // at request time, so a stale row can mislead for a moment but
+                  // can never let a turn through that shouldn't run.
+                  if (!isOpen) return;
+                  const openState = modelOpenFor(role);
+                  if (modelRefreshing[role]) return;
+                  // Don't re-pay the round trip for a re-open moments later.
+                  if (performance.now() - openState.refreshedAt < MODEL_REFRESH_TTL_MS) return;
+                  setModelRefreshing((m) => ({ ...m, [role]: true }));
+                  fetchRecommendedModels({ refresh: true }).then((data) => {
+                    // Same merge rule as the mount-time load: an empty list or
+                    // map in the response leaves what we have alone. The
+                    // endpoint answers 200 with empty buckets when the MindsHub
+                    // fetch itself failed, and assigning those straight through
+                    // would empty the dropdown the user just clicked (for every
+                    // role — the keys are shared) until the app restarts.
+                    // keepOrder: the dropdown is open on the list we hold
+                    // when this lands; a reordered list jumps under the cursor.
+                    const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
+                    if (!merged) return;
+                    for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
+                    openState.refreshedAt = performance.now();
+                  }).catch(() => { }).finally(() => {
+                    setModelRefreshing((m) => ({ ...m, [role]: false }));
+                  });
+                };
+
                 // For each role: render provider selector (when N>1) +
                 // model field. When the user picks a new provider, auto-
                 // fill the role with that provider's recommended default
@@ -1687,12 +1730,6 @@ export default function SettingsView({
                     if (effortKey) setSetting(effortKey, '');
                   };
 
-                  // Plain bold field label. Note: no dotted underline — that reads as
-                  // a "hover for a tooltip" affordance, and none is wired here.
-                  const fieldLabel = (text) => (
-                    <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}:</span>
-                  );
-
                   const probeNoticeNode = probeNotice ? (
                     <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} providerTestsAvailable={providerTestsAvailable} />
                   ) : null;
@@ -1784,41 +1821,7 @@ export default function SettingsView({
                                       writeOverride({ providerType: curType, model: next });
                                     }
                                   }}
-                                  onOpenChange={(isOpen) => {
-                                    // Opening re-checks the wallet, so a top-up made in an
-                                    // external tab unlocks its models here without an app restart.
-                                    // The popup opens immediately on the list we already hold and
-                                    // reconciles in place when the response lands, rather than
-                                    // withholding itself until then: the trigger is a click target,
-                                    // and a click that produces nothing for the length of a network
-                                    // round trip reads as a broken control. Briefly showing a
-                                    // model as locked that a top-up has just unlocked is safe —
-                                    // this list is an affordance, not the authority. Auth decides
-                                    // at request time, so a stale row can mislead for a moment but
-                                    // can never let a turn through that shouldn't run.
-                                    if (!isOpen) return;
-                                    const openState = modelOpenFor(role);
-                                    if (modelRefreshing[role]) return;
-                                    // Don't re-pay the round trip for a re-open moments later.
-                                    if (performance.now() - openState.refreshedAt < MODEL_REFRESH_TTL_MS) return;
-                                    setModelRefreshing((m) => ({ ...m, [role]: true }));
-                                    fetchRecommendedModels({ refresh: true }).then((data) => {
-                                      // Same merge rule as the mount-time load: an empty list or
-                                      // map in the response leaves what we have alone. The
-                                      // endpoint answers 200 with empty buckets when the MindsHub
-                                      // fetch itself failed, and assigning those straight through
-                                      // would empty the dropdown the user just clicked (for every
-                                      // role — the keys are shared) until the app restarts.
-                                      // keepOrder: the dropdown is open on the list we hold
-                                      // when this lands; a reordered list jumps under the cursor.
-                                      const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
-                                      if (!merged) return;
-                                      for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
-                                      openState.refreshedAt = performance.now();
-                                    }).catch(() => { }).finally(() => {
-                                      setModelRefreshing((m) => ({ ...m, [role]: false }));
-                                    });
-                                  }}
+                                  onOpenChange={refreshModelsOnOpen(role)}
                                   loading={modelRefreshing[role]}
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                                   options={modelOptions}
@@ -1886,11 +1889,76 @@ export default function SettingsView({
                     </Section>
                   );
                 };
+                // The model Anton's generate_image tool runs on (ENG-4024).
+                // MindsHub serves every image model, so there is no provider to
+                // pick and no free-text id: just the catalog's `kind: "image"`
+                // rows, which no chat row above ever lists.
+                const ImageModelRow = () => {
+                  const imageModels = Array.isArray(settings.imageModels) ? settings.imageModels : [];
+                  const subtitle = 'Used to generate and edit images.';
+                  if (imageModels.length === 0) {
+                    // With MindsHub connected and still no image models, the
+                    // catalog has none to offer (or could not be read), and a
+                    // row with nothing in it is noise. An org runs on its
+                    // managed MindsHub, and has no LLM Providers section to
+                    // point at, so the same holds there.
+                    const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
+                    if (orgMode || (minds && providerConfigured(minds))) return null;
+                    return (
+                      <Section title="Image model" subtitle={subtitle}>
+                        <div className="text-[11.5px] text-ink-3">
+                          Image generation runs on MindsHub. Add it under LLM Providers above to choose an image model.
+                        </div>
+                      </Section>
+                    );
+                  }
+                  const modelEnabled = settings.modelEnabled || {};
+                  const curModel = resolveImageModel(settings.imageModel, imageModels, {
+                    catalogDefault: settings.imageModelDefault,
+                    modelEnabled,
+                  });
+                  // No free text here (allowOther false), so a saved id the
+                  // catalog dropped shows as a stale pin to re-pick.
+                  const { showStalePin, selectValue } = resolveModelPickerValue(curModel, imageModels, false);
+                  const modelOptions = buildModelOptions(
+                    curModel, imageModels, false, showStalePin, modelEnabled,
+                    settings.modelLabels || {},
+                    {
+                      modelProviders: settings.modelProviders,
+                      modelFamilies: settings.modelFamilies,
+                      modelDisabledReasons: settings.modelDisabledReasons,
+                    },
+                  );
+                  return (
+                    <Section title="Image model" subtitle={subtitle}>
+                      <div className="grid gap-1.5">
+                        <label className="grid gap-1">
+                          {fieldLabel('Model')}
+                          <ModelSelect
+                            value={selectValue}
+                            onValueChange={(next) => setSetting('imageModel', next)}
+                            onOpenChange={refreshModelsOnOpen('image')}
+                            loading={modelRefreshing.image}
+                            title="Pick the model used to generate images."
+                            options={modelOptions}
+                          />
+                        </label>
+                        {!!curModel && isModelLocked(modelEnabled, curModel) && (
+                          <UnavailableModelHint
+                            label={displayModelLabel(curModel, settings.modelLabels || {})}
+                            restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                          />
+                        )}
+                      </div>
+                    </Section>
+                  );
+                };
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
                     {RoleRow({ role: 'router', label: 'Routing and summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
+                    {ImageModelRow()}
                   </>
                 );
               })()}
