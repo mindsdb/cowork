@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
+import { setOrgMode } from '../../../lib/orgMode';
 
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
@@ -95,6 +96,7 @@ const optionNames = () => screen.getAllByRole('option').map((o) => o.textContent
 let onSave;
 beforeEach(() => {
   onSave = vi.fn(async () => {});
+  setOrgMode(false);
 });
 
 describe('SettingsView: Image model row', () => {
@@ -177,6 +179,24 @@ describe('SettingsView: Image model row', () => {
     expect(screen.getByText('Image model')).toBeInTheDocument();
     expect(screen.getByText(/Image generation runs on MindsHub/)).toBeInTheDocument();
     expect(screen.queryByTitle('Pick the model used to generate images.')).toBeNull();
+  });
+
+  it("points an org member at nothing: the org runs on its managed MindsHub, with no providers section", () => {
+    setOrgMode(true);
+    // Org mode stores no MindsHub key, so the card reads unconfigured.
+    render(<Harness
+      initialSettings={settingsWith({ providers: [] }, { imageModels: [], imageModelDefault: '' })}
+      onSave={onSave}
+    />);
+    expect(screen.queryByText(/Image generation runs on MindsHub/)).toBeNull();
+    expect(screen.queryByText(/LLM Providers above to choose an image model/)).toBeNull();
+    expect(screen.queryByText('Image model')).toBeNull();
+  });
+
+  it('still offers the image picker in org mode when the catalog lists image models', () => {
+    setOrgMode(true);
+    render(<Harness initialSettings={settingsWith({ providers: [] })} onSave={onSave} />);
+    expect(imagePicker()).toHaveTextContent('GPT Image 2.6 Flare');
   });
 
   it('draws no row when MindsHub is connected but lists no image models', () => {

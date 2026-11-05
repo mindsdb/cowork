@@ -52,6 +52,20 @@ describe('persistOnboarding', () => {
   // syncModels runs AFTER the authoritative DB write and is
   // best-effort — a throw there must not bounce a user whose config already
   // persisted to the onboarding error screen.
+  // ENG-739 / ENG-4024: the lines can carry the existing .env over (the
+  // MindsHub-then-BYOK path merges it), so only the models onboarding chose
+  // go to syncModels. A hand-edited image model line stays CLI-only.
+  it('hands syncModels only the planning and coding lines', async () => {
+    const d = makeDeps();
+    await persistOnboarding(d, [
+      'ANTON_MINDS_URL=https://mdb.ai',
+      'ANTON_IMAGE_MODEL=gpt-image-2.6-sunburst',
+      'ANTON_PLANNING_MODEL=gpt-5.5',
+      'ANTON_CODING_MODEL=gpt-5.5-mini',
+    ]);
+    expect(d.syncModels).toHaveBeenCalledWith(['ANTON_PLANNING_MODEL=gpt-5.5', 'ANTON_CODING_MODEL=gpt-5.5-mini']);
+  });
+
   it('still succeeds when syncModels throws after the DB write lands', async () => {
     const d = makeDeps({ syncModels: vi.fn(async () => { throw new Error('model sync flaked'); }) });
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });

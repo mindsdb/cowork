@@ -1899,9 +1899,11 @@ export default function SettingsView({
                   if (imageModels.length === 0) {
                     // With MindsHub connected and still no image models, the
                     // catalog has none to offer (or could not be read), and a
-                    // row with nothing in it is noise.
+                    // row with nothing in it is noise. An org runs on its
+                    // managed MindsHub, and has no LLM Providers section to
+                    // point at, so the same holds there.
                     const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
-                    if (minds && providerConfigured(minds)) return null;
+                    if (orgMode || (minds && providerConfigured(minds))) return null;
                     return (
                       <Section title="Image model" subtitle={subtitle}>
                         <div className="text-[11.5px] text-ink-3">

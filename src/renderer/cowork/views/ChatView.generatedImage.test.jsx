@@ -6,7 +6,7 @@
 // Drives the chain a live turn produces: the tool's result event, through the
 // stream reducer, into the turn's steps that ChatView renders.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('../../platform/host', () => ({
@@ -132,6 +132,25 @@ describe('inline generated image', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getAllByText(/cat\.png/).length).toBeGreaterThan(0);
+    // The agent named the path, so the viewer doesn't hand it to the OS
+    // default app; Reveal stays, as in the figure viewer.
+    expect(within(dialog).getByRole('button', { name: 'Reveal' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Open' })).toBeNull();
+  });
+
+  it('waits for the project on a cold start instead of saying the image is gone', async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, blob: async () => new Blob(['png-bytes'], { type: 'image/png' }) }));
+    const task = taskWith([imageResult()]);
+
+    // The projects list hasn't landed: no project yet.
+    const { rerender } = render(<ChatView task={task} project={null} projects={[]} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(/could not be shown/)).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(expect.stringContaining('files-raw'), expect.anything());
+
+    rerender(<ChatView task={task} project={PROJECT} projects={[PROJECT]} />);
+    expect(await screen.findByRole('img', { name: 'Generated image cat.png' })).toHaveAttribute('src', 'blob:generated-cat');
+    expect(screen.queryByText(/could not be shown/)).toBeNull();
   });
 
   it('says the image is gone instead of drawing a broken one', async () => {

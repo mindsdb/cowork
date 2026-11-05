@@ -185,13 +185,16 @@ describe('modelLinesFrom', () => {
     ).toEqual(['ANTON_PLANNING_MODEL=gpt-5.5', 'ANTON_CODING_MODEL=gpt-5.5-mini']);
   });
 
-  it('includes the image model line (ENG-4024)', () => {
+  // ENG-4024 / ENG-739: onboarding never picks an image model, so an image line
+  // in its lines came over from a hand-edited .env and must not reach the DB.
+  it('leaves out the image model line, which onboarding never chooses', () => {
     expect(
       modelLinesFrom([
         'ANTON_MINDS_API_KEY=mdb_abc',
-        'ANTON_IMAGE_MODEL=gpt-image-2.6-flare',
+        'ANTON_IMAGE_MODEL=gpt-image-2.6-sunburst',
+        'ANTON_PLANNING_MODEL=gpt-5.5',
       ]),
-    ).toEqual(['ANTON_IMAGE_MODEL=gpt-image-2.6-flare']);
+    ).toEqual(['ANTON_PLANNING_MODEL=gpt-5.5']);
   });
 
   // The minds/SSO path writes no model line (backend resolves the tier default),

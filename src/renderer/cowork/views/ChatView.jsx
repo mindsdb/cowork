@@ -3473,12 +3473,15 @@ export default function ChatView({
       />
 
       {/* A generated image opened from its inline card (ENG-4024). Read only:
-          the picture is the agent's output, and edits belong in a new turn. */}
+          the picture is the agent's output, and edits belong in a new turn.
+          The agent named the path, so, as in the figure viewer, no Open (it
+          hands the file to the OS default app). */}
       <ContextFileModal
         open={openImagePath != null}
         projectName={project?.name}
         projectPath={artifactProjectPath}
         filePath={openImagePath || ''}
+        showOpenAction={false}
         showEditAction={false}
         remover={null}
         onClose={() => setOpenImagePath(null)}

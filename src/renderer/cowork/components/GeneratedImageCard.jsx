@@ -32,12 +32,18 @@ const MAX_EDGE_PX = 360;
  * }} props
  */
 export function GeneratedImageCard({ image, projectName = null, projectPath = '', onOpen = null }) {
-  const relPath = projectRelativeImagePath(image?.path, projectPath);
-  const url = relPath && projectName ? projectFileDownloadUrl(projectName, relPath) : null;
-  const { src, failed } = useBlobImageSrc({ url });
+  // Until the chat knows its project (a cold start, before the projects list
+  // lands) there is nothing to read the file from yet: that is loading, not a
+  // missing file, so the card waits rather than say it can't show the image.
+  const waitingForProject = !projectName;
+  const relPath = waitingForProject ? null : projectRelativeImagePath(image?.path, projectPath);
+  const url = relPath ? projectFileDownloadUrl(projectName, relPath) : null;
+  const blob = useBlobImageSrc({ url });
+  const src = waitingForProject ? '' : blob.src;
+  const failed = !waitingForProject && blob.failed;
   // The bytes arrived but don't decode as an image.
   const [undecodable, setUndecodable] = useState(false);
-  const name = image?.name || relPath || 'image';
+  const name = image?.name || relPath || image?.path || 'image';
   const alt = image?.prompt || `Generated image ${name}`;
   const width = image?.width || null;
   const height = image?.height || null;
