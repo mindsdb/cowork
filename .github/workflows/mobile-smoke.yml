@@ -1,0 +1,104 @@
+name: Mobile smoke
+
+# Unsigned smoke build of the Capacitor shell in mobile/ (ENG-4023): proves the
+# iOS project compiles for the simulator and the Android project assembles a
+# debug APK. No certificates, no store upload; signed release builds live in
+# their own workflows.
+#
+# Node 22, not 20: Capacitor 8's CLI requires Node >= 22.
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      # Capacitor 8 needs Xcode 26+. Use the newest stable Xcode on the image
+      # rather than whatever the image happens to default to.
+      - name: Select Xcode
+        run: |
+          xcode="$(printf '%s\n' /Applications/Xcode_*.app | grep -viE 'beta|rc' | sort -V | tail -1)"
+          echo "Selecting $xcode"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+          working-directory: mobile
+      - name: Typecheck capacitor.config.ts
+        run: npm run typecheck
+      - name: Sync iOS
+        run: npx cap sync ios
+      - name: Build (simulator, unsigned)
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            mobile/android/*.gradle*
+            mobile/android/**/gradle-wrapper.properties
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+          working-directory: mobile
+      - name: Sync Android
+        run: npx cap sync android
+      - name: Assemble debug APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Check the APK's version and package
+        working-directory: mobile/android
+        run: |
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          test -f "$apk"
+          aapt="$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -1)"
+          badging="$("$aapt" dump badging "$apk")"
+          echo "$badging" | grep '^package:'
+          echo "$badging" | grep -q "^package: name='ai.mindshub.cowork' versionCode='1' versionName='1.0.0'"

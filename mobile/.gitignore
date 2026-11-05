@@ -1,0 +1,3 @@
+node_modules/
+# Generated on every cap copy/sync by scripts/cap-copy-before.mjs.
+www/env.js
