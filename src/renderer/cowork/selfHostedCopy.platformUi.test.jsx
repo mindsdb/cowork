@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import ToastProvider from './components/ui/Toast';
 
 vi.mock('../lib/deployment', () => ({ PLATFORM_UI: false }));
 vi.mock('../platform/host', async (importOriginal) => {
@@ -56,7 +57,7 @@ describe('web build without the platform UI', () => {
   });
 
   it('says scheduled tasks run on the server', () => {
-    render(<ScheduledView {...scheduledProps} />);
+    render(<ScheduledView {...scheduledProps} />, { wrapper: ToastProvider });
     expect(screen.getByText(
       "Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, Anton runs the latest one from the last 7 days when it's back.",
     )).toBeInTheDocument();

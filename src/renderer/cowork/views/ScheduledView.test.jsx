@@ -5,6 +5,7 @@
 // does. Queries go by role, label and visible text, never by class.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import ToastProvider from '../components/ui/Toast';
 import userEvent from '@testing-library/user-event';
 import { orderOf, pickOption } from '../../../../tests/helpers/pickOption';
 
@@ -48,7 +49,7 @@ function setup(overrides = {}) {
   // after a hover reveal flips the inline style. Visibility is styling; these
   // tests pin that each action exists, is named, and does the right thing.
   const user = userEvent.setup({ pointerEventsCheck: 0 });
-  return { ...render(<ScheduledView {...props} />), props, user };
+  return { ...render(<ScheduledView {...props} />, { wrapper: ToastProvider }), props, user };
 }
 
 // Narrow the page to one schedule so per-item actions are unambiguous.

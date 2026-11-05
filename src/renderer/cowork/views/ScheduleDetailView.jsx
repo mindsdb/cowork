@@ -14,7 +14,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import { ListGroup, ListItem, ListNotice, PageHeader, StatusDot } from '../components/collection';
-import { Alert, Badge, Button, Tooltip } from '../components/ui';
+import { Badge, Button, Tooltip } from '../components/ui';
+import { useToastManager } from '../components/ui/Toast';
 import { Switch } from '../components/ui/Switch';
 import OverflowMenu from '../components/OverflowMenu';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -98,7 +99,7 @@ export default function ScheduleDetailView({
   const [runs, setRuns] = useState([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const toastManager = useToastManager();
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
@@ -137,9 +138,8 @@ export default function ScheduleDetailView({
 
   async function withBusy(fn) {
     setBusy(true);
-    setError('');
     try { await fn(); }
-    catch (err) { setError(err?.message || 'Action failed.'); }
+    catch (err) { toastManager.add({ type: 'danger', title: err?.message || 'Action failed.' }); }
     finally     { setBusy(false); }
   }
 
@@ -230,7 +230,6 @@ export default function ScheduleDetailView({
           <p className="m-0 text-[12.5px] text-ink-3">{missedRunText(task.cadence)}</p>
         </section>
 
-        {error && <Alert variant="danger">{error}</Alert>}
 
         {/* How the last run went, when there is something to act on: an
             auto-pause, or a failed run, with its output to review first. */}
