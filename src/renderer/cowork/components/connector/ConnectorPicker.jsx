@@ -439,13 +439,17 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           <div>
             <Alert variant="info">
               More connectors are on the way here. The rest of them work today in the{' '}
-              <button
-                type="button"
-                onClick={() => host.openExternal('https://mindshub.ai/download')}
-                className="font-medium underline underline-offset-2 bg-transparent border-0 p-0 cursor-pointer text-inherit [font:inherit]"
-              >
-                Cowork Desktop App
-              </button>
+              {/* No download link in the mobile app (ENG-4023): a phone
+                  cannot install the desktop app. */}
+              {host.isMobileShell ? 'Cowork Desktop App' : (
+                <button
+                  type="button"
+                  onClick={() => host.openExternal('https://mindshub.ai/download')}
+                  className="font-medium underline underline-offset-2 bg-transparent border-0 p-0 cursor-pointer text-inherit [font:inherit]"
+                >
+                  Cowork Desktop App
+                </button>
+              )}
               .
             </Alert>
           </div>
