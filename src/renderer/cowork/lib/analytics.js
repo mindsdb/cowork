@@ -30,8 +30,8 @@ const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
   ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
-  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
-  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
+  AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id?, entry_placement? } — only on the first task within 30 min of a console handoff
+  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, entry_placement? } — Home composer interactive after a console handoff
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
@@ -632,11 +632,21 @@ export function trackArtifactPublished(artifactId, visibility) {
 const ENTRY_ATTRIBUTION_TTL_MS = 30 * 60 * 1000;
 let pendingEntryAttribution = null;
 
-export function setEntryAttribution(entrySource, exampleId) {
+export function setEntryAttribution(entrySource, exampleId, placement) {
   pendingEntryAttribution = entrySource
-    ? { entry_source: entrySource, example_id: exampleId || null, at: Date.now() }
+    ? {
+      entry_source: entrySource,
+      example_id: exampleId || null,
+      entry_placement: placement || null,
+      at: Date.now(),
+    }
     : null;
 }
+
+// The console surface a handoff came from, as an event property, only when the
+// link named one; absent rather than null so a missing placement reads as
+// "not recorded", the same as before the console sent it.
+const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
 export function trackAgentSessionStarted() {
   const pending = pendingEntryAttribution;
@@ -644,7 +654,13 @@ export function trackAgentSessionStarted() {
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
   capture(
     EVENTS.AGENT_SESSION_STARTED,
-    fresh ? { entry_source: pending.entry_source, example_id: pending.example_id } : {}
+    fresh
+      ? {
+        entry_source: pending.entry_source,
+        example_id: pending.example_id,
+        ...placementProps(pending.entry_placement),
+      }
+      : {}
   );
 }
 
@@ -710,17 +726,19 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
   };
   if (start?.example_id) props.example_id = start.example_id;
   if (start?.added_chars != null) props.added_chars = start.added_chars;
+  Object.assign(props, placementProps(entry?.entry_placement));
   capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }
 
 // The console handoff's arrival: the Home composer is on screen and usable,
 // with the sample in it (`prefilled`) or empty. Separate from the console's
 // click, which only says the user asked to come here.
-export function trackComposerReady(entrySource, exampleId, prefilled) {
+export function trackComposerReady(entrySource, exampleId, prefilled, placement) {
   capture(EVENTS.COMPOSER_READY, {
     entry_source: entrySource,
     example_id: exampleId || null,
     prefilled: Boolean(prefilled),
+    ...placementProps(placement),
   });
 }
 

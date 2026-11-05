@@ -12,11 +12,34 @@ beforeEach(() => {
 });
 
 describe('console handoff', () => {
-  // The console links to these ids. Renaming either label breaks those links.
-  it('resolves the samples the console links to', () => {
-    expect(findSample('games', 'classic-snake-game')?.sample.label).toBe('Classic snake game');
-    expect(findSample('visualization', 'track-monthly-kpis-across-departments')?.sample.label)
-      .toBe('Track monthly KPIs across departments');
+  // The console links to these ids, from Home and from the Gallery. Renaming a
+  // label changes its id and breaks that link, which opens an empty composer.
+  it.each([
+    ['games', 'classic-snake-game', 'Classic snake game'],
+    ['games', 'celestial-merge-2048', 'Celestial merge 2048'],
+    ['visualization', 'track-monthly-kpis-across-departments', 'Track monthly KPIs across departments'],
+    ['apps', 'build-a-quote-or-invoice-generator', 'Build a quote or invoice generator'],
+    ['apps', 'build-study-planning-and-progress-tool', 'Build study planning and progress tool'],
+    ['website', 'build-a-landing-page-for-a-product-launch', 'Build a landing page for a product launch'],
+    ['spreadsheet', 'clean-up-my-spreadsheet-and-chart-it', 'Clean up my spreadsheet and chart it'],
+    ['spreadsheet', 'compile-a-north-america-ai-conference-calendar', 'Compile a North America AI conference calendar'],
+    ['wide-research', 'summarize-a-document-and-draft-my-reply', 'Summarize a document and draft my reply'],
+  ])('resolves %s/%s, which the console links to', (mode, id, label) => {
+    expect(findSample(mode, id)?.sample.label).toBe(label);
+  });
+
+  it('keeps the console placement it knows, so the task can be credited to it', () => {
+    window.history.replaceState(null, '', '/?from=console&mode=games&sample=celestial-merge-2048&placement=gallery');
+    captureConsoleHandoff(at('?from=console&mode=games&sample=celestial-merge-2048&placement=gallery'));
+
+    expect(window.location.search).toBe('');
+    expect(takeConsoleHandoff()).toMatchObject({ entrySource: 'console', placement: 'gallery' });
+  });
+
+  it('drops a placement it does not know instead of storing it', () => {
+    captureConsoleHandoff(at('?from=console&mode=games&sample=classic-snake-game&placement=<script>'));
+    expect(window.sessionStorage.getItem('anton.consoleHandoff')).not.toContain('script');
+    expect(takeConsoleHandoff().placement).toBeNull();
   });
 
   it('survives the login round trip: captured before the redirect, taken after it', () => {
@@ -46,12 +69,12 @@ describe('console handoff', () => {
   it('degrades an unknown sample to an empty composer instead of storing it', () => {
     captureConsoleHandoff(at('?from=console&mode=games&sample=<script>'));
     expect(window.sessionStorage.getItem('anton.consoleHandoff')).not.toContain('script');
-    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null });
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null, placement: null });
   });
 
   it('carries the own-work start, which names the first onboarding step and no text', () => {
     captureConsoleHandoff(at('?from=console&start=own-work'));
-    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: 'own-work' });
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: 'own-work', placement: null });
   });
 
   it('drops a start it does not know instead of storing it', () => {
@@ -77,7 +100,7 @@ describe('console handoff', () => {
     window.sessionStorage.setItem('anton.consoleHandoff', JSON.stringify({
       entrySource: 'console', modeId: null, sampleId: null, at: Date.now(),
     }));
-    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null });
+    expect(takeConsoleHandoff()).toEqual({ entrySource: 'console', mode: null, sample: null, start: null, placement: null });
   });
 
   it('ignores links that are not from the console', () => {
