@@ -34,7 +34,8 @@ vi.mock('../../api', () => ({
   ANTON_PROJECT_INSTRUCTIONS_PATH: '.anton/anton.md',
 }));
 /* The viewer's size rides on the Modal's props. */
-vi.mock('../ui/Modal', () => ({
+vi.mock('../ui/Modal', async (importOriginal) => ({
+  ...(await importOriginal()),
   Modal: ({ open, size, children }) => (open ? <div data-modal-size={size}>{children}</div> : null),
 }));
 /* The four renderers, as the bundle generator would list them. */

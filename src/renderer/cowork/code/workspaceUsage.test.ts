@@ -1,0 +1,160 @@
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const workspaceUsage = vi.hoisted(() => vi.fn());
+vi.mock('./api', () => ({ codingApi: { workspaceUsage } }));
+
+import { diskUsageRows, formatBytes, measuringPollDelay, taskDiskUsage, useWorkspaceUsage } from './workspaceUsage';
+
+const measured = {
+  items: [{ session_id: 'task-1', bytes: 1_288_490_189 }],
+  total_bytes: 19_327_352_832,
+  measured_at: '2026-10-15T01:00:00Z',
+  measuring: false,
+};
+
+describe('workspace disk usage', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    workspaceUsage.mockReset();
+  });
+
+  it('formats sizes compactly', () => {
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(740 * 1024 * 1024)).toBe('740 MB');
+    expect(formatBytes(1_288_490_189)).toBe('1.2 GB');
+  });
+
+  it('labels a task with its share and the total, or says it is still measuring', () => {
+    expect(diskUsageRows(taskDiskUsage(measured, 'task-1'))).toEqual([
+      { label: 'Storage', value: '~1.2 GB' },
+      { label: 'All tasks', value: '18 GB' },
+    ]);
+    expect(diskUsageRows(taskDiskUsage({ ...measured, items: [], measuring: true }, 'task-1'))).toEqual([
+      { label: 'Storage', value: 'Measuring…' },
+    ]);
+    expect(diskUsageRows(taskDiskUsage({ ...measured, items: [] }, 'task-1'))).toEqual([
+      { label: 'Storage', value: 'Not measured yet' },
+    ]);
+    expect(taskDiskUsage(null, 'task-1')).toBeNull();
+  });
+
+  it('names the recovery share and says when a newer measurement is on its way', () => {
+    const page = {
+      ...measured,
+      items: [{ session_id: 'task-1', bytes: 1_288_490_189, recovery_bytes: 314_572_800 }],
+      measuring: true,
+    };
+    // One value per row, so the narrow details column never cuts off the total.
+    expect(diskUsageRows(taskDiskUsage(page, 'task-1'))).toEqual([
+      { label: 'Storage', value: '~1.2 GB · updating…' },
+      { label: 'Recovery', value: '300 MB of that' },
+      { label: 'All tasks', value: '18 GB' },
+    ]);
+    // Older servers send neither field.
+    expect(taskDiskUsage(measured, 'task-1')?.recoveryBytes).toBe(0);
+  });
+
+  it('asks again while the server is measuring, then stops', async () => {
+    vi.useFakeTimers();
+    workspaceUsage
+      .mockResolvedValueOnce({ items: [], total_bytes: 0, measured_at: null, measuring: true })
+      .mockResolvedValueOnce(measured);
+
+    const { result } = renderHook(() => useWorkspaceUsage('task-1'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current?.measuring).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+
+    expect(result.current).toEqual(measured);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(workspaceUsage).toHaveBeenCalledTimes(2);
+    // The server measures again when the task it is asked about is missing.
+    expect(workspaceUsage).toHaveBeenCalledWith('task-1');
+  });
+
+  it('asks again once the task\'s workspace is ready, after polling settled while it prepared', async () => {
+    vi.useFakeTimers();
+    const preparing = { items: [{ session_id: 'task-1', bytes: 0 }], total_bytes: 0, measured_at: '2026-11-03T22:00:00Z', measuring: false };
+    workspaceUsage
+      .mockResolvedValueOnce({ items: [], total_bytes: 0, measured_at: null, measuring: true })
+      .mockResolvedValueOnce(preparing)
+      .mockResolvedValueOnce(measured);
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string }) => useWorkspaceUsage('task-1', path),
+      { initialProps: { path: '' } },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    // Measured while the workspace was still empty, and polling has stopped.
+    expect(result.current).toEqual(preparing);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(workspaceUsage).toHaveBeenCalledTimes(2);
+
+    rerender({ path: '/tasks/task-1/project' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    expect(workspaceUsage).toHaveBeenCalledTimes(3);
+    expect(result.current).toEqual(measured);
+  });
+
+  it('keeps asking, more slowly, when a measurement takes longer than a minute', async () => {
+    vi.useFakeTimers();
+    const measuring = { items: [], total_bytes: 0, measured_at: null, measuring: true };
+    // The first request and 30 fast polls all find the server still measuring.
+    for (let index = 0; index < 31; index += 1) workspaceUsage.mockResolvedValueOnce(measuring);
+    workspaceUsage.mockResolvedValueOnce(measured);
+    const { result } = renderHook(() => useWorkspaceUsage('task-1'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(workspaceUsage).toHaveBeenCalledTimes(31);
+    expect(result.current?.measuring).toBe(true);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+
+    expect(workspaceUsage).toHaveBeenCalledTimes(32);
+    expect(result.current).toEqual(measured);
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(workspaceUsage).toHaveBeenCalledTimes(32);
+  });
+
+  it('backs off from every 2 seconds to every 30 after the first minute', () => {
+    expect(measuringPollDelay(0)).toBe(2_000);
+    expect(measuringPollDelay(29)).toBe(2_000);
+    expect(measuringPollDelay(30)).toBe(4_000);
+    expect(measuringPollDelay(32)).toBe(16_000);
+    expect(measuringPollDelay(33)).toBe(30_000);
+    expect(measuringPollDelay(500)).toBe(30_000);
+  });
+
+  it('fetches nothing without a task, and shows nothing if the server cannot answer', async () => {
+    renderHook(() => useWorkspaceUsage(null));
+    expect(workspaceUsage).not.toHaveBeenCalled();
+
+    workspaceUsage.mockRejectedValueOnce(new Error('404'));
+    const { result } = renderHook(() => useWorkspaceUsage('task-1'));
+    await act(async () => {});
+    expect(result.current).toBeNull();
+  });
+
+  it('drops the last measurement when a later request fails or the task leaves this computer', async () => {
+    workspaceUsage.mockResolvedValueOnce(measured).mockRejectedValueOnce(new Error('offline'));
+    const { result, rerender } = renderHook(({ id }: { id: string | null }) => useWorkspaceUsage(id), {
+      initialProps: { id: 'task-1' as string | null },
+    });
+    await act(async () => {});
+    expect(result.current).toEqual(measured);
+
+    rerender({ id: 'task-2' });
+    await act(async () => {});
+    expect(result.current).toBeNull();
+
+    workspaceUsage.mockResolvedValueOnce(measured);
+    rerender({ id: 'task-1' });
+    await act(async () => {});
+    expect(result.current).toEqual(measured);
+    rerender({ id: null });
+    expect(result.current).toBeNull();
+  });
+});

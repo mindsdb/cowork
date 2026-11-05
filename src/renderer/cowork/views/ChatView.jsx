@@ -12,20 +12,22 @@ import { diagnostic } from '../../../shared/diagnostics';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
 import { cn } from '../lib/cn';
-import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
+import { CircleAlert } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
 import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
+import { Modal, ModalBody } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { FirstTake } from '../components/thinking/FirstTake';
 import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { copyText, trimCopiedSelection } from '../lib/clipboard';
+import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
@@ -67,6 +69,11 @@ import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
+import { ChatScroller } from '../components/chat/ChatScroller';
+import { useStickToBottom } from '../components/chat/useStickToBottom';
+import { useDockInset } from '../components/chat/useDockInset';
+import { TurnActions } from '../components/chat/TurnActions';
+import { UserTurn } from '../components/chat/UserTurn';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -85,8 +92,6 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_MONO    = "var(--font-mono)";
-
 // ─── small shared atoms ──────────────────────────────────────────────────
 function formatTime(value) {
   if (!value) return '';
@@ -103,68 +108,6 @@ function formatMetaTime(value) {
   if (Number.isNaN(d.getTime())) return '';
   const month = d.toLocaleString('en-US', { month: 'short' });
   return `${month} ${d.getDate()}, ${formatTime(d)}`;
-}
-
-// ─── Shared turn-action toolbar ──────────────────────────────────────────
-// Used by both user and assistant turns for consistent styling. Actions
-// fade in on hover of the parent turn, but stay visible when `isLast`
-// is true (matching Claude's pattern where the most recent exchange
-// always shows its toolbar).
-const ICON_SZ = 16;
-function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = async () => {
-    const text = typeof getText === 'function' ? getText() : '';
-    if (!text) return;
-    const ok = await copyText(text);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    }
-  };
-  return (
-    <div
-      className={`turn-actions${isLast ? ' is-last' : ''} ${align === 'right' ? 'justify-end' : 'justify-start'}`}
-    >
-      {onEdit && (
-        <Tooltip content="Edit and resend">
-          <button
-            type="button"
-            className="turn-action-btn"
-            onClick={onEdit}
-            aria-label="Edit and resend this message"
-          >
-            {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
-          </button>
-        </Tooltip>
-      )}
-      <Tooltip content={copied ? 'Copied' : 'Copy'}>
-        <button
-          type="button"
-          className="turn-action-btn"
-          aria-label={copied ? 'Copied' : 'Copy'}
-          onClick={onCopy}
-          // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
-          // beats a text-accent utility (equal specificity, globals.css loads later).
-          style={copied ? { color: 'var(--accent)' } : undefined}
-        >
-          {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
-        </button>
-      </Tooltip>
-      {onDelete && (
-        <Tooltip content="Delete">
-          <button
-            type="button"
-            className="turn-action-btn turn-action-btn--danger"
-            aria-label="Delete"
-            onClick={onDelete}
-          >
-            {Ico.trash(ICON_SZ)}
-          </button>
-        </Tooltip>
-      )}
-    </div>
-  );
 }
 
 // ─── User pill ───────────────────────────────────────────────────────────
@@ -308,131 +251,81 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-// Long user messages clamp to ~8 lines behind a "Show more" toggle so a big
-// pasted prompt doesn't dominate the viewport before the answer starts.
-const USER_CLAMP_MAX_PX = 176;
-
-function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, projectId, conversationId, streaming = false, deleting = false }) {
-  const contentRef = useRef(null);
-  const [collapsed, setCollapsed] = useState(true);
-  const [overflowing, setOverflowing] = useState(false);
+// The user's side of a Cowork turn: the shared UserTurn bubble, plus the
+// attachments and artifact-repair card only Cowork messages carry.
+function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false }) {
   // An "Address with agent" handoff is a machine prompt — ids, a base revision
   // and the raw thread JSON — so it renders as a card rather than as the wall of
   // identifiers it literally is. Null for every ordinary message.
   const repair = parseArtifactRepairPrompt(content);
-  useLayoutEffect(() => {
-    const el = contentRef.current;
-    if (!el) return undefined;
-    // scrollHeight reports full content height even while max-height clamps
-    // the box, so overflow is measurable without expanding first. Re-runs on
-    // width changes (sidebar toggle, window resize) via the ResizeObserver.
-    const measure = () => setOverflowing(el.scrollHeight > USER_CLAMP_MAX_PX + 8);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [content]);
-  return (
-    <div
-      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
-      aria-busy={deleting || undefined}
-      onCopy={trimCopiedSelection}
-    >
-      <div className="user-turn-inner">
-        <div className="user-turn-bubble">
-          {/* User messages flow through the same markdown pipeline as
-              assistant turns so fenced code blocks, bold/italic, lists,
-              etc. typed in the composer render properly. Forms and
-              charts are gated off so a user typing a special fence in
-              the composer can't trigger the side-effect renderers
-              reserved for assistant output. */}
-          {repair ? (
-            <ArtifactRepairCard
-              repair={repair}
-              projectId={projectId}
-              streaming={streaming}
-            />
-          ) : (
-          <div
-            ref={contentRef}
-            className={collapsed && overflowing ? 'user-turn-clamp user-turn-clamp--faded' : undefined}
-            style={collapsed && overflowing ? { maxHeight: USER_CLAMP_MAX_PX } : undefined}
-          >
-            <MarkdownContent
-              text={content}
-              variant="user"
-              enableForms={false}
-              enableCharts={false}
-            />
-          </div>
-          )}
-          {!repair && overflowing && (
-            <button
-              type="button"
-              className="user-turn-more"
-              aria-expanded={!collapsed}
-              onClick={() => setCollapsed((c) => !c)}
-            >
-              {collapsed ? 'Show more' : 'Show less'}
-            </button>
-          )}
-        </div>
-        {attachments?.map((a) => {
-          // Image attachments preview inline as a thumbnail (fetched as a
-          // blob — the CSP blocks a direct loopback <img src>). Clicking
-          // opens the full image in a browser tab on web and saves it on
-          // desktop (openAuthenticatedResource). We can only build the
-          // raw URL when the conversation is project-scoped; without it,
-          // fall back to the icon+name chip.
-          const isImage = a.mime && String(a.mime).startsWith('image/');
-          const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
-          if (rawUrl) {
-            return (
-              <AttachmentThumbnail
-                key={a.id}
-                url={rawUrl}
-                alt={a.name || 'Image'}
-                onOpen={() => {
-                  openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
-                }}
-              />
-            );
-          }
-          return (
-            <div key={a.id} className="user-turn-attachment">
-              <span className="user-turn-attachment-icon">
-                {userTurnAttachmentIcon(a)}
-              </span>
-              <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
-              <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
-            </div>
-          );
-        })}
-        {deleting ? (
-          <span
-            // Primary ink, not the usual meta grey: the turn around it is at
-            // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
-            className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
-          >
-            Deleting…
-          </span>
-        ) : (
-          <TurnActions
-            getText={() => content || ''}
-            onEdit={onEdit ? () => onEdit(content) : null}
-            onDelete={onDelete}
-            isLast={isLast}
-            align="right"
-          />
-        )}
+  const attachmentRows = attachments?.map((a) => {
+    // Image attachments preview inline as a thumbnail (fetched as a
+    // blob — the CSP blocks a direct loopback <img src>). Clicking
+    // opens the full image in a browser tab on web and saves it on
+    // desktop (openAuthenticatedResource). We can only build the
+    // raw URL when the conversation is project-scoped; without it,
+    // fall back to the icon+name chip.
+    const isImage = a.mime && String(a.mime).startsWith('image/');
+    const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
+    if (rawUrl) {
+      return (
+        <AttachmentThumbnail
+          key={a.id}
+          url={rawUrl}
+          alt={a.name || 'Image'}
+          onOpen={() => {
+            openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
+          }}
+        />
+      );
+    }
+    return (
+      <div key={a.id} className="user-turn-attachment">
+        <span className="user-turn-attachment-icon">
+          {userTurnAttachmentIcon(a)}
+        </span>
+        <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
+        <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
       </div>
-    </div>
+    );
+  });
+  const actions = deleting ? (
+    <span
+      // Primary ink, not the usual meta grey: the turn around it is at
+      // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
+      className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
+    >
+      Deleting…
+    </span>
+  ) : (
+    <TurnActions
+      text={content || ''}
+      copyLabel="Copy message"
+      onEdit={onEdit ? () => onEdit(content) : null}
+      onDelete={onDelete}
+      isLast={isLast}
+      align="right"
+    />
+  );
+  return (
+    <UserTurn
+      content={content}
+      turnId={turnId}
+      deleting={deleting}
+      attachments={attachmentRows}
+      actions={actions}
+    >
+      {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
+    </UserTurn>
   );
 }
 
 // OrbitProvider `size` for the chat orb — WorkingIndicator's anchor
 // box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
+// The width the chat needs to dock the right rail beside the conversation: a
+// reading column of at least 640px, its 40px gutters, and the 320px rail.
+const RAIL_DOCK_MIN_PX = 640 + 40 * 2 + 320;
 
 // Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
 const INCOMPLETE_REASON_TEXT = {
@@ -442,6 +335,8 @@ const INCOMPLETE_REASON_TEXT = {
   handback_verifier_failure: "Stopped early: the agent couldn't confirm the task was done.",
   handback_stuck: 'Stopped early: the agent judged the task stuck.',
   retry_exhausted: 'Stopped early: the task kept failing.',
+  question_unanswered: 'Stopped early: a question went unanswered.',
+  content_filter: "Stopped early: the model's content filter blocked a reply.",
 };
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
@@ -460,7 +355,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       {state !== 'thinking' && (
         <div className="flex items-center gap-2">
           {showActions && !deleting && (
-            <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+            <TurnActions text={copyText || ''} copyLabel="Copy response" onDelete={onDelete} isLast={isLast} />
           )}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
@@ -530,6 +425,25 @@ export function TextBlock({
     });
     return linked.map((figure) => ({ ...figure, sources: figure.sources.map(readable) }));
   }, [showFigureSources, figureSources, steps, projectId, projectName, conversationId]);
+  /* MarkdownContent is memoized, and callers pass fresh openers every render.
+     Hand it openers that keep their identity and call the latest one at click
+     time, so a settled answer skips re-rendering while another one streams. */
+  const openStepRef = useRef(onOpenStep);
+  const viewFileRef = useRef(onViewFile);
+  useEffect(() => {
+    openStepRef.current = onOpenStep;
+    viewFileRef.current = onViewFile;
+  });
+  const hasOpenStep = !!onOpenStep;
+  const hasViewFile = !!onViewFile;
+  const openStep = useMemo(
+    () => (hasOpenStep ? (stepId) => openStepRef.current?.(stepId) : null),
+    [hasOpenStep],
+  );
+  const viewFile = useMemo(
+    () => (hasViewFile ? (source) => viewFileRef.current?.(source) : null),
+    [hasViewFile],
+  );
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
@@ -541,8 +455,8 @@ export function TextBlock({
       conversationId={conversationId}
       isAssistant
       figureSources={figures}
-      onOpenFigureStep={onOpenStep}
-      onViewFigureFile={onViewFile}
+      onOpenFigureStep={openStep}
+      onViewFigureFile={viewFile}
     />
   );
 }
@@ -1143,12 +1057,12 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
           other, so a long message never crushes the path beside it. */}
       {status ? (
         <span
-          className={cn('card__rail chat-artifact-card__status font-mono text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
+          className={cn('card__rail chat-artifact-card__status text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
       ) : (
-        <span className="card__rail chat-artifact-card__loc font-mono text-xs text-ink-3" title={previewText}>
+        <span className="card__rail chat-artifact-card__loc text-xs text-ink-3" title={previewText}>
           {Ico.folder(12)}
           <span className="min-w-0 truncate">{previewText}</span>
         </span>
@@ -1258,14 +1172,6 @@ function ProviderLimitCard({ time, agentLabel, deleting }) {
 // The refill is formatted here, not server-side: only the client knows the
 // viewer's timezone, and parsing it on the server shifts the day for some
 // users.
-
-/* " at 2:15 PM", or nothing when the gate gave no usable instant, so no
-   sentence promises a schedule the response never named. The guards are
-   `formatResetTime`'s, shared with the composer bar. */
-function refillClause(resetAt, lead) {
-  const time = formatResetTime(resetAt);
-  return time ? `${lead} at ${time}` : lead;
-}
 
 export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
@@ -1472,36 +1378,19 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
-// ENG-1782. Not an error: the turn kept going. Free tokens ran out and the
-// task moved onto the paid balance, or an auto top up failed. The composer
-// notice carries the same facts for the *next* task; this card explains why
-// *this* one's behaviour changed, in the timeline where it happened.
+// ENG-1782. Not an error: the turn kept going. The composer bar carries the
+// live state for the *next* task; this marks the turn where *this* one's
+// allowance changed, and still reads true after the bar moves on or is closed.
+// It keeps its own link: most people who reach billing from a chat notice never
+// click the bar.
 function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
   if (!PLATFORM_UI) return null;
   const open = (action) => () => {
-    trackBillingOpened('usage_alert');
+    trackBillingOpened('usage_alert', undefined, kind);
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
-  if (kind === 'free_low') {
-    // Headline names the crossing, not the count: the composer bar carries
-    // the live count a few pixels above, and two identical headlines that
-    // then drift apart (the bar tracks the next poll, this card is frozen at
-    // the crossing) read as two different figures for one number.
-    // The body says what is true of the allowance rather than of this turn.
-    // The router resolves per turn and can land on a paid model, so "this
-    // task is running on free tokens" is a claim the crossing does not prove.
-    return (
-      <ActionCard
-        time={time}
-        agentLabel={agentLabel}
-        kind="Usage"
-        title="Free Air allowance running low"
-        body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
-        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
-      />
-    );
-  }
   if (kind === 'auto_top_up_failed') {
+    // The one notice that asks for something, so it stays a card.
     return (
       <ActionCard
         time={time}
@@ -1516,15 +1405,25 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       />
     );
   }
+  // One quiet line, not a card: the composer bar says the same a few pixels
+  // below. Running low says what is true of the allowance, not of this turn:
+  // the router resolves per turn and can land on a paid model.
+  // No usable refill time drops the clause rather than leaving "refills".
+  const refillsAt = formatResetTime(resetsAt);
+  const text = kind === 'free_low'
+    ? `Free Air allowance ${formatPercentShort(fractionLeft)} left${refillsAt ? ` · refills at ${refillsAt}` : ''}`
+    : `Free Air allowance used up · now using your balance${refillsAt ? ` until ${refillsAt}` : ''}`;
   return (
-    <ActionCard
-      time={time}
-      agentLabel={agentLabel}
-      kind="Usage"
-      title="Free Air allowance used up"
-      body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
-      buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
-    />
+    <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
+      <Icon of={CircleAlert} size={14} />
+      <span>{text}</span>
+      <span aria-hidden="true">·</span>
+      <button
+        type="button"
+        onClick={open(USAGE_ACTIONS.viewUsage)}
+        className="border-0 bg-transparent p-0 m-0 font-body text-xs underline underline-offset-2 text-[color:inherit] cursor-pointer hover:text-ink-2"
+      >{USAGE_ACTIONS.viewUsage.label}</button>
+    </div>
   );
 }
 
@@ -1888,6 +1787,10 @@ export function redirectForTask(redirects, taskId) {
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
+  // The last /health snapshot, for the diagnostics a user copies off a failed
+  // turn. Read from App rather than re-fetched at click time: the turn may
+  // have failed because the server is the thing that went away.
+  health,
   onSend,
   onSwitchToAirAndResend,
   onBack,
@@ -1913,6 +1816,7 @@ export default function ChatView({
   onAttachFiles,
   onAddGoogleDriveFiles,
   onAddGoogleDriveProjectFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
@@ -2019,10 +1923,12 @@ export default function ChatView({
     onComposerRedirectConsumed?.(task?.id, redirect.attachments);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerRedirects, task?.id]);
-  // Inline rail only active on wide screens.
-  const effectiveRailOpen = !isNarrow && railOpen;
-  // Narrow-screen overlay rail.
-  const railOverlayOpen = isNarrow && railNarrowOpen;
+  // The rail docks beside the conversation only when the conversation keeps
+  // its full reading width next to it; otherwise it opens over the top.
+  const [railFits, setRailFits] = useState(true);
+  const railFloats = isNarrow || !railFits;
+  const effectiveRailOpen = !railFloats && railOpen;
+  const railOverlayOpen = railFloats && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
   /* The figure source (a LinkedFigureSource) whose file is open in the
@@ -2206,11 +2112,14 @@ export default function ChatView({
     [visibleMessages, streamingMsg],
   );
 
+  const stick = useStickToBottom(scrollRef);
+  const { scrollToBottom, follow: followEnd, anchorLastTurn } = stick;
+  const dockRef = useDockInset();
   const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const { isPrepend, scrollHeightDelta, anchor } = nextScrollAnchor({
+    const { action, scrollHeightDelta, anchor } = nextScrollAnchor({
       taskId: task.id,
       messages: visibleMessages,
       previousAnchor: scrollAnchorRef.current,
@@ -2218,12 +2127,12 @@ export default function ChatView({
     });
     // Loading an older page prepends content above what's on screen —
     // shifting scrollTop by the same delta keeps the reader's position
-    // steady instead of yanking them to the bottom.
-    if (isPrepend) {
-      el.scrollTop += scrollHeightDelta;
-    } else {
-      el.scrollTop = el.scrollHeight;
-    }
+    // steady instead of yanking them to the bottom. A reply landing only
+    // follows a reader who was already at the end.
+    if (action === 'hold') el.scrollTop += scrollHeightDelta;
+    else if (action === 'end') scrollToBottom();
+    else if (action === 'sent') anchorLastTurn();
+    else followEnd();
     scrollAnchorRef.current = anchor;
     // visibleMessages is a fresh array every render (task.messages.filter(...),
     // not memoized) — depending on task.messages.length instead keeps this
@@ -2277,6 +2186,13 @@ export default function ChatView({
   // (can't leak into the rail visually when a slot is near the right
   // edge). chatRef stays as the panel-level ancestor.
   const chatRef = useRef(null);
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(([entry]) => setRailFits(entry.contentRect.width >= RAIL_DOCK_MIN_PX));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const convRef = useRef(null);
 
   // The orb anchors to the ThinkingBlock header's WorkingIndicator box —
@@ -2338,7 +2254,7 @@ export default function ChatView({
         <Tooltip content="Expand panel">
           <button
             type="button"
-            onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
+            onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
             aria-label="Expand panel"
             // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
             // rail-open state, and the transition's per-state delay) stay inline —
@@ -2560,22 +2476,15 @@ export default function ChatView({
           />
         ) : (
         <>
-        {/* Scrollable conversation.
-            Bottom padding clears the floating composer so every
-            message is reachable when scrolled to the end. Sized
-            generously (~180px) because the composer grows multi-line
-            as the user types longer drafts, plus the attachments
-            row adds height when files / connectors are attached —
-            tighter values clipped the last reply on long sessions.
-            `marginBottom: 25` shortens the scroll container so the
-            chat surface ends with a calm gap above the window edge
-            instead of butting flush against it. */}
-        <div
-          ref={scrollRef}
-          data-scroll="true"
-          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+        {/* Scrollable conversation. Its end is padded by the measured
+            height of the floating composer (useDockInset), so the last
+            reply always scrolls clear however tall the draft grows. */}
+        <ChatScroller
+          stick={stick}
+          scrollProps={{ 'data-scroll': 'true' }}
+          className="scroll-clean pt-8 bg-transparent [-webkit-app-region:no-drag] select-text"
         >
-          <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+          <div className="chat-transcript-col chat-column flex flex-col gap-7">
             {task.hasMoreMessages && (
               // Adapted from Sidebar's dashed-pill "Show more" idiom.
               <button
@@ -2630,8 +2539,9 @@ export default function ChatView({
                 if (orphan && !deleteInFlight && m.id) deleteThisTurn = () => onDeleteTurn?.(m.id);
                 else if (orphan && !deleteInFlight && neverSent) deleteThisTurn = () => onDeleteTurn?.({ localRow: m });
                 return (
-                  <UserTurn
+                  <CoworkUserTurn
                     key={messageKey(m, i)}
+                    turnId={messageKey(m, i)}
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
@@ -2640,7 +2550,6 @@ export default function ChatView({
                     // Only the last turn can still be the one being worked on,
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
-                    time={formatTime(m.createdAt)}
                     // A row the server has seen is hidden until it has an id, not
                     // sent to 422; no turn offers a delete while one is out.
                     onDelete={deleteThisTurn}
@@ -3010,6 +2919,28 @@ export default function ChatView({
                     />
                   );
                 }
+                /* The server stopped while the turn ran (`turn_lost`): a
+                 * shutdown or a crash. The answer above ends where it was cut
+                 * off, and nothing about the question failed, so Try again
+                 * sends it again. A proxy that outlives a crash sends this
+                 * code live; boot recovery saves it for a reload. */
+                if (m.code === 'turn_lost') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The answer was cut off"
+                      body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
+                      buttons={resend
+                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        : []}
+                    />
+                  );
+                }
                 /* The UI heard nothing from the turn for its idle window
                  * (`stalled`). The tab ends only its own reader and sends no
                  * cancel, so the turn may still be running on the server. A
@@ -3090,6 +3021,29 @@ export default function ChatView({
                     />
                   );
                 }
+                /* A proxy in front of the server refused the question with a
+                   503 `cowork_unavailable`: it could open no connection to the
+                   server, as while the server starts again after a crash.
+                   Nothing reached the server, so waiting is the fix, with the
+                   same Retry gate counted down to the proxy's Retry-After. */
+                if (m.code === 'cowork_unavailable') {
+                  const unavailableResend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Server"
+                      title="The server isn't answering"
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={unavailableResend
+                        ? () => onSend?.(unavailableResend.text, unavailableResend.attachments)
+                        : undefined}
+                    />
+                  );
+                }
                 // `anton_error` and anything unmapped: a deliberately generic
                 // bucket with no known next step, so no card — but still a
                 // failure, rendered as a danger alert so it never reads as a
@@ -3112,8 +3066,16 @@ export default function ChatView({
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
-                        <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Reference: {m.requestId}
+                        <div
+                          className="mt-1 text-xs flex items-center gap-2 flex-wrap"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          <span>Reference: {m.requestId}</span>
+                          <CopyDiagnosticsButton
+                            requestId={m.requestId}
+                            code={m.code}
+                            health={health}
+                          />
                         </div>
                       )}
                     </Alert>
@@ -3291,7 +3253,7 @@ export default function ChatView({
               {deleteInFlight ? 'Deleting the selected exchange.' : ''}
             </div>
           </div>
-        </div>
+        </ChatScroller>
 
         {/* Floating composer — no gradient fade behind it. Earlier we
             had a 220px linear-gradient(transparent → var(--bg)) overlay
@@ -3299,7 +3261,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        <div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
@@ -3346,6 +3308,7 @@ export default function ChatView({
             onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
             onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+            onAddSharePointFiles={onAddSharePointFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
@@ -3368,7 +3331,7 @@ export default function ChatView({
 
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
-      {isNarrow && (
+      {railFloats && (
         <div
           onClick={() => setRailNarrowOpen(false)}
           className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
@@ -3382,11 +3345,11 @@ export default function ChatView({
         // Narrow: fixed overlay that slides in from the right.
         // Wide: inline grid column.
         className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
-          isNarrow
+          railFloats
             ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
             : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
         }`}
-        style={isNarrow ? {
+        style={railFloats ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
         } : {
           visibility: effectiveRailOpen ? 'visible' : 'hidden',
@@ -3403,7 +3366,7 @@ export default function ChatView({
             <button
               type="button"
               className="chat-rail-close"
-              onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
+              onClick={() => railFloats ? setRailNarrowOpen(false) : setRailOpen(false)}
               aria-label="Collapse panel"
               // kept inline: same all:unset cascade-priority reason as ArtifactCard's
               // buttons — every property here stays co-located with the reset, and
@@ -3442,6 +3405,7 @@ export default function ChatView({
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
           onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+          onAddSharePointFiles={onAddSharePointFiles}
           onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />
@@ -3488,21 +3452,20 @@ export default function ChatView({
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
 
-      {/* Data-vault connection form — rendered as a centered modal
-          overlay so it's front-and-center when a connector is picked. */}
-      {formActive && createPortal(
-        <div
-          onClick={() => (onDismissConnectForm
-            ? onDismissConnectForm(task?.id || '')
-            : clearDataVaultForm(task?.id || ''))}
-          // autoprefixer adds the -webkit-backdrop-filter prefix at build time,
-          // so no separate WebkitBackdropFilter declaration is needed here.
-          className="fixed inset-0 z-[200] bg-[rgba(0,0,0,0.5)] backdrop-blur-[3px] flex items-center justify-center"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-[min(90vw,460px)] max-h-[85vh] overflow-y-auto rounded-xl"
-          >
+      {/* Data-vault connection form — a centered modal so it's
+          front-and-center when a connector is picked. The panel draws its
+          own header (breadcrumb + X) and actions. */}
+      <Modal
+        open={formActive}
+        onClose={() => (onDismissConnectForm
+          ? onDismissConnectForm(task?.id || '')
+          : clearDataVaultForm(task?.id || ''))}
+        size="sm"
+        width="min(90vw, 460px)"
+        maxHeight="85vh"
+        ariaLabel="Connect"
+      >
+        <ModalBody padding="0">
             <FormErrorBoundary>
               <DataVaultFormPanel
                 conversationId={task?.id || ''}
@@ -3512,10 +3475,8 @@ export default function ChatView({
                 onClose={onDismissConnectForm}
               />
             </FormErrorBoundary>
-          </div>
-        </div>,
-        document.body,
-      )}
+        </ModalBody>
+      </Modal>
     </div>
   );
 }

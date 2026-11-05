@@ -163,10 +163,10 @@ describe('a turn being deleted', () => {
     const busy = document.querySelectorAll('[aria-busy="true"]');
     expect(busy.length).toBeGreaterThan(0);
     busy.forEach((node) => {
-      expect(node.querySelector('button[aria-label="Copy"]')).toBeNull();
+      expect(node.querySelector('button[aria-label^="Copy"]')).toBeNull();
     });
     // The surviving exchange keeps its own toolbar.
-    expect(screen.getAllByRole('button', { name: 'Copy' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /^Copy/ }).length).toBeGreaterThan(0);
   });
 
   it('marks both halves of a failed exchange, not just the question', () => {

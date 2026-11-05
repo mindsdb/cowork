@@ -38,3 +38,4 @@ export function unavailableModelFields(
   id: string,
 ): UnavailableModelFields;
 export function orderByFamily(ids: string[], families?: Record<string, string>): string[];
+export function latestAliasIds(ids: string[], families?: Record<string, string>): Set<string>;

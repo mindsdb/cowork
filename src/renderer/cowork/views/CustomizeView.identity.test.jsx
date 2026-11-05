@@ -22,7 +22,7 @@ const CONNECTIONS = [
     engine: 'gmail', name: 'gmail-3ce87a', label: 'Gmail',
     user_label: 'Work', display_name: 'alejandro.cantu@mindsdb.com',
   },
-  // No registry spec (the ENG-1706 records) → humanized engine + unique slug.
+  // Legacy generated-id records: a plain "Unrecognized connector" title + unique slug.
   { engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-2cf3a6', label: null, user_label: null },
   { engine: 'fm_ec163d25cf', name: 'fm_ec163d25cf-724e63', label: null, user_label: null },
   { engine: 'linear', name: 'linear-internal-id', label: 'Linear', user_label: 'MindsDB', display_name: 'MindsDB' },
@@ -101,7 +101,10 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     await userEvent.click(sortPill);
     await userEvent.click(await screen.findByRole('option', { name: 'Name' }));
     const cards = screen.getAllByRole('article');
-    expect(within(cards.at(-1)).getByText('Linear')).toBeInTheDocument();
+    // By engine id `fm_…` would sort before `linear`; by visible name the
+    // legacy records' "Unrecognized connector" sorts after "Linear".
+    expect(within(cards.at(-3)).getByText('Linear')).toBeInTheDocument();
+    expect(within(cards.at(-1)).getByText('Unrecognized connector')).toBeInTheDocument();
   });
 
   it.each([
@@ -132,7 +135,6 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
   });
 
   it('preserves the card and enables retry when disconnect fails', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(deleteDatasource).mockRejectedValueOnce(new Error('Connection is unavailable'));
@@ -140,7 +142,11 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     render(<CustomizeView connectors={CONNECTIONS} onConnectionsSynced={onConnectionsSynced} />);
     const card = screen.getAllByRole('article')[0];
     await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Could not disconnect: Connection is unavailable'));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', {name:'Disconnect'}));
+    const error = await screen.findByRole('dialog', {name:'Could not disconnect'});
+    expect(error).toHaveTextContent('Connection is unavailable');
+    expect(window.alert).not.toHaveBeenCalled();
+    await userEvent.click(within(error).getByRole('button', {name:'OK'}));
     expect(screen.getAllByRole('article')).toHaveLength(6);
     expect(within(card).getByRole('button', {name:'Disconnect'})).toBeEnabled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -148,6 +154,7 @@ describe('CustomizeView connection cards — ENG-1705 wiring', () => {
     vi.mocked(deleteDatasource).mockResolvedValueOnce({ok:true});
     vi.mocked(fetchDatasources).mockResolvedValueOnce({connections:CONNECTIONS.slice(1)});
     await userEvent.click(within(card).getByRole('button', {name:'Disconnect'}));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', {name:'Disconnect'}));
     await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(5));
     expect(onConnectionsSynced).toHaveBeenLastCalledWith(CONNECTIONS.slice(1));
   });

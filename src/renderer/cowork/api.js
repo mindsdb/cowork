@@ -10,7 +10,7 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { isAntonConfigError } from './lib/antonErrors';
-import { readRefusalBody, readRetryAfter } from './lib/httpRefusal';
+import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
@@ -20,7 +20,12 @@ import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
+import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { SHARING_OFF } from './lib/orgSharing';
+import {
+  MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
+} from './lib/sharingContract';
 import {
   expectedOrganizationHeaders,
   handleOrganizationBoundaryResponse,
@@ -185,6 +190,7 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  *   code: string|null,
  *   retry_after: number|null,
  *   retry_at: string|null,
+ *   body: Record<string, unknown>|null,
  * }} RefusalError
  */
 
@@ -237,6 +243,7 @@ async function responseError(res, fallback) {
   err.code = code;
   err.retry_after = retry_after;
   err.retry_at = retry_at;
+  err.body = readRefusalObject(text);
   return err;
 }
 
@@ -1954,13 +1961,218 @@ export async function uploadSkillFile(file, { shared } = {}) {
   return res.json();
 }
 
+/* Turns a skill on or off for the caller alone. Any skill the caller can
+   see takes it, a built-in included; the skill's own `enabled` (on or off
+   for everyone) is untouched. Answers the updated skill. */
+export async function setSkillEnabledForMe(slug, enabled) {
+  return req(`/skills/${encodeURIComponent(slug)}/me`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled: enabled === true }),
+  });
+}
+
 /* Shares the caller's own skill with everyone, read-only, or stops sharing
    it. The refusal's sentence comes back as the error message. */
 export async function setSkillSharing(label, shared) {
   return req(`/skills/${encodeURIComponent(label)}/sharing`, {
     method: 'PUT',
-    body: JSON.stringify({ shared }),
+    body: JSON.stringify({ shared: shared === true }),
   });
+}
+
+/* What sharing inside the org allows the caller, in MindsHub mode
+   (lib/sharingContract's SharingCapabilities). `enabled: false` is every
+   other build, and the sharing UI stays hidden there. A server without the
+   route answers 404 and reads the same. */
+export async function fetchSkillSharingCapabilities() {
+  try {
+    const data = await req('/skills/sharing-capabilities');
+    if (!data || typeof data !== 'object') return SHARING_OFF;
+    return readSharingCapabilities(data);
+  } catch (err) {
+    if (err?.status === 404) return SHARING_OFF;
+    throw err;
+  }
+}
+
+/* Sets who a skill reaches: everyone in the org, teams by id, people in the
+   org by user id. An empty audience is Only me. `always_on` makes a skill
+   shared with everyone or a team part of every task. The route keeps any
+   field left out, so someone who may switch only `always_on` sends it alone:
+   the people are listed only to the owner or an admin, and an empty list
+   from anyone else would read as removing them. The body comes from
+   lib/sharingContract's skillAccessRequest or skillAlwaysOnRequest. A refusal (400/403) throws
+   with the server's `detail` as its message. */
+export async function setSkillAccess(slug, access) {
+  return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify(access),
+  });
+}
+
+/* A MindsHub read's answer when it got none: `reachable` false, and
+   `failure` saying why (lib/sharingContract's MINDSHUB_ERROR_CODE). A 200
+   with `reachable: false` is cowork-server saying MindsHub couldn't be asked;
+   a refusal or a throttle comes as its own error code (readMindsHubFailure). */
+const MINDSHUB_NOT_ASKED = Object.freeze({ reachable: false, failure: MINDSHUB_ERROR_CODE.UNREACHABLE });
+const mindsHubReadFailed = (err) => ({ reachable: false, failure: readMindsHubFailure(err) });
+
+/* The caller's teams in the MindsHub org. `reachable: false` when MindsHub
+   gave no answer, so the picker can say why (`failure`) rather than show no
+   teams. This read and the two people reads below send no
+   X-MindsHub-Authorization (README, "The MindsHub hub routes", says why). */
+export async function fetchMindsHubTeams() {
+  try {
+    const data = await req('/hub/teams/');
+    if (data?.reachable === false) return { ...MINDSHUB_NOT_ASKED, teams: [] };
+    const teams = Array.isArray(data?.teams)
+      ? data.teams
+        .filter((team) => team && typeof team.id === 'string' && team.id)
+        .map((team) => ({
+          id: team.id,
+          display_name: mindsHubTeamName(team),
+          // The org's default "All members" team, which the server maps to
+          // sharing with everyone: the pickers leave it out for "Everyone at
+          // ‹org›".
+          is_default: team.isDefault === true,
+        }))
+      : [];
+    return { reachable: true, failure: null, teams };
+  } catch (err) {
+    return { ...mindsHubReadFailed(err), teams: [] };
+  }
+}
+
+/* A team's name to show; a raw id is never shown. */
+const UNNAMED_TEAM = 'Unnamed team';
+
+function mindsHubTeamName(team) {
+  const name = team.displayName;
+  return typeof name === 'string' && name.trim() ? name.trim() : UNNAMED_TEAM;
+}
+
+/* One person as MindsHub sends them, or null without an id. The id is what
+   sharing stores (`allowed_user_ids`); the name and email only label a row. */
+function mindsHubPerson(person) {
+  if (!person || typeof person.id !== 'string' || !person.id) return null;
+  const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
+  const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
+  return { id: person.id, name, email };
+}
+
+/* Everyone in the caller's active MindsHub org, read once so the recipient
+   picker can list and filter them locally (`GET /hub/people/`). MindsHub
+   caps the list; `truncated` says there are more than it sent. Parsed
+   tolerantly: a bare array is taken as the people, and any answer with no
+   list at all reads as unreachable, so the picker offers Retry. `failure`
+   says why there is no list. */
+export async function fetchMindsHubDirectory() {
+  try {
+    const data = await req('/hub/people/');
+    const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
+    if (!raw || data?.reachable === false) return { ...MINDSHUB_NOT_ASKED, people: [], truncated: false };
+    const seen = new Set();
+    const people = [];
+    for (const entry of raw) {
+      const person = mindsHubPerson(entry);
+      if (!person || (!person.email && !person.name) || seen.has(person.id)) continue;
+      seen.add(person.id);
+      people.push(person);
+    }
+    return { reachable: true, failure: null, people, truncated: data?.truncated === true };
+  } catch (err) {
+    return { ...mindsHubReadFailed(err), people: [], truncated: false };
+  }
+}
+
+/* The values of `asked` a refused lookup names as malformed: cowork-server
+   checks every value before it asks MindsHub and answers 400 with the
+   lookup's `invalidCode`, naming them in the body's `param` field (an id
+   that isn't a UUID, an address MindsHub wouldn't take) and asking about
+   none of the batch. Compared trimmed, and addresses lowercased, as
+   cowork-server compares them. Empty for any other failure. */
+function malformedValues(err, lookup, asked) {
+  if (err?.status !== 400 || err?.code !== lookup.invalidCode) return [];
+  const named = Array.isArray(err.body?.[lookup.param]) ? err.body[lookup.param] : [];
+  const fold = (value) => (lookup === PEOPLE_LOOKUP.EMAILS ? value.trim().toLowerCase() : value.trim());
+  const refused = new Set(named.filter((value) => typeof value === 'string').map(fold));
+  return asked.filter((value) => refused.has(fold(value)));
+}
+
+/* Asks one batch (`GET /hub/people/?ids=` or `?emails=`). A batch refused
+   for malformed values is asked again once without them, so the good values
+   beside a bad one still get an answer. A batch that got no answer says why
+   (`failure`). */
+async function askMindsHubPeople(lookup, batch) {
+  try {
+    const params = new URLSearchParams({ [lookup.param]: batch.join(',') });
+    const data = await req(`/hub/people/?${params}`);
+    const people = (Array.isArray(data?.people) ? data.people : []).map(mindsHubPerson).filter(Boolean);
+    if (data?.reachable === false) return { people, unanswered: batch, invalid: [], failure: MINDSHUB_NOT_ASKED.failure };
+    return { people, unanswered: [], invalid: [], failure: null };
+  } catch (err) {
+    const invalid = malformedValues(err, lookup, batch);
+    if (invalid.length === 0) return { people: [], unanswered: batch, invalid: [], failure: readMindsHubFailure(err) };
+    const rest = batch.filter((value) => !invalid.includes(value));
+    if (rest.length === 0) return { people: [], unanswered: [], invalid, failure: null };
+    const again = await askMindsHubPeople(lookup, rest);
+    return { ...again, invalid: [...invalid, ...again.invalid] };
+  }
+}
+
+/* The people MindsHub answers for `values` under one lookup (PEOPLE_LOOKUP),
+   asked in batches of its `batchSize` (the bound MindsHub sets per lookup).
+   A person is kept when `keyOf` gives one of the values asked; a value
+   MindsHub answered for but no member has is simply absent from `people`.
+   `unanswered` lists the values of any batch that got no answer (`reachable`
+   is then false, and `failure` says why): those are not known to be missing,
+   only not looked up yet. `invalid` lists the values cowork-server refused
+   as malformed, which no lookup will ever find. */
+async function fetchMindsHubPeopleBy(lookup, values, keyOf) {
+  const unique = [...new Set((values || []).filter((value) => typeof value === 'string' && value))];
+  if (unique.length === 0) return { reachable: true, failure: null, people: [], unanswered: [], invalid: [] };
+  const batches = [];
+  for (let i = 0; i < unique.length; i += lookup.batchSize) {
+    batches.push(unique.slice(i, i + lookup.batchSize));
+  }
+  const answers = await Promise.all(batches.map((batch) => askMindsHubPeople(lookup, batch)));
+  const wanted = new Set(unique);
+  const byKey = new Map();
+  const unanswered = [];
+  const invalid = [];
+  for (const answer of answers) {
+    unanswered.push(...answer.unanswered);
+    invalid.push(...answer.invalid);
+    for (const person of answer.people) {
+      const key = keyOf(person);
+      if (wanted.has(key) && !byKey.has(key)) byKey.set(key, person);
+    }
+  }
+  return {
+    reachable: unanswered.length === 0,
+    // Batches that failed differently report one failure (firstMindsHubFailure).
+    failure: firstMindsHubFailure(answers.map((answer) => answer.failure)),
+    people: [...byKey.values()],
+    unanswered,
+    invalid,
+  };
+}
+
+/* The people a stored audience names, by user id, so their rows can say who
+   they are. `invalid` holds ids cowork-server refused as no UUID, which name
+   nobody. */
+export async function fetchMindsHubPeopleByIds(ids) {
+  return fetchMindsHubPeopleBy(PEOPLE_LOOKUP.IDS, ids, (person) => person.id);
+}
+
+/* The members who hold these addresses. The directory the picker loads is
+   capped (`truncated`), so a member past the cap is not in it; asked here, a
+   typed address still names them, and sharing stores their user id rather
+   than an outside email. `unanswered` and `invalid` hold lowercased
+   addresses. */
+export async function fetchMindsHubPeopleByEmails(emails) {
+  const lowered = (emails || []).map((email) => (typeof email === 'string' ? email.trim().toLowerCase() : ''));
+  return fetchMindsHubPeopleBy(PEOPLE_LOOKUP.EMAILS, lowered, (person) => person.email);
 }
 
 export async function deleteSkill(label) {
@@ -2051,8 +2263,135 @@ export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 // name, the two are deliberately distinct and must not be conflated.
 export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
 
+// ─── SharePoint ─────────────────────────────────────────────────────
+//
+// SharePoint connections are created and edited only through these routes,
+// never the generic connector save: the server checks the key with
+// Microsoft before it stores anything.
+
+export const SHAREPOINT_UNAVAILABLE_MESSAGE = 'Update Cowork to use SharePoint.';
+
+/* A server older than the SharePoint routes answers with FastAPI's own
+   "Not Found" or a 405. The routes' own 404s carry their own detail
+   ("Connection not found.") and pass through unchanged. */
+async function sharePointReq(path, options) {
+  try {
+    return await req(path, options);
+  } catch (err) {
+    if (err?.status === 405 || (err?.status === 404 && err.message === 'Not Found')) {
+      const unavailable = /** @type {RefusalError} */ (new Error(SHAREPOINT_UNAVAILABLE_MESSAGE));
+      unavailable.status = err.status;
+      unavailable.code = 'sharepoint_unavailable';
+      throw unavailable;
+    }
+    throw err;
+  }
+}
+
+/**
+ * The key fields a SharePoint create or edit sends, in the routes' names.
+ * An empty label is left out: the server then keeps the label it has.
+ */
+function sharePointKeyBody({ userLabel, tenantId, clientId, clientSecret, siteUrls }) {
+  const body = { tenant_id: tenantId, client_id: clientId, client_secret: clientSecret, site_urls: siteUrls };
+  if (userLabel) body.user_label = userLabel;
+  return body;
+}
+
+/** Create a SharePoint connection; the server checks the key with Microsoft before saving. */
+export function createSharePointConnection({ name, ...key }) {
+  return sharePointReq('/connectors/sharepoint/connections', {
+    method: 'POST',
+    body: JSON.stringify({ name, ...sharePointKeyBody(key) }),
+  });
+}
+
+/** Replace a SharePoint connection's key and sites; `clientSecret` is CONNECTIONS_VAULT_KEEP to keep the stored one. */
+export function editSharePointConnection(name, key) {
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify(sharePointKeyBody(key)),
+  });
+}
+
+/** The document libraries of one site the connection names. */
+export function listSharePointLibraries(name, site) {
+  const query = new URLSearchParams({ site });
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/libraries?${query}`);
+}
+
+/** One page of a folder's items; pass the previous page's `cursor` for the next one. */
+export function listSharePointChildren(name, { site, driveId, itemId = 'root', cursor = null }) {
+  const query = new URLSearchParams({ site, drive_id: driveId, item_id: itemId });
+  if (cursor) query.set('cursor', cursor);
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/children?${query}`);
+}
+
+/** Import picked items into a project's root in one request; it can run for minutes, so no timeout. */
+export function importSharePointFiles(projectName, { connection, site, driveId, folder = '', itemIds }) {
+  return sharePointReq(`/projects/${encodeURIComponent(projectName)}/files/import/sharepoint`, {
+    method: 'POST',
+    body: JSON.stringify({ connection, site, drive_id: driveId, folder, item_ids: itemIds }),
+  });
+}
+
 // ─── Connector registry ─────────────────────────────────────────────
 //
+// ── Cloud datasource connections ─────────────────────────────────────────
+//
+// The relay at /connectors/datasources/ is the hosted path for PostgreSQL and
+// MySQL: auth holds the encrypted credential and this server never sees it
+// again after the create. Every route here is org-mode only (the server
+// answers 404 outside it by design), so the gate below keeps the desktop
+// connections page from showing an error banner it can do nothing about.
+//
+// A created or edited connection comes back `pending`: auth marks it so and
+// only the gateway's probe completion moves it to verified or failed, so a
+// caller shows that state and refreshes rather than waiting on the response.
+function requireOrgMode(what) {
+  if (!getOrgMode()) {
+    throw new Error(`${what} is a cloud-only feature`);
+  }
+}
+
+const DATASOURCES = '/connectors/datasources/';
+
+export async function listDatasourceConnections() {
+  requireOrgMode('Cloud database connections');
+  return req(DATASOURCES);
+}
+
+export async function createDatasourceConnection(payload) {
+  requireOrgMode('Connecting a cloud database');
+  return req(DATASOURCES, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getDatasourceConnection(connectionId) {
+  requireOrgMode('Cloud database connections');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`);
+}
+
+// `expectedRevision` is the connection revision the form was opened against;
+// auth moves it on every edit, a rename included. The relay refuses with code
+// `stale_version` when it has moved, the only way to tell a conflict apart.
+export async function editDatasourceConnection(connectionId, payload, expectedRevision) {
+  requireOrgMode('Editing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, expected_revision: expectedRevision }),
+  });
+}
+
+export async function deleteDatasourceConnection(connectionId) {
+  requireOrgMode('Removing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+export async function retryDatasourceValidation(connectionId) {
+  requireOrgMode('Retrying a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)
@@ -2080,6 +2419,18 @@ export async function fetchConnectors({ includeUnavailable = false } = {}) {
 
 export async function fetchConnector(id) {
   return req(`/connectors/specs/${encodeURIComponent(id)}`);
+}
+
+// Whether the caller can build a custom connector that is kept for reuse: only
+// in one person's own scope. A server without the route (404) keeps the old
+// answer, yes; any other failure says no, since the server would refuse the save.
+export async function fetchCanBuildCustomConnector() {
+  try {
+    const data = await req('/connectors/specs/custom-availability');
+    return data?.can_build !== false;
+  } catch (err) {
+    return err?.status === 404;
+  }
 }
 
 export async function matchConnector(query, maxCandidates = 3) {
@@ -2258,7 +2609,9 @@ export function streamDataVaultSubmission({
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed: a partial answer is not a
+      // finished one, and the form is still waiting on its result.
+      onError?.('The form submission was interrupted before it finished. Please try again.');
     } catch (err) {
       // Our own idle abort surfaces as an AbortError too, so check it first.
       if (idledOut) onError?.('The form submission stalled and was ended. Please try again.');
@@ -2298,9 +2651,10 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 // `access` (optional): a publish-mode object, one of
 //   { mode: 'public' }
 //   { mode: 'password', password: '...' }
-//   { mode: 'restricted', emails: [...], org_allowed: bool }
+//   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
 // Public (or a falsy access) sends just `{ path }`, which clears any prior
-// protection on re-publish.
+// protection on re-publish. `notify` goes through as given: cowork-server
+// forwards it to MindsHub, which emails exactly the people it lists.
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
@@ -2361,6 +2715,19 @@ export function revokeLiveAppPreview(id) {
 export async function revokeLiveAppPreviews() {
   try { await req('/live-apps/previews', { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS }); }
   catch (error) { if (error.status !== 404) throw error; }
+}
+
+/** Availability is advisory; a subsequent launch still needs admission. */
+export async function fetchLiveAppAvailability() {
+  return liveAppAvailabilityFrom(await req('/live-apps/availability', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, cache: 'no-store' }));
+}
+
+/** Called only after a visible toast has displayed this durable notice. */
+export async function acknowledgeLiveAppAvailability(noticeId) {
+  return req(`/live-apps/availability/${encodeURIComponent(noticeId)}/ack`, {
+    method: 'POST',
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
 }
 
 /*
@@ -2542,20 +2909,40 @@ export async function deleteChannelBinding(bindingId) {
 // ─── Attachments And Context ───────────────────────────────────────────────
 
 /** POST /v1/attachments/{project_name}/{session_id}/upload — response body is a JSON array of file attachments. */
-export async function uploadAttachments(files, { projectName, sessionId } = {}) {
+/* A send holds the app-wide stream slot while its files upload, so an upload
+   that never answers blocks every send until a reload. The bound grows with
+   the payload, so a large file on a slow link still has time to finish. */
+const UPLOAD_TIMEOUT_BASE_MS = 60_000;
+const UPLOAD_MIN_BYTES_PER_MS = 128; // ~1 Mbit/s
+
+export function uploadTimeoutMs(totalBytes) {
+  return UPLOAD_TIMEOUT_BASE_MS + Math.ceil((Number(totalBytes) || 0) / UPLOAD_MIN_BYTES_PER_MS);
+}
+
+export async function uploadAttachments(files, { projectName, sessionId, timeoutMs } = {}) {
   if (!projectName || !sessionId) {
     throw new Error('Open a saved task before attaching files (project and conversation id are required).');
   }
   const enc = encodeURIComponent;
   const form = new FormData();
-  Array.from(files).forEach((file) => form.append('files', file));
-  const res = await authFetch(
-    `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
-    { method: 'POST', body: form },
-  );
-  if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+  const list = Array.from(files);
+  list.forEach((file) => form.append('files', file));
+  const totalBytes = list.reduce((sum, file) => sum + (file?.size || 0), 0);
+  const { signal, cancel } = _timeoutSignal(null, timeoutMs ?? uploadTimeoutMs(totalBytes));
+  try {
+    const res = await authFetch(
+      `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
+      { method: 'POST', body: form, signal },
+    );
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (signal?.aborted) throw new Error('The file upload stopped responding. Please try again.');
+    throw err;
+  } finally {
+    cancel();
+  }
 }
 
 /** GET /v1/attachments/{project_name}/{session_id} — response body is a JSON array. */
@@ -2872,7 +3259,7 @@ export const MOCK_DATA = {
     // Flat background by default; opt back into the animated dot grid via
     // Settings → Personalization → Animated background.
     showDots: false,
-    showCounters: true,
+    showCounters: false,
     accentVariant: 'aqua',
     planningProvider: 'minds-cloud',
     planningModel: 'latest:sonnet',
@@ -2902,7 +3289,7 @@ export const MOCK_DATA = {
   },
 };
 
-// ── Artifact comments (Plan 5) ────────────────────────────────────────────
+// ── Artifact comments ────────────────────────────────────────────
 // Renderer holds no token; cowork-server attaches the user's MindsHub creds and
 // proxies to the inference backend. Scope is the composite {userDir}/{reportId}.
 

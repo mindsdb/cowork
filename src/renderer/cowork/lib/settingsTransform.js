@@ -18,7 +18,7 @@
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost, mindsApiRoot } from '../../../shared/minds-endpoint';
-import { isModelLocked, knownModelDisabledReasons, orderByFamily, unavailableModelFields } from './modelCatalog';
+import { isModelLocked, knownModelDisabledReasons, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -477,6 +477,7 @@ export function buildModelOptions(
   // froze. Total by construction — see orderByFamily; a dropped id would give
   // `showStalePin === false` with no rendered option, the ENG-739 desync class.
   const ordered = orderByFamily(list, modelFamilies);
+  const latest = latestAliasIds(list, modelFamilies);
 
   const modelOption = (m) => {
     const locked = isLocked(m);
@@ -507,11 +508,11 @@ export function buildModelOptions(
       disabled: locked,
       // Availability is the only row tag, and it rides on `tag`,
       // never in `label`: ModelSelect shows the selected label verbatim in the
-      // closed trigger and filters on it. Version state needs no tag: the name
-      // carries the version and the ordering above seats a pinned version under
-      // its head. The same helper feeds lib/modelPickerOptions, so both pickers
-      // agree.
+      // closed trigger and filters on it. The "latest" note stays out of
+      // `label` for the same reason. lib/modelPickerOptions builds both the same
+      // way, so the pickers agree.
       ...unavailableModelFields(modelEnabled, modelDisabledReasons, m),
+      ...(latest.has(m) ? { note: 'latest' } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.
       ...(modelProviders[m] ? { provider: modelProviders[m] } : {}),

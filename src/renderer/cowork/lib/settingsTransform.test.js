@@ -822,17 +822,19 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     expect(byValue.kimi).toEqual({ value: 'kimi', label: 'Kimi K3', disabled: false, provider: 'moonshot' });
   });
 
-  it('tags no row for version state, even with a frozen version listed', () => {
-    // The name carries the version and the pin sits directly under its head (see
-    // the ordering test below), so a "Latest" / "Older version" pill said nothing
-    // the row did not, and its width truncated long names (ENG-2591). The label
-    // stays bare too: ModelSelect shows it verbatim in the closed trigger and
-    // filters on it.
+  it('notes "latest" on the moving alias beside its frozen version, with no pill and a bare label', () => {
+    // A version pill on most rows truncated long names, so version state is a
+    // muted note on the moving alias only, and only where its frozen version is
+    // listed beside it. The label stays bare: ModelSelect shows it verbatim in the
+    // closed trigger and filters on it.
     const options = buildModelOptions(
       'sonnet', ['sonnet', 'sonnet-4-5', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META,
     );
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     for (const o of options) expect(o.tag).toBeUndefined();
+    expect(byValue.sonnet.note).toBe('latest');
+    expect(byValue['sonnet-4-5'].note).toBeUndefined();
+    expect(byValue.kimi.note).toBeUndefined();
     expect(byValue.sonnet.label).toBe('Claude Sonnet 5');
     expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5');
     expect(byValue.kimi.label).toBe('Kimi K3');
@@ -849,6 +851,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     );
     for (const o of options) {
       expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
       expect(o.label || '').not.toContain('latest');
       expect(o.label || '').not.toContain('version');
     }
@@ -893,6 +896,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     });
     expect(options.map((o) => o.value)).toEqual(['sonnet-4-5']);
     expect(options[0].tag).toBeUndefined();
+    expect(options[0].note).toBeUndefined();
     expect(options[0].label).toBe('Claude Sonnet 4.5');
   });
 
@@ -901,7 +905,10 @@ describe('buildModelOptions — moving vs pinned versions', () => {
       modelProviders: FAMILY_META.modelProviders,
       modelFamilies: { sonnet: 'sonnet', kimi: 'kimi', 'sonnet-4-5': 'sonet' },
     });
-    for (const o of options) expect(o.tag).toBeUndefined();
+    for (const o of options) {
+      expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
+    }
   });
 
   it('carries the backend provider through so the picker stops inferring it', () => {
@@ -916,6 +923,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     const options = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
     for (const o of options) {
       expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
       expect(o.provider).toBeUndefined();
     }
   });
