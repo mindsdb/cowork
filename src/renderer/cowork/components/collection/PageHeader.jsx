@@ -107,7 +107,7 @@ export function PageHeader({
           <h1 className="s-h1 m-0 text-ink">{title}</h1>
           {subtitle && (
             <p
-              className="m-0 max-w-[64ch] text-[13.5px] leading-[1.5] text-ink-3"
+              className="m-0 text-[13.5px] leading-[1.5] text-ink-3"
               style={{ marginBottom: subtitleBottom || 0 }}
             >
               {subtitle}
