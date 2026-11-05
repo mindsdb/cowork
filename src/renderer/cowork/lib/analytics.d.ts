@@ -31,6 +31,36 @@ export function trackKeyProvisioningRefused(outcome: string): void;
  */
 export function trackBillingOpened(trigger: string, workspaceMode?: 'code'): void;
 
+/** Cost properties for a comparison event, from lib/compareSides comparisonCostProps. */
+export interface ComparisonCostProps {
+  cost_a_usd?: number;
+  cost_b_usd?: number;
+  cost_total_usd?: number;
+  cost_partial: boolean;
+  tokens_a?: number;
+  tokens_b?: number;
+  cheaper_side?: 'a' | 'b' | 'same';
+}
+/** First open of Compare Models per launch. Never throws. */
+export function trackCompareViewOpened(): void;
+/** A comparison was created on the server. Never throws. */
+export function trackComparisonStarted(
+  comparison: { id: string; sourceProjectId?: string | null; sides?: { model?: string; reasoningEffort?: string | null }[] },
+  options?: { fileCount?: number; exampleId?: string | null },
+): void;
+/** A follow-up went out to both sides or one. Never throws. */
+export function trackComparisonFollowUpSent(comparisonId: string, target: 'both' | 'a' | 'b', turnIndex: number): void;
+/** A winner was picked or changed for a turn. Never throws. */
+export function trackComparisonVerdictRecorded(
+  comparisonId: string,
+  details: { turnIndex: number; winner: 'a' | 'b' | 'tie' | 'neither'; models?: { a?: string; b?: string }; changed?: boolean; cost?: ComparisonCostProps },
+): void;
+/** Continue with a side succeeded. Never throws. */
+export function trackComparisonContinued(
+  comparisonId: string,
+  details: { side: 'a' | 'b'; models?: { a?: string; b?: string }; turns: number; carriedAll: boolean; verdict?: string | null; cost?: ComparisonCostProps },
+): void;
+
 /** First switch into the Code workspace per launch. Never throws. */
 export function trackCodeViewOpened(): void;
 

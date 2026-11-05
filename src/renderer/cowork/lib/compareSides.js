@@ -432,6 +432,37 @@ export function historyCost(sides = []) {
 }
 
 /** Both sides together, over the sides that have a figure. Null when neither does. */
+/**
+ * A comparison's cost so far, as analytics event properties: each side's
+ * estimate and tokens, the total, whether any figure is a floor (cut by the
+ * gateway's cap, or with calls it couldn't price), and which side was cheaper.
+ * A side the gateway had nothing for is left out, and then no side is cheaper.
+ */
+export function comparisonCostProps(usage) {
+  const props = { cost_partial: false };
+  const costs = {};
+  for (const label of SIDE_LABELS) {
+    const side = usage?.sides?.[label];
+    if (!side?.available) {
+      props.cost_partial = true;
+      continue;
+    }
+    props[`tokens_${label}`] = usageTokens(side);
+    if (typeof side.estimatedCostUsd === 'number' && Number.isFinite(side.estimatedCostUsd)) {
+      costs[label] = Number(side.estimatedCostUsd);
+      props[`cost_${label}_usd`] = costs[label];
+    } else {
+      props.cost_partial = true;
+    }
+    if (side.truncated || side.unpricedCalls) props.cost_partial = true;
+  }
+  if ('a' in costs && 'b' in costs) {
+    props.cost_total_usd = costs.a + costs.b;
+    props.cheaper_side = costs.a === costs.b ? 'same' : costs.a < costs.b ? 'a' : 'b';
+  }
+  return props;
+}
+
 export function combinedCost(usage) {
   const figures = SIDE_LABELS
     .map((label) => usage?.sides?.[label])

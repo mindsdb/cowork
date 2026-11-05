@@ -28,7 +28,14 @@ import { relativeAge } from '../lib/formatTime';
 import { projectLabel } from '../lib/projectLabel';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, deriveComposerWarning, usageActionUrl } from '../lib/usageWarnings';
-import { trackBillingOpened } from '../lib/analytics';
+import {
+  trackBillingOpened,
+  trackCompareViewOpened,
+  trackComparisonContinued,
+  trackComparisonFollowUpSent,
+  trackComparisonStarted,
+  trackComparisonVerdictRecorded,
+} from '../lib/analytics';
 import { useUsageBarDismiss } from '../lib/usageBarDismiss';
 import {
   cancelResponse,
@@ -50,6 +57,7 @@ import {
   SIDE_LABELS,
   VERDICT_ORDER,
   combinedCost,
+  comparisonCostProps,
   historyCost,
   compareCreditNotice,
   composerBlock,
@@ -233,6 +241,7 @@ const STATUS_DOT = {
 };
 
 export default function CompareView({ models = [], modelMeta, projects = [], agentLabel, onOpenTask, onOpenSettings }) {
+  useEffect(() => { trackCompareViewOpened(); }, []);
   const [comparisons, setComparisons] = useState(undefined);
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -645,6 +654,10 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
         })),
         sourceProjectId: source === EMPTY_START ? null : source,
       });
+      trackComparisonStarted(comparison, {
+        fileCount: files.length,
+        exampleId: EXAMPLES.find((example) => example.prompt === prompt)?.id,
+      });
       onStarted(comparison, { comparisonId: comparison.id, text: prompt.trim(), files });
     } catch (err) {
       setError(err?.message || 'Could not start the comparison.');
@@ -991,6 +1004,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   const turns = { a: turnsOf(comparedMessages('a')), b: turnsOf(comparedMessages('b')) };
   const diverged = divergedAt(turns.a, turns.b);
   const judgeable = judgeableTurn(turns.a, turns.b);
+  const continueTracked = useRef(new Set());
   const verdictFor = (turnIndex) => comparison?.verdicts?.find((v) => v.turnIndex === turnIndex)?.winner || null;
   const loaded = SIDE_LABELS.every((label) => tasks[label]);
 
@@ -1067,14 +1081,25 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
     // landing between the last render and the key press.
     if (!text || block) return;
     setDraft('');
-    sendToSides(text, targets);
+    const turnIndex = Math.max(turns.a.length, turns.b.length);
+    sendToSides(text, targets).then((sent) => {
+      if (sent) trackComparisonFollowUpSent(comparisonId, target, turnIndex);
+    });
   };
 
   const judge = async (winner) => {
     if (judgeable === null) return;
     setJudging(true);
+    const previous = verdictFor(judgeable);
     try {
       setComparison(await recordComparisonVerdict(comparisonId, judgeable, winner));
+      trackComparisonVerdictRecorded(comparisonId, {
+        turnIndex: judgeable,
+        winner,
+        models: { a: sides.a?.model, b: sides.b?.model },
+        changed: Boolean(previous) && previous !== winner,
+        cost: comparisonCostProps(usage),
+      });
     } catch (err) {
       setError(err?.message || 'Could not save the verdict.');
     } finally {
@@ -1283,6 +1308,19 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
           }}
           onContinue={async (projectId) => {
             const result = await continueComparisonSide(comparisonId, continuing, projectId, names[continuing]);
+            // Once per side: Try again after a partial carry retries the files,
+            // it isn't a second Continue.
+            if (!continueTracked.current.has(continuing)) {
+              continueTracked.current.add(continuing);
+              trackComparisonContinued(comparisonId, {
+                side: continuing,
+                models: { a: sides.a?.model, b: sides.b?.model },
+                turns: turns[continuing].length,
+                carriedAll: result?.carriedAll !== false,
+                verdict: comparison?.verdict ?? null,
+                cost: comparisonCostProps(usage),
+              });
+            }
             // An older server says nothing about the files: it carried them or failed.
             if (result?.carriedAll === false) return result;
             setContinuing(null);

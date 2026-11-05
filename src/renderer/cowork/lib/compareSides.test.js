@@ -28,6 +28,7 @@ import {
   turnUsageRows,
   usageTokens,
   compareAvailable,
+  comparisonCostProps,
 } from './compareSides';
 
 const user = (content, created_at = null) => ({ role: 'user', content, created_at });
@@ -424,5 +425,32 @@ describe('compareAvailable', () => {
     ["the operator's picker off", { platformUi: false, pickerMode: 'off', models }, false],
   ])('with %s: %s', (_case, build, available) => {
     expect(compareAvailable(build)).toBe(available);
+  });
+});
+
+describe('comparisonCostProps', () => {
+  const side = (cost, extra = {}) => ({ available: true, estimatedCostUsd: cost, inputTokens: 100, outputTokens: 10, ...extra });
+
+  it('reports each side, the total and which side was cheaper', () => {
+    expect(comparisonCostProps({ sides: { a: side(0.02), b: side(0.5) } })).toEqual({
+      cost_a_usd: 0.02, cost_b_usd: 0.5, cost_total_usd: 0.52, tokens_a: 110, tokens_b: 110,
+      cheaper_side: 'a', cost_partial: false,
+    });
+    expect(comparisonCostProps({ sides: { a: side(0.3), b: side(0.3) } }).cheaper_side).toBe('same');
+  });
+
+  it.each([
+    ['a side cut by the gateway cap', { a: side(0.02, { truncated: true }), b: side(0.5) }],
+    ['a side with calls it could not price', { a: side(0.02), b: side(0.5, { unpricedCalls: 2 }) }],
+  ])('marks the figures a floor for %s', (_case, sides) => {
+    expect(comparisonCostProps({ sides }).cost_partial).toBe(true);
+  });
+
+  it('names no cheaper side when one side has no figure', () => {
+    const props = comparisonCostProps({ sides: { a: side(0.02), b: { available: false } } });
+    expect(props).toMatchObject({ cost_a_usd: 0.02, cost_partial: true });
+    expect(props.cheaper_side).toBeUndefined();
+    expect(props.cost_total_usd).toBeUndefined();
+    expect(comparisonCostProps(null)).toEqual({ cost_partial: true });
   });
 });

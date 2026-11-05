@@ -64,6 +64,15 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), ...api }));
 
+const analytics = vi.hoisted(() => ({
+  trackCompareViewOpened: vi.fn(),
+  trackComparisonStarted: vi.fn(),
+  trackComparisonFollowUpSent: vi.fn(),
+  trackComparisonVerdictRecorded: vi.fn(),
+  trackComparisonContinued: vi.fn(),
+}));
+vi.mock('../lib/analytics', async (importOriginal) => ({ ...(await importOriginal()), ...analytics }));
+
 import CompareView, { EXAMPLES, SETTLE_REREAD_MS, filterComparisons } from './CompareView';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import UsageBar from '../components/UsageBar';
@@ -139,6 +148,7 @@ async function openDetail(cmp, sessions, hubUsage = null) {
 
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
+  for (const fn of Object.values(analytics)) fn.mockReset();
   hostMock.openExternal.mockReset();
   for (const key of Object.keys(openStreams)) delete openStreams[key];
   api.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
@@ -1132,6 +1142,75 @@ describe('CompareView', () => {
     await waitFor(() => expect(api.recordComparisonVerdict).toHaveBeenCalledWith('cmp-1', 0, 'a'));
     await waitFor(() => expect(within(bar).getByRole('button', { name: 'Kimi' }).getAttribute('aria-pressed')).toBe('true'));
     expect(within(bar).getByText('Saved')).toBeTruthy();
+  });
+
+  describe('analytics', () => {
+    const pricedUsage = {
+      sides: {
+        a: { available: true, estimatedCostUsd: 0.05, inputTokens: 1000, outputTokens: 100, turns: [] },
+        b: { available: true, estimatedCostUsd: 0.3, inputTokens: 2000, outputTokens: 100, turns: [] },
+      },
+    };
+
+    it('records opening the screen and starting a comparison, from an example, with no prompt text', async () => {
+      mockHistory([]);
+      api.createComparison.mockResolvedValue(comparison());
+      api.fetchComparison.mockResolvedValue(comparison());
+      api.fetchSession.mockImplementation(async (id) => session(id));
+      render(<CompareView models={models} projects={projects} />);
+      expect(analytics.trackCompareViewOpened).toHaveBeenCalledTimes(1);
+      fireEvent.click((await screen.findAllByText('New comparison'))[0]);
+      fireEvent.click(screen.getByRole('button', { name: /Build website/ }));
+      const [modelA, modelB] = screen.getAllByLabelText('model');
+      fireEvent.change(modelA, { target: { value: 'kimi' } });
+      fireEvent.change(modelB, { target: { value: 'qwen' } });
+      fireEvent.click(screen.getByText('Start comparison'));
+      await waitFor(() => expect(analytics.trackComparisonStarted).toHaveBeenCalledTimes(1));
+      const [created, details] = analytics.trackComparisonStarted.mock.calls[0];
+      expect(created.id).toBe('cmp-1');
+      expect(details).toEqual({ fileCount: 0, exampleId: 'website' });
+    });
+
+    it('records a follow-up with its target and turn, and a verdict with both costs', async () => {
+      api.fetchComparisonUsage.mockResolvedValue(pricedUsage);
+      api.recordComparisonVerdict.mockResolvedValue(comparison({ verdict: 'a', verdicts: [{ turnIndex: 0, winner: 'a' }] }));
+      await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+      await screen.findByRole('button', { name: /Side A estimated cost \$0\.05/ });
+
+      fireEvent.click(within(screen.getByRole('group', { name: 'Which answer was better?' })).getByRole('button', { name: 'Kimi' }));
+      await waitFor(() => expect(analytics.trackComparisonVerdictRecorded).toHaveBeenCalledTimes(1));
+      expect(analytics.trackComparisonVerdictRecorded).toHaveBeenCalledWith('cmp-1', expect.objectContaining({
+        turnIndex: 0, winner: 'a', models: { a: 'kimi', b: 'qwen' }, changed: false,
+        cost: expect.objectContaining({ cost_a_usd: 0.05, cost_b_usd: 0.3, cheaper_side: 'a' }),
+      }));
+
+      fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() => expect(analytics.trackComparisonFollowUpSent).toHaveBeenCalledWith('cmp-1', 'both', 1));
+    });
+
+    it('records Continue once, even when a partial carry is retried', async () => {
+      api.continueComparisonSide
+        .mockResolvedValueOnce({ conversationId: 'conv-a', projectId: 'p-real', carriedAll: false })
+        .mockResolvedValueOnce({ conversationId: 'conv-a', projectId: 'p-real', carriedAll: true });
+      mockHistory([comparison()]);
+      api.fetchComparison.mockResolvedValue(comparison());
+      api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+      render(<CompareView models={models} projects={projects} onOpenTask={vi.fn()} />);
+      fireEvent.click(await screen.findByText('Build a dashboard'));
+      const paneA = await screen.findByRole('region', { name: 'Side A' });
+      fireEvent.click(await within(paneA).findByRole('button', { name: 'Continue' }));
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByRole('alert');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
+      await waitFor(() => expect(api.continueComparisonSide).toHaveBeenCalledTimes(2));
+
+      expect(analytics.trackComparisonContinued).toHaveBeenCalledTimes(1);
+      expect(analytics.trackComparisonContinued).toHaveBeenCalledWith('cmp-1', expect.objectContaining({
+        side: 'a', models: { a: 'kimi', b: 'qwen' }, turns: 1, carriedAll: false,
+      }));
+    });
   });
 
   it('offers no verdict until both sides finished', async () => {
