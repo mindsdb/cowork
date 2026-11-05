@@ -15,10 +15,20 @@ import './browser-panel.css';
 // `session.viewUrl` is an embed URL the edge honours for an hour. A stale one
 // (a reopened conversation, a long session) is swapped for a fresh one from
 // POST /browse/embed before the frame loads.
+//
+// The browser may still be starting (ENG-3188): until the viewer frame has
+// loaded, the pane says so. The router's own starting page reloads itself
+// once the browser is up, so the frame's first load is enough. After
+// STARTING_TIMEOUT_MS without one, the pane offers to try again.
+export const STARTING_TIMEOUT_MS = 90_000;
+
 export function BrowserPanel({ session, agentLabel = 'Anton', onClose }) {
   const [viewUrl, setViewUrl] = useState(() => (needsFreshViewUrl(session) ? null : session.viewUrl));
   const [error, setError] = useState('');
   const [generation, setGeneration] = useState(0);
+  const [frameLoaded, setFrameLoaded] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const frameKey = `${viewUrl}:${generation}`;
 
   const refresh = useCallback(async () => {
     setError('');
@@ -42,19 +52,32 @@ export function BrowserPanel({ session, agentLabel = 'Anton', onClose }) {
     }
   }, [session.key, session.viewUrl, session.expiresAt]);
 
+  // A new frame (or a fresh embed in flight) starts the wait over.
+  useEffect(() => {
+    setFrameLoaded(false);
+    setSlow(false);
+  }, [frameKey]);
+
+  const waiting = !frameLoaded && !error;
+  useEffect(() => {
+    if (!waiting) return undefined;
+    const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [waiting, frameKey]);
+
   // Keep the viewer's toolbar in the app's theme: send it when the viewer
   // loads or asks, and again whenever the theme, skin or custom accent changes.
   const frameRef = useRef(null);
   useEffect(() => {
     if (!viewUrl) return undefined;
-    const origin = new URL(viewUrl).origin;
+    const origin = viewerOrigin(viewUrl);
     const sendTheme = () => {
       const target = frameRef.current?.contentWindow;
       if (!target) return;
       target.postMessage(browserViewerTheme(getComputedStyle(document.body), document.body.dataset.theme), origin);
     };
     const onMessage = (event) => {
-      if (event.origin === origin && event.source === frameRef.current?.contentWindow && event.data?.type === 'browser-viewer-ready') sendTheme();
+      if (event.source === frameRef.current?.contentWindow && event.data?.type === 'browser-viewer-ready') sendTheme();
     };
     window.addEventListener('message', onMessage);
     const observer = new MutationObserver(sendTheme);
@@ -93,39 +116,73 @@ export function BrowserPanel({ session, agentLabel = 'Anton', onClose }) {
           </div>
         </header>
         <div className="browser-panel__stage">
-          {viewUrl ? (
+          {viewUrl && !error && (
             <iframe
               ref={frameRef}
-              onLoad={() => frameRef.current?.contentWindow?.postMessage(
-                browserViewerTheme(getComputedStyle(document.body), document.body.dataset.theme),
-                new URL(viewUrl).origin,
-              )}
-              key={`${viewUrl}:${generation}`}
+              onLoad={() => {
+                setFrameLoaded(true);
+                frameRef.current?.contentWindow?.postMessage(
+                  browserViewerTheme(getComputedStyle(document.body), document.body.dataset.theme),
+                  viewerOrigin(viewUrl),
+                );
+              }}
+              key={frameKey}
               title="Shared browser"
               src={viewUrl}
-              // allow-same-origin: the viewer opens a WebSocket back to its own
-              // origin, which an opaque origin cannot. The origin is the user's
-              // br- instance, never this app's (isFramableViewUrl).
+              // allow-same-origin: a standalone server's viewer opens a
+              // WebSocket back to its own origin. The browser router serves
+              // its viewer with a CSP sandbox, so it stays an opaque origin
+              // even on this app's host.
               sandbox="allow-forms allow-same-origin allow-scripts"
               allow="clipboard-read; clipboard-write"
               referrerPolicy="no-referrer"
             />
-          ) : error ? (
+          )}
+          {error ? (
             <EmptyState
               size="sm"
               className="browser-panel__empty"
               icon={Ico.globe(20)}
               title="The browser isn't reachable"
               description={error}
-              action={<Button size="sm" onClick={refresh}>Try again</Button>}
+              action={{ label: 'Try again', onClick: refresh }}
             />
-          ) : (
-            <div className="browser-panel__loading"><Spinner /></div>
+          ) : waiting && (
+            <div className="browser-panel__starting" role="status">
+              {slow ? (
+                <EmptyState
+                  size="sm"
+                  className="browser-panel__empty"
+                  icon={Ico.globe(20)}
+                  title="Your browser is taking longer than usual"
+                  description="It may still be starting. Try again, or close the pane and come back in a minute."
+                  action={{ label: 'Try again', onClick: refresh }}
+                />
+              ) : (
+                <div className="browser-panel__loading">
+                  <Spinner />
+                  <span>Starting your browser…</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </aside>
     </>
   );
+}
+
+// Where to post the theme. The browser router (`…/browser/sessions/<id>/view`)
+// sandboxes its viewer to an opaque origin, which no origin string matches, so
+// it gets any origin: the message is only colours and fonts, sent to this
+// frame's window alone. A standalone server's viewer keeps its own origin.
+function viewerOrigin(viewUrl) {
+  try {
+    const { origin, pathname } = new URL(viewUrl);
+    return pathname.startsWith('/browser/') ? '*' : origin;
+  } catch {
+    return '*';
+  }
 }
 
 export default BrowserPanel;

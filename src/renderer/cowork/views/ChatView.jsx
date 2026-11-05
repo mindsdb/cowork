@@ -39,7 +39,7 @@ import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
@@ -49,6 +49,7 @@ import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { latestBrowserSession } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
+import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
@@ -1786,6 +1787,9 @@ export function redirectForTask(redirects, taskId) {
   return redirects[taskId] || null;
 }
 
+// Module-level so the per-task debounce survives switching tasks (ENG-3188).
+const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1850,6 +1854,9 @@ export default function ChatView({
   onOpenSettings,
   codingModelDefault,
   harnessClaudeCodeEnabled,
+  // The shared browser is on (Settings → Shared browser, MindsHub): start it
+  // early, when a task that used it opens and on the first keystroke.
+  browserWarmUp = false,
   /* Settings > Appearance "Show where figures came from": mark each figure in
      a finished answer with the step it came from. On unless the user turned
      it off. */
@@ -2046,6 +2053,10 @@ export default function ChatView({
   );
   const [closedBrowserKey, setClosedBrowserKey] = useState(null);
   const browserOpen = !!browserSession && closedBrowserKey !== browserSession.key;
+  const hasBrowserStep = !!browserSession;
+  useEffect(() => {
+    if (browserWarmUp && hasBrowserStep) warmBrowser(task.id);
+  }, [browserWarmUp, hasBrowserStep, task.id]);
   // Source of truth for the rail Progress card: the live streaming
   // message's steps if a request is in flight, otherwise the steps
   // from the most recent assistant turn. Both come from the SSE
@@ -3334,6 +3345,7 @@ export default function ChatView({
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
+            onTypingChange={browserWarmUp ? (typing) => { if (typing) warmBrowser(task.id); } : undefined}
           />
         </div>
         </>

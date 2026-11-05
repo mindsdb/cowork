@@ -26,6 +26,12 @@ describe('isFramableViewUrl', () => {
     expect(isFramableViewUrl('https://user:pw@browser.acme.dev/sessions/main/view')).toBe(false);
   });
 
+  it('accepts the browser router\'s viewer under /browser', () => {
+    expect(isFramableViewUrl('https://cowork-pr-cowork-1146.dev.mindshub.ai/browser/sessions/t-0123456789abcdef01234567/view?et=tok')).toBe(true);
+    expect(isFramableViewUrl('https://cowork.mindshub.ai/browser/saved-tabs')).toBe(false);
+    expect(isFramableViewUrl('https://cowork.mindshub.ai/other/sessions/main/view')).toBe(false);
+  });
+
   it('accepts hosted browser instances only', () => {
     expect(isFramableViewUrl(VIEW)).toBe(true);
     expect(isFramableViewUrl('https://br-ab12cd34-alpha.dev.mindshub.ai/sessions/main/view')).toBe(true);
