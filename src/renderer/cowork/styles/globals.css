@@ -55,7 +55,10 @@
      titlebar's sidebar zone wide enough for its core controls on macOS
      (window controls, toggle, "MindsHub" and the Cowork/Code icons), about
      30% of the narrowest docked window; the ceiling is where the switch
-     has room for its labels. Narrower windows use the drawer. */
+     has room for its labels. Narrower windows use the drawer. Where CSS
+     round() is supported (below), it is rounded to a whole pixel, so
+     controls aligned to the sidebar's right edge land on the pixel grid and
+     their 1px icon strokes stay crisp. */
   --titlebar-h:   52px;
   --sidebar-w:    clamp(268px, 24vw, 344px);
 
@@ -115,6 +118,9 @@
   --space-8:  32px;
   --space-10: 40px;
   --space-12: 48px;
+}
+@supports (width: round(down, 1.5px, 1px)) {
+  :root { --sidebar-w: round(down, clamp(268px, 24vw, 344px), 1px); }
 }
 
 /* ─── Light mode (default) ────────────────────────────────────────────────
@@ -661,6 +667,9 @@ input, textarea { font-family: inherit; }
 /* The switch shows its labels only where they fit: the toggle slot and the
    labelled switch need ~196px of the head row's content box (the macOS
    window-controls inset is already taken off). */
+/* Each label's width is rounded up to a whole pixel (WorkspaceSwitch), so
+   the right-aligned switch and its icons sit on the pixel grid. */
+.app-brand__switch-label { display: inline-block; }
 @container brand-zone (max-width: 196px) {
   .app-brand__switch-label { display: none; }
 }

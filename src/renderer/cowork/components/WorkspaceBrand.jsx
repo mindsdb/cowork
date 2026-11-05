@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import Ico from './Icons';
 import AttentionSlot from './AttentionSlot';
@@ -19,6 +19,37 @@ export function isWideLogo(width, height) {
   return width > 0 && height > 0 && width / height >= WIDE_LOGO_RATIO;
 }
 
+// A switch label whose width is rounded up to a whole pixel. Text widths are
+// fractional; summed into the right-aligned switch, they put its 1px icon
+// strokes between device pixels, where they blur and read lighter than the
+// other titlebar icons on a 1x display.
+function SwitchLabel({ children }) {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    let alive = true;
+    const measure = () => {
+      if (!alive) return;
+      // The text's own extent, which a width set on the span doesn't change.
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const natural = range.getBoundingClientRect().width;
+      setWidth(natural ? Math.ceil(natural) : null);
+    };
+    measure();
+    // The web font may land after first paint and change the text's width.
+    document.fonts?.ready?.then(measure);
+    return () => { alive = false; };
+  }, [children]);
+  return (
+    <span ref={ref} className="app-brand__switch-label" style={width ? { width } : undefined}>
+      {children}
+    </span>
+  );
+}
+
 // The Cowork/Code switch, a segmented toggle in the sidebar's titlebar row.
 // Its labels show where the row has room for them (a container query in
 // globals.css). Compact (in the titlebar while the sidebar is hidden) it is
@@ -27,7 +58,7 @@ export function WorkspaceSwitch({ mode, onChange, compact = false }) {
   return (
     <ToggleGroup
       size="md"
-      itemPadding="5px 8px"
+      itemPadding="3px 8px"
       aria-label="Workspace"
       className="app-brand__switch"
       value={mode}
@@ -37,7 +68,7 @@ export function WorkspaceSwitch({ mode, onChange, compact = false }) {
         icon,
         'aria-label': label,
         tooltip: `${label} mode`,
-        label: compact ? null : <span className="app-brand__switch-label">{label}</span>,
+        label: compact ? null : <SwitchLabel>{label}</SwitchLabel>,
       }))}
     />
   );
