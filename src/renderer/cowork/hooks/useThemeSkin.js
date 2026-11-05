@@ -30,11 +30,11 @@ function writeFlag(key) {
 // one place. The member's own choices are what this hook stores; the returned
 // `theme`, `skin` and `customTheme` are what the page shows. `look` carries the
 // rest of the resolution (greeting, sidebar logo, tab icon, and which fields
-// the org has locked) for App to apply.
+// the org has locked, sidebar title and its color) for App to apply.
 //
 // The settings-driven nav title colour stays in App.jsx — it reads
 // `settings`, a different domain.
-export function useThemeSkin({ orgBranding = null, settings = null } = {}) {
+export function useThemeSkin({ orgBranding = null, settings = null, hostedMindsHub = false } = {}) {
   // Theme (light | dark) — persisted in localStorage so the choice
   // survives reloads. The animated background canvas (gravity-field)
   // and the body's bg colour both follow this value.
@@ -61,6 +61,8 @@ export function useThemeSkin({ orgBranding = null, settings = null } = {}) {
   const greeting = settings?.greeting ?? null;
   const navLogo = settings?.navLogo || null;
   const favicon = settings?.favicon || null;
+  const navTitle = settings?.navTitle || null;
+  const navTitleColor = settings?.navTitleColor || null;
   const look = useMemo(() => resolveLook({
     deployment: DEPLOYMENT_LOOK,
     org: orgBranding,
@@ -75,9 +77,12 @@ export function useThemeSkin({ orgBranding = null, settings = null } = {}) {
       greeting,
       navLogo,
       favicon,
+      navTitle,
+      navTitleColor,
     },
     knownSkins: KNOWN_SKINS,
-  }), [orgBranding, skin, skinChosen, customTheme, theme, themeChosen, greeting, navLogo, favicon]);
+    hostedMindsHub,
+  }), [orgBranding, skin, skinChosen, customTheme, theme, themeChosen, greeting, navLogo, favicon, navTitle, navTitleColor, hostedMindsHub]);
 
   useEffect(() => {
     try { window.localStorage.setItem('anton.theme', theme); } catch {}

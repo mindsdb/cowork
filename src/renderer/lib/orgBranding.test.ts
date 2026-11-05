@@ -23,7 +23,7 @@ const LOGO_DARK = `https://${AUTH}/v1/organizations/org-1/branding/logo_dark?v=c
 const KNOWN = ['normal', '8bit', 'custom'];
 
 const STOCK_DEPLOYMENT: DeploymentLook = {
-  skinLocked: false, defaultSkin: 'normal', skin: null, theme: null, logoUrl: null, iconUrl: null,
+  productName: null, skinLocked: false, defaultSkin: 'normal', skin: null, theme: null, logoUrl: null, iconUrl: null,
 };
 
 function member(over: Partial<MemberLook> = {}): MemberLook {
@@ -36,6 +36,8 @@ function member(over: Partial<MemberLook> = {}): MemberLook {
     greeting: STOCK_GREETING,
     navLogo: null,
     favicon: null,
+    navTitle: null,
+    navTitleColor: null,
     ...over,
   };
 }
@@ -56,8 +58,8 @@ const ORG_LOOK: Partial<OrgAppearance> = {
   accent: '#112233', background: '#f0f0f0', font: 'mono', radius: 12, defaultTheme: 'light', greeting: 'Welcome to Acme',
 };
 
-function resolve(o: OrgBranding | null, m: MemberLook, deployment: DeploymentLook = STOCK_DEPLOYMENT) {
-  return resolveLook({ deployment, org: o, member: m, knownSkins: KNOWN });
+function resolve(o: OrgBranding | null, m: MemberLook, deployment: DeploymentLook = STOCK_DEPLOYMENT, hostedMindsHub = false) {
+  return resolveLook({ deployment, org: o, member: m, knownSkins: KNOWN, hostedMindsHub });
 }
 
 describe('trustedBrandImageUrl', () => {
@@ -92,19 +94,24 @@ describe('parseOrgBranding', () => {
   it('reads a full answer', () => {
     const parsed = parseOrgBranding({
       enabled: true,
+      orgName: 'Acme',
+      sidebarTitle: 'Acme Desk',
       iconUrl: ICON,
       logoUrl: LOGO,
       logoDarkUrl: LOGO_DARK,
       canEdit: true,
-      appearance: { ...ORG_LOOK, skin: 'custom', membersCanChoose: false, guidelines: 'Use the logo on white.' },
+      appearance: { ...ORG_LOOK, sidebarTitle: 'Acme Desk', skin: 'custom', membersCanChoose: false, guidelines: 'Use the logo on white.' },
     }, AUTH);
     expect(parsed).toEqual({
       enabled: true,
+      orgName: 'Acme',
+      sidebarTitle: 'Acme Desk',
       iconUrl: ICON,
       logoUrl: LOGO,
       logoDarkUrl: LOGO_DARK,
       canEdit: true,
       appearance: {
+        sidebarTitle: 'Acme Desk',
         accent: '#112233', background: '#f0f0f0', font: 'mono', radius: 12, skin: 'custom',
         defaultTheme: 'light', greeting: 'Welcome to Acme', membersCanChoose: false, guidelines: 'Use the logo on white.',
       },
@@ -123,7 +130,7 @@ describe('parseOrgBranding', () => {
 
   it('reads each bad appearance field as unset on its own', () => {
     expect(parseOrgAppearance({
-      accent: 'red', background: '#12345', font: 'comic', radius: 99, skin: '../x', defaultTheme: 'blue',
+      sidebarTitle: 'x'.repeat(65), accent: 'red', background: '#12345', font: 'comic', radius: 99, skin: '../x', defaultTheme: 'blue',
       greeting: 'x'.repeat(201), membersCanChoose: 'no', guidelines: 7,
     })).toEqual({ ...NO_ORG_BRANDING.appearance });
   });
@@ -131,6 +138,7 @@ describe('parseOrgBranding', () => {
   it('round-trips an appearance into the snake_case PUT body', () => {
     const appearance = parseOrgAppearance({ ...ORG_LOOK, membersCanChoose: false });
     expect(appearancePayload(appearance)).toEqual({
+      sidebar_title: null,
       accent: '#112233', background: '#f0f0f0', font: 'mono', radius: 12, skin: null,
       default_theme: 'light', greeting: 'Welcome to Acme', members_can_choose: false, guidelines: null,
     });
@@ -235,29 +243,26 @@ describe('resolveLook — the order', () => {
 
   // Row 2: org appearance when members can't choose.
   it("overrides the member's choices when the org turned member choice off", () => {
-    const mine = member({
-      skin: '8bit', skinChosen: true, theme: 'dark', themeChosen: true,
-      greeting: 'My own line', navLogo: 'data:image/png;base64,bG9nbw==', favicon: 'data:image/png;base64,aWNvbg==',
-    });
+    const mine = member({ skin: '8bit', skinChosen: true, theme: 'dark', themeChosen: true, greeting: 'My own line' });
     const look = resolve(org({ ...ORG_LOOK, membersCanChoose: false }), mine);
     expect(look).toMatchObject({
       skin: 'custom', skinSource: 'org',
       theme: 'light', themeSource: 'org',
       greeting: 'Welcome to Acme', greetingSource: 'org',
-      logo: LOGO, logoSource: 'org',
-      favicon: { href: ICON, source: 'org' },
-      lockedByOrg: { style: true, theme: true, greeting: true, logo: true, favicon: true },
+      lockedByOrg: { style: true, theme: true, greeting: true },
     });
   });
 
-  it('locks only the fields the org actually set', () => {
-    const mine = member({ skin: '8bit', skinChosen: true, theme: 'dark', themeChosen: true, greeting: 'Mine' });
+  it('puts everyone on the stock look for what the org left unset, once member choice is off', () => {
+    const mine = member({ skin: '8bit', skinChosen: true, theme: 'light', themeChosen: true, greeting: 'Mine' });
     const look = resolve(org({ membersCanChoose: false, greeting: 'Ours' }, { iconUrl: null, logoUrl: null }), mine);
     expect(look).toMatchObject({
-      skin: '8bit', skinSource: 'member', theme: 'dark', themeSource: 'member',
+      skin: 'normal', skinSource: 'stock', customTheme: null,
+      theme: 'dark', themeSource: 'stock',
       greeting: 'Ours', greetingSource: 'org',
-      lockedByOrg: { style: false, theme: false, greeting: true, logo: false, favicon: false },
+      lockedByOrg: { style: true, theme: true, greeting: true, logo: false, favicon: false },
     });
+    expect(resolve(org({ membersCanChoose: false }), mine).greeting).toBeNull();
   });
 
   // Row 1: the deployment brand.
@@ -316,5 +321,43 @@ describe('resolveLook — the order', () => {
   it('leaves the greeting to the org and member under a deployment brand', () => {
     const deployment = { ...STOCK_DEPLOYMENT, skinLocked: true, defaultSkin: 'acme', skin: 'acme' };
     expect(resolve(org({ greeting: 'Ours' }), member(), deployment).greeting).toBe('Ours');
+  });
+
+  // Hosted MindsHub: no per-person sidebar title, logo or tab icon.
+  describe('in hosted MindsHub', () => {
+    const mine = member({
+      navLogo: 'data:image/png;base64,bG9nbw==', favicon: 'data:image/png;base64,aWNvbg==',
+      navTitle: 'My space', navTitleColor: '#ff0000',
+    });
+
+    it("shows the org's title, logo and icon, never the member's own", () => {
+      const look = resolve({ ...org(), sidebarTitle: 'Acme' }, mine, STOCK_DEPLOYMENT, true);
+      expect(look).toMatchObject({
+        navTitle: 'Acme', navTitleSource: 'org', navTitleColor: null,
+        logo: LOGO, logoSource: 'org', favicon: { href: ICON, source: 'org' },
+      });
+    });
+
+    it('falls back to the product name and the page icon in a personal org', () => {
+      const look = resolve(NO_ORG_BRANDING, mine, STOCK_DEPLOYMENT, true);
+      expect(look).toMatchObject({ navTitle: null, navTitleSource: 'stock', logo: null, favicon: null, navTitleColor: null });
+    });
+
+    it("keeps the deployment's product name, logo and icon over the org's", () => {
+      const deployment = { ...STOCK_DEPLOYMENT, productName: 'Acme Cowork', logoUrl: '/brand/logo.svg', iconUrl: '/brand/icon.png' };
+      const look = resolve({ ...org(), sidebarTitle: 'Acme' }, mine, deployment, true);
+      expect(look).toMatchObject({ navTitle: null, navTitleSource: 'deployment', logo: '/brand/logo.svg', favicon: null });
+    });
+
+    it("still uses the member's own title, color, logo and icon outside hosted MindsHub", () => {
+      const look = resolve(null, mine);
+      expect(look).toMatchObject({
+        navTitle: 'My space', navTitleSource: 'member', navTitleColor: '#ff0000',
+        logo: 'data:image/png;base64,bG9nbw==', favicon: { href: 'data:image/png;base64,aWNvbg==', source: 'member' },
+      });
+      const branded = { ...STOCK_DEPLOYMENT, productName: 'Acme Cowork' };
+      expect(resolve(null, member(), branded)).toMatchObject({ navTitle: null, navTitleSource: 'deployment' });
+      expect(resolve(null, mine, branded).navTitle).toBe('My space');
+    });
   });
 });

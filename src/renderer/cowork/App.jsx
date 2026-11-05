@@ -80,6 +80,7 @@ import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useOrgBranding } from './hooks/useOrgBranding';
+import { takeSettingsDeepLink } from './lib/settingsDeepLink';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
@@ -1772,7 +1773,10 @@ function AppCore() {
   const orgMode = useOrgMode();
   // The org's branding (ENG-4020): hosted org mode only. Read at startup, on
   // an org switch or sign-in, and each time Settings opens; never polled.
-  const orgBranding = useOrgBranding({ enabled: PLATFORM_UI && host.isWeb && orgMode, settingsOpen });
+  // Hosted MindsHub (any org, personal ones too): the sidebar title, logo and
+  // tab icon come from the org, not from per-person settings.
+  const hostedMindsHub = PLATFORM_UI && host.isWeb && orgMode;
+  const orgBranding = useOrgBranding({ enabled: hostedMindsHub, settingsOpen });
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin. `look` is the
@@ -1785,7 +1789,7 @@ function AppCore() {
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
     look,
-  } = useThemeSkin({ orgBranding: orgBranding.branding, settings: appearanceSettings });
+  } = useThemeSkin({ orgBranding: orgBranding.branding, settings: appearanceSettings, hostedMindsHub });
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   // One list for the composer's per-conversation toggles: the OAuth
@@ -1880,8 +1884,8 @@ function AppCore() {
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
   useEffect(() => {
-    applyNavTitleColor(appearanceSettings.navTitleColor);
-  }, [appearanceSettings.navTitleColor]);
+    applyNavTitleColor(look.navTitleColor);
+  }, [look.navTitleColor]);
 
   // The tab icon: the member's own, the org's, or the page's own (the
   // deployment brand's or stock), as resolved in `look`.
@@ -3326,6 +3330,19 @@ function AppCore() {
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
   };
+
+  // A link into Settings (?settings=appearance&section=branding, captured in
+  // web-main.tsx before login): open that page once, scrolled to that part.
+  const [appearanceAnchor, setAppearanceAnchor] = useState(null);
+  const clearAppearanceAnchor = useCallback(() => setAppearanceAnchor(null), []);
+  useEffect(() => {
+    const link = takeSettingsDeepLink();
+    if (!link) return;
+    setAppearanceAnchor(link.section);
+    openSettings(link.page);
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
@@ -5746,7 +5763,7 @@ function AppCore() {
         window.dispatchEvent(new CustomEvent('anton:open-new-project'));
       }, 60);
     },
-    navTitle: appearanceSettings.navTitle || null,
+    navTitle: look.navTitle,
     navLogo: look.logo,
     navLogoWide: look.logoSource === 'org',
     // Mobile has no room for the desktop floating-toggle-row (bottom-right,
@@ -5936,7 +5953,7 @@ function AppCore() {
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
           showCounters={appearanceSettings.showCounters === true}
-          navTitle={appearanceSettings.navTitle || null}
+          navTitle={look.navTitle}
           navLogo={look.logo}
           navLogoWide={look.logoSource === 'org'}
           updateBanner={updateBanner}
@@ -6446,6 +6463,9 @@ function AppCore() {
               orgBranding={orgBranding.branding}
               onOrgBrandingSaved={orgBranding.apply}
               look={look}
+              hostedMindsHub={hostedMindsHub}
+              appearanceAnchor={appearanceAnchor}
+              onAppearanceAnchorShown={clearAppearanceAnchor}
               section={settingsSection}
               onSectionChange={setSettingsSection}
               serverOnline={serverOnline}
@@ -6502,6 +6522,9 @@ function AppCore() {
                 orgBranding={orgBranding.branding}
                 onOrgBrandingSaved={orgBranding.apply}
                 look={look}
+                hostedMindsHub={hostedMindsHub}
+                appearanceAnchor={appearanceAnchor}
+                onAppearanceAnchorShown={clearAppearanceAnchor}
                 section={settingsSection || 'agent'}
                 onSectionChange={setSettingsSection}
                 serverOnline={serverOnline}

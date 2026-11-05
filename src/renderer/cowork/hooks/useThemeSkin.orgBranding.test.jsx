@@ -80,4 +80,13 @@ describe('useThemeSkin with org branding', () => {
     expect(result.current.skin).toBe('normal');
     expect(document.body.style.getPropertyValue('--accent')).toBe('');
   });
+
+  it("uses the org's sidebar title in hosted MindsHub and the member's own elsewhere", () => {
+    const orgBranding = parseOrgBranding({ enabled: true, sidebarTitle: 'Acme', appearance: {} });
+    const settings = { navTitle: 'My space', navTitleColor: '#ff0000' };
+    const hosted = renderHook(() => useThemeSkin({ orgBranding, settings, hostedMindsHub: true }));
+    expect(hosted.result.current.look).toMatchObject({ navTitle: 'Acme', navTitleColor: null });
+    const local = renderHook(() => useThemeSkin({ settings }));
+    expect(local.result.current.look).toMatchObject({ navTitle: 'My space', navTitleColor: '#ff0000' });
+  });
 });

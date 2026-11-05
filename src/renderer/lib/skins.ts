@@ -63,6 +63,7 @@ export const SKIN_LOCKED = DEPLOYMENT_BRAND?.skinLocked === true;
  * the org's branding and the member's choices (orgBranding.ts resolveLook).
  */
 export const DEPLOYMENT_LOOK: DeploymentLook = {
+  productName: DEPLOYMENT_BRAND?.productName ?? null,
   skinLocked: SKIN_LOCKED,
   defaultSkin: DEFAULT_SKIN,
   skin: BRAND_SKIN?.id ?? null,

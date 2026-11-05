@@ -28,7 +28,7 @@ import AccountSection from './AccountSection';
 import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
-import BrandingSection from './BrandingSection';
+import OrgBrandingFields from './OrgBrandingFields';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
@@ -61,6 +61,9 @@ const LINK_BTN =
 // Under an org's locked look (ENG-4020), what a member's own control says.
 const SET_BY_ORG = 'Set by your organization.';
 const NO_ORG_LOCKS = { style: false, theme: false, greeting: false, logo: false, favicon: false };
+
+// Where a deep link (?settings=appearance&section=…) lands on Appearance.
+export const APPEARANCE_ANCHORS = { branding: 'settings-appearance-branding', display: 'settings-appearance-display' };
 
 const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
 
@@ -774,6 +777,13 @@ export default function SettingsView({
   orgBranding = null,
   onOrgBrandingSaved,
   look = null,
+  // Web with the platform UI in org mode, personal orgs included: there is no
+  // per-person sidebar title, logo or tab icon to set.
+  hostedMindsHub = false,
+  // A deep link's part of Appearance to scroll to ('branding' | 'display'),
+  // and what to call once it has.
+  appearanceAnchor = null,
+  onAppearanceAnchorShown,
 }) {
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -788,7 +798,6 @@ export default function SettingsView({
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
-    { branding: Boolean(orgBranding?.enabled && orgBranding?.canEdit) },
   );
   const orgLocks = look?.lockedByOrg ?? NO_ORG_LOCKS;
   const orgMode = useOrgMode();
@@ -2167,20 +2176,42 @@ export default function SettingsView({
 
   const renderComputersSection = () => <ComputersSettingsSection />;
 
+  // Settings → Appearance (ENG-4020): one page, two parts.
+  //   Branding — in hosted MindsHub with an org, the org's branding (edited by
+  //     its admins, read-only for everyone else), then the member's own style
+  //     under it; elsewhere, the person's own style and, outside hosted
+  //     MindsHub, their sidebar title, color, logo and tab icon.
+  //   Display — personal display preferences, for everyone.
+  // Each setting appears once. Hosted MindsHub has no per-person sidebar
+  // title, logo or tab icon: the org's are the ones shown.
+  //
+  // No Save footer: every personal control auto-saves itself (see
+  // autoSaveSetting/AutoSaveTag); the org's branding has its own Save button
+  // because it changes the look for everyone. `autoSaved` surfaces a quiet
+  // "saves automatically" note on mobile.
+  const org = orgBranding?.enabled ? orgBranding : null;
+  // A deep link's part of Appearance, scrolled to once the page is showing.
+  const appearanceShowing = section === 'appearance';
+  useEffect(() => {
+    const id = appearanceAnchor && APPEARANCE_ANCHORS[appearanceAnchor];
+    if (!id || !appearanceShowing) return;
+    const target = document.getElementById(id);
+    if (target) {
+      target.scrollIntoView?.({ block: 'start' });
+      onAppearanceAnchorShown?.();
+    }
+  }, [appearanceAnchor, appearanceShowing, onAppearanceAnchorShown]);
   const renderAppearanceSection = () => (
-    // No Save footer here — every control on this page auto-saves itself
-    // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
-    // be dead weight that always reads "Saved" and never does anything.
-    // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
-    // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
-      <SettingsGroup title="Appearance">
+      <div id={APPEARANCE_ANCHORS.branding} className="scroll-mt-2">
+        <SettingsGroup title="Branding">
+          {org && <OrgBrandingFields branding={org} onSaved={onOrgBrandingSaved} />}
         {SKIN_LOCKED ? (
-          <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
+          <Section title={org ? 'Your style' : 'Style'} subtitle="Set by this deployment. Light and dark stay your choice.">
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
           </Section>
         ) : (
-          <Section title="Style" subtitle={orgLocks.style ? SET_BY_ORG : 'Normal, 8-Bit, or design your own with Custom. Combines with light and dark.'}>
+          <Section title={org ? 'Your style' : 'Style'} subtitle={orgLocks.style ? SET_BY_ORG : (org ? 'Your own look, over the organization style. Normal, 8-Bit, or design your own with Custom.' : 'Normal, 8-Bit, or design your own with Custom. Combines with light and dark.')}>
             <ToggleGroup
               value={normalizeSkin(skin)}
               onValueChange={(v) => onSkinChange?.(v)}
@@ -2197,7 +2228,7 @@ export default function SettingsView({
             />
           </Section>
         )}
-        <Section title="Theme" subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
+        <Section title={org ? 'Your theme' : 'Theme'} subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
           <ToggleGroup
             value={theme || 'dark'}
             onValueChange={(v) => onThemeChange?.(v)}
@@ -2310,7 +2341,7 @@ export default function SettingsView({
             </Section>
           </>
         )}
-        <Section title="Greeting" subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
+        <Section title={org ? 'Your greeting' : 'Greeting'} subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
@@ -2324,6 +2355,8 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
+          {!hostedMindsHub && (
+            <>
         <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
@@ -2360,7 +2393,7 @@ export default function SettingsView({
             <AutoSaveTag settingKey="navTitleColor" />
           </div>
         </Section>
-        <Section title="Sidebar logo" subtitle={orgLocks.logo ? SET_BY_ORG : 'An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.'}>
+        <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
           <div className="flex items-center gap-3">
             {settings.navLogo && (
               <img
@@ -2372,7 +2405,6 @@ export default function SettingsView({
             <Button
               variant="subtle"
               onClick={() => logoInputRef.current?.click()}
-              disabled={orgLocks.logo}
             >
               {settings.navLogo ? 'Change logo' : 'Upload logo'}
             </Button>
@@ -2380,7 +2412,6 @@ export default function SettingsView({
               <Button
                 variant="danger"
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
-                disabled={orgLocks.logo}
               >
                 {Ico.trash(14)}
                 Remove
@@ -2400,12 +2431,12 @@ export default function SettingsView({
           )}
         </Section>
         {host.isWeb && (
-          <Section title="Browser tab icon" subtitle={orgLocks.favicon ? SET_BY_ORG : 'PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.'}>
+          <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               {settings.favicon && (
                 <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
               )}
-              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()} disabled={orgLocks.favicon}>
+              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
                 {settings.favicon ? 'Change icon' : 'Upload icon'}
               </Button>
               {settings.favicon && (
@@ -2414,7 +2445,7 @@ export default function SettingsView({
                   faviconReadRef.current = null;
                   autoSaveSetting('favicon', '');
                   setFaviconError(null);
-                }} aria-label="Remove browser tab icon" disabled={orgLocks.favicon}>
+                }} aria-label="Remove browser tab icon">
                   {Ico.trash(14)} Remove
                 </Button>
               )}
@@ -2426,6 +2457,12 @@ export default function SettingsView({
             {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
           </Section>
         )}
+            </>
+          )}
+        </SettingsGroup>
+      </div>
+      <div id={APPEARANCE_ANCHORS.display} className="scroll-mt-2">
+        <SettingsGroup title="Display">
         {/* Gated on its own key. A server older than this setting does not
             serve the key and rejects a write to it with a 400, and it sends
             no figure sources to mark either. The renderer ships OTA and
@@ -2486,13 +2523,10 @@ export default function SettingsView({
             </Section>
           )}
         </div>
-      </SettingsGroup>
+        </SettingsGroup>
+      </div>
     </SettingsSectionPanel>
   );
-
-  const renderBrandingSection = () => (orgBranding?.enabled && orgBranding?.canEdit ? (
-    <BrandingSection branding={orgBranding} onSaved={onOrgBrandingSaved} />
-  ) : null);
 
   const renderChannelsSection = () => (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -2558,7 +2592,6 @@ export default function SettingsView({
       codingAgent: renderCodingAgentSection,
       computers: renderComputersSection,
       appearance: renderAppearanceSection,
-      branding: renderBrandingSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
@@ -2648,7 +2681,6 @@ export default function SettingsView({
       {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
       {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
-      {effectiveSection === 'branding' && renderBrandingSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}

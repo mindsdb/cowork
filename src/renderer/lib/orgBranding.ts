@@ -9,7 +9,8 @@
 //   2. the org's appearance, when the org has turned off "Let members choose
 //      their own look" (membersCanChoose: false)
 //   3. the member's own choices (skin, the "Design your own" recipe, theme,
-//      greeting, sidebar logo, tab icon)
+//      greeting; and outside hosted MindsHub, the sidebar title, its color,
+//      the sidebar logo and the tab icon)
 //   4. the org's appearance as the default
 //   5. stock
 //
@@ -19,6 +20,12 @@
 // org branding existed: the style and theme are seeded into the member's own
 // storage (skins.ts seedBrandDefaults), and a sidebar logo or tab icon set in
 // Settings wins over the brand's own files.
+//
+// In hosted MindsHub (any org, personal ones included) the sidebar logo is
+// the company's logo, the tab icon is the company's icon and the sidebar title
+// is the one the admin set, so a member's own sidebar title, title color,
+// sidebar logo and tab icon don't apply there; they stay for desktop and
+// local installs, which have no org branding.
 //
 // Everything here is pure; callers pass what they read from storage and the
 // DOM and apply what comes back.
@@ -32,6 +39,8 @@ export type LookSource = 'deployment' | 'org' | 'member' | 'stock';
 
 /** The org's appearance. Every field is optional; null means "stock". */
 export interface OrgAppearance {
+  /** The sidebar title the admin set, or null for the default. */
+  sidebarTitle: string | null;
   accent: string | null;
   background: string | null;
   font: FontKey | null;
@@ -46,6 +55,13 @@ export interface OrgAppearance {
 /** The org-branding read, with every image URL already checked. */
 export interface OrgBranding {
   enabled: boolean;
+  /** The org's name, for the sidebar title's placeholder. */
+  orgName: string | null;
+  /**
+   * The sidebar title to show: the admin's, else the company name when it is
+   * short, else the product name. Resolved by cowork-server.
+   */
+  sidebarTitle: string | null;
   iconUrl: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;
@@ -57,6 +73,8 @@ export interface OrgBranding {
 export const STOCK_GREETING = "Let's knock something off your list";
 
 export const GREETING_MAX_LENGTH = 200;
+export const SIDEBAR_TITLE_MAX_LENGTH = 64;
+export const ORG_NAME_MAX_LENGTH = 256;
 export const GUIDELINES_MAX_LENGTH = 8000;
 export const RADIUS_MIN = 0;
 export const RADIUS_MAX = 16;
@@ -64,6 +82,7 @@ export const RADIUS_MAX = 16;
 const HEX = /^#[0-9a-f]{6}$/i;
 
 export const EMPTY_APPEARANCE: OrgAppearance = Object.freeze({
+  sidebarTitle: null,
   accent: null,
   background: null,
   font: null,
@@ -77,6 +96,8 @@ export const EMPTY_APPEARANCE: OrgAppearance = Object.freeze({
 
 export const NO_ORG_BRANDING: OrgBranding = Object.freeze({
   enabled: false,
+  orgName: null,
+  sidebarTitle: null,
   iconUrl: null,
   logoUrl: null,
   logoDarkUrl: null,
@@ -142,6 +163,7 @@ export function parseOrgAppearance(raw: unknown): OrgAppearance {
   const radius = value.radius;
   const skin = value.skin;
   return {
+    sidebarTitle: textOrNull(value.sidebarTitle, SIDEBAR_TITLE_MAX_LENGTH),
     accent: hexOrNull(value.accent),
     background: hexOrNull(value.background),
     font: value.font === 'standard' || value.font === 'mono' ? value.font : null,
@@ -162,6 +184,8 @@ export function parseOrgBranding(raw: unknown, authHost: string | null = AUTH_IM
   if (!value || value.enabled !== true) return NO_ORG_BRANDING;
   return {
     enabled: true,
+    orgName: textOrNull(value.orgName, ORG_NAME_MAX_LENGTH),
+    sidebarTitle: textOrNull(value.sidebarTitle, SIDEBAR_TITLE_MAX_LENGTH),
     iconUrl: trustedBrandImageUrl(value.iconUrl, authHost),
     logoUrl: trustedBrandImageUrl(value.logoUrl, authHost),
     logoDarkUrl: trustedBrandImageUrl(value.logoDarkUrl, authHost),
@@ -173,6 +197,7 @@ export function parseOrgBranding(raw: unknown, authHost: string | null = AUTH_IM
 /** The PUT body (snake_case) for an appearance the admin edited. */
 export function appearancePayload(appearance: OrgAppearance): Record<string, unknown> {
   return {
+    sidebar_title: appearance.sidebarTitle,
     accent: appearance.accent,
     background: appearance.background,
     font: appearance.font,
@@ -225,7 +250,7 @@ export function hasOrgBranding(org: OrgBranding | null): boolean {
   const a = org.appearance;
   return Boolean(
     org.iconUrl || org.logoUrl || org.logoDarkUrl
-    || a.accent || a.background || a.font || a.radius !== null || a.skin
+    || a.sidebarTitle || a.accent || a.background || a.font || a.radius !== null || a.skin
     || a.defaultTheme || a.greeting || !a.membersCanChoose,
   );
 }
@@ -234,6 +259,8 @@ export function hasOrgBranding(org: OrgBranding | null): boolean {
 
 /** What the deployment brand sets (lib/deploymentBrand.ts, lib/skins.ts). */
 export interface DeploymentLook {
+  /** The deployment's product name; it replaces the sidebar title outright. */
+  productName: string | null;
   /** The brand's style lock: every browser stays on `defaultSkin`. */
   skinLocked: boolean;
   /** The first registered style: the brand's own, or Normal. */
@@ -260,6 +287,10 @@ export interface MemberLook {
   navLogo: string | null;
   /** The synced tab icon (a data URI), or null. */
   favicon: string | null;
+  /** The synced sidebar title, or null. */
+  navTitle: string | null;
+  /** The synced sidebar title color, or null. */
+  navTitleColor: string | null;
 }
 
 export interface ResolveLookInput {
@@ -268,6 +299,12 @@ export interface ResolveLookInput {
   member: MemberLook;
   /** Registered style ids (skins.ts SKINS). */
   knownSkins: readonly string[];
+  /**
+   * Hosted MindsHub (web, platform UI, org mode), personal orgs included: the
+   * member's sidebar title, title color, sidebar logo and tab icon are not
+   * offered there and don't apply.
+   */
+  hostedMindsHub?: boolean;
 }
 
 export interface ResolvedLook {
@@ -287,6 +324,11 @@ export interface ResolvedLook {
    * deployment brand's when it sets one and stock otherwise.
    */
   favicon: { href: string; source: 'member' | 'org' } | null;
+  /** The sidebar title, or null for the product name. */
+  navTitle: string | null;
+  navTitleSource: LookSource;
+  /** The sidebar title color, or null for the theme's. */
+  navTitleColor: string | null;
   /** Fields the org has set and members may not change. */
   lockedByOrg: { style: boolean; theme: boolean; greeting: boolean; logo: boolean; favicon: boolean };
 }
@@ -305,16 +347,29 @@ function pick<T>(
   orgLocks: boolean,
   memberValue: T | null,
   stockValue: T,
+  // What everyone sees when the org turned member choice off but left this
+  // field unset: the app's own default, not anyone's earlier pick.
+  lockedStockValue: T = stockValue,
 ): { value: T; source: LookSource; locked: boolean } {
-  if (orgValue !== null && orgLocks) return { value: orgValue, source: 'org', locked: true };
+  if (orgLocks) {
+    return orgValue !== null
+      ? { value: orgValue, source: 'org', locked: true }
+      : { value: lockedStockValue, source: 'stock', locked: true };
+  }
   if (memberValue !== null) return { value: memberValue, source: 'member', locked: false };
   if (orgValue !== null) return { value: orgValue, source: 'org', locked: false };
   return { value: stockValue, source: 'stock', locked: false };
 }
 
 /** What the page shows, from the deployment brand, the org and the member. */
-export function resolveLook({ deployment, org, member, knownSkins }: ResolveLookInput): ResolvedLook {
+export function resolveLook({
+  deployment, org, member: memberInput, knownSkins, hostedMindsHub = false,
+}: ResolveLookInput): ResolvedLook {
   const activeOrg = org?.enabled ? org : null;
+  // Hosted MindsHub has no per-person sidebar title, logo or tab icon.
+  const member: MemberLook = hostedMindsHub
+    ? { ...memberInput, navLogo: null, favicon: null, navTitle: null, navTitleColor: null }
+    : memberInput;
   const orgLocks = activeOrg ? !activeOrg.appearance.membersCanChoose : false;
 
   // Style. The deployment's lock wins outright; a deployment style short of
@@ -330,7 +385,10 @@ export function resolveLook({ deployment, org, member, knownSkins }: ResolveLook
     skin = { value: memberStyle, source: member.skinChosen ? 'member' : 'deployment', locked: false };
   } else {
     const fromOrg = activeOrg ? orgStyle(activeOrg.appearance, knownSkins) : null;
-    skin = pick(fromOrg, orgLocks, member.skinChosen ? memberStyle : null, memberStyle);
+    skin = pick(fromOrg, orgLocks, member.skinChosen ? memberStyle : null, memberStyle, {
+      skin: deployment.defaultSkin,
+      recipe: null,
+    });
   }
 
   // Theme. Same shape: a deployment theme is seeded as the member's.
@@ -343,6 +401,7 @@ export function resolveLook({ deployment, org, member, knownSkins }: ResolveLook
       orgLocks,
       member.themeChosen ? member.theme : null,
       member.theme,
+      'dark',
     );
   }
 
@@ -350,7 +409,7 @@ export function resolveLook({ deployment, org, member, knownSkins }: ResolveLook
   const memberGreeting = member.greeting && member.greeting.trim() && member.greeting.trim() !== STOCK_GREETING
     ? member.greeting
     : null;
-  const greeting = pick(activeOrg?.appearance.greeting ?? null, orgLocks, memberGreeting, member.greeting);
+  const greeting = pick<string | null>(activeOrg?.appearance.greeting ?? null, orgLocks, memberGreeting, member.greeting, null);
 
   // Sidebar logo. A deployment logo shuts the org out; the member's own logo
   // still wins over it, as before.
@@ -360,7 +419,9 @@ export function resolveLook({ deployment, org, member, knownSkins }: ResolveLook
       ? { value: member.navLogo, source: 'member', locked: false }
       : { value: deployment.logoUrl, source: 'deployment', locked: false };
   } else {
-    logo = pick<string | null>(activeOrg ? orgLogoFor(activeOrg, theme.value) : null, orgLocks, member.navLogo, null);
+    // Not a member choice where the org has a logo (hosted MindsHub), so the
+    // org's lock has nothing to override.
+    logo = pick<string | null>(activeOrg ? orgLogoFor(activeOrg, theme.value) : null, false, member.navLogo, null);
   }
 
   // Tab icon, the same way. The deployment's icon is the page's own (applied
@@ -370,14 +431,25 @@ export function resolveLook({ deployment, org, member, knownSkins }: ResolveLook
   if (deployment.iconUrl) {
     favicon = member.favicon ? { href: member.favicon, source: 'member' } : null;
   } else {
-    const picked = pick<string | null>(activeOrg?.iconUrl ?? null, orgLocks, member.favicon, null);
+    const picked = pick<string | null>(activeOrg?.iconUrl ?? null, false, member.favicon, null);
     favicon = picked.value && picked.source !== 'stock'
       ? { href: picked.value, source: picked.source === 'org' ? 'org' : 'member' }
       : null;
     faviconLocked = picked.locked;
   }
 
+  // Sidebar title. The deployment's product name wins outright (null hands
+  // the sidebar its product name); in hosted MindsHub it is the admin's title
+  // as cowork-server resolved it; elsewhere, the member's own.
+  let navTitle: { value: string | null; source: LookSource };
+  if (deployment.productName) navTitle = { value: member.navTitle, source: member.navTitle ? 'member' : 'deployment' };
+  else if (hostedMindsHub) navTitle = activeOrg?.sidebarTitle ? { value: activeOrg.sidebarTitle, source: 'org' } : { value: null, source: 'stock' };
+  else navTitle = member.navTitle ? { value: member.navTitle, source: 'member' } : { value: null, source: 'stock' };
+
   return {
+    navTitle: navTitle.value,
+    navTitleSource: navTitle.source,
+    navTitleColor: member.navTitleColor,
     skin: skin.value.skin,
     skinSource: skin.source,
     customTheme: skin.value.skin === 'custom' ? skin.value.recipe : null,
