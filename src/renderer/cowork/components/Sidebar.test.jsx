@@ -675,3 +675,21 @@ describe('Sidebar — task row titles', () => {
     expect(titleOf()).not.toHaveClass('is-clipped');
   });
 });
+
+// App decides whether the build offers Compare Models (compareAvailable); the
+// entry follows it.
+describe('Sidebar — Compare models entry', () => {
+  it.each([[true], [false]])('is shown when App offers it: %s', (shown) => {
+    render(<Sidebar {...baseProps} showCompare={shown} />);
+    expect(!!screen.queryByRole('button', { name: 'Compare Models' })).toBe(shown);
+  });
+});
+
+describe('Sidebar — Compare models', () => {
+  it('sits in the Agent group and opens the compare route', () => {
+    const onNavigate = vi.fn();
+    render(<Sidebar {...baseProps} showCompare onNavigate={onNavigate} />);
+    screen.getByRole('button', { name: 'Compare Models' }).click();
+    expect(onNavigate).toHaveBeenCalledWith('compare');
+  });
+});

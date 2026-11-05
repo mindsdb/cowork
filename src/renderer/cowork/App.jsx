@@ -21,7 +21,7 @@ import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
-import { Button, Tooltip } from './components/ui';
+import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
@@ -34,6 +34,7 @@ import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
+import CompareView from './views/CompareView';
 import CodeView from './code/CodeView';
 import { useCodeModeAccess } from './code/codeModeAccess';
 import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/defaults';
@@ -120,7 +121,9 @@ import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
+import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
+import { PLATFORM_UI } from '../lib/deployment';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -595,6 +598,9 @@ function AppCore() {
   // server's values within one fetch. This removes the hard-coded copy whose
   // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
   const [settings, setSettings] = useState(loadCachedSettings);
+  // Whether this session's settings have arrived from the server, so a choice
+  // that depends on them (such as the models an operator offers) is final.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [appearancePreview, setAppearancePreview] = useState({});
   const appearanceSettings = { ...settings, ...appearancePreview };
   const previewAppearance = useCallback((key, value) => {
@@ -1706,6 +1712,10 @@ function AppCore() {
   const sendableModelId = useCallback((id) => (
     pickerMode === 'off' ? (id ?? null) : offeredModelId(id, offeredModels(models, settings.modelEnabled))
   ), [pickerMode, models, settings.modelEnabled]);
+  const showCompare = useMemo(
+    () => compareAvailable({ platformUi: PLATFORM_UI, pickerMode, models, modelEnabled: settings.modelEnabled }),
+    [pickerMode, models, settings.modelEnabled],
+  );
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
@@ -2185,6 +2195,7 @@ function AppCore() {
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
+        setSettingsLoaded(true);
       }
     });
   }, [refreshSchedules, reloadArtifacts]);
@@ -5857,6 +5868,7 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          showCompare={showCompare}
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
           pins={pins}
@@ -6354,6 +6366,28 @@ function AppCore() {
         )}
 
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {/* A link to Compare where it isn't offered: the operator picks every
+            question's model (known from the build), or, once settings are in,
+            offers none to choose from. */}
+        {route === 'compare' && !showCompare && (settingsLoaded || pickerMode === 'off') && (
+          <EmptyState
+            title="Compare Models isn't available here"
+            description="There are no models to choose from on this deployment, so there's nothing to compare. Your operator decides which models you can pick."
+            action={{ label: 'New task', onClick: newTask, primary: true }}
+          />
+        )}
+        {route === 'compare' && showCompare && (
+          <CompareView
+            models={models}
+            modelMeta={modelMeta}
+            // Only projects the person can run tasks in: a comparison copies
+            // its source's files, and Continue moves a side into one.
+            projects={runnableProjects}
+            agentLabel={agentLabel}
+            onOpenTask={(id) => { if (id) selectTask(id); }}
+            onOpenSettings={openSettings}
+          />
+        )}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             projects={runnableProjects}

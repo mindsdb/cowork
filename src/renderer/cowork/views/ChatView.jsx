@@ -1880,6 +1880,10 @@ export default function ChatView({
   // handleSendInTask's pendingQuestionFor check) as soon as the card
   // itself learns the question is gone.
   onQuestionAnswered,
+  // One side of a model comparison: the transcript only. The Compare screen
+  // owns the header, the shared composer and the side panel, so none of them
+  // render here.
+  pane = false,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
@@ -1927,8 +1931,11 @@ export default function ChatView({
   // its full reading width next to it; otherwise it opens over the top.
   const [railFits, setRailFits] = useState(true);
   const railFloats = isNarrow || !railFits;
-  const effectiveRailOpen = !railFloats && railOpen;
-  const railOverlayOpen = railFloats && railNarrowOpen;
+  const effectiveRailOpen = !pane && !railFloats && railOpen;
+  // A comparison pane never resends on its own: it would give one side a
+  // turn the other never got, and the two would stop being comparable.
+  const sendAgain = pane ? undefined : (text, attachments) => onSend?.(text, attachments);
+  const railOverlayOpen = !pane && railFloats && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
   /* The figure source (a LinkedFigureSource) whose file is open in the
@@ -2131,7 +2138,9 @@ export default function ChatView({
     // follows a reader who was already at the end.
     if (action === 'hold') el.scrollTop += scrollHeightDelta;
     else if (action === 'end') scrollToBottom();
-    else if (action === 'sent') anchorLastTurn();
+    // In a comparison pane a follow-up arrives in both panes at once, so it
+    // follows the end rather than moving each pane to the new turn's top.
+    else if (action === 'sent') { if (pane) followEnd(); else anchorLastTurn(); }
     else followEnd();
     scrollAnchorRef.current = anchor;
     // visibleMessages is a fresh array every render (task.messages.filter(...),
@@ -2246,12 +2255,12 @@ export default function ChatView({
         // for the "header + scrollable body" layout — the 1fr row pins
         // the scroll area to the column's available height, so the inner
         // overflowY can actually scroll.
-        className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0"
+        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
       >
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        <Tooltip content="Expand panel">
+        {!pane && (<Tooltip content="Expand panel">
           <button
             type="button"
             onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
@@ -2273,7 +2282,7 @@ export default function ChatView({
           >
             {Ico.panelExpandLeft(16)}
           </button>
-        </Tooltip>
+        </Tooltip>)}
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating
@@ -2281,7 +2290,7 @@ export default function ChatView({
             corner, staying left-aligned with the transcript below. `--titlebar-
             safe-top` is set on <main> by the shell and is 0 when the sidebar/
             rail covers the zone, so max() keeps the normal 14px padding then. */}
-        <div
+        {!pane && (<div
           // Belt + suspenders: even if a flex child miscalculates by a
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
@@ -2434,7 +2443,7 @@ export default function ChatView({
               title now (above) so it stays visually attached to the
               task it acts on. */}
           <div className="flex items-center gap-1 flex-shrink-0" />
-        </div>
+        </div>)}
         {/* Task menu — anchored to the kebab next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,
             Schedule and Turn-into-skill are intentionally excluded
@@ -2481,8 +2490,9 @@ export default function ChatView({
             reply always scrolls clear however tall the draft grows. */}
         <ChatScroller
           stick={stick}
+          minimap={!pane}
           scrollProps={{ 'data-scroll': 'true' }}
-          className="scroll-clean pt-8 bg-transparent [-webkit-app-region:no-drag] select-text"
+          className={`scroll-clean ${pane ? 'pt-4' : 'pt-8'} bg-transparent [-webkit-app-region:no-drag] select-text`}
         >
           <div className="chat-transcript-col chat-column flex flex-col gap-7">
             {task.hasMoreMessages && (
@@ -2536,8 +2546,8 @@ export default function ChatView({
                 const neverSent = !m.id && !isStreaming
                   && (m._unsent || String(task?.id ?? '').startsWith('tmp-'));
                 let deleteThisTurn = null;
-                if (orphan && !deleteInFlight && m.id) deleteThisTurn = () => onDeleteTurn?.(m.id);
-                else if (orphan && !deleteInFlight && neverSent) deleteThisTurn = () => onDeleteTurn?.({ localRow: m });
+                if (orphan && !deleteInFlight && onDeleteTurn && m.id) deleteThisTurn = () => onDeleteTurn(m.id);
+                else if (orphan && !deleteInFlight && onDeleteTurn && neverSent) deleteThisTurn = () => onDeleteTurn({ localRow: m });
                 return (
                   <CoworkUserTurn
                     key={messageKey(m, i)}
@@ -2555,7 +2565,7 @@ export default function ChatView({
                     onDelete={deleteThisTurn}
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
-                    onEdit={(text) => {
+                    onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
                       // nonce so identical text re-fills the input
@@ -2721,7 +2731,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={resend ? () => onSend?.(resend.text, resend.attachments) : undefined}
+                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -2811,8 +2821,8 @@ export default function ChatView({
                       kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2862,8 +2872,8 @@ export default function ChatView({
                       body={PLATFORM_UI
                         ? "MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
                         : "The provider couldn't authorize this request. Try again in a moment."}
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2887,8 +2897,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2911,8 +2921,8 @@ export default function ChatView({
                         ? 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings.'
                         : 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.'}
                       buttons={[
-                        ...(resend
-                          ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        ...(resend && sendAgain
+                          ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                           : []),
                         ...(PLATFORM_UI ? [{ label: 'Open Settings', onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
@@ -2935,8 +2945,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The answer was cut off"
                       body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2960,8 +2970,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The response stalled"
                       body="Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again."
-                      buttons={resend && !turnMayBeRunning
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && !turnMayBeRunning && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2996,7 +3006,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlResend ? () => onSend?.(rlResend.text, rlResend.attachments) : undefined}
+                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments) : undefined}
                     />
                   );
                 }
@@ -3017,7 +3027,7 @@ export default function ChatView({
                       title="The server is busy"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={busyResend ? () => onSend?.(busyResend.text, busyResend.attachments) : undefined}
+                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments) : undefined}
                     />
                   );
                 }
@@ -3038,8 +3048,8 @@ export default function ChatView({
                       title="The server isn't answering"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={unavailableResend
-                        ? () => onSend?.(unavailableResend.text, unavailableResend.attachments)
+                      onRetry={unavailableResend && sendAgain
+                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments)
                         : undefined}
                     />
                   );
@@ -3130,8 +3140,10 @@ export default function ChatView({
                     conversationLive={false}
                     // Only the latest turn, with nothing in flight, can still
                     // take an answer to a question that timed out: once a newer
-                    // message is sent, the conversation has moved past it.
-                    reopenable={i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
+                    // message is sent, the conversation has moved past it. And
+                    // only where a message can be sent: a comparison pane whose
+                    // side takes no message right now gets no onSend.
+                    reopenable={!!onSend && i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
                     reply={visibleMessages[i + 1]?.role === 'user' && typeof visibleMessages[i + 1].content === 'string'
                       ? visibleMessages[i + 1].content
                       : null}
@@ -3261,7 +3273,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        {!pane && (<div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
@@ -3324,11 +3336,12 @@ export default function ChatView({
             codingModelDefault={codingModelDefault}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
           />
-        </div>
+        </div>)}
         </>
         )}
       </div>
 
+      {!pane && (<>
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
       {railFloats && (
@@ -3410,6 +3423,7 @@ export default function ChatView({
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />
       </aside>
+      </>)}
 
       {/* keyframes for the streaming cursor */}
       <style>{`@keyframes cb { 0%,49%{opacity:1} 50%,100%{opacity:0} }`}</style>
