@@ -80,7 +80,17 @@ describe('the router row', () => {
   });
 
   it('stays on openai-compatible, where its pick is the only router model', async () => {
-    render(<Harness initial={settingsFor('openai-compatible', COMPAT, { routing: { mode: 'llm' } })} />);
+    render(<Harness initial={settingsFor('openai-compatible', COMPAT, { routing: { mode: 'llm', routerProvider: 'openai-compatible' } })} />);
+    expect(await screen.findByText(ROUTER_ROW)).toBeInTheDocument();
+  });
+
+  it("follows the server's resolution, not the stored provider", async () => {
+    // Stored on MindsHub with no key; the server resolved the role to the
+    // org's openai-compatible endpoint, whose gate runs on this pick.
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, {
+      routing: { mode: 'llm', routerProvider: 'openai-compatible' },
+      gate: { provider: 'openai-compatible', model: 'llama', followsRouterPick: true },
+    })} />);
     expect(await screen.findByText(ROUTER_ROW)).toBeInTheDocument();
   });
 
@@ -92,14 +102,30 @@ describe('the router row', () => {
 
 describe('the Fast answers with Jev switch', () => {
   it.each([
-    ['an older server', undefined],
-    ['another provider', { mode: 'llm' }],
-    ["an org's own decision model", { mode: 'own' }],
-  ])('is absent on %s, where it would change nothing', async (_name, routing) => {
-    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing })} />);
+    ['an older server', 'minds-cloud', MINDS, undefined],
+    ['another provider', 'openai-compatible', COMPAT, { mode: 'llm' }],
+    ["an org's own decision model off MindsHub", 'openai-compatible', COMPAT, { mode: 'own' }],
+  ])('is absent on %s, where it would change nothing', async (_name, type, card, routing) => {
+    render(<Harness initial={settingsFor(type, card, { routing })} />);
     await expandAdvanced();
     expect(screen.getByText('Max steps per task')).toBeInTheDocument();
     expect(screen.queryByLabelText(SWITCH)).toBeNull();
+  });
+
+  it.each([['the LLM gate', 'llm'], ["an org's own decision model", 'own']])(
+    'shows with %s when coding runs on MindsHub, for the completion check', async (_name, mode) => {
+      render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode } })} />);
+      await expandAdvanced();
+      expect(screen.getByLabelText(SWITCH)).toBeChecked();
+    },
+  );
+
+  it('shows on a server that sends no budget settings', async () => {
+    const { maxToolRounds: _r, maxContinuations: _c, ...noBudgets } = settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev' } });
+    render(<Harness initial={noBudgets} />);
+    await expandAdvanced();
+    expect(screen.getByLabelText(SWITCH)).toBeChecked();
+    expect(screen.queryByText('Max steps per task')).toBeNull();
   });
 
   it('shows off once the organization turned Jev off', async () => {

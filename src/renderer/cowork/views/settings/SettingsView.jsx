@@ -910,6 +910,8 @@ export default function SettingsView({
   // recover. See effectiveRoleModel / effectiveRoleProvider.
   const roleProviderType = (role) => canonicalProviderForRole(role);
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
+  // effectiveRoleProvider already falls back to MindsHub, as the server does.
+  const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -1891,7 +1893,7 @@ export default function SettingsView({
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
                     {/* Hidden once the server routes with a decision model:
                         see showRouterRoleRow for when it stays. */}
-                    {showRouterRoleRow(settings.routing, roleProviderType('router') || defaultProvider?.type || '')
+                    {showRouterRoleRow(settings.routing, settings.gate)
                       && RoleRow({ role: 'router', label: 'Routing and summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
                   </>
@@ -1937,8 +1939,9 @@ export default function SettingsView({
           </Section>
         </SettingsGroup>
 
-        {hasBudgetSettings && (
+        {(hasBudgetSettings || jevSwitchShown) && (
           <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
+            {hasBudgetSettings && <>
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
@@ -1986,9 +1989,11 @@ export default function SettingsView({
                 />
               </Section>
             )}
+            </>}
             {/* An org-level setting, like the budgets: who may change it is
-                the server's call. */}
-            {showJevSwitch(settings.routing) && (
+                the server's call. Its own condition, so a server without the
+                budget rows still shows it. */}
+            {jevSwitchShown && (
               <Section
                 title="Fast answers with Jev"
                 subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}.`}
