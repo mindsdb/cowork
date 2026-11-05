@@ -8,6 +8,7 @@ import {
   HTML_VISUAL_EDITOR_PARENT_SOURCE,
   HTML_VISUAL_EDITOR_SOURCE,
 } from './htmlVisualEditorRuntime';
+import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
 
 // The token is a trust boundary: the parent accepts an editing postMessage only
 // when it matches, so the artifact's own scripts must not be able to guess it.
@@ -39,10 +40,14 @@ export function ArtifactHtmlVisualEditor({
   const iframeRef = useRef(null);
   const textareaRef = useRef(null);
   const visualValueRef = useRef(value);
+  const documentUrl = absoluteDraftUrl(draftUrl);
   const sourceKey = `${source?.path || ''}\n${draftUrl || ''}`;
   const sourceKeyRef = useRef(sourceKey);
   const [showSource, setShowSource] = useState(false);
-  const [frame, setFrame] = useState(() => buildFrame(value, draftUrl));
+  const [frame, setFrame] = useState(() => buildFrame(value, documentUrl));
+  // Built from the source first, then inlined: element ranges are offsets
+  // into the source, and parse5 never parses the inlined document.
+  const inlined = useInlinedFrameDocument(frame.content, documentUrl);
   const elementRangesRef = useRef(frame.elements);
   const [ready, setReady] = useState(false);
   const [editableCount, setEditableCount] = useState(frame.editableCount);
@@ -51,14 +56,14 @@ export function ArtifactHtmlVisualEditor({
 
   const rebuildFrame = useCallback((content) => {
     visualValueRef.current = content;
-    const nextFrame = buildFrame(content, draftUrl);
+    const nextFrame = buildFrame(content, documentUrl);
     elementRangesRef.current = nextFrame.elements;
     setFrame(nextFrame);
     setEditableCount(nextFrame.editableCount);
     setReady(false);
     setSelection(null);
     setError('');
-  }, [draftUrl]);
+  }, [documentUrl]);
 
   useEffect(() => {
     const sourceChanged = sourceKeyRef.current !== sourceKey;
@@ -200,21 +205,23 @@ export function ArtifactHtmlVisualEditor({
         </section>
       ) : (
         <div className="artifact-html-edit-canvas">
-          <iframe
-            key={frame.key}
-            ref={iframeRef}
-            title="Edit artifact on canvas"
-            srcDoc={frame.content}
-            sandbox="allow-scripts"
-            className="artifact-html-edit-iframe"
-            onLoad={(event) => {
-              setReady(true);
-              event.currentTarget.contentWindow?.postMessage({
-                source: HTML_VISUAL_EDITOR_PARENT_SOURCE,
-                type: 'status',
-              }, '*');
-            }}
-          />
+          {!inlined.pending && (
+            <iframe
+              key={frame.key}
+              ref={iframeRef}
+              title="Edit artifact on canvas"
+              srcDoc={inlined.content}
+              sandbox="allow-scripts"
+              className="artifact-html-edit-iframe"
+              onLoad={(event) => {
+                setReady(true);
+                event.currentTarget.contentWindow?.postMessage({
+                  source: HTML_VISUAL_EDITOR_PARENT_SOURCE,
+                  type: 'status',
+                }, '*');
+              }}
+            />
+          )}
         </div>
       )}
     </div>
