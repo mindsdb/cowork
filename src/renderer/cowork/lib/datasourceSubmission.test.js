@@ -161,6 +161,40 @@ describe('describeConnectionState', () => {
     expect(state.hint).toMatch(/capitals|case/i);
   });
 
+  describe('a TLS refusal, by whether the connection checked the server', () => {
+    const tlsFailed = (tlsMode) => describeConnectionState({ status: 'failed', validation_code: 'tls_failed', tls_mode: tlsMode });
+
+    it.each(['prefer', 'disabled'])('under %s, says the password was held back and points at turning checks on', (mode) => {
+      const { hint } = tlsFailed(mode);
+      expect(hint).toMatch(/password was not sent/);
+      expect(hint).toMatch(/turn on "Only connect if the certificate is signed by a public authority"/);
+      expect(hint).not.toMatch(/turn off/i);
+      expect(hint).not.toMatch(/did not complete an encrypted connection/);
+    });
+
+    it('under encrypted, names the failed handshake as one of two causes, not a refused login as fact', () => {
+      const { hint } = tlsFailed('encrypted');
+      expect(hint).toMatch(/^Either the server did not complete an encrypted connection, or/);
+      expect(hint).toMatch(/password was not sent/);
+      expect(hint).not.toMatch(/^The server asked for the password/);
+    });
+
+    it.each(['system', 'custom_ca', undefined, 'something_new'])('under %s, keeps the certificate advice', (mode) => {
+      const { hint } = tlsFailed(mode);
+      expect(hint).toMatch(/certificate could not be verified/);
+      expect(hint).not.toMatch(/password was not sent/);
+    });
+
+    it('never tells the user the password is right, since the server may ask for a wrong one too', () => {
+      expect(tlsFailed('prefer').hint).not.toMatch(/password (is|was) (correct|right|fine)/i);
+    });
+
+    it('leaves a refused password as a refused password, whatever the mode', () => {
+      const state = describeConnectionState({ status: 'failed', validation_code: 'authentication_failed', tls_mode: 'prefer' });
+      expect(state.hint).toBe('The server refused the username or password.');
+    });
+  });
+
   it('never claims success for a status it does not recognise', () => {
     expect(describeConnectionState({ status: 'something_new' }).kind).toBe('pending');
     expect(describeConnectionState(null).kind).toBe('pending');

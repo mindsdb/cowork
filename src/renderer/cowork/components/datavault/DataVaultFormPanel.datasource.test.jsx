@@ -322,3 +322,80 @@ describe('re-saving a connection that was stored verified', () => {
     expect(payload.tls).toEqual({ mode: 'system', ca_pem: null });
   });
 });
+
+// The MySQL form as the server ships it, with its certificate box left as it
+// starts: unchecked, so the connection is stored as `prefer`.
+describe('a MySQL login the gateway refused to send the password to', () => {
+  const MYSQL_SPEC = {
+    form_id: 'mysql-connector',
+    title: 'Connect MySQL',
+    engine: 'mysql',
+    _connector_id: 'mysql',
+    selected_method: 'host-password',
+    methods: [{
+      id: 'host-password',
+      label: 'Host and password',
+      cloud: {
+        available: true,
+        description: 'A MySQL server reachable from the internet.',
+        fields: [
+          { name: 'host', label: 'Host', type: 'text', required: true, default: 'db.example.com' },
+          { name: 'port', label: 'Port', type: 'text', default: '3306' },
+          { name: 'database', label: 'Database', type: 'text', required: true, default: 'analytics' },
+          { name: 'username', label: 'Username', type: 'text', required: true, default: 'readonly' },
+          { name: 'password', label: 'Password', type: 'password', secret: true, required: true },
+          {
+            name: 'tls_verify',
+            label: 'Certificate',
+            type: 'boolean',
+            required: false,
+            checkbox_label: 'Only connect if the certificate is signed by a public authority',
+          },
+        ],
+      },
+      actions: [{ id: 'submit', label: 'Connect', kind: 'primary' }],
+    }],
+  };
+
+  const REFUSED = {
+    ...CONNECTION,
+    connector_id: 'mysql',
+    method: 'host-password',
+    port: 3306,
+    status: 'failed',
+    validation_error: 'validation failed',
+    validation_code: 'tls_failed',
+  };
+
+  async function submitMySql() {
+    setForm(CID, toCloudSpec(MYSQL_SPEC));
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
+    await userEvent.type(await screen.findByLabelText(/^Password$/i), TYPED_SECRET);
+    await userEvent.type(await screen.findByLabelText(/^Label$/i), 'Analytics');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+  }
+
+  it('says the password was held back and points at turning checks on, never off', async () => {
+    api.createDatasourceConnection.mockResolvedValue({ ...REFUSED, tls_mode: 'prefer' });
+    await submitMySql();
+
+    // What the form sent is what produces `prefer` on the server: no trust block.
+    await waitFor(() => expect(api.createDatasourceConnection).toHaveBeenCalledTimes(1));
+    expect(api.createDatasourceConnection.mock.calls[0][0].tls).toBeUndefined();
+
+    const shown = await screen.findByText(/password was not sent/i);
+    expect(shown.textContent).toMatch(/turn on "Only connect if the certificate is signed by a public authority"/);
+    expect(shown.textContent).not.toMatch(/turn off/i);
+    expect(shown.textContent).not.toMatch(/username or password/i);
+    expect(shown.textContent).not.toMatch(/password (is|was) (correct|right|fine)/i);
+  });
+
+  it('keeps the certificate advice when the connection did check the server', async () => {
+    api.createDatasourceConnection.mockResolvedValue({ ...REFUSED, tls_mode: 'system' });
+    await submitMySql();
+
+    const shown = await screen.findByText(/certificate could not be verified/i);
+    expect(shown.textContent).toMatch(/turn off/i);
+    expect(screen.queryByText(/password was not sent/i)).toBeNull();
+  });
+});

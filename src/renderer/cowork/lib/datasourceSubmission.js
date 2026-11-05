@@ -100,6 +100,32 @@ const HINTS = {
     'The server did not answer. Check the host and port, and that your firewall allows the connection.',
 };
 
+// Without certificate checks, `tls_failed` is the gateway refusing to send the
+// password to an unidentified server, whether or not the password is right.
+const REFUSED_LOGIN_HINTS = {
+  prefer:
+    'The server asked for the password itself, and this connection does not check the server\'s '
+    + 'certificate, so the password was not sent. If the server\'s certificate is signed by a public '
+    + 'authority, turn on "Only connect if the certificate is signed by a public authority" and try again.',
+  // Only `encrypted` insists on TLS, so there the handshake may be what failed.
+  encrypted:
+    'Either the server did not complete an encrypted connection, or it asked for the password itself '
+    + 'and, since this connection does not check the server\'s certificate, the password was not sent. '
+    + 'If the server\'s certificate is signed by a public authority, turn on "Only connect if the '
+    + 'certificate is signed by a public authority" and try again.',
+};
+REFUSED_LOGIN_HINTS.disabled = REFUSED_LOGIN_HINTS.prefer;
+
+// The code's advice, except that `tls_failed` depends on whether the connection
+// checked the server. Returns '' when the code carries no advice.
+function hintFor(connection) {
+  const code = connection?.validation_code || connection?.validationCode;
+  if (code === 'tls_failed' && Object.hasOwn(REFUSED_LOGIN_HINTS, connection?.tls_mode)) {
+    return REFUSED_LOGIN_HINTS[connection.tls_mode];
+  }
+  return HINTS[code] || '';
+}
+
 // auth creates a connection `pending` and only the gateway's probe completion
 // moves it on, so pending is a real state the user waits in, and anything
 // unrecognised is treated as pending rather than as success.
@@ -124,7 +150,7 @@ export function describeConnectionState(connection) {
       // The server stores that validation failed, not why; the gateway's own
       // code rides along on the three routes that run a check, and it is the
       // only thing here that can tell the user what to change.
-      hint: HINTS[connection?.validation_code || connection?.validationCode] || '',
+      hint: hintFor(connection),
     };
   }
 
