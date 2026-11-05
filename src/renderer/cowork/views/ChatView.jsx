@@ -1827,6 +1827,7 @@ export default function ChatView({
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
   onUpdateConnectorMute,
+  browserSwitch = null,
   onRemoveAttachment,
   onPinTask,
   onUnpinTask,
@@ -3334,6 +3335,7 @@ export default function ChatView({
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
+            browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
             placeholder="Reply…"
             metaReadOnly

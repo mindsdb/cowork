@@ -5,15 +5,18 @@ import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Button, Input, Select } from '../../components/ui';
 import { fetchBrowseLocations, fetchBrowseStatus, provisionBrowser, updateSettings } from '../../api';
 
-// Settings → Agent → Shared browser (ENG-3299). Two ways to get one:
+// Settings → Agent → Shared browser (ENG-3299). One switch, on by default;
+// everything else shows only while it is on. Two ways to get one:
 //
-// - MindsHub: the user's own hosted browser. Set it up once, then turn it on.
+// - MindsHub (the default): the user's own hosted browser. It starts the
+//   first time it is used; turning the switch on starts it at once.
 // - Your own server: a browser service someone runs themselves (standalone
 //   mode). Give its URL and API key, save and test, then turn it on.
 //
-// The on/off switch and the mode save with the rest of the form. Setup, and
-// "Save and test" for your own server, apply at once so the status line can
-// say whether it worked.
+// The switch and the mode save with the rest of the form. Starting the
+// browser, and "Save and test" for your own server, apply at once so the
+// status line can say whether it worked. Each task can still switch the
+// browser off from the composer's + menu (ENG-3188).
 //
 // In MindsHub mode, when the deployment has a home-connection proxy, two more
 // settings: browse through it (on by default) and from which city. Both save
@@ -70,7 +73,7 @@ export function browserStatusLine(status, loadError) {
     if (status.status === 'unreachable') return `Can't reach the server${status.endpoint ? ` at ${status.endpoint}` : ''}. Check that it's running.`;
     return `Status: ${status.status}.`;
   }
-  if (!status.provisioned) return 'Not set up yet.';
+  if (!status.provisioned) return 'It starts the first time it\'s used.';
   if (status.status === 'running') return 'Ready.';
   if (['provisioning', 'pending', 'starting', 'booting'].includes(status.status)) return 'Starting up. This takes a few minutes the first time.';
   if (status.status === 'stopped' || status.status === 'stopping') return 'Asleep. It wakes up when the agent uses it.';
@@ -124,12 +127,12 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     }
   };
 
-  const setUp = async () => {
+  // Start the MindsHub browser now, so it is ready by the first task.
+  const start = async () => {
     setBusy(true);
     try {
       setStatus(await provisionBrowser());
       setLoadError('');
-      setSetting('browserEnabled', true);
     } catch (err) {
       setLoadError(err?.message || 'unavailable');
     } finally {
@@ -165,9 +168,10 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     ? (mode === MODE_STANDALONE ? 'Add your server below, then save and test.' : 'Save settings to switch back to MindsHub.')
     : browserStatusLine(status, loadError);
 
+  const on = settings.browserEnabled ?? true;
   const provisioned = !!status?.provisioned && !pendingModeChange;
   const standaloneReady = mode === MODE_STANDALONE && statusMode === MODE_STANDALONE && status?.status === 'running';
-  const showProxy = mode === MODE_MINDSHUB && !!locations?.proxy_available;
+  const showProxy = on && mode === MODE_MINDSHUB && !!locations?.proxy_available;
   const proxyOn = settings.browserProxy !== false;
   const city = settings.browserCity || '';
 
@@ -175,32 +179,31 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     <>
       <Section
         title="Shared browser"
-        subtitle={`A browser you and ${agentLabel} use together, shown beside the chat. Sign in to sites there; ${agentLabel} remembers which ones, never your passwords. ${line}`}
+        subtitle={`A browser you and ${agentLabel} use together, shown beside the chat. Sign in to sites there; ${agentLabel} remembers which ones, never your passwords.${on ? ` ${busy ? 'Starting…' : line}` : ''}`}
       >
-        {mode === MODE_MINDSHUB && !provisioned ? (
-          <Button size="sm" disabled={busy || (!status && !loadError) || pendingModeChange} onClick={setUp}>
-            {busy ? 'Setting up…' : 'Set up'}
-          </Button>
-        ) : (
-          <Switch
-            checked={settings.browserEnabled ?? true}
-            onCheckedChange={(v) => setSetting('browserEnabled', v)}
-            disabled={mode === MODE_STANDALONE && !standaloneReady && !settings.browserEnabled}
-            aria-label="Shared browser"
-          />
-        )}
-      </Section>
-      <Section title="Where the browser runs" subtitle="On MindsHub, or on a browser service you run yourself.">
-        <ToggleGroup
-          value={mode}
-          onValueChange={(v) => setSetting('browserMode', v)}
-          aria-label="Where the browser runs"
-          options={[
-            { value: MODE_MINDSHUB, label: 'MindsHub', title: 'Your own browser, hosted by MindsHub.' },
-            { value: MODE_STANDALONE, label: 'Your own server', title: 'A browser service you run, reached with its URL and API key.' },
-          ]}
+        <Switch
+          checked={on}
+          onCheckedChange={(v) => {
+            setSetting('browserEnabled', v);
+            if (v && mode === MODE_MINDSHUB && status && !loadError && !provisioned && !busy) start();
+          }}
+          disabled={mode === MODE_STANDALONE && !standaloneReady && !on}
+          aria-label="Shared browser"
         />
       </Section>
+      {on && (
+        <Section title="Where the browser runs" subtitle="On MindsHub, or on a browser service you run yourself.">
+          <ToggleGroup
+            value={mode}
+            onValueChange={(v) => setSetting('browserMode', v)}
+            aria-label="Where the browser runs"
+            options={[
+              { value: MODE_MINDSHUB, label: 'MindsHub', title: 'Your own browser, hosted by MindsHub.' },
+              { value: MODE_STANDALONE, label: 'Your own server', title: 'A browser service you run, reached with its URL and API key.' },
+            ]}
+          />
+        </Section>
+      )}
       {showProxy && (
         <>
           <Section title="Browse through a home internet connection" subtitle={proxyError || `${PROXY_HELP} Applies to new tasks.`}>
@@ -224,7 +227,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
           </Section>
         </>
       )}
-      {mode === MODE_STANDALONE && (
+      {on && mode === MODE_STANDALONE && (
         <>
           <Section
             title="Server address"

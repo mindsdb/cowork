@@ -22,6 +22,7 @@ import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { isTaskBrowserOff } from './lib/taskBrowser';
 import { SHARING_OFF } from './lib/orgSharing';
 import {
   MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
@@ -420,6 +421,8 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     model: conv.model || null,
     attachments: [],
     disabledConnections,
+    // Kept on this device, like the mutes (lib/taskBrowser).
+    browserOff: isTaskBrowserOff(conv.id),
     pinned: false,
     // Carry the schedule linkage through so the renderer can group
     // multiple runs of the same schedule into a single "view all"
@@ -719,7 +722,7 @@ function idleWindowAfter(msg, idleTimeoutMs) {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
@@ -779,6 +782,9 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           ...(disabledConnections !== undefined
             ? { disabled_connections: disabledConnections }
             : {}),
+          // The task's Browser switch is off (ENG-3188). Only sent then, so
+          // an older server never sees the key.
+          ...(browserOff ? { browser: 'off' } : {}),
         }),
         signal: ctrl.signal,
       });

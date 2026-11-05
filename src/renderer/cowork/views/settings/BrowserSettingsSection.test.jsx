@@ -14,7 +14,7 @@ import BrowserSettingsSection, { browserStatusLine, cityHelp, serverUrlProblem }
 describe('browserStatusLine', () => {
   it('says what state the browser is in', () => {
     expect(browserStatusLine(null, '')).toBe('Checking your browser…');
-    expect(browserStatusLine({ provisioned: false }, '')).toBe('Not set up yet.');
+    expect(browserStatusLine({ provisioned: false }, '')).toBe("It starts the first time it's used.");
     expect(browserStatusLine({ provisioned: true, status: 'running' }, '')).toBe('Ready.');
     expect(browserStatusLine({ provisioned: true, status: 'booting' }, '')).toMatch(/Starting up/);
     expect(browserStatusLine({ provisioned: true, status: 'stopped' }, '')).toMatch(/Asleep/);
@@ -50,27 +50,37 @@ describe('BrowserSettingsSection', () => {
     updateSettings.mockReset();
   });
 
-  it('offers setup until the browser exists, then turns it on', async () => {
+  it('is a switch, with no setup button: turning it on starts a browser that does not exist yet', async () => {
     fetchBrowseStatus.mockResolvedValue({ provisioned: false, status: 'none' });
     provisionBrowser.mockResolvedValue({ provisioned: true, status: 'provisioning' });
     const setSetting = vi.fn();
-    render(<BrowserSettingsSection settings={{}} setSetting={setSetting} />);
-    const button = await screen.findByRole('button', { name: 'Set up' });
-    await waitFor(() => expect(button).not.toBeDisabled());
-    fireEvent.click(button);
+    render(<BrowserSettingsSection settings={{ browserEnabled: false }} setSetting={setSetting} />);
+    const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
+    await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Set up' })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(setSetting).toHaveBeenCalledWith('browserEnabled', true);
     await waitFor(() => expect(provisionBrowser).toHaveBeenCalled());
-    await waitFor(() => expect(setSetting).toHaveBeenCalledWith('browserEnabled', true));
-    expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
   });
 
-  it('shows the toggle for a provisioned browser', async () => {
+  it('turning on a browser that exists only saves the switch', async () => {
     fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
     const setSetting = vi.fn();
     render(<BrowserSettingsSection settings={{ browserEnabled: false }} setSetting={setSetting} />);
-    const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
-    fireEvent.click(toggle);
+    await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('switch', { name: 'Shared browser' }));
     expect(setSetting).toHaveBeenCalledWith('browserEnabled', true);
-    expect(screen.getByText(/Ready\./)).toBeInTheDocument();
+    expect(provisionBrowser).not.toHaveBeenCalled();
+  });
+
+  it('shows where it runs, and its status, only while it is on', async () => {
+    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
+    const { rerender } = render(<BrowserSettingsSection settings={{}} setSetting={vi.fn()} />);
+    expect(await screen.findByText(/Ready\./)).toBeInTheDocument();
+    expect(screen.getByText('Where the browser runs')).toBeInTheDocument();
+    rerender(<BrowserSettingsSection settings={{ browserEnabled: false }} setSetting={vi.fn()} />);
+    expect(screen.queryByText('Where the browser runs')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ready\./)).not.toBeInTheDocument();
   });
 
   it('the shared browser is on until someone turns it off', async () => {
