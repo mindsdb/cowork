@@ -1,8 +1,3 @@
-// A web build without the platform UI runs against its own server: no
-// desktop app beside it, no MindsHub sign-in, and scheduled tasks run on that
-// server. Every line below used to tell such a deployment's users about a
-// desktop app or MindsHub. selfHostedCopy.test.jsx pins the same lines on the
-// platform build, where they must not change.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
