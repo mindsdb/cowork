@@ -134,10 +134,10 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     }
   });
 
-  it('drops the items curated away (Profile / General / Documentation / theme toggle)', () => {
+  it('drops the items curated away (Profile / General / Documentation)', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    for (const label of [/^Profile$/, /^General$/, /Documentation/, /Dark mode/, /Light mode/]) {
+    for (const label of [/^Profile$/, /^General$/, /Documentation/, /dark mode/i, /light mode/i]) {
       expect(screen.queryByRole('menuitem', { name: label })).toBeNull();
     }
   });

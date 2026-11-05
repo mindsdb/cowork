@@ -82,7 +82,9 @@ function PhaseRow({
     <div
       onClick={onClick}
       className={clsx(
-        'flex items-start gap-2.5 py-1',
+        // px-1, like the rail's other rows, so the step markers line up
+        // under the section heading and the Context row icons.
+        'flex items-start gap-2.5 px-1 py-1',
         onClick && 'cursor-pointer'
       )}
       title={sublabel || displayLabel}

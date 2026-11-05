@@ -49,6 +49,19 @@
   --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
+  /* App chrome. One fixed titlebar row spans the window (window controls,
+     sidebar toggle, brand menu, the active view's header, app-wide actions);
+     the sidebar docks flush below it at --sidebar-w. The floor keeps the
+     titlebar's sidebar zone wide enough for its core controls on macOS
+     (window controls, toggle, "MindsHub" and the Cowork/Code icons), about
+     30% of the narrowest docked window; the ceiling is where the switch
+     has room for its labels. Narrower windows use the drawer. Where CSS
+     round() is supported (below), it is rounded to a whole pixel, so
+     controls aligned to the sidebar's right edge land on the pixel grid and
+     their 1px icon strokes stay crisp. */
+  --titlebar-h:   52px;
+  --sidebar-w:    clamp(268px, 24vw, 344px);
+
   /* Aqua (primary) — palette base, used by both themes */
   --primary-50:  #CBF1F9;
   --primary-300: #25BBD3;
@@ -105,6 +118,9 @@
   --space-8:  32px;
   --space-10: 40px;
   --space-12: 48px;
+}
+@supports (width: round(down, 1.5px, 1px)) {
+  :root { --sidebar-w: round(down, clamp(268px, 24vw, 344px), 1px); }
 }
 
 /* ─── Light mode (default) ────────────────────────────────────────────────
@@ -481,15 +497,211 @@ input, textarea { font-family: inherit; }
   overflow: hidden;
 }
 .workspace-mode-panel[hidden] { display: none; }
-.drag-region { -webkit-app-region: drag; }
-/* Default everything to draggable — the window-shell sets drag on the
-   outermost container so the user can pick the window up from any
-   visual surface (sidebar gaps, content panels, the gravity-field
-   bands at the edges, etc.). */
 
-/* Form controls + interactive surfaces explicitly opt OUT so clicks,
-   text selection, and scrolling work. The composer + chat area + modals
-   are real interactive surfaces; everything else stays draggable. */
+/* ─── App titlebar ──────────────────────────────────────────────────────────
+   One fixed row across the window: the sidebar zone (window controls inset,
+   sidebar toggle, brand menu), the active view's header, and app-wide
+   controls. No hairline under the row: the header sits on the page surface.
+   The docked sidebar zone shares the sidebar's surface and right edge so the
+   sidebar reads as one column. */
+.app-titlebar {
+  height: var(--titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: 2;
+}
+/* The titlebar has no hairline, so a view's scroller fades its content out
+   under the row instead of clipping it at a hard edge. The fade sits in the
+   scroller's top padding, so it only shows once content scrolls into it. A
+   second opaque layer over the right 16px keeps the scrollbar unfaded.
+   Chat transcripts get the same fade from ChatScroller (components/chat). */
+.titlebar-fade {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 24px)), linear-gradient(#000, #000);
+          mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 24px)), linear-gradient(#000, #000);
+}
+/* Pages whose title scrolls with them sit it 12px under the titlebar
+   (PageHeader), so their fade stays inside that padding and never dims the
+   title at rest. */
+.titlebar-fade--page { --fade-top: 12px; }
+.titlebar-fade {
+  -webkit-mask-size: 100% 100%, 16px 100%;
+          mask-size: 100% 100%, 16px 100%;
+  -webkit-mask-position: 0 0, 100% 0;
+          mask-position: 0 0, 100% 0;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+}
+/* Collapsing the sidebar shifts this row's start past the window controls
+   and the toggle; it eases on the sidebar's own curve so the two read as one
+   motion. */
+.app-titlebar { transition: padding-left var(--dur-layout) var(--ease-out); }
+.app-titlebar__lead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  animation: titlebar-lead-in var(--dur-layout) var(--ease-out);
+}
+@keyframes titlebar-lead-in { from { opacity: 0; } }
+/* Controls at the titlebar's start rest in the mode switch's quieter ink so
+   the band reads as one weight. */
+.app-titlebar__lead > .icon-btn,
+.app-sidebar-toggle > .icon-btn { flex: none; color: var(--ink-3); }
+/* Titlebar controls are 32px with 16px glyphs: the same glyph size as the
+   sidebar's nav icons, in a target that suits the 52px row. */
+.app-titlebar__lead > .icon-btn,
+.app-sidebar-toggle > .icon-btn,
+.app-titlebar__attention .icon-btn { width: 32px; height: 32px; border-radius: var(--r-8); }
+.app-sidebar-toggle {
+  position: absolute;
+  top: 0;
+  height: var(--titlebar-h);
+  display: flex;
+  align-items: center;
+  z-index: 3;
+}
+/* The sidebar's share of the titlebar band: window controls, the slot the
+   toggle floats over, then the workspace switch at its end. It is the
+   switch's container, so the labels hide when the sidebar is too narrow. */
+.app-sidebar__head {
+  height: var(--titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 10px;
+  box-sizing: border-box;
+  container: brand-zone / inline-size;
+  -webkit-app-region: drag;
+}
+.app-sidebar__toggle-slot { flex: none; width: 32px; }
+.app-titlebar__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 12px;
+}
+.app-titlebar__slot {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.app-titlebar__view {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 20px;
+  overflow: hidden;
+}
+.app-titlebar.is-collapsed .app-titlebar__view { padding-left: 8px; }
+/* A divider between the view's actions and the app controls, only when the
+   view has actions on the right (a crumb-only trail sits at the far left)
+   and there are app controls to divide them from: docked, search and the
+   bell live in the sidebar, and the app zone is empty. */
+.app-titlebar__app { flex: none; display: flex; align-items: center; gap: 2px; }
+.app-titlebar__slot:has(.app-titlebar__view > :nth-child(2), .code-taskbar__actions) + .app-titlebar__app:not(:empty)::before {
+  content: '';
+  width: 1px;
+  height: 18px;
+  margin: 0 6px 0 2px;
+  background: var(--line);
+}
+.app-titlebar__attention:empty { display: none; }
+
+/* A hairline between neighbouring right-rail sections; the rail's gap sits
+   above it and this padding below, so the rule is centred between them. */
+.rail-section + .rail-section {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+/* The brand row at the top of the sidebar: the logo and the product's name,
+   with the sidebar's width to itself. A name longer than the row fades out
+   at its end. A custom nav title colour (--nav-title-color) still applies. */
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-width: 0;
+  height: 34px;
+  /* The left inset lines the logo up with the nav rows' icons below; the
+     right matches the head row's, so search lines up under the switch. */
+  padding: 0 10px 0 26px;
+}
+.app-brand__mark { color: var(--accent); }
+.app-brand .icon-btn { width: 28px; height: 28px; border-radius: var(--r-8); }
+/* Bell and search in the same quiet ink as the other titlebar controls. */
+.app-brand .icon-btn,
+.app-titlebar__app .icon-btn { color: var(--ink-3); }
+.app-brand .icon-btn:hover,
+.app-titlebar__app .icon-btn:hover { color: var(--ink); }
+.app-brand__attention { display: flex; flex: none; }
+.app-brand__attention:empty { display: none; }
+.app-brand .anton-sidebar__logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+/* A wide logo carries the name itself, so it takes the row on its own. */
+.app-brand .anton-sidebar__logo.is-wide {
+  width: auto;
+  max-width: 100%;
+  height: 28px;
+  border-radius: 0;
+  object-position: left center;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+/* The switch shows its labels only where they fit: the toggle slot and the
+   labelled switch need ~196px of the head row's content box (the macOS
+   window-controls inset is already taken off). */
+/* Each label's width is rounded up to a whole pixel (WorkspaceSwitch), so
+   the right-aligned switch and its icons sit on the pixel grid. */
+.app-brand__switch-label { display: inline-block; }
+@container brand-zone (max-width: 196px) {
+  .app-brand__switch-label { display: none; }
+}
+/* A disabled bell holds the attention slot while Code's real one is away
+   (see AttentionSlot). */
+/* .icon-btn sets its own display; the compound selector outranks it. */
+.icon-btn.app-attention-placeholder { display: none; opacity: 0.4; cursor: default; }
+.icon-btn.app-attention-placeholder:hover { background: transparent; }
+:is(.app-brand__attention, .app-titlebar__attention):empty + .app-attention-placeholder { display: inline-grid; }
+/* Bell and search sit together at the row's end, as one group. */
+.app-brand__actions { display: flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
+.app-brand__actions:empty { display: none; }
+.app-brand .anton-sidebar__wordmark {
+  padding-right: 0;
+  font-size: 17px;
+  font-weight: 620;
+  letter-spacing: -0.012em;
+  text-transform: none;
+  /* Fills the row, so the fade lands at the row's end, not a short name's. */
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+/* The workspace switch sits at the head row's right edge. */
+.app-brand__switch { flex: none; margin-left: auto; }
+body[data-theme="dark"] .app-brand .anton-sidebar__wordmark { text-shadow: none; }
+.drag-region { -webkit-app-region: drag; }
+/* The titlebar (.app-titlebar) is the window's drag region. Form controls
+   and interactive surfaces opt OUT so clicks, text selection, and scrolling
+   work inside it and anywhere else a drag region is set. */
 button,
 input,
 textarea,
@@ -1746,15 +1958,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 /* ─── Anton sidebar (per anton-sidebar-{dark,light} guideline) ────────────
    Token-driven; dark mode adds the cyan halo + glow on emphasis. */
 
-.anton-sidebar__chrome {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 14px 8px;
-}
-.anton-sidebar__chrome-left { display: flex; align-items: center; gap: 14px; }
-.anton-sidebar__chrome-buttons { display: flex; gap: 2px; }
-
 .anton-sidebar__logo {
   width: 18px;
   height: 18px;
@@ -1896,44 +2099,9 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .first-artifact-tip-arrow[data-side="top"]    { bottom: -5px; }
 .first-artifact-tip-arrow[data-side="bottom"] { top: -5px; }
 
-/* New task CTA wrapper — the button itself is the tinted variant,
-   full width (<Button variant="tinted" block size="lg">). */
-.workspace-mode-switcher {
-  padding: 0 10px 8px;
-}
-.workspace-mode-switch {
-  width: 100%;
-}
-.workspace-mode-switch > button {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 30px;
-  justify-content: center;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
+/* New task is the first nav row, spaced like the rows below it. */
+.anton-sidebar__cta-wrap { padding: 2px 10px 1px; }
 
-.anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
-/* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
-   Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the
-   default .btn.lg carries 0 16px, which pushed the +/label 6px past the nav
-   icons below it and its ⌘N past the nav badges. Tighten the horizontal
-   padding 16→10 so the CTA's content and shortcut line up exactly with the
-   denser nav rows (ENG-1038). A deliberately non-standard, rail-scoped button. */
-.anton-sidebar__cta-wrap .btn.lg {
-  padding-left: 10px;
-  padding-right: 10px;
-  /* Match the nav rows' 13px body (the standard .btn.lg is 14px) so the CTA
-     reads as part of the same rail, not a heavier element above it. The label
-     weight is set on the span in Sidebar.jsx. */
-  font-size: 13px;
-  /* Match the nav rows' box exactly — same 30px height and var(--r) radius as
-     .app-sidebar .nav-item (the standard .btn.lg is a taller 36px). The CTA
-     keeps its tinted colors but reads as the same size and shape as the menu
-     options below it, not a heavier element above them. */
-  height: 30px;
-  border-radius: var(--r);
-}
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
@@ -1976,10 +2144,13 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* Section labels */
 .app-sidebar .section-label {
+  /* Sidebar group headers sit on the row text size, a step above other
+     subheadings. */
+  font-size: 13px;
   /* More space above than below, so each heading groups with the rows it
      introduces. The 20px inline padding (10px nav-list gutter + 10px row
      inset) starts the text where the row icons and titles start. */
-  padding: 16px 20px 4px;
+  padding: 20px 20px 6px;
   margin: 0;
 }
 
@@ -2048,11 +2219,22 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 /* Footer status bar */
 .anton-sidebar__footer {
   border-top: 1px solid var(--line);
-  padding: 8px 10px;
+  /* The sidebar body is inset 6px (px-1.5); the divider still runs edge to
+     edge, and the contents keep the same inset as the rows above. */
+  margin-inline: -6px;
+  /* More room below than above, so the account row sits clear of the
+     window's bottom edge. */
+  padding: 10px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: transparent;
+}
+.anton-sidebar__footer-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: transparent;
+  min-width: 0;
 }
 .anton-sidebar__footer-divider {
   display: inline-block;
@@ -2181,110 +2363,26 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   background: var(--surface-2);
 }
 
-/* Small chrome button (used in footer + sidebar header where 22px is tight) */
-.chrome-btn--small {
-  width: 22px; height: 22px;
+/* Footer controls stand as tall as the account row beside them (a 22px
+   avatar inside 6px of padding), with its 8px corners and the same quiet
+   hover: an ink tint, no accent colour or glow. */
+.anton-sidebar__footer-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  width: 34px; height: 34px;
+  padding: 0;
   border: 0;
-  border-radius: var(--r);
+  border-radius: var(--r-8);
+  background: transparent;
   color: var(--ink-3);
   cursor: pointer;
-  transition: background var(--dur-glow), color var(--dur-glow), box-shadow var(--dur-glow);
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
-.chrome-btn--small:hover {
-  color: var(--ink);
+.anton-sidebar__footer-btn:hover,
+.anton-sidebar__footer-btn.is-on {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
-}
-body[data-theme="dark"] .chrome-btn--small:hover {
-  color: var(--accent);
-  background: transparent;
-  box-shadow: 0 0 16px rgba(34,211,238,0.25);
-}
-.chrome-btn--small.is-on {
-  color: var(--accent, #5d9287);
-  background: color-mix(in srgb, var(--accent, #5d9287) 10%, transparent);
-}
-body[data-theme="dark"] .chrome-btn--small.is-on {
-  color: var(--accent);
-  background: transparent;
-  box-shadow: 0 0 14px rgba(34,211,238,0.30);
-}
-
-/* Floating corner row — the Display Settings toggle (opens ThemeModal —
-   Light/Dark + Normal/8-Bit) and, on desktop, a bare Coding Mode toggle
-   beside it. Restored to the bottom-right placement the onboarding pages
-   always kept (App.tsx's .arcade-theme-toggle, which never moved: CoworkApp
-   hasn't mounted yet there, so those pages have no sidebar footer to host
-   it). Same geometry/tokens as that version so the transition from
-   onboarding into the signed-in app is seamless. */
-.floating-toggle-row {
-  position: fixed;
-  right: 18px;
-  bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  z-index: 50;
-}
-/* Narrow/tablet band (sidebar popout, not yet the phone MobileShell): the
-   bottom-right corner overlaps task-list rows and the composer's send
-   button at this width, so the row moves up to the top-right instead —
-   just left of the per-view expand/collapse-right-panel button (ChatView /
-   ProjectsView), which sits ~14px from the content edge at ~28px wide. */
-.floating-toggle-row--top-right {
-  top: 18px;
-  right: 60px;
-  bottom: auto;
-}
-.floating-toggle {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-8);
-  color: var(--ink-2);
-  cursor: pointer;
-  box-shadow: var(--sh-1);
-  transition: background var(--dur-glow), color var(--dur-glow), box-shadow var(--dur-glow);
-}
-.floating-toggle:hover {
   color: var(--ink);
-  background: var(--ghost-hover);
-}
-body[data-theme="dark"] .floating-toggle:hover {
-  color: var(--accent);
-  box-shadow: 0 0 18px rgba(34,211,238,0.3);
-}
-/* Coding Mode toggle — deliberately bare (no border/background box) so it
-   reads as a status glyph next to the boxed Display Settings button, not a
-   second button of the same weight. Greyed out (--ink-4) when off, lit
-   accent when on; toggles coding mode directly on click (no modal). */
-.coding-mode-toggle {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 0;
-  color: var(--ink-4);
-  cursor: pointer;
-  transition: color var(--dur-hover), opacity var(--dur-hover);
-}
-.coding-mode-toggle:hover {
-  color: var(--ink-2);
-}
-.coding-mode-toggle.is-on {
-  color: var(--accent);
-}
-.coding-mode-toggle.is-on:hover {
-  opacity: 0.85;
 }
 
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
@@ -3600,6 +3698,16 @@ body[data-theme="dark"] .mshell__drawer-title {
    the head stop holding a readable title beside the button, and it drops
    under the title in the text column, so the tile column stays a column
    instead of leaving a hole beside a right-aligned button. */
+/* Home greeting: at rest the orb sits 58px left of the 640px text column.
+   Below ~756px of home width (676px inside its 40px side padding) there is
+   no room for it and it would run into the sidebar edge, so it hides; the
+   column stays put. Phone widths stack the orb above the text instead. */
+@media (min-width: 640px) {
+  @container home (max-width: 675px) {
+    .home-greeting-row[data-orb-rest] .home-orb { visibility: hidden; }
+  }
+}
+
 @container chat-col (max-width: 400px) {
   .card.chat-artifact-card {
     grid-template-areas:
@@ -4186,3 +4294,22 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
     grid-template-rows calc(var(--dur-layout) * 1.6) var(--ease-out),
     opacity calc(var(--dur-layout) * 0.9) var(--ease-out);
 }
+
+/* Code attention bell in the titlebar's app zone. */
+.app-attention-bell { position: relative; }
+.app-attention-bell__badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: var(--r-pill);
+  background: var(--warning, #c47f00);
+  color: #fff;
+  font: 600 9.5px/14px var(--font-body);
+  text-align: center;
+  box-sizing: border-box;
+}
+.app-attention-bell__heading { font: 500 11px var(--font-body); color: var(--ink-3); }
+.app-attention-bell__error { display: block; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); white-space: normal; }

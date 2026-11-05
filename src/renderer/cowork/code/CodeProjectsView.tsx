@@ -68,7 +68,7 @@ export function CodeProjectsView({
   };
 
   return (
-    <main className="code-projects-view">
+    <main className="code-projects-view titlebar-fade titlebar-fade--page">
       <PageHeader
         title="Projects"
         subtitle="Repositories, folders, skills, and defaults shared by coding tasks."
