@@ -240,7 +240,7 @@ export function TaskBar({
               aria-expanded={filesOpen}
               aria-controls="code-files-panel"
             >
-              {Ico.folder(14)}
+              {Ico.folder(16)}
             </Button>
           </Tooltip>}
           {can('terminal') && <Tooltip content="Terminal">
@@ -252,7 +252,7 @@ export function TaskBar({
               aria-label="Terminal"
               aria-expanded={terminalOpen}
             >
-              {Ico.code(14)}
+              {Ico.code(16)}
             </Button>
           </Tooltip>}
           {can('review') && <Tooltip content="Review changes">
@@ -265,7 +265,7 @@ export function TaskBar({
               aria-expanded={reviewOpen}
               aria-controls="code-review-panel"
             >
-              {Ico.panelExpandLeft(14)}
+              {Ico.panelExpandLeft(16)}
               {files.length > 0 && (
                 <span className="code-taskbar__diff">
                   {files.length} <i>+{additions}</i> <b>−{deletions}</b>
@@ -275,7 +275,7 @@ export function TaskBar({
           </Tooltip>}
         </div>
         {!!taskActions.length && <Menu
-          trigger={<Button icon size="sm" variant="subtle" aria-label="Coding task actions">{Ico.moreVert(14)}</Button>}
+          trigger={<Button icon size="sm" variant="subtle" aria-label="Coding task actions">{Ico.moreVert(16)}</Button>}
           items={taskActions}
         />}
       </div>

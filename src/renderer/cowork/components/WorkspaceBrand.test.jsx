@@ -83,8 +83,8 @@ describe('WorkspaceSwitch', () => {
     expect(onChange).toHaveBeenCalledWith('code');
   });
 
-  it('names each mode on hover', async () => {
-    render(<WorkspaceSwitch mode="cowork" onChange={() => {}} />);
+  it('names each mode on hover, where the labels may be hidden', async () => {
+    render(<WorkspaceSwitch mode="cowork" onChange={() => {}} compact />);
     await userEvent.hover(screen.getByRole('button', { name: 'Code' }));
     expect(await screen.findByText('Code mode')).toBeInTheDocument();
   });
@@ -96,9 +96,10 @@ describe('WorkspaceSwitch', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('is icon-only, named by each mode', () => {
-    render(<WorkspaceSwitch mode="cowork" onChange={() => {}} />);
+  it('labels each mode, and drops the labels when compact', () => {
+    const { rerender } = render(<WorkspaceSwitch mode="cowork" onChange={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Code' })).toHaveTextContent('Code');
+    rerender(<WorkspaceSwitch mode="cowork" onChange={() => {}} compact />);
     expect(screen.getByRole('button', { name: 'Code' })).not.toHaveTextContent('Code');
-    expect(screen.getByRole('button', { name: 'Cowork' })).not.toHaveTextContent('Cowork');
   });
 });

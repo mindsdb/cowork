@@ -1,4 +1,5 @@
 import Ico from './Icons';
+import AttentionSlot from './AttentionSlot';
 import { WorkspaceSwitch } from './WorkspaceBrand';
 import { Tooltip } from './ui';
 import { useAppHeaderSlots } from './appHeader';
@@ -44,12 +45,16 @@ export default function AppTitlebar({
               </button>
             </Tooltip>
           )}
-          {brand?.showSwitch && <WorkspaceSwitch mode={brand.mode} onChange={brand.onChange} />}
+          {brand?.showSwitch && <WorkspaceSwitch mode={brand.mode} onChange={brand.onChange} compact />}
         </div>
       )}
       <div className="app-titlebar__main">
         <div ref={setHeader} className="app-titlebar__slot" />
         <div className="app-titlebar__app">
+          {/* Bell then search, the same order as in the sidebar's brand row. */}
+          {!docked && (
+            <AttentionSlot slotRef={setAttention} className="app-titlebar__attention" placeholder={brand?.showSwitch} />
+          )}
           {!docked && (
             <Tooltip content={searchShortcut ? `Search  (${searchShortcut})` : 'Search'}>
               <button type="button" className="icon-btn" onClick={onOpenSearch} aria-label="Search">
@@ -57,7 +62,6 @@ export default function AppTitlebar({
               </button>
             </Tooltip>
           )}
-          {!docked && <div ref={setAttention} className="app-titlebar__attention" />}
         </div>
       </div>
     </div>

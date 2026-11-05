@@ -558,7 +558,8 @@ input, textarea { font-family: inherit; }
   z-index: 3;
 }
 /* The sidebar's share of the titlebar band: window controls, the slot the
-   toggle floats over, then the workspace switch at its end. */
+   toggle floats over, then the workspace switch at its end. It is the
+   switch's container, so the labels hide when the sidebar is too narrow. */
 .app-sidebar__head {
   height: var(--titlebar-h);
   flex: none;
@@ -567,6 +568,7 @@ input, textarea { font-family: inherit; }
   gap: 2px;
   padding-right: 10px;
   box-sizing: border-box;
+  container: brand-zone / inline-size;
   -webkit-app-region: drag;
 }
 .app-sidebar__toggle-slot { flex: none; width: 32px; }
@@ -598,9 +600,11 @@ input, textarea { font-family: inherit; }
 }
 .app-titlebar.is-collapsed .app-titlebar__view { padding-left: 8px; }
 /* A divider between the view's actions and the app controls, only when the
-   view has actions on the right (a crumb-only trail sits at the far left). */
-.app-titlebar__app { flex: none; display: flex; align-items: center; gap: 4px; }
-.app-titlebar__slot:has(.app-titlebar__view > :nth-child(2), .code-taskbar__actions) + .app-titlebar__app::before {
+   view has actions on the right (a crumb-only trail sits at the far left)
+   and there are app controls to divide them from: docked, search and the
+   bell live in the sidebar, and the app zone is empty. */
+.app-titlebar__app { flex: none; display: flex; align-items: center; gap: 2px; }
+.app-titlebar__slot:has(.app-titlebar__view > :nth-child(2), .code-taskbar__actions) + .app-titlebar__app:not(:empty)::before {
   content: '';
   width: 1px;
   height: 18px;
@@ -625,13 +629,18 @@ input, textarea { font-family: inherit; }
   gap: 10px;
   flex: none;
   min-width: 0;
-  height: 40px;
+  height: 34px;
   /* The left inset lines the logo up with the nav rows' icons below; the
      right matches the head row's, so search lines up under the switch. */
-  padding: 0 10px 6px 26px;
+  padding: 0 10px 0 26px;
 }
 .app-brand__mark { color: var(--accent); }
 .app-brand .icon-btn { width: 28px; height: 28px; border-radius: var(--r-8); }
+/* Bell and search in the same quiet ink as the other titlebar controls. */
+.app-brand .icon-btn,
+.app-titlebar__app .icon-btn { color: var(--ink-3); }
+.app-brand .icon-btn:hover,
+.app-titlebar__app .icon-btn:hover { color: var(--ink); }
 .app-brand__attention { display: flex; flex: none; }
 .app-brand__attention:empty { display: none; }
 .app-brand .anton-sidebar__logo {
@@ -649,6 +658,18 @@ input, textarea { font-family: inherit; }
   flex: 0 1 auto;
   min-width: 0;
 }
+/* The switch shows its labels only where they fit: the toggle slot and the
+   labelled switch need ~196px of the head row's content box (the macOS
+   window-controls inset is already taken off). */
+@container brand-zone (max-width: 196px) {
+  .app-brand__switch-label { display: none; }
+}
+/* A disabled bell holds the attention slot while Code's real one is away
+   (see AttentionSlot). */
+/* .icon-btn sets its own display; the compound selector outranks it. */
+.icon-btn.app-attention-placeholder { display: none; opacity: 0.4; cursor: default; }
+.icon-btn.app-attention-placeholder:hover { background: transparent; }
+:is(.app-brand__attention, .app-titlebar__attention):empty + .app-attention-placeholder { display: inline-grid; }
 /* Bell and search sit together at the row's end, as one group. */
 .app-brand__actions { display: flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
 .app-brand__actions:empty { display: none; }
@@ -2069,7 +2090,8 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .first-artifact-tip-arrow[data-side="top"]    { bottom: -5px; }
 .first-artifact-tip-arrow[data-side="bottom"] { top: -5px; }
 
-.anton-sidebar__cta-wrap { padding: 2px 10px 10px; }
+/* New task is the first nav row, spaced like the rows below it. */
+.anton-sidebar__cta-wrap { padding: 2px 10px 1px; }
 
 
 /* Override existing .nav-item rules to follow the guideline shape */
@@ -2332,43 +2354,26 @@ body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   background: var(--surface-2);
 }
 
-/* Small chrome button (used in footer + sidebar header where 22px is tight) */
-.chrome-btn--small {
-  width: 22px; height: 22px;
+/* Footer controls stand as tall as the account row beside them (a 22px
+   avatar inside 6px of padding), with its 8px corners and the same quiet
+   hover: an ink tint, no accent colour or glow. */
+.anton-sidebar__footer-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  width: 34px; height: 34px;
+  padding: 0;
   border: 0;
-  border-radius: var(--r);
+  border-radius: var(--r-8);
+  background: transparent;
   color: var(--ink-3);
   cursor: pointer;
-  transition: background var(--dur-glow), color var(--dur-glow), box-shadow var(--dur-glow);
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
-.chrome-btn--small:hover {
-  color: var(--ink);
+.anton-sidebar__footer-btn:hover,
+.anton-sidebar__footer-btn.is-on {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
-}
-body[data-theme="dark"] .chrome-btn--small:hover {
-  color: var(--accent);
-  background: transparent;
-  box-shadow: 0 0 16px rgba(34,211,238,0.25);
-}
-.chrome-btn--small.is-on {
-  color: var(--accent, #5d9287);
-  background: color-mix(in srgb, var(--accent, #5d9287) 10%, transparent);
-}
-body[data-theme="dark"] .chrome-btn--small.is-on {
-  color: var(--accent);
-  background: transparent;
-  box-shadow: 0 0 14px rgba(34,211,238,0.30);
-}
-
-/* Footer controls stand as tall as the account row beside them (a 22px
-   avatar inside 6px of padding), with its 8px corners. */
-.anton-sidebar__footer-btn {
-  width: 34px; height: 34px;
-  border-radius: var(--r-8);
+  color: var(--ink);
 }
 
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter

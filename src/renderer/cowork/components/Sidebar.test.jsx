@@ -143,6 +143,16 @@ describe('Sidebar — Code workspace and shell controls', () => {
     expect(container.querySelector('.app-brand__attention')).toBeNull();
   });
 
+  it('holds the bell\'s spot with a disabled bell only where Code is available', () => {
+    hostMock.isWeb = false;
+    const brand = { wordmark: 'MindsHub', stockMark: true, mode: 'cowork', showSwitch: true, onChange: vi.fn() };
+    const { rerender } = render(<Sidebar {...baseProps} brand={brand} />);
+    const bell = screen.getByRole('button', { name: 'Notifications, for Code tasks' });
+    expect(bell).toHaveAttribute('aria-disabled', 'true');
+    rerender(<Sidebar {...baseProps} brand={{ ...brand, showSwitch: false }} />);
+    expect(screen.queryByRole('button', { name: 'Notifications, for Code tasks' })).toBeNull();
+  });
+
   it('as a drawer, repeats the close toggle in its own top row', () => {
     hostMock.isWeb = false;
     const onToggleCollapsed = vi.fn();

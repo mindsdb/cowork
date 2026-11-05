@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import Ico from './Icons';
+import AttentionSlot from './AttentionSlot';
 import ProviderIcon from './ProviderIcon';
 import { Tooltip } from './ui/Tooltip';
 import { ToggleGroup } from './ui/ToggleGroup';
@@ -18,10 +19,11 @@ export function isWideLogo(width, height) {
   return width > 0 && height > 0 && width / height >= WIDE_LOGO_RATIO;
 }
 
-// The Cowork/Code switch, an icon-only segmented toggle in the sidebar's
-// titlebar row, or in the titlebar while the sidebar is hidden. Each mode is
-// named by its tooltip and accessible name.
-export function WorkspaceSwitch({ mode, onChange }) {
+// The Cowork/Code switch, a segmented toggle in the sidebar's titlebar row.
+// Its labels show where the row has room for them (a container query in
+// globals.css). Compact (in the titlebar while the sidebar is hidden) it is
+// icon-only. Tooltips name each mode either way.
+export function WorkspaceSwitch({ mode, onChange, compact = false }) {
   return (
     <ToggleGroup
       size="md"
@@ -35,7 +37,7 @@ export function WorkspaceSwitch({ mode, onChange }) {
         icon,
         'aria-label': label,
         tooltip: `${label} mode`,
-        label: null,
+        label: compact ? null : <span className="app-brand__switch-label">{label}</span>,
       }))}
     />
   );
@@ -48,7 +50,8 @@ export function WorkspaceSwitch({ mode, onChange }) {
 // product shows its own mark. App-wide controls sit at the row's end: the
 // attention slot (Code's bell portals into `attentionRef`) and search.
 export function SidebarBrand({
-  wordmark, logo, stockMark = false, attentionRef = null, onOpenSearch = null, searchShortcut = '',
+  wordmark, logo, stockMark = false, attentionRef = null, attentionPlaceholder = false,
+  onOpenSearch = null, searchShortcut = '',
 }) {
   const [wideLogo, setWideLogo] = useState(null);
   const wide = Boolean(logo) && wideLogo === logo;
@@ -71,7 +74,9 @@ export function SidebarBrand({
       {!logo && stockMark && <ProviderIcon maker="mindshub" size={26} nudgeY={-1.5} className="app-brand__mark" />}
       {!wide && <span className="anton-sidebar__wordmark">{wordmark}</span>}
       <div className="app-brand__actions">
-        {attentionRef && <div ref={attentionRef} className="app-brand__attention" />}
+        {attentionRef && (
+          <AttentionSlot slotRef={attentionRef} className="app-brand__attention" placeholder={attentionPlaceholder} />
+        )}
         {onOpenSearch && (
           <Tooltip content={searchShortcut ? `Search  (${searchShortcut})` : 'Search'}>
             <button type="button" className="icon-btn" onClick={onOpenSearch} aria-label="Search">

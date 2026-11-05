@@ -315,7 +315,7 @@ export default function Sidebar({
     <Tooltip content={displayToggle.label}>
       <button
         type="button"
-        className="chrome-btn--small anton-sidebar__footer-btn shrink-0 [-webkit-app-region:no-drag]"
+        className="anton-sidebar__footer-btn shrink-0 [-webkit-app-region:no-drag]"
         onClick={displayToggle.onClick}
         aria-label={displayToggle.label}
       >
@@ -532,6 +532,7 @@ export default function Sidebar({
           // Docked, the attention bell sits here beside search; hidden or as
           // a drawer, it stays in the titlebar.
           attentionRef={!popout && !collapsed ? setAttention : null}
+          attentionPlaceholder={brand.showSwitch}
           onOpenSearch={brand.onOpenSearch}
           searchShortcut={brand.searchShortcut}
         />
@@ -932,7 +933,8 @@ export default function Sidebar({
                 <Tooltip content="Settings">
                   <button
                     ref={workspaceReturnFocusRef}
-                    className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
+                    type="button"
+                    className={'anton-sidebar__footer-btn shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                     onClick={() => onNavigate('settings:backend')}
                     aria-label="Settings"
                   >
