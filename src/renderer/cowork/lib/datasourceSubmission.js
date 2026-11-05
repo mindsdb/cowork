@@ -141,7 +141,8 @@ const MYSQL_CUSTOM_CA_MISMATCH = 'The server\'s certificate could not be verifie
 // checked the server and on which form the engine has. '' when there is none.
 function hintFor(connection) {
   const code = connection?.validation_code || connection?.validationCode;
-  if (code !== 'tls_failed') return HINTS[code] || '';
+  // Own keys only: the code arrives off the wire, and `__proto__` would otherwise render an object.
+  if (code !== 'tls_failed') return Object.hasOwn(HINTS, code) ? HINTS[code] : '';
   const mysql = connection?.connector_id === 'mysql';
   const form = mysql ? 'mysql' : 'checkbox';
   if (Object.hasOwn(UNVERIFIED_CAUSES[form], connection?.tls_mode)) {

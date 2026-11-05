@@ -247,6 +247,12 @@ describe('describeConnectionState', () => {
     });
   });
 
+  it('gives no hint for a code that names a built-in object key', () => {
+    for (const code of ['__proto__', 'constructor', 'toString']) {
+      expect(describeConnectionState({ status: 'failed', validation_code: code }).hint).toBe('');
+    }
+  });
+
   it('never claims success for a status it does not recognise', () => {
     expect(describeConnectionState({ status: 'something_new' }).kind).toBe('pending');
     expect(describeConnectionState(null).kind).toBe('pending');
