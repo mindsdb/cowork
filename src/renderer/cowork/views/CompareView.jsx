@@ -850,6 +850,10 @@ function useComparisonSides(comparison, { onRefused } = {}) {
         const ended = () => finish(TRANSPORT_ERRORS.has(event?.code) ? message : '');
         const tries = reattached.current[label] || 0;
         if (!DROPPED_STREAM.has(event?.code) || tries >= MAX_REATTACH) {
+          // A stream that stalled, or kept dropping until the re-attaches ran
+          // out, says nothing about the turn: it may still be running. The side
+          // stays unknown, and takes no message, until a status check answers.
+          if (TRANSPORT_ERRORS.has(event?.code)) settle(label, 'unknown');
           ended();
           return;
         }

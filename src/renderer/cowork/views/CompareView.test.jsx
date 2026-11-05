@@ -864,6 +864,41 @@ describe('CompareView', () => {
     expect(tails).toHaveLength(2);
   });
 
+  // A stream that stalls, or keeps dropping until the re-attaches run out,
+  // leaves its turn's state unknown. If the other side's finishing reopened the
+  // box, a message for both would reach only that side.
+  it.each([
+    ['stalled', async (openB) => {
+      act(() => openB.onError('The response stopped arriving.', { code: 'stalled' }));
+    }],
+    ['out of re-attaches', async (openB, tails) => {
+      const drop = (callbacks) => act(() => callbacks.onError('The connection was reset.', { code: 'stream_error' }));
+      drop(openB);
+      await waitFor(() => expect(tails).toHaveLength(1));
+      drop(tails[0]);
+      await waitFor(() => expect(tails).toHaveLength(2));
+      drop(tails[1]);
+    }],
+  ])('keeps the box closed after a side\'s stream is lost (%s) until a check says it stopped', async (_case, lose) => {
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(screen.getByLabelText('Follow-up message'), { target: { value: 'next' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.streamMessage).toHaveBeenCalledTimes(2));
+    api.fetchInFlightStatus.mockResolvedValue({ in_flight: true });
+    const tails = [];
+    api.tailInFlight.mockImplementation((_id, callbacks) => { tails.push(callbacks); return { abort: vi.fn() }; });
+
+    await lose(openStreams['conv-b'], tails);
+    act(() => openStreams['conv-a'].onDone());
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
+    // Once a check finds B's turn over, the box opens again.
+    api.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
+    fireEvent.click(await screen.findByRole('button', { name: 'Check again' }));
+    expect(await screen.findByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
+  });
+
   it('does not attach a second stream to a side that has already started', async () => {
     mockHistory([]);
     api.createComparison.mockResolvedValue(comparison());
