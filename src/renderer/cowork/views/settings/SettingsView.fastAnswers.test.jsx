@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 
@@ -11,8 +11,9 @@ vi.mock('../../api', () => ({
   fetchRecommendedModels: vi.fn(async () => ({})),
   testProviders: vi.fn(async () => ({ providerStatus: {}, providerStatusDetails: {} })),
 }));
+const host = vi.hoisted(() => ({ isElectron: true, isWeb: false, isMac: () => false, openExternal: () => {} }));
 vi.mock('../../../platform/host', () => ({
-  host: { isElectron: true, isWeb: false, isMac: () => false, openExternal: vi.fn() },
+  host,
   getVersionInfo: vi.fn(async () => ({ app: '1.2.3', ui: null, source: 'bundled' })),
   isElectron: true,
   getAccessToken: vi.fn(async () => ''),
@@ -72,6 +73,8 @@ const ROUTER_ROW = 'Routing and summarization model';
 const SWITCH = 'Fast answers with Jev';
 const expandAdvanced = async () => fireEvent.click(await screen.findByRole('button', { name: 'Advanced Settings' }));
 
+afterEach(() => { host.isWeb = false; });
+
 describe('the router row', () => {
   it('is hidden once the server routes with a decision model', async () => {
     render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev' } })} />);
@@ -123,6 +126,14 @@ describe('the Fast answers with Jev switch', () => {
   it('shows on a server that sends no budget settings', async () => {
     const { maxToolRounds: _r, maxContinuations: _c, ...noBudgets } = settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev' } });
     render(<Harness initial={noBudgets} />);
+    await expandAdvanced();
+    expect(screen.getByLabelText(SWITCH)).toBeChecked();
+    expect(screen.queryByText('Max steps per task')).toBeNull();
+  });
+
+  it('keeps Advanced Settings on hosted web, where the budget rows are hidden', async () => {
+    host.isWeb = true;
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev' } })} />);
     await expandAdvanced();
     expect(screen.getByLabelText(SWITCH)).toBeChecked();
     expect(screen.queryByText('Max steps per task')).toBeNull();
