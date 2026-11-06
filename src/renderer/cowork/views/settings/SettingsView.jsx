@@ -2264,7 +2264,16 @@ export default function SettingsView({
   const org = orgBranding?.enabled ? orgBranding : null;
   // With member choice off, nobody (admins included) has personal style
   // controls: the section says so, and points admins to Branding.
-  const personalStyleOff = Boolean(org && !org.appearance.membersCanChoose);
+  // With member choice off, only the fields the org set are locked: each shows
+  // a note instead of its controls, and the rest stay the member's to choose.
+  // When every field is the org's, one message replaces them all.
+  const personalStyleOff = Boolean(org && !org.appearance.membersCanChoose
+    && (orgLocks.style || SKIN_LOCKED) && orgLocks.theme && orgLocks.greeting);
+  const orgSetsNote = (field) => (
+    <div className="py-2.5 text-sm text-ink-3 border-b border-solid border-line last:border-b-0" data-testid={`org-sets-${field}`}>
+      Your organization sets the {field}.
+    </div>
+  );
   // A deep link's part of Appearance, scrolled to once the page is showing.
   const appearanceShowing = shownSection === 'appearance';
   useEffect(() => {
@@ -2297,6 +2306,8 @@ export default function SettingsView({
           </div>
         ) : (
         <>
+        {orgLocks.style ? orgSetsNote('style') : (
+        <>
         {SKIN_LOCKED ? (
           <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
@@ -2319,6 +2330,9 @@ export default function SettingsView({
             />
           </Section>
         )}
+        </>
+        )}
+        {orgLocks.theme ? orgSetsNote('theme') : (
         <Section title="Theme" subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
           <ToggleGroup
             value={theme || 'dark'}
@@ -2341,7 +2355,8 @@ export default function SettingsView({
             ]}
           />
         </Section>
-        {normalizeSkin(skin) === 'custom' && customTheme && (
+        )}
+        {!orgLocks.style && normalizeSkin(skin) === 'custom' && customTheme && (
           <>
             <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
               <input
@@ -2353,7 +2368,7 @@ export default function SettingsView({
                 className={COLOR_SWATCH_INPUT}
               />
             </Section>
-            <Section title="Background — Light mode" subtitle="Tints the app in Light; a dark pick becomes a light tint of its hue, and text adjusts to stay readable. Or use Light's default.">
+            <Section title="Light background" subtitle="Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or Light's stock look applies.">
               <div className="flex items-center gap-3">
                 <input
                   type="color"
@@ -2375,7 +2390,7 @@ export default function SettingsView({
                 </label>
               </div>
             </Section>
-            <Section title="Background — Dark mode" subtitle="Tints the app in Dark; a light pick becomes a dark shade of its hue, and text adjusts to stay readable. Or use Dark's default.">
+            <Section title="Dark background" subtitle="Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or Dark's stock look applies.">
               <div className="flex items-center gap-3">
                 <input
                   type="color"
@@ -2432,6 +2447,7 @@ export default function SettingsView({
             </Section>
           </>
         )}
+        {orgLocks.greeting ? orgSetsNote('greeting') : (
         <Section title="Greeting" subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
@@ -2446,6 +2462,7 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
+        )}
           {/* Hosted MindsHub has no per-person sidebar title, logo or tab icon. */}
           {!hostedMindsHub && (
             <>

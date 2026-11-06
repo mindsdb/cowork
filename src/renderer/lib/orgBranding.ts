@@ -7,7 +7,8 @@
 //   1. the deployment brand (/brand/brand.js): always wins over the org, and
 //      its style lock (skinLocked) wins over everything
 //   2. the org's appearance, when the org has turned off "Let members choose
-//      their own look" (membersCanChoose: false)
+//      their own look" (membersCanChoose: false), for the fields it sets
+//      (theme, style with its recipe, greeting); the rest stay the member's
 //   3. the member's own choices (skin, the "Design your own" recipe, theme,
 //      greeting; and outside hosted MindsHub, the sidebar title, its color,
 //      the sidebar logo and the tab icon)
@@ -49,7 +50,10 @@ export interface OrgAppearance {
   /** The admin's custom title; used only in 'custom' mode. */
   sidebarTitle: string | null;
   accent: string | null;
-  background: string | null;
+  /** The custom style's light-theme background (hex), or null. */
+  backgroundLight: string | null;
+  /** The custom style's dark-theme background (hex), or null. */
+  backgroundDark: string | null;
   font: FontKey | null;
   radius: number | null;
   skin: string | null;
@@ -96,7 +100,8 @@ export const EMPTY_APPEARANCE: OrgAppearance = Object.freeze({
   sidebarTitleMode: 'company',
   sidebarTitle: null,
   accent: null,
-  background: null,
+  backgroundLight: null,
+  backgroundDark: null,
   font: null,
   radius: null,
   skin: null,
@@ -183,7 +188,9 @@ export function parseOrgAppearance(raw: unknown): OrgAppearance {
       : (sidebarTitle ? 'custom' : 'company'),
     sidebarTitle,
     accent: hexOrNull(value.accent),
-    background: hexOrNull(value.background),
+    // A server that predates the per-theme fields sends one `background`.
+    backgroundLight: hexOrNull(value.backgroundLight) ?? hexOrNull(value.background),
+    backgroundDark: hexOrNull(value.backgroundDark) ?? hexOrNull(value.background),
     font: value.font === 'standard' || value.font === 'mono' ? value.font : null,
     radius: typeof radius === 'number' && Number.isInteger(radius) && radius >= RADIUS_MIN && radius <= RADIUS_MAX
       ? radius
@@ -260,7 +267,8 @@ export function appearancePayload(appearance: OrgAppearance): Record<string, unk
     sidebar_title_mode: appearance.sidebarTitleMode,
     sidebar_title: appearance.sidebarTitleMode === 'custom' ? appearance.sidebarTitle : null,
     accent: appearance.accent,
-    background: appearance.background,
+    background_light: appearance.backgroundLight,
+    background_dark: appearance.backgroundDark,
     font: appearance.font,
     radius: appearance.radius,
     skin: appearance.skin,
@@ -286,7 +294,8 @@ export interface OrgStyle {
  */
 export function orgStyle(appearance: OrgAppearance, knownSkins: readonly string[]): OrgStyle | null {
   const hasRecipe = appearance.accent !== null
-    || appearance.background !== null
+    || appearance.backgroundLight !== null
+    || appearance.backgroundDark !== null
     || appearance.font !== null
     || appearance.radius !== null;
   const skin = appearance.skin ?? (hasRecipe ? 'custom' : null);
@@ -296,8 +305,9 @@ export function orgStyle(appearance: OrgAppearance, knownSkins: readonly string[
     skin,
     recipe: {
       accent: appearance.accent ?? DEFAULT_CUSTOM_THEME.accent,
-      bgLight: appearance.background,
-      bgDark: appearance.background,
+      // One set alone tints both themes (customTheme.ts derives the other).
+      bgLight: appearance.backgroundLight,
+      bgDark: appearance.backgroundDark,
       radius: appearance.radius ?? DEFAULT_CUSTOM_THEME.radius,
       font: appearance.font ?? DEFAULT_CUSTOM_THEME.font,
       scanlines: false,
@@ -311,7 +321,7 @@ export function hasOrgBranding(org: OrgBranding | null): boolean {
   const a = org.appearance;
   return Boolean(
     org.iconUrl || org.logoUrl || org.logoDarkUrl
-    || a.sidebarTitleMode !== 'company' || a.accent || a.background || a.font || a.radius !== null || a.skin
+    || a.sidebarTitleMode !== 'company' || a.accent || a.backgroundLight || a.backgroundDark || a.font || a.radius !== null || a.skin
     || a.defaultTheme || a.greeting || !a.membersCanChoose,
   );
 }
@@ -410,15 +420,10 @@ function pick<T>(
   orgLocks: boolean,
   memberValue: T | null,
   stockValue: T,
-  // What everyone sees when the org turned member choice off but left this
-  // field unset: the app's own default, not anyone's earlier pick.
-  lockedStockValue: T = stockValue,
 ): { value: T; source: LookSource; locked: boolean } {
-  if (orgLocks) {
-    return orgValue !== null
-      ? { value: orgValue, source: 'org', locked: true }
-      : { value: lockedStockValue, source: 'stock', locked: true };
-  }
+  // Member choice off locks only what the org actually set; a field it left
+  // unset stays the member's own.
+  if (orgLocks && orgValue !== null) return { value: orgValue, source: 'org', locked: true };
   if (memberValue !== null) return { value: memberValue, source: 'member', locked: false };
   if (orgValue !== null) return { value: orgValue, source: 'org', locked: false };
   return { value: stockValue, source: 'stock', locked: false };
@@ -448,10 +453,7 @@ export function resolveLook({
     skin = { value: memberStyle, source: member.skinChosen ? 'member' : 'deployment', locked: false };
   } else {
     const fromOrg = activeOrg ? orgStyle(activeOrg.appearance, knownSkins) : null;
-    skin = pick(fromOrg, orgLocks, member.skinChosen ? memberStyle : null, memberStyle, {
-      skin: deployment.defaultSkin,
-      recipe: null,
-    });
+    skin = pick(fromOrg, orgLocks, member.skinChosen ? memberStyle : null, memberStyle);
   }
 
   // Theme. Same shape: a deployment theme is seeded as the member's.
@@ -464,7 +466,6 @@ export function resolveLook({
       orgLocks,
       member.themeChosen ? member.theme : null,
       member.theme,
-      'dark',
     );
   }
 
@@ -472,7 +473,7 @@ export function resolveLook({
   const memberGreeting = member.greeting && member.greeting.trim() && member.greeting.trim() !== STOCK_GREETING
     ? member.greeting
     : null;
-  const greeting = pick<string | null>(activeOrg?.appearance.greeting ?? null, orgLocks, memberGreeting, member.greeting, null);
+  const greeting = pick<string | null>(activeOrg?.appearance.greeting ?? null, orgLocks, memberGreeting, member.greeting);
 
   // Sidebar logo. A deployment logo shuts the org out; the member's own logo
   // still wins over it, as before.

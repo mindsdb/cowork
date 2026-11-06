@@ -143,7 +143,7 @@ describe('Settings → Branding, its own page for org admins', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
     expect(api.updateOrgAppearance).toHaveBeenCalledWith({
-      sidebar_title_mode: 'custom', sidebar_title: 'Acme Desk', accent: null, background: null, font: null, radius: null, skin: null,
+      sidebar_title_mode: 'custom', sidebar_title: 'Acme Desk', accent: null, background_light: null, background_dark: null, font: null, radius: null, skin: null,
       default_theme: null, greeting: 'Hello Acme', members_can_choose: false, guidelines: 'Sentence case.',
     });
     expect(await screen.findByText(/^Saved\./)).toBeInTheDocument();
@@ -206,6 +206,39 @@ describe('Settings → Branding, its own page for org admins', () => {
     expect(await screen.findByText('Only an organization admin can change the branding.')).toBeInTheDocument();
   });
 
+  it('orders the page: title, logo, theme, style and its custom fields, greeting, member choice, guidelines, Save', () => {
+    renderSettings({
+      orgBranding: branding({ appearance: { skin: 'custom', accent: '#112233', membersCanChoose: true } }),
+      hostedMindsHub: true,
+      section: 'branding',
+    });
+    const titles = [...document.querySelectorAll('h3')].map((h) => h.textContent);
+    expect(titles).toEqual([
+      'Sidebar title', 'Logo and icon', 'Organization theme', 'Organization style', 'Accent color',
+      'Light background', 'Dark background', 'Corners', 'Typeface', 'Organization greeting',
+      'Let members choose their own style', 'Brand guidelines for Anton',
+    ]);
+    const save = screen.getByRole('button', { name: 'Save branding' });
+    expect(screen.getByLabelText('Brand guidelines for Anton').compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('saves separate light and dark backgrounds', async () => {
+    const user = userEvent.setup();
+    api.updateOrgAppearance.mockResolvedValue({ enabled: true, canEdit: true, appearance: {} });
+    renderSettings({
+      orgBranding: branding({ appearance: { skin: 'custom', accent: '#112233', membersCanChoose: true } }),
+      hostedMindsHub: true, section: 'branding', onOrgBrandingSaved: vi.fn((raw) => parseOrgBranding(raw)),
+    });
+    await user.click(screen.getByRole('checkbox', { name: /Default organization light background/ }));
+    fireEvent.change(screen.getByLabelText('Organization light background color'), { target: { value: '#fafaf0' } });
+    await user.click(screen.getByRole('checkbox', { name: /Default organization dark background/ }));
+    fireEvent.change(screen.getByLabelText('Organization dark background color'), { target: { value: '#101820' } });
+    await user.click(screen.getByRole('button', { name: 'Save branding' }));
+    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith(expect.objectContaining({
+      skin: 'custom', background_light: '#fafaf0', background_dark: '#101820',
+    })));
+  });
+
   it("links to the console's General settings for the logo and icon", () => {
     renderSettings({ orgBranding: branding(), hostedMindsHub: true, section: 'branding' });
     fireEvent.click(screen.getByRole('button', { name: /Edit in console/ }));
@@ -260,6 +293,29 @@ describe('Settings → Appearance: Your style, then Display', () => {
     } else {
       expect(link).toBeNull();
     }
+  });
+
+  it.each([
+    ['theme', { theme: true }, ['Style', 'Greeting text'], ['Theme']],
+    ['style', { style: true }, ['Theme', 'Greeting text'], ['Style']],
+    ['greeting', { greeting: true }, ['Style', 'Theme'], ['Greeting text']],
+    ['theme and style', { theme: true, style: true }, ['Greeting text'], ['Style', 'Theme']],
+  ])('with member choice off and the org setting the %s, shows only the open controls and a note per locked one', (_name, locks, open, locked) => {
+    renderSettings({
+      orgBranding: branding({ canEdit: false, appearance: { membersCanChoose: false } }),
+      hostedMindsHub: true,
+      look: { greeting: null, lockedByOrg: { ...LOCKS_NONE, ...locks } },
+    });
+    const stylePart = group(APPEARANCE_ANCHORS.style);
+    for (const label of open) expect(within(stylePart).getAllByLabelText(label).length).toBeGreaterThan(0);
+    for (const label of locked) expect(within(stylePart).queryByLabelText(label)).toBeNull();
+    for (const field of ['theme', 'style', 'greeting']) {
+      const note = within(stylePart).queryByTestId(`org-sets-${field}`);
+      if (locks[field]) expect(note).toHaveTextContent(`Your organization sets the ${field}.`);
+      else expect(note).toBeNull();
+    }
+    expect(within(stylePart).queryByTestId('personal-style-off')).toBeNull();
+    expect(within(stylePart).getByText("These override your organization's look, just for you.")).toBeInTheDocument();
   });
 
   it('shows the normal Style controls outside an org, with no override line', () => {
@@ -369,6 +425,23 @@ describe('live preview of unsaved Branding edits', () => {
     expect(screen.getByRole('region', { name: 'Unsaved branding changes' })).toBeInTheDocument();
     expect(api.updateOrgAppearance).not.toHaveBeenCalled();
     expect(Object.keys(localStorage).some((k) => k.startsWith('anton.orgBrandingCache'))).toBe(false);
+  });
+
+  it('previews the light and dark backgrounds live, and a single one tints both themes', async () => {
+    const user = userEvent.setup();
+    render(<Harness saved={branding({ appearance: { skin: 'custom', accent: '#112233', defaultTheme: 'light', membersCanChoose: true } })} />);
+    await user.click(screen.getByRole('checkbox', { name: /Default organization dark background/ }));
+    fireEvent.change(screen.getByLabelText('Organization dark background color'), { target: { value: '#101820' } });
+    // Light theme shows, with only a dark color set: it is tinted from that one.
+    const lightBg = document.body.style.getPropertyValue('--bg');
+    expect(lightBg).not.toBe('');
+    expect(lightBg).not.toBe('#101820');
+    await user.click(within(screen.getByRole('group', { name: 'Organization theme' })).getByRole('button', { name: 'Dark organization theme' }));
+    expect(document.body.style.getPropertyValue('--bg')).toBe('#101820');
+    await user.click(screen.getByRole('checkbox', { name: /Default organization light background/ }));
+    fireEvent.change(screen.getByLabelText('Organization light background color'), { target: { value: '#fafaf0' } });
+    await user.click(within(screen.getByRole('group', { name: 'Organization theme' })).getByRole('button', { name: 'Light organization theme' }));
+    expect(document.body.style.getPropertyValue('--bg')).toBe('#fafaf0');
   });
 
   it('puts the saved look back on Cancel', async () => {

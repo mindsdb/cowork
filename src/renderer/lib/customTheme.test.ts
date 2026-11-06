@@ -43,13 +43,14 @@ describe('customTheme — light/dark background split', () => {
     expect(document.body.style.getPropertyValue('--bg')).toBe('#000000');
   });
 
-  it('marks custom-bg-active on body only while a resolved background is set', () => {
+  it('marks custom-bg-active on body while either background is set, in both themes', () => {
     const withBg = { ...DEFAULT_CUSTOM_THEME, bgDark: '#000000' };
     applyCustomTheme(withBg, 'dark');
     expect(document.body.classList.contains('custom-bg-active')).toBe(true);
-
-    // Same recipe, but Light mode has no override — nothing to flatten there.
+    // Light has no color of its own: the dark one tints it.
     applyCustomTheme(withBg, 'light');
+    expect(document.body.classList.contains('custom-bg-active')).toBe(true);
+    applyCustomTheme(DEFAULT_CUSTOM_THEME, 'light');
     expect(document.body.classList.contains('custom-bg-active')).toBe(false);
   });
 
@@ -72,8 +73,10 @@ describe('customTheme — light/dark background split', () => {
       expect(applied.toLowerCase()).not.toBe('#334455');
     });
 
-    it('clears the inline background when no custom bg is resolved', () => {
+    it('clears the inline background when no custom bg is set', () => {
       applyCustomTheme({ ...DEFAULT_CUSTOM_THEME, bgDark: '#334455' }, 'light');
+      expect(document.body.style.getPropertyValue('background')).not.toBe('');
+      applyCustomTheme(DEFAULT_CUSTOM_THEME, 'light');
       expect(document.body.style.getPropertyValue('background')).toBe('');
     });
 
@@ -161,5 +164,35 @@ describe('customTheme — one background, readable in both themes (ENG-4020)', (
     for (const token of ['--surface-glass', '--ink-3', '--sidebar-bg', '--accent-solid']) {
       expect(document.body.style.getPropertyValue(token)).toBe('');
     }
+  });
+
+  describe('separate light and dark backgrounds (ENG-4020)', () => {
+    it('uses each theme its own color', () => {
+      const recipe = { ...DEFAULT_CUSTOM_THEME, bgLight: '#fafaf0', bgDark: '#101820' };
+      expect(deriveCustomColors(recipe, 'light')['--bg']).toBe('#fafaf0');
+      expect(deriveCustomColors(recipe, 'dark')['--bg']).toBe('#101820');
+    });
+
+    it.each([
+      ['only light', { bgLight: '#c2185b', bgDark: null }],
+      ['only dark', { bgLight: null, bgDark: '#c2185b' }],
+      ['only a near-white light', { bgLight: '#f5f5f0', bgDark: null }],
+      ['only a near-black dark', { bgLight: null, bgDark: '#111111' }],
+    ])('derives the other theme from %s, readable in both', (_name, bgs) => {
+      const recipe = { ...DEFAULT_CUSTOM_THEME, ...bgs };
+      for (const theme of ['light', 'dark'] as const) {
+        const tokens = deriveCustomColors(recipe, theme);
+        expect(tokens['--bg'], theme).toBeTruthy();
+        const white = contrastRatio(tokens['--bg'], '#ffffff');
+        const black = contrastRatio(tokens['--bg'], '#000000');
+        if (theme === 'light') expect(black).toBeGreaterThan(white);
+        else expect(white).toBeGreaterThan(black);
+        for (const surface of textSurfaces(tokens, theme)) {
+          expect(contrastRatio(tokens['--ink'], surface)).toBeGreaterThanOrEqual(CONTRAST.ink);
+          expect(contrastRatio(tokens['--ink-3'], surface)).toBeGreaterThanOrEqual(CONTRAST.secondary);
+          expect(contrastRatio(tokens['--accent'], surface)).toBeGreaterThanOrEqual(CONTRAST.accentText);
+        }
+      }
+    });
   });
 });

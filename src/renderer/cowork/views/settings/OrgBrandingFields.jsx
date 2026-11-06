@@ -42,7 +42,7 @@ const ADMIN_ONLY = 'Set by your organization admin.';
 
 /** The draft the form edits: the saved look, with the style spelled out. */
 function draftFrom(appearance) {
-  const hasRecipe = appearance.accent !== null || appearance.background !== null
+  const hasRecipe = appearance.accent !== null || appearance.backgroundLight !== null || appearance.backgroundDark !== null
     || appearance.font !== null || appearance.radius !== null;
   return { ...appearance, skin: appearance.skin ?? (hasRecipe ? 'custom' : null) };
 }
@@ -56,7 +56,8 @@ export function appearanceToSave(draft) {
     // on the server, so a rename in the console updates the title.
     sidebarTitle: draft.sidebarTitleMode === 'custom' ? (draft.sidebarTitle?.trim() || null) : null,
     accent: custom ? (draft.accent ?? DEFAULT_CUSTOM_THEME.accent) : null,
-    background: custom ? draft.background : null,
+    backgroundLight: custom ? draft.backgroundLight : null,
+    backgroundDark: custom ? draft.backgroundDark : null,
     font: custom ? draft.font : null,
     radius: custom ? draft.radius : null,
     greeting: draft.greeting?.trim() || null,
@@ -210,6 +211,20 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
         </div>
       </Section>
 
+      <Section title="Organization theme" subtitle={sub('Light or dark for everyone, or leave it to each member.')}>
+        <ToggleGroup
+          value={draft.defaultTheme ?? NOT_SET}
+          onValueChange={(v) => edit({ defaultTheme: v === NOT_SET ? null : v })}
+          disabled={locked}
+          aria-label="Organization theme"
+          options={[
+            { value: NOT_SET, label: 'Not set', 'aria-label': 'No organization theme' },
+            { value: 'light', label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} Light</span>), 'aria-label': 'Light organization theme' },
+            { value: 'dark', label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} Dark</span>), 'aria-label': 'Dark organization theme' },
+          ]}
+        />
+      </Section>
+
       {SKIN_LOCKED ? (
         <Section title="Organization style" subtitle="Set by this deployment, for every organization on it." />
       ) : (
@@ -239,23 +254,45 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
               className={COLOR_SWATCH_INPUT}
             />
           </Section>
-          <Section title="Background" subtitle="Tints the app in light and dark; text adjusts to stay readable. Or keep each theme's default.">
+          <Section title="Light background" subtitle="Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or the stock light look applies.">
             <div className="flex items-center gap-3">
               <input
                 type="color"
-                value={draft.background ?? '#fafafa'}
-                onChange={(e) => edit({ background: e.target.value })}
-                disabled={locked || draft.background === null}
-                aria-label="Organization background color"
+                value={draft.backgroundLight ?? '#fafafa'}
+                onChange={(e) => edit({ backgroundLight: e.target.value })}
+                disabled={locked || draft.backgroundLight === null}
+                aria-label="Organization light background color"
                 className={COLOR_SWATCH_INPUT}
-                style={{ opacity: draft.background === null ? 0.45 : 1 }}
+                style={{ opacity: draft.backgroundLight === null ? 0.45 : 1 }}
               />
               <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                 <Checkbox
-                  checked={draft.background === null}
-                  onCheckedChange={(v) => edit({ background: v ? null : '#fafafa' })}
+                  checked={draft.backgroundLight === null}
+                  onCheckedChange={(v) => edit({ backgroundLight: v ? null : '#fafafa' })}
                   disabled={locked}
-                  aria-label="Default organization background"
+                  aria-label="Default organization light background"
+                />
+                Default
+              </label>
+            </div>
+          </Section>
+          <Section title="Dark background" subtitle="Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or the stock dark look applies.">
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={draft.backgroundDark ?? '#080d18'}
+                onChange={(e) => edit({ backgroundDark: e.target.value })}
+                disabled={locked || draft.backgroundDark === null}
+                aria-label="Organization dark background color"
+                className={COLOR_SWATCH_INPUT}
+                style={{ opacity: draft.backgroundDark === null ? 0.45 : 1 }}
+              />
+              <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
+                <Checkbox
+                  checked={draft.backgroundDark === null}
+                  onCheckedChange={(v) => edit({ backgroundDark: v ? null : '#080d18' })}
+                  disabled={locked}
+                  aria-label="Default organization dark background"
                 />
                 Default
               </label>
@@ -288,20 +325,6 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
           </Section>
         </>
       )}
-
-      <Section title="Organization theme" subtitle={sub('Light or dark for everyone, or leave it to each member.')}>
-        <ToggleGroup
-          value={draft.defaultTheme ?? NOT_SET}
-          onValueChange={(v) => edit({ defaultTheme: v === NOT_SET ? null : v })}
-          disabled={locked}
-          aria-label="Organization theme"
-          options={[
-            { value: NOT_SET, label: 'Not set', 'aria-label': 'No organization theme' },
-            { value: 'light', label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} Light</span>), 'aria-label': 'Light organization theme' },
-            { value: 'dark', label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} Dark</span>), 'aria-label': 'Dark organization theme' },
-          ]}
-        />
-      </Section>
 
       <Section title="Organization greeting" subtitle={sub('The line members see when they start a new task. Leave blank for the standard one.')}>
         <Input

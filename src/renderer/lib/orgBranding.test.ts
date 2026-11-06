@@ -57,7 +57,7 @@ function org(appearance: Partial<OrgAppearance> = {}, images: Partial<OrgBrandin
 }
 
 const ORG_LOOK: Partial<OrgAppearance> = {
-  accent: '#112233', background: '#f0f0f0', font: 'mono', radius: 12, defaultTheme: 'light', greeting: 'Welcome to Acme',
+  accent: '#112233', backgroundLight: '#f0f0f0', backgroundDark: '#f0f0f0', font: 'mono', radius: 12, defaultTheme: 'light', greeting: 'Welcome to Acme',
 };
 
 function resolve(o: OrgBranding | null, m: MemberLook, deployment: DeploymentLook = STOCK_DEPLOYMENT, hostedMindsHub = false) {
@@ -115,7 +115,7 @@ describe('parseOrgBranding', () => {
       appearance: {
         sidebarTitleMode: 'custom',
         sidebarTitle: 'Acme Desk',
-        accent: '#112233', background: '#f0f0f0', font: 'mono', radius: 12, skin: 'custom',
+        accent: '#112233', backgroundLight: '#f0f0f0', backgroundDark: '#f0f0f0', font: 'mono', radius: 12, skin: 'custom',
         defaultTheme: 'light', greeting: 'Welcome to Acme', membersCanChoose: false, guidelines: 'Use the logo on white.',
       },
     });
@@ -143,7 +143,7 @@ describe('parseOrgBranding', () => {
     expect(appearancePayload(appearance)).toEqual({
       sidebar_title_mode: 'company',
       sidebar_title: null,
-      accent: '#112233', background: '#f0f0f0', font: 'mono', radius: 12, skin: null,
+      accent: '#112233', background_light: '#f0f0f0', background_dark: '#f0f0f0', font: 'mono', radius: 12, skin: null,
       default_theme: 'light', greeting: 'Welcome to Acme', members_can_choose: false, guidelines: null,
     });
   });
@@ -197,8 +197,18 @@ describe('orgStyle', () => {
     });
   });
 
-  it('uses one background for light and dark', () => {
+  it("reads a legacy single background as both themes'", () => {
     expect(orgStyle(parseOrgAppearance({ background: '#101010' }), KNOWN)?.recipe).toMatchObject({ bgLight: '#101010', bgDark: '#101010' });
+  });
+
+  it('keeps separate light and dark backgrounds, and the new fields win over the legacy one', () => {
+    const a = parseOrgAppearance({ backgroundLight: '#fafaf0', backgroundDark: '#101820', background: '#ff0000' });
+    expect(orgStyle(a, KNOWN)?.recipe).toMatchObject({ bgLight: '#fafaf0', bgDark: '#101820' });
+    expect(appearancePayload(a)).toMatchObject({ background_light: '#fafaf0', background_dark: '#101820' });
+  });
+
+  it('leaves the other theme unset when only one background is set, for customTheme to derive', () => {
+    expect(orgStyle(parseOrgAppearance({ backgroundDark: '#101820' }), KNOWN)?.recipe).toMatchObject({ bgLight: null, bgDark: '#101820' });
   });
 
   it('keeps a named stock style without a recipe', () => {
@@ -289,16 +299,30 @@ describe('resolveLook — the order', () => {
     });
   });
 
-  it('puts everyone on the stock look for what the org left unset, once member choice is off', () => {
+  describe('member choice off locks only what the org set', () => {
     const mine = member({ skin: '8bit', skinChosen: true, theme: 'light', themeChosen: true, greeting: 'Mine' });
-    const look = resolve(org({ membersCanChoose: false, greeting: 'Ours' }, { iconUrl: null, logoUrl: null }), mine);
-    expect(look).toMatchObject({
-      skin: 'normal', skinSource: 'stock', customTheme: null,
-      theme: 'dark', themeSource: 'stock',
-      greeting: 'Ours', greetingSource: 'org',
-      lockedByOrg: { style: true, theme: true, greeting: true, logo: false, favicon: false },
+    const fields = { theme: { defaultTheme: 'dark' }, style: { skin: 'custom', accent: '#112233' }, greeting: { greeting: 'Ours' } } as const;
+    const combos = [[], ['theme'], ['style'], ['greeting'], ['theme', 'style'], ['theme', 'greeting'], ['style', 'greeting'], ['theme', 'style', 'greeting']] as const;
+
+    it.each(combos.map((c) => [c.join('+') || 'nothing', c]))('with %s set', (_name, set) => {
+      const appearance = Object.assign({ membersCanChoose: false }, ...set.map((f) => fields[f]));
+      const look = resolve(org(appearance, { iconUrl: null, logoUrl: null }), mine);
+      const has = (f: string) => (set as readonly string[]).includes(f);
+      expect(look.lockedByOrg).toMatchObject({ theme: has('theme'), style: has('style'), greeting: has('greeting') });
+      expect(look.theme).toBe(has('theme') ? 'dark' : 'light');
+      expect(look.themeSource).toBe(has('theme') ? 'org' : 'member');
+      expect(look.skin).toBe(has('style') ? 'custom' : '8bit');
+      expect(look.skinSource).toBe(has('style') ? 'org' : 'member');
+      if (has('style')) expect(look.customTheme).toMatchObject({ accent: '#112233' });
+      expect(look.greeting).toBe(has('greeting') ? 'Ours' : 'Mine');
+      expect(look.greetingSource).toBe(has('greeting') ? 'org' : 'member');
     });
-    expect(resolve(org({ membersCanChoose: false }), mine).greeting).toBeNull();
+
+    it('falls back to stock for an unset field the member never chose', () => {
+      const look = resolve(org({ membersCanChoose: false, greeting: 'Ours' }, { iconUrl: null, logoUrl: null }), member());
+      expect(look).toMatchObject({ skin: 'normal', skinSource: 'stock', theme: 'dark', themeSource: 'stock', greeting: 'Ours' });
+      expect(look.lockedByOrg).toMatchObject({ style: false, theme: false, greeting: true });
+    });
   });
 
   // Row 1: the deployment brand.

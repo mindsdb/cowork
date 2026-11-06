@@ -240,7 +240,8 @@ function accentTokens(accentHex: string, surfaces: RGB[], theme: ThemeName): Rec
  * are var() references in globals.css and follow these.
  */
 export function deriveCustomColors(t: CustomTheme, theme: ThemeName): Record<string, string> {
-  const picked = theme === 'light' ? t.bgLight : t.bgDark;
+  // The theme's own color, else the other theme's, tinted or shaded to fit.
+  const picked = theme === 'light' ? (t.bgLight ?? t.bgDark) : (t.bgDark ?? t.bgLight);
   const baseHex = picked ? themeBase(picked, theme) : null;
   if (!baseHex) {
     return accentTokens(t.accent, STOCK_SURFACES[theme].map((h) => hexToRgb(h)!), theme);
