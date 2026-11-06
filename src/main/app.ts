@@ -4,12 +4,13 @@ import { diagnostic } from '../shared/diagnostics';
 // then starts the crash reporter so a native crash while the rest loads leaves
 // a minidump.
 import './app-identity';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as https from 'https';
 import * as http from 'http';
+import { installHideOnClose, shouldQuitWhenAllWindowsClosed } from './window-close';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
@@ -336,6 +337,10 @@ function getIconPath(): string {
 }
 
 let mainWindow: BrowserWindow | null = null;
+// Set once the app has started to quit, so closing the window on macOS stops
+// meaning "hide it" (see window-close.ts).
+let appQuitting = false;
+let reopenMainWindow: (() => boolean) | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
 
 // Pulls the desktop app back to the foreground after a browser-based
@@ -570,6 +575,7 @@ function createWindow() {
     mainWindow = null;
     killAllCodingTerminals();
   });
+  reopenMainWindow = installHideOnClose(mainWindow, process.platform, () => appQuitting).reopen;
 }
 
 // How long boot routing waits for the sidecar to be handed its credential.
@@ -1665,6 +1671,10 @@ app.whenReady().then(async () => {
   if (isMac) {
     const dockIcon = nativeImage.createFromPath(getIconPath());
     app.dock?.setIcon(dockIcon);
+    // Squirrel.Mac closes every window before it quits to install an update,
+    // and emits this first. Without it the hidden-on-close window would refuse
+    // to close and the install would stall.
+    autoUpdater.on('before-quit-for-update', () => { appQuitting = true; });
   }
 
   /* Wording matches each platform's file manager so the label isn't a
@@ -1728,7 +1738,9 @@ app.whenReady().then(async () => {
             { type: 'separator' },
             { role: 'quit' },
           ],
-        } as Electron.MenuItemConstructorOptions]
+        } as Electron.MenuItemConstructorOptions,
+        // On macOS the File menu is just Close Window, which binds Cmd+W.
+        { role: 'fileMenu' } as Electron.MenuItemConstructorOptions]
       : [{ role: 'fileMenu' } as Electron.MenuItemConstructorOptions]),
     { role: 'editMenu', id: EDIT_MENU_ID },
     {
@@ -2004,8 +2016,12 @@ app.whenReady().then(async () => {
     bootUpdateDone();     // ...or the loading gate awaiting a boot that never ran
   });
 
+  // Clicking the Dock icon brings back the window that closing hid, or
+  // creates one if it is gone.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      reopenMainWindow?.();
+    } else {
       createWindow();
     }
   });
@@ -2117,6 +2133,9 @@ async function drainServerForQuit(): Promise<void> {
 }
 
 app.on('window-all-closed', async () => {
+  // On macOS the app stays in the Dock with its sidecar running; quitting
+  // goes through before-quit, which drains it.
+  if (!shouldQuitWhenAllWindowsClosed(process.platform)) return;
   await drainServerForQuit();
   app.quit();
 });
@@ -2134,6 +2153,7 @@ app.on('window-all-closed', async () => {
 // after the drain finishes. Guarded by `_quitDrained` so the second
 // invocation skips the deferral and the app exits cleanly.
 app.on('before-quit', (event) => {
+  appQuitting = true;
   if (_quitDrained) return;
   event.preventDefault();
   drainServerForQuit().finally(() => {
