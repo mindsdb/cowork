@@ -114,6 +114,7 @@ const inAppBrowser = new InAppBrowserHost({
   profileSession: (dir) => session.fromPath(dir),
   fetch: (input, init) => fetch(input, init),
   electronVersion: () => process.versions.electron,
+  userDataDir: () => app.getPath('userData'),
 });
 
 /* Re-hand the MindsHub credential, then the in-app browser's address, to every

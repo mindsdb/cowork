@@ -31,6 +31,7 @@ const host = new InAppBrowserHost({
   profileSession: (dir) => session.fromPath(dir),
   fetch: (input, init) => fetch(input, init),
   electronVersion: () => process.versions.electron,
+  userDataDir: () => app.getPath('userData'),
 });
 
 app.whenReady().then(async () => {

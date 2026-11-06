@@ -6,6 +6,7 @@ import type { BrowserWindow, IpcMain, Session } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC } from '../shared/ipc-channels';
 import { fakeFactory } from '../../tests/browser-fake-tabs';
+import { browserProfilePath } from './browser-profile';
 
 vi.mock('electron', () => ({ WebContentsView: class {}, nativeImage: {} }));
 
@@ -75,6 +76,7 @@ function newHost(electronVersion: string | undefined) {
       return { ok: true, status: 200 } as Response;
     }) as unknown as typeof fetch,
     electronVersion: () => electronVersion,
+    userDataDir: () => path.join(root, 'user-data'),
     tabFactory: () => factory,
   });
 }
@@ -307,8 +309,9 @@ describe('the pane IPC', () => {
     const ses = profileSession.mock.results[0].value as Session;
     expect(ses.clearStorageData).toHaveBeenCalled();
     expect(ses.clearCache).toHaveBeenCalled();
-    expect(profileSession).toHaveBeenCalledWith(path.join(root, 'browser'));
-    expect(fs.statSync(path.join(root, 'browser')).mode & 0o777).toBe(0o700);
+    const dir = browserProfilePath(path.join(root, 'user-data'), root);
+    expect(profileSession).toHaveBeenCalledWith(dir);
+    expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
   });
 });
 
