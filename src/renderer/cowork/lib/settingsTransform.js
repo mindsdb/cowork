@@ -67,6 +67,8 @@ export const SETTINGS_KEY_MAP = {
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
+  // Off sends every MindsHub turn to the agent: no Jev routing or checks.
+  jev_decisions_enabled: 'jevDecisionsEnabled',
   limits_enabled: 'limitsEnabled',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',
@@ -313,7 +315,42 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     // servers that resolve it apart from the router pick; an older server sends
     // nothing and the row falls back to describing what that server does.
     gate: (rec.gate && typeof rec.gate === 'object') ? rec.gate : (base.gate ?? null),
+    // Which gate decides turns now. Sent by servers with Jev routing; an older
+    // server sends nothing, and the Settings page keeps its older layout.
+    routing: (rec.routing && typeof rec.routing === 'object') ? rec.routing : (base.routing ?? null),
   };
+}
+
+// ─── Jev routing ────────────────────────────────────────────────────
+
+/**
+ * Whether Settings shows the "Routing and summarization model" row.
+ *
+ * A server that reports `routing` decides turns with Jev or a decision model
+ * of the org's own, so the row only picks the summarization model and stays
+ * hidden — except where the server resolved the role to openai-compatible,
+ * which has no default model, so the row's pick is the only model the gate
+ * and summaries can run on. Read from the server's resolution (`gate`,
+ * `routing.routerProvider`), not the stored provider, which can name a
+ * provider with no key that the server resolved elsewhere. An older server
+ * (no `routing`) still gates on this role, so the row stays.
+ */
+export function showRouterRoleRow(routing, gate) {
+  if (!routing || typeof routing !== 'object') return true;
+  return gate?.followsRouterPick === true || routing.routerProvider === 'openai-compatible';
+}
+
+/**
+ * Whether Settings shows the "Fast answers with Jev" switch: wherever it
+ * changes something. That is while turns route with Jev on MindsHub (`jev`) or
+ * have it turned off (`off`), and whenever the coding model runs on MindsHub,
+ * where the switch also turns off Jev's check that the agent finished. On
+ * other providers with an org's own decision model it would change nothing.
+ * An older server (no `routing`) has no switch to save.
+ */
+export function showJevSwitch(routing, codingProviderType) {
+  if (!routing || typeof routing !== 'object') return false;
+  return routing.mode === 'jev' || routing.mode === 'off' || codingProviderType === 'minds-cloud';
 }
 
 // ─── Role row copy ──────────────────────────────────────────────────

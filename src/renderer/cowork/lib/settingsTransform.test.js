@@ -21,6 +21,8 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  showJevSwitch,
+  showRouterRoleRow,
 } from './settingsTransform';
 
 describe('favicon settings translation', () => {
@@ -1171,5 +1173,53 @@ describe('committedSettingsPatch', () => {
       ['anthropic_api_key', 'planning_model'])).toEqual({
       anthropicApiKey: '', planningModel: null, defaultModel: null,
     });
+  });
+});
+
+
+// ─── Jev routing ─────────────────────────────────────────────────────
+
+describe('jev routing settings', () => {
+  it('reads and writes the Jev switch under the server key', () => {
+    expect(transformSettingsRows([{ key: 'jev_decisions_enabled', value: 'False' }]))
+      .toMatchObject({ jevDecisionsEnabled: false });
+    expect(diffSettingsForWrite({ jevDecisionsEnabled: false }, { jevDecisionsEnabled: true }))
+      .toEqual({ jev_decisions_enabled: 'false' });
+  });
+
+  it('keeps the routing it holds when the server sends none', () => {
+    const held = { routing: { mode: 'jev' } };
+
+    expect(mergeRecommendedModels(held, { routing: { mode: 'off' } }).routing).toEqual({ mode: 'off' });
+    expect(mergeRecommendedModels(held, {}).routing).toEqual({ mode: 'jev' });
+    expect(mergeRecommendedModels({}, {}).routing).toBeNull();
+  });
+
+  const COMPAT_GATE = { provider: 'openai-compatible', model: 'llama', followsRouterPick: true };
+  const MINDS_GATE = { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false };
+
+  it.each([
+    [null, MINDS_GATE, true], // older server: it still gates on the row
+    [{ mode: 'jev', routerProvider: 'minds-cloud' }, MINDS_GATE, false],
+    [{ mode: 'llm', routerProvider: 'anthropic' }, null, false],
+    // The pick is the only router model there, whatever provider is stored.
+    [{ mode: 'llm', routerProvider: 'openai-compatible' }, COMPAT_GATE, true],
+    [{ mode: 'llm', routerProvider: 'openai-compatible' }, null, true],
+    [{ mode: 'own', routerProvider: 'minds-cloud' }, COMPAT_GATE, true],
+  ])('shows the router row for routing %j and gate %j: %s', (routing, gate, shown) => {
+    expect(showRouterRoleRow(routing, gate)).toBe(shown);
+  });
+
+  it.each([
+    [{ mode: 'jev' }, 'minds-cloud', true],
+    [{ mode: 'off' }, 'minds-cloud', true],
+    // The switch also turns off Jev's completion check on a MindsHub coding model.
+    [{ mode: 'llm' }, 'minds-cloud', true],
+    [{ mode: 'own' }, 'minds-cloud', true],
+    [{ mode: 'llm' }, 'anthropic', false],
+    [{ mode: 'own' }, 'openai-compatible', false],
+    [null, 'minds-cloud', false], // older server: nothing to save
+  ])('shows the Jev switch for routing %j with coding on %s: %s', (routing, coding, shown) => {
+    expect(showJevSwitch(routing, coding)).toBe(shown);
   });
 });
