@@ -66,10 +66,10 @@ describe('useThemeSkin with org branding', () => {
   it("starts the member's own recipe from the org's custom look when they edit it", () => {
     const { result } = renderHook(() => useThemeSkin({ orgBranding: org({ accent: '#112233' }) }));
     expect(result.current.look.skinSource).toBe('org');
-    act(() => result.current.setCustomTheme({ ...result.current.customTheme, accent: '#445566' }));
+    act(() => result.current.setCustomTheme({ ...result.current.customTheme, accent: '#e0c3fc' }));
     expect(result.current.look.skinSource).toBe('member');
     expect(result.current.skin).toBe('custom');
-    expect(document.body.style.getPropertyValue('--accent')).toBe('#445566');
+    expect(document.body.style.getPropertyValue('--accent')).toBe('#e0c3fc');
   });
 
   it('goes back to the stock look when the org has no branding', () => {

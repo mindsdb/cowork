@@ -193,7 +193,7 @@ export default function OrgBrandingFields({ branding, onSaved }) {
               className={COLOR_SWATCH_INPUT}
             />
           </Section>
-          <Section title="Background" subtitle="A base color for both light and dark; surfaces and text shades derive from it. Or keep each theme's default.">
+          <Section title="Background" subtitle="Tints the app in light and dark; text adjusts to stay readable. Or keep each theme's default.">
             <div className="flex items-center gap-3">
               <input
                 type="color"

@@ -27,14 +27,11 @@ function Choice({ active, onClick, children }) {
       aria-pressed={active}
       className="flex-1 py-[10px] px-3 rounded-[10px] cursor-pointer text-[13px] font-semibold tracking-[0.02em] [transition:background_var(--dur-hover),border-color_var(--dur-hover),color_var(--dur-hover)]"
       style={{
-        // Active-state accent uses the 8-bit skin's --gf-* vars, so it stays inline.
-        border: active
-          ? '1px solid var(--gf-accent, #1F9CB0)'
-          : '1px solid var(--gf-line, rgba(128,128,128,0.3))',
-        background: active
-          ? 'color-mix(in srgb, var(--gf-accent, #1F9CB0) 16%, transparent)'
-          : 'transparent',
-        color: active ? 'var(--gf-accent, #1F9CB0)' : 'inherit',
+        // Theme tokens, so a custom background's derived ink and accent
+        // (lib/customTheme.ts) keep these readable.
+        border: active ? '1px solid var(--accent)' : '1px solid var(--line-2)',
+        background: active ? 'var(--accent-bg)' : 'transparent',
+        color: active ? 'var(--accent)' : 'var(--ink)',
       }}
     >
       {children}

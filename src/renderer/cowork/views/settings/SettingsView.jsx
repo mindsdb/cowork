@@ -507,7 +507,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             <span
               role="status"
               aria-live="polite"
-              className={`absolute bottom-[calc(100%+6px)] left-1/2 py-[3px] px-2 text-[10.5px] font-semibold tracking-[0.04em] uppercase bg-[rgba(20,28,28,0.92)] border border-solid rounded-md whitespace-nowrap pointer-events-none shadow-sh-2 z-[5] ${copyState === 'failed'
+              className={`absolute bottom-[calc(100%+6px)] left-1/2 py-[3px] px-2 text-[10.5px] font-semibold tracking-[0.04em] uppercase bg-surface-3 border border-solid rounded-md whitespace-nowrap pointer-events-none shadow-sh-2 z-[5] ${copyState === 'failed'
                 ? 'text-danger border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
                 : 'text-accent border-[color-mix(in_srgb,var(--accent)_45%,transparent)]'}`}
               style={{
@@ -589,7 +589,7 @@ function SetBadge({ hasValue, active }) {
       size="xs"
       className={`ml-2 align-middle uppercase tracking-[0.04em] ${active ? 'set-badge-pulse' : ''}`}
       icon={<span aria-hidden className={`w-1.5 h-1.5 rounded-full bg-current ${active
-        ? 'shadow-[0_0_8px_currentColor,0_0_14px_rgba(124,196,182,0.6)]'
+        ? 'shadow-[0_0_8px_currentColor,0_0_14px_color-mix(in_srgb,var(--sage-500)_60%,transparent)]'
         : 'shadow-[0_0_4px_color-mix(in_srgb,var(--sage-500)_45%,transparent)]'}`} />}
       style={{
         // When active, the box-shadow comes from the set-badge-pulse
@@ -2342,7 +2342,7 @@ export default function SettingsView({
                 className={COLOR_SWATCH_INPUT}
               />
             </Section>
-            <Section title="Background — Light mode" subtitle="Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.">
+            <Section title="Background — Light mode" subtitle="Tints the app in Light; a dark pick becomes a light tint of its hue, and text adjusts to stay readable. Or use Light's default.">
               <div className="flex items-center gap-3">
                 <input
                   type="color"
@@ -2364,7 +2364,7 @@ export default function SettingsView({
                 </label>
               </div>
             </Section>
-            <Section title="Background — Dark mode" subtitle="Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.">
+            <Section title="Background — Dark mode" subtitle="Tints the app in Dark; a light pick becomes a dark shade of its hue, and text adjusts to stay readable. Or use Dark's default.">
               <div className="flex items-center gap-3">
                 <input
                   type="color"
