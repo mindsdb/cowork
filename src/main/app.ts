@@ -874,6 +874,10 @@ function setupIPC() {
       // Absent entirely for a supports_refresh: false connector.
       if (pkceResult.refresh_token) {
         await setRefreshToken(engine, accountEmail, pkceResult.refresh_token);
+      } else {
+        // A reconnect that issued none would otherwise leave the previous
+        // grant's token here, and the refresh loop would post that one.
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
       }
 
       const expiresAt = new Date(Date.now() + (pkceResult.expires_in ?? 3600) * 1000).toISOString();

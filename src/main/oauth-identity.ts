@@ -239,6 +239,11 @@ async function fetchHubspotIdentity(accessToken: string): Promise<OAuthIdentity>
 // code-exchange response, so they arrive here via `extra` and are forwarded
 // for the bridge to build the per-workspace identity.
 async function fetchNotionIdentity(accessToken: string, extra?: OAuthExtra): Promise<OAuthIdentity> {
+  if (typeof extra?.workspace_id !== 'string') {
+    // Without it the identity is the bare email, so two workspaces under one
+    // email would share a keychain entry and a refresh loop.
+    diagnostic('main.oauth-identity', 'WARNING', 'notion_token_response_has_no_workspace_id', '[oauth-identity] Notion token response has no workspace_id');
+  }
   const res = await fetch(
     `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/notion/mcp/identity`,
     {
@@ -317,6 +322,12 @@ const REVOKE_REQUEST_BUILDERS: Record<
   supabase: (refreshToken, clientId, clientSecret) => ({
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken }),
+  }),
+  // A public client: Notion rejects a revoke without client_id (401
+  // invalid_client) and leaves the grant live.
+  notion: (refreshToken, clientId) => ({
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: refreshToken, client_id: clientId }).toString(),
   }),
 };
 

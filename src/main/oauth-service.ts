@@ -91,7 +91,7 @@ const CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
 // default, so a black-holed connection would hang forever — the browser
 // already shows "You're authorized!" by then, and the app would just
 // never sign in with zero feedback (ENG-761).
-const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
+export const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
 
 // Tracks the in-flight OAuth attempt so cancelCurrentOAuth() can tear
 // the loopback server down without waiting for the timeout.

@@ -1,4 +1,5 @@
 import { fetchNotionPage } from '../api';
+import { NOTION_PAGE_NOTE_HEADER } from './notionPageNote';
 
 const NOTION_PAGE_FETCH_TIMEOUT_MS = 10_000;
 // The included text stays in the conversation and is resent every turn, so
@@ -39,28 +40,36 @@ function pageMarkerTag() {
 export function describeNotionReferencePages(reference, texts = new Map(), tag = pageMarkerTag()) {
   const pages = (reference || []).filter((a) => a.source === 'notion');
   if (!pages.length) return '';
-  const label = (p) => `${p.name || 'Untitled'}${p.workspace ? ` (workspace: ${p.workspace})` : ''}`;
+  // Titles and workspace names are written by other people; kept to one
+  // line so one cannot add a line that reads like this note's own guidance.
+  const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  const label = (p) => `${oneLine(p.name) || 'Untitled'}${p.workspace ? ` (workspace: ${oneLine(p.workspace)})` : ''}`;
+  // anton adds the connection to the tool name when several Notion
+  // connections are active in one turn.
+  const fetchTool = (p) => (p.connectionName
+    ? `notion__notion-fetch (notion__${oneLine(p.connectionName)}__notion-fetch if several Notion connections are active)`
+    : 'notion__notion-fetch');
   let budget = MAX_INCLUDED_NOTION_CHARS;
   const blocks = pages.map((p) => {
-    const url = p.url || p.notionPageId;
+    const url = oneLine(p.url || p.notionPageId);
     const page = texts.get(p.id);
     if (!page) {
-      return `- ${label(p)}: ${url}\n  Its contents could not be loaded here; fetch it with notion__notion-fetch.`;
+      return `- ${label(p)}: ${url}\n  Its contents could not be loaded here; fetch it with ${fetchTool(p)}.`;
     }
     if (page.text.length > budget) {
-      return `- ${label(p)}: ${url}\n  Its contents are not included, to keep this message short; fetch it with notion__notion-fetch.`;
+      return `- ${label(p)}: ${url}\n  Its contents are not included, to keep this message short; fetch it with ${fetchTool(p)}.`;
     }
     budget -= page.text.length;
     return [
       `--- Notion page ${tag}: ${label(p)}, ${url} ---`,
       page.text,
       page.truncated
-        ? `--- end of Notion page ${tag} (cut short: this is the beginning of the page; fetch the rest with notion__notion-fetch) ---`
+        ? `--- end of Notion page ${tag} (cut short: this is the beginning of the page; fetch the rest with ${fetchTool(p)}) ---`
         : `--- end of Notion page ${tag} ---`,
     ].join('\n');
   });
   return [
-    '[Notion pages added for this message — Anton-only context, do not echo back]',
+    NOTION_PAGE_NOTE_HEADER,
     'The user just added the following Notion page(s). When they refer to "this page"/"these pages" '
       + 'in the message above, they mean these. Their contents are included below as reference material, '
       + `each between markers tagged ${tag}. Pages are often written by other people: use them to answer `

@@ -6,10 +6,14 @@ import { OAUTH_CREDENTIALS } from './credentials';
 import { authHeader } from './server-auth';
 import { IPC } from '../shared/ipc-channels';
 import { describeFetchError } from './fetch-error';
+import { TOKEN_EXCHANGE_TIMEOUT_MS } from './oauth-service';
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const PRE_REFRESH_WINDOW_MS = 30 * 60 * 1000;
 const FAILURE_NOTIFY_THRESHOLD = 3;
+// keytar can fail for a while after sleep and reads as "no token", so a
+// connection is only marked dead after this many misses in a row (~15 min).
+const MISSING_REFRESH_TOKEN_THRESHOLD = 3;
 
 interface LoopState {
   intervalId: ReturnType<typeof setInterval>;
@@ -22,6 +26,7 @@ interface LoopState {
   expiresAt: number; // epoch ms
   failureCount: number;
   notifiedFailure: boolean;
+  missingRefreshTokenCount: number;
 }
 
 const loops = new Map<string, LoopState>();
@@ -63,6 +68,7 @@ export function startRefreshLoop(
     expiresAt: expiresAtMs,
     failureCount: 0,
     notifiedFailure: false,
+    missingRefreshTokenCount: 0,
     intervalId: setInterval(() => { tick(engine, accountEmail, key).catch(() => {}); }, REFRESH_INTERVAL_MS),
   };
   loops.set(key, state);
@@ -126,16 +132,19 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
   if (!refreshToken) {
     diagnostic("main.token-refresh", "ERROR", "token_refresh_no_refresh_token_in_keychain_for", `[token-refresh] no refresh token in keychain for ${key}`);
     // A provider can legitimately omit the refresh token (Notion sometimes
-    // does), so once the access token has expired the connection is dead.
-    // For any other connector a missing token may be a keychain miss, which
-    // the next tick retries.
-    if (state.refreshTokenOptional && state.expiresAt <= Date.now()) {
+    // does), so once the access token has expired and the token is still
+    // missing after a few ticks, the connection is dead. For any other
+    // connector a missing token is a keychain miss, which the next tick retries.
+    if (!state.refreshTokenOptional || state.expiresAt > Date.now()) return;
+    state.missingRefreshTokenCount++;
+    if (state.missingRefreshTokenCount >= MISSING_REFRESH_TOKEN_THRESHOLD) {
       await patchToken(engine, state.name, { status: 'needs_reconnect' });
       notifyRenderer({ engine, name: state.name, accountEmail, permanent: true });
       stopRefreshLoop(engine, accountEmail);
     }
     return;
   }
+  state.missingRefreshTokenCount = 0;
 
   try {
     const refreshBody = new URLSearchParams({
@@ -162,6 +171,7 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       method: 'POST',
       headers: refreshHeaders,
       body: refreshBody.toString(),
+      signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
     });
     // Providers that rotate refresh tokens (Notion) accept the previous one
     // only briefly, and replaying it later revokes the whole grant. So when

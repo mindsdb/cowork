@@ -13,6 +13,7 @@ import { isAntonConfigError } from './lib/antonErrors';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
+import { withoutNotionPageNotes } from './lib/notionPageNote';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
@@ -330,7 +331,7 @@ function _failedEventMeta(events) {
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
   const out = [];
-  for (const m of messages) {
+  for (const m of withoutNotionPageNotes(messages)) {
     if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
       out.push(m);
       continue;
@@ -621,7 +622,7 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
   try {
     const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }), { timeoutMs });
     const page = _pageFromItemsResponse(raw);
-    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
+    return { messages: withoutNotionPageNotes(page.items), hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
   } catch {
     return null;
   }

@@ -122,14 +122,47 @@ describe('tick — refresh outcomes', () => {
     return { tokenCalls, patches };
   }
 
-  it('marks an expired connection with no refresh token needs_reconnect', async () => {
-    vi.mocked(getRefreshToken).mockResolvedValue(null);
-    const { tokenCalls, patches } = mockServer([]);
+  const TICK_MS = 5 * 60 * 1000;
 
-    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() - 1000).toISOString(), TOKEN_URL, undefined, true);
+  it('marks an expired connection needs_reconnect once its refresh token is missing three ticks in a row', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(getRefreshToken).mockResolvedValue(null);
+      const { tokenCalls, patches } = mockServer([]);
 
-    await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
-    expect(tokenCalls).toHaveLength(0);
+      startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() - 1000).toISOString(), TOKEN_URL, undefined, true);
+
+      await vi.advanceTimersByTimeAsync(TICK_MS);
+      expect(patches).toEqual([]);
+      await vi.advanceTimersByTimeAsync(TICK_MS);
+      expect(patches).toEqual([{ status: 'needs_reconnect' }]);
+      expect(tokenCalls).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a connection whose refresh token comes back after a keychain miss', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(getRefreshToken)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('rt-1')
+        .mockResolvedValue(null);
+      const { patches } = mockServer([
+        () => new Response(JSON.stringify({ error: 'temporarily_unavailable' }), { status: 503 }),
+      ]);
+
+      startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() - 1000).toISOString(), TOKEN_URL, undefined, true);
+
+      // Two misses, a successful read, then two more misses: the count
+      // restarted, so the connection is still not marked.
+      await vi.advanceTimersByTimeAsync(4 * TICK_MS);
+      expect(patches).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('leaves an expired connection alone when its connector always issues a refresh token', async () => {
@@ -172,6 +205,21 @@ describe('tick — refresh outcomes', () => {
     expect(new URLSearchParams(tokenCalls[1]).get('refresh_token')).toBe('rt-1');
     expect(patches[0].access_token).toBe('at-2');
     expect(vi.mocked(setRefreshToken)).toHaveBeenCalledWith('notion', 'user@example.com:ws-1', 'rt-2');
+  });
+
+  it('retries once right away when the refresh request stalls past its timeout', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('rt-1');
+    const { tokenCalls, patches } = mockServer([
+      () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); },
+      () => new Response(JSON.stringify({ access_token: 'at-2', expires_in: 3600 }), { status: 200 }),
+    ]);
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toHaveLength(1));
+    expect(tokenCalls).toHaveLength(2);
+    const refreshCalls = vi.mocked(globalThis.fetch).mock.calls.filter((c) => c[0] === TOKEN_URL);
+    expect(refreshCalls.every((c) => (c[1] as RequestInit).signal instanceof AbortSignal)).toBe(true);
   });
 
   it('does not retry an invalid_grant', async () => {

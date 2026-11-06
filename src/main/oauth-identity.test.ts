@@ -228,6 +228,15 @@ describe('buildRevokeRequest', () => {
       refresh_token: 'refresh-tok',
     });
   });
+
+  it('sends client_id without a secret for Notion', () => {
+    const req = buildRevokeRequest('notion', 'refresh-tok', 'https://mindshub.ai/.well-known/notion-oauth-client.json', '');
+    expect(req.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+    expect(Object.fromEntries(new URLSearchParams(req.body))).toEqual({
+      token: 'refresh-tok',
+      client_id: 'https://mindshub.ai/.well-known/notion-oauth-client.json',
+    });
+  });
 });
 
 describe('fetchAccountIdentity — Supabase organization-scoped grants', () => {
