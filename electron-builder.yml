@@ -42,6 +42,10 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Electron 44+ does not run on macOS 12. Written as LSMinimumSystemVersion;
+  # kept in step with the .pkg and the update feed by
+  # src/main/macos-minimum.invariant.test.ts.
+  minimumSystemVersion: "13.0"
   extendInfo:
     NSMicrophoneUsageDescription: MindsHub Cowork uses the microphone for voice dictation in the chat composer.
 
