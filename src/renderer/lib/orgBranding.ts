@@ -234,9 +234,12 @@ export function sidebarTitleFor(appearance: OrgAppearance, orgName: string | nul
 }
 
 /**
- * The org branding with an admin's unsaved draft in the org-look slot, for
- * the live preview on Settings → Branding. Only an admin's (`canEdit`) own
- * window previews; anyone else, and no draft, gets the saved branding as is.
+ * The org branding with an admin's unsaved draft, for the live preview on
+ * Settings → Branding. While the draft is active it takes the locked org-look
+ * slot (members can't choose), so it overrides the admin's own style and they
+ * see exactly what they're editing; the deployment brand still wins, as the
+ * resolver always has it. Only an admin's (`canEdit`) own window previews;
+ * anyone else, and no draft, gets the saved branding as is.
  */
 export function withBrandingDraft(
   saved: OrgBranding | null,
@@ -244,7 +247,11 @@ export function withBrandingDraft(
   fallbackTitle: string,
 ): OrgBranding | null {
   if (!draft || !saved?.enabled || !saved.canEdit) return saved;
-  return { ...saved, appearance: draft, sidebarTitle: sidebarTitleFor(draft, saved.orgName, fallbackTitle) };
+  return {
+    ...saved,
+    appearance: { ...draft, membersCanChoose: false },
+    sidebarTitle: sidebarTitleFor(draft, saved.orgName, fallbackTitle),
+  };
 }
 
 /** The PUT body (snake_case) for an appearance the admin edited. */

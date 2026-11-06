@@ -34,7 +34,7 @@ vi.mock('../../lib/analytics', () => ({ resetDeviceIdentity: vi.fn() }));
 import SettingsView, { APPEARANCE_ANCHORS } from './SettingsView';
 import { appearanceToSave } from './OrgBrandingFields';
 import { navItemsForHost } from './settingsNavigation';
-import { AUTH_IMAGE_HOST, parseOrgAppearance, parseOrgBranding, withBrandingDraft } from '../../../lib/orgBranding';
+import { AUTH_IMAGE_HOST, parseOrgAppearance, parseOrgBranding, resolveLook, withBrandingDraft } from '../../../lib/orgBranding';
 
 const LOGO = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/logo?v=1`;
 const LOGO_DARK = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/logo_dark?v=1`;
@@ -413,6 +413,39 @@ describe('live preview of unsaved Branding edits', () => {
     expect(screen.queryByRole('region', { name: 'Unsaved branding changes' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Close settings' }));
     expect(screen.getByTestId('shown-greeting')).toHaveTextContent('Hello Acme');
+  });
+
+  it("shows the draft over an admin's own style while editing, and their own style after Cancel", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem('anton.skin', '8bit');
+    localStorage.setItem('anton.skinChosen', '1');
+    localStorage.setItem('anton.theme', 'light');
+    localStorage.setItem('anton.themeChosen', '1');
+    render(<Harness saved={saved()} />);
+    expect(document.body.dataset.skin).toBe('8bit');
+    expect(document.body.dataset.theme).toBe('light');
+
+    await user.click(within(screen.getByRole('group', { name: 'Organization style' })).getByRole('button', { name: 'Custom organization style' }));
+    await user.click(within(screen.getByRole('group', { name: 'Organization theme' })).getByRole('button', { name: 'Dark organization theme' }));
+    expect(document.body.dataset.skin).toBe('custom');
+    expect(document.body.dataset.theme).toBe('dark');
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(document.body.dataset.skin).toBe('8bit');
+    expect(document.body.dataset.theme).toBe('light');
+  });
+
+  it('keeps the deployment style lock over a draft', () => {
+    const draft = withBrandingDraft(saved(), { ...saved().appearance, skin: '8bit' }, 'MindsHub');
+    expect(draft.appearance.membersCanChoose).toBe(false);
+    const look = resolveLook({
+      deployment: { productName: null, skinLocked: true, defaultSkin: 'normal', skin: null, theme: null, logoUrl: null, iconUrl: null },
+      org: draft,
+      member: { skin: 'normal', skinChosen: false, customTheme: {}, theme: 'dark', themeChosen: false, greeting: null, navLogo: null, favicon: null, navTitle: null, navTitleColor: null },
+      knownSkins: ['normal', '8bit', 'custom'],
+      hostedMindsHub: true,
+    });
+    expect(look).toMatchObject({ skin: 'normal', skinSource: 'deployment' });
   });
 
   it('never previews for someone who cannot edit', () => {
