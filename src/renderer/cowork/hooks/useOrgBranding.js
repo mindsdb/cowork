@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchOrgBranding } from '../api';
-import { onMindsHubAuthChanged } from '../../platform/host';
-import { parseOrgBranding } from '../../lib/orgBranding';
+import { mindshubOrgBranding, onMindsHubAuthChanged } from '../../platform/host';
+import { desktopOrgBranding, parseOrgBranding } from '../../lib/orgBranding';
 import { cacheOrgBranding, loadCachedOrgBranding } from '../lib/orgBrandingCache';
 import { subscribeOrganizationChanges } from '../lib/organizationChanges';
 
@@ -19,11 +19,15 @@ import { subscribeOrganizationChanges } from '../lib/organizationChanges';
  * showing: a branded page going stock because one request failed would read
  * as the brand being removed.
  *
- * `enabled` is false outside hosted org mode, and the hook then answers null,
- * so desktop and self-hosted builds look exactly as they did.
+ * `enabled` is hosted org mode. `desktop` is the desktop app, which reads the
+ * active company org's logo and icon through the main process (and gets no
+ * org look: that lives in the hosted cowork-server). Neither: the hook
+ * answers null, so self-hosted builds look exactly as they did. Desktop is
+ * not cached here: main keeps the images on disk.
  */
-export function useOrgBranding({ enabled, settingsOpen }) {
-  const [branding, setBranding] = useState(loadCachedOrgBranding);
+export function useOrgBranding({ enabled, desktop = false, settingsOpen }) {
+  const [branding, setBranding] = useState(() => (desktop ? null : loadCachedOrgBranding()));
+  const active = enabled || desktop;
   // A read that resolves after a newer one started drops itself.
   const generation = useRef(0);
 
@@ -35,16 +39,26 @@ export function useOrgBranding({ enabled, settingsOpen }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!enabled) return;
+    if (!enabled && !desktop) return;
     generation.current += 1;
     const mine = generation.current;
+    if (desktop && !enabled) {
+      // null is a real answer here (signed out, personal org, no images).
+      try {
+        const raw = await mindshubOrgBranding();
+        if (generation.current === mine) setBranding(desktopOrgBranding(raw));
+      } catch {
+        /* keep what is showing */
+      }
+      return;
+    }
     try {
       const raw = await fetchOrgBranding();
       if (generation.current === mine) remember(raw);
     } catch {
       /* keep what is showing */
     }
-  }, [enabled, remember]);
+  }, [enabled, desktop, remember]);
 
   /** Apply an answer the caller already has (an admin's save), with no read. */
   const apply = useCallback((raw) => {
@@ -57,16 +71,18 @@ export function useOrgBranding({ enabled, settingsOpen }) {
 
   // An in-place org switch, and a sign-in.
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!active) return undefined;
     const offOrg = subscribeOrganizationChanges(() => { refresh(); });
+    // Sign-in reads again; on desktop sign-out does too, which clears the
+    // images and puts the stock app icon back.
     const offAuth = onMindsHubAuthChanged(({ authenticated } = {}) => {
-      if (authenticated) refresh();
+      if (authenticated || desktop) refresh();
     });
     return () => {
       offOrg();
       offAuth();
     };
-  }, [enabled, refresh]);
+  }, [active, desktop, refresh]);
 
   // Each time Settings opens.
   const wasOpen = useRef(settingsOpen);
@@ -76,7 +92,7 @@ export function useOrgBranding({ enabled, settingsOpen }) {
   }, [settingsOpen, refresh]);
 
   return {
-    branding: enabled ? branding : null,
+    branding: active ? branding : null,
     refresh,
     apply,
   };

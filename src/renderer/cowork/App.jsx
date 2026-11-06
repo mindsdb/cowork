@@ -1788,7 +1788,8 @@ function AppCore() {
   // Hosted MindsHub (any org, personal ones too): the sidebar title, logo and
   // tab icon come from the org, not from per-person settings.
   const hostedMindsHub = PLATFORM_UI && host.isWeb && orgMode;
-  const orgBranding = useOrgBranding({ enabled: hostedMindsHub, settingsOpen });
+  // Desktop reads the active company org's logo and icon through main.
+  const orgBranding = useOrgBranding({ enabled: hostedMindsHub, desktop: host.isElectron, settingsOpen });
   // An admin's unsaved edits on Settings → Branding, previewed live in this
   // window only: the draft takes the org-look slot in the resolver. It never
   // reaches the server or the first-paint cache, and leaving the Branding page

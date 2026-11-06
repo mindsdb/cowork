@@ -6,8 +6,10 @@ const fetchOrgBranding = vi.fn();
 vi.mock('../api', () => ({ fetchOrgBranding: (...args) => fetchOrgBranding(...args) }));
 
 let authListener = null;
+const desktopBranding = vi.fn();
 vi.mock('../../platform/host', () => ({
   onMindsHubAuthChanged: (cb) => { authListener = cb; return () => { authListener = null; }; },
+  mindshubOrgBranding: (...args) => desktopBranding(...args),
 }));
 
 import { useOrgBranding } from './useOrgBranding';
@@ -28,6 +30,7 @@ beforeEach(() => {
   localStorage.clear();
   __resetOrgBrandingCacheForTests();
   fetchOrgBranding.mockReset();
+  desktopBranding.mockReset();
   authListener = null;
 });
 
@@ -121,5 +124,44 @@ describe('useOrgBranding', () => {
     // The cache now holds the fresh answer for the next first paint.
     const { result: next } = renderHook(() => useOrgBranding({ enabled: true, settingsOpen: false }));
     expect(next.current.branding.sidebarTitle).toBe('Acme Corp');
+  });
+
+  describe('on desktop', () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+    const raw = { orgId: 'org-acme', orgName: 'Acme', iconUrl: PNG, logoUrl: PNG, logoDarkUrl: null };
+
+    it('reads the images through main, not the API, and caches nothing', async () => {
+      desktopBranding.mockResolvedValue(raw);
+      const { result } = renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
+      await waitFor(() => expect(result.current.branding?.logoUrl).toBe(PNG));
+      expect(result.current.branding).toMatchObject({ enabled: true, orgName: 'Acme', canEdit: false, iconUrl: PNG });
+      expect(result.current.branding.appearance.membersCanChoose).toBe(true);
+      expect(fetchOrgBranding).not.toHaveBeenCalled();
+      expect(Object.keys(localStorage).some((k) => k.startsWith('anton.orgBrandingCache'))).toBe(false);
+    });
+
+    it('reads again on sign-in, sign-out, org switch and Settings open, and clears on sign-out', async () => {
+      desktopBranding.mockResolvedValue(raw);
+      const { result, rerender } = renderHook(({ open }) => useOrgBranding({ enabled: false, desktop: true, settingsOpen: open }), {
+        initialProps: { open: false },
+      });
+      await waitFor(() => expect(result.current.branding).not.toBeNull());
+      expect(desktopBranding).toHaveBeenCalledTimes(1);
+      rerender({ open: true });
+      await waitFor(() => expect(desktopBranding).toHaveBeenCalledTimes(2));
+      await act(async () => { notifyOrganizationChanged('user-1'); });
+      expect(desktopBranding).toHaveBeenCalledTimes(3);
+      desktopBranding.mockResolvedValue(null);
+      await act(async () => { authListener?.({ authenticated: false }); });
+      expect(desktopBranding).toHaveBeenCalledTimes(4);
+      expect(result.current.branding).toBeNull();
+    });
+
+    it('ignores anything that is not a PNG, JPEG or WebP data URI', async () => {
+      desktopBranding.mockResolvedValue({ ...raw, iconUrl: 'https://images.globex.com/i.png', logoUrl: 'data:image/svg+xml;base64,PHN2Zz4=' });
+      const { result } = renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
+      await act(async () => {});
+      expect(result.current.branding).toBeNull();
+    });
   });
 });

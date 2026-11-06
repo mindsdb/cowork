@@ -1523,6 +1523,24 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
   return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
 }
 
+/** The active company org's images on desktop (ENG-4020), or null. Web reads them from the API. */
+export interface DesktopOrgBranding {
+  orgId: string;
+  orgName: string | null;
+  iconUrl: string | null;
+  logoUrl: string | null;
+  logoDarkUrl: string | null;
+}
+
+export async function mindshubOrgBranding(): Promise<DesktopOrgBranding | null> {
+  if (!isElectron || typeof bridge.mindshubOrgBranding !== 'function') return null;
+  try {
+    return (await bridge.mindshubOrgBranding()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
   if (isElectron) {
     if (typeof bridge.mindshubSwitchOrg === 'function') {

@@ -254,6 +254,32 @@ describe('Settings → Branding, its own page for org admins', () => {
     expect(onCustomThemeChange).toHaveBeenCalledWith(expect.objectContaining({ bgLight: stockBackground('light') }));
   });
 
+  it('starts both backgrounds on the stock colors, Default unticked, when Custom is chosen', async () => {
+    const user = userEvent.setup();
+    api.updateOrgAppearance.mockResolvedValue({ enabled: true, canEdit: true, appearance: {} });
+    renderSettings({ orgBranding: branding(), hostedMindsHub: true, section: 'branding', onOrgBrandingSaved: vi.fn((raw) => parseOrgBranding(raw)) });
+    await user.click(within(screen.getByRole('group', { name: 'Organization style' })).getByRole('button', { name: 'Custom organization style' }));
+    expect(screen.getByRole('checkbox', { name: /Default organization light background/ })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Default organization dark background/ })).not.toBeChecked();
+    expect(screen.getByLabelText('Organization light background color')).toHaveValue(stockBackground('light'));
+    expect(screen.getByLabelText('Organization dark background color')).toHaveValue(stockBackground('dark'));
+    // Ticking Default clears just that one.
+    await user.click(screen.getByRole('checkbox', { name: /Default organization dark background/ }));
+    await user.click(screen.getByRole('button', { name: 'Save branding' }));
+    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith(expect.objectContaining({
+      skin: 'custom', background_light: stockBackground('light'), background_dark: null,
+    })));
+  });
+
+  it('keeps a saved custom style with Default backgrounds as saved', () => {
+    renderSettings({
+      orgBranding: branding({ appearance: { skin: 'custom', accent: '#112233', membersCanChoose: true } }),
+      hostedMindsHub: true, section: 'branding',
+    });
+    expect(screen.getByRole('checkbox', { name: /Default organization light background/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Default organization dark background/ })).toBeChecked();
+  });
+
   it('saves separate light and dark backgrounds', async () => {
     const user = userEvent.setup();
     api.updateOrgAppearance.mockResolvedValue({ enabled: true, canEdit: true, appearance: {} });

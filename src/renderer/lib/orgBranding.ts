@@ -32,6 +32,7 @@
 // DOM and apply what comes back.
 
 import { MINDS_KEYCLOAK_URL } from './mindsUrls';
+import { trustedAuthImageUrl } from '../../shared/brand-image-url';
 import { DEFAULT_CUSTOM_THEME, type CustomTheme } from './customTheme';
 
 export type ThemeName = 'light' | 'dark';
@@ -144,15 +145,7 @@ export function trustedBrandImageUrl(
   value: unknown,
   authHost: string | null = AUTH_IMAGE_HOST,
 ): string | null {
-  if (typeof value !== 'string' || !authHost) return null;
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'https:' || url.username || url.password) return null;
-  return url.host.toLowerCase() === authHost.toLowerCase() ? url.toString() : null;
+  return trustedAuthImageUrl(value, authHost);
 }
 
 // ── Parsing ──────────────────────────────────────────────────────────
@@ -258,6 +251,32 @@ export function withBrandingDraft(
     ...saved,
     appearance: { ...draft, membersCanChoose: false },
     sidebarTitle: sidebarTitleFor(draft, saved.orgName, fallbackTitle),
+  };
+}
+
+const BRAND_DATA_URI = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+
+/**
+ * The desktop's org branding (ENG-4020): the active company org's images,
+ * which the main process downloaded from auth and hands over as data: URIs.
+ * Desktop has no org look (that lives in the hosted cowork-server), so the
+ * appearance is empty and the member's own choices stay in charge.
+ */
+export function desktopOrgBranding(raw: unknown): OrgBranding | null {
+  const value = recordOf(raw);
+  if (!value) return null;
+  const image = (v: unknown) => (typeof v === 'string' && BRAND_DATA_URI.test(v) ? v : null);
+  const iconUrl = image(value.iconUrl);
+  const logoUrl = image(value.logoUrl);
+  const logoDarkUrl = image(value.logoDarkUrl);
+  if (!iconUrl && !logoUrl && !logoDarkUrl) return null;
+  return {
+    ...NO_ORG_BRANDING,
+    enabled: true,
+    orgName: textOrNull(value.orgName, ORG_NAME_MAX_LENGTH),
+    iconUrl,
+    logoUrl,
+    logoDarkUrl,
   };
 }
 

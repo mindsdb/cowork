@@ -39,6 +39,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "MINDSHUB_GET_CACHED_TOKEN": "mindshub:get-cached-token",
   "MINDSHUB_LIST_ORGS": "mindshub:list-orgs",
   "MINDSHUB_LOGIN": "mindshub:login",
+  "MINDSHUB_ORG_BRANDING": "mindshub:org-branding",
   "MINDSHUB_REFRESH": "mindshub:refresh",
   "MINDSHUB_SET_USER_KEY": "mindshub:set-user-key",
   "MINDSHUB_SIGNUP": "mindshub:signup",

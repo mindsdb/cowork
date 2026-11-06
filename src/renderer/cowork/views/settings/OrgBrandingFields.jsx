@@ -232,7 +232,15 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
         <Section title="Organization style" subtitle={sub('The look everyone in your organization starts from. Custom lets you pick the color, background, corners and typeface.')}>
           <ToggleGroup
             value={draft.skin ?? NOT_SET}
-            onValueChange={(v) => edit({ skin: v === NOT_SET ? null : v })}
+            onValueChange={(v) => edit({
+              skin: v === NOT_SET ? null : v,
+              // Choosing Custom starts both backgrounds on the stock themes' own
+              // colors, Default unticked, so they are there to adjust. A saved
+              // custom style keeps what it saved.
+              ...(v === 'custom' && draft.skin !== 'custom' && draft.backgroundLight === null && draft.backgroundDark === null
+                ? { backgroundLight: stockBackground('light'), backgroundDark: stockBackground('dark') }
+                : {}),
+            })}
             disabled={locked}
             aria-label="Organization style"
             options={[
