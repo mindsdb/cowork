@@ -19,9 +19,7 @@ vi.mock('./platform/host', () => ({ host: {
   checkInstall: async () => ({ antonInstalled: true, serverDepsReady: true }),
   awaitBootReady: async () => {},
   getShellSupport: async () => null,
-  getShellAutoUpdate: async () => null,
-  onShellAutoUpdate: () => () => {},
-  onUpdateStatus: () => () => {},
+  watchUpdateState: () => () => {},
   accountOwnershipPending: async () => null,
 } }));
 vi.mock('./lib/orgMode', () => ({ setOrgMode: mocks.setOrgMode }));

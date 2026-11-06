@@ -56,6 +56,7 @@ import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
 import { OWN_WORK_PROMPT } from './onboarding/steps';
 import { reset as resetOnboarding } from './onboarding/onboardingStore';
+import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput } from '../../../shared/update-coordinator';
 
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
@@ -229,9 +230,17 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
 
   // Which-banner-wins is covered in update-banner.test.ts; these assert the
   // sidebar renders one banner and wires its action/dismiss to the callback.
-  const bannerFor = (input) => deriveUpdateBanner(input);
+  const bannerFor = ({ ota = null, shellAuto = null, shellManual = null }) => deriveUpdateBanner(
+    coordinateUpdates({
+      ...EMPTY_UPDATE_INPUT,
+      ...legacyOtaInput(ota),
+      shell: shellAuto ? { mode: 'auto', channel: 'prod', currentVersion: '1.0.0', ...shellAuto } : null,
+      shellManual: shellManual ? { version: shellManual.version } : null,
+    }),
+    { debInstaller: !!shellManual?.debInstaller },
+  );
 
-  it('renders the OTA "Update ready" (restart) banner and fires apply-ota', () => {
+  it('renders the OTA "Update ready" (restart) banner and fires reload', () => {
     const onUpdateAction = vi.fn();
     render(
       <Sidebar
@@ -244,7 +253,7 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
     const btn = screen.getByRole('button', { name: /Update ready/ });
     expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
     fireEvent.click(btn);
-    expect(onUpdateAction).toHaveBeenCalledWith('apply-ota');
+    expect(onUpdateAction).toHaveBeenCalledWith('reload');
   });
 
   it('renders the dismissible manual installer notice and fires download + dismiss', () => {
@@ -260,7 +269,7 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /New version available/ }));
-    expect(onUpdateAction).toHaveBeenCalledWith('download-installer');
+    expect(onUpdateAction).toHaveBeenCalledWith('open-download-page');
     fireEvent.click(screen.getByRole('button', { name: /Dismiss update notice/ }));
     expect(onDismissUpdate).toHaveBeenCalledTimes(1);
   });
@@ -325,10 +334,10 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
     const retry = screen.getByRole('button', { name: /Update failed/ });
     expect(retry).toHaveTextContent(/Try again/);
     fireEvent.click(retry);
-    expect(onUpdateAction).toHaveBeenCalledWith('apply-ota');
+    expect(onUpdateAction).toHaveBeenCalledWith('reload');
   });
 
-  it('renders the shell auto-update ready banner and fires shell-auto', () => {
+  it('renders the shell auto-update ready banner and fires relaunch', () => {
     const onUpdateAction = vi.fn();
     render(
       <Sidebar
@@ -339,7 +348,7 @@ describe('Sidebar — the single update banner (consolidated, shell-first)', () 
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /Update ready.*Restart now/ }));
-    expect(onUpdateAction).toHaveBeenCalledWith('shell-auto');
+    expect(onUpdateAction).toHaveBeenCalledWith('relaunch');
   });
 
   it('renders an in-flight download as a disabled banner with no action', () => {

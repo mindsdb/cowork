@@ -1,39 +1,44 @@
 import { describe, it, expect } from 'vitest';
 import { deriveBootStatus } from './boot-status';
+import { EMPTY_UPDATE_INPUT, coordinateUpdates, legacyOtaInput, type OtaStatus, type ShellSnapshot, type UpdateCoordinatorInput } from './update-coordinator';
+
+const shell = (phase: ShellSnapshot['phase']): ShellSnapshot => ({ phase, mode: 'auto', channel: 'prod', currentVersion: '1' });
+// `ota` is a legacy-channel status, split into the offer and apply inputs.
+const from = ({ ota, ...input }: Partial<UpdateCoordinatorInput> & { ota?: OtaStatus | null }) =>
+  deriveBootStatus(coordinateUpdates({ ...EMPTY_UPDATE_INPUT, ...(ota !== undefined ? legacyOtaInput(ota) : {}), ...input }));
 
 describe('deriveBootStatus', () => {
   it('returns null when no boot-time OTA is in flight', () => {
-    expect(deriveBootStatus({})).toBeNull();
-    expect(deriveBootStatus({ ota: null })).toBeNull();
-    expect(deriveBootStatus({ ota: { phase: 'idle' } })).toBeNull();
+    expect(deriveBootStatus(null)).toBeNull();
+    expect(deriveBootStatus(undefined)).toBeNull();
+    expect(from({})).toBeNull();
+    expect(from({ ota: { phase: 'idle' } })).toBeNull();
     // `available`/`error`/`shell-available` are banner concerns, not boot ones.
-    expect(deriveBootStatus({ ota: { phase: 'available' } })).toBeNull();
-    expect(deriveBootStatus({ ota: { phase: 'error' } })).toBeNull();
-    expect(deriveBootStatus({ ota: { phase: 'shell-available' } })).toBeNull();
+    expect(from({ ota: { phase: 'available' } })).toBeNull();
+    expect(from({ ota: { phase: 'error' } })).toBeNull();
+    expect(from({ shellManual: { version: 'v' } })).toBeNull();
   });
 
   it('downloading → "Downloading the latest update…"', () => {
-    expect(deriveBootStatus({ ota: { phase: 'downloading' } })).toBe('Downloading the latest update…');
+    expect(from({ ota: { phase: 'downloading' } })).toBe('Downloading the latest update…');
   });
 
   it('reloading → "Finishing up…", never a completion claim', () => {
-    const out = deriveBootStatus({ ota: { phase: 'reloading' } });
+    const out = from({ ota: { phase: 'reloading' } });
     expect(out).toBe('Finishing up…');
     expect(out).not.toBe('Almost ready…');
   });
 
   it('ignores a shell update the gate does not apply', () => {
-    const shellOnly = { shell: { phase: 'downloading' }, manualShellPending: true };
-    expect(deriveBootStatus(shellOnly as never)).toBeNull();
-    for (const phase of ['available', 'downloading', 'ready-to-install', 'failed']) {
-      expect(deriveBootStatus({ ota: { phase: 'reloading' }, shell: { phase } })).toBe('Finishing up…');
-      expect(deriveBootStatus({ shell: { phase } })).toBeNull();
+    for (const phase of ['available', 'downloading', 'ready-to-install', 'failed'] as const) {
+      expect(from({ ota: { phase: 'reloading' }, shell: shell(phase) })).toBe('Finishing up…');
+      expect(from({ shell: shell(phase) })).toBeNull();
     }
   });
 
   it('installing → says the app will reopen, over any OTA line', () => {
     const installing = 'Installing the update — Cowork will reopen…';
-    expect(deriveBootStatus({ shell: { phase: 'installing' } })).toBe(installing);
-    expect(deriveBootStatus({ ota: { phase: 'downloading' }, shell: { phase: 'installing' } })).toBe(installing);
+    expect(from({ shell: shell('installing') })).toBe(installing);
+    expect(from({ ota: { phase: 'downloading' }, shell: shell('installing') })).toBe(installing);
   });
 });
