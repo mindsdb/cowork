@@ -52,9 +52,9 @@ export function appearanceToSave(draft) {
   const custom = draft.skin === 'custom';
   return appearancePayload({
     ...draft,
-    // null = "Use company name": the server follows the org's current name,
-    // so a rename in the console updates the title. A custom one stays fixed.
-    sidebarTitle: draft.sidebarTitle === null ? null : (draft.sidebarTitle.trim() || null),
+    // Only a custom title is sent; "company" follows the org's current name
+    // on the server, so a rename in the console updates the title.
+    sidebarTitle: draft.sidebarTitleMode === 'custom' ? (draft.sidebarTitle?.trim() || null) : null,
     accent: custom ? (draft.accent ?? DEFAULT_CUSTOM_THEME.accent) : null,
     background: custom ? draft.background : null,
     font: custom ? draft.font : null,
@@ -64,34 +64,61 @@ export function appearanceToSave(draft) {
   });
 }
 
-export default function OrgBrandingFields({ branding, onSaved }) {
+/** Same look? Compared as what would be saved, so a no-op edit isn't a change. */
+function sameLook(a, b) {
+  return JSON.stringify(appearanceToSave(a)) === JSON.stringify(appearanceToSave(b));
+}
+
+export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) {
   const canEdit = branding.canEdit === true;
   const saved = branding.appearance;
   const [draft, setDraft] = useState(() => draftFrom(saved));
   const [status, setStatus] = useState({ state: 'idle', message: null });
-  const [dirty, setDirty] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [titleError, setTitleError] = useState(null);
   const accountUser = useAccountUser(true);
+  const changed = editing && !sameLook(draft, draftFrom(saved));
 
   // A fresh read (Settings opening, another admin's save) replaces the draft
   // until this admin starts editing.
   useEffect(() => {
-    if (!dirty) setDraft(draftFrom(saved));
-  }, [saved, dirty]);
+    if (!editing) setDraft(draftFrom(saved));
+  }, [saved, editing]);
+
+  // The live preview: the draft takes the org-look slot in this window while
+  // it differs from the saved look. Leaving this page (another Settings page,
+  // closing Settings) unmounts it and puts the saved look back.
+  useEffect(() => {
+    onDraftChange?.(changed ? draft : null);
+  }, [changed, draft, onDraftChange]);
+  useEffect(() => () => onDraftChange?.(null), [onDraftChange]);
 
   const edit = (patch) => {
     if (!canEdit) return;
     setDraft((current) => ({ ...current, ...patch }));
-    setDirty(true);
+    setEditing(true);
+    setTitleError(null);
+    setStatus({ state: 'idle', message: null });
+  };
+
+  const cancel = () => {
+    setDraft(draftFrom(saved));
+    setEditing(false);
+    setTitleError(null);
     setStatus({ state: 'idle', message: null });
   };
 
   const save = async () => {
+    if (draft.sidebarTitleMode === 'custom' && !draft.sidebarTitle?.trim()) {
+      setTitleError('Enter a sidebar title, or choose Company name or None.');
+      return;
+    }
     setStatus({ state: 'saving', message: null });
     try {
       const response = await updateOrgAppearance(appearanceToSave(draft));
       const next = onSaved?.(response);
       if (next?.appearance) setDraft(draftFrom(next.appearance));
-      setDirty(false);
+      setEditing(false);
       setStatus({ state: 'saved', message: null });
     } catch (err) {
       setStatus({
@@ -112,30 +139,49 @@ export default function OrgBrandingFields({ branding, onSaved }) {
   const custom = draft.skin === 'custom';
   const sub = (text) => (canEdit ? text : `${text} ${ADMIN_ONLY}`);
   const companyTitle = companySidebarTitle(branding.orgName, productName(STOCK_WORDMARK));
-  const useCompanyName = draft.sidebarTitle === null;
-  const shownTitle = useCompanyName ? companyTitle : (draft.sidebarTitle.trim() || companyTitle);
+  const titleMode = draft.sidebarTitleMode;
+  const shownTitle = titleMode === 'none' ? 'logo only'
+    : titleMode === 'custom' ? (draft.sidebarTitle?.trim() || '(no title)')
+      : companyTitle;
+  const titleBlank = titleMode === 'custom' && !draft.sidebarTitle?.trim();
 
   return (
     <>
-      <Section title="Sidebar title" subtitle={sub('Shown at the top of the sidebar for everyone in your organization. The company name follows renames in the console; a custom title stays as you type it.')}>
+      <Section title="Sidebar title" subtitle={sub('Shown at the top of the sidebar for everyone in your organization. Company name follows renames in the console; a custom title stays as typed; None shows the logo only.')}>
         <div className="flex flex-col gap-2">
-          <label className="inline-flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
-            <Checkbox
-              checked={useCompanyName}
-              onCheckedChange={(v) => edit({ sidebarTitle: v ? null : (branding.appearance.sidebarTitle ?? companyTitle) })}
-              disabled={locked}
-            />
-            Use company name
-          </label>
-          {!useCompanyName && (
-            <Input
-              value={draft.sidebarTitle}
-              onChange={(v) => edit({ sidebarTitle: v })}
-              placeholder={companyTitle}
-              maxLength={CUSTOM_SIDEBAR_TITLE_MAX_LENGTH}
-              disabled={locked}
-              aria-label="Custom sidebar title"
-            />
+          <ToggleGroup
+            value={titleMode}
+            onValueChange={(v) => edit({
+              sidebarTitleMode: v,
+              sidebarTitle: v === 'custom' ? (draft.sidebarTitle ?? saved.sidebarTitle ?? companyTitle) : draft.sidebarTitle,
+            })}
+            disabled={locked}
+            aria-label="Sidebar title"
+            options={[
+              { value: 'company', label: 'Company name', 'aria-label': 'Company name', title: 'Follows the company name, including renames.' },
+              { value: 'custom', label: 'Custom', 'aria-label': 'Custom', title: 'A title you type, kept through renames.' },
+              { value: 'none', label: 'None', 'aria-label': 'None (logo only)', title: 'No title: the logo alone.' },
+            ]}
+          />
+          {titleMode === 'custom' && (
+            <>
+              <Input
+                value={draft.sidebarTitle ?? ''}
+                onChange={(v) => edit({ sidebarTitle: v })}
+                placeholder={companyTitle}
+                maxLength={CUSTOM_SIDEBAR_TITLE_MAX_LENGTH}
+                disabled={locked}
+                required
+                aria-invalid={titleBlank || undefined}
+                aria-describedby={titleError || titleBlank ? 'org-sidebar-title-error' : undefined}
+                aria-label="Custom sidebar title"
+              />
+              {(titleError || titleBlank) && (
+                <div id="org-sidebar-title-error" role="alert" className="text-[12px] text-danger">
+                  {titleError || 'Enter a sidebar title, or choose Company name or None.'}
+                </div>
+              )}
+            </>
           )}
           <div className="text-[12px] text-ink-3" data-testid="sidebar-title-preview">
             Sidebar shows: <span className="font-semibold text-ink-2">{shownTitle}</span>
@@ -300,17 +346,28 @@ export default function OrgBrandingFields({ branding, onSaved }) {
       </Section>
 
       {canEdit && (
-        <div className="flex items-center gap-3 py-3">
-          <div role="status" aria-live="polite" className="flex-1 text-[13px] font-medium text-ink-3">
-            {status.state === 'error' ? <span className="text-danger">{status.message}</span>
-              : status.state === 'saving' ? 'Saving…'
-                : status.state === 'saved' ? 'Saved. Members see it the next time they open the app or Settings.'
-                  : dirty ? 'Changes apply to everyone in your organization on save.' : 'No unsaved branding changes'}
+        changed ? (
+          <div
+            className="sticky bottom-0 flex items-center gap-3 py-3 px-3 my-2 rounded-lg border border-solid border-line-2 bg-surface-2"
+            role="region"
+            aria-label="Unsaved branding changes"
+          >
+            <div role="status" aria-live="polite" className="flex-1 text-[13px] font-medium text-ink-2">
+              {status.state === 'error' ? <span className="text-danger">{status.message}</span>
+                : status.state === 'saving' ? 'Saving…'
+                  : 'Unsaved branding changes. You see them now; everyone else sees them once you save.'}
+            </div>
+            <Button variant="subtle" onClick={cancel} disabled={status.state === 'saving'}>Cancel</Button>
+            <Button variant="primary" onClick={save} disabled={status.state === 'saving'}>Save branding</Button>
           </div>
-          <Button variant="primary" onClick={save} disabled={!dirty || status.state === 'saving'}>
-            Save branding
-          </Button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3 py-3">
+            <div role="status" aria-live="polite" className="flex-1 text-[13px] font-medium text-ink-3">
+              {status.state === 'saved' ? 'Saved. Members see it the next time they open the app or Settings.' : 'No unsaved branding changes'}
+            </div>
+            <Button variant="primary" disabled>Save branding</Button>
+          </div>
+        )
       )}
     </>
   );

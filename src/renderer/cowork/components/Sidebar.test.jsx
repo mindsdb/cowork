@@ -378,6 +378,15 @@ describe('Sidebar — nav title/logo override', () => {
     expect(document.querySelector('.anton-sidebar__logo')).not.toHaveClass('anton-sidebar__logo--wide');
   });
 
+  it('shows the logo alone, with no product name, when the org chose None (ENG-4020)', () => {
+    const { rerender } = render(<Sidebar {...baseProps} navLogo="https://auth.acme.com/logo.png" navLogoWide navTitleHidden />);
+    expect(document.querySelector('.anton-sidebar__wordmark')).toBeNull();
+    expect(document.querySelector('.anton-sidebar__logo')).not.toBeNull();
+    rerender(<Sidebar {...baseProps} navTitleHidden />);
+    expect(document.querySelector('.anton-sidebar__wordmark')).toBeNull();
+    expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
+  });
+
   it('shows a custom navTitle and navLogo when set', () => {
     render(<Sidebar {...baseProps} navTitle="Acme Workspace" navLogo="data:image/png;base64,abc123" />);
     expect(screen.getByText('Acme Workspace')).toBeInTheDocument();

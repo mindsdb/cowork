@@ -38,8 +38,15 @@ export type FontKey = CustomTheme['font'];
 export type LookSource = 'deployment' | 'org' | 'member' | 'stock';
 
 /** The org's appearance. Every field is optional; null means "stock". */
+export type SidebarTitleMode = 'company' | 'custom' | 'none';
+
 export interface OrgAppearance {
-  /** The sidebar title the admin set, or null for the default. */
+  /**
+   * What the sidebar title is: the company name (follows renames), the
+   * admin's custom title, or none (the logo alone).
+   */
+  sidebarTitleMode: SidebarTitleMode;
+  /** The admin's custom title; used only in 'custom' mode. */
   sidebarTitle: string | null;
   accent: string | null;
   background: string | null;
@@ -86,6 +93,7 @@ export const RADIUS_MAX = 16;
 const HEX = /^#[0-9a-f]{6}$/i;
 
 export const EMPTY_APPEARANCE: OrgAppearance = Object.freeze({
+  sidebarTitleMode: 'company',
   sidebarTitle: null,
   accent: null,
   background: null,
@@ -166,8 +174,14 @@ export function parseOrgAppearance(raw: unknown): OrgAppearance {
   if (!value) return EMPTY_APPEARANCE;
   const radius = value.radius;
   const skin = value.skin;
+  const sidebarTitle = textOrNull(value.sidebarTitle, SIDEBAR_TITLE_MAX_LENGTH);
+  const mode = value.sidebarTitleMode;
   return {
-    sidebarTitle: textOrNull(value.sidebarTitle, SIDEBAR_TITLE_MAX_LENGTH),
+    // A server that predates the mode sends only the title: set means custom.
+    sidebarTitleMode: mode === 'company' || mode === 'custom' || mode === 'none'
+      ? mode
+      : (sidebarTitle ? 'custom' : 'company'),
+    sidebarTitle,
     accent: hexOrNull(value.accent),
     background: hexOrNull(value.background),
     font: value.font === 'standard' || value.font === 'mono' ? value.font : null,
@@ -208,10 +222,36 @@ export function companySidebarTitle(orgName: string | null, fallback: string): s
   return name && Array.from(name).length <= COMPANY_NAME_TITLE_MAX_LENGTH ? name : fallback;
 }
 
+/**
+ * The sidebar title an appearance gives, as cowork-server resolves it: the
+ * company name (or the product name for a long one), the custom title, or
+ * null for none. Used to preview an admin's unsaved edits.
+ */
+export function sidebarTitleFor(appearance: OrgAppearance, orgName: string | null, fallback: string): string | null {
+  if (appearance.sidebarTitleMode === 'none') return null;
+  if (appearance.sidebarTitleMode === 'custom') return appearance.sidebarTitle?.trim() || companySidebarTitle(orgName, fallback);
+  return companySidebarTitle(orgName, fallback);
+}
+
+/**
+ * The org branding with an admin's unsaved draft in the org-look slot, for
+ * the live preview on Settings → Branding. Only an admin's (`canEdit`) own
+ * window previews; anyone else, and no draft, gets the saved branding as is.
+ */
+export function withBrandingDraft(
+  saved: OrgBranding | null,
+  draft: OrgAppearance | null,
+  fallbackTitle: string,
+): OrgBranding | null {
+  if (!draft || !saved?.enabled || !saved.canEdit) return saved;
+  return { ...saved, appearance: draft, sidebarTitle: sidebarTitleFor(draft, saved.orgName, fallbackTitle) };
+}
+
 /** The PUT body (snake_case) for an appearance the admin edited. */
 export function appearancePayload(appearance: OrgAppearance): Record<string, unknown> {
   return {
-    sidebar_title: appearance.sidebarTitle,
+    sidebar_title_mode: appearance.sidebarTitleMode,
+    sidebar_title: appearance.sidebarTitleMode === 'custom' ? appearance.sidebarTitle : null,
     accent: appearance.accent,
     background: appearance.background,
     font: appearance.font,
@@ -264,7 +304,7 @@ export function hasOrgBranding(org: OrgBranding | null): boolean {
   const a = org.appearance;
   return Boolean(
     org.iconUrl || org.logoUrl || org.logoDarkUrl
-    || a.sidebarTitle || a.accent || a.background || a.font || a.radius !== null || a.skin
+    || a.sidebarTitleMode !== 'company' || a.accent || a.background || a.font || a.radius !== null || a.skin
     || a.defaultTheme || a.greeting || !a.membersCanChoose,
   );
 }
@@ -340,6 +380,8 @@ export interface ResolvedLook {
   favicon: { href: string; source: 'member' | 'org' } | null;
   /** The sidebar title, or null for the product name. */
   navTitle: string | null;
+  /** No title at all, not even the product name: the org chose logo only. */
+  navTitleHidden: boolean;
   navTitleSource: LookSource;
   /** The sidebar title color, or null for the theme's. */
   navTitleColor: string | null;
@@ -457,12 +499,14 @@ export function resolveLook({
   // as cowork-server resolved it; elsewhere, the member's own.
   let navTitle: { value: string | null; source: LookSource };
   if (deployment.productName) navTitle = { value: member.navTitle, source: member.navTitle ? 'member' : 'deployment' };
+  else if (hostedMindsHub && activeOrg?.appearance.sidebarTitleMode === 'none') navTitle = { value: null, source: 'org' };
   else if (hostedMindsHub) navTitle = activeOrg?.sidebarTitle ? { value: activeOrg.sidebarTitle, source: 'org' } : { value: null, source: 'stock' };
   else navTitle = member.navTitle ? { value: member.navTitle, source: 'member' } : { value: null, source: 'stock' };
 
   return {
     navTitle: navTitle.value,
     navTitleSource: navTitle.source,
+    navTitleHidden: navTitle.source === 'org' && navTitle.value === null,
     navTitleColor: member.navTitleColor,
     skin: skin.value.skin,
     skinSource: skin.source,

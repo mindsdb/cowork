@@ -788,6 +788,8 @@ export default function SettingsView({
   // `lockedByOrg` turns off the member's own controls the org has set.
   orgBranding = null,
   onOrgBrandingSaved,
+  // An admin's unsaved Branding edits, for the live preview (null = none).
+  onOrgBrandingDraft,
   look = null,
   // Web with the platform UI in org mode, personal orgs included: there is no
   // per-person sidebar title, logo or tab icon to set.
@@ -2260,15 +2262,15 @@ export default function SettingsView({
   // autoSaveSetting/AutoSaveTag). `autoSaved` surfaces a quiet "saves
   // automatically" note on mobile.
   const org = orgBranding?.enabled ? orgBranding : null;
-  // In a hosted org, only someone who may choose sees their own style.
-  const showYourStyle = !org || org.appearance.membersCanChoose || org.canEdit;
+  // With member choice off, nobody (admins included) has personal style
+  // controls: the section says so, and points admins to Branding.
+  const personalStyleOff = Boolean(org && !org.appearance.membersCanChoose);
   // A deep link's part of Appearance, scrolled to once the page is showing.
   const appearanceShowing = shownSection === 'appearance';
   useEffect(() => {
     const id = appearanceAnchor && APPEARANCE_ANCHORS[appearanceAnchor];
     if (!id || !appearanceShowing) return;
-    // Your style can be hidden (member choice off); the link then lands on the page.
-    const target = document.getElementById(id) ?? document.getElementById(APPEARANCE_ANCHORS.display);
+    const target = document.getElementById(id);
     if (target) {
       target.scrollIntoView?.({ block: 'start' });
       onAppearanceAnchorShown?.();
@@ -2276,16 +2278,25 @@ export default function SettingsView({
   }, [appearanceAnchor, appearanceShowing, onAppearanceAnchorShown]);
   const renderAppearanceSection = () => (
     <SettingsSectionPanel autoSaved>
-      {showYourStyle && (
       <div id={APPEARANCE_ANCHORS.style} className="scroll-mt-2">
         <SettingsGroup
           title={org ? 'Your style' : 'Style'}
-          description={org
-            ? (org.appearance.membersCanChoose
-              ? 'These override your organization\'s look, just for you.'
-              : 'Member choice is off in Branding, so everyone, you included, sees the organization\'s look.')
-            : null}
+          description={org && !personalStyleOff ? 'These override your organization\'s look, just for you.' : null}
         >
+        {personalStyleOff ? (
+          <div className="py-3 text-sm text-ink-2" data-testid="personal-style-off">
+            Personal style settings are off. Everyone sees your organization's look.
+            {org.canEdit && onSectionChange && (
+              <>
+                {' '}
+                <button type="button" className={LINK_BTN} onClick={() => onSectionChange('branding')}>
+                  Change in Branding →
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+        <>
         {SKIN_LOCKED ? (
           <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
@@ -2540,9 +2551,10 @@ export default function SettingsView({
         )}
             </>
           )}
+        </>
+        )}
         </SettingsGroup>
       </div>
-      )}
       <div id={APPEARANCE_ANCHORS.display} className="scroll-mt-2">
         <SettingsGroup title="Display" description="Personal display preferences. Only you see them.">
         {/* Gated on its own key. A server older than this setting does not
@@ -2617,7 +2629,7 @@ export default function SettingsView({
         title="Branding"
         description="Your organization's look, for everyone in it. Members see it the next time they open the app or Settings."
       >
-        <OrgBrandingFields branding={orgBranding} onSaved={onOrgBrandingSaved} />
+        <OrgBrandingFields branding={orgBranding} onSaved={onOrgBrandingSaved} onDraftChange={onOrgBrandingDraft} />
       </SettingsGroup>
     </SettingsSectionPanel>
   ) : null);

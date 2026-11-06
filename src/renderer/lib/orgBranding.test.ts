@@ -5,6 +5,7 @@ import {
   STOCK_GREETING,
   appearancePayload,
   companySidebarTitle,
+  sidebarTitleFor,
   hasOrgBranding,
   orgStyle,
   parseOrgAppearance,
@@ -112,6 +113,7 @@ describe('parseOrgBranding', () => {
       logoDarkUrl: LOGO_DARK,
       canEdit: true,
       appearance: {
+        sidebarTitleMode: 'custom',
         sidebarTitle: 'Acme Desk',
         accent: '#112233', background: '#f0f0f0', font: 'mono', radius: 12, skin: 'custom',
         defaultTheme: 'light', greeting: 'Welcome to Acme', membersCanChoose: false, guidelines: 'Use the logo on white.',
@@ -131,7 +133,7 @@ describe('parseOrgBranding', () => {
 
   it('reads each bad appearance field as unset on its own', () => {
     expect(parseOrgAppearance({
-      sidebarTitle: 'x'.repeat(65), accent: 'red', background: '#12345', font: 'comic', radius: 99, skin: '../x', defaultTheme: 'blue',
+      sidebarTitleMode: 'sometimes', sidebarTitle: 'x'.repeat(65), accent: 'red', background: '#12345', font: 'comic', radius: 99, skin: '../x', defaultTheme: 'blue',
       greeting: 'x'.repeat(201), membersCanChoose: 'no', guidelines: 7,
     })).toEqual({ ...NO_ORG_BRANDING.appearance });
   });
@@ -139,6 +141,7 @@ describe('parseOrgBranding', () => {
   it('round-trips an appearance into the snake_case PUT body', () => {
     const appearance = parseOrgAppearance({ ...ORG_LOOK, membersCanChoose: false });
     expect(appearancePayload(appearance)).toEqual({
+      sidebar_title_mode: 'company',
       sidebar_title: null,
       accent: '#112233', background: '#f0f0f0', font: 'mono', radius: 12, skin: null,
       default_theme: 'light', greeting: 'Welcome to Acme', members_can_choose: false, guidelines: null,
@@ -161,6 +164,28 @@ describe('companySidebarTitle', () => {
     expect(companySidebarTitle('A'.repeat(25), 'MindsHub')).toBe('MindsHub');
     expect(companySidebarTitle(null, 'MindsHub')).toBe('MindsHub');
     expect(companySidebarTitle('  ', 'MindsHub')).toBe('MindsHub');
+  });
+});
+
+describe('sidebar title modes', () => {
+  it('reads the mode, and a title without one as custom', () => {
+    expect(parseOrgAppearance({ sidebarTitleMode: 'none' }).sidebarTitleMode).toBe('none');
+    expect(parseOrgAppearance({ sidebarTitle: 'Acme Desk' }).sidebarTitleMode).toBe('custom');
+    expect(parseOrgAppearance({}).sidebarTitleMode).toBe('company');
+  });
+
+  it('sends the title only in custom mode', () => {
+    const custom = parseOrgAppearance({ sidebarTitleMode: 'custom', sidebarTitle: 'Acme Desk' });
+    expect(appearancePayload(custom)).toMatchObject({ sidebar_title_mode: 'custom', sidebar_title: 'Acme Desk' });
+    expect(appearancePayload({ ...custom, sidebarTitleMode: 'none' })).toMatchObject({ sidebar_title_mode: 'none', sidebar_title: null });
+    expect(appearancePayload({ ...custom, sidebarTitleMode: 'company' })).toMatchObject({ sidebar_title_mode: 'company', sidebar_title: null });
+  });
+
+  it('previews each mode the way the server resolves it', () => {
+    const a = parseOrgAppearance({ sidebarTitleMode: 'custom', sidebarTitle: 'Acme Desk' });
+    expect(sidebarTitleFor(a, 'Acme', 'MindsHub')).toBe('Acme Desk');
+    expect(sidebarTitleFor({ ...a, sidebarTitleMode: 'company' }, 'Acme', 'MindsHub')).toBe('Acme');
+    expect(sidebarTitleFor({ ...a, sidebarTitleMode: 'none' }, 'Acme', 'MindsHub')).toBeNull();
   });
 });
 
@@ -369,6 +394,15 @@ describe('resolveLook — the order', () => {
       const branded = { ...STOCK_DEPLOYMENT, productName: 'Acme Cowork' };
       expect(resolve(null, member(), branded)).toMatchObject({ navTitle: null, navTitleSource: 'deployment' });
       expect(resolve(null, mine, branded).navTitle).toBe('My space');
+    });
+
+    it('hides the title entirely, product name included, in logo-only mode', () => {
+      const none = { ...org({ sidebarTitleMode: 'none' }), sidebarTitle: null };
+      expect(resolve(none, member(), STOCK_DEPLOYMENT, true)).toMatchObject({ navTitle: null, navTitleHidden: true, navTitleSource: 'org' });
+      expect(resolve({ ...org(), sidebarTitle: 'Acme' }, member(), STOCK_DEPLOYMENT, true).navTitleHidden).toBe(false);
+      expect(resolve(NO_ORG_BRANDING, member(), STOCK_DEPLOYMENT, true).navTitleHidden).toBe(false);
+      const branded = { ...STOCK_DEPLOYMENT, productName: 'Acme Cowork' };
+      expect(resolve(none, member(), branded, true).navTitleHidden).toBe(false);
     });
   });
 });

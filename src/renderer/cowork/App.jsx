@@ -80,6 +80,9 @@ import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useOrgBranding } from './hooks/useOrgBranding';
+import { withBrandingDraft } from '../lib/orgBranding';
+import { productName } from '../lib/deploymentBrand';
+import { STOCK_WORDMARK } from '../../shared/product-name';
 import { takeSettingsDeepLink } from './lib/settingsDeepLink';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -1786,6 +1789,17 @@ function AppCore() {
   // tab icon come from the org, not from per-person settings.
   const hostedMindsHub = PLATFORM_UI && host.isWeb && orgMode;
   const orgBranding = useOrgBranding({ enabled: hostedMindsHub, settingsOpen });
+  // An admin's unsaved edits on Settings → Branding, previewed live in this
+  // window only: the draft takes the org-look slot in the resolver. It never
+  // reaches the server or the first-paint cache, and leaving the Branding page
+  // (or closing Settings) clears it, which puts the saved look back.
+  const [brandingDraft, setBrandingDraft] = useState(null);
+  const savedOrgBranding = orgBranding.branding;
+  const previewOrgBranding = useMemo(
+    () => withBrandingDraft(savedOrgBranding, brandingDraft, productName(STOCK_WORDMARK)),
+    [brandingDraft, savedOrgBranding],
+  );
+  useEffect(() => { if (!settingsOpen) setBrandingDraft(null); }, [settingsOpen]);
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin. `look` is the
@@ -1798,7 +1812,7 @@ function AppCore() {
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
     look,
-  } = useThemeSkin({ orgBranding: orgBranding.branding, settings: appearanceSettings, hostedMindsHub });
+  } = useThemeSkin({ orgBranding: previewOrgBranding, settings: appearanceSettings, hostedMindsHub });
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   // One list for the composer's per-conversation toggles: the OAuth
@@ -5776,6 +5790,7 @@ function AppCore() {
     navTitle: look.navTitle,
     navLogo: look.logo,
     navLogoWide: look.logoSource === 'org',
+    navTitleHidden: look.navTitleHidden,
     // Mobile has no room for the desktop floating-toggle-row (bottom-right,
     // over the FAB) — the theme toggle moves into the top bar, opposite the
     // hamburger, and the coding-mode toggle is dropped entirely rather than
@@ -5967,6 +5982,7 @@ function AppCore() {
           navTitle={look.navTitle}
           navLogo={look.logo}
           navLogoWide={look.logoSource === 'org'}
+          navTitleHidden={look.navTitleHidden}
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
@@ -6495,6 +6511,7 @@ function AppCore() {
               agentLabel={agentLabel}
               orgBranding={orgBranding.branding}
               onOrgBrandingSaved={orgBranding.apply}
+              onOrgBrandingDraft={setBrandingDraft}
               look={look}
               hostedMindsHub={hostedMindsHub}
               appearanceAnchor={appearanceAnchor}
@@ -6554,6 +6571,7 @@ function AppCore() {
                 agentLabel={agentLabel}
                 orgBranding={orgBranding.branding}
                 onOrgBrandingSaved={orgBranding.apply}
+                onOrgBrandingDraft={setBrandingDraft}
                 look={look}
                 hostedMindsHub={hostedMindsHub}
                 appearanceAnchor={appearanceAnchor}
