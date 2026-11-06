@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { analyticsEnv, antonDotenvNames, NON_PROD_POSTHOG_KEY } from './analytics-env';
+import { analyticsEnv, antonDotenvNames, NON_PROD_POSTHOG_KEY, usageEventsOn } from './analytics-env';
 import { BUILD_KINDS } from './channels';
 
 // anton's own default, the production project. Written out so a change to the
@@ -107,5 +107,24 @@ describe('antonDotenvNames', () => {
 
   it('is empty when none of the files exist', () => {
     expect(antonDotenvNames(path.join(root, 'cwd'), path.join(root, 'home')).size).toBe(0);
+  });
+});
+
+describe("the person's switch for the agent's usage events", () => {
+  it('passes nothing while it is on, the default', () => {
+    expect(analyticsEnv('prod', {})).not.toHaveProperty('ANTON_ANALYTICS_ENABLED');
+    expect(analyticsEnv('prod', {}, new Set(), { usageEvents: true })).not.toHaveProperty('ANTON_ANALYTICS_ENABLED');
+  });
+
+  it('turns anton\'s events off at spawn when it is off, above any dotenv or inherited value', () => {
+    for (const kind of BUILD_KINDS) {
+      expect(analyticsEnv(kind, { ANTON_ANALYTICS_ENABLED: 'true' }, new Set(['ANTON_ANALYTICS_ENABLED']), { usageEvents: false }).ANTON_ANALYTICS_ENABLED).toBe('false');
+    }
+  });
+
+  it('reads on unless the account dotenv says false', () => {
+    expect(usageEventsOn({})).toBe(true);
+    expect(usageEventsOn({ COWORK_USAGE_EVENTS: 'true' })).toBe(true);
+    expect(usageEventsOn({ COWORK_USAGE_EVENTS: 'false' })).toBe(false);
   });
 });

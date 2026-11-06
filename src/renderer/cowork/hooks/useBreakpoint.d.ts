@@ -1,1 +1,1 @@
-export function useBreakpoint(): { isMobile: boolean; isNarrow: boolean };
+export function useBreakpoint(): { isMobile: boolean; isNarrow: boolean; paneFloats: boolean };

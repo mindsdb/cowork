@@ -19,18 +19,33 @@ const DEPLOYMENT_LABEL: Record<BuildKind, string> = {
   prod: 'prod',
 };
 
+/** The account dotenv's switch for the agent's anonymous usage events, the
+ *  shared browser's included (desktop Settings). Absent means on, the default;
+ *  only `false` turns them off. */
+export const USAGE_EVENTS_PREF = 'COWORK_USAGE_EVENTS';
+
+export function usageEventsOn(accountVars: Record<string, string>): boolean {
+  return accountVars[USAGE_EVENTS_PREF] !== 'false';
+}
+
 /** Only prod builds count as real users' turns: every other kind sends to the
  *  non-production project instead of anton's built-in production one. A value
  *  already set, in `env` or in one of anton's dotenv files (`dotenvNames`), is
  *  left alone, even an empty one, so a developer can still point a run
- *  elsewhere or switch the PostHog sink off. */
+ *  elsewhere or switch the PostHog sink off.
+ *
+ *  When the person turned the agent's usage events off in Settings
+ *  (`usageEvents: false`), anton gets `ANTON_ANALYTICS_ENABLED=false` at spawn,
+ *  above any dotenv file, so it sends none. */
 export function analyticsEnv(
   kind: BuildKind,
   env: NodeJS.ProcessEnv,
   dotenvNames: ReadonlySet<string> = new Set(),
+  { usageEvents = true }: { usageEvents?: boolean } = {},
 ): Record<string, string> {
   const isSet = (name: string) => env[name] !== undefined || dotenvNames.has(name);
   const out: Record<string, string> = {};
+  if (!usageEvents) out.ANTON_ANALYTICS_ENABLED = 'false';
   if (kind !== 'prod' && !isSet('ANTON_POSTHOG_KEY')) out.ANTON_POSTHOG_KEY = NON_PROD_POSTHOG_KEY;
   if (!isSet('ANTON_DEPLOYMENT_ENV')) out.ANTON_DEPLOYMENT_ENV = DEPLOYMENT_LABEL[kind];
   return out;

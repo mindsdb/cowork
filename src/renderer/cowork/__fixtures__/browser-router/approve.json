@@ -1,0 +1,22 @@
+{
+  "description": "POST {router}/sessions/{id}/approve, sent with the person's own credential when they approve a step the browser held, and the router's answer. The held step may then run once, until expires_at (Unix seconds).",
+  "examples": {
+    "approve a held step": {
+      "where": "POST /sessions/{id}/approve",
+      "kind": "request",
+      "body": {
+        "pending_id": "pa-0123456789abcdef01234567"
+      }
+    },
+    "approved": {
+      "where": "POST /sessions/{id}/approve",
+      "kind": "response",
+      "status": 200,
+      "body": {
+        "pending_id": "pa-0123456789abcdef01234567",
+        "approved": true,
+        "expires_at": 1999999300
+      }
+    }
+  }
+}

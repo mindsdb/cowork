@@ -149,9 +149,9 @@ jobs:
       # Kept for machines already carrying a GIT install of cowork-server (the
       # updater is source-aware). Fresh installs follow the PyPI rc stream that
       # build_kind implies.
-      server_ref: staging
-      anton_ref: staging
-      server_channel: pypi
+      server_ref: fix/eng-3188-pr643-fixes
+      anton_ref: fix/eng-3188-pr540-fixes
+      server_channel: git
       macos: ${{ contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg') }}
       windows: ${{ contains(github.event.pull_request.labels.*.name, 'signed-windows-ev') }}
       # Stated rather than left to default:true — an omitted platform input
