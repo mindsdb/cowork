@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event';
 vi.mock('../lib/deployment', () => ({ PLATFORM_UI: false }));
 
 const spies = vi.hoisted(() => ({
+  fetchProjects: vi.fn(),
   fetchSessions: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessionResult: vi.fn(),
@@ -35,7 +36,8 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchOlderMessages: vi.fn(async () => ({ messages: [] })),
   fetchConversationList: vi.fn(async () => []),
-  fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
+  fetchProjects: (...args) => spies.fetchProjects(...args),
+  fetchComparisons: vi.fn(async () => ({ comparisons: [], hasMore: false })),
   fetchArtifacts: vi.fn(async () => []),
   fetchSettings: vi.fn(async () => SETTINGS),
   fetchPins: vi.fn(async () => ({ pins: [] })),
@@ -109,6 +111,7 @@ beforeEach(() => {
   __resetDraftsForTests();
   streams.length = 0;
   spies.fetchSessions.mockReset().mockResolvedValue([]);
+  spies.fetchProjects.mockReset().mockResolvedValue([{ name: 'general', path: '/tmp/general' }]);
   spies.fetchSession.mockReset().mockResolvedValue({ id: 'conv-a', messages: [], hasMoreMessages: false, messagesCursor: null });
   spies.fetchSessionResult.mockReset().mockResolvedValue({ status: 'ok', task: savedTask(null) });
 });
@@ -181,5 +184,65 @@ describe("the operator's model picker", () => {
     const stream = await send(user, 'Say hello again');
     expect(stream.kind).toBe('reply');
     expect(stream.opts.model).toBe(sent);
+  });
+});
+
+// Compare Models offers a model choice, so App shows it under the operator's
+// picker only while the picker offers a model, as the composer shows its own.
+describe("Compare Models under the operator's model picker", () => {
+  const offered = { ...SETTINGS.modelEnabled };
+  afterEach(() => { Object.assign(SETTINGS.modelEnabled, offered); });
+
+  it.each([
+    ['picker on, models offered', 'default', false, true],
+    ['picker on, none offered', 'default', true, false],
+    ['picker off', null, false, false],
+  ])('%s: entry shown is %s', async (_case, mode, noneOffered, shown) => {
+    if (mode) setMode(mode);
+    if (noneOffered) for (const id of Object.keys(SETTINGS.modelEnabled)) SETTINGS.modelEnabled[id] = false;
+    render(<App />);
+    await screen.findByRole('button', { name: /new task/i });
+    // Settings, and with them the offered models, land after the first paint.
+    await new Promise((resolve) => { setTimeout(resolve, 100); });
+    if (shown) expect(await screen.findByRole('button', { name: 'Compare Models' })).toBeTruthy();
+    else expect(screen.queryByRole('button', { name: 'Compare Models' })).toBeNull();
+  });
+});
+
+describe('a link to Compare Models where users choose no model', () => {
+  const offered = { ...SETTINGS.modelEnabled };
+  afterEach(() => { Object.assign(SETTINGS.modelEnabled, offered); });
+
+  it.each([
+    ["the operator's picker off", null],
+    ["the operator's picker offering no model", 'open'],
+  ])('with %s, says why instead of a blank page', async (_case, mode) => {
+    if (mode) {
+      setMode(mode);
+      for (const id of Object.keys(SETTINGS.modelEnabled)) SETTINGS.modelEnabled[id] = false;
+    }
+    window.history.replaceState(null, '', '/compare');
+    render(<App />);
+    expect(await screen.findByText("Compare Models isn't available here")).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Compare two models' })).toBeNull();
+  });
+});
+
+// A comparison copies its source project's files, and Continue moves a side
+// into a project: both need a project the person can run tasks in, never one
+// shared with them read-only.
+describe('Compare Models offers only projects the person can run', () => {
+  it("leaves a project shared with them out of the start screen's picker", async () => {
+    setMode('open');
+    spies.fetchProjects.mockResolvedValue([
+      { id: 'p-own', name: 'reports', display_name: 'Reports', path: '/tmp/reports' },
+      { id: 'p-shared', name: 'finance', display_name: 'Finance', path: '/tmp/finance', shared: true },
+    ]);
+    window.history.replaceState(null, '', '/compare');
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Compare two models' });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Choose project' }));
+    expect(await screen.findByRole('button', { name: /Reports/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Finance/ })).toBeNull();
   });
 });
