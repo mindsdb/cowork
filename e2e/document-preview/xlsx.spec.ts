@@ -114,6 +114,11 @@ function expectGrid(grid: GridFacts, summary: RenderSummary, fixture: PreviewFix
 test.describe('xlsx preview', () => {
   for (const fixture of loadFixtures('xlsx')) {
     test(`${fixture.kind}: ${fixture.name}`, async ({ page, baseURL }) => {
+      /* A sheet that fills the row and column caps renders about 400,000 cells,
+         and on CI that takes 35 to 58 seconds against the suite's 60. With
+         failOnFlakyTests, one slow machine failed unrelated PRs, so these
+         fixtures get three times the timeout; the rest keep the suite's. */
+      if (fixture.expect.truncated) test.slow();
       if (!baseURL) throw new Error('The web project sets baseURL to the harness page');
       const harnessOrigin = new URL(baseURL).origin;
       const testRequests = recordRequests(page);
