@@ -85,15 +85,35 @@ describe('BrowserPanel', () => {
       expect(screen.queryByText('The browser returned an unexpected address.')).toBeNull();
     });
 
-    it('mints a link on open and says the browser is starting until the viewer frame loads', async () => {
+    it('mints a link on open and says the browser is starting until the viewer says it is ready', async () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
       await flush();
       expect(embedBrowser).toHaveBeenCalledWith('t-abc');
       expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}1`);
       expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
-      fireEvent.load(screen.getByTitle('Shared browser'));
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
       expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('keeps waiting through a frame load with no viewer, then offers to try again', async () => {
+      // The router's starting page, a JSON refusal for an expired link, or an
+      // edge error page: each loads the frame and never says it is ready.
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      fireEvent.load(screen.getByTitle('Shared browser'));
+      expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
+      act(() => { vi.advanceTimersByTime(STARTING_TIMEOUT_MS); });
+      expect(screen.getByText('Your browser is taking longer than usual')).toBeInTheDocument();
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores a ready message that isn't from its own frame", async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      frameWindow();
+      messageFrom({ postMessage: vi.fn() }, { type: 'browser-viewer-ready' });
+      expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
     });
 
     it('offers to try again when the browser takes too long, and retrying starts over', async () => {
@@ -157,7 +177,7 @@ describe('BrowserPanel', () => {
     it('never mints on a timer', async () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
-      fireEvent.load(screen.getByTitle('Shared browser'));
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
       await act(async () => { vi.advanceTimersByTime(2 * 60 * 60_000); });
       expect(embedBrowser).toHaveBeenCalledTimes(1);
     });

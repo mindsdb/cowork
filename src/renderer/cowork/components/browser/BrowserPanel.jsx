@@ -25,10 +25,12 @@ import { LocalBrowserStage } from './LocalBrowserStage';
    While the tab is hidden the pane drops the frame, so a browser nobody is
    watching can go to sleep.
 
-   The browser may still be starting: until the viewer frame has loaded, the
-   pane says so. The router's own starting page reloads itself once the
-   browser is up, so the frame's first load is enough. After
-   STARTING_TIMEOUT_MS without one, the pane offers to try again. */
+   The browser may still be starting: until the viewer itself says it is
+   ready (a `browser-viewer-ready` postMessage), the pane says so. A frame
+   load alone is not enough: the router's starting page, a JSON refusal (an
+   expired or spent link) and an edge error page all load the frame and never
+   post. After STARTING_TIMEOUT_MS without the viewer, the pane offers to try
+   again. */
 export const STARTING_TIMEOUT_MS = 90_000;
 
 const KEEPS_CLOSING = 'The browser view keeps closing. Try again in a moment.';
@@ -69,7 +71,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
   const [error, setError] = useState('');
   const [hidden, setHidden] = useState(tabHidden);
   const [generation, setGeneration] = useState(0);
-  const [frameLoaded, setFrameLoaded] = useState(false);
+  const [viewerReady, setViewerReady] = useState(false);
   const [slow, setSlow] = useState(false);
   const frameRef = useRef(null);
   /* Bumped by every mint and by hiding the tab, so an answer that arrives
@@ -146,6 +148,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
       if (!frameWindow || event.source !== frameWindow) return;
       const type = event.data?.type;
       if (type === 'browser-viewer-ready') {
+        setViewerReady(true);
         postTheme(frameRef.current);
         return;
       }
@@ -175,11 +178,11 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
 
   // A new frame (or a fresh link in flight) starts the wait over.
   useEffect(() => {
-    setFrameLoaded(false);
+    setViewerReady(false);
     setSlow(false);
   }, [frameKey]);
 
-  const waiting = !hidden && !frameLoaded && !error;
+  const waiting = !hidden && !viewerReady && !error;
   useEffect(() => {
     if (!waiting) return undefined;
     const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);
@@ -196,10 +199,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
       {viewUrl && !error && (
         <iframe
           ref={frameRef}
-          onLoad={() => {
-            setFrameLoaded(true);
-            postTheme(frameRef.current);
-          }}
+          onLoad={() => postTheme(frameRef.current)}
           key={frameKey}
           title="Shared browser"
           src={viewUrl}
