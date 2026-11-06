@@ -1776,6 +1776,18 @@ describe('paginated /items', () => {
     expect((await fetchOlderMessages('c1', 'c')).messages[0].content).toBe('what changed?');
   });
 
+  it('titles a conversation without the Notion page note the server kept in it', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items')
+        ? { items: [], hasMore: false, nextBefore: null }
+        : { ...meta, title: 'what is this page about?\n\n[Notion pages added for this message — Anton-only cont' },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    expect((await fetchSession('c1')).title).toBe('what is this page about?');
+  });
+
   it('fetchOlderMessages requests the given cursor and returns the next page', async () => {
     const fetchMock = vi.fn(async () => jsonRes({
       items: [{ role: 'user', content: 'older' }], hasMore: false, nextBefore: null,

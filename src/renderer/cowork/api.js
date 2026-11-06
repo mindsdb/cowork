@@ -13,7 +13,7 @@ import { isAntonConfigError } from './lib/antonErrors';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
-import { withoutNotionPageNotes } from './lib/notionPageNote';
+import { withoutNotionPageNotes, stripNotionPageNoteFromTitle } from './lib/notionPageNote';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
@@ -403,7 +403,7 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
 
   return {
     id: conv.id,
-    title: conv.title || conv.preview || conv.id || 'Untitled task',
+    title: stripNotionPageNoteFromTitle(conv.title || conv.preview) || conv.id || 'Untitled task',
     subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
