@@ -69,7 +69,7 @@ describe('collection/PageHeader', () => {
     const { container } = render(
       <PageHeader crumbs={[{ label: 'Scheduled Tasks', onClick: () => {} }]} current="test" />,
     );
-    const header = container.querySelector('header');
+    const header = container.querySelector('header')!;
     expect(header.className).not.toContain('border');
   });
 });
