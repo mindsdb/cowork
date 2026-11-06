@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 
 import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
+import { withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 
 // Loads the real renderer config as a dev server for each kind of build and
 // checks which of them put the draft hosts in the web page's CSP.
@@ -59,7 +60,8 @@ describe('draft hosts in the web page CSP', () => {
     expect(pluginNames(dev)).toContain(PLUGIN);
 
     const html = await dev.transformIndexHtml('/index-web.html', page('index-web.html'));
-    expect(cspOf(html)).toBe(cspOf(withDraftLinkFrameSources(page('index-web.html'))));
+    // The hosted build also widens img-src for org brand images.
+    expect(cspOf(html)).toBe(cspOf(withOrgBrandImageSources(withDraftLinkFrameSources(page('index-web.html')))));
   }, 30_000);
 
   it('stay out of other pages the web dev server serves', async () => {

@@ -16,6 +16,12 @@ export interface MindsOrg {
   displayName: string;
   /** Their own organization, rather than a company they belong to. */
   isPersonal: boolean;
+  /**
+   * The org's icon (ENG-4020), from the Keycloak org attribute
+   * `brand_icon_url`. Present only when the org has one; the renderer still
+   * checks the URL's host before showing it (lib/orgBranding.ts).
+   */
+  iconUrl?: string;
 }
 
 /** The organizations a person belongs to, and which one their token names. */
@@ -29,6 +35,21 @@ export interface OrgSource {
   id: string;
   name?: string;
   slug?: string;
+  iconUrl?: string;
+}
+
+/** The Keycloak org attribute auth writes the org's icon URL to. */
+export const BRAND_ICON_ATTRIBUTE = 'brand_icon_url';
+
+/**
+ * The org's icon URL from a Keycloak organization's `attributes`, whose values
+ * are lists of strings (a bare string is accepted too). Undefined when unset.
+ */
+export function brandIconFromAttributes(attributes: unknown): string | undefined {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return undefined;
+  const raw = (attributes as Record<string, unknown>)[BRAND_ICON_ATTRIBUTE];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 /** Keycloak's name for a user's own organization. Auth builds the same string
@@ -142,6 +163,7 @@ export function toMindsOrg(source: OrgSource, userId: string): MindsOrg {
     name,
     displayName: source.name ?? name,
     isPersonal: name === personalOrgName(userId),
+    ...(source.iconUrl ? { iconUrl: source.iconUrl } : {}),
   };
 }
 

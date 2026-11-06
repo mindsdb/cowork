@@ -4,6 +4,7 @@
 // tied to the Custom skin), branding applies regardless of skin/theme.
 
 import type { DeploymentBrand } from './deploymentBrand';
+import { trustedBrandImageUrl } from './orgBranding';
 
 /**
  * Apply (or with null/empty, clear) the sidebar wordmark color as an inline
@@ -42,26 +43,25 @@ interface OriginalFavicon {
 
 const originalFavicons = new WeakMap<HTMLLinkElement, OriginalFavicon>();
 
-/** Restore the page's own icon when the synced override is cleared. */
-export function applyFavicon(dataUri: string | null | undefined): void {
-  let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
-  if (!dataUri) {
-    const original = link && originalFavicons.get(link);
-    if (!link || !original) return;
-    if (original.created) link.remove();
-    else {
-      for (const attribute of ['href', 'type'] as const) {
-        const value = original[attribute];
-        if (value === null) link.removeAttribute(attribute);
-        else link.setAttribute(attribute, value);
-      }
+/** Put the page's own icon back once nothing overrides it. */
+function restoreFavicon(): void {
+  const link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+  const original = link && originalFavicons.get(link);
+  if (!link || !original) return;
+  if (original.created) link.remove();
+  else {
+    for (const attribute of ['href', 'type'] as const) {
+      const value = original[attribute];
+      if (value === null) link.removeAttribute(attribute);
+      else link.setAttribute(attribute, value);
     }
-    originalFavicons.delete(link);
-    return;
   }
+  originalFavicons.delete(link);
+}
 
-  const mime = /^data:(image\/(?:png|x-icon|vnd\.microsoft\.icon|svg\+xml|webp));base64,/i.exec(dataUri)?.[1];
-  if (!mime) return;
+/** Point the tab icon at `href`, remembering the page's own icon first. */
+function setFavicon(href: string, type: string | null): void {
+  let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
   const created = !link;
   if (!link) {
     link = document.createElement('link');
@@ -75,6 +75,33 @@ export function applyFavicon(dataUri: string | null | undefined): void {
       created,
     });
   }
-  link.href = dataUri;
-  link.type = mime.toLowerCase();
+  link.href = href;
+  if (type) link.type = type;
+  else link.removeAttribute('type');
+}
+
+/** Restore the page's own icon when the synced override is cleared. */
+export function applyFavicon(dataUri: string | null | undefined): void {
+  if (!dataUri) {
+    restoreFavicon();
+    return;
+  }
+  const mime = /^data:(image\/(?:png|x-icon|vnd\.microsoft\.icon|svg\+xml|webp));base64,/i.exec(dataUri)?.[1];
+  if (!mime) return;
+  setFavicon(dataUri, mime.toLowerCase());
+}
+
+/**
+ * Use the org's icon (ENG-4020) as the tab icon, or with null put the page's
+ * own icon back. Only an https URL on the auth host is used
+ * (orgBranding.ts trustedBrandImageUrl); anything else restores the page's own.
+ */
+export function applyOrgFavicon(url: string | null | undefined): void {
+  const href = trustedBrandImageUrl(url);
+  if (!href) {
+    restoreFavicon();
+    return;
+  }
+  // The org's icon may be PNG, JPEG or WebP; the browser sniffs it.
+  setFavicon(href, null);
 }

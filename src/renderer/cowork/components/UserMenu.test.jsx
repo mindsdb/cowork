@@ -33,6 +33,7 @@ vi.mock('../hooks/useMindsOrgs', () => ({
 import UserMenu from './UserMenu';
 import { PERSONAL_ORG_LABEL as PERSONAL_LABEL } from '../../../shared/minds-orgs';
 import ToastProvider from './ui/Toast';
+import { AUTH_IMAGE_HOST } from '../../lib/orgBranding';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { readLastOrgId } from '../lib/orgLanding';
 import {
@@ -282,6 +283,34 @@ describe('UserMenu — organization picker', () => {
     const footer = screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent;
     expect(footer).toContain(PERSONAL_LABEL);
     expect(footer).not.toContain("hazem@example.com's organization");
+  });
+
+  it("shows each organization's own icon, else its initial (ENG-4020)", () => {
+    const icon = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/icon?v=1`;
+    const globex = { id: 'org-globex', name: 'globex.example', displayName: 'Globex', isPersonal: false, iconUrl: 'https://images.globex.com/icon.png' };
+    withOrgs([{ ...ACME, iconUrl: icon }, globex], { ...ACME, iconUrl: icon });
+    renderMenu(<UserMenu user={user} />);
+    // The footer row shows the active org's icon beside its name.
+    const footer = screen.getByRole('button', { name: /Hazem Ahmed/ });
+    expect(footer.querySelector('img[data-testid="org-icon-image"]')).toHaveAttribute('src', icon);
+    openMenu();
+    const acmeRow = screen.getByRole('menuitem', { name: /acme\.example/ });
+    expect(acmeRow.querySelector('img[data-testid="org-icon-image"]')).toHaveAttribute('src', icon);
+    // An icon from any other host is ignored, and the initial tile shows instead.
+    const globexRow = screen.getByRole('menuitem', { name: /Globex/ });
+    expect(globexRow.querySelector('img')).toBeNull();
+    expect(globexRow.querySelector('[data-testid="org-icon-initial"]')).toHaveTextContent('G');
+  });
+
+  it('falls back to the initial when the icon fails to load', () => {
+    const icon = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/icon?v=1`;
+    withOrgs([{ ...ACME, iconUrl: icon }, PERSONAL], PERSONAL);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    const acmeRow = screen.getByRole('menuitem', { name: /acme\.example/ });
+    fireEvent.error(acmeRow.querySelector('img'));
+    expect(acmeRow.querySelector('img')).toBeNull();
+    expect(acmeRow.querySelector('[data-testid="org-icon-initial"]')).toHaveTextContent('A');
   });
 
   it('lists every organization with a check on the active one', () => {

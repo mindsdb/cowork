@@ -88,6 +88,7 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
   mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),
   mindshubSwitchOrg: (organizationId: string) => ipcRenderer.invoke(IPC.MINDSHUB_SWITCH_ORG, organizationId),
+  mindshubBrandImages: (urls: unknown) => ipcRenderer.invoke(IPC.MINDSHUB_BRAND_IMAGES, urls),
   // Fires whenever the MindsHub session state changes in the main
   // process (login, silent refresh, logout, session death). Returns an
   // unsubscribe function.

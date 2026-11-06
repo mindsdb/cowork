@@ -293,6 +293,12 @@ export default function Sidebar({
   // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,
   navLogo = null,
+  // The org's logo (ENG-4020) is a wordmark, not a square icon, so it gets a
+  // wider box than a logo uploaded in Settings.
+  navLogoWide = false,
+  // The org chose "None (logo only)" (ENG-4020): no title at all, not even
+  // the product name.
+  navTitleHidden = false,
   // Onboarding — "Get to know Cowork" checklist. Each step seeds a new
   // chat via this handler (App's send-from-home). Omit to hide the card
   // (tests, web shells that don't wire it).
@@ -565,19 +571,21 @@ export default function Sidebar({
               </button>
             </Tooltip>
           </div>
-          <span
-            aria-hidden="true"
-            className="text-ink-3 opacity-50 text-[13px] select-none"
-          >·</span>
+          {(!navTitleHidden || navLogo || brandLogoUrl()) && (
+            <span
+              aria-hidden="true"
+              className="text-ink-3 opacity-50 text-[13px] select-none"
+            >·</span>
+          )}
           {(navLogo || brandLogoUrl()) && (
             <img
               src={navLogo || brandLogoUrl()}
               alt=""
               aria-hidden="true"
-              className="anton-sidebar__logo"
+              className={navLogoWide ? 'anton-sidebar__logo anton-sidebar__logo--wide' : 'anton-sidebar__logo'}
             />
           )}
-          <div className="anton-sidebar__wordmark">{navTitle || productName(STOCK_WORDMARK)}</div>
+          {!navTitleHidden && <div className="anton-sidebar__wordmark">{navTitle || productName(STOCK_WORDMARK)}</div>}
         </div>
       </div>
 

@@ -9,7 +9,9 @@
  *
  * "Custom" lives in Settings → Appearance (it needs the token recipe editor),
  * so it's intentionally not offered here — this is the quick theme + 8-bit
- * switch. Under a deployment brand's style lock it offers the theme alone.
+ * switch. Under a deployment brand's style lock it offers the theme alone,
+ * and whatever an org has locked for its members (ENG-4020, `orgLocks`) is
+ * shown as set by the organization instead of offered.
  */
 
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
@@ -25,14 +27,11 @@ function Choice({ active, onClick, children }) {
       aria-pressed={active}
       className="flex-1 py-[10px] px-3 rounded-[10px] cursor-pointer text-[13px] font-semibold tracking-[0.02em] [transition:background_var(--dur-hover),border-color_var(--dur-hover),color_var(--dur-hover)]"
       style={{
-        // Active-state accent uses the 8-bit skin's --gf-* vars, so it stays inline.
-        border: active
-          ? '1px solid var(--gf-accent, #1F9CB0)'
-          : '1px solid var(--gf-line, rgba(128,128,128,0.3))',
-        background: active
-          ? 'color-mix(in srgb, var(--gf-accent, #1F9CB0) 16%, transparent)'
-          : 'transparent',
-        color: active ? 'var(--gf-accent, #1F9CB0)' : 'inherit',
+        // Theme tokens, so a custom background's derived ink and accent
+        // (lib/customTheme.ts) keep these readable.
+        border: active ? '1px solid var(--accent)' : '1px solid var(--line-2)',
+        background: active ? 'var(--accent-bg)' : 'transparent',
+        color: active ? 'var(--accent)' : 'var(--ink)',
       }}
     >
       {children}
@@ -52,18 +51,27 @@ function Group({ label, children }) {
 }
 
 export default function ThemeModal({
-  open, onClose, theme, onThemeChange, skin, onSkinChange,
+  open, onClose, theme, onThemeChange, skin, onSkinChange, orgLocks = null,
 }) {
+  const themeLocked = orgLocks?.theme === true;
+  const styleLocked = orgLocks?.style === true;
   return (
     <Modal open={open} onClose={onClose} size="sm" labelledBy="theme-modal-title">
       <ModalHeader id="theme-modal-title" title="Display Settings" subtitle={SKIN_LOCKED ? 'Theme — applied live' : 'Theme and style — applied live'} onClose={onClose} />
       <ModalBody>
         <div className="flex flex-col gap-[18px]">
-          <Group label="Theme">
-            <Choice active={theme === 'light'} onClick={() => onThemeChange('light')}>Light</Choice>
-            <Choice active={theme === 'dark'} onClick={() => onThemeChange('dark')}>Dark</Choice>
-          </Group>
-          {!SKIN_LOCKED && (
+          {!themeLocked && (
+            <Group label="Theme">
+              <Choice active={theme === 'light'} onClick={() => onThemeChange('light')}>Light</Choice>
+              <Choice active={theme === 'dark'} onClick={() => onThemeChange('dark')}>Dark</Choice>
+            </Group>
+          )}
+          {(themeLocked || (styleLocked && !SKIN_LOCKED)) && (
+            <p className="m-0 text-sm text-ink-3">
+              {themeLocked && (styleLocked || SKIN_LOCKED) ? 'Theme and style are' : themeLocked ? 'Theme is' : 'Style is'} set by your organization.
+            </p>
+          )}
+          {!SKIN_LOCKED && !styleLocked && (
             <Group label="Style">
               {STYLE_OPTIONS.map((s) => (
                 <Choice key={s.id} active={skin === s.id} onClick={() => onSkinChange(s.id)}>
