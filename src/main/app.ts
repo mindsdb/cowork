@@ -69,6 +69,7 @@ import {
   sweepStaleQuarantineRoots,
 } from './account-data';
 import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { USAGE_EVENTS_PREF, usageEventsOn } from './analytics-env';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -93,20 +94,46 @@ import {
   removeCodingTask,
 } from './coding-terminal';
 import { installMainErrorDialog } from './main-error-dialog';
+import { InAppBrowserHost } from './browser-host';
+import { composeStartedHook } from './browser-register';
 
 installMainErrorDialog();
 
-/* Re-hand the MindsHub credential to every sidecar that comes up.
+/* The in-app browser (browser-host.ts): Electron's own Chromium in the app's
+ * window, which the agent drives through a loopback bridge. It starts
+ * listening when the app is ready and registers with the sidecar only once
+ * the UI says it shows the browser. */
+const inAppBrowser = new InAppBrowserHost({
+  serverPort: getServerPort,
+  runningServerPort: () => (isServerRunning() || isServerStarting() ? getServerPort() : null),
+  authHeader,
+  accountRoot: accountDataRoot,
+  storesRoot: activeStoreRoot,
+  downloadsDir: () => app.getPath('downloads'),
+  profileSession: (dir) => session.fromPath(dir),
+  fetch: (input, init) => fetch(input, init),
+  electronVersion: () => process.versions.electron,
+});
+
+/* Re-hand the MindsHub credential, then the in-app browser's address, to every
+ * sidecar that comes up.
  *
- * The sidecar holds it in memory only, so a process that just started holds
+ * The sidecar holds both in memory only, so a process that just started holds
  * nothing: an auto-update, the sidebar's stop/start, and the installer's first
  * start all leave a signed-in user with `config_ready: false` until something
  * pushes again. Registered at module scope so the hook is in place before the
- * first start, whichever path gets there first.
+ * first start, whichever path gets there first. The hook slot holds one
+ * function, so both steps run from one composed hook, each even when the other
+ * fails.
  *
- * It settles the resume barrier too: a sidecar restarting mid-handoff is
- * exactly when a turn is parked waiting for one. */
-setServerStartedHook(handOffMindsCredentialToStartedSidecar);
+ * The credential step settles the resume barrier too: a sidecar restarting
+ * mid-handoff is exactly when a turn is parked waiting for one. The browser
+ * step also notices an account or organization switch (the sidecar restarts
+ * on other stores) and changes the bridge's key. */
+setServerStartedHook(composeStartedHook(
+  handOffMindsCredentialToStartedSidecar,
+  () => inAppBrowser.serverStarted(),
+));
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -422,6 +449,8 @@ function createWindow() {
     show: false,
     webPreferences: mainWindowWebPreferences(getServerPort()),
   });
+  // The in-app browser's tabs are children of this window; they close with it.
+  inAppBrowser.attachWindow(mainWindow);
 
   // Marks the document preview frame, cancels navigations it starts, and
   // holds srcdoc subframes in place. Registered before the window loads
@@ -1408,6 +1437,28 @@ function setupIPC() {
     return true;
   });
 
+  // The agent's anonymous usage events, the shared browser's included:
+  // COWORK_USAGE_EVENTS in the account's dotenv, written only when off.
+  // server-process.ts passes ANTON_ANALYTICS_ENABLED=false to the sidecar it
+  // starts next, so a change applies from the next server start.
+  ipcMain.handle(IPC.USAGE_EVENTS_GET, () => ({ enabled: usageEventsOn(readEnvFile()) }));
+
+  ipcMain.handle(IPC.USAGE_EVENTS_SET, async (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') return { ok: false };
+    try {
+      ensureAccountDataRoot();
+      const envPath = coworkEnvPath();
+      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+      const lines = existing.split('\n').filter((l) => l.length > 0 && !l.startsWith(`${USAGE_EVENTS_PREF}=`));
+      if (!enabled) lines.push(`${USAGE_EVENTS_PREF}=false`);
+      fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf-8');
+      return { ok: true };
+    } catch (error) {
+      diagnostic("main.app", "ERROR", "usage_events_failed_to_set_preference", '[usage-events] failed to set preference', error);
+      return { ok: false };
+    }
+  });
+
   // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
   // When enabled the refresh token lives in the macOS keychain; otherwise
   // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
@@ -1780,6 +1831,13 @@ app.whenReady().then(async () => {
 
   ensureDefaultProject();
   setupIPC();
+  inAppBrowser.registerIpc(ipcMain);
+  try {
+    await inAppBrowser.start();
+  } catch (err) {
+    // The app works without its browser; the agent just doesn't get the tool.
+    diagnostic("main.app", "WARNING", "browser_host_did_not_start", err);
+  }
   // ENG-439: decide the (per-OS-user) server port before the window exists so
   // the renderer can be handed the resolved port via additionalArguments,
   // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.

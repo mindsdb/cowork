@@ -193,6 +193,9 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
           if (!isCurrent()) return;
           setCommentsReady(false);
           if (accessError?.status === 503) setCommentsOffReason(COMMENTS_DOWN);
+          // A model-comparison side: the server keeps its drafts from being
+          // shared until the user continues with it, and says so.
+          else if (accessError?.status === 409) setCommentsOffReason(accessError.message);
           else setError(accessError.message);
         }
       } else {

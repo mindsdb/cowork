@@ -47,7 +47,7 @@ import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
-import { latestBrowserSession } from '../lib/browserSession';
+import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
@@ -1855,9 +1855,10 @@ export default function ChatView({
   onOpenSettings,
   codingModelDefault,
   harnessClaudeCodeEnabled,
-  // The shared browser is on (Settings → Shared browser, MindsHub): start it
-  // early, when a task that used it opens and on the first keystroke.
-  browserWarmUp = false,
+  /* The shared browser is on for this task: on in Settings and not switched
+     off in the task's + menu. Only then does a Browser step open the pane,
+     and, on the web, a task that used the browser start it early. */
+  browserOn = false,
   /* Settings > Appearance "Show where figures came from": mark each figure in
      a finished answer with the step it came from. On unless the user turned
      it off. */
@@ -1890,9 +1891,13 @@ export default function ChatView({
   // handleSendInTask's pendingQuestionFor check) as soon as the card
   // itself learns the question is gone.
   onQuestionAnswered,
+  // One side of a model comparison: the transcript only. The Compare screen
+  // owns the header, the shared composer and the side panel, so none of them
+  // render here.
+  pane = false,
 }) {
   const scrollRef = useRef(null);
-  const { isNarrow } = useBreakpoint();
+  const { isNarrow, paneFloats } = useBreakpoint();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
@@ -1937,8 +1942,11 @@ export default function ChatView({
   // its full reading width next to it; otherwise it opens over the top.
   const [railFits, setRailFits] = useState(true);
   const railFloats = isNarrow || !railFits;
-  const effectiveRailOpen = !railFloats && railOpen;
-  const railOverlayOpen = railFloats && railNarrowOpen;
+  const effectiveRailOpen = !pane && !railFloats && railOpen;
+  // A comparison pane never resends on its own: it would give one side a
+  // turn the other never got, and the two would stop being comparable.
+  const sendAgain = pane ? undefined : (text, attachments) => onSend?.(text, attachments);
+  const railOverlayOpen = !pane && railFloats && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
   /* The figure source (a LinkedFigureSource) whose file is open in the
@@ -2045,19 +2053,44 @@ export default function ChatView({
     setArtifactsScope({ projectId: project?.id || '', projectPath: artifactProjectPath });
   }, [project?.id, artifactProjectPath]);
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
-  // The shared browser (ENG-3299): the newest turn that opened it decides what
-  // the right-hand column shows. Closing the pane hides it until a later turn
-  // opens the browser again (a new `key`), or the user reopens it.
-  const browserSession = useMemo(
-    () => latestBrowserSession(visibleMessages, streamingMsg),
+  /* The shared browser's pane shows one session: the live turn's, when its
+     Browser step appears, or the one whose Browser step the person clicks.
+     Past turns never open it on their own. Closing it sets null, so a pane
+     closed mid-turn stays closed until a later turn's step or a click opens
+     it. ChatView isn't keyed by task, so a task change starts over. The web
+     shows the browser router's viewer and a desktop shell that hosts the
+     in-app browser shows its own; an older shell has no pane. A comparison
+     pane has no right-hand column. */
+  const [shownBrowserId, setShownBrowserId] = useState(null);
+  useEffect(() => {
+    setShownBrowserId(null);
+  }, [task.id]);
+  const liveBrowserId = browserSessionIdIn(streamingMsg?.steps);
+  useEffect(() => {
+    if (browserOn && liveBrowserId) setShownBrowserId(liveBrowserId);
+  }, [browserOn, liveBrowserId, task.id]);
+  const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && browserOn && !!shownBrowserId;
+  /* The web browser takes a while to wake, so a task that used it starts it
+     when it opens and when the person types. The desktop has nothing to
+     start. */
+  const usedBrowser = useMemo(
+    () => conversationUsedBrowser(visibleMessages, streamingMsg),
     [visibleMessages, streamingMsg],
   );
-  const [closedBrowserKey, setClosedBrowserKey] = useState(null);
-  const browserOpen = !!browserSession && closedBrowserKey !== browserSession.key;
-  const hasBrowserStep = !!browserSession;
+  const warmsBrowser = host.isWeb && browserOn && usedBrowser;
   useEffect(() => {
-    if (browserWarmUp && hasBrowserStep) warmBrowser(task.id);
-  }, [browserWarmUp, hasBrowserStep, task.id]);
+    if (warmsBrowser) warmBrowser(task.id);
+  }, [warmsBrowser, task.id]);
+  /* A click on a step, in the transcript or the rail's progress card. A
+     Browser step shows its session in the pane; any other step opens its
+     cells in the scratchpad viewer, under its message's key `prefix`. */
+  const activateStep = (prefix) => (step) => {
+    if (step?.badge === BROWSER_BADGE) {
+      if (browserOn && step.data?.sessionId) setShownBrowserId(step.data.sessionId);
+      return;
+    }
+    if (prefix) setOpenScratchpadStepId(prefixId(prefix, step.id));
+  };
   // Source of truth for the rail Progress card: the live streaming
   // message's steps if a request is in flight, otherwise the steps
   // from the most recent assistant turn. Both come from the SSE
@@ -2154,7 +2187,9 @@ export default function ChatView({
     // follows a reader who was already at the end.
     if (action === 'hold') el.scrollTop += scrollHeightDelta;
     else if (action === 'end') scrollToBottom();
-    else if (action === 'sent') anchorLastTurn();
+    // In a comparison pane a follow-up arrives in both panes at once, so it
+    // follows the end rather than moving each pane to the new turn's top.
+    else if (action === 'sent') { if (pane) followEnd(); else anchorLastTurn(); }
     else followEnd();
     scrollAnchorRef.current = anchor;
     // visibleMessages is a fresh array every render (task.messages.filter(...),
@@ -2253,7 +2288,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserOpen && !isNarrow ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -2269,12 +2304,12 @@ export default function ChatView({
         // for the "header + scrollable body" layout — the 1fr row pins
         // the scroll area to the column's available height, so the inner
         // overflowY can actually scroll.
-        className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0"
+        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
       >
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        <Tooltip content="Expand panel">
+        {!pane && (<Tooltip content="Expand panel">
           <button
             type="button"
             onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
@@ -2296,7 +2331,7 @@ export default function ChatView({
           >
             {Ico.panelExpandLeft(16)}
           </button>
-        </Tooltip>
+        </Tooltip>)}
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating
@@ -2304,7 +2339,7 @@ export default function ChatView({
             corner, staying left-aligned with the transcript below. `--titlebar-
             safe-top` is set on <main> by the shell and is 0 when the sidebar/
             rail covers the zone, so max() keeps the normal 14px padding then. */}
-        <div
+        {!pane && (<div
           // Belt + suspenders: even if a flex child miscalculates by a
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
@@ -2457,7 +2492,7 @@ export default function ChatView({
               title now (above) so it stays visually attached to the
               task it acts on. */}
           <div className="flex items-center gap-1 flex-shrink-0" />
-        </div>
+        </div>)}
         {/* Task menu — anchored to the kebab next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,
             Schedule and Turn-into-skill are intentionally excluded
@@ -2504,8 +2539,9 @@ export default function ChatView({
             reply always scrolls clear however tall the draft grows. */}
         <ChatScroller
           stick={stick}
+          minimap={!pane}
           scrollProps={{ 'data-scroll': 'true' }}
-          className="scroll-clean pt-8 bg-transparent [-webkit-app-region:no-drag] select-text"
+          className={`scroll-clean ${pane ? 'pt-4' : 'pt-8'} bg-transparent [-webkit-app-region:no-drag] select-text`}
         >
           <div className="chat-transcript-col chat-column flex flex-col gap-7">
             {task.hasMoreMessages && (
@@ -2559,8 +2595,8 @@ export default function ChatView({
                 const neverSent = !m.id && !isStreaming
                   && (m._unsent || String(task?.id ?? '').startsWith('tmp-'));
                 let deleteThisTurn = null;
-                if (orphan && !deleteInFlight && m.id) deleteThisTurn = () => onDeleteTurn?.(m.id);
-                else if (orphan && !deleteInFlight && neverSent) deleteThisTurn = () => onDeleteTurn?.({ localRow: m });
+                if (orphan && !deleteInFlight && onDeleteTurn && m.id) deleteThisTurn = () => onDeleteTurn(m.id);
+                else if (orphan && !deleteInFlight && onDeleteTurn && neverSent) deleteThisTurn = () => onDeleteTurn({ localRow: m });
                 return (
                   <CoworkUserTurn
                     key={messageKey(m, i)}
@@ -2578,7 +2614,7 @@ export default function ChatView({
                     onDelete={deleteThisTurn}
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
-                    onEdit={(text) => {
+                    onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
                       // nonce so identical text re-fills the input
@@ -2744,7 +2780,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={resend ? () => onSend?.(resend.text, resend.attachments) : undefined}
+                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -2834,8 +2870,8 @@ export default function ChatView({
                       kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2885,8 +2921,8 @@ export default function ChatView({
                       body={PLATFORM_UI
                         ? "MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
                         : "The provider couldn't authorize this request. Try again in a moment."}
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2910,8 +2946,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2934,8 +2970,8 @@ export default function ChatView({
                         ? 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings.'
                         : 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.'}
                       buttons={[
-                        ...(resend
-                          ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        ...(resend && sendAgain
+                          ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                           : []),
                         ...(PLATFORM_UI ? [{ label: 'Open Settings', onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
@@ -2958,8 +2994,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The answer was cut off"
                       body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2983,8 +3019,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The response stalled"
                       body="Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again."
-                      buttons={resend && !turnMayBeRunning
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && !turnMayBeRunning && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -3019,7 +3055,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlResend ? () => onSend?.(rlResend.text, rlResend.attachments) : undefined}
+                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments) : undefined}
                     />
                   );
                 }
@@ -3040,7 +3076,7 @@ export default function ChatView({
                       title="The server is busy"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={busyResend ? () => onSend?.(busyResend.text, busyResend.attachments) : undefined}
+                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments) : undefined}
                     />
                   );
                 }
@@ -3061,8 +3097,8 @@ export default function ChatView({
                       title="The server isn't answering"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={unavailableResend
-                        ? () => onSend?.(unavailableResend.text, unavailableResend.attachments)
+                      onRetry={unavailableResend && sendAgain
+                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments)
                         : undefined}
                     />
                   );
@@ -3153,15 +3189,17 @@ export default function ChatView({
                     conversationLive={false}
                     // Only the latest turn, with nothing in flight, can still
                     // take an answer to a question that timed out: once a newer
-                    // message is sent, the conversation has moved past it.
-                    reopenable={i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
+                    // message is sent, the conversation has moved past it. And
+                    // only where a message can be sent: a comparison pane whose
+                    // side takes no message right now gets no onSend.
+                    reopenable={!!onSend && i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
                     reply={visibleMessages[i + 1]?.role === 'user' && typeof visibleMessages[i + 1].content === 'string'
                       ? visibleMessages[i + 1].content
                       : null}
                     onAnswered={onQuestionAnswered}
                     // [] so a pick does not take the composer's staged files.
                     onAnswerAsMessage={(text) => onSend?.(text, [])}
-                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
+                    onActivateStep={activateStep(messageKey(m, i))}
                     idPrefix={messageKey(m, i)}
                     // Only right after it finished live: reopening the task
                     // later shows the steps already folded.
@@ -3234,7 +3272,7 @@ export default function ChatView({
                   conversationId={task.id}
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
-                  onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  onActivateStep={activateStep(streamingKey)}
                   idPrefix={streamingKey}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
@@ -3284,7 +3322,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        {!pane && (<div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
@@ -3347,19 +3385,20 @@ export default function ChatView({
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
-            onTypingChange={browserWarmUp ? (typing) => { if (typing) warmBrowser(task.id); } : undefined}
+            onTypingChange={warmsBrowser ? (typing) => { if (typing) warmBrowser(task.id); } : undefined}
           />
-        </div>
+        </div>)}
         </>
         )}
       </div>
 
+      {!pane && (<>
       {/* ─── Shared browser ─── takes the right-hand column while open. */}
       {browserOpen && (
         <BrowserPanel
-          session={browserSession}
+          sessionId={shownBrowserId}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
-          onClose={() => setClosedBrowserKey(browserSession.key)}
+          onClose={() => setShownBrowserId(null)}
         />
       )}
 
@@ -3380,7 +3419,7 @@ export default function ChatView({
         // Wide: inline grid column.
         // While the shared browser holds the right-hand column on a wide
         // screen, the rail steps aside rather than add a third grid track.
-        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${browserOpen && !isNarrow ? 'hidden ' : ''}${
+        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${browserOpen && !paneFloats ? 'hidden ' : ''}${
           railFloats
             ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
             : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
@@ -3425,9 +3464,7 @@ export default function ChatView({
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}
           conversationId={task.id || ''}
-          onActivateStep={(step) => railMsgKey
-            ? setOpenScratchpadStepId(prefixId(railMsgKey, step.id))
-            : null}
+          onActivateStep={activateStep(railMsgKey)}
         />
         <WorkingFolderBox
           project={project}
@@ -3446,6 +3483,7 @@ export default function ChatView({
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />
       </aside>
+      </>)}
 
       {/* keyframes for the streaming cursor */}
       <style>{`@keyframes cb { 0%,49%{opacity:1} 50%,100%{opacity:0} }`}</style>

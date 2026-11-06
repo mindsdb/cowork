@@ -29,6 +29,7 @@ function titleForRoute(route, { selectedProject, currentTask } = {}) {
   if (route === 'settings') return 'Settings';
   if (route === 'memory') return 'Memories';
   if (route === 'skills') return 'Skills';
+  if (route === 'compare') return 'Compare Models';
   return productName(STOCK_PRODUCT_NAME);
 }
 

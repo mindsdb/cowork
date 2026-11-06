@@ -28,6 +28,7 @@ export function ChatScroller({
   contentClassName = '',
   scrollProps,
   overlay,
+  minimap = true,
   children,
 }: {
   stick: StickToBottom;
@@ -35,6 +36,8 @@ export function ChatScroller({
   contentClassName?: string;
   scrollProps?: ScrollAttributes;
   overlay?: ReactNode;
+  /** Off where the transcript is too narrow to spare the edge (a comparison pane). */
+  minimap?: boolean;
   children: ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
@@ -118,7 +121,7 @@ export function ChatScroller({
           {Ico.arrowDown(16)}
         </button>
       )}
-      <TurnMinimap scrollRef={stick.scrollRef} version={layoutVersion} />
+      {minimap && <TurnMinimap scrollRef={stick.scrollRef} version={layoutVersion} />}
       {overlay}
     </div>
   );

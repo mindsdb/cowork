@@ -22,7 +22,7 @@ import { Alert, Button } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
-import { PLATFORM_UI } from '../../lib/deployment';
+import { host } from '../../platform/host';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 const SORT_OPTIONS = [
@@ -142,7 +142,7 @@ export default function ScheduledView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={PLATFORM_UI
+        subtitle={host.isElectron
           ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. Runs missed while it's closed are skipped — ${agentLabel} picks up at the next scheduled time.`
           : `Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — ${agentLabel} picks up at the next scheduled time.`}
         actions={
@@ -246,4 +246,3 @@ export default function ScheduledView({
     </div>
   );
 }
-

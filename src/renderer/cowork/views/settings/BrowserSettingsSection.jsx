@@ -1,262 +1,143 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Section } from './settingsLayout';
+import { useEffect, useState } from 'react';
+import { Section, SettingsGroup } from './settingsLayout';
 import { Switch } from '../../components/ui/Switch';
-import { ToggleGroup } from '../../components/ui/ToggleGroup';
-import { Button, Input, Select } from '../../components/ui';
-import { fetchBrowseLocations, fetchBrowseStatus, provisionBrowser, updateSettings } from '../../api';
+import Button from '../../components/ui/Button';
+import { fetchBrowseStatus, signOutOfBrowserSites } from '../../api';
+import { host } from '../../../platform/host';
 
-// Settings → Agent → Shared browser (ENG-3299). One switch, on by default;
-// everything else shows only while it is on. Two ways to get one:
-//
-// - MindsHub (the default): the user's own hosted browser. It starts the
-//   first time it is used; turning the switch on starts it at once.
-// - Your own server: a browser service someone runs themselves (standalone
-//   mode). Give its URL and API key, save and test, then turn it on.
-//
-// The switch and the mode save with the rest of the form. Starting the
-// browser, and "Save and test" for your own server, apply at once so the
-// status line can say whether it worked. Each task can still switch the
-// browser off from the composer's + menu (ENG-3188).
-//
-// In MindsHub mode, when the deployment has a home-connection proxy, two more
-// settings: browse through it (on by default) and from which city. Both save
-// at once and are pushed to the browser with a provision call, since they
-// only apply to tasks started after the browser learns them.
+/* Settings > Agent > Shared browser, in its own group. It shows only when the
+   server says this deployment offers the browser to this person
+   (GET /browse/status answers `available: true`): on the web, a browser router
+   is configured and the account may use it; on the desktop, the app's own
+   browser has registered with the local server. Until that answer comes, and
+   when the call fails, there is no group. An account the browser isn't
+   enabled for (`not_entitled`), and an organization that turned the browser
+   off (`organization_off`), see one line saying so, and can still sign out
+   of every site.
 
-export const MODE_MINDSHUB = 'mindshub';
-export const MODE_STANDALONE = 'standalone';
+   One switch, on by default, saved with the rest of the form. Each task can
+   still switch the browser off from the composer's + menu.
 
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
-// The city select's value for "pick one from my time zone" (stored as '').
-const AUTO_CITY = 'auto';
+   The group says what the browser does with the person's data, as it runs
+   today: where websites see the browser come from, that sign-ins are kept and
+   reused, and that page text and screenshots go to the model provider. On
+   the desktop it also says that the agent's code runs as the person, and
+   offers a switch for the agent's anonymous usage events. */
 
-export const PROXY_HELP = 'Websites see a normal home connection in your city instead of a data center, so fewer of them block the browser. Turning it off can make some sites, like travel and shopping sites, refuse the browser.';
+export const NOT_ENTITLED = 'Not available for your account.';
+export const ORGANIZATION_OFF = 'Your organization turned off the browser.';
 
-// The city line's subtitle: which city "Automatic" landed on, when known.
-export function cityHelp(city, locations) {
-  if (!city && locations?.effective_city) {
-    const label = (locations.cities || []).find((c) => c.id === locations.effective_city)?.label;
-    if (label) return `Automatic uses ${label}. Applies to new tasks.`;
-  }
-  return 'Applies to new tasks.';
+export function webDisclosure(agentLabel) {
+  return `A browser you and ${agentLabel} use together, shown beside the chat. It runs in MindsDB's cloud, so websites see MindsDB's addresses. ${agentLabel} asks you before a step that submits, buys, sends or deletes.`;
 }
 
-// Same rule cowork-server and anton apply: https anywhere, plain http only on
-// this machine (the API key would otherwise cross the network in the clear),
-// and nothing after the address. '' when it's fine, else what to fix.
-export function serverUrlProblem(raw) {
-  const value = (raw || '').trim();
-  if (!value) return 'Enter the server address.';
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return 'That isn\'t a web address. It should look like https://browser.example.com.';
-  }
-  if (parsed.protocol === 'http:' && !LOOPBACK.has(parsed.hostname)) {
-    return 'Use https:// for a server on another machine. Plain http:// only works for localhost.';
-  }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return 'The address must start with https://.';
-  if ((parsed.pathname && parsed.pathname !== '/') || parsed.search || parsed.hash || parsed.username) {
-    return 'Use just the server address, with no path after it.';
-  }
-  return '';
+export function desktopDisclosure(agentLabel) {
+  return `A browser inside this app that you and ${agentLabel} use together, shown beside the chat. Websites see your own connection, and no MindsDB server carries your browsing. ${agentLabel}'s code runs as you and can read this browser's sign-ins. Some sites, Google's sign-in among them, don't allow signing in from an app's built-in browser.`;
 }
 
-export function browserStatusLine(status, loadError) {
-  // Show the server's own reason: "couldn't reach" alone is undiagnosable.
-  if (loadError) return `Couldn't check your browser: ${String(loadError).replace(/\.$/, '')}.`;
-  if (!status) return 'Checking your browser…';
-  if (status.mode === MODE_STANDALONE) {
-    if (status.status === 'not_configured') return 'Add your server\'s address and API key.';
-    if (status.status === 'running') return 'Connected.';
-    if (status.status === 'unreachable') return `Can't reach the server${status.endpoint ? ` at ${status.endpoint}` : ''}. Check that it's running.`;
-    return `Status: ${status.status}.`;
-  }
-  if (!status.provisioned) return 'It starts the first time it\'s used.';
-  if (status.status === 'running') return 'Ready.';
-  if (['provisioning', 'pending', 'starting', 'booting'].includes(status.status)) return 'Starting up. This takes a few minutes the first time.';
-  if (status.status === 'stopped' || status.status === 'stopping') return 'Asleep. It wakes up when the agent uses it.';
-  return `Status: ${status.status}.`;
+export const WEB_SIGN_INS = 'Sites you sign in to stay signed in for your later tasks, in every organization you belong to, until they go 90 days unused. Deleting your MindsHub account deletes them.';
+export const DESKTOP_SIGN_INS = "Sites you sign in to stay signed in on this computer for your later tasks, in every organization of this account, until you sign out.";
+
+export const WEB_SIGN_OUT_HELP = "Clears every site's cookies and sign-ins from your browser and from storage. Saved tabs stay.";
+export const SIGN_OUT_HELP = "Clears this browser's cookies, sign-ins and cache, and closes its tabs. Saved tabs stay.";
+
+export function pageContentLine(agentLabel) {
+  return `When ${agentLabel} reads a page, its text and a screenshot go to the model provider that serves your turn.`;
 }
+export const WEB_JEV_LINE = 'With Fast answers with Jev on, Jev also gets the page\'s address, title, element names and its first 1,500 characters, without field values or what you type.';
+
+export const USAGE_EVENTS_HELP = 'Anonymous usage events with an installation id, the browser\'s included, never page text or addresses. Off stops all of them from the next time the app starts its server.';
 
 export default function BrowserSettingsSection({ settings, setSetting, agentLabel = 'Anton' }) {
+  // The last BrowseStatus answer (api.js), or null.
   const [status, setStatus] = useState(null);
-  const [loadError, setLoadError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [urlError, setUrlError] = useState('');
-  // null until /browse/locations answers, and on any failure: then the proxy
-  // settings stay hidden.
-  const [locations, setLocations] = useState(null);
-  const [proxyError, setProxyError] = useState('');
+  const [signOut, setSignOut] = useState({ busy: false, note: '' });
+  // The desktop agent's usage events, or null where the shell can't say.
+  const [usageEvents, setUsageEvents] = useState(null);
+  const inApp = host.supportsInAppBrowser;
 
-  const mode = settings.browserMode === MODE_STANDALONE ? MODE_STANDALONE : MODE_MINDSHUB;
-
-  const load = useCallback(async () => {
-    try {
-      setStatus(await fetchBrowseStatus());
-      setLoadError('');
-    } catch (err) {
-      setLoadError(err?.message || 'unavailable');
-    }
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setStatus(await fetchBrowseStatus());
+      } catch {
+        // Without an answer the browser can't be offered, so nothing shows.
+        setStatus(null);
+      }
+    };
+    void load();
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!inApp) return;
+    host.getUsageEventsPref().then(setUsageEvents, () => setUsageEvents(null));
+  }, [inApp]);
 
-  const loadLocations = useCallback(async () => {
+  const offered = status?.available === true;
+  const refused = status?.status === 'not_entitled' || status?.status === 'organization_off';
+
+  const signOutOfAllSites = async () => {
+    setSignOut({ busy: true, note: '' });
+    let cleared = false;
     try {
-      setLocations(await fetchBrowseLocations());
+      cleared = inApp
+        ? (await host.inAppBrowser.clearData()).ok
+        : (await signOutOfBrowserSites())?.cleared === true;
     } catch {
-      setLocations(null);
+      cleared = false;
     }
-  }, []);
-
-  useEffect(() => { loadLocations(); }, [loadLocations]);
-
-  const saveProxySetting = async (key, value) => {
-    setSetting(key, value);
-    setProxyError('');
-    try {
-      await updateSettings({ [key]: value });
-      // Only a browser that exists needs telling now; a new one gets the
-      // settings when it starts.
-      if (status?.provisioned) setStatus(await provisionBrowser());
-      await loadLocations();
-    } catch (err) {
-      setProxyError(`Couldn't save: ${String(err?.message || 'unavailable').replace(/\.$/, '')}.`);
-    }
+    setSignOut({ busy: false, note: cleared ? 'Signed out of all sites.' : "Couldn't clear the browser's data. Try again." });
   };
 
-  // Start the MindsHub browser now, so it is ready by the first task.
-  const start = async () => {
-    setBusy(true);
-    try {
-      setStatus(await provisionBrowser());
-      setLoadError('');
-    } catch (err) {
-      setLoadError(err?.message || 'unavailable');
-    } finally {
-      setBusy(false);
-    }
+  const saveUsageEvents = async (on) => {
+    setUsageEvents(on);
+    if (!(await host.setUsageEventsPref(on).catch(() => false))) setUsageEvents(!on);
   };
 
-  const saveAndTest = async () => {
-    const problem = serverUrlProblem(settings.browserServiceUrl);
-    setUrlError(problem);
-    if (problem) return;
-    setBusy(true);
-    try {
-      await updateSettings({
-        browserMode: MODE_STANDALONE,
-        browserServiceUrl: settings.browserServiceUrl.trim().replace(/\/$/, ''),
-        // "***" (the stored key, untouched) is skipped by updateSettings.
-        browserServiceApiKey: settings.browserServiceApiKey ?? '',
-      });
-      await load();
-    } catch (err) {
-      setLoadError(err?.message || 'unavailable');
-    } finally {
-      setBusy(false);
-    }
-  };
+  if (!offered && !refused) return null;
 
-  // The status describes the SAVED mode. Until a mode change is saved, say so
-  // rather than showing the other mode's status.
-  const statusMode = status?.mode === MODE_STANDALONE ? MODE_STANDALONE : MODE_MINDSHUB;
-  const pendingModeChange = status && !loadError && statusMode !== mode;
-  const line = pendingModeChange
-    ? (mode === MODE_STANDALONE ? 'Add your server below, then save and test.' : 'Save settings to switch back to MindsHub.')
-    : browserStatusLine(status, loadError);
+  const signOutRow = (
+    <Section title="Sign out of all sites" subtitle={signOut.note || (inApp ? SIGN_OUT_HELP : WEB_SIGN_OUT_HELP)}>
+      <Button size="sm" variant="subtle" disabled={signOut.busy} onClick={() => void signOutOfAllSites()}>Sign out</Button>
+    </Section>
+  );
+
+  // Access is off, but the person's saved sign-ins are still theirs to clear.
+  if (!offered) {
+    return (
+      <SettingsGroup title="Shared browser">
+        <Section title="Use the shared browser" subtitle={status.status === 'organization_off' ? ORGANIZATION_OFF : NOT_ENTITLED} />
+        {signOutRow}
+      </SettingsGroup>
+    );
+  }
 
   const on = settings.browserEnabled ?? true;
-  const provisioned = !!status?.provisioned && !pendingModeChange;
-  const standaloneReady = mode === MODE_STANDALONE && statusMode === MODE_STANDALONE && status?.status === 'running';
-  const showProxy = on && mode === MODE_MINDSHUB && !!locations?.proxy_available;
-  const proxyOn = settings.browserProxy !== false;
-  const city = settings.browserCity || '';
 
   return (
-    <>
-      <Section
-        title="Shared browser"
-        subtitle={`A browser you and ${agentLabel} use together, shown beside the chat. Sign in to sites there; ${agentLabel} remembers which ones, never your passwords.${on ? ` ${busy ? 'Starting…' : line}` : ''}`}
-      >
+    <SettingsGroup title="Shared browser">
+      <Section title="Use the shared browser" subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
         <Switch
           checked={on}
-          onCheckedChange={(v) => {
-            setSetting('browserEnabled', v);
-            if (v && mode === MODE_MINDSHUB && status && !loadError && !provisioned && !busy) start();
-          }}
-          disabled={mode === MODE_STANDALONE && !standaloneReady && !on}
+          onCheckedChange={(v) => setSetting('browserEnabled', v)}
           aria-label="Shared browser"
         />
       </Section>
-      {on && (
-        <Section title="Where the browser runs" subtitle="On MindsHub, or on a browser service you run yourself.">
-          <ToggleGroup
-            value={mode}
-            onValueChange={(v) => setSetting('browserMode', v)}
-            aria-label="Where the browser runs"
-            options={[
-              { value: MODE_MINDSHUB, label: 'MindsHub', title: 'Your own browser, hosted by MindsHub.' },
-              { value: MODE_STANDALONE, label: 'Your own server', title: 'A browser service you run, reached with its URL and API key.' },
-            ]}
+      <Section title="Sign-ins" subtitle={inApp ? DESKTOP_SIGN_INS : WEB_SIGN_INS} />
+      {signOutRow}
+      <Section
+        title="What the model provider sees"
+        subtitle={inApp ? pageContentLine(agentLabel) : `${pageContentLine(agentLabel)} ${WEB_JEV_LINE}`}
+      />
+      {inApp && usageEvents !== null && (
+        <Section title="Send anonymous usage events" subtitle={USAGE_EVENTS_HELP}>
+          <Switch
+            checked={usageEvents}
+            onCheckedChange={(v) => void saveUsageEvents(v)}
+            aria-label="Send anonymous usage events"
           />
         </Section>
       )}
-      {showProxy && (
-        <>
-          <Section title="Browse through a home internet connection" subtitle={proxyError || `${PROXY_HELP} Applies to new tasks.`}>
-            <Switch
-              checked={proxyOn}
-              onCheckedChange={(v) => saveProxySetting('browserProxy', v)}
-              aria-label="Browse through a home internet connection"
-            />
-          </Section>
-          <Section title="City" subtitle={cityHelp(city, locations)}>
-            <Select
-              value={city || AUTO_CITY}
-              onValueChange={(v) => saveProxySetting('browserCity', v === AUTO_CITY ? '' : v)}
-              options={[
-                { value: AUTO_CITY, label: 'Automatic (from your time zone)' },
-                ...(locations.cities || []).map((c) => ({ value: c.id, label: c.label })),
-              ]}
-              disabled={!proxyOn}
-              ariaLabel="Browser city"
-            />
-          </Section>
-        </>
-      )}
-      {on && mode === MODE_STANDALONE && (
-        <>
-          <Section
-            title="Server address"
-            subtitle={urlError || 'Where your browser service runs, for example https://browser.example.com, or http://localhost:8080 on this machine.'}
-          >
-            <Input
-              value={settings.browserServiceUrl ?? ''}
-              onChange={(v) => { setUrlError(''); setSetting('browserServiceUrl', v); }}
-              placeholder="https://browser.example.com"
-              aria-label="Browser server address"
-            />
-          </Section>
-          <Section title="API key" subtitle="The server's BROWSER_SERVICE_TOKEN. Stored encrypted.">
-            <Input
-              type="password"
-              value={settings.browserServiceApiKey ?? ''}
-              onChange={(v) => setSetting('browserServiceApiKey', v)}
-              placeholder="Paste the server's API key"
-              aria-label="Browser server API key"
-              autoComplete="off"
-            />
-          </Section>
-          <Section title="Check the connection" subtitle="Saves the address and key, then checks the server answers.">
-            <Button size="sm" disabled={busy} onClick={saveAndTest}>
-              {busy ? 'Testing…' : 'Save and test'}
-            </Button>
-          </Section>
-        </>
-      )}
-    </>
+    </SettingsGroup>
   );
 }

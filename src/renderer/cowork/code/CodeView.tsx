@@ -17,7 +17,7 @@ import { EventTimeline } from './EventTimeline';
 import { useDockInset } from '../components/chat/useDockInset';
 import { ComposerLip } from './ComposerLip';
 import { PromptQueue } from './ComposerMenus';
-import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -220,7 +220,7 @@ export default function CodeView({
       return false;
     });
   }, [catalog.engines, engineId, canSlashCommands, canFork, canControls, canTerminal, canExtensions]);
-  const project = useProjectActions(session?.id);
+  const project = useProjectActions(session?.id, active);
 
   useEffect(() => {
     setReviewOpen(codeFixtureReviewOpen());
@@ -286,6 +286,7 @@ export default function CodeView({
       models.find((model) => model.id === session.model)?.name || session.model,
     ),
     recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+    releaseNotice(session),
     messageNotice('error', conversationError),
     messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
     queueNotice(session),

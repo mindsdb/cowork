@@ -912,11 +912,14 @@ export function streamNewSession(text, opts = {}) {
 // signature as `_streamResponse` so the caller's adapter logic
 // (onChunk / onProgress / onToolResult / onDone / onError / onEvent)
 // is identical between fresh-turn and reconnect paths.
-export async function fetchInFlightStatus(conversationId) {
+/** `strict` rethrows a failed or timed-out check instead of answering "not
+ *  running", for a caller that must tell the two apart. */
+export async function fetchInFlightStatus(conversationId, { strict = false, timeoutMs } = {}) {
   if (!conversationId) return { in_flight: false, has_buffer: false, latest_seq: 0 };
   try {
-    return await req(`/responses/in-flight?conversation_id=${encodeURIComponent(conversationId)}`);
-  } catch {
+    return await req(`/responses/in-flight?conversation_id=${encodeURIComponent(conversationId)}`, { timeoutMs });
+  } catch (err) {
+    if (strict) throw err;
     return { in_flight: false, has_buffer: false, latest_seq: 0 };
   }
 }
@@ -1899,8 +1902,13 @@ export async function revealSettingKey(name) {
 export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
 
 // ─── Anton Utilities ────────────────────────────────────────────────────────
+// Every project card asks for its memory at once, and each lookup needs the
+// project list. Only these read-only lookups share one request: a caller
+// reading back after a mutation must not join a request sent before it.
+const fetchProjectsShared = () => dedupe('projects', fetchProjects);
+
 export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
-  const projectId = await resolveProjectId(projectRef, fetchProjects);
+  const projectId = await resolveProjectId(projectRef, fetchProjectsShared);
   const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
   // Coalesced per project. ContextCard, ProjectCard, and the list
   // view's row-stats hook can all ask for the same project's memory
@@ -1908,7 +1916,7 @@ export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
   return dedupe(`memory${suffix}`, async () => {
     const [items, projects] = await Promise.all([
       req(`/memory/${suffix}`),
-      fetchProjects(),
+      fetchProjectsShared(),
     ]);
     const list = Array.isArray(items) ? items : [];
     return groupMemoryItems(list, projects);
@@ -2450,6 +2458,22 @@ export async function matchConnector(query, maxCandidates = 3) {
 // schema (bypasses Anton-core's built-in registry — needed for
 // OAuth + service-account flows where the legacy email/password
 // engine would reject the credential shape).
+// The saved connection a new form submission would overwrite ({ name, label }), or null.
+export async function fetchSubmissionReplaces({ formId, formSpec, values, skipped, method } = {}) {
+  const res = await req('/connectors/submissions/replaces', {
+    method: 'POST',
+    body: JSON.stringify({
+      form_id: formId,
+      name: '',
+      method: method || null,
+      values: values || {},
+      skipped: skipped || [],
+      form_spec: formSpec || null,
+    }),
+  });
+  return res?.replaces || null;
+}
+
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
   return req('/connectors/connections/save', { method: 'POST', body });
@@ -2799,18 +2823,45 @@ export async function duplicateLiveApp({ shareId, projectId }) {
   });
 }
 
-// ─── Shared browser (ENG-3299) ──────────────────────────────────────────────
-// The user's MindsHub browser instance. cowork-server makes each call as the
-// caller (their MindsHub token in X-MindsHub-Authorization, like /hub/*), so a
-// desktop install and the web app go through the same three routes.
+// ─── Shared browser ─────────────────────────────────────────────────────────
 
-// { provisioned, status, endpoint, enabled, available }
+/**
+ * Whether this deployment offers the shared browser to the caller. On the web
+ * `available` means a browser router is configured and the caller's account
+ * may use it; an account it isn't enabled for answers `available: false` with
+ * `status: 'not_entitled'`. On the desktop it means the app's own browser has
+ * registered with the local server.
+ *
+ * @typedef {Object} BrowseStatus
+ * @property {boolean} enabled  The person's own switch (Settings), on by default.
+ * @property {boolean} available
+ * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled'} status
+ */
+
+/**
+ * A viewer link for the web pane. The router honors it once, before
+ * `ticket_expires_at`, and the viewer it opens closes at `lease_expires_at`.
+ * Both are Unix seconds.
+ *
+ * @typedef {Object} BrowserEmbed
+ * @property {string} session_id
+ * @property {string} view_url
+ * @property {number} ticket_expires_at
+ * @property {number} lease_expires_at
+ */
+
+/**
+ * Sends no MindsHub credential header: the desktop answers from what it holds
+ * locally, and the web shell's Authorization header already names the caller.
+ *
+ * @returns {Promise<BrowseStatus>}
+ */
 export async function fetchBrowseStatus() {
-  return req('/browse/status', { headers: await hubHeaders() });
+  return req('/browse/status');
 }
 
-// The browser's time zone and language, so the shared browser's pages match
-// the user's and its home connection can default to a city near them.
+/* The browser's time zone and language, so the web browser's pages match the
+   person's. */
 export function browserClientHints() {
   const hints = {};
   try {
@@ -2823,7 +2874,12 @@ export function browserClientHints() {
   return hints;
 }
 
-// Creates (or wakes) the instance and remembers where it is. Same answer shape.
+/**
+ * Web only: wakes the person's browser early, in a task that used it, so it
+ * is up by the time the agent asks for it.
+ *
+ * @returns {Promise<BrowseStatus>}
+ */
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',
@@ -2832,14 +2888,51 @@ export async function provisionBrowser() {
   });
 }
 
-// { proxy_available, prefs, cities: [{ id, label }], effective_city }: whether
-// the shared browser can browse through a home connection, and from where.
-export async function fetchBrowseLocations() {
-  return req('/browse/locations', { headers: await hubHeaders() });
+/**
+ * The browser's record of the person's approval of one held step (the commit
+ * hold). The step may then run once, until `expires_at` (Unix seconds).
+ *
+ * @typedef {Object} BrowserApproval
+ * @property {string} pending_id
+ * @property {boolean} approved
+ * @property {number} expires_at
+ */
+
+/**
+ * Web only: records the person's approval of a step the browser held, before
+ * the chat card that asked is answered. Only the person's own credential is
+ * accepted; a turn key gets 403 `person_only`.
+ *
+ * @param {string} sessionId
+ * @param {string} pendingId
+ * @returns {Promise<BrowserApproval>}
+ */
+export async function approveBrowserStep(sessionId, pendingId) {
+  return req('/browse/approve', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ session_id: sessionId, pending_id: pendingId }),
+  });
 }
 
-// { session_id, view_url, expires_at }: a fresh viewer URL for the side pane.
-export async function embedBrowser(sessionId = 'main') {
+/**
+ * Web only: signs the person out of every site in their browser, the live
+ * one and the saved sign-ins. Works even when the person's browser access is
+ * off.
+ *
+ * @returns {Promise<{ cleared: boolean }>}
+ */
+export async function signOutOfBrowserSites() {
+  return req('/browse/logins', { method: 'DELETE', headers: await hubHeaders() });
+}
+
+/**
+ * Web only: a fresh viewer link for one session.
+ *
+ * @param {string} sessionId
+ * @returns {Promise<BrowserEmbed>}
+ */
+export async function embedBrowser(sessionId) {
   return req('/browse/embed', {
     method: 'POST',
     headers: await hubHeaders(),
@@ -3178,6 +3271,77 @@ export async function moveTaskToProject(id, projectName, moveObjects = true) {
   return req(`/conversations/${encodeURIComponent(id)}/move`, {
     method: 'POST',
     body: JSON.stringify({ project: projectName, moveObjects }),
+  });
+}
+
+// Model comparisons: one task run on two models side by side. Each side is an
+// ordinary conversation the server keeps in a hidden project, so its turns go
+// through the same streaming calls as any task.
+//
+// `null` means the sidecar predates comparisons: the renderer bundle updates
+// over the air ahead of the server, so the Compare screen has to be able to
+// say "update needed" rather than show an empty history.
+/** One page of the history, newest first: `{ comparisons, hasMore }`. Null on
+ *  a server with no comparisons at all. */
+export async function fetchComparisons({ offset = 0 } = {}) {
+  try {
+    const data = await req(offset ? `/comparisons/?offset=${encodeURIComponent(offset)}` : '/comparisons/');
+    return {
+      comparisons: Array.isArray(data?.comparisons) ? data.comparisons : [],
+      // An older server sends no flag: it has no pages beyond the first.
+      hasMore: data?.hasMore === true,
+    };
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return null;
+    throw err;
+  }
+}
+
+export async function fetchComparison(id) {
+  return req(`/comparisons/${encodeURIComponent(id)}`);
+}
+
+/** Tokens and list-price cost per side and turn. Null when this server or its
+ *  gateway cannot say, so the screen simply shows no figure. */
+export async function fetchComparisonUsage(id) {
+  try {
+    const data = await req(`/comparisons/${encodeURIComponent(id)}/usage`, { headers: await hubHeaders() });
+    return data && typeof data === 'object' && data.sides ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createComparison({ title, sides, sourceProjectId } = {}) {
+  return req('/comparisons/', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: title || '',
+      sides: (sides || []).map((side) => ({
+        model: side.model,
+        ...(side.reasoningEffort ? { reasoningEffort: side.reasoningEffort } : {}),
+      })),
+      ...(sourceProjectId ? { sourceProjectId } : {}),
+    }),
+  });
+}
+
+export async function deleteComparison(id) {
+  return req(`/comparisons/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function recordComparisonVerdict(id, turnIndex, winner) {
+  return req(`/comparisons/${encodeURIComponent(id)}/verdicts/${encodeURIComponent(turnIndex)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ winner }),
+  });
+}
+
+/** `modelLabel` names the folder the side's files land in; an older server ignores it. */
+export async function continueComparisonSide(id, label, projectId, modelLabel) {
+  return req(`/comparisons/${encodeURIComponent(id)}/sides/${encodeURIComponent(label)}/continue`, {
+    method: 'POST',
+    body: JSON.stringify({ projectId, ...(modelLabel ? { modelLabel } : {}) }),
   });
 }
 

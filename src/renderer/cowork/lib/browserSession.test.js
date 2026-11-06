@@ -1,87 +1,137 @@
 import { describe, expect, it } from 'vitest';
 import {
   BROWSER_BADGE,
+  QUICK_CLOSE_MS,
+  afterViewerClose,
+  browserSessionIdIn,
   browserStep,
   browserViewerTheme,
+  conversationUsedBrowser,
   isFramableViewUrl,
-  latestBrowserSession,
-  needsFreshViewUrl,
+  viewerLinkFrom,
   withBrowserStep,
 } from './browserSession';
+import embedAnswer from '../__fixtures__/browser-router/embed_answer.json';
 
-const VIEW = 'https://br-ab12cd34.4nton.ai/sessions/main/view?et=tok';
+const APP = 'https://cowork.example.test';
+const VIEW = `${APP}/browser/sessions/t-abc/view?et=tok`;
 
 describe('isFramableViewUrl', () => {
-  it('accepts a standalone browser service on this machine', () => {
-    expect(isFramableViewUrl('http://localhost:8080/sessions/main/view?et=tok')).toBe(true);
-    expect(isFramableViewUrl('http://127.0.0.1:8080/sessions/main/view')).toBe(true);
-    expect(isFramableViewUrl('http://browser.acme.dev/sessions/main/view')).toBe(false);
-    expect(isFramableViewUrl('http://localhost.evil.com/v')).toBe(false);
+  it('accepts the router\'s viewer page on the app\'s own origin', () => {
+    expect(isFramableViewUrl(VIEW, APP)).toBe(true);
+    expect(isFramableViewUrl(`${window.location.origin}/browser/sessions/t-abc/view?et=x`)).toBe(true);
   });
 
-  it('accepts a standalone server over https, but only its viewer page', () => {
-    expect(isFramableViewUrl('https://browser.acme.dev/sessions/u-1/view?et=tok')).toBe(true);
-    expect(isFramableViewUrl('https://browser.acme.dev/')).toBe(false);
-    expect(isFramableViewUrl('https://evil.com/phish')).toBe(false);
-    expect(isFramableViewUrl('https://user:pw@browser.acme.dev/sessions/main/view')).toBe(false);
+  it('refuses any other host, even with the viewer\'s path', () => {
+    expect(isFramableViewUrl('https://evil.example/browser/sessions/x/view', APP)).toBe(false);
+    expect(isFramableViewUrl('https://br-ab12cd34.4nton.ai/sessions/main/view', APP)).toBe(false);
+    expect(isFramableViewUrl('http://localhost:8080/sessions/main/view', APP)).toBe(false);
+    expect(isFramableViewUrl('http://cowork.example.test/browser/sessions/t-abc/view', APP)).toBe(false);
   });
 
-  it('accepts the browser router\'s viewer under /browser', () => {
-    expect(isFramableViewUrl('https://cowork-pr-cowork-1146.dev.mindshub.ai/browser/sessions/t-0123456789abcdef01234567/view?et=tok')).toBe(true);
-    expect(isFramableViewUrl('https://cowork.mindshub.ai/browser/saved-tabs')).toBe(false);
-    expect(isFramableViewUrl('https://cowork.mindshub.ai/other/sessions/main/view')).toBe(false);
+  it('refuses the bare /sessions path and any other page on the app\'s origin', () => {
+    expect(isFramableViewUrl(`${APP}/sessions/x/view`, APP)).toBe(false);
+    expect(isFramableViewUrl(`${APP}/browser/saved-tabs`, APP)).toBe(false);
+    expect(isFramableViewUrl(`${APP}/other/browser/sessions/x/view`, APP)).toBe(false);
+    expect(isFramableViewUrl(`${APP}/browser/sessions/../view`, APP)).toBe(false);
   });
 
-  it('accepts hosted browser instances only', () => {
-    expect(isFramableViewUrl(VIEW)).toBe(true);
-    expect(isFramableViewUrl('https://br-ab12cd34-alpha.dev.mindshub.ai/sessions/main/view')).toBe(true);
-    for (const bad of ['', null, 'http://br-x.4nton.ai/v', 'https://hm-x.4nton.ai/v', 'https://br-x.4nton.ai.evil.com/v', 'javascript:alert(1)']) {
-      expect(isFramableViewUrl(bad)).toBe(false);
+  it('refuses a user name or password on the app\'s origin', () => {
+    expect(isFramableViewUrl('https://user:pw@cowork.example.test/browser/sessions/t-abc/view', APP)).toBe(false);
+    expect(isFramableViewUrl('https://user@cowork.example.test/browser/sessions/t-abc/view', APP)).toBe(false);
+  });
+
+  it('refuses what is not a URL', () => {
+    for (const bad of ['', null, undefined, 42, 'not a url', 'javascript:alert(1)']) {
+      expect(isFramableViewUrl(bad, APP)).toBe(false);
     }
   });
 });
 
+describe('viewerLinkFrom', () => {
+  const minted = (fields) => ({ session_id: 't-abc', view_url: VIEW, lease_expires_at: 1_900_000_780, ...fields });
+
+  it('takes a minted link that says when its ticket must be redeemed', () => {
+    expect(viewerLinkFrom(minted({ ticket_expires_at: 1_900_000_000 }), 't-abc', APP)).toBe(VIEW);
+  });
+
+  it('refuses a link with no redeem-by time, or one the pane must not frame', () => {
+    expect(viewerLinkFrom(minted({ ticket_expires_at: 0 }), 't-abc', APP)).toBeNull();
+    expect(viewerLinkFrom(minted({}), 't-abc', APP)).toBeNull();
+    expect(viewerLinkFrom(minted({ ticket_expires_at: '99' }), 't-abc', APP)).toBeNull();
+    expect(viewerLinkFrom(minted({ view_url: 'https://evil.example/browser/sessions/t-abc/view', ticket_expires_at: 99 }), 't-abc', APP)).toBeNull();
+    expect(viewerLinkFrom(null, 't-abc', APP)).toBeNull();
+  });
+
+  it("takes the router's own embed answer (cowork-server's embed_answer.json)", () => {
+    const { body } = embedAnswer.examples['a viewer link'];
+    expect(viewerLinkFrom(body, body.session_id, new URL(body.view_url).origin)).toBe(body.view_url);
+  });
+
+  it("refuses a viewer for another session than the pane's", () => {
+    expect(viewerLinkFrom(minted({ ticket_expires_at: 99 }), 't-other', APP)).toBeNull();
+  });
+
+  it('does not take the old single expires_at for the redeem-by time', () => {
+    expect(viewerLinkFrom({ session_id: 't-abc', view_url: VIEW, expires_at: 1_900_000_000 }, 't-abc', APP)).toBeNull();
+  });
+});
+
 describe('browserStep', () => {
-  it('builds one Browser step from the event', () => {
-    const step = browserStep({ session_id: 'main', view_url: VIEW, expires_at: 99 }, 5);
-    expect(step).toMatchObject({ badge: BROWSER_BADGE, icon: 'globe', data: { sessionId: 'main', viewUrl: VIEW, expiresAt: 99 } });
+  it('builds one Browser step that names the session alone', () => {
+    const step = browserStep({ session_id: 't-abc' }, 5);
+    expect(step).toMatchObject({ badge: BROWSER_BADGE, icon: 'globe', startedAt: 5, data: { sessionId: 't-abc' } });
   });
 
-  it('drops events it cannot frame', () => {
-    expect(browserStep({ session_id: 'main', view_url: 'https://evil.com' }, 0)).toBeNull();
+  it('ignores any viewer link the event carries', () => {
+    expect(browserStep({ session_id: 't-abc', view_url: VIEW, expires_at: 99 }, 0).data).toEqual({ sessionId: 't-abc' });
+  });
+
+  it('drops events with no usable session id', () => {
     expect(browserStep({ view_url: VIEW }, 0)).toBeNull();
+    expect(browserStep({ session_id: '' }, 0)).toBeNull();
+    expect(browserStep({ session_id: 'a/b' }, 0)).toBeNull();
+    expect(browserStep({ session_id: 'x'.repeat(65) }, 0)).toBeNull();
   });
 
-  it('a second event for the same session refreshes the URL instead of adding a step', () => {
-    const first = browserStep({ session_id: 'main', view_url: VIEW, expires_at: 1 }, 1);
-    const second = browserStep({ session_id: 'main', view_url: `${VIEW}2`, expires_at: 2 }, 2);
-    const steps = withBrowserStep(withBrowserStep([], first), second);
-    expect(steps).toHaveLength(1);
-    expect(steps[0].data.viewUrl).toBe(`${VIEW}2`);
-  });
-});
-
-describe('latestBrowserSession', () => {
-  const step = (url) => browserStep({ session_id: 'main', view_url: url, expires_at: 10 }, 0);
-
-  it('prefers the streaming turn, then the newest message', () => {
-    const messages = [{ steps: [step(`${VIEW}a`)] }, { steps: [] }, { steps: [step(`${VIEW}b`)] }];
-    expect(latestBrowserSession(messages, null)).toMatchObject({ key: 'm2:main', viewUrl: `${VIEW}b` });
-    expect(latestBrowserSession(messages, { steps: [step(`${VIEW}c`)] })).toMatchObject({ key: 'live:main', viewUrl: `${VIEW}c` });
-  });
-
-  it('is null when no turn opened the browser', () => {
-    expect(latestBrowserSession([{ steps: [{ badge: 'Tool' }] }], { steps: [] })).toBeNull();
+  it('keeps one step per session per turn', () => {
+    const first = browserStep({ session_id: 't-abc' }, 1);
+    const steps = withBrowserStep(withBrowserStep([], first), browserStep({ session_id: 't-abc' }, 2));
+    expect(steps).toEqual([first]);
+    expect(withBrowserStep(steps, browserStep({ session_id: 't-def' }, 3)).map((s) => s.data.sessionId)).toEqual(['t-abc', 't-def']);
   });
 });
 
-describe('needsFreshViewUrl', () => {
-  it('re-mints near expiry, and when there is no URL', () => {
-    const now = 1_000_000_000;
-    expect(needsFreshViewUrl({ viewUrl: VIEW, expiresAt: now / 1000 + 3600 }, now)).toBe(false);
-    expect(needsFreshViewUrl({ viewUrl: VIEW, expiresAt: now / 1000 + 30 }, now)).toBe(true);
-    expect(needsFreshViewUrl({ viewUrl: VIEW, expiresAt: 0 }, now)).toBe(false);
-    expect(needsFreshViewUrl({ viewUrl: '' }, now)).toBe(true);
+describe('browserSessionIdIn and conversationUsedBrowser', () => {
+  const step = (id) => browserStep({ session_id: id }, 0);
+
+  it('names the newest Browser step in one turn', () => {
+    expect(browserSessionIdIn([step('t-a'), { badge: 'Tool' }, step('t-b')])).toBe('t-b');
+    expect(browserSessionIdIn([{ badge: 'Tool' }])).toBeNull();
+    expect(browserSessionIdIn(undefined)).toBeNull();
+  });
+
+  it('says whether any turn, the streaming one included, opened the browser', () => {
+    expect(conversationUsedBrowser([{ steps: [step('t-a')] }, { steps: [] }], null)).toBe(true);
+    expect(conversationUsedBrowser([{ steps: [] }], { steps: [step('t-a')] })).toBe(true);
+    expect(conversationUsedBrowser([{ steps: [{ badge: 'Tool' }] }], { steps: [] })).toBe(false);
+    expect(conversationUsedBrowser(undefined, undefined)).toBe(false);
+  });
+});
+
+describe('afterViewerClose', () => {
+  const minted = 1_000_000;
+
+  it('gets a new link after a working stretch, and starts the count over', () => {
+    expect(afterViewerClose({ mintedAtMs: minted, nowMs: minted + QUICK_CLOSE_MS, quickCloses: 1 }))
+      .toEqual({ remint: true, quickCloses: 0 });
+  });
+
+  it('gets one new link after a quick close, and stops at the second in a row', () => {
+    const first = afterViewerClose({ mintedAtMs: minted, nowMs: minted + 50, quickCloses: 0 });
+    expect(first).toEqual({ remint: true, quickCloses: 1 });
+    expect(afterViewerClose({ mintedAtMs: minted, nowMs: minted + 50, quickCloses: first.quickCloses }))
+      .toEqual({ remint: false, quickCloses: 2 });
   });
 });
 
@@ -97,4 +147,3 @@ describe('browserViewerTheme', () => {
     expect(browserViewerTheme(style, undefined).scheme).toBe('light');
   });
 });
-

@@ -11,7 +11,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Select, Input, Textarea } from '../ui';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
-import { PLATFORM_UI } from '../../../lib/deployment';
+import { host } from '../../../platform/host';
 import { productName } from '../../../lib/deploymentBrand';
 
 const FONT_BODY = 'var(--font-body)';
@@ -175,7 +175,7 @@ export default function ScheduleTaskModal({
         title={isEdit ? 'Edit scheduled task' : 'Schedule a task'}
         subtitle={isEdit
           ? `Update the cadence or prompt. ${displayName} picks up changes on the next run.`
-          : PLATFORM_UI
+          : host.isElectron
             ? `${displayName} runs this prompt on the cadence you set, while the desktop app is open.`
             : `${displayName} runs this prompt on the cadence you set.`}
         onClose={onClose}

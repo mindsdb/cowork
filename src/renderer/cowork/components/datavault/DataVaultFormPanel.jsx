@@ -24,7 +24,7 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
 import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -50,6 +50,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // A new connection that would overwrite a saved one waits here for the
+  // user to choose Replace or Cancel.
+  const [replacePrompt, setReplacePrompt] = useState(null);
   // Track the form_id we last animated in for. A new form for the
   // same conversation (e.g. user starts a second connection in the
   // same chat) should re-trigger the appearance, but a patch into
@@ -187,9 +190,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     }, BROWSER_OAUTH_POLL_MS);
   };
 
-  const handleAction = async ({ id, kind, values, skipped, authMethod }) => {
+  const handleAction = async ({ id, kind, values, skipped, authMethod, replaceName }) => {
     if (!spec) return;
     setError('');
+    setReplacePrompt(null);
 
     // Nothing left to submit branch — two intents:
     //   • view_connectors → route to the Connect Apps and Data page,
@@ -373,7 +377,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // `wireMethodId` falls through to `authMethod` for ordinary
     // (non-synthetic) methods so create-flow behaviour is unchanged.
     const wireMethodId = activeMethodSpec?._underlying_method || authMethod;
-    const connectionName = spec._existing_name || spec.name || '';
+    const connectionName = replaceName || spec._existing_name || spec.name || '';
     if (activeMethodSpec?.submit_action === 'oauth_launch' && kind === 'primary') {
       const oauthMeta = activeMethodSpec.oauth || {};
       const clientId = oauthMeta.client_id || (values && values.client_id) || '';
@@ -672,6 +676,25 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         window.dispatchEvent(new CustomEvent('anton:connections-changed'));
         setBusy(false);
         return;
+      }
+      if (!connectionName) {
+        // Advisory: a failed check must not stop the user connecting.
+        let replaces = null;
+        try {
+          replaces = await fetchSubmissionReplaces({
+            formId: spec.form_id,
+            formSpec: wireMethodId ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId } : spec,
+            values: { ...submissionValues, user_label: userLabel },
+            skipped: skipped || [],
+            method: wireMethodId || null,
+          });
+        } catch (e) {
+          console.warn('Could not check whether this connection replaces a saved one', e);
+        }
+        if (replaces?.name) {
+          setReplacePrompt({ ...replaces, action: { id, kind, values, skipped, authMethod } });
+          return;
+        }
       }
       // Endpoint-as-agent path: hand the submission off to the
       // host (App.jsx → handleSubmitDataVaultForm). It opens an SSE
@@ -1008,6 +1031,25 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 }
               }}
             />
+            {replacePrompt && (
+              <Alert variant="warning" title="This connection already exists" className="mt-2.5">
+                <div className="text-sm text-ink-2 leading-[1.55]">
+                  {`A ${providerNameFromSpec(spec)} connection with these details already exists${replacePrompt.label ? ` (“${replacePrompt.label}”)` : ''}. Replace it with this one, or cancel to keep it as it is.`}
+                </div>
+                <div className="flex gap-2 mt-2.5">
+                  <Button
+                    variant="primary"
+                    disabled={busy}
+                    onClick={() => handleAction({ ...replacePrompt.action, replaceName: replacePrompt.name })}
+                  >
+                    Replace
+                  </Button>
+                  <Button variant="subtle" disabled={busy} onClick={() => setReplacePrompt(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              </Alert>
+            )}
             {error && (
               <Alert variant="danger" className="mt-2.5">{error}</Alert>
             )}

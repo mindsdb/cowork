@@ -27,6 +27,23 @@ function sessionListChanged(previous: CodingSession[], next: CodingSession[]): b
 }
 
 
+// Background polls skip archived tasks, which cost the server a full control
+// view each and rarely change; the known archived rows are carried over in the
+// server's newest-first order. Returns null when a previously active task is
+// gone from the page (archived or deleted elsewhere), since only a full list
+// can say which.
+export function withKnownArchived(active: CodingSession[], previous: CodingSession[]): CodingSession[] | null {
+  const activeIds = new Set(active.map((item) => item.id));
+  if (previous.some((item) => !item.archived && !activeIds.has(item.id))) return null;
+  const archived = previous.filter((item) => item.archived && !activeIds.has(item.id));
+  if (!archived.length) return active;
+  return [...active, ...archived].sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+}
+
+// Every sixth poll (30s) still fetches the full list so archived rows stay fresh.
+const FULL_REFRESH_EVERY = 6;
+
+
 export function useCodeTaskList({
   active = true,
   sessions,
@@ -57,8 +74,12 @@ export function useCodeTaskList({
   onSessionsChangeRef.current = onSessionsChange;
   onSelectionChangeRef.current = onSelectionChange;
 
-  const load = useCallback(async (preferId?: string) => {
-    const page = await codingApi.sessions(true);
+  const load = useCallback(async (preferId?: string, activeOnly = false) => {
+    let items: CodingSession[] | null = null;
+    if (activeOnly) {
+      items = withKnownArchived((await codingApi.sessions(false)).items, sessionsRef.current);
+    }
+    const page = { items: items ?? (await codingApi.sessions(true)).items };
     setError('');
     // Polling returns fresh object identities even when no task changed. Keep
     // the existing list in that common case so large histories do not force a
@@ -94,15 +115,19 @@ export function useCodeTaskList({
     load()
       .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.'))
       .finally(() => setLoading(false));
-    const refresh = () => {
+    let polls = 0;
+    const refresh = (activeOnly = false) => {
       if (!isAppVisible()) return;
-      load().catch(() => {
+      load(undefined, activeOnly).catch(() => {
         // The selected-task stream owns connectivity feedback during a
         // transient background-list refresh.
       });
     };
-    const interval = window.setInterval(refresh, 5_000);
-    const unsubscribeVisibility = subscribeAppVisibility(refresh);
+    const interval = window.setInterval(() => {
+      polls = (polls + 1) % FULL_REFRESH_EVERY;
+      refresh(polls !== 0);
+    }, 5_000);
+    const unsubscribeVisibility = subscribeAppVisibility(() => refresh());
     return () => {
       window.clearInterval(interval);
       unsubscribeVisibility();
