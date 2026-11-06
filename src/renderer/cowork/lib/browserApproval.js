@@ -29,7 +29,10 @@ export function browserApprovalIds(questionId) {
 
 /* What the card says when the browser refuses the approval. */
 export function approvalRefusalText(err) {
-  if (err?.code === 'approval_lapsed') return 'This step is no longer waiting in the browser, so nothing ran.';
+  // With no running browser (`session_not_found`), no step is held either.
+  if (err?.code === 'approval_lapsed' || err?.code === 'session_not_found') {
+    return 'This step is no longer waiting in the browser, so nothing ran.';
+  }
   if (err?.code === 'unavailable' || err?.status === 409) return "The browser isn't available here, so nothing ran.";
   const reason = typeof err?.message === 'string' && err.message && !/^API \//.test(err.message) ? err.message.replace(/\.$/, '') : '';
   return reason ? `Couldn't approve this step in the browser: ${reason}.` : "Couldn't approve this step in the browser. Try again.";

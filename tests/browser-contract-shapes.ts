@@ -97,8 +97,10 @@ export const savedTabAnswerShape = shape({ tab: savedTabShape });
 
 export const okAnswerShape = shape({ ok: literal(true) });
 /* A refusal. Only the web pod's commit hold (`approval_required`) adds the
-   pending step's id and when its approval lapses. */
-export const errorShape = shape({ error: str }, { message: str, pending_id: str, expires_at: int });
+   pending step's id, when its approval lapses, and `held`, what the approval
+   will run. */
+const heldShape = shape({ kind: literal('commit', 'position'), action: str, names: list(str), url: str });
+export const errorShape = shape({ error: str }, { message: str, pending_id: str, expires_at: int, held: heldShape });
 
 /** Problems with `value` against `check`, or [] when it fits. */
 export function problems(check: Check, value: unknown): string[] {

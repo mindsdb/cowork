@@ -50,11 +50,12 @@ const REQUEST_GUARDS: Record<string, (body: unknown) => Parsed<unknown>> = {
 
 /* Codes only the browser router or the web pod answers. The in-app host never
    sends them: it scopes no turn keys, checks no entitlement or allowance,
-   closes its least recently used task instead of refusing one, starts no pod
-   and holds no commit step. anton maps each to its own reason. */
+   closes its least recently used task instead of refusing one, starts no pod,
+   holds no commit step and caps no calls in flight. anton maps each to its
+   own reason. */
 const ROUTER_ONLY = [
   'unscoped', 'out_of_scope', 'not_entitled', 'daily_limit', 'entitlements_unavailable',
-  'at_capacity', 'browser_starting', 'approval_required',
+  'at_capacity', 'browser_starting', 'approval_required', 'too_many_requests',
 ];
 
 describe('the browser contract fixtures', () => {
