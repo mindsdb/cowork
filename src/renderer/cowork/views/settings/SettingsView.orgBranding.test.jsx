@@ -332,7 +332,7 @@ describe('Settings → Appearance: Your style, then Display', () => {
     ['style', { style: true }, ['Theme', 'Greeting text'], ['Style']],
     ['greeting', { greeting: true }, ['Style', 'Theme'], ['Greeting text']],
     ['theme and style', { theme: true, style: true }, ['Greeting text'], ['Style', 'Theme']],
-  ])('with member choice off and the org setting the %s, shows only the open controls and a note per locked one', (_name, locks, open, locked) => {
+  ])('with member choice off and the org setting the %s, shows only the open controls and one line', (_name, locks, open, locked) => {
     renderSettings({
       orgBranding: branding({ canEdit: false, appearance: { membersCanChoose: false } }),
       hostedMindsHub: true,
@@ -341,13 +341,30 @@ describe('Settings → Appearance: Your style, then Display', () => {
     const stylePart = group(APPEARANCE_ANCHORS.style);
     for (const label of open) expect(within(stylePart).getAllByLabelText(label).length).toBeGreaterThan(0);
     for (const label of locked) expect(within(stylePart).queryByLabelText(label)).toBeNull();
-    for (const field of ['theme', 'style', 'greeting']) {
-      const note = within(stylePart).queryByTestId(`org-sets-${field}`);
-      if (locks[field]) expect(note).toHaveTextContent(`Your organization sets the ${field}.`);
-      else expect(note).toBeNull();
-    }
+    expect(within(stylePart).queryByText(/Your organization sets the/)).toBeNull();
+    expect(within(stylePart).getByTestId('org-sets-rest'))
+      .toHaveTextContent("Other style settings are set by your organization's branding.");
+    expect(within(stylePart).queryByRole('button', { name: 'Change in Branding →' })).toBeNull();
     expect(within(stylePart).queryByTestId('personal-style-off')).toBeNull();
     expect(within(stylePart).getByText("These override your organization's look, just for you.")).toBeInTheDocument();
+  });
+
+  it('links an admin to Branding from that line', () => {
+    const onSectionChange = vi.fn();
+    renderSettings({
+      orgBranding: branding({ appearance: { membersCanChoose: false } }),
+      hostedMindsHub: true,
+      onSectionChange,
+      look: { greeting: null, lockedByOrg: { ...LOCKS_NONE, theme: true } },
+    });
+    const line = screen.getByTestId('org-sets-rest');
+    fireEvent.click(within(line).getByRole('button', { name: 'Change in Branding →' }));
+    expect(onSectionChange).toHaveBeenCalledWith('branding');
+  });
+
+  it('shows no such line when member choice is on', () => {
+    renderSettings({ orgBranding: branding({ canEdit: false }), hostedMindsHub: true, look: { greeting: null, lockedByOrg: LOCKS_NONE } });
+    expect(screen.queryByTestId('org-sets-rest')).toBeNull();
   });
 
   it('shows the normal Style controls outside an org, with no override line', () => {

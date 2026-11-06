@@ -2270,11 +2270,18 @@ export default function SettingsView({
   // When every field is the org's, one message replaces them all.
   const personalStyleOff = Boolean(org && !org.appearance.membersCanChoose
     && (orgLocks.style || SKIN_LOCKED) && orgLocks.theme && orgLocks.greeting);
-  const orgSetsNote = (field) => (
-    <div className="py-2.5 text-sm text-ink-3 border-b border-solid border-line last:border-b-0" data-testid={`org-sets-${field}`}>
-      Your organization sets the {field}.
-    </div>
-  );
+  // A field the org set shows nothing; one line under the open controls says why.
+  const orgSetsNote = () => null;
+  const someLockedByOrg = Boolean(org && !org.appearance.membersCanChoose
+    && (orgLocks.style || orgLocks.theme || orgLocks.greeting));
+  const changeInBranding = org?.canEdit && onSectionChange ? (
+    <>
+      {' '}
+      <button type="button" className={LINK_BTN} onClick={() => onSectionChange('branding')}>
+        Change in Branding →
+      </button>
+    </>
+  ) : null;
   // A deep link's part of Appearance, scrolled to once the page is showing.
   const appearanceShowing = shownSection === 'appearance';
   useEffect(() => {
@@ -2296,18 +2303,11 @@ export default function SettingsView({
         {personalStyleOff ? (
           <div className="py-3 text-sm text-ink-2" data-testid="personal-style-off">
             Personal style settings are off. Everyone sees your organization's look.
-            {org.canEdit && onSectionChange && (
-              <>
-                {' '}
-                <button type="button" className={LINK_BTN} onClick={() => onSectionChange('branding')}>
-                  Change in Branding →
-                </button>
-              </>
-            )}
+            {changeInBranding}
           </div>
         ) : (
         <>
-        {orgLocks.style ? orgSetsNote('style') : (
+        {orgLocks.style ? orgSetsNote() : (
         <>
         {SKIN_LOCKED ? (
           <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
@@ -2333,7 +2333,7 @@ export default function SettingsView({
         )}
         </>
         )}
-        {orgLocks.theme ? orgSetsNote('theme') : (
+        {orgLocks.theme ? orgSetsNote() : (
         <Section title="Theme" subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
           <ToggleGroup
             value={theme || 'dark'}
@@ -2448,7 +2448,7 @@ export default function SettingsView({
             </Section>
           </>
         )}
-        {orgLocks.greeting ? orgSetsNote('greeting') : (
+        {orgLocks.greeting ? orgSetsNote() : (
         <Section title="Greeting" subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
@@ -2464,6 +2464,12 @@ export default function SettingsView({
           </div>
         </Section>
         )}
+          {someLockedByOrg && (
+            <div className="py-3 text-sm text-ink-2" data-testid="org-sets-rest">
+              Other style settings are set by your organization's branding.
+              {changeInBranding}
+            </div>
+          )}
           {/* Hosted MindsHub has no per-person sidebar title, logo or tab icon. */}
           {!hostedMindsHub && (
             <>
