@@ -1592,3 +1592,201 @@ describe('console handoff attribution', () => {
     expect(JSON.stringify(body)).not.toMatch(/koi|snake moves/i);
   });
 });
+
+describe('onboarding and start events', () => {
+  it('onboarding_row_clicked and onboarding_step_completed carry only the step and where it happened', async () => {
+    const fetchMock = mockFetch();
+    const { trackOnboardingRowClicked, trackOnboardingStepCompleted } = await importAnalytics();
+
+    trackOnboardingRowClicked('bring-your-work');
+    trackOnboardingStepCompleted('bring-your-work', 'checklist');
+
+    expect((await sentEvent(fetchMock, 'onboarding_row_clicked')).properties).toMatchObject({ step_id: 'bring-your-work' });
+    expect((await sentEvent(fetchMock, 'onboarding_step_completed')).properties)
+      .toMatchObject({ step_id: 'bring-your-work', via: 'checklist' });
+  });
+
+  it('example_picked names the example and the list it was picked from', async () => {
+    const fetchMock = mockFetch();
+    const { trackExamplePicked } = await importAnalytics();
+
+    trackExamplePicked('classic-snake-game', 'examples');
+
+    expect((await sentEvent(fetchMock, 'example_picked')).properties)
+      .toMatchObject({ example_id: 'classic-snake-game', list: 'examples' });
+  });
+
+  it('new_task_message_sent describes the message without quoting it', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent, setStartVia } = await importAnalytics();
+
+    const text = 'Summarize https://example.com/quarterly-report for the zebra committee';
+    setStartVia('checklist');
+    trackNewTaskMessageSent({
+      text,
+      attachments: 2,
+      start: { start_kind: 'example', example_id: 'summarize-a-document-and-draft-my-reply', added_chars: 41 },
+    });
+    const body = await sentEvent(fetchMock, 'new_task_message_sent');
+
+    expect(body.properties).toMatchObject({
+      start_kind: 'example',
+      example_id: 'summarize-a-document-and-draft-my-reply',
+      via: 'checklist',
+      attachments: 2,
+      has_link: true,
+      chars: text.length,
+      added_chars: 41,
+    });
+    // No text, and no part of the link, rides on the event under any key.
+    expect(JSON.stringify(body)).not.toMatch(/zebra|quarterly|example\.com/);
+  });
+
+  it('says a plain message has no link, and defaults the start to free text from the composer', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+
+    trackNewTaskMessageSent({ text: 'hello there', start: undefined });
+    const body = await sentEvent(fetchMock, 'new_task_message_sent');
+
+    expect(body.properties).toMatchObject({ start_kind: 'free_text', via: 'composer', attachments: 0, has_link: false, chars: 11 });
+    expect(body.properties).not.toHaveProperty('example_id');
+    expect(body.properties).not.toHaveProperty('added_chars');
+  });
+
+  it('reads a console handoff as the way in, without clearing it for the session event that follows', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackNewTaskMessageSent, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', 'own-work');
+    trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'own_work' } });
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const [sent, session] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(sent.properties.via).toBe('console_link');
+    expect(session.event).toBe('agent_session_started');
+    expect(session.properties).toMatchObject({ entry_source: 'console', example_id: 'own-work' });
+  });
+
+  it('a checklist start set long ago is not carried onto a later message', async () => {
+    const fetchMock = mockFetch();
+    const { setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+    const now = vi.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(5_000_000);
+      setStartVia('checklist');
+      now.mockReturnValue(5_000_000 + 61 * 1000);
+      trackNewTaskMessageSent({ text: 'x', start: { start_kind: 'free_text' } });
+    } finally {
+      now.mockRestore();
+    }
+
+    expect((await sentEvent(fetchMock, 'new_task_message_sent')).properties.via).toBe('composer');
+  });
+
+  it('reads a link with a www. host and not a number or a file name', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+    const texts = ['see www.acme.com/report', 'about 1.5/2 of it', 'in report.v2/final'];
+    texts.forEach((text) => trackNewTaskMessageSent({ text, start: undefined }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    const links = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.has_link);
+    expect(links).toEqual([true, false, false]);
+  });
+
+  it('labels a send that goes out, and says so for one the app starts itself', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    await sendWithStartVia('app', async () => {
+      trackNewTaskMessageSent({ text: 'Connect Gmail', start: undefined });
+      return true;
+    });
+
+    expect((await sentEvent(fetchMock, 'new_task_message_sent')).properties.via).toBe('app');
+  });
+
+  it('does not leave its label for the next message when a send is refused or throws', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    await expect(sendWithStartVia('checklist', async () => false)).resolves.toBe(false);
+    trackNewTaskMessageSent({ text: 'after a refusal', start: undefined });
+    await expect(sendWithStartVia('app', async () => { throw new Error('owner only'); })).rejects.toThrow('owner only');
+    trackNewTaskMessageSent({ text: 'after a throw', start: undefined });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['composer', 'composer']);
+  });
+
+  it('uses a checklist start once, so the next message is from the composer', async () => {
+    const fetchMock = mockFetch();
+    const { setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    setStartVia('checklist');
+    trackNewTaskMessageSent({ text: 'first', start: { start_kind: 'own_work' } });
+    trackNewTaskMessageSent({ text: 'second', start: { start_kind: 'free_text' } });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['checklist', 'composer']);
+  });
+});
+
+describe('Compare Models events', () => {
+  const cost = { cost_a_usd: 0.02, cost_b_usd: 0.5, cost_total_usd: 0.52, cost_partial: false, tokens_a: 110, tokens_b: 900, cheaper_side: 'a' };
+
+  it('compare_view_opened fires once per launch', async () => {
+    const fetchMock = mockFetch();
+    const { trackCompareViewOpened, trackComparisonFollowUpSent } = await importAnalytics();
+    trackCompareViewOpened();
+    trackCompareViewOpened();
+    trackComparisonFollowUpSent('cmp-1', 'both', 1);
+    await sentEvent(fetchMock, 'comparison_follow_up_sent');
+    const opened = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).event).filter((e) => e === 'compare_view_opened');
+    expect(opened).toHaveLength(1);
+  });
+
+  it('comparison_started names the models and the start, never the prompt or title', async () => {
+    const fetchMock = mockFetch();
+    const { trackComparisonStarted } = await importAnalytics();
+    trackComparisonStarted(
+      { id: 'cmp-1', title: 'A secret prompt', sourceProjectId: 'p-1', sides: [{ model: 'kimi', reasoningEffort: null }, { model: 'qwen', reasoningEffort: 'xhigh' }] },
+      { fileCount: 2, exampleId: 'website' },
+    );
+    const { properties } = await sentEvent(fetchMock, 'comparison_started');
+    expect(properties).toMatchObject({
+      comparison_id: 'cmp-1', model_a: 'kimi', model_b: 'qwen', effort_b: 'xhigh', from_project: true, file_count: 2, example_id: 'website',
+    });
+    expect(properties.effort_a).toBeUndefined();
+    expect(JSON.stringify(properties)).not.toContain('secret');
+  });
+
+  it.each([
+    ['the cheaper side wins', 'a', true],
+    ['the dearer side wins', 'b', false],
+    ['a tie', 'tie', undefined],
+  ])('comparison_verdict_recorded carries both costs, and whether the cheaper side won, for %s', async (_case, winner, cheaperWon) => {
+    const fetchMock = mockFetch();
+    const { trackComparisonVerdictRecorded } = await importAnalytics();
+    trackComparisonVerdictRecorded('cmp-1', { turnIndex: 0, winner, models: { a: 'kimi', b: 'qwen' }, changed: true, cost });
+    const { properties } = await sentEvent(fetchMock, 'comparison_verdict_recorded');
+    expect(properties).toMatchObject({ comparison_id: 'cmp-1', turn_index: 0, winner, changed: true, ...cost });
+    expect(properties.cheaper_won).toBe(cheaperWon);
+    expect(properties.winner_model).toBe(winner === 'a' ? 'kimi' : winner === 'b' ? 'qwen' : undefined);
+  });
+
+  it('comparison_continued says which side, whether it was the winner and the cheaper one', async () => {
+    const fetchMock = mockFetch();
+    const { trackComparisonContinued } = await importAnalytics();
+    trackComparisonContinued('cmp-1', { side: 'a', models: { a: 'kimi', b: 'qwen' }, turns: 3, carriedAll: true, verdict: 'b', cost });
+    const { properties } = await sentEvent(fetchMock, 'comparison_continued');
+    expect(properties).toMatchObject({
+      comparison_id: 'cmp-1', side: 'a', model: 'kimi', other_model: 'qwen', turns: 3, carried_all: true,
+      chose_winner: false, chose_cheaper: true, ...cost,
+    });
+  });
+});

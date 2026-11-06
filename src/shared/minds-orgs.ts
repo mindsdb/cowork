@@ -38,6 +38,19 @@ export function personalOrgName(userId: string): string {
   return `personal_${userId}`;
 }
 
+/** Keycloak's names for an organization that are ids, not names a person
+ *  reads: `staff-org-<uuid>`, which MindsHub's staff organization create
+ *  builds from its creation id, and `personal_<uuid>` (personalOrgName), a
+ *  user's own organization, whoever's it is. The readable name is the display
+ *  name, and a rename changes only that, so neither is a name to print. */
+const ID_ORG_NAME = /^(?:staff-org-|personal_)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Whether a Keycloak organization name is an id, a staff-created
+ *  organization's or a personal one's, rather than a name a person reads. */
+export function isIdOrganizationName(name: string | null | undefined): boolean {
+  return typeof name === 'string' && ID_ORG_NAME.test(name);
+}
+
 /**
  * What to call a personal organization when Keycloak's own label is not to
  * hand. Only the membership listing carries Keycloak's display name, so readers

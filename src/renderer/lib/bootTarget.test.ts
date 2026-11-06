@@ -248,6 +248,40 @@ describe('resolveBootTarget liveApps', () => {
   });
 });
 
+describe('resolveBootTarget draftLinks', () => {
+  it('reports draftLinks from checkConfigured on every route', async () => {
+    const links = async () => ({ ...CONFIGURED, draftLinks: true });
+    const terminal = makeHost({ readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }), checkConfigured: links });
+    const setup = makeHost({
+      readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
+      checkConfigured: links,
+      checkInstall: async () => ({ antonInstalled: false, serverDepsReady: true }),
+    });
+    const auth = makeHost({ readSettings: async () => ({}), checkConfigured: links });
+
+    expect(await resolveBootTarget(terminal, true)).toMatchObject({ target: 'terminal', draftLinks: true });
+    expect(await resolveBootTarget(setup, true)).toMatchObject({ target: 'setup', draftLinks: true });
+    expect(await resolveBootTarget(auth, false)).toMatchObject({ target: 'auth', draftLinks: true });
+  });
+
+  it('reports draftLinks false when the server does not say true', async () => {
+    const absent = makeHost({ checkConfigured: async () => CONFIGURED });
+    const off = makeHost({ checkConfigured: async () => ({ ...CONFIGURED, draftLinks: false }) });
+    expect((await resolveBootTarget(absent, true)).draftLinks).toBe(false);
+    expect((await resolveBootTarget(off, true)).draftLinks).toBe(false);
+  });
+
+  // Unlike orgMode there is no unsafe guess here: false keeps previews on srcdoc.
+  it('reports draftLinks false when the health read failed', async () => {
+    const host = makeHost({
+      checkConfigured: async () => {
+        throw new Error('offline');
+      },
+    });
+    expect((await resolveBootTarget(host, true)).draftLinks).toBe(false);
+  });
+});
+
 describe('resolveRegistrationConsent', () => {
   // The keycloak module is imported dynamically at every call site precisely so
   // keycloak-js never loads on Electron (see the auto-finalize effect in

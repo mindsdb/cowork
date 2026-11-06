@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { TITLE_SNIPPET } from '../../shared/deployment-brand';
 import { parseDeploymentBrand, resolveBrandLoad } from './deploymentBrand';
+
+const STOCK_SCRIPT = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public/brand/brand.js'), 'utf-8');
 
 const EMPTY = {
   productName: null, skin: null, theme: null, logoUrl: null, iconUrl: null, appleTouchIconUrl: null, skinLocked: null,
@@ -103,16 +108,16 @@ describe('parseDeploymentBrand', () => {
 });
 
 describe('resolveBrandLoad', () => {
-  it('never reads a brand on a build with the platform UI on', () => {
-    expect(resolveBrandLoad(true, { productName: 'Acme Cowork' })).toEqual({ status: 'off' });
+  it('never reads a brand on desktop', () => {
+    expect(resolveBrandLoad(false, { productName: 'Acme Cowork' })).toEqual({ status: 'off' });
   });
 
   it.each([undefined, null, [], 'Acme', 7])('fails when the config set %j', (raw) => {
-    expect(resolveBrandLoad(false, raw)).toEqual({ status: 'failed' });
+    expect(resolveBrandLoad(true, raw)).toEqual({ status: 'failed' });
   });
 
   it('loads an object', () => {
-    expect(resolveBrandLoad(false, { productName: 'Acme Cowork' })).toEqual({
+    expect(resolveBrandLoad(true, { productName: 'Acme Cowork' })).toEqual({
       status: 'loaded', brand: { ...EMPTY, productName: 'Acme Cowork' }, dropped: [],
     });
   });
@@ -120,22 +125,35 @@ describe('resolveBrandLoad', () => {
 
 describe('the page-load brand', () => {
   afterEach(() => {
+    vi.doUnmock('./buildTarget');
     vi.doUnmock('./deployment');
     vi.resetModules();
     vi.restoreAllMocks();
     window.COWORK_DEPLOYMENT_BRAND = {};
   });
 
-  async function loadWith(platformUi: boolean, raw: unknown) {
+  const SELF_HOSTED = { webBuild: true, platformUi: false };
+  const HOSTED = { webBuild: true, platformUi: true };
+  const DESKTOP = { webBuild: false, platformUi: true };
+
+  async function loadWith(build: { webBuild: boolean; platformUi: boolean }, raw: unknown) {
     vi.resetModules();
-    vi.doMock('./deployment', () => ({ PLATFORM_UI: platformUi }));
+    vi.doMock('./buildTarget', () => ({ WEB_BUILD: build.webBuild }));
+    vi.doMock('./deployment', () => ({ PLATFORM_UI: build.platformUi }));
     window.COWORK_DEPLOYMENT_BRAND = raw;
     return import('./deploymentBrand');
   }
 
+  /** The page after the stock /brand/brand.js ran, as the image serves it. */
+  async function loadWithStockScript(build: { webBuild: boolean; platformUi: boolean }) {
+    window.COWORK_DEPLOYMENT_BRAND = undefined;
+    new Function(STOCK_SCRIPT)();
+    return loadWith(build, window.COWORK_DEPLOYMENT_BRAND);
+  }
+
   it('reports a config that did not load once, naming the file', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const mod = await loadWith(false, undefined);
+    const mod = await loadWith(SELF_HOSTED, undefined);
     expect(mod.BRAND_LOAD).toEqual({ status: 'failed' });
     expect(mod.DEPLOYMENT_BRAND).toBeNull();
     expect(error).toHaveBeenCalledOnce();
@@ -144,17 +162,43 @@ describe('the page-load brand', () => {
 
   it('warns once per field it ignored', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const mod = await loadWith(false, { productName: 'Acme Cowork', theme: 'sepia', logoUrl: 'https://x' });
+    const mod = await loadWith(SELF_HOSTED, { productName: 'Acme Cowork', theme: 'sepia', logoUrl: 'https://x' });
     expect(mod.DEPLOYMENT_BRAND?.productName).toBe('Acme Cowork');
     expect(warn.mock.calls.map((call) => JSON.parse(String(call[0])).config_field)).toEqual(['theme', 'logoUrl']);
     expect(JSON.stringify(warn.mock.calls)).not.toContain('https://x');
   });
 
-  it('stays silent and reads nothing with the platform UI on', async () => {
+  it.each([['self-hosted', SELF_HOSTED], ['hosted', HOSTED]] as const)(
+    'reads the stock brand script on the %s build as no brand at all',
+    async (_name, build) => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const mod = await loadWithStockScript(build);
+      expect(mod.BRAND_LOAD).toEqual({ status: 'loaded', brand: EMPTY, dropped: [] });
+      expect(mod.productName('MindsHub Cowork')).toBe('MindsHub Cowork');
+      expect(mod.brandLogoUrl()).toBeNull();
+      expect(error).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
+
+  it('applies a brand the hosted build serves', async () => {
+    const mod = await loadWith(HOSTED, { productName: 'Acme Cowork', logoUrl: '/brand/sidebar-logo.png?v=1', skinLocked: true });
+    expect(mod.BRAND_LOAD).toEqual({
+      status: 'loaded',
+      brand: { ...EMPTY, productName: 'Acme Cowork', logoUrl: '/brand/sidebar-logo.png?v=1', skinLocked: true },
+      dropped: [],
+    });
+    expect(mod.productName('MindsHub Cowork')).toBe('Acme Cowork');
+    expect(mod.brandLogoUrl()).toBe('/brand/sidebar-logo.png?v=1');
+  });
+
+  it.each([undefined, { productName: 'Acme Cowork' }])('stays silent and reads nothing on desktop when the global is %j', async (raw) => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const mod = await loadWith(true, { productName: 'Acme Cowork' });
+    const mod = await loadWith(DESKTOP, raw);
     expect(mod.BRAND_LOAD).toEqual({ status: 'off' });
     expect(mod.DEPLOYMENT_BRAND).toBeNull();
+    expect(mod.productName('MindsHub Cowork')).toBe('MindsHub Cowork');
     expect(error).not.toHaveBeenCalled();
   });
 });

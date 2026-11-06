@@ -89,4 +89,17 @@ test.describe('desktop width', () => {
     expect(project!.x + project!.width).toBeLessThanOrEqual(menuBox!.x);
     await clickAndExpect(page, 'Linked project', 'Linked project');
   });
+
+  // The list can be far narrower than the window, so the row reacts to its own width.
+  test('a narrow list moves the meta under the title instead of squeezing it', async ({ page }) => {
+    await page.goto('/');
+    const row = page.getByTestId('narrow-row');
+    const title = await row.getByRole('button', { name: 'Weekly competitor pricing digest', exact: true }).boundingBox();
+    const meta = await row.getByText('Market research').boundingBox();
+    const menu = await page.getByRole('button', { name: 'Narrow menu', exact: true }).boundingBox();
+    expect(await row.getByRole('button', { name: 'Weekly competitor pricing digest', exact: true })
+      .evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+    expect(meta!.y).toBeGreaterThanOrEqual(title!.y + title!.height);
+    expect(menu!.x).toBeGreaterThan(title!.x + title!.width);
+  });
 });

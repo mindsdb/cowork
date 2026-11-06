@@ -173,6 +173,23 @@ describe('the docx renderer', () => {
     expect(leftoverTargets(ctx.root)).toEqual([]);
   });
 
+  it('draws a symbol-font bullet as Unicode before docx-preview lays the document out', async () => {
+    const actual = await vi.importActual<typeof import('docx-preview')>('docx-preview');
+    const level = { format: 'bullet', levelText: '\uf0b7', rStyle: { 'font-family': 'Symbol', color: '#000000' } };
+    vi.mocked(docxPreview.parseAsync).mockImplementationOnce(async (data, options) => {
+      const wordDocument = await actual.parseAsync(data, options);
+      wordDocument.numberingPart = { domNumberings: [level] };
+      return wordDocument;
+    });
+    let laidOut: unknown = null;
+    vi.mocked(docxPreview.renderDocument).mockImplementationOnce(async (wordDocument) => {
+      laidOut = structuredClone(wordDocument.numberingPart.domNumberings);
+      return [];
+    });
+    await renderer.render(fixtureBytes('title-and-paragraph.docx'), context());
+    expect(laidOut).toEqual([{ format: 'bullet', levelText: '\u2022', rStyle: { color: '#000000' } }]);
+  });
+
   it.each(PARSE_FAILED)('fails %s with parse-failed and inserts nothing', async (name) => {
     const ctx = context();
     await expect(renderer.render(fixtureBytes(name), ctx)).rejects.toMatchObject({ code: 'parse-failed' });

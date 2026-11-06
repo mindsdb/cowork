@@ -32,6 +32,10 @@ const EVENTS = {
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
   AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
   COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
+  ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
+  ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
+  EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
+  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars? } — the first message of a new task; never carries its text
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -130,6 +134,13 @@ const EVENTS = {
   CODE_VIEW_OPENED:         'code_view_opened',         // {}  first switch into the Code workspace per launch
   CODE_TASK_STARTED:        'code_task_started',        // { task_id, origin: 'new'|'fork', engine_id, model, reasoning_effort?, permission_mode, task_mode, workspace_kind, in_project, computer_is_local, attachment_count, source_context_count }
   CODE_TASK_START_FAILED:   'code_task_start_failed',   // { origin, engine_id?, model?, in_project?, code, status? }
+  // Compare Models. Model ids, counts and costs only: never a prompt or title.
+  COMPARE_VIEW_OPENED:      'compare_view_opened',      // {}  first open of Compare Models per launch
+  COMPARISON_STARTED:       'comparison_started',       // { comparison_id, model_a, model_b, effort_a?, effort_b?, from_project, file_count, example_id? }
+  COMPARISON_FOLLOW_UP_SENT:'comparison_follow_up_sent',// { comparison_id, target: 'both'|'a'|'b', turn_index }
+  COMPARISON_VERDICT_RECORDED:'comparison_verdict_recorded', // { comparison_id, turn_index, winner, winner_model?, other_model?, changed, ...cost }
+  COMPARISON_CONTINUED:     'comparison_continued',     // { comparison_id, side, model, other_model, turns, carried_all, chose_winner?, ...cost }
+  // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, cost_stale?, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same' (complete figures only)
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -637,6 +648,71 @@ export function trackAgentSessionStarted() {
   );
 }
 
+// How the next new task is being started, for new_task_message_sent: the
+// checklist and the app's own sends set it just before they send, and anything
+// unset is the composer.
+const START_VIA_TTL_MS = 60 * 1000;
+let pendingStartVia = null;
+
+export function setStartVia(via) {
+  pendingStartVia = via ? { via, at: Date.now() } : null;
+}
+
+// Runs a send that starts a new task under a start label. The label is kept
+// only if the send goes out: a refused one (answers false) or a failed one
+// (throws) must not leave it for the next, unrelated message.
+export async function sendWithStartVia(via, send) {
+  setStartVia(via);
+  try {
+    const sent = await send();
+    if (!sent) setStartVia(null);
+    return sent;
+  } catch (err) {
+    setStartVia(null);
+    throw err;
+  }
+}
+
+export function trackOnboardingRowClicked(stepId) {
+  capture(EVENTS.ONBOARDING_ROW_CLICKED, { step_id: stepId });
+}
+
+export function trackOnboardingStepCompleted(stepId, via) {
+  capture(EVENTS.ONBOARDING_STEP_COMPLETED, { step_id: stepId, via });
+}
+
+export function trackExamplePicked(exampleId, list) {
+  capture(EVENTS.EXAMPLE_PICKED, { example_id: exampleId, list });
+}
+
+/**
+ * The first message of a new task, described but never quoted: what kind of
+ * start it was (see classifyStart), how many files came with it, whether it
+ * holds a link, and how long it is. `added_chars` is what the person added to a
+ * start or example, a paste or details. Joined to the account's later turns
+ * and visits, this is how a start is judged. Read before the session-start
+ * event, which clears the console attribution this one uses.
+ */
+export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
+  const entry = pendingEntryAttribution && Date.now() - pendingEntryAttribution.at <= ENTRY_ATTRIBUTION_TTL_MS
+    ? pendingEntryAttribution : null;
+  const pending = pendingStartVia;
+  pendingStartVia = null;
+  const fresh = pending && Date.now() - pending.at <= START_VIA_TTL_MS;
+  const via = fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer');
+  const body = typeof text === 'string' ? text : '';
+  const props = {
+    start_kind: start?.start_kind || 'free_text',
+    via,
+    attachments,
+    has_link: /\b(?:https?:\/\/|www\.)\S+/i.test(body),
+    chars: body.length,
+  };
+  if (start?.example_id) props.example_id = start.example_id;
+  if (start?.added_chars != null) props.added_chars = start.added_chars;
+  capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
+}
+
 // The console handoff's arrival: the Home composer is on screen and usable,
 // with the sample in it (`prefilled`) or empty. Separate from the console's
 // click, which only says the user asked to come here.
@@ -729,10 +805,13 @@ export function trackTurnFailed(conversationId, event) {
 //
 // `workspaceMode` is 'code' when Code Mode sent them and omitted otherwise, so
 // every existing chat-side series keeps its meaning.
-export function trackBillingOpened(trigger, workspaceMode) {
+// `kind` names which in-chat usage notice was clicked ('free_low', 'free_used',
+// 'auto_top_up_failed'), so `usage_alert` can be split by notice.
+export function trackBillingOpened(trigger, workspaceMode, kind) {
   capture(EVENTS.BILLING_OPENED, {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,
+    kind: kind || undefined,
   });
 }
 
@@ -783,6 +862,67 @@ export function trackCodeTaskStartFailed(origin, input, reason) {
     in_project: input ? Boolean(input.projectId) : undefined,
     code: (reason && typeof reason.code === 'string' && reason.code) || 'unknown',
     status: reason && typeof reason.status === 'number' ? reason.status : undefined,
+  });
+}
+
+// Compare Models, from first open to Continue: who finds it, which model pairs
+// people try, whether the cheaper side wins or ties, and whether a comparison
+// turns into a real task. Model ids, counts and costs only, never a prompt or
+// a title. `cost` is comparisonCostProps(usage) from lib/compareSides.
+let compareViewOpenedThisLaunch = false;
+export function trackCompareViewOpened() {
+  if (compareViewOpenedThisLaunch) return;
+  compareViewOpenedThisLaunch = true;
+  capture(EVENTS.COMPARE_VIEW_OPENED);
+}
+
+export function trackComparisonStarted(comparison, { fileCount = 0, exampleId = null } = {}) {
+  if (!comparison?.id) return;
+  const [a, b] = comparison.sides || [];
+  capture(EVENTS.COMPARISON_STARTED, {
+    comparison_id: comparison.id,
+    model_a: a?.model || 'unknown',
+    model_b: b?.model || 'unknown',
+    effort_a: a?.reasoningEffort || undefined,
+    effort_b: b?.reasoningEffort || undefined,
+    from_project: Boolean(comparison.sourceProjectId),
+    file_count: fileCount,
+    example_id: exampleId || undefined,
+  });
+}
+
+export function trackComparisonFollowUpSent(comparisonId, target, turnIndex) {
+  if (!comparisonId) return;
+  capture(EVENTS.COMPARISON_FOLLOW_UP_SENT, { comparison_id: comparisonId, target, turn_index: turnIndex });
+}
+
+export function trackComparisonVerdictRecorded(comparisonId, { turnIndex, winner, models = {}, changed = false, cost = {} }) {
+  if (!comparisonId) return;
+  const picked = winner === 'a' || winner === 'b';
+  capture(EVENTS.COMPARISON_VERDICT_RECORDED, {
+    comparison_id: comparisonId,
+    turn_index: turnIndex,
+    winner,
+    winner_model: picked ? models[winner] : undefined,
+    other_model: picked ? models[winner === 'a' ? 'b' : 'a'] : undefined,
+    changed,
+    ...cost,
+    cheaper_won: picked && cost.cheaper_side && cost.cheaper_side !== 'same' ? cost.cheaper_side === winner : undefined,
+  });
+}
+
+export function trackComparisonContinued(comparisonId, { side, models = {}, turns, carriedAll, verdict = null, cost = {} }) {
+  if (!comparisonId) return;
+  capture(EVENTS.COMPARISON_CONTINUED, {
+    comparison_id: comparisonId,
+    side,
+    model: models[side],
+    other_model: models[side === 'a' ? 'b' : 'a'],
+    turns,
+    carried_all: carriedAll,
+    chose_winner: verdict === 'a' || verdict === 'b' ? verdict === side : undefined,
+    ...cost,
+    chose_cheaper: cost.cheaper_side && cost.cheaper_side !== 'same' ? cost.cheaper_side === side : undefined,
   });
 }
 
@@ -1069,6 +1209,7 @@ export function resetDeviceIdentity() {
   mergeInFlight.clear();
   // The next account's first Code visit is its own.
   codeViewOpenedThisLaunch = false;
+  compareViewOpenedThisLaunch = false;
   try {
     window.localStorage.removeItem(DEVICE_ID_KEY);
     window.localStorage.removeItem(IDENTITY_MERGED_KEY);

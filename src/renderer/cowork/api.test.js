@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -1036,6 +1036,22 @@ describe('a refused request with an object detail', () => {
     const err = await deleteArtifact({ slug: 'sales-dash', projectId: 'proj-1' }).catch((e) => e);
 
     expect(err.message).toBe('Delete failed (502)');
+  });
+
+  /* A share with everyone the caller may not make: a string detail beside a
+     top-level code (cowork.services.publish.ShareOrgRequired.refusal). */
+  it.each([
+    ['publishArtifact', () => publishArtifact('/tmp/general/dash', { mode: 'restricted', emails: [], org_allowed: false, owner_only: true })],
+    ['updateArtifact', () => updateArtifact('/tmp/general/dash')],
+  ])("%s puts a refused share's reason and code on the error", async (_name, call) => {
+    const reason = 'Sharing an artifact with everyone in the organization needs the artifacts.share_org permission.';
+    vi.stubGlobal('fetch', refuse(403, { detail: reason, code: 'share_org_required' }));
+
+    const err = await call().catch((e) => e);
+
+    expect(err.message).toBe(reason);
+    expect(err.status).toBe(403);
+    expect(err.code).toBe('share_org_required');
   });
 });
 

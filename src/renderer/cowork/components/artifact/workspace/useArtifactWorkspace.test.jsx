@@ -305,6 +305,22 @@ describe('useArtifactWorkspace collaboration transport', () => {
     expect(result.current.source).toEqual(source);
   });
 
+  // A comparison side's draft is never opened to the org; the owner still
+  // previews and edits it, with Review off for the reason the server gives.
+  it('turns comments off with the reason when the server refuses to share a draft', async () => {
+    platform.isWeb = true;
+    const reason = 'Sharing is off while models are being compared. Continue with this side to share it.';
+    api.enableDraftComments.mockRejectedValue(httpError(409, reason));
+
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.commentsReady).toBe(false);
+    expect(result.current.commentsOffReason).toBe(reason);
+    expect(result.current.error).toBe('');
+    expect(result.current.source).toEqual(source);
+  });
+
   it('closes a comparison when the user deliberately changes workspace mode', async () => {
     const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
     await waitFor(() => expect(result.current.status).toBe('ready'));

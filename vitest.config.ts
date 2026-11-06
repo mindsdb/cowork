@@ -7,7 +7,9 @@ const compilerPreset = reactCompilerPreset();
 // Main (node), renderer (happy-dom), and compiled credential-refresh regressions.
 // setupFiles must be listed per project — root-level ones don't reach projects.
 export default defineConfig({
-  define: { __PLATFORM_UI__: 'true' },
+  /* Renderer tests run as the hosted web build, a web build with the platform
+     UI on, unless they mock lib/deployment or lib/buildTarget. */
+  define: { __PLATFORM_UI__: 'true', __WEB_BUILD__: 'true' },
   plugins: [react()],
   test: {
     sequence: { setupFiles: 'list' },
@@ -60,6 +62,10 @@ export default defineConfig({
         'src/renderer/cowork/hooks/useLogout.js': { statements: 100, branches: 93 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
+        // What a comparison treats as the same question, a finished turn and a
+        // continued side's cut-off. A wrong answer here reads as a plausible
+        // screen, so the tests that pin it stay pinned.
+        'src/renderer/cowork/lib/compareSides.js': { statements: 98, branches: 93 },
         // The liveness decision and its store. Pinned for the same reason as the
         // entries above: these exist because a stale artifact card shipped, and
         // the value is entirely in the branch table that proves each fail-open

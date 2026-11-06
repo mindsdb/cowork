@@ -124,13 +124,14 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
-  /* Selected segment in a ToggleGroup / segmented control. The surface ramp
-     inverts between themes (light: --surface is the *lightest*; dark:
-     --surface-3 is), so the token that lifts the pill above the --surface-2
-     track differs per theme. Light = --surface + the shared elevation shadow;
-     the old --surface-3 (darker than the track here) sank into it. */
+  /* ToggleGroup / segmented control: a faint ink-tinted track with no
+     visible edge, and a selected segment lifted by colour and a hairline
+     alone, no shadow. The border stays (transparent) so sizes don't move.
+     Light: --surface is the lightest step, so it lifts the pill. */
+  --toggle-track-bg:        color-mix(in srgb, var(--ink) 5%, transparent);
+  --toggle-track-border:    1px solid transparent;
   --toggle-selected-bg:     var(--surface);
-  --toggle-selected-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
+  --toggle-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
   /* Transcript cards (user message, turn changes): white just above the page. */
   --surface-raised:         var(--surface);
   /* Sidebar surface — a light --surface-2 rail (not the muddier
@@ -305,10 +306,11 @@ body[data-theme="dark"] {
   --surface-3:    #1A2640;
   --line:         #1E2A44;
   --line-2:       #2A3957;
-  /* Dark keeps the raised-surface approach: --surface-3 already sits
-     *lighter* than the --surface-2 track, so the active pill lifts. */
-  --toggle-selected-bg:     var(--surface-3);
-  --toggle-selected-shadow: inset 0 0 0 1px var(--line-2);
+  /* Dark: a lighter ink tint over the track lifts the pill. */
+  --toggle-track-bg:        color-mix(in srgb, var(--ink) 5%, transparent);
+  --toggle-track-border:    1px solid transparent;
+  --toggle-selected-bg:     color-mix(in srgb, var(--ink) 9%, transparent);
+  --toggle-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
   /* --surface sits almost on the dark page, so transcript cards step up one. */
   --surface-raised:         var(--surface-2);
   /* Sidebar base — a hint of cyan over the surface navy, sized
@@ -782,37 +784,15 @@ a[href],
 /* ─── Composer ───────────────────────────────────────────────────────────── */
 .composer-wrap {
   width: 100%; max-width: var(--composer-max-width, 640px);
-  background: var(--surface-0);
-  border: 1px solid var(--border-01);
-  /* Calmer composer (ENG-787 move 03): larger radius so it reads as a
-     friendly surface rather than an input box, and the shared token
-     shadow instead of a bespoke double-drop. */
-  border-radius: var(--r-xl);
-  box-shadow: var(--sh-1);
-  transition: border-color var(--dur-hover), box-shadow var(--dur-hover);
-}
-.composer-wrap.focused {
-  /* Quiet focus: the border simply shifts to the accent — no 3px teal
-     glow ring. Keeps the resting shadow so focusing doesn't jump. */
-  border-color: var(--accent);
-  box-shadow: var(--sh-1);
+  /* Border, radius, resting shadow and focus border come from the shared
+     ComposerFrame (components/chat/chat.css). */
 }
 /* In-fence indicator — caret sits inside a fenced code block. Subtle
    accent-tinted inner stripe on the left edge plus a soft body wash, so
-   it layers under the focus ring rather than competing with it. Toggled
+   it layers under the focus border rather than competing with it. Toggled
    from React based on `fenceCtxAt(value, caretPos) !== null`. */
 .composer-wrap.in-fence {
-  /* The inset accent stripe is the meaningful "caret is inside a fence"
-     signal; pair it with the shared token shadow (move 03) rather than
-     the old bespoke double-drop. */
   background: color-mix(in srgb, var(--accent) 4%, var(--surface-0));
-  box-shadow:
-    inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
-    var(--sh-1);
-}
-.composer-wrap.focused.in-fence {
-  /* Quiet focus + the fence stripe: accent border, no 3px glow ring. */
-  border-color: var(--accent);
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
     var(--sh-1);
@@ -2043,6 +2023,20 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
+/* A task title runs to the row's end and fades out there instead of
+   ellipsizing. While the row's menu button floats over its end, the fade
+   finishes --title-clip earlier, clear of the button. A mask, so the fade
+   holds over the row's hover and selected fills in either theme. */
+.recent-row__title,
+.code-sidebar-session__title {
+  --title-clip: 0px;
+  overflow: hidden;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--title-clip) - 28px), transparent calc(100% - var(--title-clip)));
+          mask-image: linear-gradient(to right, #000 calc(100% - var(--title-clip) - 28px), transparent calc(100% - var(--title-clip)));
+}
+.recent-row__title.is-clipped { --title-clip: 20px; }
+
 /* Currently-open task — same quiet neutral fill as the active nav item,
    so "which conversation am I in" reads without shouting. */
 .app-sidebar .recent-item.is-selected,
@@ -2142,10 +2136,8 @@ body[data-theme="dark"] .status-dot:not(.offline):not(.busy) {
   50%      { opacity: 0.45; transform: scale(0.85); }
 }
 .status-text {
-  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
-  letter-spacing: 0.02em;
 }
 /* Both halves of the pill text now read from the pill-level CSS vars
    so the whole label shifts together with the on/off/busy state. */
@@ -2562,20 +2554,11 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    Toolbar + / Send insets and control sizes match the default composer
    (home, project prompt) so controls land in the same place inside the card. */
 .chat-floating-composer .composer-wrap {
-  background: var(--surface);
-  border: 1.5px solid var(--line);
-  border-radius: var(--r-xl);
   /* 10px horizontal + textarea side padding = same 18px text inset as
      .composer-textarea on home; toolbar is flush on the bottom so the card
-     doesn't pick up a double band (toolbar pb + wrap pb). */
+     doesn't pick up a double band (toolbar pb + wrap pb). Border and
+     shadow are the shared ComposerFrame's. */
   padding: 16px 14px 12px;
-  /* Subtle all-around lift — replaces the heavier downward shadow we
-     used to pair with the bottom gradient mask. With the mask gone, a
-     soft even glow reads as "floating panel" without darkening the
-     gravity field below. */
-  box-shadow:
-    0 2px 4px rgba(15, 16, 17, 0.05),
-    0 6px 20px rgba(15, 16, 17, 0.08);
 }
 /* Override the shared metrics on the shell so the textarea and overlay
    stay coupled. Font-family still ships on each child because it's not
@@ -2623,24 +2606,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   /* Same dormant accent wash as the base .send-btn:disabled. */
   background: var(--accent-bg);
   color: color-mix(in srgb, var(--accent) 60%, transparent);
-}
-body[data-theme="dark"] .chat-floating-composer .composer-wrap {
-  /* Softer than the old 0.55-alpha 32-blur — that was producing a
-     heavy slab below the composer that drew the eye down. Match the
-     light-mode shadow's restraint, just dialed up enough to read
-     against the navy surface. */
-  box-shadow:
-    0 4px 18px rgba(0, 0, 0, 0.28),
-    0 0 0 1px rgba(255, 255, 255, 0.03);
-}
-.chat-floating-composer .composer-wrap.focused {
-  /* Quiet focus (ENG-787 move 03): the accent border is the only focus
-     signal. No 3px teal glow ring; hold the same soft lift as the resting
-     state so the card doesn't jump on focus. */
-  border-color: var(--accent);
-  box-shadow:
-    0 2px 4px rgba(15, 16, 17, 0.05),
-    0 6px 20px rgba(15, 16, 17, 0.08);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -3347,17 +3312,6 @@ body[data-theme="dark"] .mshell__drawer-title {
     transform: none !important;
   }
 
-  /* Scratchpad modal — go fullscreen so a 94vw card with rounded
-     corners doesn't waste space inside a fixed scrim at phone widths. */
-  .scratchpad-modal {
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    max-width: none !important;
-    border-radius: 0 !important;
-    border-left: none !important;
-    border-right: none !important;
-  }
   /* Tighter horizontal padding so each cell's output/code can use
      the full screen width. Was pl-6 pr-6 (24px) — overkill on phone. */
   .scratchpad-cell {
@@ -3701,9 +3655,7 @@ body[data-theme="dark"] .phase-check-done {
 .turn-meta {
   margin-left: auto;
   margin-top: 4px; /* matches .turn-actions so both sit on one baseline */
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.04em;
+  font-size: var(--text-sm);
   white-space: nowrap;
   color: var(--ink-4);
   opacity: 0;
@@ -3778,6 +3730,16 @@ body[data-theme="dark"] .phase-check-done {
   color: var(--accent);
 }
 .turn-action-btn--danger:hover { color: var(--danger); }
+.turn-action-btn.is-done { color: var(--accent); }
+.turn-action-btn:disabled { cursor: default; }
+/* A failed copy says so beside the buttons; success is announced only. */
+.turn-actions__error {
+  align-self: center;
+  margin-left: 4px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--danger);
+}
 /* 28px controls 4px apart put their centres 32px apart, so centred 44px
    overlays would reach 22px either way and Delete's would cover the right
    edge of Copy's visible box. 40px controls with an 8px gap sit 48px apart:
@@ -3805,8 +3767,7 @@ body[data-theme="dark"] .phase-check-done {
 }
 .user-turn-attachment-name { color: var(--ink); }
 .user-turn-attachment-meta {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   color: var(--ink-4);
 }
 
@@ -3998,6 +3959,27 @@ body[data-theme="light"] .anton-inline-code {
   font-size: var(--text-sm);
   line-height: 1.55;
   color: var(--ink);
+}
+/* The cue MarkdownCode's overflowCue adds to a block whose line runs past
+   its right edge: the code fades out at that edge until scrolled to the end,
+   and a plain line under the code says it scrolls. */
+.anton-code-block-scroll {
+  position: relative;
+}
+.anton-code-block-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 48px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--surface-2));
+}
+.anton-code-block-overflow-note {
+  padding: 0 14px 10px;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
 }
 
 /* Scoped highlight.js theme — dark (default). Only matches tokens
@@ -4203,4 +4185,21 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   transition:
     grid-template-rows calc(var(--dur-layout) * 1.6) var(--ease-out),
     opacity calc(var(--dur-layout) * 0.9) var(--ease-out);
+}
+
+/* Compare models: the two contenders on the start screen. A slow, faint glow
+   on each side, offset in time, so the head-to-head reads as live without
+   drawing the eye away from the prompt. Off when the user asks for less
+   motion. */
+.compare-vs-orb {
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  animation: compare-vs-glow 3.2s ease-in-out infinite;
+}
+.compare-vs-orb--right { animation-delay: 1.6s; }
+@keyframes compare-vs-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50%      { box-shadow: 0 0 22px 2px color-mix(in srgb, var(--accent) 28%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .compare-vs-orb { animation: none; }
 }

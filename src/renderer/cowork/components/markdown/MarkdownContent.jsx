@@ -6,9 +6,9 @@
 // active theme automatically.
 
 import {
-  Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef,
+  Children, cloneElement, createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef,
 } from 'react';
-import Markdown from 'react-markdown';
+import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -259,7 +259,7 @@ function remarkArtifactLocalLinks({ web = false } = {}) {
 
 // Allow the extra attributes our chart blocks need on <code>, and
 // permit the `engram:` URL scheme on links so the engram-comment
-// pre-processor (see `_renderEngramComments`) can route metadata
+// plugin (see `remarkHtmlComments`) can route metadata
 // through the `a` component override into a styled chip. The figure
 // marks remarkFigureSources creates pass through with their index.
 const sanitizeSchema = {
@@ -484,66 +484,103 @@ function _convertMathDelimiters(text) {
 //   `- CoinGecko rate-limits at 50 req/min <!-- topic:api ts:2026-02-27 -->`.
 // react-markdown drops HTML by default, so the comment normally
 // disappears entirely, taking the engram's provenance with it. We
-// transform each comment into a sequence of markdown links with a
-// special `engram:` URL scheme — those survive sanitization, and the
-// `a` component override below picks the scheme up and renders each
-// pair as a small chip.
+// transform each comment into a sequence of links with a special
+// `engram:` URL scheme — those survive sanitization, and the `a`
+// component override below picks the scheme up and renders each pair
+// as a small chip.
 //
 // The scanner below is intentionally narrow: it only rewrites comment
 // bodies that look like one or more `key:value` pairs (e.g. `topic:foo`,
 // `ts:2026-02-27`, `source:consolidation`). Plain authorship comments
-// like `<!-- TODO -->` or `<!-- not sure -->` are stripped.
+// like `<!-- TODO -->` or `<!-- not sure -->` are stripped. It runs on the
+// parsed tree (remarkHtmlComments), where code blocks and code spans hold
+// their text as a value, so a comment inside code stays exactly as written.
 const _ENGRAM_BODY_RE = /^\s*([a-z][a-z0-9_-]*:[^\s<>]+(?:\s+[a-z][a-z0-9_-]*:[^\s<>]+)*)\s*$/i;
 
 function _engramCommentChips(body) {
   const match = _ENGRAM_BODY_RE.exec(body);
-  if (!match) return '';
+  if (!match) return [];
 
   const pairs = match[1].trim().split(/\s+/);
   return pairs
     .map((pair) => {
       const idx = pair.indexOf(':');
-      if (idx <= 0) return '';
+      if (idx <= 0) return null;
       const key = pair.slice(0, idx);
       const val = pair.slice(idx + 1);
       // The link text is what the user sees; the href carries the
       // engram scheme so the renderer can distinguish it from real
       // links. Encode the value so spaces / special chars don't
       // break the URL portion.
-      return `[${key}: ${val}](engram:${encodeURIComponent(val)}?k=${encodeURIComponent(key)})`;
+      return {
+        type: 'link',
+        url: `engram:${encodeURIComponent(val)}?k=${encodeURIComponent(key)}`,
+        children: [{ type: 'text', value: `${key}: ${val}` }],
+      };
     })
-    .filter(Boolean)
-    .join(' ');
+    .filter(Boolean);
 }
 
-function _renderEngramComments(text) {
-  if (!text || typeof text !== 'string') return text;
-
-  let out = '';
+/* The nodes that stand in for one `html` node that opens with a comment:
+   chips for a `key:value` comment, nothing for any other comment, and the
+   text the node holds outside its comments (a comment that starts a line is
+   an HTML block, which runs to the end of the line the comment closes on).
+   An unclosed comment drops the rest of the node. */
+function _commentNodes(value) {
+  const out = [];
   let cursor = 0;
 
-  while (cursor < text.length) {
-    const start = text.indexOf('<!--', cursor);
-    if (start === -1) {
-      out += text.slice(cursor);
-      break;
-    }
+  while (cursor < value.length) {
+    const start = value.indexOf('<!--', cursor);
+    const text = value.slice(cursor, start === -1 ? value.length : start);
+    if (text.trim()) out.push({ type: 'text', value: text });
+    if (start === -1) break;
 
-    out += text.slice(cursor, start);
-    const end = text.indexOf('-->', start + 4);
-    if (end === -1) {
-      break;
-    }
+    const end = value.indexOf('-->', start + 4);
+    if (end === -1) break;
 
-    const chips = _engramCommentChips(text.slice(start + 4, end));
-    if (chips) {
+    for (const chip of _engramCommentChips(value.slice(start + 4, end))) {
       // Leading space keeps the chip from glomming onto the preceding word.
-      out += ` ${chips}`;
+      out.push({ type: 'text', value: ' ' }, chip);
     }
     cursor = end + 3;
   }
 
   return out;
+}
+
+// Parents whose children are blocks, where a comment on its own line sits.
+const _FLOW_PARENTS = new Set(['root', 'blockquote', 'listItem', 'footnoteDefinition']);
+
+/* remark plugin: replace each HTML comment in prose with its chips (see
+   _commentNodes), in a paragraph of their own where the comment was a block.
+   Code blocks and code spans carry no children, so a comment inside code is
+   never reached. */
+function remarkHtmlComments() {
+  const walk = (node) => {
+    if (!Array.isArray(node.children)) return;
+    const next = [];
+    for (const child of node.children) {
+      if (child.type !== 'html' || !/^\s*<!--/.test(child.value)) {
+        walk(child);
+        next.push(child);
+        continue;
+      }
+      const nodes = _commentNodes(child.value);
+      if (!_FLOW_PARENTS.has(node.type)) next.push(...nodes);
+      else if (nodes.length > 0) next.push({ type: 'paragraph', children: nodes });
+    }
+    node.children = next;
+  };
+  return walk;
+}
+
+/* react-markdown empties a link to any scheme but http(s), irc(s), mailto and
+ * xmpp before the `a` override sees it, so the `engram:` links
+ * remarkHtmlComments writes would arrive empty and show as plain text.
+ * Keep them on links, and leave every other URL to react-markdown's check. */
+function _markdownUrlTransform(url, key) {
+  return key === 'href' && url.startsWith('engram:') ? url : defaultUrlTransform(url);
 }
 
 // Density-scoped class strings. `dense` halves the rhythm and shaves
@@ -586,7 +623,12 @@ export function MarkdownPlainText({ children }) {
   );
 }
 
-export function MarkdownContent({
+// Memoized because react-markdown re-runs its whole parse pipeline on every
+// render: without it, each streamed event re-parses every message already in
+// the transcript. Props are primitives apart from the figure props, which
+// callers keep referentially stable for a settled message, so the shallow
+// compare is exact.
+export const MarkdownContent = memo(function MarkdownContent({
   text,
   id,
   complete = true,
@@ -612,6 +654,10 @@ export function MarkdownContent({
   // Render single newlines as line breaks (remarkSoftBreaks). Off by
   // default; the ask_user card turns it on for agent-authored prompts.
   softBreaks = false,
+  /* Mark a code block whose line runs past its right edge (MarkdownCode's
+     overflowCue). The ask_user card turns it on: a person approving a
+     request has to see every line whole. */
+  codeOverflowCue = false,
   // Neutralise loopback links on web (see remarkArtifactLocalLinks below).
   // Follows `isAssistant` by default; agent-authored text that must not get
   // the assistant-only inline-code rewrite (the ask_user prompt) sets it
@@ -665,10 +711,9 @@ export function MarkdownContent({
       const source = variant === 'user' ? _dedentUserText(text) : text;
       const merged = isAssistant ? _mergeInlineCodeLines(source) : source;
       const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
-      const withEngrams = _renderEngramComments(formNormalized);
       // Applied to every variant so a formula pasted into the composer
       // renders too — not just assistant output.
-      return _normalizeMathDelimiters(withEngrams);
+      return _normalizeMathDelimiters(formNormalized);
     },
     [text, enableForms, isAssistant, variant],
   );
@@ -687,6 +732,7 @@ export function MarkdownContent({
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
       ...(markFigures ? [[remarkFigureSources, { figures: figureSources, text }]] : []),
+      remarkHtmlComments,
       [remarkSkillMentions, skillNames],
       // Loopback neutralisation is scoped to AGENT output on web —
       // a user typing http://localhost:3000 in their own turn, or a Markdown
@@ -790,6 +836,7 @@ export function MarkdownContent({
         variant={variant}
         enableForms={enableForms}
         enableCharts={enableCharts}
+        overflowCue={codeOverflowCue}
         {...props}
       />
     ),
@@ -821,14 +868,14 @@ export function MarkdownContent({
     ),
     a: (props) => {
       const href = props.href || '';
-      // Engram metadata chip — see _renderEngramComments above. We
+      // Engram metadata chip — see remarkHtmlComments above. We
       // intercept the synthetic `engram:` href and render a small
       // pill instead of a link. Keying off the URL scheme keeps real
       // links untouched.
       if (href.startsWith('engram:')) {
         return (
           <span
-            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-[10.5px] font-mono text-ink-3 leading-[1.4] no-underline"
+            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-xs text-ink-3 leading-[1.4] no-underline"
             // Strip the children's <a> wrapper styling — react-markdown
             // hands us the linkified text as plain text children, so
             // we render straight into the chip.
@@ -915,7 +962,7 @@ export function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, animateStreamingWords, loadImage]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, codeOverflowCue, animateStreamingWords, loadImage]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
@@ -932,10 +979,11 @@ export function MarkdownContent({
           [rehypeKatex, _KATEX_OPTIONS],
         ]}
         components={components}
+        urlTransform={_markdownUrlTransform}
       >
         {normalized || ''}
       </Markdown>
       </FigureSourcesContext.Provider>
     </div>
   );
-}
+});

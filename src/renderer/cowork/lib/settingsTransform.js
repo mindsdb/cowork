@@ -18,7 +18,7 @@
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost, mindsApiRoot } from '../../../shared/minds-endpoint';
-import { isModelLocked, knownModelDisabledReasons, orderByFamily, unavailableModelFields } from './modelCatalog';
+import { isModelLocked, knownModelDisabledReasons, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -69,6 +69,7 @@ export const SETTINGS_KEY_MAP = {
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.
   jev_decisions_enabled: 'jevDecisionsEnabled',
+  limits_enabled: 'limitsEnabled',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',
   max_turn_tokens: 'maxTurnTokens',
@@ -514,6 +515,7 @@ export function buildModelOptions(
   // froze. Total by construction — see orderByFamily; a dropped id would give
   // `showStalePin === false` with no rendered option, the ENG-739 desync class.
   const ordered = orderByFamily(list, modelFamilies);
+  const latest = latestAliasIds(list, modelFamilies);
 
   const modelOption = (m) => {
     const locked = isLocked(m);
@@ -544,11 +546,11 @@ export function buildModelOptions(
       disabled: locked,
       // Availability is the only row tag, and it rides on `tag`,
       // never in `label`: ModelSelect shows the selected label verbatim in the
-      // closed trigger and filters on it. Version state needs no tag: the name
-      // carries the version and the ordering above seats a pinned version under
-      // its head. The same helper feeds lib/modelPickerOptions, so both pickers
-      // agree.
+      // closed trigger and filters on it. The "latest" note stays out of
+      // `label` for the same reason. lib/modelPickerOptions builds both the same
+      // way, so the pickers agree.
       ...unavailableModelFields(modelEnabled, modelDisabledReasons, m),
+      ...(latest.has(m) ? { note: 'latest' } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.
       ...(modelProviders[m] ? { provider: modelProviders[m] } : {}),
@@ -595,6 +597,15 @@ export function transformSettingsRows(rows) {
   for (const row of rows) {
     const clientKey = SETTINGS_KEY_MAP[row.key];
     if (!clientKey) continue;
+    // The server's default for a budget: the safety limit in force while the
+    // limits switch is off, and what a cleared field resets to. Kept apart
+    // from the budget itself, which holds the user's saved value. A server
+    // that predates `default` still reveals it on an unset row, whose value
+    // is the default.
+    if (clientKey in BUDGET_FIELDS) {
+      const served = row.default ?? (row.is_set === false ? row.value : null);
+      if (served != null) result.budgetDefaults = { ...result.budgetDefaults, [clientKey]: String(served) };
+    }
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
     } else if (row.value != null) {
@@ -752,7 +763,8 @@ export function diffSettingsForWrite(patch, lastFetched) {
     // is {} until the first successful fetch, so as a global rule this would
     // silently drop the first save of a session. For budget keys the trade
     // is worth it — absence really does mean a server that can't take them.
-    if (clientKey in BUDGET_FIELDS && !(clientKey in lastFetched)) continue;
+    // The limits switch rides the same rule: it reached the server later.
+    if ((clientKey in BUDGET_FIELDS || clientKey === 'limitsEnabled') && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
     if (prev === value) continue;
     if (typeof value === 'object' && JSON.stringify(prev) === JSON.stringify(value)) continue;
@@ -763,6 +775,15 @@ export function diffSettingsForWrite(patch, lastFetched) {
     } else {
       writes[serverKey] = String(value);
     }
+  }
+  // A budget saved without the switch beside it reads, to the server, like a
+  // renderer that predates the switch, and turns limits on at that scope. So
+  // any budget write carries the switch the user is looking at: switching
+  // limits on, editing a budget and switching off again must save "off".
+  const switchKey = CLIENT_TO_SERVER.limitsEnabled;
+  const writesBudget = Object.keys(BUDGET_FIELDS).some((key) => CLIENT_TO_SERVER[key] in writes);
+  if (writesBudget && !(switchKey in writes) && 'limitsEnabled' in lastFetched) {
+    writes[switchKey] = String(patch.limitsEnabled ?? lastFetched.limitsEnabled);
   }
   return writes;
 }
@@ -775,9 +796,11 @@ export function diffSettingsForWrite(patch, lastFetched) {
 // strings; the page-wide dirty compare is a JSON diff, so types must survive
 // the save → re-fetch round trip unchanged).
 
+// `fallback` is cowork-server's default, the safety limit a task runs to
+// while the limits switch is off; keep it equal to COWORK_DEFAULT_MAX_*.
 export const BUDGET_FIELDS = {
-  maxToolRounds: { min: 5, max: 500, fallback: 50 },
-  maxContinuations: { min: 0, max: 25, fallback: 5 },
+  maxToolRounds: { min: 5, max: 500, fallback: 250 },
+  maxContinuations: { min: 0, max: 25, fallback: 10 },
   // Per-turn spend ceiling (ENG-1286). `min` is 750_000, not 0 and not a
   // rounder-looking 100_000: a turn's first LLM call costs roughly the
   // conversation's context (~190k on a long one), so a ceiling below a couple
@@ -795,7 +818,7 @@ export const BUDGET_FIELDS = {
   // tokens) — this only tells the input to display and accept millions
   // (1.25 on screen means 1_250_000 tokens), since nobody wants to type or
   // read seven digits. See `toDisplayUnits`/`toNaturalUnits` below.
-  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000, unitDivisor: 1_000_000 },
+  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 25_000_000, unitDivisor: 1_000_000 },
 };
 
 /**
@@ -851,9 +874,9 @@ export function clampBudgetValue(raw, spec) {
  *
  * EFFECTIVELY off, not literally: a turn makes roughly
  * `maxToolRounds x (maxContinuations + 1)` LLM calls, so at the server's
- * defaults (50 x 6 = ~306) 50M is reached at ~163k per call — below the ~190k a
- * long conversation carries. It has never happened (largest turn in 30 days of
- * production: 8.26M), but the step cap is not a guarantee that it can't.
+ * defaults (250 x 11 = ~2,750) 50M is reached at ~18k per call — far below the
+ * ~190k a long conversation carries. It has never happened (largest turn in 30
+ * days of production: 34.4M), but the step cap is not a guarantee that it can't.
  *
  * A 0-means-unlimited sentinel was
  * built and removed: it needed a hole in the range, a server-side validator to
@@ -882,7 +905,26 @@ export function resolveBudgetRestore(remembered, saved, spec) {
     if (isBudgetUnlimited(candidate, spec)) continue;
     return clampBudgetValue(candidate, spec);
   }
+  // A served default can itself be the max (a deployment set to 50M), which
+  // would leave the switch stuck on; `restoreFallback` is the way out.
+  if (isBudgetUnlimited(spec.fallback, spec) && spec.restoreFallback != null) {
+    return String(spec.restoreFallback);
+  }
   return String(spec.fallback);
+}
+
+/**
+ * The spec a budget field edits with: `fallback` (the "default" hint, and what
+ * a cleared field resets to) is the server's served default when it sends one,
+ * since that is what the server applies with nothing stored. A newer renderer
+ * on an older server whose default is lower must not save its own, higher
+ * number as a "reset".
+ */
+export function budgetSpec(key, budgetDefaults) {
+  const spec = BUDGET_FIELDS[key];
+  const served = Number(budgetDefaults?.[key]);
+  if (budgetDefaults?.[key] == null || !Number.isFinite(served)) return spec;
+  return { ...spec, fallback: served, restoreFallback: spec.fallback };
 }
 
 /**

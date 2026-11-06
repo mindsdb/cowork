@@ -12,6 +12,7 @@ import {
   clampBudgetValue,
   clampBudgets,
   BUDGET_FIELDS,
+  budgetSpec,
   isBudgetUnlimited,
   resolveBudgetRestore,
   toDisplayUnits,
@@ -661,6 +662,76 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('the limits switch (limits_enabled)', () => {
+  it('reads the stored switch as a boolean', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [{ key: 'limits_enabled', value: 'False', is_sensitive: false, is_set: false }];
+    expect(transformSettingsRows(rows).limitsEnabled).toBe(false);
+  });
+
+  it('keeps the served safety limits apart from the saved budgets', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '40', default: '250', is_sensitive: false, is_set: true },
+      { key: 'max_turn_tokens', value: '25000000', default: '25000000', is_sensitive: false, is_set: false },
+      { key: 'greeting', value: 'hi', default: 'ignored', is_sensitive: false, is_set: true },
+    ];
+    const s = transformSettingsRows(rows);
+    expect(s.maxToolRounds).toBe('40');
+    expect(s.budgetDefaults).toEqual({ maxToolRounds: '250', maxTurnTokens: '25000000' });
+    // Not a server key, so it can never be written back.
+    expect(diffSettingsForWrite({ budgetDefaults: { maxToolRounds: '1' } }, {})).toEqual({});
+  });
+
+  it("reads an older server's default off an unset budget row", async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '50', is_sensitive: false, is_set: false },
+      { key: 'max_turn_tokens', value: '2000000', is_sensitive: false, is_set: true },
+    ];
+    // A stored value says nothing about the default.
+    expect(transformSettingsRows(rows).budgetDefaults).toEqual({ maxToolRounds: '50' });
+  });
+
+  it('edits each budget against the served default', () => {
+    expect(budgetSpec('maxToolRounds', { maxToolRounds: '50' }).fallback).toBe(50);
+    expect(budgetSpec('maxToolRounds', undefined)).toBe(BUDGET_FIELDS.maxToolRounds);
+    expect(budgetSpec('maxToolRounds', { maxToolRounds: 'x' })).toBe(BUDGET_FIELDS.maxToolRounds);
+  });
+
+  it('never restores a served default that is itself "No limit"', () => {
+    const spec = budgetSpec('maxTurnTokens', { maxTurnTokens: '50000000' });
+    expect(resolveBudgetRestore(null, null, spec)).toBe(String(BUDGET_FIELDS.maxTurnTokens.fallback));
+    expect(resolveBudgetRestore(null, null, budgetSpec('maxTurnTokens', { maxTurnTokens: '1250000' }))).toBe('1250000');
+  });
+
+  it('writes a changed switch to its snake_case key', () => {
+    expect(diffSettingsForWrite({ limitsEnabled: true }, { limitsEnabled: false }))
+      .toEqual({ limits_enabled: 'true' });
+  });
+
+  it('rides along with any budget write, so an unchanged "off" stays off', () => {
+    expect(diffSettingsForWrite({ maxToolRounds: '80' }, { maxToolRounds: '50', limitsEnabled: false }))
+      .toEqual({ max_tool_rounds: '80', limits_enabled: 'false' });
+    expect(diffSettingsForWrite({ maxToolRounds: '80', limitsEnabled: true }, { maxToolRounds: '50', limitsEnabled: true }))
+      .toEqual({ max_tool_rounds: '80', limits_enabled: 'true' });
+    expect(diffSettingsForWrite({ tone: 'spicy' }, { tone: 'balanced', limitsEnabled: false }))
+      .toEqual({ tone: 'spicy' });
+  });
+
+  it('is not written to a server that did not send it', () => {
+    // An older server 400s the unknown key and fails the whole save with it.
+    expect(diffSettingsForWrite({ limitsEnabled: true, maxToolRounds: '80' }, { maxToolRounds: '50' }))
+      .toEqual({ max_tool_rounds: '80' });
+  });
+
+  it("defaults the budget fields to the server's safety limits", () => {
+    expect(BUDGET_FIELDS.maxTurnTokens.fallback).toBe(25_000_000);
+    expect(BUDGET_FIELDS.maxToolRounds.fallback).toBe(250);
+    expect(BUDGET_FIELDS.maxContinuations.fallback).toBe(10);
+  });
+});
+
 describe('harness picker enable flags', () => {
   it('transforms the per-harness enable flag into a camelCase boolean', async () => {
     // Anton has no enable flag — it's the default agent and always offered.
@@ -824,17 +895,19 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     expect(byValue.kimi).toEqual({ value: 'kimi', label: 'Kimi K3', disabled: false, provider: 'moonshot' });
   });
 
-  it('tags no row for version state, even with a frozen version listed', () => {
-    // The name carries the version and the pin sits directly under its head (see
-    // the ordering test below), so a "Latest" / "Older version" pill said nothing
-    // the row did not, and its width truncated long names (ENG-2591). The label
-    // stays bare too: ModelSelect shows it verbatim in the closed trigger and
-    // filters on it.
+  it('notes "latest" on the moving alias beside its frozen version, with no pill and a bare label', () => {
+    // A version pill on most rows truncated long names, so version state is a
+    // muted note on the moving alias only, and only where its frozen version is
+    // listed beside it. The label stays bare: ModelSelect shows it verbatim in the
+    // closed trigger and filters on it.
     const options = buildModelOptions(
       'sonnet', ['sonnet', 'sonnet-4-5', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META,
     );
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     for (const o of options) expect(o.tag).toBeUndefined();
+    expect(byValue.sonnet.note).toBe('latest');
+    expect(byValue['sonnet-4-5'].note).toBeUndefined();
+    expect(byValue.kimi.note).toBeUndefined();
     expect(byValue.sonnet.label).toBe('Claude Sonnet 5');
     expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5');
     expect(byValue.kimi.label).toBe('Kimi K3');
@@ -851,6 +924,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     );
     for (const o of options) {
       expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
       expect(o.label || '').not.toContain('latest');
       expect(o.label || '').not.toContain('version');
     }
@@ -895,6 +969,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     });
     expect(options.map((o) => o.value)).toEqual(['sonnet-4-5']);
     expect(options[0].tag).toBeUndefined();
+    expect(options[0].note).toBeUndefined();
     expect(options[0].label).toBe('Claude Sonnet 4.5');
   });
 
@@ -903,7 +978,10 @@ describe('buildModelOptions — moving vs pinned versions', () => {
       modelProviders: FAMILY_META.modelProviders,
       modelFamilies: { sonnet: 'sonnet', kimi: 'kimi', 'sonnet-4-5': 'sonet' },
     });
-    for (const o of options) expect(o.tag).toBeUndefined();
+    for (const o of options) {
+      expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
+    }
   });
 
   it('carries the backend provider through so the picker stops inferring it', () => {
@@ -918,6 +996,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     const options = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
     for (const o of options) {
       expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
       expect(o.provider).toBeUndefined();
     }
   });
@@ -1000,12 +1079,13 @@ describe('the "no limit" switch (ENG-1286)', () => {
 
   it('falls back to the last committed value, then the factory default', () => {
     expect(resolveBudgetRestore(null, '1250000', spec)).toBe('1250000');
-    expect(resolveBudgetRestore(null, null, spec)).toBe('1250000');
-    expect(resolveBudgetRestore('', '', spec)).toBe('1250000');
+    expect(resolveBudgetRestore(null, null, spec)).toBe(String(spec.fallback));
+    expect(resolveBudgetRestore('', '', spec)).toBe(String(spec.fallback));
   });
 
   it('never restores the max, which would leave the switch stuck on', () => {
-    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe('1250000');
+    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe(String(spec.fallback));
+    expect(spec.fallback).toBeLessThan(spec.max);
   });
 
   it('clamps a remembered value that predates a floor change', () => {
