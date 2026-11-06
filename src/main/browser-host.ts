@@ -111,6 +111,8 @@ export interface InAppBrowserDeps {
   authHeader(): Record<string, string>;
   /** The signed-in account's data root, and the stores the server runs on. */
   accountRoot(): string;
+  /** The app's userData folder, where the browser profiles live (`app.getPath('userData')`). */
+  userDataDir(): string;
   storesRoot(): string | null;
   downloadsDir(): string;
   /** session.fromPath. */
@@ -198,7 +200,7 @@ export class InAppBrowserHost {
   private profileSession(): Session {
     const root = this.deps.accountRoot();
     if (this.profile?.root === root) return this.profile.session;
-    const dir = browserProfilePath(root);
+    const dir = browserProfilePath(this.deps.userDataDir(), root);
     ensureProfileDir(dir);
     const ses = this.deps.profileSession(dir);
     if (!this.configured.has(ses)) {

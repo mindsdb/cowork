@@ -1,9 +1,13 @@
 /*
  * The in-app browser's profile and the lockdown every one of its views gets.
  *
- * One profile per account: session.fromPath(<account data root>/browser), in
- * a folder made owner-only (0700), shared by the account's organizations,
- * since sign-ins belong to the person. The views never use the app's default
+ * One profile per account: session.fromPath(<userData>/browser-profiles/<key>),
+ * the key named by the account's data root, in a folder made owner-only
+ * (0700), shared by the account's organizations, since sign-ins belong to the
+ * person. It sits under the app's userData because Electron 44 and later keep
+ * a fromPath session's cookies across a restart only there (the sandboxed
+ * network service writes nowhere else); a profile under the account data root
+ * lost every sign-in at each restart. The views never use the app's default
  * session, whose request hook hands the local server's key to loopback
  * requests, and never inherit the main window's preferences.
  *
@@ -19,13 +23,17 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import type { Session, WebContents, WebPreferences } from 'electron';
 import { diagnostic } from '../shared/diagnostics';
 
-export const BROWSER_PROFILE_DIR = 'browser';
+export const BROWSER_PROFILES_DIR = 'browser-profiles';
 
-export function browserProfilePath(accountRoot: string): string {
-  return path.join(accountRoot, BROWSER_PROFILE_DIR);
+/** The account's profile folder under the app's userData: one per account
+    data root, so each account keeps its own sign-ins. */
+export function browserProfilePath(userDataDir: string, accountRoot: string): string {
+  const key = createHash('sha256').update(path.resolve(accountRoot)).digest('hex').slice(0, 16);
+  return path.join(userDataDir, BROWSER_PROFILES_DIR, key);
 }
 
 /** Makes the profile folder and pins it owner-only past the umask. */

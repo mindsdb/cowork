@@ -64,12 +64,15 @@ function fakeSession() {
 }
 
 describe('the profile folder', () => {
-  it('sits under the account root and is owner-only, whatever the umask', () => {
+  it("sits under the app's userData, one folder per account, and is owner-only, whatever the umask", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-profile-'));
     const previous = process.umask(0o022);
     try {
-      const dir = browserProfilePath(root);
-      expect(dir).toBe(path.join(root, 'browser'));
+      const userData = path.join(root, 'user-data');
+      const dir = browserProfilePath(userData, path.join(root, 'accounts', 'a'));
+      expect(path.dirname(dir)).toBe(path.join(userData, 'browser-profiles'));
+      expect(browserProfilePath(userData, path.join(root, 'accounts', 'a'))).toBe(dir);
+      expect(browserProfilePath(userData, path.join(root, 'accounts', 'b'))).not.toBe(dir);
       ensureProfileDir(dir);
       expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
       fs.chmodSync(dir, 0o755);
