@@ -33,6 +33,21 @@ function Harness({ initial = 'mindshub_air', options = OPTIONS, ...rest }) {
 }
 
 describe('ModelSelect', () => {
+  it('shows a "latest" note on the row but only the bare name on the closed trigger', async () => {
+    const user = userEvent.setup();
+    const options = buildModelPickerOptions([
+      { id: 'sonnet', name: 'Claude Sonnet' },
+      { id: 'sonnet-5-5', name: 'Claude Sonnet 5.5' },
+    ], { modelFamilies: { sonnet: 'sonnet', 'sonnet-5-5': 'sonnet' } });
+    render(<Harness initial="sonnet" options={options} />);
+    const trigger = screen.getByRole('combobox');
+    expect(trigger).toHaveTextContent('Claude Sonnet');
+    expect(trigger).not.toHaveTextContent('latest');
+    await user.click(trigger);
+    expect(await screen.findByRole('option', { name: 'Claude Sonnet (latest)' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Claude Sonnet 5.5' })).toBeInTheDocument();
+  });
+
   it('shows the selected model label on the closed trigger', () => {
     render(<Harness />);
     expect(screen.getByRole('combobox')).toHaveTextContent('MindsHub Air');

@@ -27,7 +27,6 @@ import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { FirstTake } from '../components/thinking/FirstTake';
 import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { copyText, trimCopiedSelection } from '../lib/clipboard';
 import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
@@ -70,6 +69,11 @@ import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
+import { ChatScroller } from '../components/chat/ChatScroller';
+import { useStickToBottom } from '../components/chat/useStickToBottom';
+import { useDockInset } from '../components/chat/useDockInset';
+import { TurnActions } from '../components/chat/TurnActions';
+import { UserTurn } from '../components/chat/UserTurn';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -104,68 +108,6 @@ function formatMetaTime(value) {
   if (Number.isNaN(d.getTime())) return '';
   const month = d.toLocaleString('en-US', { month: 'short' });
   return `${month} ${d.getDate()}, ${formatTime(d)}`;
-}
-
-// ─── Shared turn-action toolbar ──────────────────────────────────────────
-// Used by both user and assistant turns for consistent styling. Actions
-// fade in on hover of the parent turn, but stay visible when `isLast`
-// is true (matching Claude's pattern where the most recent exchange
-// always shows its toolbar).
-const ICON_SZ = 16;
-function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = async () => {
-    const text = typeof getText === 'function' ? getText() : '';
-    if (!text) return;
-    const ok = await copyText(text);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    }
-  };
-  return (
-    <div
-      className={`turn-actions${isLast ? ' is-last' : ''} ${align === 'right' ? 'justify-end' : 'justify-start'}`}
-    >
-      {onEdit && (
-        <Tooltip content="Edit and resend">
-          <button
-            type="button"
-            className="turn-action-btn"
-            onClick={onEdit}
-            aria-label="Edit and resend this message"
-          >
-            {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
-          </button>
-        </Tooltip>
-      )}
-      <Tooltip content={copied ? 'Copied' : 'Copy'}>
-        <button
-          type="button"
-          className="turn-action-btn"
-          aria-label={copied ? 'Copied' : 'Copy'}
-          onClick={onCopy}
-          // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
-          // beats a text-accent utility (equal specificity, globals.css loads later).
-          style={copied ? { color: 'var(--accent)' } : undefined}
-        >
-          {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
-        </button>
-      </Tooltip>
-      {onDelete && (
-        <Tooltip content="Delete">
-          <button
-            type="button"
-            className="turn-action-btn turn-action-btn--danger"
-            aria-label="Delete"
-            onClick={onDelete}
-          >
-            {Ico.trash(ICON_SZ)}
-          </button>
-        </Tooltip>
-      )}
-    </div>
-  );
 }
 
 // ─── User pill ───────────────────────────────────────────────────────────
@@ -309,131 +251,81 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-// Long user messages clamp to ~8 lines behind a "Show more" toggle so a big
-// pasted prompt doesn't dominate the viewport before the answer starts.
-const USER_CLAMP_MAX_PX = 176;
-
-function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, projectId, conversationId, streaming = false, deleting = false }) {
-  const contentRef = useRef(null);
-  const [collapsed, setCollapsed] = useState(true);
-  const [overflowing, setOverflowing] = useState(false);
+// The user's side of a Cowork turn: the shared UserTurn bubble, plus the
+// attachments and artifact-repair card only Cowork messages carry.
+function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false }) {
   // An "Address with agent" handoff is a machine prompt — ids, a base revision
   // and the raw thread JSON — so it renders as a card rather than as the wall of
   // identifiers it literally is. Null for every ordinary message.
   const repair = parseArtifactRepairPrompt(content);
-  useLayoutEffect(() => {
-    const el = contentRef.current;
-    if (!el) return undefined;
-    // scrollHeight reports full content height even while max-height clamps
-    // the box, so overflow is measurable without expanding first. Re-runs on
-    // width changes (sidebar toggle, window resize) via the ResizeObserver.
-    const measure = () => setOverflowing(el.scrollHeight > USER_CLAMP_MAX_PX + 8);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [content]);
-  return (
-    <div
-      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
-      aria-busy={deleting || undefined}
-      onCopy={trimCopiedSelection}
-    >
-      <div className="user-turn-inner">
-        <div className="user-turn-bubble">
-          {/* User messages flow through the same markdown pipeline as
-              assistant turns so fenced code blocks, bold/italic, lists,
-              etc. typed in the composer render properly. Forms and
-              charts are gated off so a user typing a special fence in
-              the composer can't trigger the side-effect renderers
-              reserved for assistant output. */}
-          {repair ? (
-            <ArtifactRepairCard
-              repair={repair}
-              projectId={projectId}
-              streaming={streaming}
-            />
-          ) : (
-          <div
-            ref={contentRef}
-            className={collapsed && overflowing ? 'user-turn-clamp user-turn-clamp--faded' : undefined}
-            style={collapsed && overflowing ? { maxHeight: USER_CLAMP_MAX_PX } : undefined}
-          >
-            <MarkdownContent
-              text={content}
-              variant="user"
-              enableForms={false}
-              enableCharts={false}
-            />
-          </div>
-          )}
-          {!repair && overflowing && (
-            <button
-              type="button"
-              className="user-turn-more"
-              aria-expanded={!collapsed}
-              onClick={() => setCollapsed((c) => !c)}
-            >
-              {collapsed ? 'Show more' : 'Show less'}
-            </button>
-          )}
-        </div>
-        {attachments?.map((a) => {
-          // Image attachments preview inline as a thumbnail (fetched as a
-          // blob — the CSP blocks a direct loopback <img src>). Clicking
-          // opens the full image in a browser tab on web and saves it on
-          // desktop (openAuthenticatedResource). We can only build the
-          // raw URL when the conversation is project-scoped; without it,
-          // fall back to the icon+name chip.
-          const isImage = a.mime && String(a.mime).startsWith('image/');
-          const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
-          if (rawUrl) {
-            return (
-              <AttachmentThumbnail
-                key={a.id}
-                url={rawUrl}
-                alt={a.name || 'Image'}
-                onOpen={() => {
-                  openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
-                }}
-              />
-            );
-          }
-          return (
-            <div key={a.id} className="user-turn-attachment">
-              <span className="user-turn-attachment-icon">
-                {userTurnAttachmentIcon(a)}
-              </span>
-              <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
-              <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
-            </div>
-          );
-        })}
-        {deleting ? (
-          <span
-            // Primary ink, not the usual meta grey: the turn around it is at
-            // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
-            className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
-          >
-            Deleting…
-          </span>
-        ) : (
-          <TurnActions
-            getText={() => content || ''}
-            onEdit={onEdit ? () => onEdit(content) : null}
-            onDelete={onDelete}
-            isLast={isLast}
-            align="right"
-          />
-        )}
+  const attachmentRows = attachments?.map((a) => {
+    // Image attachments preview inline as a thumbnail (fetched as a
+    // blob — the CSP blocks a direct loopback <img src>). Clicking
+    // opens the full image in a browser tab on web and saves it on
+    // desktop (openAuthenticatedResource). We can only build the
+    // raw URL when the conversation is project-scoped; without it,
+    // fall back to the icon+name chip.
+    const isImage = a.mime && String(a.mime).startsWith('image/');
+    const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
+    if (rawUrl) {
+      return (
+        <AttachmentThumbnail
+          key={a.id}
+          url={rawUrl}
+          alt={a.name || 'Image'}
+          onOpen={() => {
+            openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
+          }}
+        />
+      );
+    }
+    return (
+      <div key={a.id} className="user-turn-attachment">
+        <span className="user-turn-attachment-icon">
+          {userTurnAttachmentIcon(a)}
+        </span>
+        <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
+        <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
       </div>
-    </div>
+    );
+  });
+  const actions = deleting ? (
+    <span
+      // Primary ink, not the usual meta grey: the turn around it is at
+      // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
+      className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
+    >
+      Deleting…
+    </span>
+  ) : (
+    <TurnActions
+      text={content || ''}
+      copyLabel="Copy message"
+      onEdit={onEdit ? () => onEdit(content) : null}
+      onDelete={onDelete}
+      isLast={isLast}
+      align="right"
+    />
+  );
+  return (
+    <UserTurn
+      content={content}
+      turnId={turnId}
+      deleting={deleting}
+      attachments={attachmentRows}
+      actions={actions}
+    >
+      {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
+    </UserTurn>
   );
 }
 
 // OrbitProvider `size` for the chat orb — WorkingIndicator's anchor
 // box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
+// The width the chat needs to dock the right rail beside the conversation: a
+// reading column of at least 640px, its 40px gutters, and the 320px rail.
+const RAIL_DOCK_MIN_PX = 640 + 40 * 2 + 320;
 
 // Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
 const INCOMPLETE_REASON_TEXT = {
@@ -463,7 +355,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       {state !== 'thinking' && (
         <div className="flex items-center gap-2">
           {showActions && !deleting && (
-            <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+            <TurnActions text={copyText || ''} copyLabel="Copy response" onDelete={onDelete} isLast={isLast} />
           )}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
@@ -533,6 +425,25 @@ export function TextBlock({
     });
     return linked.map((figure) => ({ ...figure, sources: figure.sources.map(readable) }));
   }, [showFigureSources, figureSources, steps, projectId, projectName, conversationId]);
+  /* MarkdownContent is memoized, and callers pass fresh openers every render.
+     Hand it openers that keep their identity and call the latest one at click
+     time, so a settled answer skips re-rendering while another one streams. */
+  const openStepRef = useRef(onOpenStep);
+  const viewFileRef = useRef(onViewFile);
+  useEffect(() => {
+    openStepRef.current = onOpenStep;
+    viewFileRef.current = onViewFile;
+  });
+  const hasOpenStep = !!onOpenStep;
+  const hasViewFile = !!onViewFile;
+  const openStep = useMemo(
+    () => (hasOpenStep ? (stepId) => openStepRef.current?.(stepId) : null),
+    [hasOpenStep],
+  );
+  const viewFile = useMemo(
+    () => (hasViewFile ? (source) => viewFileRef.current?.(source) : null),
+    [hasViewFile],
+  );
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
@@ -544,8 +455,8 @@ export function TextBlock({
       conversationId={conversationId}
       isAssistant
       figureSources={figures}
-      onOpenFigureStep={onOpenStep}
-      onViewFigureFile={onViewFile}
+      onOpenFigureStep={openStep}
+      onViewFigureFile={viewFile}
     />
   );
 }
@@ -1969,6 +1880,10 @@ export default function ChatView({
   // handleSendInTask's pendingQuestionFor check) as soon as the card
   // itself learns the question is gone.
   onQuestionAnswered,
+  // One side of a model comparison: the transcript only. The Compare screen
+  // owns the header, the shared composer and the side panel, so none of them
+  // render here.
+  pane = false,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
@@ -2012,10 +1927,15 @@ export default function ChatView({
     onComposerRedirectConsumed?.(task?.id, redirect.attachments);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerRedirects, task?.id]);
-  // Inline rail only active on wide screens.
-  const effectiveRailOpen = !isNarrow && railOpen;
-  // Narrow-screen overlay rail.
-  const railOverlayOpen = isNarrow && railNarrowOpen;
+  // The rail docks beside the conversation only when the conversation keeps
+  // its full reading width next to it; otherwise it opens over the top.
+  const [railFits, setRailFits] = useState(true);
+  const railFloats = isNarrow || !railFits;
+  const effectiveRailOpen = !pane && !railFloats && railOpen;
+  // A comparison pane never resends on its own: it would give one side a
+  // turn the other never got, and the two would stop being comparable.
+  const sendAgain = pane ? undefined : (text, attachments) => onSend?.(text, attachments);
+  const railOverlayOpen = !pane && railFloats && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
   /* The figure source (a LinkedFigureSource) whose file is open in the
@@ -2199,11 +2119,14 @@ export default function ChatView({
     [visibleMessages, streamingMsg],
   );
 
+  const stick = useStickToBottom(scrollRef);
+  const { scrollToBottom, follow: followEnd, anchorLastTurn } = stick;
+  const dockRef = useDockInset();
   const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const { isPrepend, scrollHeightDelta, anchor } = nextScrollAnchor({
+    const { action, scrollHeightDelta, anchor } = nextScrollAnchor({
       taskId: task.id,
       messages: visibleMessages,
       previousAnchor: scrollAnchorRef.current,
@@ -2211,12 +2134,14 @@ export default function ChatView({
     });
     // Loading an older page prepends content above what's on screen —
     // shifting scrollTop by the same delta keeps the reader's position
-    // steady instead of yanking them to the bottom.
-    if (isPrepend) {
-      el.scrollTop += scrollHeightDelta;
-    } else {
-      el.scrollTop = el.scrollHeight;
-    }
+    // steady instead of yanking them to the bottom. A reply landing only
+    // follows a reader who was already at the end.
+    if (action === 'hold') el.scrollTop += scrollHeightDelta;
+    else if (action === 'end') scrollToBottom();
+    // In a comparison pane a follow-up arrives in both panes at once, so it
+    // follows the end rather than moving each pane to the new turn's top.
+    else if (action === 'sent') { if (pane) followEnd(); else anchorLastTurn(); }
+    else followEnd();
     scrollAnchorRef.current = anchor;
     // visibleMessages is a fresh array every render (task.messages.filter(...),
     // not memoized) — depending on task.messages.length instead keeps this
@@ -2270,6 +2195,13 @@ export default function ChatView({
   // (can't leak into the rail visually when a slot is near the right
   // edge). chatRef stays as the panel-level ancestor.
   const chatRef = useRef(null);
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(([entry]) => setRailFits(entry.contentRect.width >= RAIL_DOCK_MIN_PX));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const convRef = useRef(null);
 
   // The orb anchors to the ThinkingBlock header's WorkingIndicator box —
@@ -2323,15 +2255,15 @@ export default function ChatView({
         // for the "header + scrollable body" layout — the 1fr row pins
         // the scroll area to the column's available height, so the inner
         // overflowY can actually scroll.
-        className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0"
+        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
       >
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        <Tooltip content="Expand panel">
+        {!pane && (<Tooltip content="Expand panel">
           <button
             type="button"
-            onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
+            onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
             aria-label="Expand panel"
             // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
             // rail-open state, and the transition's per-state delay) stay inline —
@@ -2350,7 +2282,7 @@ export default function ChatView({
           >
             {Ico.panelExpandLeft(16)}
           </button>
-        </Tooltip>
+        </Tooltip>)}
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating
@@ -2358,7 +2290,7 @@ export default function ChatView({
             corner, staying left-aligned with the transcript below. `--titlebar-
             safe-top` is set on <main> by the shell and is 0 when the sidebar/
             rail covers the zone, so max() keeps the normal 14px padding then. */}
-        <div
+        {!pane && (<div
           // Belt + suspenders: even if a flex child miscalculates by a
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
@@ -2511,7 +2443,7 @@ export default function ChatView({
               title now (above) so it stays visually attached to the
               task it acts on. */}
           <div className="flex items-center gap-1 flex-shrink-0" />
-        </div>
+        </div>)}
         {/* Task menu — anchored to the kebab next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,
             Schedule and Turn-into-skill are intentionally excluded
@@ -2553,22 +2485,16 @@ export default function ChatView({
           />
         ) : (
         <>
-        {/* Scrollable conversation.
-            Bottom padding clears the floating composer so every
-            message is reachable when scrolled to the end. Sized
-            generously (~180px) because the composer grows multi-line
-            as the user types longer drafts, plus the attachments
-            row adds height when files / connectors are attached —
-            tighter values clipped the last reply on long sessions.
-            `marginBottom: 25` shortens the scroll container so the
-            chat surface ends with a calm gap above the window edge
-            instead of butting flush against it. */}
-        <div
-          ref={scrollRef}
-          data-scroll="true"
-          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+        {/* Scrollable conversation. Its end is padded by the measured
+            height of the floating composer (useDockInset), so the last
+            reply always scrolls clear however tall the draft grows. */}
+        <ChatScroller
+          stick={stick}
+          minimap={!pane}
+          scrollProps={{ 'data-scroll': 'true' }}
+          className={`scroll-clean ${pane ? 'pt-4' : 'pt-8'} bg-transparent [-webkit-app-region:no-drag] select-text`}
         >
-          <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+          <div className="chat-transcript-col chat-column flex flex-col gap-7">
             {task.hasMoreMessages && (
               // Adapted from Sidebar's dashed-pill "Show more" idiom.
               <button
@@ -2620,11 +2546,12 @@ export default function ChatView({
                 const neverSent = !m.id && !isStreaming
                   && (m._unsent || String(task?.id ?? '').startsWith('tmp-'));
                 let deleteThisTurn = null;
-                if (orphan && !deleteInFlight && m.id) deleteThisTurn = () => onDeleteTurn?.(m.id);
-                else if (orphan && !deleteInFlight && neverSent) deleteThisTurn = () => onDeleteTurn?.({ localRow: m });
+                if (orphan && !deleteInFlight && onDeleteTurn && m.id) deleteThisTurn = () => onDeleteTurn(m.id);
+                else if (orphan && !deleteInFlight && onDeleteTurn && neverSent) deleteThisTurn = () => onDeleteTurn({ localRow: m });
                 return (
-                  <UserTurn
+                  <CoworkUserTurn
                     key={messageKey(m, i)}
+                    turnId={messageKey(m, i)}
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
@@ -2633,13 +2560,12 @@ export default function ChatView({
                     // Only the last turn can still be the one being worked on,
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
-                    time={formatTime(m.createdAt)}
                     // A row the server has seen is hidden until it has an id, not
                     // sent to 422; no turn offers a delete while one is out.
                     onDelete={deleteThisTurn}
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
-                    onEdit={(text) => {
+                    onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
                       // nonce so identical text re-fills the input
@@ -2805,7 +2731,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={resend ? () => onSend?.(resend.text, resend.attachments) : undefined}
+                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -2895,8 +2821,8 @@ export default function ChatView({
                       kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2946,8 +2872,8 @@ export default function ChatView({
                       body={PLATFORM_UI
                         ? "MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
                         : "The provider couldn't authorize this request. Try again in a moment."}
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2971,8 +2897,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The agent didn't start"
                       body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2995,8 +2921,8 @@ export default function ChatView({
                         ? 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings.'
                         : 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.'}
                       buttons={[
-                        ...(resend
-                          ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                        ...(resend && sendAgain
+                          ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                           : []),
                         ...(PLATFORM_UI ? [{ label: 'Open Settings', onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
@@ -3019,8 +2945,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The answer was cut off"
                       body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
-                      buttons={resend
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -3044,8 +2970,8 @@ export default function ChatView({
                       kind="Agent"
                       title="The response stalled"
                       body="Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again."
-                      buttons={resend && !turnMayBeRunning
-                        ? [{ label: 'Try again', onClick: () => onSend?.(resend.text, resend.attachments), primary: true }]
+                      buttons={resend && !turnMayBeRunning && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -3080,7 +3006,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlResend ? () => onSend?.(rlResend.text, rlResend.attachments) : undefined}
+                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments) : undefined}
                     />
                   );
                 }
@@ -3101,7 +3027,7 @@ export default function ChatView({
                       title="The server is busy"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={busyResend ? () => onSend?.(busyResend.text, busyResend.attachments) : undefined}
+                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments) : undefined}
                     />
                   );
                 }
@@ -3122,8 +3048,8 @@ export default function ChatView({
                       title="The server isn't answering"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={unavailableResend
-                        ? () => onSend?.(unavailableResend.text, unavailableResend.attachments)
+                      onRetry={unavailableResend && sendAgain
+                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments)
                         : undefined}
                     />
                   );
@@ -3214,8 +3140,10 @@ export default function ChatView({
                     conversationLive={false}
                     // Only the latest turn, with nothing in flight, can still
                     // take an answer to a question that timed out: once a newer
-                    // message is sent, the conversation has moved past it.
-                    reopenable={i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
+                    // message is sent, the conversation has moved past it. And
+                    // only where a message can be sent: a comparison pane whose
+                    // side takes no message right now gets no onSend.
+                    reopenable={!!onSend && i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
                     reply={visibleMessages[i + 1]?.role === 'user' && typeof visibleMessages[i + 1].content === 'string'
                       ? visibleMessages[i + 1].content
                       : null}
@@ -3337,7 +3265,7 @@ export default function ChatView({
               {deleteInFlight ? 'Deleting the selected exchange.' : ''}
             </div>
           </div>
-        </div>
+        </ChatScroller>
 
         {/* Floating composer — no gradient fade behind it. Earlier we
             had a 220px linear-gradient(transparent → var(--bg)) overlay
@@ -3345,7 +3273,7 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        {!pane && (<div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
@@ -3408,14 +3336,15 @@ export default function ChatView({
             codingModelDefault={codingModelDefault}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
           />
-        </div>
+        </div>)}
         </>
         )}
       </div>
 
+      {!pane && (<>
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
-      {isNarrow && (
+      {railFloats && (
         <div
           onClick={() => setRailNarrowOpen(false)}
           className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
@@ -3429,11 +3358,11 @@ export default function ChatView({
         // Narrow: fixed overlay that slides in from the right.
         // Wide: inline grid column.
         className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
-          isNarrow
+          railFloats
             ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
             : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
         }`}
-        style={isNarrow ? {
+        style={railFloats ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
         } : {
           visibility: effectiveRailOpen ? 'visible' : 'hidden',
@@ -3450,7 +3379,7 @@ export default function ChatView({
             <button
               type="button"
               className="chat-rail-close"
-              onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
+              onClick={() => railFloats ? setRailNarrowOpen(false) : setRailOpen(false)}
               aria-label="Collapse panel"
               // kept inline: same all:unset cascade-priority reason as ArtifactCard's
               // buttons — every property here stays co-located with the reset, and
@@ -3494,6 +3423,7 @@ export default function ChatView({
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />
       </aside>
+      </>)}
 
       {/* keyframes for the streaming cursor */}
       <style>{`@keyframes cb { 0%,49%{opacity:1} 50%,100%{opacity:0} }`}</style>

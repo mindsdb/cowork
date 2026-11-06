@@ -11,10 +11,9 @@ export function ProgressBox({
   conversationId = '',
   onActivateStep,
   defaultOpen = true,
-  maxBodyHeight = 300,
 }) {
   return (
-    <RailCard title="Progress" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
+    <RailCard title="Progress" defaultOpen={defaultOpen}>
       <PhaseProgress
         steps={steps}
         streamStatus={streamStatus || (steps.length ? 'done' : null)}

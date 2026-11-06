@@ -1,6 +1,6 @@
 .code-page {
   --code-measure: 720px;
-  --code-gutter: 28px;
+  --code-gutter: 40px;
   display: flex;
   flex: 1;
   min-width: 0;
@@ -81,7 +81,12 @@
 .code-sidebar-session-row:hover .code-sidebar-session__aside,
 .code-sidebar-session-row:focus-within .code-sidebar-session__aside,
 .code-sidebar-session-row:has(.code-sidebar-session__menu[data-popup-open]) .code-sidebar-session__aside { opacity: 0; }
-.code-sidebar-session__title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+.code-sidebar-session__title { min-width: 0; flex: 1; font-size: 13px; font-weight: 500; }
+/* The title fades out at its end like Cowork's rows (.recent-row__title).
+   Without an aside holding the row's end, the menu button floats over the
+   title, so while it shows the fade finishes clear of it. */
+.code-sidebar-session-row:not(.has-aside):is(:hover, :focus-within) .code-sidebar-session__title,
+.code-sidebar-session-row:not(.has-aside):has(.code-sidebar-session__menu[data-popup-open]) .code-sidebar-session__title { --title-clip: 20px; }
 .code-sidebar-session__aside { flex: none; max-width: 45%; display: inline-flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; color: var(--ink-4); font-size: 11px; font-variant-numeric: tabular-nums; transition: opacity var(--dur-hover) ease; }
 .code-sidebar-session__aside.is-warning { color: var(--warning); }
 .code-sidebar-session__aside.is-danger { color: var(--danger); }
@@ -251,30 +256,22 @@
    terminal rather than over it. */
 .code-conversation__stage { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
 .code-notices { z-index: 1; display: grid; flex: none; gap: 7px; width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); margin: 2px auto 0; }
-/* Fade under the floating dock with a mask, so it holds over any backdrop.
-   The mask clips the element's own scrollbar too, so a second opaque layer
-   keeps the scrollbar strip fully visible. 16px clears the native thin
-   scrollbar; the 28px content gutter keeps text out of it. */
-.code-timeline {
-  --code-fade-end: calc(100% - var(--code-dock-height, 0px) + 8px);
-  flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--code-fade-end) - 48px), transparent var(--code-fade-end)), linear-gradient(#000, #000);
-          mask-image: linear-gradient(to bottom, #000 calc(var(--code-fade-end) - 48px), transparent var(--code-fade-end)), linear-gradient(#000, #000);
-  -webkit-mask-size: 100% 100%, 16px 100%;
-          mask-size: 100% 100%, 16px 100%;
-  -webkit-mask-position: 0 0, 100% 0;
-          mask-position: 0 0, 100% 0;
-  -webkit-mask-repeat: no-repeat;
-          mask-repeat: no-repeat;
-}
-.code-timeline__inner { width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); min-height: 100%; margin: 0 auto; padding: 24px 0 calc(var(--code-dock-height, 0px) + 30px); }
+/* The fade under the floating dock is the shared ChatScroller's (components/chat). */
+/* Each timeline row brings its own ~14px bottom margin, so the gap above the
+   composer needs less padding to come out as chat mode's 44px. */
+.code-timeline__inner { --chat-end-gap: 30px; min-height: 100%; padding-top: 24px; }
 .code-timeline__earlier { display: flex; margin: 0 auto 18px; }
 .code-message-label { margin-bottom: 6px; color: var(--ink-4); font-size: 10.5px; font-weight: 600; }
-.code-user-message { width: fit-content; max-width: 78%; margin: 10px 0 22px auto; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--surface-raised); color: var(--ink); white-space: pre-wrap; font-size: 14px; line-height: 1.5; letter-spacing: -.012em; }
+/* The bubble itself is the shared UserTurn (components/chat); only its rhythm
+   in the timeline is Code Mode's. The action row under the bubble supplies the space below it. */
+.code-user-turn { margin: 10px 0 0; }
 .code-agent-message { margin: 14px 0; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
 .code-agent-message .code-message-label { color: var(--accent); }
 .code-agent-message p:first-child { margin-top: 0; }
 .code-agent-message p:last-child { margin-bottom: 0; }
+/* Chat mode's answer spaces its action row 14px below the text (a 10px gap
+   plus the row's own 4px); match it. */
+.code-agent-message > .turn-actions { margin-top: 14px; }
 /* Answer ink and heading rhythm mirror chat mode's .answer-turn rules. */
 .code-agent-message .markdown-content p,
 .code-agent-message .markdown-content li { color: color-mix(in srgb, var(--ink) 70%, var(--ink-2)); }
@@ -335,7 +332,12 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-line-counts .is-deletion { color: var(--danger); }
 .code-worked { margin: 14px 0; }
 .code-worked > summary { padding: 0 0 10px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--line); color: var(--ink-4); font-size: 14px; cursor: pointer; list-style: none; }
-.code-worked > summary:hover { color: var(--ink-3); }
+/* The divider spans the column, but only the label and chevron respond to
+   the pointer: hovering or clicking the empty run beside them does nothing. */
+.code-worked > summary { pointer-events: none; }
+.code-worked > summary > * { pointer-events: auto; }
+.code-worked > summary > .code-activity-group__chevron { margin-left: -6px; padding-left: 6px; }
+.code-worked > summary:hover { color: var(--ink); }
 .code-worked > summary::-webkit-details-marker { display: none; }
 .code-worked[open] > summary .code-activity-group__chevron { transform: rotate(180deg); }
 .code-worked__body { padding-top: 1px; }
@@ -385,11 +387,9 @@ button.code-step__head:focus-visible { outline: 2px solid var(--accent); outline
 .code-prompt-queue__item small { color: var(--ink-4); white-space: nowrap; font-size: 9.5px; }
 .code-prompt-queue__actions { display: flex; align-items: center; gap: 1px; }
 .code-prompt-queue__actions .btn:not(.icon) { gap: 4px; }
-.code-composer__shell { position: relative; width: min(var(--code-measure), 100%); margin: 0 auto; padding: 8px 10px 8px 13px; border: 1px solid var(--border-01); border-radius: var(--r-xl); background: var(--surface-0); box-shadow: var(--sh-1); transition: border-color var(--dur-hover), box-shadow var(--dur-hover); }
-/* Ring tracks the textarea only: :focus-within flashed when clicking a picker trigger before its menu took focus. */
-.code-composer__shell:has(:where(textarea:focus)) { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent), var(--sh-1); }
-.code-start-composer.is-dragging-files,
-.code-composer__shell.is-dragging-files { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--sh-1); }
+/* Border, shadow and focus ring come from the shared ComposerFrame (components/chat). */
+.code-composer__shell { width: min(var(--code-measure), 100%); margin: 0 auto; padding: 8px 10px 8px 13px; }
+.code-start-composer.is-dragging-files { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--sh-1); }
 .code-drop-hint { position: absolute; inset: 5px; z-index: 4; display: grid; place-items: center; border: 1px dashed var(--accent); border-radius: calc(var(--r-xl) - 4px); background: color-mix(in srgb, var(--surface-0) 92%, var(--accent)); color: var(--ink); font-size: 12px; font-weight: 650; pointer-events: none; }
 .code-composer textarea { min-height: 52px; max-height: 180px; padding: 7px 4px; resize: none; border: 0; background: transparent; box-shadow: none; font-size: 14.5px; line-height: 1.5; }
 .code-composer textarea:focus { border: 0; box-shadow: none; }
@@ -825,7 +825,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-review { top: 0; right: 0; bottom: 0; width: min(94vw, 540px); border-radius: 0; }
   .code-taskbar__diff i,
   .code-taskbar__diff b { display: none; }
-  .code-timeline__inner { width: calc(100% - 28px); padding-top: 18px; }
+  .code-timeline__inner { padding-top: 18px; }
   .code-composer-dock { padding-right: 10px; padding-left: 10px; }
 }
 
@@ -844,7 +844,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-agent-picker,
   .code-model-picker,
   .code-effort-picker { flex: 1 1 calc(50% - 3px); max-width: none; margin-left: 0; }
-  .code-user-message { max-width: 90%; }
+  .code-user-turn .user-turn-inner { max-width: 90%; }
   .code-handoff-primary { align-items: stretch; flex-direction: column; }
   .code-handoff-primary .btn { align-self: flex-end; }
   .code-project-choices,

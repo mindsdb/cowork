@@ -13,7 +13,6 @@ export function ContextBox({
   /** Bumps when the task transcript changes (turn finish, send, etc.) so attachments and memory stay in sync. */
   refreshKey,
   defaultOpen = true,
-  maxBodyHeight = 360,
   slim = true,
   onAddGoogleDriveFiles,
   onAddSharePointFiles,
@@ -21,7 +20,7 @@ export function ContextBox({
   onRemoveGoogleDriveFile,
 }) {
   return (
-    <RailCard title="Context" defaultOpen={defaultOpen} slim={slim} maxBodyHeight={maxBodyHeight}>
+    <RailCard title="Context" defaultOpen={defaultOpen} slim={slim}>
       <ContextCard
         projects={projects}
         project={project}

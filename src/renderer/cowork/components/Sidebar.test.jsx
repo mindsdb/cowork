@@ -655,3 +655,41 @@ describe('Sidebar — running dot survives a reload (ENG-3939)', () => {
     expect(screen.queryByLabelText('Active')).toBeNull();
   });
 });
+
+describe('Sidebar — task row titles', () => {
+  const task = { id: 't1', title: 'A task title long enough to reach the end of the row', updatedAt: new Date().toISOString(), messages: [] };
+  const titleOf = () => screen.getByRole('button', { name: task.title }).querySelector('.recent-row__title');
+
+  it('fades the title out early only while the menu button floats over its end', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" />);
+    expect(titleOf()).not.toHaveClass('is-clipped');
+    fireEvent.mouseEnter(screen.getByRole('button', { name: task.title }).parentElement);
+    expect(titleOf()).toHaveClass('is-clipped');
+  });
+
+  it('leaves the title alone when a timestamp already holds the row end', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} tasks={[task]} tasksStatus="ready" showCounters />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: task.title }).parentElement);
+    expect(titleOf()).not.toHaveClass('is-clipped');
+  });
+});
+
+// App decides whether the build offers Compare Models (compareAvailable); the
+// entry follows it.
+describe('Sidebar — Compare models entry', () => {
+  it.each([[true], [false]])('is shown when App offers it: %s', (shown) => {
+    render(<Sidebar {...baseProps} showCompare={shown} />);
+    expect(!!screen.queryByRole('button', { name: 'Compare Models' })).toBe(shown);
+  });
+});
+
+describe('Sidebar — Compare models', () => {
+  it('sits in the Agent group and opens the compare route', () => {
+    const onNavigate = vi.fn();
+    render(<Sidebar {...baseProps} showCompare onNavigate={onNavigate} />);
+    screen.getByRole('button', { name: 'Compare Models' }).click();
+    expect(onNavigate).toHaveBeenCalledWith('compare');
+  });
+});

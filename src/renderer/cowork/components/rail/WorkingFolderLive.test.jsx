@@ -556,7 +556,28 @@ describe('artifacts rail grouping by conversation', () => {
     const others = Array.from({ length: 12 }, (_, i) => art(`Other ${i}`, 'conv-2', i + 1));
     await renderList([...others, art('Mine Old', CHAT, 99)]);
     expect(titles()[0]).toBe('Mine Old');
+    fireEvent.click(screen.getByRole('button', { name: '+ 7 more' }));
     expect(titles()).toHaveLength(13);
+  });
+
+  it('shortens a long list behind "+ N more" and collapses it again', async () => {
+    const others = Array.from({ length: 9 }, (_, i) => art(`Other ${i}`, 'conv-2', i + 1));
+    await renderList([art('Mine A', CHAT, 99), ...others]);
+    expect(titles()).toHaveLength(6);
+    expect(titles()[0]).toBe('Mine A');
+
+    fireEvent.click(screen.getByRole('button', { name: '+ 4 more' }));
+    expect(titles()).toHaveLength(10);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(titles()).toHaveLength(6);
+  });
+
+  it('never hides an artifact of this chat behind "+ N more"', async () => {
+    const mine = Array.from({ length: 8 }, (_, i) => art(`Mine ${i}`, CHAT, i + 1));
+    await renderList([...mine, art('Other A', 'conv-2', 99)]);
+    expect(titles()).toHaveLength(8);
+    expect(screen.getByRole('button', { name: '+ 1 more' })).toBeInTheDocument();
   });
 
   it('regroups on a chat switch within the project without refetching', async () => {
