@@ -1,4 +1,5 @@
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { browserStep, withBrowserStep } from './browserSession';
 import { parseFigureSources } from './figureSources';
 
 // Anton /v1/responses → ThinkingStep adapter.
@@ -23,6 +24,9 @@ import { parseFigureSources } from './figureSources';
 //                                 the user, or the turn ends. `.done` ends
 //                                 it, `.cleared` takes it off screen. Never
 //                                 persisted, so only a live turn has one.
+//   response.browser_session_opened — the agent opened the person's
+//                                 browser; carries `session_id` only → one
+//                                 Browser step per session
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
 //   response.figure_sources     — where each figure in the final answer came
@@ -683,6 +687,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ...state, bodyText: text + state.bodyText, bodyIsAnswer: false,
       bodyTextMap: { sourceLength: sourceLength + text.length, ranges: restoredRanges },
     });
+  }
+
+  /* The agent opened the person's shared browser: a Browser step that names
+     the session, which the chat's pane can show and a click reopens. */
+  if (type === 'response.browser_session_opened') {
+    const step = browserStep(event, eventTs);
+    if (!step) return state;
+    return { ...state, steps: withBrowserStep(state.steps, step) };
   }
 
   // Inline artifact card. The harness emits one of these at turn end for

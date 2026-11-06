@@ -6,6 +6,9 @@ interface AntonTronAPI {
   codeModeAvailable?: boolean;
   /** True on shells whose main process guards the document preview frame. */
   supportsDocumentPreview?: boolean;
+  /** True on shells whose main process hosts the in-app browser. */
+  supportsInAppBrowser?: boolean;
+  browser?: import('../shared/browser-contract').InAppBrowserBridge;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;
@@ -124,6 +127,8 @@ interface AntonTronAPI {
   logout: () => Promise<void>;
   getKeychainPref: () => Promise<{ enabled: boolean }>;
   setKeychainPref: (enabled: boolean) => Promise<{ ok: boolean }>;
+  getUsageEventsPref?: () => Promise<{ enabled: boolean }>;
+  setUsageEventsPref?: (enabled: boolean) => Promise<{ ok: boolean }>;
   getPathForFile: (file: File) => string;
 }
 
