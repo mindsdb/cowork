@@ -111,4 +111,15 @@ describe('useOrgBranding', () => {
     await act(async () => { resolveFirst(answer('Stale')); });
     expect(result.current.branding.appearance.greeting).toBe('Saved');
   });
+
+  it("replaces a cached sidebar title with the fresh one after a company rename", async () => {
+    cacheOrgBranding({ ...answer('Hi'), sidebarTitle: 'Acme', orgName: 'Acme' });
+    fetchOrgBranding.mockResolvedValue({ ...answer('Hi'), sidebarTitle: 'Acme Corp', orgName: 'Acme Corp' });
+    const { result } = renderHook(() => useOrgBranding({ enabled: true, settingsOpen: false }));
+    expect(result.current.branding.sidebarTitle).toBe('Acme');
+    await waitFor(() => expect(result.current.branding.sidebarTitle).toBe('Acme Corp'));
+    // The cache now holds the fresh answer for the next first paint.
+    const { result: next } = renderHook(() => useOrgBranding({ enabled: true, settingsOpen: false }));
+    expect(next.current.branding.sidebarTitle).toBe('Acme Corp');
+  });
 });

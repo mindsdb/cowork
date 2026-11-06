@@ -28,8 +28,9 @@ import { STOCK_WORDMARK } from '../../../../shared/product-name';
 import {
   GREETING_MAX_LENGTH,
   GUIDELINES_MAX_LENGTH,
-  SIDEBAR_TITLE_MAX_LENGTH,
+  CUSTOM_SIDEBAR_TITLE_MAX_LENGTH,
   appearancePayload,
+  companySidebarTitle,
 } from '../../../lib/orgBranding';
 
 const COLOR_SWATCH_INPUT =
@@ -51,7 +52,9 @@ export function appearanceToSave(draft) {
   const custom = draft.skin === 'custom';
   return appearancePayload({
     ...draft,
-    sidebarTitle: draft.sidebarTitle?.trim() || null,
+    // null = "Use company name": the server follows the org's current name,
+    // so a rename in the console updates the title. A custom one stays fixed.
+    sidebarTitle: draft.sidebarTitle === null ? null : (draft.sidebarTitle.trim() || null),
     accent: custom ? (draft.accent ?? DEFAULT_CUSTOM_THEME.accent) : null,
     background: custom ? draft.background : null,
     font: custom ? draft.font : null,
@@ -59,12 +62,6 @@ export function appearanceToSave(draft) {
     greeting: draft.greeting?.trim() || null,
     guidelines: draft.guidelines?.trim() || null,
   });
-}
-
-/** The default sidebar title, as cowork-server picks it, for the placeholder. */
-function defaultSidebarTitle(orgName) {
-  const name = orgName?.trim();
-  return name && Array.from(name).length <= 24 ? name : productName(STOCK_WORDMARK);
 }
 
 export default function OrgBrandingFields({ branding, onSaved }) {
@@ -114,18 +111,36 @@ export default function OrgBrandingFields({ branding, onSaved }) {
   const locked = !canEdit;
   const custom = draft.skin === 'custom';
   const sub = (text) => (canEdit ? text : `${text} ${ADMIN_ONLY}`);
+  const companyTitle = companySidebarTitle(branding.orgName, productName(STOCK_WORDMARK));
+  const useCompanyName = draft.sidebarTitle === null;
+  const shownTitle = useCompanyName ? companyTitle : (draft.sidebarTitle.trim() || companyTitle);
 
   return (
     <>
-      <Section title="Sidebar title" subtitle={sub('Shown at the top of the sidebar for everyone in your organization.')}>
-        <Input
-          value={draft.sidebarTitle ?? ''}
-          onChange={(v) => edit({ sidebarTitle: v })}
-          placeholder={defaultSidebarTitle(branding.orgName)}
-          maxLength={SIDEBAR_TITLE_MAX_LENGTH}
-          disabled={locked}
-          aria-label="Organization sidebar title"
-        />
+      <Section title="Sidebar title" subtitle={sub('Shown at the top of the sidebar for everyone in your organization. The company name follows renames in the console; a custom title stays as you type it.')}>
+        <div className="flex flex-col gap-2">
+          <label className="inline-flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
+            <Checkbox
+              checked={useCompanyName}
+              onCheckedChange={(v) => edit({ sidebarTitle: v ? null : (branding.appearance.sidebarTitle ?? companyTitle) })}
+              disabled={locked}
+            />
+            Use company name
+          </label>
+          {!useCompanyName && (
+            <Input
+              value={draft.sidebarTitle}
+              onChange={(v) => edit({ sidebarTitle: v })}
+              placeholder={companyTitle}
+              maxLength={CUSTOM_SIDEBAR_TITLE_MAX_LENGTH}
+              disabled={locked}
+              aria-label="Custom sidebar title"
+            />
+          )}
+          <div className="text-[12px] text-ink-3" data-testid="sidebar-title-preview">
+            Sidebar shows: <span className="font-semibold text-ink-2">{shownTitle}</span>
+          </div>
+        </div>
       </Section>
 
       <Section

@@ -74,6 +74,10 @@ export const STOCK_GREETING = "Let's knock something off your list";
 
 export const GREETING_MAX_LENGTH = 200;
 export const SIDEBAR_TITLE_MAX_LENGTH = 64;
+/** The longest custom sidebar title an admin can type. */
+export const CUSTOM_SIDEBAR_TITLE_MAX_LENGTH = 40;
+/** A company name at most this long is the default sidebar title (cowork-server's rule). */
+export const COMPANY_NAME_TITLE_MAX_LENGTH = 24;
 export const ORG_NAME_MAX_LENGTH = 256;
 export const GUIDELINES_MAX_LENGTH = 8000;
 export const RADIUS_MIN = 0;
@@ -192,6 +196,16 @@ export function parseOrgBranding(raw: unknown, authHost: string | null = AUTH_IM
     appearance: parseOrgAppearance(value.appearance),
     canEdit: value.canEdit === true,
   };
+}
+
+/**
+ * The sidebar title cowork-server picks when the admin set none: the company
+ * name when it is short, else the product name. Used for the live preview of
+ * "Use company name"; the server's resolved `sidebarTitle` is what is shown.
+ */
+export function companySidebarTitle(orgName: string | null, fallback: string): string {
+  const name = orgName?.trim();
+  return name && Array.from(name).length <= COMPANY_NAME_TITLE_MAX_LENGTH ? name : fallback;
 }
 
 /** The PUT body (snake_case) for an appearance the admin edited. */

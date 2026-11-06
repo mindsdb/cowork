@@ -15,8 +15,11 @@ beforeEach(() => {
 
 describe('parseSettingsDeepLink', () => {
   it.each([
-    ['?settings=appearance&section=branding', { page: 'appearance', section: 'branding' }],
+    ['?settings=appearance&section=branding', { page: 'branding', section: null }],
+    ['?settings=branding', { page: 'branding', section: null }],
+    ['?settings=branding&section=display', { page: 'branding', section: null }],
     ['?settings=appearance&section=display', { page: 'appearance', section: 'display' }],
+    ['?settings=appearance&section=style', { page: 'appearance', section: 'style' }],
     ['?settings=appearance', { page: 'appearance', section: null }],
     ['?settings=appearance&section=elsewhere', { page: 'appearance', section: null }],
     ['?settings=backend&section=branding', null],
@@ -32,7 +35,8 @@ describe('captureSettingsDeepLink', () => {
     const replace = vi.spyOn(window.history, 'replaceState');
     captureSettingsDeepLink(loc('?settings=appearance&section=branding&keep=1', '/c/abc', '#x'));
     expect(replace).toHaveBeenCalledWith(window.history.state, '', '/c/abc?keep=1#x');
-    expect(takeSettingsDeepLink()).toEqual({ page: 'appearance', section: 'branding' });
+    // The console's older link opens Branding.
+    expect(takeSettingsDeepLink()).toEqual({ page: 'branding', section: null });
   });
 
   it('strips an unknown link without stashing it', () => {

@@ -63,7 +63,10 @@ const SET_BY_ORG = 'Set by your organization.';
 const NO_ORG_LOCKS = { style: false, theme: false, greeting: false, logo: false, favicon: false };
 
 // Where a deep link (?settings=appearance&section=…) lands on Appearance.
-export const APPEARANCE_ANCHORS = { branding: 'settings-appearance-branding', display: 'settings-appearance-display' };
+export const APPEARANCE_ANCHORS = {
+  style: 'settings-appearance-style',
+  display: 'settings-appearance-display',
+};
 
 const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
 
@@ -794,11 +797,16 @@ export default function SettingsView({
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
+  const canEditBranding = Boolean(orgBranding?.enabled && orgBranding?.canEdit);
   const visibleNav = navItemsForHost(
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
+    { branding: canEditBranding },
   );
+  // Branding is for org admins; anyone else sent there (a deep link, a
+  // stale section) lands on Appearance, where their own look is.
+  const shownSection = section === 'branding' && !canEditBranding ? 'appearance' : section;
   const orgLocks = look?.lockedByOrg ?? NO_ORG_LOCKS;
   const orgMode = useOrgMode();
   const providerTestsAvailable = providerTestsEnabled(host.isWeb);
@@ -2176,26 +2184,28 @@ export default function SettingsView({
 
   const renderComputersSection = () => <ComputersSettingsSection />;
 
-  // Settings → Appearance (ENG-4020): one page, two parts.
-  //   Branding — in hosted MindsHub with an org, the org's branding (edited by
-  //     its admins, read-only for everyone else), then the member's own style
-  //     under it; elsewhere, the person's own style and, outside hosted
-  //     MindsHub, their sidebar title, color, logo and tab icon.
+  // Settings → Appearance (ENG-4020): Your style, then Display.
+  //   Your style — the person's own style, theme and greeting, over the org's
+  //     look. In a hosted org it shows only when they may choose (member
+  //     choice on, or they are an admin). Outside hosted MindsHub it also
+  //     holds their sidebar title, color, logo and tab icon; hosted MindsHub
+  //     has none of those, since the org's are the ones shown.
   //   Display — personal display preferences, for everyone.
-  // Each setting appears once. Hosted MindsHub has no per-person sidebar
-  // title, logo or tab icon: the org's are the ones shown.
+  // The org's own branding is its own page, Settings → Branding, for admins.
   //
-  // No Save footer: every personal control auto-saves itself (see
-  // autoSaveSetting/AutoSaveTag); the org's branding has its own Save button
-  // because it changes the look for everyone. `autoSaved` surfaces a quiet
-  // "saves automatically" note on mobile.
+  // No Save footer: every control here auto-saves itself (see
+  // autoSaveSetting/AutoSaveTag). `autoSaved` surfaces a quiet "saves
+  // automatically" note on mobile.
   const org = orgBranding?.enabled ? orgBranding : null;
+  // In a hosted org, only someone who may choose sees their own style.
+  const showYourStyle = !org || org.appearance.membersCanChoose || org.canEdit;
   // A deep link's part of Appearance, scrolled to once the page is showing.
-  const appearanceShowing = section === 'appearance';
+  const appearanceShowing = shownSection === 'appearance';
   useEffect(() => {
     const id = appearanceAnchor && APPEARANCE_ANCHORS[appearanceAnchor];
     if (!id || !appearanceShowing) return;
-    const target = document.getElementById(id);
+    // Your style can be hidden (member choice off); the link then lands on the page.
+    const target = document.getElementById(id) ?? document.getElementById(APPEARANCE_ANCHORS.display);
     if (target) {
       target.scrollIntoView?.({ block: 'start' });
       onAppearanceAnchorShown?.();
@@ -2203,15 +2213,22 @@ export default function SettingsView({
   }, [appearanceAnchor, appearanceShowing, onAppearanceAnchorShown]);
   const renderAppearanceSection = () => (
     <SettingsSectionPanel autoSaved>
-      <div id={APPEARANCE_ANCHORS.branding} className="scroll-mt-2">
-        <SettingsGroup title="Branding">
-          {org && <OrgBrandingFields branding={org} onSaved={onOrgBrandingSaved} />}
+      {showYourStyle && (
+      <div id={APPEARANCE_ANCHORS.style} className="scroll-mt-2">
+        <SettingsGroup
+          title={org ? 'Your style' : 'Style'}
+          description={org
+            ? (org.appearance.membersCanChoose
+              ? 'These override your organization\'s look, just for you.'
+              : 'Member choice is off in Branding, so everyone, you included, sees the organization\'s look.')
+            : null}
+        >
         {SKIN_LOCKED ? (
-          <Section title={org ? 'Your style' : 'Style'} subtitle="Set by this deployment. Light and dark stay your choice.">
+          <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
           </Section>
         ) : (
-          <Section title={org ? 'Your style' : 'Style'} subtitle={orgLocks.style ? SET_BY_ORG : (org ? 'Your own look, over the organization style. Normal, 8-Bit, or design your own with Custom.' : 'Normal, 8-Bit, or design your own with Custom. Combines with light and dark.')}>
+          <Section title="Style" subtitle={orgLocks.style ? SET_BY_ORG : 'Normal, 8-Bit, or design your own with Custom. Combines with light and dark.'}>
             <ToggleGroup
               value={normalizeSkin(skin)}
               onValueChange={(v) => onSkinChange?.(v)}
@@ -2228,7 +2245,7 @@ export default function SettingsView({
             />
           </Section>
         )}
-        <Section title={org ? 'Your theme' : 'Theme'} subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
+        <Section title="Theme" subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
           <ToggleGroup
             value={theme || 'dark'}
             onValueChange={(v) => onThemeChange?.(v)}
@@ -2341,7 +2358,7 @@ export default function SettingsView({
             </Section>
           </>
         )}
-        <Section title={org ? 'Your greeting' : 'Greeting'} subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
+        <Section title="Greeting" subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
@@ -2355,6 +2372,7 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
+          {/* Hosted MindsHub has no per-person sidebar title, logo or tab icon. */}
           {!hostedMindsHub && (
             <>
         <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
@@ -2461,8 +2479,9 @@ export default function SettingsView({
           )}
         </SettingsGroup>
       </div>
+      )}
       <div id={APPEARANCE_ANCHORS.display} className="scroll-mt-2">
-        <SettingsGroup title="Display">
+        <SettingsGroup title="Display" description="Personal display preferences. Only you see them.">
         {/* Gated on its own key. A server older than this setting does not
             serve the key and rejects a write to it with a 400, and it sends
             no figure sources to mark either. The renderer ships OTA and
@@ -2528,6 +2547,18 @@ export default function SettingsView({
     </SettingsSectionPanel>
   );
 
+  // Settings → Branding (ENG-4020): the org's look, for org admins only.
+  const renderBrandingSection = () => (canEditBranding ? (
+    <SettingsSectionPanel>
+      <SettingsGroup
+        title="Branding"
+        description="Your organization's look, for everyone in it. Members see it the next time they open the app or Settings."
+      >
+        <OrgBrandingFields branding={orgBranding} onSaved={onOrgBrandingSaved} />
+      </SettingsGroup>
+    </SettingsSectionPanel>
+  ) : null);
+
   const renderChannelsSection = () => (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <ChannelsView />
@@ -2592,13 +2623,14 @@ export default function SettingsView({
       codingAgent: renderCodingAgentSection,
       computers: renderComputersSection,
       appearance: renderAppearanceSection,
+      branding: renderBrandingSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
       usage: renderUsageSection,
       account: renderAccountSection,
     };
-    const activeItem = visibleNav.find((i) => i.id === section) || null;
+    const activeItem = visibleNav.find((i) => i.id === shownSection) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2619,7 +2651,7 @@ export default function SettingsView({
         <div className="settings-mobile__body scroll-clean">
           {inDetail ? (
             <div className="settings-detail">
-              {renderers[section]?.()}
+              {renderers[shownSection]?.()}
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
@@ -2669,8 +2701,8 @@ export default function SettingsView({
   // sets the section directly, so a deep link (or a stale persisted section)
   // could still render one this host doesn't offer. Resolve through the visible
   // set and fall back to its first entry (Agent).
-  const effectiveSection = visibleNav.some((i) => i.id === section)
-    ? section
+  const effectiveSection = visibleNav.some((i) => i.id === shownSection)
+    ? shownSection
     : visibleNav[0]?.id;
 
   return (
@@ -2681,6 +2713,7 @@ export default function SettingsView({
       {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
       {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'branding' && renderBrandingSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}

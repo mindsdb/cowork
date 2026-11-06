@@ -1,8 +1,12 @@
 // A link that opens Cowork's Settings on a page, scrolled to one part of it
-// (ENG-4020). The console's help card links to the org's branding:
+// (ENG-4020):
 //
-//   /?settings=appearance&section=branding
-//   /?settings=appearance&section=display
+//   /?settings=branding                        the org's branding (admins;
+//                                              anyone else lands on Appearance)
+//   /?settings=appearance&section=style        your own style
+//   /?settings=appearance&section=display      display preferences
+//   /?settings=appearance&section=branding     same as ?settings=branding (the
+//                                              console's help card links here)
 //
 // Like consoleHandoff.js, it is captured before the Keycloak redirect (whose
 // redirectUri is the bare pathname, so the query would not survive login),
@@ -16,8 +20,15 @@ const PARAMS = ['settings', 'section'];
 const MAX_AGE_MS = 10 * 60 * 1000;
 
 export const SETTINGS_DEEP_LINKS = Object.freeze({
-  appearance: Object.freeze(['branding', 'display']),
+  appearance: Object.freeze(['style', 'display']),
+  branding: Object.freeze([]),
 });
+
+/** `appearance&section=branding` is the console's older name for Branding. */
+function normalize(page, part) {
+  if (page === 'appearance' && part === 'branding') return { page: 'branding', section: null };
+  return { page, section: SETTINGS_DEEP_LINKS[page].includes(part) ? part : null };
+}
 
 const sessionStore = () => {
   try { return window.sessionStorage; } catch { return null; }
@@ -29,8 +40,7 @@ export function parseSettingsDeepLink(search) {
   try { params = new URLSearchParams(search); } catch { return null; }
   const page = params.get('settings');
   if (!page || !Object.hasOwn(SETTINGS_DEEP_LINKS, page)) return null;
-  const part = params.get('section');
-  return { page, section: SETTINGS_DEEP_LINKS[page].includes(part) ? part : null };
+  return normalize(page, params.get('section'));
 }
 
 /** Stash a Settings link and strip it from the address bar. */
@@ -62,5 +72,5 @@ export function takeSettingsDeepLink(storage = sessionStore(), now = Date.now())
   if (!link || typeof link.at !== 'number' || now - link.at > MAX_AGE_MS) return null;
   const page = typeof link.page === 'string' && Object.hasOwn(SETTINGS_DEEP_LINKS, link.page) ? link.page : null;
   if (!page) return null;
-  return { page, section: SETTINGS_DEEP_LINKS[page].includes(link.section) ? link.section : null };
+  return normalize(page, link.section);
 }

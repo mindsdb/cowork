@@ -4,6 +4,7 @@ import {
   NO_ORG_BRANDING,
   STOCK_GREETING,
   appearancePayload,
+  companySidebarTitle,
   hasOrgBranding,
   orgStyle,
   parseOrgAppearance,
@@ -150,6 +151,16 @@ describe('parseOrgBranding', () => {
     expect(hasOrgBranding(org({}, { iconUrl: null, logoUrl: null }))).toBe(false);
     expect(hasOrgBranding(org())).toBe(true);
     expect(hasOrgBranding(org({ greeting: 'Hi' }, { iconUrl: null, logoUrl: null }))).toBe(true);
+  });
+});
+
+describe('companySidebarTitle', () => {
+  it('uses a company name up to 24 characters, else the fallback', () => {
+    expect(companySidebarTitle('Acme', 'MindsHub')).toBe('Acme');
+    expect(companySidebarTitle('A'.repeat(24), 'MindsHub')).toBe('A'.repeat(24));
+    expect(companySidebarTitle('A'.repeat(25), 'MindsHub')).toBe('MindsHub');
+    expect(companySidebarTitle(null, 'MindsHub')).toBe('MindsHub');
+    expect(companySidebarTitle('  ', 'MindsHub')).toBe('MindsHub');
   });
 });
 
