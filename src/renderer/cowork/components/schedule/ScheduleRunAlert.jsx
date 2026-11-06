@@ -3,7 +3,7 @@
 // that failed. Each says what is known about whether the run did anything,
 // and offers the run's output (Review run) before anything that runs again.
 //
-// Resume waits for the next scheduled time; Run now / Run again runs once,
+// Resume may catch up a pending run; Run now / Run again runs once,
 // now. Neither is offered while a run is still going.
 
 import { Alert, Button } from '../ui';
@@ -24,7 +24,7 @@ export function runAlert(task) {
         ? `Paused after ${task.consecutiveFailures} failed runs in a row`
         : 'Paused after repeated failed runs',
       reason,
-      note: 'Resume picks up at the next scheduled time. Run now runs it once, now.',
+      note: 'Resume turns the schedule back on and may catch up a pending run. Run now runs it once, now.',
     };
   }
   if (task.running || !lastRunFailed(task)) return null;

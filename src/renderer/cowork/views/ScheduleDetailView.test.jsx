@@ -222,7 +222,7 @@ describe('ScheduleDetailView — how the last run went', () => {
     };
     const { props, user } = setup({ task });
     const box = (await screen.findByText('Paused after 3 failed runs in a row')).closest('[role="alert"]');
-    expect(within(box).getByText(/Resume picks up at the next scheduled time/)).toBeInTheDocument();
+    expect(within(box).getByText(/Resume turns the schedule back on and may catch up a pending run/)).toBeInTheDocument();
     await user.click(within(box).getByRole('button', { name: 'Review run' }));
     expect(props.onOpenRunSession).toHaveBeenCalledWith('conv-9');
   });
