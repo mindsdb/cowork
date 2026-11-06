@@ -6,13 +6,14 @@ const fetchOrgBranding = vi.fn();
 vi.mock('../api', () => ({ fetchOrgBranding: (...args) => fetchOrgBranding(...args) }));
 
 let authListener = null;
-const desktopBranding = vi.fn();
+const brandImages = vi.fn();
 vi.mock('../../platform/host', () => ({
   onMindsHubAuthChanged: (cb) => { authListener = cb; return () => { authListener = null; }; },
-  mindshubOrgBranding: (...args) => desktopBranding(...args),
+  mindshubBrandImages: (...args) => brandImages(...args),
 }));
 
 import { useOrgBranding } from './useOrgBranding';
+import { parseOrgBranding } from '../../lib/orgBranding';
 import { cacheOrgBranding, __resetOrgBrandingCacheForTests } from '../lib/orgBrandingCache';
 import { notifyOrganizationChanged } from '../lib/organizationChanges';
 
@@ -30,7 +31,7 @@ beforeEach(() => {
   localStorage.clear();
   __resetOrgBrandingCacheForTests();
   fetchOrgBranding.mockReset();
-  desktopBranding.mockReset();
+  brandImages.mockReset();
   authListener = null;
 });
 
@@ -88,7 +89,7 @@ describe('useOrgBranding', () => {
       await act(async () => { authListener?.({ authenticated: true }); });
       expect(fetchOrgBranding).toHaveBeenCalledTimes(4);
       await act(async () => { authListener?.({ authenticated: false }); });
-      expect(fetchOrgBranding).toHaveBeenCalledTimes(4);
+      expect(fetchOrgBranding).toHaveBeenCalledTimes(5);
     } finally {
       vi.useRealTimers();
     }
@@ -128,40 +129,57 @@ describe('useOrgBranding', () => {
 
   describe('on desktop', () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgo=';
-    const raw = { orgId: 'org-acme', orgName: 'Acme', iconUrl: PNG, logoUrl: PNG, logoDarkUrl: null };
+    const remote = (kind) => `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/${kind}?v=1`;
+    const answerWithImages = { ...answer('Hi'), iconUrl: remote('icon'), logoUrl: remote('logo') };
 
-    it('reads the images through main, not the API, and caches nothing', async () => {
-      desktopBranding.mockResolvedValue(raw);
+    it('reads org-branding from the local server and swaps the image URLs for main\'s data URIs', async () => {
+      fetchOrgBranding.mockResolvedValue(answerWithImages);
+      brandImages.mockResolvedValue({ iconUrl: PNG, logoUrl: PNG, logoDarkUrl: null });
       const { result } = renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
       await waitFor(() => expect(result.current.branding?.logoUrl).toBe(PNG));
-      expect(result.current.branding).toMatchObject({ enabled: true, orgName: 'Acme', canEdit: false, iconUrl: PNG });
-      expect(result.current.branding.appearance.membersCanChoose).toBe(true);
-      expect(fetchOrgBranding).not.toHaveBeenCalled();
-      expect(Object.keys(localStorage).some((k) => k.startsWith('anton.orgBrandingCache'))).toBe(false);
+      expect(brandImages).toHaveBeenCalledWith({ iconUrl: remote('icon'), logoUrl: remote('logo'), logoDarkUrl: null });
+      expect(result.current.branding).toMatchObject({ enabled: true, iconUrl: PNG, canEdit: true });
+      expect(result.current.branding.appearance.greeting).toBe('Hi');
     });
 
-    it('reads again on sign-in, sign-out, org switch and Settings open, and clears on sign-out', async () => {
-      desktopBranding.mockResolvedValue(raw);
-      const { result, rerender } = renderHook(({ open }) => useOrgBranding({ enabled: false, desktop: true, settingsOpen: open }), {
-        initialProps: { open: false },
-      });
-      await waitFor(() => expect(result.current.branding).not.toBeNull());
-      expect(desktopBranding).toHaveBeenCalledTimes(1);
-      rerender({ open: true });
-      await waitFor(() => expect(desktopBranding).toHaveBeenCalledTimes(2));
-      await act(async () => { notifyOrganizationChanged('user-1'); });
-      expect(desktopBranding).toHaveBeenCalledTimes(3);
-      desktopBranding.mockResolvedValue(null);
-      await act(async () => { authListener?.({ authenticated: false }); });
-      expect(desktopBranding).toHaveBeenCalledTimes(4);
-      expect(result.current.branding).toBeNull();
-    });
-
-    it('ignores anything that is not a PNG, JPEG or WebP data URI', async () => {
-      desktopBranding.mockResolvedValue({ ...raw, iconUrl: 'https://images.globex.com/i.png', logoUrl: 'data:image/svg+xml;base64,PHN2Zz4=' });
+    it('caches the URLs, not the data URIs, and paints the cached look without images first', async () => {
+      cacheOrgBranding(parseOrgBranding(answerWithImages));
+      let resolve;
+      fetchOrgBranding.mockReturnValue(new Promise((r) => { resolve = r; }));
       const { result } = renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
+      expect(result.current.branding.appearance.greeting).toBe('Hi');
+      expect(result.current.branding.logoUrl).toBeNull();
+      brandImages.mockResolvedValue({ iconUrl: PNG, logoUrl: PNG, logoDarkUrl: null });
+      await act(async () => { resolve(answerWithImages); });
+      await waitFor(() => expect(result.current.branding.logoUrl).toBe(PNG));
+      const cached = JSON.parse(localStorage.getItem(Object.keys(localStorage).find((k) => k.startsWith('anton.orgBrandingCache'))));
+      expect(cached.branding.logoUrl).toBe(remote('logo'));
+    });
+
+    it('resets the app icon when there is no org branding (signed out, personal org)', async () => {
+      fetchOrgBranding.mockResolvedValue({ enabled: false });
+      const { result } = renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
+      await waitFor(() => expect(brandImages).toHaveBeenCalledWith(null));
+      expect(result.current.branding).toMatchObject({ enabled: false });
+    });
+
+    it('keeps only PNG, JPEG or WebP data URIs from main', async () => {
+      fetchOrgBranding.mockResolvedValue(answerWithImages);
+      brandImages.mockResolvedValue({ iconUrl: 'https://images.globex.com/i.png', logoUrl: 'data:image/svg+xml;base64,PHN2Zz4=' });
+      const { result } = renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
+      await waitFor(() => expect(brandImages).toHaveBeenCalled());
       await act(async () => {});
-      expect(result.current.branding).toBeNull();
+      expect(result.current.branding).toMatchObject({ enabled: true, iconUrl: null, logoUrl: null });
+    });
+
+    it("keeps the images it shows across an admin's save", async () => {
+      fetchOrgBranding.mockResolvedValue(answerWithImages);
+      brandImages.mockResolvedValue({ iconUrl: PNG, logoUrl: PNG, logoDarkUrl: null });
+      const { result } = renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
+      await waitFor(() => expect(result.current.branding?.logoUrl).toBe(PNG));
+      act(() => { result.current.apply({ ...answerWithImages, appearance: { greeting: 'Saved', membersCanChoose: true } }); });
+      expect(result.current.branding).toMatchObject({ logoUrl: PNG, iconUrl: PNG });
+      expect(result.current.branding.appearance.greeting).toBe('Saved');
     });
   });
 });

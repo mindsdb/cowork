@@ -6,6 +6,8 @@ import {
   appearancePayload,
   companySidebarTitle,
   sidebarTitleFor,
+  windowTitleFor,
+  withDesktopImages,
   hasOrgBranding,
   orgStyle,
   parseOrgAppearance,
@@ -186,6 +188,22 @@ describe('sidebar title modes', () => {
     expect(sidebarTitleFor(a, 'Acme', 'MindsHub')).toBe('Acme Desk');
     expect(sidebarTitleFor({ ...a, sidebarTitleMode: 'company' }, 'Acme', 'MindsHub')).toBe('Acme');
     expect(sidebarTitleFor({ ...a, sidebarTitleMode: 'none' }, 'Acme', 'MindsHub')).toBeNull();
+  });
+});
+
+describe('desktop helpers', () => {
+  it('names the window after the org title, else the stock name', () => {
+    expect(windowTitleFor({ navTitle: 'Acme', navTitleHidden: false, navTitleSource: 'org' }, 'MindsHub Cowork')).toBe('Acme');
+    expect(windowTitleFor({ navTitle: null, navTitleHidden: true, navTitleSource: 'org' }, 'MindsHub Cowork')).toBe('MindsHub Cowork');
+    expect(windowTitleFor({ navTitle: 'My space', navTitleHidden: false, navTitleSource: 'member' }, 'MindsHub Cowork')).toBe('MindsHub Cowork');
+    expect(windowTitleFor({ navTitle: null, navTitleHidden: false, navTitleSource: 'stock' }, 'MindsHub Cowork')).toBe('MindsHub Cowork');
+  });
+
+  it('swaps image URLs for PNG, JPEG or WebP data URIs only', () => {
+    const b = org();
+    const swapped = withDesktopImages(b, { iconUrl: 'data:image/png;base64,AA==', logoUrl: 'data:image/svg+xml;base64,AA==', logoDarkUrl: ICON });
+    expect(swapped).toMatchObject({ iconUrl: 'data:image/png;base64,AA==', logoUrl: null, logoDarkUrl: null });
+    expect(withDesktopImages(b, null)).toMatchObject({ iconUrl: null, logoUrl: null });
   });
 });
 

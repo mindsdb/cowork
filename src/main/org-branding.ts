@@ -1,21 +1,16 @@
-// Company branding on desktop (ENG-4020): when the signed-in MindsHub account
-// is in a company organization that has a logo or icon, the app shows them,
-// down to the dock/taskbar icon.
+// Company branding on desktop (ENG-4020): the org's logo and icon, down to
+// the dock/taskbar icon.
 //
-// The images live in auth. Their URLs come from
-// `GET /v1/organizations/current/branding/` with the user's MindsHub token
-// (the same credential and call path minds-auth.ts uses for /authenticate/),
-// and the images themselves are public. They are downloaded here, in main,
+// The renderer reads the org's branding from its local server's
+// GET /api/v1/org-branding, exactly as the web app reads the hosted one, and
+// hands the image URLs it got there to this module. Here they are downloaded
 // only from the configured auth host (shared/brand-image-url.ts), checked by
-// their bytes (PNG, JPEG or WebP, at most 1 MB), and cached on disk per org
-// keyed by URL, so an unchanged image (same `?v=` hash) is never fetched
-// twice. The renderer gets data: URIs, since its CSP loads no remote images.
+// their bytes (PNG, JPEG or WebP, at most 1 MB), and cached on disk keyed by
+// URL, so an unchanged image (same `?v=` hash) is never fetched twice. The
+// renderer gets data: URIs back, since its CSP loads no remote images, and the
+// icon becomes the app icon.
 //
-// The org's look (colors, sidebar title, member choice) is stored by the
-// hosted cowork-server, which the desktop does not call; see the PR notes.
-//
-// Everything falls back to the stock icon: signed out, a personal
-// organization, no icon, or any failure along the way. Read on demand only
+// No icon, no org, or any failure: the stock icon. Read on demand only
 // (launch, sign-in, org switch, Settings open), never on a timer.
 
 import * as crypto from 'crypto';
@@ -23,24 +18,26 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app, BrowserWindow, nativeImage, type NativeImage } from 'electron';
 import { trustedAuthImageUrl } from '../shared/brand-image-url';
-import { organizationLabel, type MindsOrgList } from '../shared/minds-orgs';
-import { MINDS_AUTH_HOST, MINDS_AUTH_SERVICE_URL } from './minds-urls';
+import { MINDS_AUTH_HOST } from './minds-urls';
 
-/** What the renderer gets: the active company org's images as data: URIs. */
-export interface DesktopOrgBranding {
-  orgId: string;
-  orgName: string | null;
+/** The org's image URLs, as the renderer got them from org-branding. */
+export interface BrandImageUrls {
+  iconUrl?: unknown;
+  logoUrl?: unknown;
+  logoDarkUrl?: unknown;
+}
+
+/** The same images as data: URIs, each null when unset or not loadable. */
+export interface BrandImages {
   iconUrl: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;
 }
 
-export interface OrgBrandingDeps {
-  freshAccessToken: () => Promise<string | null>;
-  listMindsOrgs: () => Promise<MindsOrgList>;
+export interface BrandImageDeps {
   /** The stock window/dock icon for this build channel. */
   stockIconPath: string;
-  /** Where per-org images are cached on disk. */
+  /** Where images are cached on disk. */
   cacheRoot: string;
   fetchImpl?: typeof fetch;
 }
@@ -70,14 +67,14 @@ export function sniffImageType(bytes: Uint8Array): ImageType | null {
 /** A trusted image's bytes, from the disk cache or downloaded into it; null on any failure. */
 export async function loadBrandImage(
   value: unknown,
-  orgId: string,
   cacheRoot: string,
   fetchImpl: typeof fetch = fetch,
   authHost: string | null = AUTH_HOST,
 ): Promise<{ bytes: Buffer; type: ImageType } | null> {
   const url = trustedAuthImageUrl(value, authHost);
   if (!url) return null;
-  const dir = path.join(cacheRoot, crypto.createHash('sha256').update(orgId).digest('hex').slice(0, 32));
+  // The URL names the org and, with `?v=`, the image's content.
+  const dir = cacheRoot;
   const file = path.join(dir, `${crypto.createHash('sha256').update(url).digest('hex').slice(0, 32)}.img`);
   try {
     const cached = fs.readFileSync(file);
@@ -117,65 +114,33 @@ export function applyAppIcon(image: NativeImage | null, stockIconPath: string): 
   }
 }
 
-async function fetchBranding(token: string, fetchImpl: typeof fetch): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetchImpl(`${MINDS_AUTH_SERVICE_URL}/organizations/current/branding/`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    if (!res.ok) return null;
-    const body = await res.json() as unknown;
-    return body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : null;
-  } catch {
-    return null;
-  }
-}
-
 let generation = 0;
 
 /**
- * Read the active org's branding, set the app icon from it, and return what
- * the renderer shows. Null, with the stock icon back, whenever there is no
- * company org branding to show. A read overtaken by a newer one changes
- * nothing.
+ * Load the org's images from the URLs the renderer got, set the app icon from
+ * the icon (the stock one when there is none or it fails), and return them as
+ * data: URIs. With null (no org branding, signed out) it just puts the stock
+ * icon back. A call overtaken by a newer one changes nothing.
  */
-export async function refreshDesktopOrgBranding(deps: OrgBrandingDeps): Promise<DesktopOrgBranding | null> {
+export async function loadDesktopBrandImages(urls: BrandImageUrls | null, deps: BrandImageDeps): Promise<BrandImages | null> {
   generation += 1;
   const mine = generation;
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const settle = (result: DesktopOrgBranding | null, icon: NativeImage | null) => {
-    if (mine !== generation) return null;
-    applyAppIcon(icon, deps.stockIconPath);
-    return result;
-  };
-
-  const token = await deps.freshAccessToken().catch(() => null);
-  if (!token) return settle(null, null);
-  const list = await deps.listMindsOrgs().catch(() => null);
-  const active = list?.orgs.find((org) => org.id === list.activeOrgId) ?? null;
-  if (!active || active.isPersonal) return settle(null, null);
-
-  const body = await fetchBranding(token, fetchImpl);
-  if (!body) return settle(null, null);
+  if (!urls) {
+    applyAppIcon(null, deps.stockIconPath);
+    return null;
+  }
   const [icon, logo, logoDark] = await Promise.all([
-    loadBrandImage(body.icon_url, active.id, deps.cacheRoot, fetchImpl),
-    loadBrandImage(body.logo_url, active.id, deps.cacheRoot, fetchImpl),
-    loadBrandImage(body.logo_dark_url, active.id, deps.cacheRoot, fetchImpl),
+    loadBrandImage(urls.iconUrl, deps.cacheRoot, fetchImpl),
+    loadBrandImage(urls.logoUrl, deps.cacheRoot, fetchImpl),
+    loadBrandImage(urls.logoDarkUrl, deps.cacheRoot, fetchImpl),
   ]);
-  if (!icon && !logo && !logoDark) return settle(null, null);
-  return settle(
-    {
-      orgId: active.id,
-      orgName: organizationLabel(active),
-      iconUrl: dataUri(icon),
-      logoUrl: dataUri(logo),
-      logoDarkUrl: dataUri(logoDark),
-    },
-    icon ? nativeImage.createFromBuffer(icon.bytes) : null,
-  );
+  if (mine !== generation) return null;
+  applyAppIcon(icon ? nativeImage.createFromBuffer(icon.bytes) : null, deps.stockIconPath);
+  return { iconUrl: dataUri(icon), logoUrl: dataUri(logo), logoDarkUrl: dataUri(logoDark) };
 }
 
-/** Test hook: forget overtaken reads. */
+/** Test hook: forget overtaken calls. */
 export function __resetOrgBrandingForTests(): void {
   generation = 0;
 }

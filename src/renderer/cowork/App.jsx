@@ -80,9 +80,9 @@ import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useOrgBranding } from './hooks/useOrgBranding';
-import { withBrandingDraft } from '../lib/orgBranding';
+import { windowTitleFor, withBrandingDraft } from '../lib/orgBranding';
 import { productName } from '../lib/deploymentBrand';
-import { STOCK_WORDMARK } from '../../shared/product-name';
+import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../shared/product-name';
 import { takeSettingsDeepLink } from './lib/settingsDeepLink';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -1788,8 +1788,12 @@ function AppCore() {
   // Hosted MindsHub (any org, personal ones too): the sidebar title, logo and
   // tab icon come from the org, not from per-person settings.
   const hostedMindsHub = PLATFORM_UI && host.isWeb && orgMode;
-  // Desktop reads the active company org's logo and icon through main.
+  // Desktop reads the same org-branding from its local server (passed through
+  // to auth with the MindsHub credential).
   const orgBranding = useOrgBranding({ enabled: hostedMindsHub, desktop: host.isElectron, settingsOpen });
+  // Where the org's logo, icon and sidebar title replace the per-person ones:
+  // hosted web (any org), and desktop signed in to an org with branding.
+  const orgControlled = hostedMindsHub || (host.isElectron && Boolean(orgBranding.branding?.enabled));
   // An admin's unsaved edits on Settings → Branding, previewed live in this
   // window only: the draft takes the org-look slot in the resolver. It never
   // reaches the server or the first-paint cache, and leaving the Branding page
@@ -1813,7 +1817,11 @@ function AppCore() {
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
     look,
-  } = useThemeSkin({ orgBranding: previewOrgBranding, settings: appearanceSettings, hostedMindsHub });
+  } = useThemeSkin({ orgBranding: previewOrgBranding, settings: appearanceSettings, hostedMindsHub: orgControlled });
+  // Desktop's window title is the resolved sidebar title, or the stock name.
+  useEffect(() => {
+    if (host.isElectron) document.title = windowTitleFor(look, productName(STOCK_PRODUCT_NAME));
+  }, [look]);
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   // One list for the composer's per-conversation toggles: the OAuth
@@ -6515,7 +6523,7 @@ function AppCore() {
               onOrgBrandingSaved={orgBranding.apply}
               onOrgBrandingDraft={setBrandingDraft}
               look={look}
-              hostedMindsHub={hostedMindsHub}
+              hostedMindsHub={orgControlled}
               appearanceAnchor={appearanceAnchor}
               onAppearanceAnchorShown={clearAppearanceAnchor}
               section={settingsSection}
@@ -6575,7 +6583,7 @@ function AppCore() {
                 onOrgBrandingSaved={orgBranding.apply}
                 onOrgBrandingDraft={setBrandingDraft}
                 look={look}
-                hostedMindsHub={hostedMindsHub}
+                hostedMindsHub={orgControlled}
                 appearanceAnchor={appearanceAnchor}
                 onAppearanceAnchorShown={clearAppearanceAnchor}
                 section={settingsSection || 'agent'}

@@ -257,27 +257,34 @@ export function withBrandingDraft(
 const BRAND_DATA_URI = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
 /**
- * The desktop's org branding (ENG-4020): the active company org's images,
- * which the main process downloaded from auth and hands over as data: URIs.
- * Desktop has no org look (that lives in the hosted cowork-server), so the
- * appearance is empty and the member's own choices stay in charge.
+ * Desktop (ENG-4020): the org branding with its image URLs swapped for the
+ * data: URIs main returned for them (the desktop page loads no remote
+ * images). Only PNG, JPEG or WebP data URIs are kept; anything else, or no
+ * answer, leaves that image unset.
  */
-export function desktopOrgBranding(raw: unknown): OrgBranding | null {
-  const value = recordOf(raw);
-  if (!value) return null;
+export function withDesktopImages(branding: OrgBranding, images: unknown): OrgBranding {
+  const value = recordOf(images);
   const image = (v: unknown) => (typeof v === 'string' && BRAND_DATA_URI.test(v) ? v : null);
-  const iconUrl = image(value.iconUrl);
-  const logoUrl = image(value.logoUrl);
-  const logoDarkUrl = image(value.logoDarkUrl);
-  if (!iconUrl && !logoUrl && !logoDarkUrl) return null;
   return {
-    ...NO_ORG_BRANDING,
-    enabled: true,
-    orgName: textOrNull(value.orgName, ORG_NAME_MAX_LENGTH),
-    iconUrl,
-    logoUrl,
-    logoDarkUrl,
+    ...branding,
+    iconUrl: image(value?.iconUrl),
+    logoUrl: image(value?.logoUrl),
+    logoDarkUrl: image(value?.logoDarkUrl),
   };
+}
+
+/** The org branding without images, for a first paint before main has them. */
+export function withoutImages(branding: OrgBranding | null): OrgBranding | null {
+  return branding ? { ...branding, iconUrl: null, logoUrl: null, logoDarkUrl: null } : null;
+}
+
+/**
+ * The window title for desktop: the resolved sidebar title where the org sets
+ * it, else the stock product name (logo only, no org, or no title).
+ */
+export function windowTitleFor(look: { navTitle: string | null; navTitleHidden: boolean; navTitleSource: LookSource }, stockName: string): string {
+  if (look.navTitleHidden || look.navTitleSource !== 'org' || !look.navTitle) return stockName;
+  return look.navTitle;
 }
 
 /** The PUT body (snake_case) for an appearance the admin edited. */

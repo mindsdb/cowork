@@ -1709,13 +1709,16 @@ export async function fetchHubUsage() {
 
 /**
  * The org's branding (ENG-4020): its logo and icon URLs, its look, and whether
- * the caller may edit it. Org mode only; the server answers `enabled: false`
- * outside an org or in a personal one. Rejects on failure so the caller can
- * keep what it has (the cached answer) rather than painting stock.
+ * the caller may edit it. The hosted server serves it in org mode; the
+ * desktop's local server passes it through to auth with the MindsHub
+ * credential, which rides in the same header as the hub calls. Either answers
+ * `enabled: false` outside an org or in a personal one. Rejects on failure so
+ * the caller can keep what it has (the cached answer) rather than painting
+ * stock.
  */
 export async function fetchOrgBranding() {
-  requireOrgMode('Company branding');
-  return req('/org-branding');
+  if (!host.isElectron) requireOrgMode('Company branding');
+  return req('/org-branding', { headers: await hubHeaders() });
 }
 
 /**
@@ -1724,8 +1727,12 @@ export async function fetchOrgBranding() {
  * the same body as fetchOrgBranding.
  */
 export async function updateOrgAppearance(payload) {
-  requireOrgMode('Company branding');
-  return req('/org-branding/appearance', { method: 'PUT', body: JSON.stringify(payload) });
+  if (!host.isElectron) requireOrgMode('Company branding');
+  return req('/org-branding/appearance', {
+    method: 'PUT',
+    headers: await hubHeaders(),
+    body: JSON.stringify(payload),
+  });
 }
 
 // The lock-owning wrappers decide how to handle failure. A save must never

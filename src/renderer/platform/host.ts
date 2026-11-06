@@ -1523,19 +1523,25 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
   return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
 }
 
-/** The active company org's images on desktop (ENG-4020), or null. Web reads them from the API. */
-export interface DesktopOrgBranding {
-  orgId: string;
-  orgName: string | null;
+/** The org's images as data: URIs (ENG-4020), each null when unset or not loadable. */
+export interface DesktopBrandImages {
   iconUrl: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;
 }
 
-export async function mindshubOrgBranding(): Promise<DesktopOrgBranding | null> {
-  if (!isElectron || typeof bridge.mindshubOrgBranding !== 'function') return null;
+/**
+ * Desktop only: hand main the org's image URLs (from org-branding); main
+ * downloads them from the auth host, sets the app icon, and returns data:
+ * URIs, since this page loads no remote images. null puts the stock app icon
+ * back. Web shows the URLs directly and gets null here.
+ */
+export async function mindshubBrandImages(
+  urls: { iconUrl: string | null; logoUrl: string | null; logoDarkUrl: string | null } | null,
+): Promise<DesktopBrandImages | null> {
+  if (!isElectron || typeof bridge.mindshubBrandImages !== 'function') return null;
   try {
-    return (await bridge.mindshubOrgBranding()) ?? null;
+    return (await bridge.mindshubBrandImages(urls)) ?? null;
   } catch {
     return null;
   }

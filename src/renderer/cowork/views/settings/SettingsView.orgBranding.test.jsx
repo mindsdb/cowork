@@ -84,7 +84,10 @@ describe('Settings → Branding, its own page for org admins', () => {
   it('sits right after Appearance in the nav, for admins only', () => {
     expect(ids(navItemsForHost(true, true, true, { branding: true }))).toEqual(['agent', 'appearance', 'branding', 'channels', 'usage']);
     expect(ids(navItemsForHost(true, true, true, { branding: false }))).not.toContain('branding');
-    expect(ids(navItemsForHost(false, true, true, { branding: true }))).not.toContain('branding');
+    // Desktop signed in to an org offers it to its admins too, right after Appearance.
+    const desktop = ids(navItemsForHost(false, true, true, { branding: true }));
+    expect(desktop[desktop.indexOf('appearance') + 1]).toBe('branding');
+    expect(ids(navItemsForHost(false, true, true))).not.toContain('branding');
   });
 
   it('shows in the Settings nav for an admin and not for a member', () => {

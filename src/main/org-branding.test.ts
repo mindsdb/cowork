@@ -24,7 +24,7 @@ import {
   __resetOrgBrandingForTests,
   applyAppIcon,
   loadBrandImage,
-  refreshDesktopOrgBranding,
+  loadDesktopBrandImages,
   sniffImageType,
 } from './org-branding';
 
@@ -35,8 +35,6 @@ const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buff
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
 const ICON_URL = `${AUTH}/v1/organizations/org-acme/branding/icon?v=a1`;
 const LOGO_URL = `${AUTH}/v1/organizations/org-acme/branding/logo?v=b2`;
-const ACME = { id: 'org-acme', name: 'acme.example', displayName: 'Acme', isPersonal: false };
-const PERSONAL = { id: 'org-me', name: 'personal_u', displayName: 'Personal Organization', isPersonal: true };
 
 let cacheRoot: string;
 
@@ -59,14 +57,8 @@ function fetchWith(map: Record<string, Buffer | object | null>) {
   }) as unknown as typeof fetch & ReturnType<typeof vi.fn>;
 }
 
-function deps(over: Partial<Parameters<typeof refreshDesktopOrgBranding>[0]> = {}) {
-  return {
-    freshAccessToken: async () => 'token',
-    listMindsOrgs: async () => ({ orgs: [ACME, PERSONAL], activeOrgId: ACME.id }),
-    stockIconPath: '/assets/icon.png',
-    cacheRoot,
-    ...over,
-  };
+function deps(fetchImpl: typeof fetch) {
+  return { stockIconPath: '/assets/icon.png', cacheRoot, fetchImpl };
 }
 
 beforeEach(() => {
@@ -95,19 +87,19 @@ describe('sniffImageType', () => {
 describe('loadBrandImage', () => {
   it('downloads only from the auth host, and caches by URL', async () => {
     const fetchImpl = fetchWith({ [ICON_URL]: PNG });
-    expect(await loadBrandImage(ICON_URL, 'org-acme', cacheRoot, fetchImpl)).toMatchObject({ type: 'image/png' });
-    expect(await loadBrandImage(ICON_URL, 'org-acme', cacheRoot, fetchImpl)).toMatchObject({ type: 'image/png' });
+    expect(await loadBrandImage(ICON_URL, cacheRoot, fetchImpl)).toMatchObject({ type: 'image/png' });
+    expect(await loadBrandImage(ICON_URL, cacheRoot, fetchImpl)).toMatchObject({ type: 'image/png' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     for (const bad of ['https://images.globex.com/icon.png', ICON_URL.replace('https:', 'http:'), 'data:image/png;base64,AA==']) {
-      expect(await loadBrandImage(bad, 'org-acme', cacheRoot, fetchImpl)).toBeNull();
+      expect(await loadBrandImage(bad, cacheRoot, fetchImpl)).toBeNull();
     }
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('refuses SVG, oversized and failed downloads', async () => {
-    expect(await loadBrandImage(ICON_URL, 'org-acme', cacheRoot, fetchWith({ [ICON_URL]: SVG }))).toBeNull();
-    expect(await loadBrandImage(ICON_URL, 'org-acme', cacheRoot, fetchWith({ [ICON_URL]: Buffer.concat([PNG, Buffer.alloc(1_000_001)]) }))).toBeNull();
-    expect(await loadBrandImage(ICON_URL, 'org-acme', cacheRoot, fetchWith({}))).toBeNull();
+    expect(await loadBrandImage(ICON_URL, cacheRoot, fetchWith({ [ICON_URL]: SVG }))).toBeNull();
+    expect(await loadBrandImage(ICON_URL, cacheRoot, fetchWith({ [ICON_URL]: Buffer.concat([PNG, Buffer.alloc(1_000_001)]) }))).toBeNull();
+    expect(await loadBrandImage(ICON_URL, cacheRoot, fetchWith({}))).toBeNull();
   });
 });
 
@@ -125,56 +117,36 @@ describe('applyAppIcon', () => {
   });
 });
 
-describe('refreshDesktopOrgBranding', () => {
-  const brandingUrl = `${AUTH}/v1/organizations/current/branding/`;
-
-  it("sets the org's icon and returns its images as data URIs", async () => {
-    const fetchImpl = fetchWith({ [brandingUrl]: { icon_url: ICON_URL, logo_url: LOGO_URL, logo_dark_url: null }, [ICON_URL]: PNG, [LOGO_URL]: JPEG });
-    const result = await refreshDesktopOrgBranding(deps({ fetchImpl }));
-    expect(result).toMatchObject({ orgId: 'org-acme', orgName: 'Acme', logoDarkUrl: null });
+describe('loadDesktopBrandImages', () => {
+  it("returns the org's images as data URIs and sets its icon as the app icon", async () => {
+    const fetchImpl = fetchWith({ [ICON_URL]: PNG, [LOGO_URL]: JPEG });
+    const result = await loadDesktopBrandImages({ iconUrl: ICON_URL, logoUrl: LOGO_URL, logoDarkUrl: null }, deps(fetchImpl));
     expect(result?.iconUrl).toMatch(/^data:image\/png;base64,/);
     expect(result?.logoUrl).toMatch(/^data:image\/jpeg;base64,/);
-    expect(fetchImpl).toHaveBeenCalledWith(brandingUrl, expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token' }) }));
-    expect(electron.createFromBuffer).toHaveBeenCalled();
+    expect(result?.logoDarkUrl).toBeNull();
     expect(electron.setDockIcon).toHaveBeenLastCalledWith(expect.objectContaining({ label: `org:${PNG.length}` }));
+    expect(electron.windows[0].setIcon).toHaveBeenLastCalledWith(expect.objectContaining({ label: `org:${PNG.length}` }));
   });
 
-  it.each([
-    ['signed out', { freshAccessToken: async () => null }],
-    ['a personal org', { listMindsOrgs: async () => ({ orgs: [ACME, PERSONAL], activeOrgId: PERSONAL.id }) }],
-  ])('puts the stock icon back when %s', async (_name, over) => {
-    const fetchImpl = fetchWith({});
-    expect(await refreshDesktopOrgBranding(deps({ fetchImpl, ...over }))).toBeNull();
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(electron.setDockIcon).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'stock:/assets/icon.png' }));
-  });
-
-  it('puts the stock icon back when auth fails, there is no image, or the icon download fails', async () => {
-    for (const map of [
-      {},
-      { [brandingUrl]: { icon_url: null, logo_url: null } },
-      { [brandingUrl]: { icon_url: ICON_URL } },
+  it('puts the stock icon back for no branding, no icon, an untrusted host, or a failed download', async () => {
+    for (const urls of [
+      null,
+      { iconUrl: null, logoUrl: LOGO_URL },
+      { iconUrl: 'https://images.globex.com/icon.png' },
+      { iconUrl: ICON_URL },
     ]) {
-      expect(await refreshDesktopOrgBranding(deps({ fetchImpl: fetchWith(map) }))).toBeNull();
+      await loadDesktopBrandImages(urls, deps(fetchWith({ [LOGO_URL]: PNG })));
       expect(electron.setDockIcon).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'stock:/assets/icon.png' }));
     }
   });
 
-  it('keeps the stock app icon when the org has a logo but no icon', async () => {
-    const fetchImpl = fetchWith({ [brandingUrl]: { icon_url: null, logo_url: LOGO_URL }, [LOGO_URL]: PNG });
-    const result = await refreshDesktopOrgBranding(deps({ fetchImpl }));
-    expect(result).toMatchObject({ iconUrl: null });
-    expect(electron.setDockIcon).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'stock:/assets/icon.png' }));
-  });
-
-  it('lets a newer read win over one it overtook', async () => {
+  it('lets a newer call win over one it overtook', async () => {
     let release: () => void = () => {};
-    const slow = new Promise<string>((resolve) => { release = () => resolve('token'); });
-    const fetchImpl = fetchWith({ [brandingUrl]: { icon_url: ICON_URL }, [ICON_URL]: PNG });
-    const first = refreshDesktopOrgBranding(deps({ fetchImpl, freshAccessToken: () => slow }));
-    const second = await refreshDesktopOrgBranding(deps({ fetchImpl: fetchWith({}), freshAccessToken: async () => null }));
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const slowFetch = vi.fn(async () => { await gate; return response(PNG); }) as unknown as typeof fetch;
+    const first = loadDesktopBrandImages({ iconUrl: ICON_URL }, deps(slowFetch));
+    await loadDesktopBrandImages(null, deps(fetchWith({})));
     release();
-    expect(second).toBeNull();
     expect(await first).toBeNull();
     expect(electron.setDockIcon).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'stock:/assets/icon.png' }));
   });

@@ -70,7 +70,7 @@ import {
 } from './account-data';
 import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
-import { refreshDesktopOrgBranding } from './org-branding';
+import { loadDesktopBrandImages } from './org-branding';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
@@ -1207,15 +1207,14 @@ function setupIPC() {
 
   // Move this install to another organization: switch the session, mint and
   // commit a key there, remember the pick, and retire the key left behind.
-  // The active company org's logo and icon (ENG-4020). Read in main, which
-  // holds the MindsHub token and can reach auth; the renderer's CSP loads no
-  // remote images, so they come back as data: URIs. Also sets the app icon.
-  ipcMain.handle(IPC.MINDSHUB_ORG_BRANDING, () => refreshDesktopOrgBranding({
-    freshAccessToken,
-    listMindsOrgs,
-    stockIconPath: getIconPath(),
-    cacheRoot: path.join(coworkHome(), 'org-branding'),
-  }));
+  // The org's logo and icon (ENG-4020): the renderer sends the URLs it got
+  // from org-branding; the renderer's CSP loads no remote images, so main
+  // downloads them (auth host only, cached on disk) and returns data: URIs,
+  // setting the app icon on the way. null puts the stock icon back.
+  ipcMain.handle(IPC.MINDSHUB_BRAND_IMAGES, (_e, urls: unknown) => loadDesktopBrandImages(
+    urls && typeof urls === 'object' ? urls as Record<string, unknown> : null,
+    { stockIconPath: getIconPath(), cacheRoot: path.join(coworkHome(), 'org-branding') },
+  ));
 
   ipcMain.handle(IPC.MINDSHUB_SWITCH_ORG, (_e, organizationId: string) =>
     switchMindsOrg(String(organizationId || '')));
