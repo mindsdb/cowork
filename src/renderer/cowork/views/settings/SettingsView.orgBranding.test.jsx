@@ -34,6 +34,7 @@ vi.mock('../../lib/analytics', () => ({ resetDeviceIdentity: vi.fn() }));
 import SettingsView, { APPEARANCE_ANCHORS } from './SettingsView';
 import { appearanceToSave } from './OrgBrandingFields';
 import { navItemsForHost } from './settingsNavigation';
+import { stockBackground } from '../../../lib/stockThemeTokens';
 import { AUTH_IMAGE_HOST, parseOrgAppearance, parseOrgBranding, resolveLook, withBrandingDraft } from '../../../lib/orgBranding';
 
 const LOGO = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/logo?v=1`;
@@ -220,6 +221,37 @@ describe('Settings → Branding, its own page for org admins', () => {
     ]);
     const save = screen.getByRole('button', { name: 'Save branding' });
     expect(screen.getByLabelText('Brand guidelines for Anton').compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("starts each Default background at the stock theme's own color, and keeps it when Default is unticked", async () => {
+    const user = userEvent.setup();
+    api.updateOrgAppearance.mockResolvedValue({ enabled: true, canEdit: true, appearance: {} });
+    renderSettings({
+      orgBranding: branding({ appearance: { skin: 'custom', accent: '#112233', membersCanChoose: true } }),
+      hostedMindsHub: true, section: 'branding', onOrgBrandingSaved: vi.fn((raw) => parseOrgBranding(raw)),
+    });
+    expect(screen.getByLabelText('Organization light background color')).toHaveValue(stockBackground('light'));
+    expect(screen.getByLabelText('Organization dark background color')).toHaveValue(stockBackground('dark'));
+    expect(stockBackground('dark')).not.toBe('#ffffff');
+    await user.click(screen.getByRole('checkbox', { name: /Default organization dark background/ }));
+    expect(screen.getByLabelText('Organization dark background color')).toHaveValue(stockBackground('dark'));
+    await user.click(screen.getByRole('button', { name: 'Save branding' }));
+    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith(expect.objectContaining({
+      background_light: null, background_dark: stockBackground('dark'),
+    })));
+  });
+
+  it("does the same for a member's own Design your own backgrounds", async () => {
+    const user = userEvent.setup();
+    const onCustomThemeChange = vi.fn();
+    const recipe = { accent: '#a78bfa', bgLight: null, bgDark: null, radius: 6, font: 'standard', scanlines: false };
+    renderSettings({ hostedMindsHub: true, skin: 'custom', customTheme: recipe, onCustomThemeChange });
+    expect(screen.getByLabelText('Custom background color — Light mode')).toHaveValue(stockBackground('light'));
+    expect(screen.getByLabelText('Custom background color — Dark mode')).toHaveValue(stockBackground('dark'));
+    await user.click(screen.getByRole('checkbox', { name: /Default Dark background/ }));
+    expect(onCustomThemeChange).toHaveBeenCalledWith(expect.objectContaining({ bgDark: stockBackground('dark') }));
+    await user.click(screen.getByRole('checkbox', { name: /Default Light background/ }));
+    expect(onCustomThemeChange).toHaveBeenCalledWith(expect.objectContaining({ bgLight: stockBackground('light') }));
   });
 
   it('saves separate light and dark backgrounds', async () => {

@@ -23,6 +23,7 @@ import { useAccountUser } from '../../hooks/useAccountUser';
 import { MINDS_GENERAL_URL, consoleUrlFor } from '../../../lib/mindsUrls';
 import { SKINS, SKIN_LOCKED } from '../../../lib/skins';
 import { DEFAULT_CUSTOM_THEME } from '../../../lib/customTheme';
+import { stockBackground } from '../../../lib/stockThemeTokens';
 import { productName } from '../../../lib/deploymentBrand';
 import { STOCK_WORDMARK } from '../../../../shared/product-name';
 import {
@@ -258,7 +259,7 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
             <div className="flex items-center gap-3">
               <input
                 type="color"
-                value={draft.backgroundLight ?? '#fafafa'}
+                value={draft.backgroundLight ?? stockBackground('light')}
                 onChange={(e) => edit({ backgroundLight: e.target.value })}
                 disabled={locked || draft.backgroundLight === null}
                 aria-label="Organization light background color"
@@ -268,7 +269,7 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
               <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                 <Checkbox
                   checked={draft.backgroundLight === null}
-                  onCheckedChange={(v) => edit({ backgroundLight: v ? null : '#fafafa' })}
+                  onCheckedChange={(v) => edit({ backgroundLight: v ? null : stockBackground('light') })}
                   disabled={locked}
                   aria-label="Default organization light background"
                 />
@@ -280,7 +281,7 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
             <div className="flex items-center gap-3">
               <input
                 type="color"
-                value={draft.backgroundDark ?? '#080d18'}
+                value={draft.backgroundDark ?? stockBackground('dark')}
                 onChange={(e) => edit({ backgroundDark: e.target.value })}
                 disabled={locked || draft.backgroundDark === null}
                 aria-label="Organization dark background color"
@@ -290,7 +291,7 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
               <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                 <Checkbox
                   checked={draft.backgroundDark === null}
-                  onCheckedChange={(v) => edit({ backgroundDark: v ? null : '#080d18' })}
+                  onCheckedChange={(v) => edit({ backgroundDark: v ? null : stockBackground('dark') })}
                   disabled={locked}
                   aria-label="Default organization dark background"
                 />

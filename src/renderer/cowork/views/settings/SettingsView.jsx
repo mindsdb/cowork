@@ -18,6 +18,7 @@ import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
+import { stockBackground } from '../../../lib/stockThemeTokens';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
@@ -2372,7 +2373,7 @@ export default function SettingsView({
               <div className="flex items-center gap-3">
                 <input
                   type="color"
-                  value={customTheme.bgLight || '#fafafa'}
+                  value={customTheme.bgLight || stockBackground('light')}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
                   disabled={orgLocks.style || customTheme.bgLight === null}
                   aria-label="Custom background color — Light mode"
@@ -2382,7 +2383,7 @@ export default function SettingsView({
                 <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgLight === null}
-                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : stockBackground('light') })}
                     disabled={orgLocks.style}
                     aria-label="Default Light background"
                   />
@@ -2394,7 +2395,7 @@ export default function SettingsView({
               <div className="flex items-center gap-3">
                 <input
                   type="color"
-                  value={customTheme.bgDark || '#080d18'}
+                  value={customTheme.bgDark || stockBackground('dark')}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
                   disabled={orgLocks.style || customTheme.bgDark === null}
                   aria-label="Custom background color — Dark mode"
@@ -2404,7 +2405,7 @@ export default function SettingsView({
                 <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgDark === null}
-                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : stockBackground('dark') })}
                     disabled={orgLocks.style}
                     aria-label="Default Dark background"
                   />

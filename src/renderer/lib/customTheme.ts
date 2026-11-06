@@ -58,6 +58,8 @@ export function persistCustomTheme(t: CustomTheme): void {
   try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(t)); } catch {}
 }
 
+import { STOCK_THEME_SURFACES } from './stockThemeTokens';
+
 // ── Color helpers ────────────────────────────────────────────────────
 
 type RGB = [number, number, number];
@@ -137,8 +139,8 @@ const BLACK: RGB = [0, 0, 0];
 // The stock themes' own surfaces (globals.css), for checking an accent when
 // the recipe sets no background and the stock surfaces stay.
 const STOCK_SURFACES: Record<ThemeName, string[]> = {
-  light: ['#FAFAFA', '#FFFFFF', '#F4F4F4', '#ECECEA'],
-  dark: ['#080d18', '#0E1626', '#131D31', '#1A2640'],
+  light: Object.values(STOCK_THEME_SURFACES.light),
+  dark: Object.values(STOCK_THEME_SURFACES.dark),
 };
 
 // Contrast floors (WCAG AAA for primary text, AA for the rest).
