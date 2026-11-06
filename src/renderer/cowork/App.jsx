@@ -51,7 +51,6 @@ import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as 
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
 import { applyFavicon, applyNavTitleColor, applyOrgFavicon } from '../lib/navBranding';
-import { PLATFORM_UI } from '../lib/deployment';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canRunProject, canUseSharedResource } from './lib/sharedResourceAccess';
