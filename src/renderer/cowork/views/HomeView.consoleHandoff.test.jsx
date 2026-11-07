@@ -94,6 +94,15 @@ beforeEach(() => {
 });
 
 describe('HomeView console handoff', () => {
+  it('credits a link from the console Gallery to the Gallery', async () => {
+    arriveFromConsole('?from=console&mode=games&sample=celestial-merge-2048&placement=gallery');
+    render(<Home onSend={vi.fn(async () => true)} />);
+
+    await screen.findByDisplayValue(findSample('games', 'celestial-merge-2048').sample.prompt);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'celestial-merge-2048', true, 'gallery');
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'celestial-merge-2048', 'gallery');
+  });
+
   it('opens with the sample editable in the composer and does not send it', async () => {
     arriveFromConsole('?from=console&mode=games&sample=classic-snake-game');
     const onSend = vi.fn(async () => true);
@@ -102,8 +111,8 @@ describe('HomeView console handoff', () => {
     const box = await screen.findByDisplayValue(snake.prompt);
     expect(screen.getByRole('button', { name: 'Remove Games mode' })).toBeInTheDocument();
     expect(screen.getByText("Edit this prompt, then send when you're ready.")).toBeInTheDocument();
-    expect(trackComposerReady).toHaveBeenCalledWith('console', 'classic-snake-game', true);
-    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'classic-snake-game');
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'classic-snake-game', true, null);
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'classic-snake-game', null);
 
     // Give any stray auto-send a chance to happen.
     await new Promise((r) => setTimeout(r, 50));
@@ -170,7 +179,7 @@ describe('HomeView console handoff', () => {
 
     expect(await screen.findByDisplayValue(kpi.prompt)).toBeInTheDocument();
     expect(screen.getByText("Edit this prompt, then send when you're ready.")).toBeInTheDocument();
-    expect(trackComposerReady).toHaveBeenCalledWith('console', 'track-monthly-kpis-across-departments', true);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'track-monthly-kpis-across-departments', true, null);
   });
 
   it('"Start a task" clears an earlier sample left unsent', async () => {
@@ -179,7 +188,7 @@ describe('HomeView console handoff', () => {
     render(<Home onSend={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(''));
-    expect(trackComposerReady).toHaveBeenCalledWith('console', null, false);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', null, false, null);
   });
 
   it('"Start a task" keeps a draft the user wrote', async () => {
@@ -250,7 +259,7 @@ describe('HomeView console handoff', () => {
     render(<Home onSend={vi.fn()} />);
 
     expect(await screen.findByDisplayValue(`${snake.prompt} Make it two-player.`)).toBeInTheDocument();
-    expect(trackComposerReady).toHaveBeenCalledWith('console', 'track-monthly-kpis-across-departments', false);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'track-monthly-kpis-across-departments', false, null);
   });
 
   it('keeps an unsent draft instead of replacing it with the sample', async () => {
@@ -260,16 +269,16 @@ describe('HomeView console handoff', () => {
 
     expect(await screen.findByDisplayValue('my half-written idea')).toBeInTheDocument();
     expect(screen.queryByDisplayValue(snake.prompt)).not.toBeInTheDocument();
-    expect(trackComposerReady).toHaveBeenCalledWith('console', 'classic-snake-game', false);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'classic-snake-game', false, null);
     // The next task is the user's own draft, not the example's.
-    expect(setEntryAttribution).toHaveBeenCalledWith('console', null);
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', null, null);
   });
 
   it('"Start a task" opens an empty composer', async () => {
     arriveFromConsole('?from=console');
     render(<Home onSend={vi.fn()} />);
 
-    await waitFor(() => expect(trackComposerReady).toHaveBeenCalledWith('console', null, false));
+    await waitFor(() => expect(trackComposerReady).toHaveBeenCalledWith('console', null, false, null));
     expect(screen.getByRole('textbox')).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Create games' })).toBeInTheDocument();
   });
@@ -298,8 +307,8 @@ describe('HomeView console handoff', () => {
     render(<Home onSend={onSend} />);
 
     await screen.findByDisplayValue(OWN_WORK_PROMPT);
-    expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', true);
-    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'own-work');
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', true, null);
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'own-work', null);
     // It is the first onboarding step, not an example from a mode.
     expect(screen.queryByRole('button', { name: /^Remove .* mode$/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Edit this prompt, then send when you're ready.")).not.toBeInTheDocument();
@@ -321,8 +330,8 @@ describe('HomeView console handoff', () => {
 
     expect(await screen.findByDisplayValue('my half-written idea')).toBeInTheDocument();
     expect(screen.queryByDisplayValue(OWN_WORK_PROMPT)).not.toBeInTheDocument();
-    expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', false);
-    expect(setEntryAttribution).toHaveBeenCalledWith('console', null);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'own-work', false, null);
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', null, null);
   });
 
   it('replaces an own-work prompt left unsent from an earlier visit', async () => {
@@ -337,7 +346,7 @@ describe('HomeView console handoff', () => {
     arriveFromConsole('?from=console&start=something-else');
     render(<Home onSend={vi.fn()} />);
 
-    await waitFor(() => expect(trackComposerReady).toHaveBeenCalledWith('console', null, false));
+    await waitFor(() => expect(trackComposerReady).toHaveBeenCalledWith('console', null, false, null));
     expect(screen.getByRole('textbox')).toHaveValue('');
   });
 });
