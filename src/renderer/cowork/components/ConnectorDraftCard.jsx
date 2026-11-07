@@ -15,6 +15,7 @@ import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { fetchConnectorDraftSaved, saveConnectorDraft } from '../api';
 
 const SAVED_TEXT = 'Saved. Add your credentials in Connect Apps and Data.';
+const KEPT_TEXT = 'You already keep a connector with this id. Saving again replaces it.';
 
 function text(value) {
   return typeof value === 'string' ? value : '';
@@ -71,15 +72,17 @@ export default function ConnectorDraftCard({ connector }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [kept, setKept] = useState(false);
   const [status, setStatus] = useState(null); // { kind: 'ok'|'error', text }
   const id = text(connector.connector_id);
 
-  // On reload the card asks whether the member already keeps this connector.
+  // A connector kept under this id may be an earlier template, which a later
+  // turn corrected, so it only changes the wording; Save stays available.
   useEffect(() => {
     let live = true;
     if (!id) return undefined;
-    fetchConnectorDraftSaved(id).then((isSaved) => {
-      if (live && isSaved === true) setSaved(true);
+    fetchConnectorDraftSaved(id).then((isKept) => {
+      if (live && isKept === true) setKept(true);
     });
     return () => { live = false; };
   }, [id]);
@@ -124,7 +127,7 @@ export default function ConnectorDraftCard({ connector }) {
                 <span style={{ color: status.kind === 'error' ? 'var(--danger)' : 'var(--success, #1F8F5F)' }}>
                   {status.text}
                 </span>
-              ) : saved ? 'Saved' : 'Connector template · not saved'}
+              ) : kept ? KEPT_TEXT : 'Connector template · not saved'}
             </div>
           </div>
 
@@ -134,7 +137,7 @@ export default function ConnectorDraftCard({ connector }) {
             disabled={saving || saved || !id}
             onClick={handleSave}
           >
-            {saved ? 'Saved' : saving ? 'Saving…' : 'Save connector'}
+            {saved ? 'Saved' : saving ? 'Saving…' : kept ? 'Save again' : 'Save connector'}
           </Button>
         </div>
       </Card>

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const api = vi.hoisted(() => ({
@@ -41,12 +41,20 @@ describe('ConnectorDraftCard', () => {
     expect(screen.getByRole('button', { name: 'Save connector' }).disabled).toBe(false);
   });
 
-  it('shows saved on reload when the member already keeps it', async () => {
+  it('lets the member replace a connector kept under the same id with this template', async () => {
     api.fetchConnectorDraftSaved.mockResolvedValue(true);
-    render(<ConnectorDraftCard connector={connector} />);
+    const corrected = { ...connector, usage_notes: 'Base URL https://api.acme.example/v3.' };
+    render(<ConnectorDraftCard connector={corrected} />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Saved' }).disabled).toBe(true));
+    const button = await screen.findByRole('button', { name: 'Save again' });
     expect(api.fetchConnectorDraftSaved).toHaveBeenCalledWith('acme_crm');
+    expect(screen.getByText('You already keep a connector with this id. Saving again replaces it.')).toBeTruthy();
+    expect(button.disabled).toBe(false);
+
+    await userEvent.click(button);
+
+    expect(api.saveConnectorDraft).toHaveBeenCalledWith(corrected);
+    expect(await screen.findByRole('button', { name: 'Saved' })).toBeTruthy();
   });
 
   it('shows every model-written text as plain text, the help address not as a link', async () => {
