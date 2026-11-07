@@ -2829,13 +2829,14 @@ export async function duplicateLiveApp({ shareId, projectId }) {
  * Whether this deployment offers the shared browser to the caller. On the web
  * `available` means a browser router is configured and the caller's account
  * may use it; an account it isn't enabled for answers `available: false` with
- * `status: 'not_entitled'`. On the desktop it means the app's own browser has
- * registered with the local server.
+ * `status: 'not_entitled'`, and one whose organization turned the browser off
+ * with `status: 'organization_off'`. On the desktop it means the app's own
+ * browser has registered with the local server.
  *
  * @typedef {Object} BrowseStatus
  * @property {boolean} enabled  The person's own switch (Settings), on by default.
  * @property {boolean} available
- * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled'} status
+ * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled' | 'organization_off'} status
  */
 
 /**
@@ -2853,11 +2854,14 @@ export async function duplicateLiveApp({ shareId, projectId }) {
 /**
  * Sends no MindsHub credential header: the desktop answers from what it holds
  * locally, and the web shell's Authorization header already names the caller.
+ * A `timeoutMs` that passes aborts the request, which then rejects with no
+ * status.
  *
+ * @param {{ timeoutMs?: number }} [options]
  * @returns {Promise<BrowseStatus>}
  */
-export async function fetchBrowseStatus() {
-  return req('/browse/status');
+export async function fetchBrowseStatus({ timeoutMs } = {}) {
+  return req('/browse/status', { timeoutMs });
 }
 
 /* The browser's time zone and language, so the web browser's pages match the
@@ -2912,6 +2916,27 @@ export async function approveBrowserStep(sessionId, pendingId) {
     method: 'POST',
     headers: await hubHeaders(),
     body: JSON.stringify({ session_id: sessionId, pending_id: pendingId }),
+  });
+}
+
+/**
+ * Web only: declines a step the browser held, before the chat card that asked
+ * is answered with anything but Approve. The router's decline drops the held
+ * step and any approval already recorded for it, so a late approval can't
+ * run it. Sends the person's own credential, as approveBrowserStep does. The
+ * card reads nothing from the answer, and waits for it before it answers, so
+ * the call gives up after SHORT_REQUEST_TIMEOUT_MS.
+ *
+ * @param {string} sessionId
+ * @param {string} pendingId
+ * @returns {Promise<unknown>}
+ */
+export async function declineBrowserStep(sessionId, pendingId) {
+  return req('/browse/decline', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ session_id: sessionId, pending_id: pendingId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
   });
 }
 

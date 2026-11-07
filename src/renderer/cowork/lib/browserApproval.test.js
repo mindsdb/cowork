@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import approveFixture from '../__fixtures__/browser-router/approve.json';
-import { approvalRefusalText, browserApprovalIds, recordBrowserApproval } from './browserApproval';
+import {
+  approvalRefusalText,
+  browserApprovalIds,
+  declineBrowserApproval,
+  isBrowserApprovalCard,
+  recordBrowserApproval,
+} from './browserApproval';
 
 const APPROVED = approveFixture.examples.approved.body;
 const PENDING = APPROVED.pending_id;
@@ -8,6 +14,15 @@ const PENDING = APPROVED.pending_id;
 describe('browserApprovalIds', () => {
   it('reads both ids from a commit-hold card', () => {
     expect(browserApprovalIds(`browser:approve:t-abc:${PENDING}`)).toEqual({ sessionId: 't-abc', pendingId: PENDING });
+  });
+
+  it('marks a card by its prefix, whether or not its ids can be read', () => {
+    for (const id of [`browser:approve:t-abc:${PENDING}`, 'browser:approve:t-abc:pa-1:extra', 'browser:approve:t a:pa-1', 'browser:approve:']) {
+      expect(isBrowserApprovalCard(id)).toBe(true);
+    }
+    for (const id of ['ask:1', 'write:held:pa-1:abc', 'browser:approved:t-abc:pa-1', null, 42]) {
+      expect(isBrowserApprovalCard(id)).toBe(false);
+    }
   });
 
   it('is null for any other card', () => {
@@ -43,5 +58,31 @@ describe('recordBrowserApproval', () => {
     await expect(recordBrowserApproval(ids, refuse(409, 'unavailable'))).resolves.toEqual({ ok: false, message: "The browser isn't available here, so nothing ran." });
     await expect(recordBrowserApproval(ids, refuse(424, 'browser_unreachable', 'The browser isn\'t reachable.'))).resolves.toEqual({ ok: false, message: "Couldn't approve this step in the browser: The browser isn't reachable." });
     expect(approvalRefusalText(Object.assign(new Error('API /browse/approve returned 500'), { status: 500 }))).toBe("Couldn't approve this step in the browser. Try again.");
+  });
+
+  it("never shows a network or parse error's own text", async () => {
+    for (const err of [new TypeError('Failed to fetch'), new SyntaxError('Unexpected token \'<\', "<!doctype "... is not valid JSON')]) {
+      await expect(recordBrowserApproval(ids, async () => { throw err; })).resolves.toEqual({ ok: false, message: "Couldn't approve this step in the browser. Try again." });
+    }
+  });
+});
+
+describe('declineBrowserApproval', () => {
+  const ids = { sessionId: 't-abc', pendingId: PENDING };
+
+  it('declines that step', async () => {
+    const decline = vi.fn(async () => ({}));
+    await declineBrowserApproval(ids, decline);
+    expect(decline).toHaveBeenCalledWith('t-abc', PENDING);
+  });
+
+  it('never throws, whatever the browser answers', async () => {
+    for (const err of [
+      Object.assign(new Error('API /browse/decline returned 404'), { status: 404 }),
+      Object.assign(new Error('API /browse/decline returned 424'), { status: 424, code: 'approval_lapsed' }),
+      new TypeError('Failed to fetch'),
+    ]) {
+      await expect(declineBrowserApproval(ids, async () => { throw err; })).resolves.toBeUndefined();
+    }
   });
 });

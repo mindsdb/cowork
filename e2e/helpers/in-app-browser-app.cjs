@@ -6,9 +6,10 @@
  * key from `globalThis.inAppBrowserE2e` through electronApp.evaluate. Needs
  * `npm run build` first, for dist/main.
  */
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session } = require('electron');
 const path = require('node:path');
 const { InAppBrowserHost } = require('../../dist/main/main/browser-host.js');
+const { markDownloaded } = require('../../dist/main/main/download-quarantine.js');
 const { mainWindowWebPreferences } = require('../../dist/main/main/main-window-preferences.js');
 const { IPC } = require('../../dist/main/shared/ipc-channels.js');
 
@@ -26,13 +27,23 @@ const host = new InAppBrowserHost({
   runningServerPort: () => null,
   authHeader: () => ({}),
   accountRoot: () => path.join(profile, 'account'),
+  sidecarAccountRoot: () => null,
   storesRoot: () => null,
   downloadsDir: () => path.join(profile, 'downloads'),
+  markDownloaded,
   profileSession: (dir) => session.fromPath(dir),
+  memorySession: (partition) => session.fromPartition(partition),
   fetch: (input, init) => fetch(input, init),
   electronVersion: () => process.versions.electron,
   userDataDir: () => app.getPath('userData'),
 });
+
+/* Close, Reload and Force Reload (Command+W, Command+R and Command+Shift+R on
+   macOS, Control elsewhere), as the app's own menu has them (app.ts). The
+   spec presses the agent's chords through the bridge and checks that none
+   reaches the menu, and the person's through the tab's sendInputEvent and
+   checks that they reload the site, never the app. */
+Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'Window', submenu: [{ role: 'close' }, { role: 'reload' }, { role: 'forceReload' }] }]));
 
 app.whenReady().then(async () => {
   host.registerIpc(ipcMain);

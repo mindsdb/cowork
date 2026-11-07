@@ -103,23 +103,60 @@ export function conversationUsedBrowser(messages, streamingMsg) {
   return [...(messages || []), streamingMsg].some((m) => browserSessionIdIn(m?.steps) !== null);
 }
 
+/* The messages the browser router's viewer page (its viewer.html) posts to
+   the pane: ready once its script runs, and closed, with a close code, when
+   its connection closes. Each router refusal of the view is a page that posts
+   the closed message too. A rename on the router's side needs the same rename
+   here. */
+export const VIEWER_READY = 'browser-viewer-ready';
+export const VIEWER_CLOSED = 'browser-viewer-closed';
+
+/* Close codes the pane reads. 4401: the link lapsed or was spent, or the
+   viewer's lease ended; the router's starting page also posts it as its own
+   link is about to lapse. 4503: no browser slot is free to start one. 4429:
+   the person's browser already runs as many tasks as it can. */
+export const LEASE_CLOSE_CODE = 4401;
+export const NO_BROWSER_SLOT_CLOSE_CODE = 4503;
+export const TASK_CAP_CLOSE_CODE = 4429;
+
 /* A viewer that closes this soon after its link was minted never got going:
    the router refused the link, or the browser went away. */
 export const QUICK_CLOSE_MS = 10_000;
 
 /**
- * What the pane does when the viewer reports that its connection closed. A
- * close after a working stretch always gets a new link. A quick close gets
- * one too, but a second quick close in a row doesn't, so a router that keeps
- * refusing is not asked for links in a loop.
+ * A close's answer: mint a new link, or stop and say why.
  *
- * @param {{ mintedAtMs: number, nowMs: number, quickCloses: number }} state
- *   `quickCloses` counts the quick closes since the last working stretch.
- * @returns {{ remint: boolean, quickCloses: number }}
+ * @typedef {{ remint: true, quickCloses: number }
+ *   | { remint: false, quickCloses: number, stop: 'keeps-closing' | 'no-browser-slot' | 'task-cap' }} ViewerCloseAnswer
  */
-export function afterViewerClose({ mintedAtMs, nowMs, quickCloses }) {
-  if (nowMs - mintedAtMs >= QUICK_CLOSE_MS) return { remint: true, quickCloses: 0 };
-  return { remint: quickCloses === 0, quickCloses: quickCloses + 1 };
+
+/**
+ * What the pane does when the viewer reports that its connection closed.
+ *
+ * A viewer that said it was ready and then ran for QUICK_CLOSE_MS gets a new
+ * link, and the count of failed opens starts over. Any other close is a
+ * failed open, whenever it comes: the first gets a new link and the second
+ * in a row stops, so a router that keeps refusing, even slowly, is not asked
+ * for links in a loop. One close before ready is not a failure: a 4401 that
+ * comes QUICK_CLOSE_MS or more after the mint is the starting page's own
+ * link lapsing during a long start, so it gets a new link and counts nothing.
+ * A close that says no browser slot is free, or that the person's browser
+ * runs as many tasks as it can, stops at once: a new link can't help until
+ * something frees up.
+ *
+ * @param {{ mintedAtMs: number, nowMs: number, quickCloses: number, ready: boolean, code?: unknown }} state
+ *   `quickCloses` counts the failed opens since the last working stretch;
+ *   `ready` says whether this link's viewer posted VIEWER_READY.
+ * @returns {ViewerCloseAnswer}
+ */
+export function afterViewerClose({ mintedAtMs, nowMs, quickCloses, ready, code }) {
+  if (code === NO_BROWSER_SLOT_CLOSE_CODE) return { remint: false, quickCloses, stop: 'no-browser-slot' };
+  if (code === TASK_CAP_CLOSE_CODE) return { remint: false, quickCloses, stop: 'task-cap' };
+  const late = nowMs - mintedAtMs >= QUICK_CLOSE_MS;
+  if (ready && late) return { remint: true, quickCloses: 0 };
+  if (!ready && late && code === LEASE_CLOSE_CODE) return { remint: true, quickCloses };
+  if (quickCloses === 0) return { remint: true, quickCloses: 1 };
+  return { remint: false, quickCloses: quickCloses + 1, stop: 'keeps-closing' };
 }
 
 /* The app's theme, in the shape the browser viewer accepts (a

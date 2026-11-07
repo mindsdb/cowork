@@ -86,6 +86,18 @@ describe('BrowserStore', () => {
     expect(fs.readFileSync(file, 'utf-8')).toBe(before);
   });
 
+  it.each(['__proto__', 'constructor', 'toString'])('keeps a project named %s like any other', (project) => {
+    expect(store().savedTabs(project)).toEqual([]);
+    store().saveTab(project, { name: 'Report', url: 'https://a.test/', notes: '' });
+    expect(store().savedTabs(project).map((t) => t.name)).toEqual(['Report']);
+    expect(store().savedTabs('p-1')).toEqual([]);
+    store().deleteSavedTab(project, 'Report');
+    expect(store().savedTabs(project)).toEqual([]);
+    // Deleting from a project that keeps nothing changes nothing.
+    store().deleteSavedTab(project, 'Report');
+    expect(store().savedTabs(project)).toEqual([]);
+  });
+
   it('raises on a file that is not its shape', () => {
     fs.writeFileSync(path.join(dir, BROWSER_STORE_FILE), JSON.stringify({ version: 1, saved_tabs: { p: [{ name: 1 }] }, sites: {} }));
     expect(() => store().savedTabs('p')).toThrow(/malformed saved tab/);

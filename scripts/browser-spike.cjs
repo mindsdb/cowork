@@ -60,6 +60,7 @@ if (process.argv.includes('--spike-blocker')) {
 const ROOT = path.resolve(__dirname, '..');
 const dist = (file) => path.join(ROOT, 'dist', 'main', file);
 const { InAppBrowserHost } = require(dist('main/browser-host.js'));
+const { markDownloaded } = require(dist('main/download-quarantine.js'));
 const { mainWindowWebPreferences } = require(dist('main/main-window-preferences.js'));
 const { IPC } = require(dist('shared/ipc-channels.js'));
 const { PAGE_WORLD_ID } = require(dist('main/browser-page-script.js'));
@@ -158,9 +159,12 @@ const host = new InAppBrowserHost({
   runningServerPort: () => null,
   authHeader: () => ({}),
   accountRoot: () => path.join(PROFILE, 'account'),
+  sidecarAccountRoot: () => null,
   storesRoot: () => null,
   downloadsDir: () => path.join(PROFILE, 'downloads'),
+  markDownloaded,
   profileSession: (dir) => session.fromPath(dir),
+  memorySession: (partition) => session.fromPartition(partition),
   fetch: (input, init) => fetch(input, init),
   electronVersion: () => process.versions.electron,
   userDataDir: () => app.getPath('userData'),
@@ -477,7 +481,14 @@ async function isolatedWorld() {
   out.afterBack = { url: contents.getURL(), count: await bump(contents) };
   await bridge('POST', `/sessions/${TASK}/action`, { action: 'reload' });
   out.afterReload = await bump(contents);
-  out.sandboxedNoPreload = true;
+  // What the live tab runs with, as Chromium reports it.
+  const prefs = contents.getLastWebPreferences() || {};
+  out.webPreferences = {
+    sandbox: prefs.sandbox ?? null,
+    preload: prefs.preload ?? null,
+    contextIsolation: prefs.contextIsolation ?? null,
+    nodeIntegration: prefs.nodeIntegration ?? null,
+  };
   return out;
 }
 

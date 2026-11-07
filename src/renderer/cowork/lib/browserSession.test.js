@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   BROWSER_BADGE,
+  LEASE_CLOSE_CODE,
+  NO_BROWSER_SLOT_CLOSE_CODE,
   QUICK_CLOSE_MS,
+  TASK_CAP_CLOSE_CODE,
+  VIEWER_CLOSED,
+  VIEWER_READY,
   afterViewerClose,
   browserSessionIdIn,
   browserStep,
@@ -121,17 +126,60 @@ describe('browserSessionIdIn and conversationUsedBrowser', () => {
 
 describe('afterViewerClose', () => {
   const minted = 1_000_000;
+  const late = minted + QUICK_CLOSE_MS;
 
-  it('gets a new link after a working stretch, and starts the count over', () => {
-    expect(afterViewerClose({ mintedAtMs: minted, nowMs: minted + QUICK_CLOSE_MS, quickCloses: 1 }))
+  it('gets a new link after a working stretch of a ready viewer, and starts the count over', () => {
+    expect(afterViewerClose({ mintedAtMs: minted, nowMs: late, quickCloses: 1, ready: true, code: LEASE_CLOSE_CODE }))
       .toEqual({ remint: true, quickCloses: 0 });
   });
 
   it('gets one new link after a quick close, and stops at the second in a row', () => {
-    const first = afterViewerClose({ mintedAtMs: minted, nowMs: minted + 50, quickCloses: 0 });
+    const first = afterViewerClose({ mintedAtMs: minted, nowMs: minted + 50, quickCloses: 0, ready: false, code: 4502 });
     expect(first).toEqual({ remint: true, quickCloses: 1 });
-    expect(afterViewerClose({ mintedAtMs: minted, nowMs: minted + 50, quickCloses: first.quickCloses }))
-      .toEqual({ remint: false, quickCloses: 2 });
+    expect(afterViewerClose({ mintedAtMs: minted, nowMs: minted + 50, quickCloses: first.quickCloses, ready: false, code: 4502 }))
+      .toEqual({ remint: false, quickCloses: 2, stop: 'keeps-closing' });
+  });
+
+  it('counts a quick close of a ready viewer as a failed open', () => {
+    expect(afterViewerClose({ mintedAtMs: minted, nowMs: minted + 50, quickCloses: 1, ready: true, code: 1011 }))
+      .toEqual({ remint: false, quickCloses: 2, stop: 'keeps-closing' });
+  });
+
+  it.each([4502, 4504, 4500, 1006, undefined])(
+    'counts a close before the viewer is ready as a failed open however late it comes (code %s)',
+    (code) => {
+      const first = afterViewerClose({ mintedAtMs: minted, nowMs: late + 30_000, quickCloses: 0, ready: false, code });
+      expect(first).toEqual({ remint: true, quickCloses: 1 });
+      expect(afterViewerClose({ mintedAtMs: minted, nowMs: late + 30_000, quickCloses: 1, ready: false, code }))
+        .toEqual({ remint: false, quickCloses: 2, stop: 'keeps-closing' });
+    },
+  );
+
+  it("gets a new link without counting for the starting page's own lapse", () => {
+    expect(afterViewerClose({ mintedAtMs: minted, nowMs: minted + 115_000, quickCloses: 1, ready: false, code: LEASE_CLOSE_CODE }))
+      .toEqual({ remint: true, quickCloses: 1 });
+  });
+
+  it('counts a 4401 before ready that comes quickly, a spent or expired link', () => {
+    expect(afterViewerClose({ mintedAtMs: minted, nowMs: minted + 50, quickCloses: 1, ready: false, code: LEASE_CLOSE_CODE }))
+      .toEqual({ remint: false, quickCloses: 2, stop: 'keeps-closing' });
+  });
+
+  it.each([
+    [NO_BROWSER_SLOT_CLOSE_CODE, 'no-browser-slot'],
+    [TASK_CAP_CLOSE_CODE, 'task-cap'],
+  ])('stops at once on %s, ready or not, quick or late', (code, stop) => {
+    for (const ready of [false, true]) {
+      for (const nowMs of [minted + 50, late]) {
+        expect(afterViewerClose({ mintedAtMs: minted, nowMs, quickCloses: 0, ready, code }))
+          .toEqual({ remint: false, quickCloses: 0, stop });
+      }
+    }
+  });
+
+  it('names the close codes the router and the viewer send', () => {
+    expect([LEASE_CLOSE_CODE, NO_BROWSER_SLOT_CLOSE_CODE, TASK_CAP_CLOSE_CODE]).toEqual([4401, 4503, 4429]);
+    expect([VIEWER_READY, VIEWER_CLOSED]).toEqual(['browser-viewer-ready', 'browser-viewer-closed']);
   });
 });
 

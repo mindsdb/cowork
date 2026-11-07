@@ -139,6 +139,8 @@ import {
 } from './CoworkRouter';
 import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
 import { rememberTaskBrowser } from './lib/taskBrowser';
+import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
+import { useNativeOverlay } from './lib/nativeOverlay';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -1794,6 +1796,9 @@ function AppCore() {
     sidebarCollapsibleRoutes,
     sidebarPopout,
   } = useSidebarNav({ isNarrow });
+  /* The narrow-band sidebar popout counts as an overlay, so the desktop
+     browser pane's native view steps aside rather than draw over it. */
+  useNativeOverlay(sidebarPopout && navPopoutOpen);
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin.
@@ -2121,6 +2126,11 @@ function AppCore() {
     handleShellAutoUpdateAction,
     dismissShellUpdate,
   } = useAppUpdates();
+  /* The OTA update curtain covers the window while an update downloads and
+     the UI reloads. It counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const updateCurtainUp = updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading';
+  useNativeOverlay(updateCurtainUp);
 
   // Collapse the three update mechanisms into one shell-first banner (or null).
   // The manual notice is dismissal-filtered here before it can win the slot.
@@ -3465,13 +3475,13 @@ function AppCore() {
     });
   }, []);
 
-  // The + menu shows a Browser switch only where this deployment offers the
-  // browser (GET /browse/status answers `available: true`, never on a
-  // self-hosted stack) and while it is on in Settings (on by default). Off
-  // there, no task gets it, so no switch.
+  /* The + menu shows a Browser switch only where this deployment offers the
+     browser (GET /browse/status answers `available: true`, never on a
+     self-hosted stack) and while it is on in Settings (on by default). Off
+     there, no task gets it, so no switch (lib/browserSwitch). */
   const browserOnInSettings = settings.browserEnabled !== false;
   const browseAvailable = useBrowseAvailable(`${health.status}:${inAppBrowserRegistered}`);
-  const browserSwitchShown = browserOnInSettings && browseAvailable;
+  const browserSwitchShown = showsBrowserSwitch({ browserOnInSettings, browseAvailable });
   const composerBrowserSwitch = browserSwitchShown
     ? { on: !composerBrowserOff, onChange: (on) => setComposerBrowserOff(!on), agentLabel }
     : null;
@@ -3665,7 +3675,7 @@ function AppCore() {
       meta?.disabledConnections ?? composerDisabledConnections,
     );
     // Only the composer's own switch: the browser is off only when switched off.
-    const browserOffForSend = !!(meta?.browserOff ?? (browserSwitchShown && composerBrowserOff));
+    const browserOffForSend = newTaskBrowserOff({ callerBrowserOff: meta?.browserOff, browserOnInSettings, composerBrowserOff });
 
     const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
@@ -6114,7 +6124,7 @@ function AppCore() {
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
-            browserOn={browserOnInSettings && !currentTask?.browserOff}
+            browserOn={taskBrowserOn({ switchShown: browserSwitchShown, taskBrowserOff: currentTask?.browserOff })}
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -6782,7 +6792,7 @@ function AppCore() {
       </Modal>
 
       {/* OTA update overlay — shown during auto-update download/reload */}
-      {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
+      {updateCurtainUp && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center',

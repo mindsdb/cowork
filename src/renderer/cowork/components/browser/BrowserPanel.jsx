@@ -4,8 +4,9 @@ import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
 import Spinner from '../ui/Spinner';
 import { embedBrowser } from '../../api';
-import { afterViewerClose, browserViewerTheme, viewerLinkFrom } from '../../lib/browserSession';
+import { VIEWER_CLOSED, VIEWER_READY, afterViewerClose, browserViewerTheme, viewerLinkFrom } from '../../lib/browserSession';
 import { host } from '../../../platform/host';
+import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 import { BrowserFrame } from './BrowserFrame';
 import { LocalBrowserStage } from './LocalBrowserStage';
 
@@ -26,14 +27,36 @@ import { LocalBrowserStage } from './LocalBrowserStage';
    watching can go to sleep.
 
    The browser may still be starting: until the viewer itself says it is
-   ready (a `browser-viewer-ready` postMessage), the pane says so. A frame
-   load alone is not enough: the router's starting page, a JSON refusal (an
-   expired or spent link) and an edge error page all load the frame and never
-   post. After STARTING_TIMEOUT_MS without the viewer, the pane offers to try
-   again. */
+   ready (a VIEWER_READY postMessage), the pane says so. A frame load alone
+   is not enough: the router's starting page, while it reloads, and an edge
+   error page load the frame without the viewer and never post. Every router
+   refusal of the view (a spent or expired link, a browser that is
+   unreachable or full) is a page that posts VIEWER_CLOSED, and so does the
+   starting page's last load before its link lapses; afterViewerClose decides
+   what the pane does then. After STARTING_TIMEOUT_MS of waiting, the pane
+   offers to try again. That clock runs on across the new links a close
+   brings, and starts over only when a viewer gets ready or the person, the
+   tab or the network asks again, so a router that keeps closing still
+   reaches it. */
 export const STARTING_TIMEOUT_MS = 90_000;
 
-const KEEPS_CLOSING = 'The browser view keeps closing. Try again in a moment.';
+/**
+ * What the pane says in place of the view when it stops: a title, and the
+ * sentence under it.
+ *
+ * @typedef {{ title: string, description: string }} PaneStop
+ */
+
+const UNREACHABLE = "The browser isn't reachable";
+
+/* What the pane says when it stops asking for links after a close. A full
+   browser is still reachable, so its two stops get titles of their own. */
+/** @type {Record<'keeps-closing' | 'no-browser-slot' | 'task-cap', PaneStop>} */
+const STOPPED = {
+  'keeps-closing': { title: UNREACHABLE, description: 'The browser view keeps closing. Try again in a moment.' },
+  'no-browser-slot': { title: 'No browser is free', description: 'Every browser is busy right now. Try again in a few minutes.' },
+  'task-cap': { title: 'Your browser is full', description: 'Your browser already has 4 tasks open.' },
+};
 
 function tabHidden() {
   return document.visibilityState === 'hidden';
@@ -49,16 +72,20 @@ function postTheme(frame) {
   );
 }
 
+/* The web pane's note on where things go and what stays. The view and every
+   key typed in it cross Cloudflare and MindsDB's browser service. The
+   agent's page reads go to the model provider and, with Jev on, to Jev. Sites
+   the person signs in to stay signed in for later tasks. The Jev and sign-in
+   lines are Settings' own, so the two surfaces can't drift. The pane can't
+   tell who holds the browser (the viewer posts only that it is ready or
+   closed), so the sign-in line always shows. */
+export function webPaneNote(agentLabel) {
+  return `What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site. ${agentLabel}'s page reads and screenshots go to the model provider that serves your turn. ${WEB_JEV_LINE} ${WEB_SIGN_INS}`;
+}
+
 /**
  * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
  */
-/* The web pane's line on where the person's input and the page go: the view
-   and every key typed in it cross Cloudflare and MindsDB's browser service,
-   and the agent's page reads go to the model provider. */
-export function webPaneNote(agentLabel) {
-  return `What you type here, passwords included, passes through Cloudflare and MindsDB's browser service on its way to the site. ${agentLabel}'s page reads and screenshots go to the model provider that serves your turn.`;
-}
-
 export function BrowserPanel(props) {
   return host.supportsInAppBrowser ? <LocalBrowserStage {...props} /> : <WebBrowserStage {...props} />;
 }
@@ -68,23 +95,29 @@ export function BrowserPanel(props) {
  */
 function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
   const [viewUrl, setViewUrl] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(/** @type {PaneStop | null} */ (null));
   const [hidden, setHidden] = useState(tabHidden);
   const [generation, setGeneration] = useState(0);
   const [viewerReady, setViewerReady] = useState(false);
   const [slow, setSlow] = useState(false);
+  /* Bumped when the starting clock starts over on a request from the
+     person, the tab or the network, so the clock restarts even while the
+     pane is still waiting. */
+  const [waitRound, setWaitRound] = useState(0);
   const frameRef = useRef(null);
   /* Bumped by every mint and by hiding the tab, so an answer that arrives
      after a newer request, or after the tab hid, is dropped. */
   const mintSeq = useRef(0);
   const mintedAt = useRef(0);
   const quickCloses = useRef(0);
+  // Whether the current link's viewer said it is ready, for the close handler.
+  const readyRef = useRef(false);
   const frameKey = `${viewUrl}:${generation}`;
 
   const mint = useCallback(async () => {
     mintSeq.current += 1;
     const seq = mintSeq.current;
-    setError('');
+    setError(null);
     setViewUrl(null);
     let link = null;
     let failure = '';
@@ -96,7 +129,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
     }
     if (seq !== mintSeq.current) return;
     if (failure) {
-      setError(failure);
+      setError({ title: UNREACHABLE, description: failure });
       return;
     }
     mintedAt.current = Date.now();
@@ -104,17 +137,20 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
     setGeneration((g) => g + 1);
   }, [sessionId]);
 
-  // A person's own request starts the quick-close count over.
+  /* A request from the person, the tab or the network, and a new session,
+     start the count of failed opens and the starting clock over. */
   const retry = useCallback(() => {
     quickCloses.current = 0;
+    setSlow(false);
+    setWaitRound((round) => round + 1);
     void mint();
   }, [mint]);
 
+  // A tab that opens the pane hidden mints once it is visible (below).
   useEffect(() => {
-    quickCloses.current = 0;
-    if (!tabHidden()) void mint();
+    if (!tabHidden()) retry();
     return () => { mintSeq.current += 1; };
-  }, [mint]);
+  }, [retry]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -122,7 +158,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
         mintSeq.current += 1;
         setHidden(true);
         setViewUrl(null);
-        setError('');
+        setError(null);
         return;
       }
       setHidden(false);
@@ -147,13 +183,21 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
       const frameWindow = frameRef.current?.contentWindow;
       if (!frameWindow || event.source !== frameWindow) return;
       const type = event.data?.type;
-      if (type === 'browser-viewer-ready') {
+      if (type === VIEWER_READY) {
+        readyRef.current = true;
         setViewerReady(true);
+        setSlow(false);
         postTheme(frameRef.current);
         return;
       }
-      if (type !== 'browser-viewer-closed') return;
-      const next = afterViewerClose({ mintedAtMs: mintedAt.current, nowMs: Date.now(), quickCloses: quickCloses.current });
+      if (type !== VIEWER_CLOSED) return;
+      const next = afterViewerClose({
+        mintedAtMs: mintedAt.current,
+        nowMs: Date.now(),
+        quickCloses: quickCloses.current,
+        ready: readyRef.current,
+        code: event.data?.code,
+      });
       quickCloses.current = next.quickCloses;
       if (next.remint) {
         void mint();
@@ -161,7 +205,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
       }
       mintSeq.current += 1;
       setViewUrl(null);
-      setError(KEEPS_CLOSING);
+      setError(STOPPED[next.stop]);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -176,18 +220,21 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
     return () => observer.disconnect();
   }, [viewUrl, generation]);
 
-  // A new frame (or a fresh link in flight) starts the wait over.
+  // A new frame (or a fresh link in flight) waits for its own viewer's ready.
   useEffect(() => {
+    readyRef.current = false;
     setViewerReady(false);
-    setSlow(false);
   }, [frameKey]);
 
+  /* The starting clock runs while the pane waits. A new link that a close
+     brings keeps waiting, so the clock runs on; a ready viewer ends the wait,
+     and the next wait starts a new clock. */
   const waiting = !hidden && !viewerReady && !error;
   useEffect(() => {
     if (!waiting) return undefined;
     const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [waiting, frameKey]);
+  }, [waiting, waitRound]);
 
   return (
     <BrowserFrame
@@ -215,8 +262,8 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
           size="sm"
           className="browser-panel__empty"
           icon={Ico.globe(20)}
-          title="The browser isn't reachable"
-          description={error}
+          title={error.title}
+          description={error.description}
           action={{ label: 'Try again', onClick: retry }}
         />
       ) : waiting && (

@@ -1959,7 +1959,7 @@ export default function SettingsView({
           </Section>
         </SettingsGroup>
 
-        <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} />
+        <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
 
         {/* Not on hosted web yet: its turns run in a pod that doesn't receive
             these limits until the web time limit and the PR that sends them

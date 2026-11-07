@@ -52,6 +52,8 @@ export interface BridgeDeps {
 }
 
 export interface Bridge {
+  /** The address the server listens on, as the OS reports it. */
+  address: string;
   port: number;
   url: string;
   close(): Promise<void>;
@@ -130,13 +132,18 @@ function checked<T>(parsed: Parsed<T>): T {
   return parsed.value;
 }
 
-function sessionId(raw: string): string {
-  let id: string;
+/* A path segment, percent-decoded. A malformed escape is the caller's bad
+   request, answered with `message`. */
+function decodedSegment(raw: string, message: string): string {
   try {
-    id = decodeURIComponent(raw);
+    return decodeURIComponent(raw);
   } catch {
-    throw new BridgeError('bad_request', 'the session id is not valid');
+    throw new BridgeError('bad_request', message);
   }
+}
+
+function sessionId(raw: string): string {
+  const id = decodedSegment(raw, 'the session id is not valid');
   if (!SESSION_ID_PATTERN.test(id)) throw new BridgeError('bad_request', 'the session id must match [A-Za-z0-9_-]{1,64}');
   return id;
 }
@@ -227,11 +234,11 @@ async function route(deps: BridgeDeps, req: http.IncomingMessage, res: http.Serv
       return;
     }
     if (rest.length === 3 && rest[2] === 'activate' && method === 'POST') {
-      sendJson(res, 200, { tab: await sessions.activateTab(id, decodeURIComponent(rest[1])) });
+      sendJson(res, 200, { tab: await sessions.activateTab(id, decodedSegment(rest[1], 'the tab id is not valid')) });
       return;
     }
     if (rest.length === 2 && method === 'DELETE') {
-      await sessions.closeTab(id, decodeURIComponent(rest[1]));
+      await sessions.closeTab(id, decodedSegment(rest[1], 'the tab id is not valid'));
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -242,12 +249,7 @@ async function route(deps: BridgeDeps, req: http.IncomingMessage, res: http.Serv
      cookies, as the web pod does. Signing out of a site is Sign out of all
      sites in Settings. */
   if (rest[0] === 'sites' && rest.length === 2 && method === 'DELETE') {
-    let raw = '';
-    try {
-      raw = decodeURIComponent(rest[1]);
-    } catch {
-      throw new BridgeError('bad_request', 'site must be a host name such as example.com');
-    }
+    const raw = decodedSegment(rest[1], 'site must be a host name such as example.com');
     const { site } = checked(parseNoteSite({ site: raw }));
     await sessions.sites(id, []);
     deps.store().forgetSite(site);
@@ -330,8 +332,9 @@ export function startBridge(deps: BridgeDeps): Promise<Bridge> {
     server.once('error', reject);
     server.listen({ host: '127.0.0.1', port: 0 }, () => {
       server.off('error', reject);
-      const { port } = server.address() as AddressInfo;
+      const { address, port } = server.address() as AddressInfo;
       resolve({
+        address,
         port,
         url: bridgeUrl(port),
         close: () => new Promise<void>((done) => {

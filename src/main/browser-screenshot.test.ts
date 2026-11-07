@@ -64,6 +64,23 @@ describe('screenshot labels', () => {
     const changed = changedPixels(bitmap);
     expect(changed.some(([x, y]) => x === 50 - labelWidth(123) && y === 30 - LABEL_HEIGHT)).toBe(true);
   });
+
+  it('draws a huge box at the cost of the bitmap, not the box', () => {
+    const bitmap = blank(200, 100);
+    const started = performance.now();
+    drawLabels(bitmap, [{ id: 1, x: -5e8, y: 20, width: 1e9, height: 1e9 }]);
+    expect(performance.now() - started).toBeLessThan(500);
+    // The top edge crosses the whole bitmap; the other edges are off it.
+    expect(pixel(bitmap, 199, 20)).not.toEqual([0x80, 0x80, 0x80, 0x80]);
+    expect(pixel(bitmap, 100, 99)).toEqual([0x80, 0x80, 0x80, 0x80]);
+  });
+
+  it('skips every edge whose values are not finite', () => {
+    const bitmap = blank(50, 30);
+    drawLabels(bitmap, [{ id: 4, x: Number.NaN, y: 0, width: 10, height: 10 }, { id: 5, x: 0, y: 0, width: Number.POSITIVE_INFINITY, height: 10 }]);
+    // Only the second box's tag and its left edge are drawn.
+    expect(changedPixels(bitmap).every(([x, y]) => (x < labelWidth(5) && y < LABEL_HEIGHT) || x === 0)).toBe(true);
+  });
 });
 
 describe('screenshot size', () => {

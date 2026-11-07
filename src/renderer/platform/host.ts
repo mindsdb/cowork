@@ -67,9 +67,9 @@ export const supportsInAppBrowser: boolean =
 
 const NO_BROWSER: InAppBrowserBridge = {
   ready: async () => {},
-  show: async () => ({ exists: false }),
+  show: async () => ({ exists: false, drawn: false }),
   hide: async () => {},
-  setBounds: async () => {},
+  setBounds: async () => ({ drawn: false }),
   back: async () => {},
   forward: async () => {},
   reload: async () => {},
@@ -84,6 +84,16 @@ const NO_BROWSER: InAppBrowserBridge = {
 
 /** The in-app browser's bridge, or one that does nothing where there is none. */
 export const inAppBrowser: InAppBrowserBridge = supportsInAppBrowser ? bridge.browser : NO_BROWSER;
+
+/* Main says the local server took the in-app browser's registration, so
+   GET /browse/status can answer differently from then on. It never fires on
+   the web, or on a shell without the in-app browser. */
+export function onInAppBrowserRegistered(cb: () => void): () => void {
+  if (supportsInAppBrowser && typeof bridge.onBrowserRegistered === 'function') {
+    return bridge.onBrowserRegistered(cb);
+  }
+  return () => {};
+}
 
 // ---- Platform identity --------------------------------------------------
 
@@ -1876,6 +1886,7 @@ export const host = {
   supportsDocumentPreview,
   supportsInAppBrowser,
   inAppBrowser,
+  onInAppBrowserRegistered,
   getPlatform,
   isMac,
   getApiOrigin,

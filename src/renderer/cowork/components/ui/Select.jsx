@@ -49,12 +49,13 @@
 //   - `variant="unstyled"` — wiring only, for domain controls that use an
 //     established trigger treatment such as Composer's `meta-pill`.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
 import { ChevronDown, ChevronsUpDown, Check } from 'lucide-react';
 import { Icon } from './Icon';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
+import { useNativeOverlay } from '../../lib/nativeOverlay';
 import Spinner from './Spinner.jsx';
 
 // Exported for Combobox, which renders a popup-based trigger that
@@ -233,6 +234,10 @@ export function Select({
 }) {
   const itemsForLabels = useMemo(() => flattenForLabels(options), [options]);
   const selectedLabel = itemsForLabels.find((item) => item.value === value)?.label;
+  /* An open popup counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const [popupOpen, setPopupOpen] = useState(false);
+  useNativeOverlay(open ?? popupOpen);
 
   return (
     <BaseSelect.Root
@@ -242,7 +247,11 @@ export function Select({
       // option list. A user can't pick null from a listbox, so never forward it.
       onValueChange={(next) => { if (next != null) onValueChange?.(next); }}
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next, details) => {
+        // The caller may cancel the change, and then the popup stays as it is.
+        onOpenChange?.(next, details);
+        if (!details?.isCanceled) setPopupOpen(next);
+      }}
       disabled={disabled}
       id={id}
       name={name}

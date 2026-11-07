@@ -28,8 +28,14 @@ interface StoreFile {
   sites: Record<string, StoredSite>;
 }
 
+/* A record keyed by a project or a site, with no prototype: a project named
+   __proto__ or constructor is then an ordinary key, read and written like any
+   other. */
+function keyed<T>(entries: Record<string, T>): Record<string, T> {
+  return Object.assign(Object.create(null) as Record<string, T>, entries);
+}
 
-const empty = (): StoreFile => ({ version: 1, saved_tabs: {}, sites: {} });
+const empty = (): StoreFile => ({ version: 1, saved_tabs: keyed({}), sites: keyed({}) });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -55,7 +61,11 @@ function parse(text: string): StoreFile {
     if (!Array.isArray(tabs) || !tabs.every(isSavedTab)) throw new Error('the browser store has a malformed saved tab');
   }
   if (!Object.values(raw.sites).every(isStoredSite)) throw new Error('the browser store has a malformed site');
-  return raw as unknown as StoreFile;
+  return {
+    version: 1,
+    saved_tabs: keyed(raw.saved_tabs as Record<string, SavedTab[]>),
+    sites: keyed(raw.sites as Record<string, StoredSite>),
+  };
 }
 
 export class BrowserStore {

@@ -149,10 +149,11 @@ export const IPC = {
   // worktree/branch under <project>/.claude_tasks/<taskId>/.
   CODING_REMOVE_TASK: 'coding:remove-task',
 
-  // The in-app browser's pane (browser-host.ts). Main answers these only from
-  // the app's own main frame. BROWSER_READY says this UI shows the in-app
-  // browser, which is when main registers it with the local server;
-  // BROWSER_STATE is pushed main → renderer on every change of a task's browser.
+  /* The in-app browser's pane (browser-host.ts). Main answers these only from
+     the app's own main frame. BROWSER_READY says this UI shows the in-app
+     browser, which is when main registers it with the local server;
+     BROWSER_STATE is pushed main → renderer on every change of a task's browser,
+     and BROWSER_REGISTERED each time the local server takes the registration. */
   BROWSER_READY: 'browser:ready',
   BROWSER_SHOW: 'browser:show',
   BROWSER_HIDE: 'browser:hide',
@@ -165,4 +166,5 @@ export const IPC = {
   BROWSER_ANSWER_DOWNLOAD: 'browser:answer-download',
   BROWSER_CLEAR_DATA: 'browser:clear-data',
   BROWSER_STATE: 'browser:state',
+  BROWSER_REGISTERED: 'browser:registered',
 } as const;

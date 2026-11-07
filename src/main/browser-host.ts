@@ -40,7 +40,13 @@ import {
   type StageBounds,
 } from '../shared/browser-contract';
 import { type Bridge, startBridge } from './browser-bridge';
-import { browserProfilePath, configureBrowserSession, ensureProfileDir } from './browser-profile';
+import {
+  browserMemoryPartition,
+  browserProfilePath,
+  configureBrowserSession,
+  ensureProfileDir,
+  isQuarantinedAccountRoot,
+} from './browser-profile';
 import { BrowserRegistration } from './browser-register';
 import { BrowserSessions, type TabFactory, type TabHooks, type ViewBounds } from './browser-sessions';
 import { BrowserStore } from './browser-store';
@@ -49,6 +55,13 @@ import { electronTabFactory, type TabContext } from './browser-view';
 const IDLE_SWEEP_MS = 60_000;
 /* Under the account's data root: downloads that wait for the person's Save. */
 const DOWNLOAD_STAGING = 'browser-downloads';
+/* The most downloads one task keeps waiting for the person's answer at once.
+   A new one past them is cancelled, so a page can't pile up paused
+   downloads. */
+export const MAX_WAITING_DOWNLOADS = 5;
+/* A download's file name stays under the 255-byte limit of common file
+   systems, with room for a " (n)". */
+const MAX_NAME_BYTES = 200;
 const TAB_ID_PATTERN = /^t\d{1,4}$/;
 
 export function newBridgeToken(): string {
@@ -57,10 +70,13 @@ export function newBridgeToken(): string {
 
 /** The account's own folder inside the OS Downloads folder: downloads never
     land loose in it. The account on the app's default root gets "Cowork
-    browser"; another account's folder adds the start of its id. */
+    browser"; another account's folder adds the start of its id, and a
+    launch's quarantine root its whole name, whose random end keeps two such
+    roots apart. */
 export function accountDownloadsFolder(downloadsDir: string, accountRoot: string): string {
   const parent = path.basename(path.dirname(accountRoot));
-  const id = path.basename(accountRoot).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
+  const name = path.basename(accountRoot).replace(/[^A-Za-z0-9_-]/g, '');
+  const id = isQuarantinedAccountRoot(accountRoot) ? name : name.slice(0, 12);
   return path.join(downloadsDir, parent === 'accounts' && id ? `Cowork browser ${id}` : 'Cowork browser');
 }
 
@@ -78,10 +94,10 @@ function moveFile(from: string, to: string): void {
    account's staging folder, paused, and moves into Downloads only once the
    person says yes. */
 interface WaitingDownload {
-  /** The task whose pane may answer it, or null for a page no task owns. */
-  sessionId: string | null;
+  /** The task whose pane may answer it. */
+  sessionId: string;
   item: DownloadItem;
-  hooks: TabHooks | undefined;
+  hooks: TabHooks;
   name: string;
   folder: string;
   staged: string;
@@ -91,32 +107,86 @@ interface WaitingDownload {
   finished: boolean;
 }
 
-/** A file name for a download in `dir` that is safe and not taken. */
-export function uniqueDownloadPath(dir: string, suggested: string): string {
+/* The longest start of `text` that fits in `bytes` UTF-8 bytes, cut between
+   characters. */
+function byteCapped(text: string, bytes: number): string {
+  let kept = '';
+  let used = 0;
+  for (const char of text) {
+    used += Buffer.byteLength(char);
+    if (used > bytes) break;
+    kept += char;
+  }
+  return kept;
+}
+
+/** The save paths of downloads still in flight. Chromium creates a file only
+    after a later hop, so the disk alone can't tell two of them apart. Paths
+    compare as macOS and Windows compare file names, without case and in one
+    Unicode form, so Report.pdf and report.pdf are one path; on a disk that
+    tells them apart, that costs only a " (n)". */
+export class ReservedPaths {
+  private readonly keys = new Set<string>();
+
+  private static key(file: string): string {
+    return file.normalize('NFC').toLowerCase();
+  }
+
+  add(file: string): void {
+    this.keys.add(ReservedPaths.key(file));
+  }
+
+  delete(file: string): void {
+    this.keys.delete(ReservedPaths.key(file));
+  }
+
+  has(file: string): boolean {
+    return this.keys.has(ReservedPaths.key(file));
+  }
+}
+
+/** A file name for a download in `dir` that is safe, at most
+    MAX_NAME_BYTES long before any " (n)", and taken neither on disk nor in
+    `reserved`. A name too long loses the end of its stem; an extension too
+    long to keep is cut with the rest of the name. */
+export function uniqueDownloadPath(dir: string, suggested: string, reserved: ReservedPaths = new ReservedPaths()): string {
   const base = path.basename(suggested.replace(/\\/g, '/')).replace(/[\u0000-\u001f<>:"|?*]/g, '_').replace(/^\.+/, '').trim() || 'download';
-  const ext = path.extname(base);
-  const stem = base.slice(0, base.length - ext.length) || 'download';
+  let ext = path.extname(base);
+  if (Buffer.byteLength(ext) >= MAX_NAME_BYTES) ext = '';
+  const stem = byteCapped(base.slice(0, base.length - ext.length), MAX_NAME_BYTES - Buffer.byteLength(ext)).trimEnd() || 'download';
   for (let n = 0; ; n += 1) {
     const name = n === 0 ? `${stem}${ext}` : `${stem} (${n})${ext}`;
     const candidate = path.join(dir, name);
-    if (!fs.existsSync(candidate)) return candidate;
+    if (!fs.existsSync(candidate) && !reserved.has(candidate)) return candidate;
   }
 }
 
 export interface InAppBrowserDeps {
   /** The local server's port, whether or not it runs: pages may never reach it. */
   serverPort(): number;
-  /** The port to register with: the local server's while it runs or starts, else null. */
+  /** The port to register with: the local server's while it runs, else null. */
   runningServerPort(): number | null;
   authHeader(): Record<string, string>;
   /** The signed-in account's data root, and the stores the server runs on. */
   accountRoot(): string;
+  /** The data root of the account the running or starting sidecar serves,
+      or null when none does. The browser follows this account, not the
+      signed-in one, so it moves only when the sidecar does. */
+  sidecarAccountRoot(): string | null;
   /** The app's userData folder, where the browser profiles live (`app.getPath('userData')`). */
   userDataDir(): string;
   storesRoot(): string | null;
   downloadsDir(): string;
   /** session.fromPath. */
   profileSession(dir: string): Session;
+  /** session.fromPartition, for a partition without the `persist:` prefix:
+      a session that keeps nothing on disk. */
+  memorySession(partition: string): Session;
+  /** Marks a file the browser saved into Downloads as downloaded from the
+      web. On macOS that is the com.apple.quarantine mark Gatekeeper checks
+      before the file opens; the mark carries the web-download flags, the time
+      and the agent, not the address. Throws when the mark can't be written. */
+  markDownloaded(file: string): void;
   fetch: typeof fetch;
   /** This shell's Electron version (`process.versions.electron`). */
   electronVersion(): string | undefined;
@@ -130,9 +200,14 @@ export class InAppBrowserHost {
   private window: BrowserWindow | null = null;
   private rendererReady = false;
   private identity: string | null = null;
+  /* The account the sidecar served at the last sync. The profile, the cookie
+     lookups and the store follow it, so they move only together with the
+     tasks and the key. */
+  private accountInUse: string | null = null;
   private profile: { root: string; session: Session } | null = null;
   private readonly owners = new WeakMap<WebContents, TabHooks>();
   private readonly waitingDownloads = new Map<string, WaitingDownload>();
+  private readonly reservedPaths = new ReservedPaths();
   /* session.fromPath returns the same session for the same folder, so an
      account switched away from and back to is configured only once. */
   private readonly configured = new WeakSet<Session>();
@@ -173,7 +248,7 @@ export class InAppBrowserHost {
     this.bridge = await startBridge({
       token: () => this.token,
       sessions: this.sessions,
-      store: () => BrowserStore.forAccountRoot(this.deps.accountRoot()),
+      store: () => BrowserStore.forAccountRoot(this.profileRoot()),
     });
     this.sweep = setInterval(() => this.sessions.sweepIdle(), IDLE_SWEEP_MS);
     this.sweep.unref();
@@ -197,58 +272,126 @@ export class InAppBrowserHost {
 
   // ---- The profile ---------------------------------------------------------------
 
+  /* The account root the browser works for: the one the sidecar served at
+     the last sync, else the signed-in one. */
+  private profileRoot(): string {
+    return this.accountInUse ?? this.deps.accountRoot();
+  }
+
   private profileSession(): Session {
-    const root = this.deps.accountRoot();
+    const root = this.profileRoot();
     if (this.profile?.root === root) return this.profile.session;
-    const dir = browserProfilePath(this.deps.userDataDir(), root);
-    ensureProfileDir(dir);
-    const ses = this.deps.profileSession(dir);
-    if (!this.configured.has(ses)) {
-      this.configured.add(ses);
-      // A download left waiting when the app last closed never resumes.
-      fs.rmSync(path.join(root, DOWNLOAD_STAGING), { recursive: true, force: true });
-      configureBrowserSession(ses, { protectedPorts: () => [this.deps.serverPort(), this.bridge?.port ?? 0].filter(Boolean) });
-      ses.on('will-download', (_event, item, contents) => this.placeDownload(root, item, this.owners.get(contents)));
-    }
+    const ses = this.lockedProfile(root);
     this.profile = { root, session: ses };
     return ses;
   }
 
+  /* The root's profile session, locked down the first time it opens. */
+  private lockedProfile(root: string): Session {
+    const ses = this.openProfile(root);
+    if (!this.configured.has(ses)) {
+      /* The lockdown runs before the session counts as configured, so a
+         lockdown that throws leaves it uncounted and the next call runs it
+         again. The staging cleanup comes after, and its failure is only
+         logged. */
+      configureBrowserSession(ses, { protectedPorts: () => [this.deps.serverPort(), this.bridge?.port ?? 0].filter(Boolean) });
+      ses.on('will-download', (_event, item, contents) => this.placeDownload(root, item, this.owners.get(contents)));
+      this.configured.add(ses);
+      // A download left waiting when the app last closed never resumes.
+      try {
+        fs.rmSync(path.join(root, DOWNLOAD_STAGING), { recursive: true, force: true });
+      } catch (error) {
+        diagnostic('main.browser-host', 'WARNING', 'browser_host_could_not_clear_staged_downloads', error);
+      }
+    }
+    return ses;
+  }
+
+  /* A quarantine root's profile lives in memory: no later launch names that
+     root again, so a folder for it would never be reached, or cleared. */
+  private openProfile(root: string): Session {
+    if (isQuarantinedAccountRoot(root)) return this.deps.memorySession(browserMemoryPartition(root));
+    const dir = browserProfilePath(this.deps.userDataDir(), root);
+    ensureProfileDir(dir);
+    return this.deps.profileSession(dir);
+  }
+
+  /* Marks a file saved into Downloads as downloaded from the web, so macOS
+     checks it before it opens. A file that can't be marked is removed rather
+     than left in Downloads unmarked, and its download reads as interrupted. */
+  private markSaved(file: string): 'completed' | 'interrupted' {
+    try {
+      this.deps.markDownloaded(file);
+      return 'completed';
+    } catch (error) {
+      diagnostic('main.browser-host', 'WARNING', 'browser_host_could_not_mark_a_download', error);
+    }
+    try {
+      fs.rmSync(file, { force: true });
+    } catch (error) {
+      diagnostic('main.browser-host', 'WARNING', 'browser_host_could_not_remove_an_unmarked_download', error);
+    }
+    return 'interrupted';
+  }
+
+  private waitingCount(sessionId: string): number {
+    return [...this.waitingDownloads.values()].filter((waiting) => waiting.sessionId === sessionId && waiting.save === null).length;
+  }
+
   /* Downloads land in the account's folder inside Downloads. While the person
-     holds the browser they save at once, as the person's own; otherwise (the
-     agent holds it, or the page is no task's) each one waits, paused and
-     staged outside Downloads, for the person's yes in the pane. Public for
-     tests; the profile's will-download handler calls it. */
+     holds the browser they save at once, as the person's own; while the agent
+     holds it each one waits, paused and staged outside Downloads, for the
+     person's yes in the pane, and one past MAX_WAITING_DOWNLOADS is
+     cancelled. A download no task owns is cancelled, since no pane can ask
+     about it. Public for tests; the profile's will-download handler calls
+     it. */
   placeDownload(root: string, item: DownloadItem, hooks: TabHooks | undefined): void {
+    if (!hooks) {
+      diagnostic('main.browser-host', 'WARNING', 'browser_host_cancelled_a_download_no_task_owns');
+      item.cancel();
+      return;
+    }
     const folder = accountDownloadsFolder(this.deps.downloadsDir(), root);
     const folderName = path.basename(folder);
     const id = randomBytes(6).toString('hex');
     const suggested = item.getFilename();
     const staging = path.join(root, DOWNLOAD_STAGING);
+    const personHolds = hooks.personHolds();
+    const refuse = (state: BrowserDownload['state']): void => {
+      item.cancel();
+      hooks.download({ id, name: path.basename(suggested) || 'download', folder: folderName, state });
+    };
+    if (!personHolds && this.waitingCount(hooks.sessionId()) >= MAX_WAITING_DOWNLOADS) {
+      refuse('cancelled');
+      return;
+    }
     try {
-      fs.mkdirSync(hooks?.personHolds() ? folder : staging, { recursive: true, mode: 0o700 });
+      fs.mkdirSync(personHolds ? folder : staging, { recursive: true, mode: 0o700 });
     } catch (error) {
       // Nowhere to put it: nothing downloads, rather than landing loose.
       diagnostic('main.browser-host', 'WARNING', 'browser_host_could_not_place_a_download', error);
-      item.cancel();
-      hooks?.download({ id, name: path.basename(suggested) || 'download', folder: folderName, state: 'interrupted' });
+      refuse('interrupted');
       return;
     }
-    if (hooks?.personHolds()) {
-      const target = uniqueDownloadPath(folder, suggested);
+    if (personHolds) {
+      const target = uniqueDownloadPath(folder, suggested, this.reservedPaths);
       const name = path.basename(target);
+      this.reservedPaths.add(target);
       item.setSavePath(target);
       hooks.download({ id, name, folder: folderName, state: 'progressing' });
-      item.once('done', (_e, state) => hooks.download({ id, name, folder: folderName, state }));
+      item.once('done', (_e, state) => {
+        this.reservedPaths.delete(target);
+        hooks.download({ id, name, folder: folderName, state: state === 'completed' ? this.markSaved(target) : state });
+      });
       return;
     }
     const staged = path.join(staging, `${id}.part`);
-    const name = path.basename(uniqueDownloadPath(folder, suggested));
+    const name = path.basename(uniqueDownloadPath(folder, suggested, this.reservedPaths));
     item.setSavePath(staged);
     item.pause();
-    const waiting: WaitingDownload = { sessionId: hooks?.sessionId() ?? null, item, hooks, name, folder, staged, save: null, finished: false };
+    const waiting: WaitingDownload = { sessionId: hooks.sessionId(), item, hooks, name, folder, staged, save: null, finished: false };
     this.waitingDownloads.set(id, waiting);
-    hooks?.download({ id, name, folder: folderName, state: 'waiting' });
+    hooks.download({ id, name, folder: folderName, state: 'waiting' });
     item.once('done', (_e, state) => {
       if (state === 'completed' && waiting.save === null) {
         waiting.finished = true;
@@ -270,9 +413,12 @@ export class InAppBrowserHost {
     try {
       if (final === 'completed') {
         fs.mkdirSync(waiting.folder, { recursive: true });
-        const target = uniqueDownloadPath(waiting.folder, name);
+        /* The name skips the paths of downloads in flight. The move is
+           synchronous, so from then on the file on disk holds its name. */
+        const target = uniqueDownloadPath(waiting.folder, name, this.reservedPaths);
         moveFile(waiting.staged, target);
         name = path.basename(target);
+        final = this.markSaved(target);
       } else {
         fs.rmSync(waiting.staged, { force: true });
       }
@@ -281,7 +427,7 @@ export class InAppBrowserHost {
       fs.rmSync(waiting.staged, { force: true });
       final = 'interrupted';
     }
-    waiting.hooks?.download({ id, name, folder: folderName, state: final });
+    waiting.hooks.download({ id, name, folder: folderName, state: final });
   }
 
   /** The person's answer, in one task's pane, to that task's waiting download. */
@@ -298,7 +444,7 @@ export class InAppBrowserHost {
       this.settleDownload(id, 'completed');
       return;
     }
-    waiting.hooks?.download({ id, name: waiting.name, folder: path.basename(waiting.folder), state: 'progressing' });
+    waiting.hooks.download({ id, name: waiting.name, folder: path.basename(waiting.folder), state: 'progressing' });
     waiting.item.resume();
   }
 
@@ -320,15 +466,24 @@ export class InAppBrowserHost {
     };
   }
 
-  /** Sign out of all sites: every task closes, and the profile's cookies, storage and cache go. */
+  /** Sign out of all sites: every task closes, and the profile's cookies,
+      storage and cache go, with the sites the store remembers. While a
+      sign-in is ahead of the sidecar, the browser still runs on the
+      sidecar's account, so the signed-in account's profile is cleared
+      too. */
   async clearData(): Promise<{ ok: boolean }> {
     this.sessions.closeAll();
     try {
-      const ses = this.profileSession();
-      await ses.clearStorageData();
-      await ses.clearCache();
-      await ses.clearAuthCache();
-      BrowserStore.forAccountRoot(this.deps.accountRoot()).forgetSites();
+      for (const root of new Set([this.profileRoot(), this.deps.accountRoot()])) {
+        const ses = this.lockedProfile(root);
+        await ses.clearStorageData();
+        /* The cookie store writes its deletes to disk in batches; a crash
+           before the next batch would bring every cookie back. */
+        await ses.cookies.flushStore();
+        await ses.clearCache();
+        await ses.clearAuthCache();
+        BrowserStore.forAccountRoot(root).forgetSites();
+      }
       return { ok: true };
     } catch (error) {
       diagnostic('main.browser-host', 'WARNING', 'browser_host_could_not_clear_the_browser_data', error);
@@ -343,16 +498,19 @@ export class InAppBrowserHost {
     return this.bridge && this.window && this.rendererReady ? { url: this.bridge.url, token: this.token } : null;
   }
 
-  /* A change of account or stores closes every task, makes a new key and
-     moves to the new account's profile. The stores are known only while the
-     server runs or starts; a stopped server is not a switch. */
+  /* A change of the sidecar's account or stores closes every task, makes a
+     new key and moves to that account's profile. The stores are known only
+     while the server runs or starts; a stopped server is not a switch, and
+     neither is a sign-in the sidecar hasn't moved to yet. */
   private syncAccount(): void {
     const stores = this.deps.storesRoot();
     if (stores === null) return;
-    const identity = `${this.deps.accountRoot()}\u0000${stores}`;
+    const account = this.deps.sidecarAccountRoot() ?? this.deps.accountRoot();
+    const identity = `${account}\u0000${stores}`;
     if (this.identity === identity) return;
     const first = this.identity === null;
     this.identity = identity;
+    this.accountInUse = account;
     if (first) return;
     this.sessions.closeAll();
     this.token = newBridgeToken();
@@ -361,16 +519,29 @@ export class InAppBrowserHost {
   /** The started hook's browser step: after every server start or adoption. */
   async serverStarted(): Promise<boolean> {
     this.syncAccount();
-    const address = this.address();
-    return address ? this.registration.push(address) : false;
+    return this.register();
   }
 
   /** The UI can show the in-app browser. */
   async rendererIsReady(): Promise<boolean> {
     this.rendererReady = true;
     this.syncAccount();
+    return this.register();
+  }
+
+  /* Pushes the address and key, if there is one to push. Once the server
+     takes it, the UI hears so and asks GET /browse/status again, since the
+     server offers the browser only from then on, and an answer the UI got
+     before can say it doesn't. */
+  private async register(): Promise<boolean> {
     const address = this.address();
-    return address ? this.registration.push(address) : false;
+    if (!address) return false;
+    const taken = await this.registration.push(address);
+    if (taken) {
+      const window = this.window;
+      if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send(IPC.BROWSER_REGISTERED);
+    }
+    return taken;
   }
 
   attachWindow(window: BrowserWindow): void {

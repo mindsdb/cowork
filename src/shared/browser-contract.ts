@@ -55,9 +55,28 @@ export const MAX_SAVED_TABS_PER_PROJECT = 100;
     scale back up by the same factor. The web pod uses the same width. */
 export const MAX_SCREENSHOT_WIDTH = 1024;
 
-/** A wait step's ceiling, and the hand-over reason's length cap (anton cuts it at 300). */
+/** A wait step's ceiling, and the hand-over reason's length cap: a longer
+    reason gets 400, as on the web pod (anton cuts it at 300 before sending). */
 export const MAX_WAIT_MS = 30_000;
 export const MAX_CONTROL_REASON = 300;
+
+/** How long anton's client waits for a call's answer (REQUEST_TIMEOUT_S in
+    anton/core/browser/client.py); its first call to the app's host waits the
+    same. Its timer starts before the host reads the call, so the host must
+    answer a step well inside it. */
+export const ANTON_REQUEST_TIMEOUT_MS = 45_000;
+
+/** How long an agent step may run, past the wait a wait step asks for, before
+    the host ends it with 409 page_blocked. A step still running then has met
+    something that blocks the page, most often a dialog the person must
+    answer. The budget is longer than a navigation's wait (NAVIGATION_WAIT_MS
+    in src/main/browser-view.ts), so a slow load still answers 200. The budget
+    plus the page read an include_page step adds (PAGE_READ_TIMEOUT_MS in
+    src/main/browser-page-script.ts) ends inside ANTON_REQUEST_TIMEOUT_MS, so
+    page_blocked reaches anton, which tells the agent a dialog may be open,
+    before anton stops waiting. A type step's keyed typing is sized to end
+    inside the budget (KEYED_CHARS in src/main/browser-input.ts). */
+export const STEP_TIMEOUT_MS = 33_000;
 
 /** anton's STEP_ACTIONS (anton/core/browser/tool.py). */
 export const STEP_ACTIONS = [
@@ -186,6 +205,7 @@ export type BridgeErrorCode =
   | 'page_blocked'
   | 'page_busy'
   | 'browser_unavailable'
+  | 'at_capacity'
   | 'internal';
 
 export const BRIDGE_ERROR_STATUS: Record<BridgeErrorCode, number> = {
@@ -204,6 +224,7 @@ export const BRIDGE_ERROR_STATUS: Record<BridgeErrorCode, number> = {
   page_busy: 409,
   internal: 500,
   browser_unavailable: 503,
+  at_capacity: 503,
 };
 
 export interface BridgeErrorBody {
@@ -318,7 +339,7 @@ export function navigableUrl(raw: unknown): string | null {
 function parseStep(body: Record<string, unknown>): Parsed<Step> {
   const action = body.action;
   if (typeof action !== 'string' || !(STEP_ACTIONS as readonly string[]).includes(action)) {
-    return refuse(`unknown action ${JSON.stringify(action)}; expected one of ${STEP_ACTIONS.join(', ')}`);
+    return refuse(`unknown action ${typeof action === 'string' ? JSON.stringify(action) : `of type ${typeof action}`}; expected one of ${STEP_ACTIONS.join(', ')}`);
   }
   switch (action as StepAction) {
     case 'click': {
@@ -436,8 +457,10 @@ export function parseControlRequest(body: unknown): Parsed<ControlRequest> & { p
   if (body.holder === 'agent') return { ok: false, message: 'only the person hands the browser back', personOnly: true };
   if (body.holder !== 'human') return refuse('holder must be "human"');
   const reason = body.reason ?? '';
-  if (typeof reason !== 'string') return refuse('reason must be a string');
-  return ok({ holder: 'human', reason: reason.slice(0, MAX_CONTROL_REASON) });
+  if (typeof reason !== 'string' || reason.length > MAX_CONTROL_REASON) {
+    return refuse(`reason must be a string of at most ${MAX_CONTROL_REASON} characters`);
+  }
+  return ok({ holder: 'human', reason });
 }
 
 /** POST /sessions/{id}/tabs. */
@@ -545,13 +568,48 @@ export function parseLoginAnswer(value: unknown): BrowserLoginAnswer | null {
   return { username, password };
 }
 
+/** Main's answer to bounds the pane sends. */
+export interface PaneDrawAnswer {
+  /** Whether main draws the shown task's view at those bounds. False for the
+      empty rectangle, for bounds under the floor (MIN_VIEW_PX in
+      src/main/browser-sessions.ts, after the UI zoom), and when no task is
+      shown. */
+  drawn: boolean;
+}
+
+/** Main's answer to the pane's show. */
+export interface PaneShowAnswer extends PaneDrawAnswer {
+  /** Whether the task's browser is open. A task with none is not shown, so
+      `drawn` is false too. */
+  exists: boolean;
+}
+
 /** The in-app browser's preload surface (antontron.browser). */
 export interface InAppBrowserBridge {
   /** This UI shows the in-app browser; main registers it with the local server only after this. */
   ready(): Promise<void>;
-  show(sessionId: string, bounds: StageBounds): Promise<{ exists: boolean }>;
+  /** The pane shows a task's browser on its stage. A pane that opens while an
+      overlay is open or the sign-in form shows sends the empty rectangle
+      {x: 0, y: 0, width: 0, height: 0}; any other stage goes as measured.
+      Main keeps the task shown but draws nothing for the empty rectangle, and
+      it does the same for any bounds under its floor (MIN_VIEW_PX in
+      src/main/browser-sessions.ts, 200 DIP in either direction), so a stage
+      with no area, measured, parks the view too. Main answers whether it
+      draws, since only main knows the UI zoom the floor applies after. A
+      shown task, covered or not, is never closed for being idle or to make
+      room under the live-task cap. */
+  show(sessionId: string, bounds: StageBounds): Promise<PaneShowAnswer>;
+  /** The pane stops showing the task: the pane closed, the task changed, or
+      the task closed. Covering the pane is not a hide; it is an empty
+      rectangle through setBounds. */
   hide(): Promise<void>;
-  setBounds(bounds: StageBounds): Promise<void>;
+  /** The stage's new bounds. While an overlay is open or the sign-in form
+      shows, the pane sends the empty rectangle; otherwise it sends the stage
+      as measured. For the empty rectangle, or any bounds under the floor,
+      main parks the view at the last bounds big enough to draw in, with the
+      task still shown. Bounds big enough show it there again. Main answers
+      whether it draws. */
+  setBounds(bounds: StageBounds): Promise<PaneDrawAnswer>;
   back(sessionId: string): Promise<void>;
   forward(sessionId: string): Promise<void>;
   reload(sessionId: string): Promise<void>;

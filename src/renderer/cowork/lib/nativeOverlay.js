@@ -1,10 +1,13 @@
 import { useEffect, useSyncExternalStore } from 'react';
 
 /* How many app overlays are open. On the desktop the browser pane is a native
-   view, and a native view draws above every part of the page, so a modal or a
-   popover open over the pane would sit underneath it. Modal and
-   OutsidePressLayer raise this count while they are open, and the desktop
-   browser stage hides its view while the count is above zero. */
+   view, and a native view draws above every part of the page, so anything
+   drawn over the pane would sit underneath it. Modal, OutsidePressLayer,
+   Select and Combobox raise this count while they are open, ToastProvider
+   while a toast shows, and the app for the floating rail drawer, the narrow
+   sidebar popout and the update curtain. While the count is above zero the
+   desktop browser stage parks its view off screen, and the task stays the one
+   the pane shows. */
 
 let count = 0;
 const listeners = new Set();

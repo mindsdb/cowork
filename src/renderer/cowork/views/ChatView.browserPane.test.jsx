@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
-const shell = vi.hoisted(() => ({ isWeb: true, inApp: false, shown: [] }));
+const shell = vi.hoisted(() => ({ isWeb: true, inApp: false, shown: [], hides: 0, bounds: [] }));
 vi.mock('../../platform/host', () => ({
   host: {
     get isWeb() { return shell.isWeb; },
@@ -10,10 +10,13 @@ vi.mock('../../platform/host', () => ({
     inAppBrowser: {
       show: async (sessionId) => {
         shell.shown.push(sessionId);
-        return { exists: true };
+        return { exists: true, drawn: true };
       },
-      hide: async () => {},
-      setBounds: async () => {},
+      hide: async () => { shell.hides += 1; },
+      setBounds: async (bounds) => {
+        shell.bounds.push(bounds);
+        return { drawn: true };
+      },
       onState: () => () => {},
     },
     isMac: () => false,
@@ -37,6 +40,7 @@ vi.mock('../api', async (importOriginal) => ({
 
 import ChatView from './ChatView';
 import { browserStep } from '../lib/browserSession';
+import { NOWHERE } from '../components/browser/LocalBrowserStage';
 
 const VIEW = `${window.location.origin}/browser/sessions/t-abc/view?et=tok`;
 const step = (sessionId = 't-abc') => browserStep({ session_id: sessionId }, 1);
@@ -73,12 +77,34 @@ function setWidth(px) {
   act(() => { window.dispatchEvent(new Event('resize')); });
 }
 
+/* happy-dom does no layout: give the desktop stage a box, so the native view
+   has somewhere to show. */
+function stageHasArea() {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function box() {
+    return this.classList?.contains('browser-panel__stage')
+      ? { left: 600, top: 56, x: 600, y: 56, width: 600, height: 700 }
+      : { left: 0, top: 0, x: 0, y: 0, width: 0, height: 0 };
+  });
+}
+
+/* A ResizeObserver that reports every element `width` wide at once, as the
+   chat's root measures at a 1200 px window with the sidebar docked. */
+function observeWidth(width) {
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(cb) { this.cb = cb; }
+    observe() { this.cb([{ contentRect: { width } }]); }
+    disconnect() {}
+  });
+}
+
 describe('ChatView shared browser pane', () => {
   let iframeLoading;
   beforeEach(() => {
     shell.isWeb = true;
     shell.inApp = false;
     shell.shown = [];
+    shell.hides = 0;
+    shell.bounds = [];
     embedBrowser.mockReset();
     embedBrowser.mockResolvedValue({ session_id: 't-abc', view_url: VIEW, ticket_expires_at: 1_900_000_000, lease_expires_at: 1_900_000_780 });
     iframeLoading = window.happyDOM.settings.disableIframePageLoading;
@@ -88,6 +114,8 @@ describe('ChatView shared browser pane', () => {
   afterEach(() => {
     window.happyDOM.settings.disableIframePageLoading = iframeLoading;
     setWidth(1024);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('never opens for a past Browser step while the browser is off, and mints nothing', async () => {
@@ -150,20 +178,43 @@ describe('ChatView shared browser pane', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('closes when the browser is switched off, and starts over on a task change', async () => {
-    const live = [{ id: 'u1', role: 'user', content: 'Go' }, liveTurn()];
-    const { rerender } = render(<ChatView task={task('sw-1', live)} onSend={vi.fn()} browserOn />);
-    await act(async () => {});
+  it("closes a past turn's pane when the browser is switched off, and starts over on a task change", async () => {
+    const { rerender } = render(<ChatView task={task('sw-1', pastTurn)} onSend={vi.fn()} browserOn />);
+    await clickBrowserStep();
     expect(pane()).not.toBeNull();
-    rerender(<ChatView task={task('sw-1', live)} onSend={vi.fn()} browserOn={false} />);
+    rerender(<ChatView task={task('sw-1', pastTurn)} onSend={vi.fn()} browserOn={false} />);
     expect(pane()).toBeNull();
 
-    rerender(<ChatView task={task('sw-1', live)} onSend={vi.fn()} browserOn />);
+    rerender(<ChatView task={task('sw-1', pastTurn)} onSend={vi.fn()} browserOn />);
     await act(async () => {});
     expect(pane()).not.toBeNull();
     rerender(<ChatView task={task('sw-2', pastTurn)} onSend={vi.fn()} browserOn />);
     await act(async () => {});
     expect(pane()).toBeNull();
+  });
+
+  it("keeps the live turn's pane through a switch-off, until that turn ends", async () => {
+    // Off applies from the next message: the running turn keeps its browser.
+    const asked = { id: 'u1', role: 'user', content: 'Go' };
+    const { rerender } = render(<ChatView task={task('sw-3', [asked, liveTurn()])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    rerender(<ChatView task={task('sw-3', [asked, liveTurn()])} onSend={vi.fn()} browserOn={false} />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+
+    const finished = [asked, { id: 'a1', role: 'assistant', content: 'Done.', steps: [step()] }];
+    rerender(<ChatView task={task('sw-3', finished)} onSend={vi.fn()} browserOn={false} />);
+    await act(async () => {});
+    expect(pane()).toBeNull();
+  });
+
+  it("opens the live turn's session on a click while the browser is switched off", async () => {
+    render(<ChatView task={task('sw-4', [{ id: 'u1', role: 'user', content: 'Go' }, liveTurn()])} onSend={vi.fn()} browserOn={false} />);
+    await act(async () => {});
+    expect(pane()).toBeNull();
+    await clickBrowserStep();
+    expect(pane()).not.toBeNull();
   });
 
   it('opens no pane on a desktop shell without the in-app browser', async () => {
@@ -177,6 +228,7 @@ describe('ChatView shared browser pane', () => {
   it("opens the app's own browser on a desktop shell that hosts it, with no frame and no viewer link", async () => {
     shell.isWeb = false;
     shell.inApp = true;
+    stageHasArea();
     const { container } = render(<ChatView task={task('desk-2', [{ id: 'u1', role: 'user', content: 'Go' }, liveTurn()])} onSend={vi.fn()} browserOn />);
     await act(async () => {});
     expect(pane()).not.toBeNull();
@@ -228,5 +280,34 @@ describe('ChatView shared browser pane', () => {
     await act(async () => {});
     expect(container.innerHTML).toContain('minmax(440px,50%)');
     expect(container.querySelector('.chat-rail-aside')).toHaveClass('hidden');
+    // The docked rail can't show there, so nothing offers to expand it.
+    expect(screen.queryByRole('button', { name: 'Expand panel' })).toBeNull();
+  });
+
+  it('opens the floating rail over the inline desktop pane at 1200 px, with the native view parked out of its way', async () => {
+    shell.isWeb = false;
+    shell.inApp = true;
+    stageHasArea();
+    observeWidth(885);
+    setWidth(1200);
+    const { container } = render(
+      <ChatView task={task('w-3', [{ id: 'u1', role: 'user', content: 'Go' }, liveTurn()])} onSend={vi.fn()} browserOn />,
+    );
+    await act(async () => {});
+    expect(container.innerHTML).toContain('minmax(440px,50%)');
+    expect(shell.shown).toEqual(['t-abc']);
+    const rail = container.querySelector('.chat-rail-aside');
+    expect(rail).not.toHaveClass('hidden');
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Expand panel' })); });
+    expect(rail.style.transform).toBe('translateX(0)');
+    // Parked, not hidden: the task stays the one the pane shows.
+    expect(shell.bounds).toEqual([NOWHERE]);
+    expect(shell.hides).toBe(0);
+
+    await act(async () => { fireEvent.click(within(rail).getByRole('button', { name: 'Collapse panel' })); });
+    expect(shell.bounds).toEqual([NOWHERE, { x: 600, y: 56, width: 600, height: 700 }]);
+    expect(shell.shown).toEqual(['t-abc']);
+    expect(shell.hides).toBe(0);
   });
 });

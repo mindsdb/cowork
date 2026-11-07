@@ -50,6 +50,7 @@ import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
+import { useNativeOverlay } from '../lib/nativeOverlay';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
@@ -1947,6 +1948,9 @@ export default function ChatView({
   // turn the other never got, and the two would stop being comparable.
   const sendAgain = pane ? undefined : (text, attachments) => onSend?.(text, attachments);
   const railOverlayOpen = !pane && railFloats && railNarrowOpen;
+  /* The floating rail drawer counts as an overlay, so the desktop browser
+     pane's native view steps aside rather than draw over it. */
+  useNativeOverlay(railOverlayOpen);
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
   /* The figure source (a LinkedFigureSource) whose file is open in the
@@ -2060,7 +2064,9 @@ export default function ChatView({
      it. ChatView isn't keyed by task, so a task change starts over. The web
      shows the browser router's viewer and a desktop shell that hosts the
      in-app browser shows its own; an older shell has no pane. A comparison
-     pane has no right-hand column. */
+     pane has no right-hand column. Switching the browser off applies from
+     the next message, so the live turn's own session stays viewable, and its
+     Browser step stays clickable, until that turn ends. */
   const [shownBrowserId, setShownBrowserId] = useState(null);
   useEffect(() => {
     setShownBrowserId(null);
@@ -2069,7 +2075,12 @@ export default function ChatView({
   useEffect(() => {
     if (browserOn && liveBrowserId) setShownBrowserId(liveBrowserId);
   }, [browserOn, liveBrowserId, task.id]);
-  const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && browserOn && !!shownBrowserId;
+  const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
+  const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
+  /* The inline pane holds the right-hand column, where a docked rail would
+     go, so the rail and its Expand button step aside. A rail that floats
+     opens over the pane instead. */
+  const railHidden = browserOpen && !paneFloats && !railFloats;
   /* The web browser takes a while to wake, so a task that used it starts it
      when it opens and when the person types. The desktop has nothing to
      start. */
@@ -2086,7 +2097,7 @@ export default function ChatView({
      cells in the scratchpad viewer, under its message's key `prefix`. */
   const activateStep = (prefix) => (step) => {
     if (step?.badge === BROWSER_BADGE) {
-      if (browserOn && step.data?.sessionId) setShownBrowserId(step.data.sessionId);
+      if (viewable(step.data?.sessionId)) setShownBrowserId(step.data.sessionId);
       return;
     }
     if (prefix) setOpenScratchpadStepId(prefixId(prefix, step.id));
@@ -2309,7 +2320,7 @@ export default function ChatView({
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        {!pane && (<Tooltip content="Expand panel">
+        {!pane && !railHidden && (<Tooltip content="Expand panel">
           <button
             type="button"
             onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
@@ -3415,11 +3426,12 @@ export default function ChatView({
         />
       )}
       <aside
-        // Narrow: fixed overlay that slides in from the right.
-        // Wide: inline grid column.
-        // While the shared browser holds the right-hand column on a wide
-        // screen, the rail steps aside rather than add a third grid track.
-        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${browserOpen && !paneFloats ? 'hidden ' : ''}${
+        /* Narrow: fixed overlay that slides in from the right.
+           Wide: inline grid column.
+           While the shared browser holds the right-hand column on a wide
+           screen, the docked rail steps aside rather than add a third grid
+           track. A floating rail takes no track, so it still opens. */
+        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${railHidden ? 'hidden ' : ''}${
           railFloats
             ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
             : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'

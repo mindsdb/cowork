@@ -15,7 +15,7 @@
 // `onMouseDown` are the layer's own and are not merged.
 //
 // While it is mounted the popup counts as an open overlay, so the desktop
-// browser pane's native view, which draws above the page, hides under it.
+// browser pane's native view, which draws above the page, steps aside.
 
 import { createPortal } from 'react-dom';
 import { useNativeOverlay } from '../../lib/nativeOverlay';

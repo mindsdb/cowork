@@ -57,6 +57,7 @@ export function fakeFactory(): TabFactory & { tabs: FakeTab[] } {
         show: vi.fn(),
         park: vi.fn(),
         abortInput: vi.fn(),
+        watchSecrets: vi.fn(),
         close: vi.fn(),
       };
       tabs.push(tab);

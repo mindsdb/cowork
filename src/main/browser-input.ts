@@ -11,10 +11,15 @@
  * Input looks like a person's: the mouse moves along an eased, slightly curved
  * path to a random point inside the element, and text is typed key by key
  * (keyDown and keyUp per character) with short pauses. Characters with no key
- * on a US layout go in with Input.insertText.
+ * on a US layout go in with Input.insertText, and so do a tab and a long text
+ * past its first KEYED_CHARS characters, so the step ends inside its time
+ * limit.
  *
- * `runStep` turns a checked step into those commands, and refuses typing or
- * key presses into a secret field with 403 password_field.
+ * `runStep` turns a checked step into those commands. As on the web pod, a
+ * type or press step focuses its element rather than clicking it, and a type,
+ * a select or a press of a key that edits text into a secret field gets 403
+ * password_field. Before every key, typing checks that the focus is still in
+ * its field and not on a secret one, and stops when it isn't.
  */
 
 import {
@@ -23,7 +28,7 @@ import {
   type StepRequest,
   type StepTarget,
 } from '../shared/browser-contract';
-import type { LocateResult, SelectResult } from './browser-page-script';
+import type { FocusFieldResult, FocusResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
 import { screenshotScale } from './browser-screenshot';
 
 /** The only commands main ever sends through a view's debugger. */
@@ -78,12 +83,9 @@ const MODIFIER_KEYS: Record<Modifier, KeyDef> = {
   Shift: { key: 'Shift', code: 'ShiftLeft', keyCode: 16 },
 };
 
-const MODIFIER_NAMES: Record<string, Modifier> = {
-  alt: 'Alt', option: 'Alt',
-  control: 'Control', ctrl: 'Control',
-  meta: 'Meta', cmd: 'Meta', command: 'Meta',
-  shift: 'Shift',
-};
+function isModifier(name: string): name is Modifier {
+  return Object.hasOwn(MODIFIER_BITS, name);
+}
 
 /* A US layout: every character a person types with one key, with or without Shift. */
 function buildCharKeys(): Map<string, KeyDef> {
@@ -111,58 +113,93 @@ function buildCharKeys(): Map<string, KeyDef> {
     keys.set(shifted, { key: shifted, code, keyCode, text: shifted, shift: true });
   }
   keys.set(' ', { key: ' ', code: 'Space', keyCode: 32, text: ' ' });
-  keys.set('\n', { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' });
-  keys.set('\t', { key: 'Tab', code: 'Tab', keyCode: 9 });
   return keys;
 }
 
 const CHAR_KEYS = buildCharKeys();
 
-const NAMED_KEYS: Record<string, KeyDef> = {
-  enter: { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' },
-  return: { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' },
-  tab: { key: 'Tab', code: 'Tab', keyCode: 9 },
-  escape: { key: 'Escape', code: 'Escape', keyCode: 27 },
-  esc: { key: 'Escape', code: 'Escape', keyCode: 27 },
-  backspace: { key: 'Backspace', code: 'Backspace', keyCode: 8 },
-  delete: { key: 'Delete', code: 'Delete', keyCode: 46 },
-  arrowup: { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
-  arrowdown: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
-  arrowleft: { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
-  arrowright: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
-  home: { key: 'Home', code: 'Home', keyCode: 36 },
-  end: { key: 'End', code: 'End', keyCode: 35 },
-  pageup: { key: 'PageUp', code: 'PageUp', keyCode: 33 },
-  pagedown: { key: 'PageDown', code: 'PageDown', keyCode: 34 },
-  space: { key: ' ', code: 'Space', keyCode: 32, text: ' ' },
-};
-for (let i = 1; i <= 12; i += 1) NAMED_KEYS[`f${i}`] = { key: `F${i}`, code: `F${i}`, keyCode: 111 + i };
+const ENTER: KeyDef = { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' };
+const TAB: KeyDef = { key: 'Tab', code: 'Tab', keyCode: 9 };
+const BACKSPACE: KeyDef = { key: 'Backspace', code: 'Backspace', keyCode: 8 };
+
+const NAMED_KEYS: KeyDef[] = [
+  ENTER,
+  TAB,
+  BACKSPACE,
+  { key: 'Escape', code: 'Escape', keyCode: 27 },
+  { key: 'Delete', code: 'Delete', keyCode: 46 },
+  { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+  { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+  { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+  { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+  { key: 'Home', code: 'Home', keyCode: 36 },
+  { key: 'End', code: 'End', keyCode: 35 },
+  { key: 'PageUp', code: 'PageUp', keyCode: 33 },
+  { key: 'PageDown', code: 'PageDown', keyCode: 34 },
+];
+for (let i = 1; i <= 12; i += 1) NAMED_KEYS.push({ key: `F${i}`, code: `F${i}`, keyCode: 111 + i });
+
+/* The keys a press names, spelled exactly as KeyboardEvent.key spells them: a
+   character a US layout types with one key, or a named key. The web pod reads
+   the same names, so a spelling it refuses ("Return", "esc", "ctrl+a") is
+   refused here too. */
+const KEYS: ReadonlyMap<string, KeyDef> = new Map([...CHAR_KEYS, ...NAMED_KEYS.map((def): [string, KeyDef] => [def.key, def])]);
+
+/* What typed text sends: each character's key, and Enter for a line break. A
+   tab goes in as text, as on the web pod, so typing never moves the focus
+   with Tab. */
+const TYPED_KEYS: ReadonlyMap<string, KeyDef> = new Map([...CHAR_KEYS, ['\n', ENTER]]);
+
+/* A type step's first characters go in key by key; past them, the text is
+   inserted in chunks, with no pauses. 100 keys pause for about 13.5 s and at
+   most 20.5 s, so even the longest text the contract takes ends inside
+   STEP_TIMEOUT_MS (src/shared/browser-contract.ts), the host's budget for a
+   step, which itself ends inside anton's wait for the answer. */
+export const KEYED_CHARS = 100;
+const INSERTED_CHUNK_CHARS = 40;
 
 /* macOS editors run shortcuts as editing commands, which a key event alone
-   doesn't trigger. */
-const MAC_COMMANDS: Record<string, string> = { a: 'selectAll', c: 'copy', v: 'paste', x: 'cut', z: 'undo' };
+   doesn't trigger. Paste has none: runStep refuses the paste shortcuts. */
+const MAC_COMMANDS: Record<string, string> = { a: 'selectAll', c: 'copy', x: 'cut', z: 'undo' };
 
 export interface KeyPress {
   modifiers: Modifier[];
   key: KeyDef;
 }
 
-/** "Enter", "a", "Shift+Tab", "Control+a" or "Meta+Enter" as a key and its modifiers, or null. */
+/** "Enter", "a", "Shift+Tab", "Control+a" or "Meta+Enter" as a key and its
+    modifiers (Alt, Control, Meta, Shift), or null. Names are matched exactly,
+    as the web pod's parseChord matches them. */
 export function parseKeyCombo(combo: string): KeyPress | null {
-  const parts = combo.split('+');
-  const last = parts.pop();
-  if (last === undefined) return null;
   // "Control++" names the plus key.
-  const name = last === '' && combo.endsWith('+') ? '+' : last;
-  if (last === '' && parts.length && parts[parts.length - 1] === '') parts.pop();
+  const parts = combo.endsWith('++') ? [...combo.slice(0, -2).split('+').filter(Boolean), '+'] : combo.split('+');
+  const name = parts.pop();
+  const key = name === undefined ? undefined : KEYS.get(name);
+  if (!key) return null;
   const modifiers: Modifier[] = [];
   for (const part of parts) {
-    const modifier = MODIFIER_NAMES[part.trim().toLowerCase()];
-    if (!modifier || modifiers.includes(modifier)) return null;
-    modifiers.push(modifier);
+    if (!isModifier(part) || modifiers.includes(part)) return null;
+    modifiers.push(part);
   }
-  const key = name.length === 1 ? CHAR_KEYS.get(name) : NAMED_KEYS[name.trim().toLowerCase()];
-  return key ? { modifiers, key } : null;
+  return { modifiers, key };
+}
+
+/* Whether pressing it puts text into a field or takes it out: its key types a
+   character (Enter aside) or is Backspace or Delete, whatever modifiers are
+   held, since Control+X cuts. Enter, Tab, Escape, the arrows and the other
+   keys that move or submit don't. The web pod's editsText rule. */
+function editsText(press: KeyPress): boolean {
+  if (press.key.key === 'Backspace' || press.key.key === 'Delete') return true;
+  return Boolean(press.key.text) && press.key.key !== 'Enter';
+}
+
+/* The paste shortcuts. The agent types its own text and never needs the
+   person's OS clipboard, which may hold a password they just pasted. Insert
+   is not a key here, so Shift+Insert, the other paste shortcut outside macOS,
+   is refused as an unknown key. */
+function pastes(press: KeyPress): boolean {
+  const shortcut = press.modifiers.includes('Control') || press.modifiers.includes('Meta');
+  return shortcut && press.key.key.toLowerCase() === 'v';
 }
 
 // ---- Input ---------------------------------------------------------------------
@@ -255,12 +292,14 @@ export class AgentInput {
   }
 
   private keyEvent(type: 'keyDown' | 'rawKeyDown' | 'keyUp', key: KeyDef, modifiers: number, extra: Record<string, unknown> = {}): Promise<unknown> {
+    /* No nativeVirtualKeyCode: without one Chromium marks the key
+       skip_if_unhandled, so a key the page leaves alone never reaches the app
+       menu, where Control+W closes the window and Control+Q quits on Linux. */
     return this.send('Input.dispatchKeyEvent', {
       type,
       key: key.key,
       code: key.code,
       windowsVirtualKeyCode: key.keyCode,
-      nativeVirtualKeyCode: key.keyCode,
       modifiers,
       ...extra,
     });
@@ -289,13 +328,24 @@ export class AgentInput {
     }
   }
 
-  /** Types `text` key by key; characters with no key go in as inserted text. */
-  async typeText(text: string): Promise<void> {
-    for (const char of text) {
-      const key = CHAR_KEYS.get(char);
+  /**
+   * Types `text`: its first KEYED_CHARS characters key by key, a character
+   * with no key as inserted text, and the rest inserted INSERTED_CHUNK_CHARS
+   * at a time. `beforeKey` runs before each key and each chunk, and stops the
+   * typing by throwing.
+   */
+  async typeText(text: string, beforeKey: () => Promise<void>): Promise<void> {
+    const chars = [...text];
+    for (const char of chars.slice(0, KEYED_CHARS)) {
+      await beforeKey();
+      const key = TYPED_KEYS.get(char);
       if (key) await this.press({ modifiers: [], key });
       else await this.send('Input.insertText', { text: char });
       await this.pause(35, 90);
+    }
+    for (let at = KEYED_CHARS; at < chars.length; at += INSERTED_CHUNK_CHARS) {
+      await beforeKey();
+      await this.send('Input.insertText', { text: chars.slice(at, at + INSERTED_CHUNK_CHARS).join('') });
     }
   }
 }
@@ -333,8 +383,12 @@ export async function withAgentInput<T>(
 export interface PageReader {
   locate(id: number, reveal: boolean): Promise<LocateResult>;
   focusedSecret(): Promise<boolean>;
-  /** Selects the field's text; false when it had none to select. */
-  selectContents(id: number): Promise<boolean>;
+  /** Where the focus is while a type step types into element `id`. */
+  typingFocus(id: number): Promise<TypingFocus>;
+  /** Focuses text field `id` for typing; with `select`, selects its text so typing replaces it. */
+  focusField(id: number, select: boolean): Promise<FocusFieldResult>;
+  /** Focuses element `id` for a key press, unless the focus is in it already. */
+  focus(id: number, editing: boolean): Promise<FocusResult>;
   select(id: number, values: string[]): Promise<SelectResult>;
   viewport(): Promise<{ width: number; height: number }>;
 }
@@ -356,6 +410,20 @@ export interface StepHost {
 
 const stale = (id: number, why: string) => new BridgeError('stale_element', `element ${id} ${why}`);
 const secretField = (what: string) => new BridgeError('password_field', `${what} is a secret field; only the person fills it`);
+
+/* Why the page didn't focus element `id` for keys. */
+function focusRefused(id: number, reason: Extract<FocusFieldResult, { ok: false }>['reason']): BridgeError {
+  switch (reason) {
+    case 'not_found':
+      return stale(id, 'is no longer on the page');
+    case 'secret':
+      return secretField(`element ${id}`);
+    case 'not_text':
+      return new BridgeError('bad_request', `element ${id} is not a text field`);
+    case 'unfocusable':
+      return stale(id, "can't take the focus, so its keys would go elsewhere; it may be disabled or hidden");
+  }
+}
 
 /* A point inside the element, scrolled into view first. The scroll is wheel
    ticks over the page, as a person scrolls; a box that is still out of view
@@ -396,7 +464,7 @@ async function targetPoint(host: StepHost, input: AgentInput, target: StepTarget
 const SCROLL_DELTAS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
 
 /** Runs one checked step. */
-export async function runStep(host: StepHost, request: StepRequest): Promise<void> {
+export async function runStep(host: StepHost, request: StepRequest, platform: NodeJS.Platform = process.platform): Promise<void> {
   const { step, coords } = request;
   switch (step.action) {
     case 'navigate':
@@ -413,11 +481,18 @@ export async function runStep(host: StepHost, request: StepRequest): Promise<voi
       const chosen = await host.page.select(step.element, step.values);
       if (chosen.ok) return;
       if (chosen.reason === 'not_found') throw stale(step.element, 'is no longer on the page');
+      if (chosen.reason === 'secret') throw secretField(`element ${step.element}`);
       if (chosen.reason === 'not_select') throw new BridgeError('bad_request', `element ${step.element} is not a list box; click its option instead`);
       if (chosen.reason === 'single') throw new BridgeError('bad_request', `element ${step.element} takes one value`);
       throw new BridgeError('bad_request', `element ${step.element} has no option ${JSON.stringify(step.values)}; it has ${JSON.stringify(chosen.options ?? [])}`);
     }
     case 'click':
+      /* Outside macOS and Windows, Chromium pastes the primary selection on a
+         middle click: the text the person last selected in any app, which the
+         page and the next read would pass to the agent. */
+      if (step.button === 'middle' && platform !== 'darwin' && platform !== 'win32') {
+        throw new BridgeError('bad_request', "the agent can't paste the person's selection, which a middle click does on Linux; click with the left or right button");
+      }
       return host.withInput(async (input) => input.click(await targetPoint(host, input, step.target, coords), step.button, step.clicks));
     case 'hover':
       return host.withInput(async (input) => input.hover(await targetPoint(host, input, step.target, coords)));
@@ -439,29 +514,43 @@ export async function runStep(host: StepHost, request: StepRequest): Promise<voi
         }
         await input.wheel(at, sx * step.amount, sy * step.amount);
       });
-    case 'type': {
+    case 'type':
       return host.withInput(async (input) => {
-        const { at, located } = await elementPoint(host, input, step.element);
-        if (located.secret) throw secretField(`element ${step.element}`);
-        await input.click(at, 'left', 1);
-        if (await host.page.focusedSecret()) throw secretField('the focused field');
-        if (step.clear && await host.page.selectContents(step.element)) {
-          await input.press({ modifiers: [], key: parseKeyCombo('Backspace')!.key });
+        const field = await host.page.focusField(step.element, step.clear);
+        if (!field.ok) throw focusRefused(step.element, field.reason);
+        /* Before every key: typing stops once the focus is on a secret field
+           or has left this one, whether a typed line break moved it or the
+           page did, so no key goes anywhere the step didn't name. */
+        const keepTyping = async () => {
+          const focus = await host.page.typingFocus(step.element);
+          if (focus.secret) throw secretField('the focused field');
+          if (!focus.inField) {
+            throw new BridgeError('stale_element', `the focus left element ${step.element}, so the rest was not typed; read the page again`);
+          }
+        };
+        if (field.selected) {
+          await keepTyping();
+          await input.press({ modifiers: [], key: BACKSPACE });
         }
-        await input.typeText(step.text);
-        if (step.submit) await input.press(parseKeyCombo('Enter')!);
+        await input.typeText(step.text, keepTyping);
+        if (step.submit) {
+          await keepTyping();
+          await input.press({ modifiers: [], key: ENTER });
+        }
       });
-    }
     case 'press': {
       const press = parseKeyCombo(step.key);
-      if (!press) throw new BridgeError('bad_request', `unknown key ${JSON.stringify(step.key)}`);
+      if (!press) {
+        throw new BridgeError('bad_request', `unknown key ${JSON.stringify(step.key)}; name keys as KeyboardEvent.key does, such as "Enter", "ArrowDown" or "Control+a"`);
+      }
+      if (pastes(press)) throw new BridgeError('bad_request', "the agent can't paste the person's clipboard; type the text instead");
+      const editing = editsText(press);
       return host.withInput(async (input) => {
         if (step.element !== undefined) {
-          const { at, located } = await elementPoint(host, input, step.element);
-          if (located.secret) throw secretField(`element ${step.element}`);
-          await input.click(at, 'left', 1);
+          const focus = await host.page.focus(step.element, editing);
+          if (!focus.ok) throw focusRefused(step.element, focus.reason);
         }
-        if (await host.page.focusedSecret()) throw secretField('the focused field');
+        if (editing && await host.page.focusedSecret()) throw secretField('the focused field');
         await input.press(press);
       });
     }

@@ -4,6 +4,8 @@ import { pageShape, problems } from '../../tests/browser-contract-shapes';
 import {
   challengeKind,
   challengesFrom,
+  type FocusFieldResult,
+  type FocusResult,
   type LocateResult,
   pageAnswer,
   pageWorld,
@@ -11,6 +13,7 @@ import {
   type PageWorldState,
   type RawSnapshot,
   type SelectResult,
+  type TypingFocus,
 } from './browser-page-script';
 
 /* happy-dom has no layout, so each test places the elements it needs. The box
@@ -32,7 +35,21 @@ function layout(): void {
   }
 }
 
-const freshWorld = (): PageWorldState => ({ ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet() });
+const freshWorld = (): PageWorldState => ({
+  ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(),
+});
+
+/* MutationObserver callbacks run after the change, as in a browser. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/* A world whose secret-field watch runs, stopped after each test. */
+const watching: PageWorldState[] = [];
+function watchedWorld(): PageWorldState {
+  const world = freshWorld();
+  pageWorld(document, world, { kind: 'watch' });
+  watching.push(world);
+  return world;
+}
 
 function snapshot(world: PageWorldState, maxText = 3000): RawSnapshot {
   return pageWorld(document, world, { kind: 'snapshot', maxText, maxElements: 300 }) as RawSnapshot;
@@ -67,6 +84,7 @@ afterAll(() => {
 });
 
 afterEach(() => {
+  for (const world of watching.splice(0)) world.observer?.disconnect();
   document.body.innerHTML = '';
 });
 
@@ -95,7 +113,7 @@ describe('the isolated-world page read', () => {
     document.body.innerHTML = `${SIGN_IN}<iframe data-box="300x65" title="Widget containing a Cloudflare security challenge" src="https://challenges.cloudflare.com/cdn-cgi/x"></iframe>`;
     layout();
     const raw = snapshot(freshWorld());
-    const answer = pageAnswer(raw, challengesFrom([{ url: 'https://challenges.cloudflare.com/cdn-cgi/x', size: null }], raw.frames));
+    const answer = pageAnswer(raw, challengesFrom(['https://challenges.cloudflare.com/cdn-cgi/x'], raw.frames));
     expect(problems(pageShape, answer)).toEqual([]);
     expect(answer.challenges).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
     expect(answer).not.toHaveProperty('boxes');
@@ -113,6 +131,89 @@ describe('the isolated-world page read', () => {
     const page = snapshot(world);
     expect(page.elements[0]).toMatchObject({ name: 'Password', value_hidden: true });
     expect(JSON.stringify(page)).not.toContain('hunter2');
+  });
+
+  it('reads an ordinary field up to 200 characters', () => {
+    document.body.innerHTML = `<textarea data-box aria-label="Note">${'n'.repeat(450)}</textarea><div data-box contenteditable aria-label="Editor">${'e'.repeat(450)}</div>`;
+    layout();
+    const [note, editor] = snapshot(freshWorld()).elements;
+    expect(note.value).toHaveLength(200);
+    expect(editor.value).toHaveLength(200);
+  });
+
+  it('keeps a field hidden that turned from a password into text before any read', async () => {
+    document.body.innerHTML = '<input data-box id="pw" type="password" aria-label="Password" value="hunter2">';
+    layout();
+    const world = watchedWorld();
+    (document.getElementById('pw') as HTMLInputElement).type = 'text';
+    await settle();
+    const page = snapshot(world);
+    expect(page.elements[0]).toMatchObject({ name: 'Password', value_hidden: true });
+    expect(JSON.stringify(page)).not.toContain('hunter2');
+  });
+
+  it('keeps a field hidden that dropped its one-time-code autocomplete before any read', async () => {
+    document.body.innerHTML = '<input data-box id="otp" autocomplete="one-time-code" aria-label="Code" value="123456">';
+    layout();
+    const world = watchedWorld();
+    document.getElementById('otp')!.removeAttribute('autocomplete');
+    await settle();
+    expect(snapshot(world).elements[0]).toMatchObject({ name: 'Code', value_hidden: true });
+  });
+
+  it('keeps hidden a password field the page adds later and then shows, in an open shadow root too', async () => {
+    document.body.innerHTML = '<div id="form"></div>';
+    const world = watchedWorld();
+    // The second step of a sign-in renders during the person's turn.
+    document.getElementById('form')!.innerHTML = '<label>Password <input data-box id="pw" type="password" value="hunter2"></label>';
+    const widget = document.createElement('div');
+    const root = widget.attachShadow({ mode: 'open' });
+    root.innerHTML = '<input id="pin" type="password" aria-label="PIN" value="4321">';
+    document.body.append(widget);
+    await settle();
+    (document.getElementById('pw') as HTMLInputElement).type = 'text';
+    (root.getElementById('pin') as HTMLInputElement).type = 'text';
+    await settle();
+    layout();
+    place(root.getElementById('pin')!, 10, 200, 100, 20);
+    const page = snapshot(world);
+    expect(page.elements.map((e) => e.value_hidden)).toEqual([true, true]);
+    expect(JSON.stringify(page)).not.toMatch(/hunter2|4321/);
+  });
+
+  it('keeps hidden a password field rendered later into an open shadow root that was there before the watch, and then shown', async () => {
+    const widget = document.createElement('div');
+    const root = widget.attachShadow({ mode: 'open' });
+    document.body.append(widget);
+    const world = watchedWorld();
+    // The component renders its password step into its existing root.
+    root.innerHTML = '<input id="pw" type="password" aria-label="Password" value="hunter2">';
+    await settle();
+    (root.getElementById('pw') as HTMLInputElement).type = 'text';
+    await settle();
+    place(root.getElementById('pw')!, 10, 10, 100, 20);
+    const page = snapshot(world);
+    expect(page.elements).toEqual([expect.objectContaining({ name: 'Password', value_hidden: true })]);
+    expect(JSON.stringify(page)).not.toContain('hunter2');
+  });
+
+  it('marks a secret field that arrives inside an element with an open shadow root', async () => {
+    document.body.innerHTML = '';
+    const world = watchedWorld();
+    const widget = document.createElement('div');
+    widget.attachShadow({ mode: 'open' }).innerHTML = '<input id="pin" type="password">';
+    document.body.append(widget);
+    await settle();
+    expect(world.secret.has(widget.shadowRoot!.getElementById('pin')!)).toBe(true);
+  });
+
+  it('starts one watch per document however often it is asked', () => {
+    document.body.innerHTML = '<input id="pw" type="password">';
+    const world = watchedWorld();
+    const observer = world.observer;
+    expect(pageWorld(document, world, { kind: 'watch' })).toEqual({ ok: true });
+    expect(world.observer).toBe(observer);
+    expect(world.secret.has(document.getElementById('pw')!)).toBe(true);
   });
 
   it('keeps ids stable within a document and never reuses them', () => {
@@ -141,10 +242,13 @@ describe('the isolated-world page read', () => {
     const observer = new MutationObserver((records) => changes.push(...records));
     observer.observe(document, { attributes: true, childList: true, subtree: true, characterData: true });
     const world = freshWorld();
+    pageWorld(document, world, { kind: 'watch' });
     snapshot(world);
     snapshot(world);
     pageWorld(document, world, { kind: 'locate', id: 1, reveal: false });
     pageWorld(document, world, { kind: 'focusedSecret' });
+    pageWorld(document, world, { kind: 'typingFocus', id: 1 });
+    world.observer?.disconnect();
     changes.push(...observer.takeRecords());
     observer.disconnect();
     expect(changes).toEqual([]);
@@ -214,6 +318,73 @@ describe('the isolated-world page read', () => {
     expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true });
   });
 
+  it('tells a type step whether the focus is still in its field, and whether it is on a secret one', () => {
+    document.body.innerHTML = SIGN_IN;
+    layout();
+    const world = freshWorld();
+    const email = snapshot(world).elements.find((e) => e.name === 'Email')!;
+    const typingFocus = () => pageWorld(document, world, { kind: 'typingFocus', id: email.id });
+    (document.getElementById('email') as HTMLInputElement).focus();
+    expect(typingFocus()).toEqual({ secret: false, inField: true } satisfies TypingFocus);
+    (document.getElementById('go') as HTMLButtonElement).focus();
+    expect(typingFocus()).toEqual({ secret: false, inField: false });
+    (document.getElementById('pw') as HTMLInputElement).focus();
+    expect(typingFocus()).toEqual({ secret: true, inField: false });
+    document.getElementById('email')!.remove();
+    expect(typingFocus()).toEqual({ secret: true, inField: false });
+    expect(pageWorld(document, world, { kind: 'typingFocus', id: 999 })).toEqual({ secret: true, inField: false });
+  });
+
+  it('focuses a text field for typing, selecting its text, and leaves secret fields and other elements alone', () => {
+    document.body.innerHTML = SIGN_IN;
+    layout();
+    const world = freshWorld();
+    const byName = Object.fromEntries(snapshot(world).elements.map((e) => [e.name, e.id]));
+    const focusField = (name: string, select: boolean) => pageWorld(document, world, { kind: 'focusField', id: byName[name], select });
+    const email = document.getElementById('email') as HTMLInputElement;
+    expect(focusField('Email', true)).toEqual({ ok: true, selected: true } satisfies FocusFieldResult);
+    expect(document.activeElement).toBe(email);
+    expect(focusField('Search', true)).toEqual({ ok: true, selected: false });
+    email.focus();
+    expect(focusField('Password', false)).toEqual({ ok: false, reason: 'secret' });
+    expect(focusField('Card number', false)).toEqual({ ok: false, reason: 'secret' });
+    expect(focusField('Sign in', false)).toEqual({ ok: false, reason: 'not_text' });
+    expect(focusField('Keep me signed in', false)).toEqual({ ok: false, reason: 'not_text' });
+    expect(document.activeElement).toBe(email);
+    expect(pageWorld(document, world, { kind: 'focusField', id: 999, select: false })).toEqual({ ok: false, reason: 'not_found' });
+  });
+
+  it('focuses an element for keys, and a secret one only for keys that edit no text', () => {
+    document.body.innerHTML = SIGN_IN;
+    layout();
+    const world = freshWorld();
+    const byName = Object.fromEntries(snapshot(world).elements.map((e) => [e.name, e.id]));
+    const focus = (name: string, editing: boolean) => pageWorld(document, world, { kind: 'focus', id: byName[name], editing });
+    expect(focus('Sign in', false)).toEqual({ ok: true } satisfies FocusResult);
+    expect(document.activeElement).toBe(document.getElementById('go'));
+    expect(focus('Password', true)).toEqual({ ok: false, reason: 'secret' });
+    expect(document.activeElement).toBe(document.getElementById('go'));
+    expect(focus('Password', false)).toEqual({ ok: true });
+    expect(document.activeElement).toBe(document.getElementById('pw'));
+    expect(pageWorld(document, world, { kind: 'focus', id: 999, editing: false })).toEqual({ ok: false, reason: 'not_found' });
+  });
+
+  it('refuses a select into a secret field before it reads any option', () => {
+    document.body.innerHTML = '<select data-box id="month" autocomplete="cc-exp-month" aria-label="Month"><option value="01">01</option><option value="12">12</option></select>';
+    layout();
+    const world = freshWorld();
+    const month = snapshot(world).elements[0];
+    expect(month).toMatchObject({ value_hidden: true });
+    const select = document.getElementById('month') as HTMLSelectElement;
+    const fired: string[] = [];
+    select.addEventListener('input', () => fired.push('input'));
+    select.addEventListener('change', () => fired.push('change'));
+    expect(pageWorld(document, world, { kind: 'select', id: month.id, values: ['12'] })).toEqual({ ok: false, reason: 'secret' } satisfies SelectResult);
+    expect(pageWorld(document, world, { kind: 'select', id: month.id, values: ['13'] })).toEqual({ ok: false, reason: 'secret' });
+    expect(select.value).toBe('01');
+    expect(fired).toEqual([]);
+  });
+
   it('selects an option by value or label and fires input and change', () => {
     document.body.innerHTML = SIGN_IN;
     layout();
@@ -270,21 +441,20 @@ describe('challenges', () => {
   const CF = 'https://challenges.cloudflare.com/cdn-cgi/x';
 
   it('reports a check frame the page shows', () => {
-    expect(challengesFrom([{ url: CF, size: null }], [{ url: CF, visible: true }])).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
+    expect(challengesFrom([CF], [{ url: CF, visible: true }])).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
   });
 
-  it('never reports a hidden one, whatever its own size', () => {
-    expect(challengesFrom([{ url: CF, size: { width: 300, height: 65 } }], [{ url: CF, visible: false }])).toEqual([]);
+  it('never reports a hidden one', () => {
+    expect(challengesFrom([CF], [{ url: CF, visible: false }])).toEqual([]);
   });
 
-  it('asks the frame itself when the DOM has no element for it', () => {
-    expect(challengesFrom([{ url: CF, size: { width: 300, height: 65 } }], [])).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
-    expect(challengesFrom([{ url: CF, size: { width: 0, height: 0 } }], [])).toEqual([]);
-    expect(challengesFrom([{ url: CF, size: null }], [])).toEqual([]);
+  it('counts a check frame the DOM has no element for by its presence alone', () => {
+    expect(challengesFrom([CF], [])).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
   });
 
   it('lists each host once and skips other frames', () => {
-    const frames = [{ url: CF, size: null }, { url: `${CF}/2`, size: null }, { url: 'https://ads.example.test/', size: null }];
+    const frames = [CF, `${CF}/2`, 'https://ads.example.test/', 'about:blank'];
     expect(challengesFrom(frames, [{ url: CF, visible: true }])).toHaveLength(1);
+    expect(challengesFrom(['https://ads.example.test/'], [])).toEqual([]);
   });
 });

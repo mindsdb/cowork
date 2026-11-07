@@ -4,6 +4,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { electronHostsInAppBrowser } from '../src/shared/browser-contract';
 
 /*
  * The in-app browser through its real bridge, in real Electron: the host from
@@ -58,6 +59,10 @@ async function startFixtureServer(): Promise<void> {
     if (url.pathname === '/popup') {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Popup</title><p id="o"></p><script>document.getElementById("o").textContent = window.opener ? "has opener" : "no opener"</script>');
+    }
+    if (url.pathname === '/features') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Features</title><p id="o"></p><script>document.getElementById("o").textContent = "SharedWorker: " + typeof SharedWorker</script>');
     }
     if (url.pathname === '/autopop') {
       return void res.writeHead(200, { 'content-type': 'text/html' })
@@ -123,6 +128,18 @@ async function element(name: string): Promise<number> {
   return found.id;
 }
 
+/* Marks the /form page's own window from main, so a reload, which drops the
+   mark, shows. */
+async function markPage(): Promise<void> {
+  await app.evaluate(({ webContents }, at) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.executeJavaScript('window.inAppBrowserE2eMark = "kept"'), `${origin}/form`);
+  expect(await pageMark()).toBe('kept');
+}
+
+/* The /form page's mark, or null once the page reloaded. */
+async function pageMark(): Promise<string | null> {
+  return app.evaluate(({ webContents }, at) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.executeJavaScript('window.inAppBrowserE2eMark ?? null') ?? 'no page', `${origin}/form`);
+}
+
 async function openAt(route: string): Promise<void> {
   expect((await act({ action: 'navigate', url: `${origin}${route}` })).status).toBe(200);
   await expect.poll(async () => (await page()).url).toBe(`${origin}${route}`);
@@ -130,12 +147,12 @@ async function openAt(route: string): Promise<void> {
 
 test.describe.configure({ mode: 'serial' });
 
-/* The host refuses to run below Electron 44 (MIN_IN_APP_BROWSER_ELECTRON_MAJOR
+/* The host refuses to run below its Electron floor (electronHostsInAppBrowser
    in src/shared/browser-contract.ts), so on an older Electron there is nothing
    to drive. Raise the floor with Electron's support window; never lower it to
    make this spec run. */
-const ELECTRON_MAJOR = Number(JSON.parse(fs.readFileSync(path.resolve('node_modules/electron/package.json'), 'utf-8')).version.split('.')[0]);
-test.skip(ELECTRON_MAJOR < 44, `the in-app browser needs Electron 44 or later; this checkout has Electron ${ELECTRON_MAJOR}`);
+const ELECTRON_VERSION: string = JSON.parse(fs.readFileSync(path.resolve('node_modules/electron/package.json'), 'utf-8')).version;
+test.skip(!electronHostsInAppBrowser(ELECTRON_VERSION), `the in-app browser doesn't run on this checkout's Electron ${ELECTRON_VERSION}`);
 
 test.beforeAll(async () => {
   profile = fs.mkdtempSync(path.join(os.tmpdir(), 'in-app-browser-e2e-'));
@@ -209,6 +226,65 @@ test('scrolls an element into view before clicking it', async () => {
   await expect.poll(() => log.some((e) => e.type === 'click' && e.target === 'far' && e.isTrusted)).toBe(true);
 });
 
+test('turns shared workers off, since their WebSockets skip the request listener', async () => {
+  await openAt('/features');
+  await expect.poll(async () => (await page()).text).toContain('SharedWorker: undefined');
+});
+
+/* The app menu's Close and Reload take Command on macOS and Control elsewhere. */
+const MENU_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+test("keeps the agent's close and reload chords in the page, away from the pane's claims and the app menu", async () => {
+  await openAt('/form');
+  await markPage();
+  await shell.evaluate(() => { (window as any).inAppBrowserE2eMarker = 'kept'; });
+  // A menu shortcut acts on the focused window.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.focus());
+  for (const key of [`${MENU_MODIFIER}+w`, `${MENU_MODIFIER}+r`]) {
+    const pressed = await act({ action: 'press', key });
+    expect(pressed.status, pressed.body.toString()).toBe(200);
+  }
+  /* The page got both keys itself. The agent's keys never reach the view's
+     before-input-event, where the pane claims a person's reload chord, and
+     carry no native key code, so an unhandled one never reaches the menu.
+     On macOS a key that main sends can't reach the menu either way, so the
+     window checks below bite only outside it. */
+  await expect.poll(() => ['w', 'r'].every((key) => log.some((e) => e.type === 'keydown' && e.key === key && e.isTrusted))).toBe(true);
+  // Long enough for a menu shortcut to have closed or reloaded the window.
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  expect(await shell.evaluate(() => (window as any).inAppBrowserE2eMarker)).toBe('kept');
+  expect(await pageMark()).toBe('kept');
+  expect((await page()).url).toBe(`${origin}/form`);
+});
+
+test("reloads the site, not the app, on the person's reload chord", async () => {
+  await openAt('/form');
+  await shell.evaluate((id) => (window as any).antontron.browser.show(id, { x: 400, y: 0, width: 800, height: 800 }), SESSION);
+  await shell.evaluate(() => { (window as any).inAppBrowserE2eMarker = 'kept'; });
+  const modifier = process.platform === 'darwin' ? 'meta' : 'control';
+  for (const modifiers of [[modifier], [modifier, 'shift']] as Array<Array<'meta' | 'control' | 'shift'>>) {
+    await markPage();
+    // A person's keys, as the OS hands them to the focused view.
+    await app.evaluate(({ BrowserWindow, webContents }, { at, held }) => {
+      BrowserWindow.getAllWindows()[0]?.focus();
+      const tab = webContents.getAllWebContents().find((contents) => contents.getURL() === at);
+      tab?.focus();
+      tab?.sendInputEvent({ type: 'keyDown', keyCode: 'R', modifiers: held });
+      tab?.sendInputEvent({ type: 'keyUp', keyCode: 'R', modifiers: held });
+    }, { at: `${origin}/form`, held: modifiers });
+    await expect.poll(pageMark, { message: `${modifiers.join('+')}+R reloads the site` }).toBeNull();
+  }
+  /* The app stays as it was. On macOS a key that main sends can't reach the
+     menu, so the poll above is what fails there without the pane's claim.
+     Elsewhere the menu's Reload and Force Reload act on the focused view, the
+     tab, so the site reloads with or without the claim; browser-view.test.ts
+     covers the claim on every platform. */
+  expect(await shell.evaluate(() => (window as any).inAppBrowserE2eMarker)).toBe('kept');
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  await shell.evaluate(() => (window as any).antontron.browser.hide());
+});
+
 test('takes a labelled JPEG screenshot with its size', async () => {
   const shot = await call('GET', `/sessions/${SESSION}/screenshot?annotate=true&format=jpeg&quality=70`);
   expect(shot.status).toBe(200);
@@ -230,11 +306,14 @@ test('hands the browser to the person, and only their Done hands it back', async
   expect(info.control).toMatchObject({ holder: 'agent', by: 'person', seq: handed.json().seq + 1 });
 });
 
-test('shows the task in the pane and hides it again', async () => {
+test('shows the task in the pane, answers whether it draws, and hides it again', async () => {
   const shown = await shell.evaluate((id) => (window as any).antontron.browser.show(id, { x: 400, y: 0, width: 800, height: 800 }), SESSION);
-  expect(shown).toEqual({ exists: true });
+  expect(shown).toEqual({ exists: true, drawn: true });
+  // A stage under main's floor keeps the task shown, but nothing draws.
+  expect(await shell.evaluate(() => (window as any).antontron.browser.setBounds({ x: 400, y: 0, width: 800, height: 150 }))).toEqual({ drawn: false });
+  expect(await shell.evaluate(() => (window as any).antontron.browser.setBounds({ x: 400, y: 0, width: 800, height: 800 }))).toEqual({ drawn: true });
   const missing = await shell.evaluate(() => (window as any).antontron.browser.show('t-missing', { x: 400, y: 0, width: 800, height: 800 }));
-  expect(missing).toEqual({ exists: false });
+  expect(missing).toEqual({ exists: false, drawn: false });
   await shell.evaluate(() => (window as any).antontron.browser.hide());
 });
 

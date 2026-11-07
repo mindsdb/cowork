@@ -26,6 +26,20 @@ const inAppBrowser: InAppBrowserBridge = {
   },
 };
 
+/** What the preload exposes of the in-app browser: the flag and the pane. */
+export interface InAppBrowserExposure {
+  supportsInAppBrowser: boolean;
+  browser: InAppBrowserBridge | undefined;
+}
+
+/** The in-app browser's part of the preload's API. On a supported Electron
+    the flag is true and the pane is there; below the floor the flag is
+    false and there is no pane. */
+export function inAppBrowserExposure(electronVersion: string | undefined, browser: InAppBrowserBridge): InAppBrowserExposure {
+  const supported = electronHostsInAppBrowser(electronVersion);
+  return { supportsInAppBrowser: supported, browser: supported ? browser : undefined };
+}
+
 // ENG-439: main resolves a per-OS-user server port and passes it to the
 // renderer process via additionalArguments. Parse it once here so the host
 // abstraction can address our own sidecar instead of a hardcoded 26866.
@@ -57,8 +71,14 @@ contextBridge.exposeInMainWorld('antontron', {
   // only when this is true, so a UI that updates ahead of an older shell, or
   // a shell on an unsupported Electron, shows no pane and never registers a
   // browser.
-  supportsInAppBrowser: electronHostsInAppBrowser(process.versions.electron),
-  browser: electronHostsInAppBrowser(process.versions.electron) ? inAppBrowser : undefined,
+  ...inAppBrowserExposure(process.versions.electron, inAppBrowser),
+  /* Main says the local server took the in-app browser's registration
+     (browser-host.ts), so the UI asks GET /browse/status again. */
+  onBrowserRegistered: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.BROWSER_REGISTERED, listener);
+    return () => ipcRenderer.removeListener(IPC.BROWSER_REGISTERED, listener);
+  },
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),

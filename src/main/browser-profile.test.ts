@@ -3,7 +3,9 @@ import * as os from 'os';
 import * as path from 'path';
 import type { Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
+import { accountDataHome } from './account-data';
 import {
+  browserMemoryPartition,
   browserProfilePath,
   browserUserAgent,
   browserViewPreferences,
@@ -12,18 +14,24 @@ import {
   guardNavigation,
   PAGE_REQUEST_FILTER_URLS,
   isLinkLocalHost,
+  isQuarantinedAccountRoot,
   isMindsHubHost,
   refusedDestination,
   navigationAllowed,
   reachesProtectedPort,
 } from './browser-profile';
 
-const dns: Record<string, string> = {
-  '169.254.169.254.nip.io': '169.254.169.254',
-  'instance-data.ec2.internal': '169.254.169.254',
-  'mapped.test': '::ffff:169.254.169.254',
-  'printer.lan': 'fe80::1',
-  'loop.test': '127.0.0.1',
+/* What each name a test uses answers. A name may answer several addresses,
+   and the check must read every one. */
+const dns: Record<string, string[]> = {
+  '169.254.169.254.nip.io': ['169.254.169.254'],
+  'instance-data.ec2.internal': ['169.254.169.254'],
+  'mapped.test': ['::ffff:169.254.169.254'],
+  'imds6.test': ['fd00:ec2::254'],
+  'mixed.test': ['93.184.216.34', '169.254.169.254'],
+  'printer.lan': ['192.168.1.20', 'fe80::1'],
+  'loop.test': ['127.0.0.1'],
+  'mixed-loop.test': ['93.184.216.34', '127.0.0.1'],
 };
 
 function fakeSession() {
@@ -47,7 +55,9 @@ function fakeSession() {
     getUserAgent: () => userAgent,
     setUserAgent: (ua: string) => { userAgent = ua; },
     // Names a test points at an address; everything else answers a public one.
-    resolveHost: vi.fn(async (host: string) => ({ endpoints: [{ address: dns[host] ?? '93.184.216.34', family: 'ipv4' }] })),
+    resolveHost: vi.fn(async (host: string) => ({
+      endpoints: (dns[host] ?? ['93.184.216.34']).map((address) => ({ address, family: address.includes(':') ? 'ipv6' : 'ipv4' })),
+    })),
   };
   return {
     ses: ses as unknown as Session,
@@ -83,6 +93,19 @@ describe('the profile folder', () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("gives a launch's quarantine root an in-memory partition, one per root", () => {
+    const quarantined = '/home/.cowork/accounts/_unresolved-1a2b3c4d';
+    expect(isQuarantinedAccountRoot(quarantined)).toBe(true);
+    expect(isQuarantinedAccountRoot('/home/.cowork/accounts/acct-1234')).toBe(false);
+    expect(isQuarantinedAccountRoot('/home/.cowork')).toBe(false);
+    expect(browserMemoryPartition(quarantined)).not.toMatch(/^persist:/);
+    expect(browserMemoryPartition(quarantined)).not.toBe(browserMemoryPartition('/home/.cowork/accounts/_unresolved-5e6f7a8b'));
+  });
+
+  it('knows the quarantine root account-data gives a launch that cannot name its account', () => {
+    expect(isQuarantinedAccountRoot(accountDataHome('/home/.cowork', { kind: 'unresolved' }))).toBe(true);
+  });
 });
 
 describe('view preferences', () => {
@@ -99,7 +122,7 @@ describe('view preferences', () => {
       allowRunningInsecureContent: false,
       webviewTag: false,
       devTools: false,
-      disableBlinkFeatures: 'AutomationControlled',
+      disableBlinkFeatures: 'AutomationControlled,SharedWorker',
       backgroundThrottling: false,
       safeDialogs: true,
       navigateOnDragDrop: false,
@@ -192,28 +215,36 @@ describe('the session lockdown', () => {
       'http://[fe80::1]/',
       'http://[febf::1]/',
       'http://metadata.google.internal/computeMetadata/v1/',
+      'http://[fd00:ec2::254]/latest/meta-data/iam/security-credentials/',
+      'http://[FD00:EC2:0:0:0:0:0:254]/',
     ]) {
       expect(await cancelled(url), url).toBe(true);
     }
-    for (const url of ['http://192.168.1.1/', 'http://10.0.0.8/', 'http://172.16.4.2/', 'http://[fd00::1]/', 'http://[fec0::1]/', 'http://169.255.0.1/', 'http://printer.local/']) {
+    for (const url of ['http://192.168.1.1/', 'http://10.0.0.8/', 'http://172.16.4.2/', 'http://[fd00::1]/', 'http://[fd00:ec2::253]/', 'http://[fec0::1]/', 'http://169.255.0.1/', 'http://printer.local/']) {
       expect(await cancelled(url), url).toBe(false);
     }
     expect(isLinkLocalHost('[::ffff:a9fe:1]')).toBe(true);
     expect(isLinkLocalHost('[::ffff:a9ff:1]')).toBe(false);
+    expect(isLinkLocalHost('fd00:ec2::254')).toBe(true);
+    expect(refusedDestination('http://[fd00:ec2::254]/')).toBe('link-local and cloud metadata addresses are blocked in this browser');
     expect(refusedDestination('not a url')).toBe('that is not a valid address');
   });
 
   it('cancels a name that resolves to a link-local address, and lets a public one through', async () => {
     const { cancelled, ses } = setup();
-    for (const url of ['http://169.254.169.254.nip.io/latest/meta-data/', 'http://instance-data.ec2.internal/', 'http://mapped.test/']) {
+    for (const url of ['http://169.254.169.254.nip.io/latest/meta-data/', 'http://instance-data.ec2.internal/', 'http://mapped.test/', 'http://imds6.test/']) {
       expect(await cancelled(url), url).toBe(true);
     }
+    // A metadata address anywhere among a name's answers refuses it.
+    expect(await cancelled('http://mixed.test/latest/meta-data/')).toBe(true);
     expect(await cancelled('https://example.test/')).toBe(false);
     // A LAN name answering a link-local IPv6 address stays reachable.
     expect(await cancelled('http://printer.lan/')).toBe(false);
-    // A name answering loopback is refused only on a protected port.
+    // A name answering loopback, first or later, is refused only on a protected port.
     expect(await cancelled('http://loop.test:26866/api/v1/settings')).toBe(true);
     expect(await cancelled('http://loop.test:3000/')).toBe(false);
+    expect(await cancelled('http://mixed-loop.test:26866/')).toBe(true);
+    expect(await cancelled('http://mixed-loop.test:3000/')).toBe(false);
     expect(await cancelled('http://192.168.1.1/')).toBe(false);
     expect((ses.resolveHost as unknown as { mock: { calls: unknown[][] } }).mock.calls.some(([h]) => h === '192.168.1.1')).toBe(false);
   });

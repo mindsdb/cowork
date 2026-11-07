@@ -51,9 +51,17 @@ function setPixel(bitmap: Bitmap, x: number, y: number, color: readonly number[]
   bitmap.data[at + 3] = color[3];
 }
 
+/* Fills only the part of the rectangle inside the bitmap, so a page's huge
+   element box costs no more than the bitmap's own size. A rectangle with a
+   value that isn't finite draws nothing. */
 function fill(bitmap: Bitmap, x: number, y: number, width: number, height: number, color: readonly number[]): void {
-  for (let row = y; row < y + height; row += 1) {
-    for (let col = x; col < x + width; col += 1) setPixel(bitmap, col, row, color);
+  if (![x, y, width, height].every(Number.isFinite)) return;
+  const left = Math.max(0, x);
+  const top = Math.max(0, y);
+  const right = Math.min(bitmap.width, x + width);
+  const bottom = Math.min(bitmap.height, y + height);
+  for (let row = top; row < bottom; row += 1) {
+    for (let col = left; col < right; col += 1) setPixel(bitmap, col, row, color);
   }
 }
 

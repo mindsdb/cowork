@@ -12,7 +12,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, activeAccountDataRoot, runningServerPort, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
@@ -69,7 +69,7 @@ import {
   sweepStaleQuarantineRoots,
 } from './account-data';
 import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
-import { USAGE_EVENTS_PREF, usageEventsOn } from './analytics-env';
+import { usageEventsOn, writeUsageEventsPref } from './analytics-env';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -97,6 +97,7 @@ import {
 import { installMainErrorDialog } from './main-error-dialog';
 import { InAppBrowserHost } from './browser-host';
 import { composeStartedHook } from './browser-register';
+import { markDownloaded } from './download-quarantine';
 
 installMainErrorDialog();
 
@@ -106,12 +107,15 @@ installMainErrorDialog();
  * the UI says it shows the browser. */
 const inAppBrowser = new InAppBrowserHost({
   serverPort: getServerPort,
-  runningServerPort: () => (isServerRunning() || isServerStarting() ? getServerPort() : null),
+  runningServerPort,
   authHeader,
   accountRoot: accountDataRoot,
+  sidecarAccountRoot: activeAccountDataRoot,
   storesRoot: activeStoreRoot,
   downloadsDir: () => app.getPath('downloads'),
+  markDownloaded,
   profileSession: (dir) => session.fromPath(dir),
+  memorySession: (partition) => session.fromPartition(partition),
   fetch: (input, init) => fetch(input, init),
   electronVersion: () => process.versions.electron,
   userDataDir: () => app.getPath('userData'),
@@ -1449,11 +1453,7 @@ function setupIPC() {
     if (typeof enabled !== 'boolean') return { ok: false };
     try {
       ensureAccountDataRoot();
-      const envPath = coworkEnvPath();
-      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-      const lines = existing.split('\n').filter((l) => l.length > 0 && !l.startsWith(`${USAGE_EVENTS_PREF}=`));
-      if (!enabled) lines.push(`${USAGE_EVENTS_PREF}=false`);
-      fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf-8');
+      writeUsageEventsPref(coworkEnvPath(), enabled);
       return { ok: true };
     } catch (error) {
       diagnostic("main.app", "ERROR", "usage_events_failed_to_set_preference", '[usage-events] failed to set preference', error);

@@ -1,6 +1,13 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { submitAnswer } from '../api';
-import { BROWSER_APPROVE_VALUE, browserApprovalIds, recordBrowserApproval } from '../lib/browserApproval';
+import {
+  BROWSER_APPROVE_VALUE,
+  UNREADABLE_APPROVAL,
+  browserApprovalIds,
+  declineBrowserApproval,
+  isBrowserApprovalCard,
+  recordBrowserApproval,
+} from '../lib/browserApproval';
 import { host } from '../../platform/host';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 import ChatCardShell from './ChatCardShell';
@@ -37,6 +44,9 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   const [busy, setBusy] = useState(false);
   // Why the browser refused the person's approval of a held step, if it did.
   const [refusal, setRefusal] = useState('');
+  /* The held step whose approval the browser has recorded for this card, so
+     an Approve after a card answer that failed doesn't record it again. */
+  const recordedApproval = useRef(null);
   const promptId = useId();
 
   const settled = !reopened && (Boolean(answer) || expired || gone);
@@ -87,17 +97,30 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       onAnswerAsMessage?.(payload.values.map(labelOf).join(', '));
       return;
     }
-    // The commit hold on the web: the browser records the approval first, and
-    // the card is answered only once it has.
-    const held = host.isWeb && payload.values?.length === 1 && payload.values[0] === BROWSER_APPROVE_VALUE
-      ? browserApprovalIds(q.question_id)
-      : null;
-    if (held) {
-      const recorded = await recordBrowserApproval(held);
-      if (!recorded.ok) {
-        setRefusal(recorded.message);
+    /* The commit hold on the web: on Approve the browser records the approval
+       first, and the card is answered only once it has. Any other answer
+       declines the held step first, which also drops an approval recorded
+       before, and the card is answered whatever the decline answers. */
+    if (host.isWeb && isBrowserApprovalCard(q.question_id)) {
+      const held = browserApprovalIds(q.question_id);
+      const approving = payload.values?.length === 1 && payload.values[0] === BROWSER_APPROVE_VALUE;
+      if (approving && !held) {
+        setRefusal(UNREADABLE_APPROVAL);
         setBusy(false);
         return;
+      }
+      if (approving && recordedApproval.current !== held.pendingId) {
+        const recorded = await recordBrowserApproval(held);
+        if (!recorded.ok) {
+          setRefusal(recorded.message);
+          setBusy(false);
+          return;
+        }
+        recordedApproval.current = held.pendingId;
+      }
+      if (!approving && held) {
+        recordedApproval.current = null;
+        await declineBrowserApproval(held);
       }
     }
     setRefusal('');

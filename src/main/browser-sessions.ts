@@ -5,19 +5,24 @@
  * are shared and tabs are per task, as on the web.
  *
  * Control binds the agent here, in the host. While the person holds a task's
- * browser, every page, action, screenshot and tab call gets 409
+ * browser, every page, action, screenshot, tab and close call gets 409
  * human_in_control, and a step already running is cut off, so the debugger is
- * never attached during the person's turn. The API only hands the browser to
- * the person; only the person hands it back, with Done in the pane (over IPC
- * from the app's main frame), which records holder agent by person.
+ * never attached during the person's turn. A step that ends during the
+ * person's turn answers without the page, and a page read or screenshot that
+ * control changed under answers 409. The API only hands the browser to the
+ * person; only the person hands it back, with Done in the pane (over IPC from
+ * the app's main frame), which records holder agent by person.
  *
  * At most MAX_LIVE_SESSIONS tasks stay live: opening another closes the least
- * recently used one. A task idle for IDLE_CLOSE_MS closes too. Neither ever
- * closes the task the pane shows or one the person holds. Closing a task closes
+ * recently used one, and the person's own use counts as use. A task idle for
+ * IDLE_CLOSE_MS closes too. Neither ever closes the task the pane shows, even
+ * while something covers the pane, or one the person holds; when those are
+ * all the live tasks, another answers 503 at_capacity. Closing a task closes
  * its tabs; the profile and its sign-ins stay.
  */
 
 import {
+  type ActionAnswer,
   BridgeError,
   type BrowserDownload,
   type BrowserLoginAnswer,
@@ -25,11 +30,15 @@ import {
   type Control,
   type ControlRequest,
   type PageSnapshot,
+  type PaneDrawAnswer,
+  type PaneShowAnswer,
   type SessionInfo,
   type Site,
+  type StepAction,
   type StepRequest,
   type Tab,
 } from '../shared/browser-contract';
+import { diagnostic } from '../shared/diagnostics';
 import { refusedDestination } from './browser-profile';
 import type { Screenshot } from './browser-screenshot';
 
@@ -37,8 +46,11 @@ export const MAX_LIVE_SESSIONS = 6;
 export const IDLE_CLOSE_MS = 15 * 60_000;
 /** A popup opens only within this long of an agent step or the person's own input. */
 export const POPUP_INPUT_WINDOW_MS = 1_000;
-const MAX_TABS = 20;
+export const MAX_TABS = 20;
 const MAX_DOWNLOADS = 5;
+
+/* The agent's input steps: a popup may open while one of these runs. */
+const INPUT_STEPS: ReadonlySet<StepAction> = new Set<StepAction>(['click', 'press', 'type', 'drag', 'hover', 'scroll']);
 
 /** A rectangle in the window's own coordinates (DIP). */
 export interface ViewBounds {
@@ -50,6 +62,15 @@ export interface ViewBounds {
 
 /* Where a task's tabs are laid out while the pane doesn't show them. */
 const DEFAULT_BOUNDS: ViewBounds = { x: 0, y: 0, width: 900, height: 800 };
+
+/** Bounds under this in either direction are a stage too small to draw a
+    page in: the empty rectangle the pane reports while something covers it,
+    or a stage that rows above it squeezed. The shown task's tab then parks at
+    the last bounds big enough, so its pages keep that layout and the view
+    never draws outside the stage, until the stage is big enough again. */
+export const MIN_VIEW_PX = 200;
+
+const usable = (bounds: ViewBounds): boolean => bounds.width >= MIN_VIEW_PX && bounds.height >= MIN_VIEW_PX;
 
 /** One tab: a native view the host drives. browser-view.ts implements it. */
 export interface TabView {
@@ -71,6 +92,9 @@ export interface TabView {
   park(bounds: ViewBounds): void;
   /** Ends a step in flight: detaches the debugger at once. */
   abortInput(): void;
+  /** Marks the page's secret fields, those it has and those it adds later,
+      so no read returns their values. Never throws. */
+  watchSecrets(): void;
   close(): void;
 }
 
@@ -149,6 +173,11 @@ function pageUrl(view: TabView): string | null {
   return url && url !== 'about:blank' ? url : null;
 }
 
+/* The person took the browser themselves (Take over). */
+function personTookOver(control: Control): boolean {
+  return control.holder === 'human' && control.by === 'person';
+}
+
 export class BrowserSessions {
   private readonly sessions = new Map<string, TaskSession>();
   private readonly now: () => number;
@@ -156,7 +185,12 @@ export class BrowserSessions {
   private readonly idleMs: number;
   private available = false;
   private shownId: string | null = null;
+  /* The last bounds big enough to draw in. */
   private bounds: ViewBounds | null = null;
+  /* Whether the pane's latest bounds are big enough to draw the shown task.
+     The shown task stays the shown one either way, so a covered pane still
+     keeps its task from the idle close and the live-task cap. */
+  private stageUsable = false;
 
   constructor(private readonly options: BrowserSessionsOptions) {
     this.now = options.now ?? Date.now;
@@ -191,7 +225,9 @@ export class BrowserSessions {
   private create(id: string, url: string | null): TaskSession {
     while (this.sessions.size >= this.maxLive) {
       const oldest = [...this.sessions.values()].filter((s) => this.evictable(s)).sort((a, b) => a.lastUsed - b.lastUsed)[0];
-      if (!oldest) break;
+      if (!oldest) {
+        throw new BridgeError('at_capacity', `at most ${this.maxLive} tasks keep a browser open, and the pane shows or the person holds each one; try again when the person finishes with one`);
+      }
       this.closeSession(oldest);
     }
     const now = this.now();
@@ -211,8 +247,13 @@ export class BrowserSessions {
       downloads: [],
     };
     this.sessions.set(id, session);
-    const tab = this.addTab(session, url);
-    session.activeTabId = tab.id;
+    // A task whose first tab fails to build is not kept.
+    try {
+      session.activeTabId = this.addTab(session, url).id;
+    } catch (error) {
+      this.sessions.delete(id);
+      throw error;
+    }
     this.place(session);
     return session;
   }
@@ -230,6 +271,7 @@ export class BrowserSessions {
       changed: () => this.emitState(session),
       personInput: () => {
         session.lastPersonInputAt = this.now();
+        session.lastUsed = session.lastPersonInputAt;
       },
       popupAllowed: () => {
         if (!this.sessions.has(session.id)) return false;
@@ -251,13 +293,17 @@ export class BrowserSessions {
       login: (request) => {
         session.login?.respond(null);
         session.login = request;
-        this.setControl(session, 'human', `${request.host} asks for a username and password.`, 'agent');
+        // A prompt during the person's own take over leaves the hold theirs.
+        const by = personTookOver(session.control) ? 'person' : 'agent';
+        this.setControl(session, 'human', `${request.host} asks for a username and password.`, by);
       },
       download: (download) => {
-        session.downloads = [download, ...session.downloads.filter((d) => d.id !== download.id)].slice(0, MAX_DOWNLOADS);
+        // The newest few, and every download still waiting for the person's answer.
+        const next = [download, ...session.downloads.filter((d) => d.id !== download.id)];
+        session.downloads = next.filter((d, i) => i < MAX_DOWNLOADS || d.state === 'waiting');
         this.emitState(session);
       },
-      personHolds: () => session.control.holder === 'human' && session.control.by === 'person',
+      personHolds: () => personTookOver(session.control),
       sessionId: () => session.id,
     };
   }
@@ -350,16 +396,25 @@ export class BrowserSessions {
     };
   }
 
-  page(id: string, maxText: number): Promise<PageSnapshot> {
-    const session = this.ensure(id);
-    return this.enqueue(session, () => this.active(session).view.read(maxText));
+  /* A read that control changed under answers 409, never what it saw: the
+     person may have typed or browsed while it ran. */
+  private async agentRead<T>(session: TaskSession, read: () => Promise<T>): Promise<T> {
+    const seq = session.control.seq;
+    const result = await read();
+    if (session.control.seq !== seq) throw new BridgeError('human_in_control', 'The browser passed to the person during the read.');
+    return result;
   }
 
-  action(id: string, request: StepRequest): Promise<{ ok: true; url: string; page?: PageSnapshot }> {
+  page(id: string, maxText: number): Promise<PageSnapshot> {
+    const session = this.ensure(id);
+    return this.enqueue(session, () => this.agentRead(session, () => this.active(session).view.read(maxText)));
+  }
+
+  action(id: string, request: StepRequest): Promise<ActionAnswer> {
     const session = this.ensure(id);
     return this.enqueue(session, async () => {
       const tab = this.active(session);
-      session.stepRunning = true;
+      session.stepRunning = INPUT_STEPS.has(request.step.action);
       try {
         await tab.view.act(request);
       } finally {
@@ -368,15 +423,22 @@ export class BrowserSessions {
       }
       this.emitState(session);
       const current = this.active(session);
-      const answer: { ok: true; url: string; page?: PageSnapshot } = { ok: true, url: current.view.url() };
-      if (request.includePage) answer.page = await current.view.read(3000);
+      const answer: ActionAnswer = { ok: true, url: current.view.url() };
+      /* The step ran, so it answers 200 even when the browser passed to the
+         person during it or during its read, but without the page. anton then
+         asks for the page, and that call gets 409 while the person holds it. */
+      if (request.includePage && session.control.holder !== 'human') {
+        const seq = session.control.seq;
+        const page = await current.view.read(3000);
+        if (session.control.seq === seq) answer.page = page;
+      }
       return answer;
     });
   }
 
   screenshot(id: string, annotate: boolean, quality: number): Promise<Screenshot> {
     const session = this.ensure(id);
-    return this.enqueue(session, () => this.active(session).view.screenshot(annotate, quality));
+    return this.enqueue(session, () => this.agentRead(session, () => this.active(session).view.screenshot(annotate, quality)));
   }
 
   /** POST /sessions/{id}/control: the agent hands the browser to the person. */
@@ -385,11 +447,24 @@ export class BrowserSessions {
     return this.setControl(session, request.holder, request.reason, 'agent');
   }
 
+  /* Control changes before any tab is told, so a tab that fails to stop its
+     step or watch its secret fields never leaves the browser with the agent. */
   private setControl(session: TaskSession, holder: Control['holder'], reason: string, by: Control['by']): Control {
-    if (holder === 'human') {
-      for (const tab of session.tabs) tab.view.abortInput();
-    }
     session.control = { holder, reason, since: this.now(), seq: session.control.seq + 1, by };
+    if (holder === 'human') {
+      for (const tab of session.tabs) {
+        try {
+          tab.view.abortInput();
+        } catch (error) {
+          diagnostic('main.browser-sessions', 'WARNING', 'browser_sessions_could_not_stop_a_step', error);
+        }
+        try {
+          tab.view.watchSecrets();
+        } catch (error) {
+          diagnostic('main.browser-sessions', 'WARNING', 'browser_sessions_could_not_watch_secret_fields', error);
+        }
+      }
+    }
     this.emitState(session);
     return { ...session.control };
   }
@@ -449,11 +524,13 @@ export class BrowserSessions {
     }));
   }
 
-  /** DELETE /sessions/{id}. */
+  /** DELETE /sessions/{id}. Closing is acting, so it waits for the person's Done. */
   close(id: string): void {
     this.requireAvailable();
     const session = this.sessions.get(id);
-    if (session) this.closeSession(session);
+    if (!session) return;
+    this.agentHolds(session);
+    this.closeSession(session);
   }
 
   // ---- The pane (the person) -------------------------------------------------
@@ -464,44 +541,72 @@ export class BrowserSessions {
     this.emitState(session);
   }
 
-  /* Shows the task's active tab when the pane shows the task, and lays every
-     other tab out off screen. */
-  private place(session: TaskSession): void {
+  /* Shows the task's active tab when the pane shows the task on a stage big
+     enough to draw in, and lays every other tab out off screen. Answers
+     whether it showed the active tab. */
+  private place(session: TaskSession): boolean {
     const bounds = this.bounds ?? DEFAULT_BOUNDS;
+    const mayDraw = session.id === this.shownId && this.stageUsable;
+    let drawn = false;
     for (const tab of session.tabs) {
-      if (session.id === this.shownId && tab.id === session.activeTabId) tab.view.show(bounds);
-      else tab.view.park(bounds);
+      if (mayDraw && tab.id === session.activeTabId) {
+        tab.view.show(bounds);
+        drawn = true;
+      } else {
+        tab.view.park(bounds);
+      }
     }
+    return drawn;
   }
 
-  /** The pane shows a task's browser at `bounds`. */
-  show(id: string, bounds: ViewBounds): { exists: boolean } {
+  /* The pane's latest bounds: kept for layout only when big enough to draw in. */
+  private takeBounds(bounds: ViewBounds): void {
+    this.stageUsable = usable(bounds);
+    if (this.stageUsable) this.bounds = bounds;
+  }
+
+  /** The pane shows a task's browser at `bounds`. Bounds under MIN_VIEW_PX
+      keep the task shown but park its tab. Answers whether the task exists
+      and whether its tab draws. */
+  show(id: string, bounds: ViewBounds): PaneShowAnswer {
     const session = this.available ? this.sessions.get(id) : undefined;
     const previous = this.shownId ? this.sessions.get(this.shownId) : undefined;
     this.shownId = session ? id : null;
-    this.bounds = bounds;
-    if (previous && previous !== session) this.place(previous);
-    if (!session) return { exists: false };
+    this.takeBounds(bounds);
+    if (previous && previous !== session) {
+      previous.lastUsed = this.now();
+      this.place(previous);
+    }
+    if (!session) return { exists: false, drawn: false };
     session.lastUsed = this.now();
-    this.place(session);
+    const drawn = this.place(session);
     this.emitState(session);
-    return { exists: true };
+    return { exists: true, drawn };
   }
 
-  setBounds(bounds: ViewBounds): void {
-    this.bounds = bounds;
+  /** The stage moved or resized. Bounds under MIN_VIEW_PX park the shown
+      task's tab, and the task stays shown. Answers whether the shown task's
+      tab draws; with no task shown, nothing does. */
+  setBounds(bounds: ViewBounds): PaneDrawAnswer {
+    this.takeBounds(bounds);
     const session = this.shownId ? this.sessions.get(this.shownId) : undefined;
-    if (session) this.place(session);
+    return { drawn: session ? this.place(session) : false };
   }
 
+  /** The pane stops showing the task. */
   hide(): void {
     const session = this.shownId ? this.sessions.get(this.shownId) : undefined;
     this.shownId = null;
-    if (session) this.place(session);
+    if (!session) return;
+    session.lastUsed = this.now();
+    this.place(session);
   }
 
+  /* The task a call from the pane is for. The person's call counts as use. */
   private person(id: string): TaskSession | null {
-    return this.available ? this.sessions.get(id) ?? null : null;
+    const session = this.available ? this.sessions.get(id) ?? null : null;
+    if (session) session.lastUsed = this.now();
+    return session;
   }
 
   async personNavigate(id: string, where: 'back' | 'forward' | 'reload'): Promise<void> {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { analyticsEnv, antonDotenvNames, NON_PROD_POSTHOG_KEY, usageEventsOn } from './analytics-env';
+import { analyticsEnv, antonDotenvNames, NON_PROD_POSTHOG_KEY, usageEventsOn, writeUsageEventsPref } from './analytics-env';
 import { BUILD_KINDS } from './channels';
 
 // anton's own default, the production project. Written out so a change to the
@@ -126,5 +126,34 @@ describe("the person's switch for the agent's usage events", () => {
     expect(usageEventsOn({})).toBe(true);
     expect(usageEventsOn({ COWORK_USAGE_EVENTS: 'true' })).toBe(true);
     expect(usageEventsOn({ COWORK_USAGE_EVENTS: 'false' })).toBe(false);
+  });
+});
+
+describe('writeUsageEventsPref', () => {
+  let envPath: string;
+  beforeEach(() => { envPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'usage-events-')), '.env'); });
+  afterEach(() => { fs.rmSync(path.dirname(envPath), { recursive: true, force: true }); });
+
+  it('adds the off line and keeps the other lines', () => {
+    fs.writeFileSync(envPath, 'ANTON_TERMS_CONSENT=true\nCOWORK_KEYCHAIN=false\n');
+    writeUsageEventsPref(envPath, false);
+    expect(fs.readFileSync(envPath, 'utf-8')).toBe('ANTON_TERMS_CONSENT=true\nCOWORK_KEYCHAIN=false\nCOWORK_USAGE_EVENTS=false\n');
+  });
+
+  it('removes the off line when turned back on, and keeps the other lines', () => {
+    fs.writeFileSync(envPath, 'ANTON_TERMS_CONSENT=true\nCOWORK_USAGE_EVENTS=false\nCOWORK_KEYCHAIN=false\n');
+    writeUsageEventsPref(envPath, true);
+    expect(fs.readFileSync(envPath, 'utf-8')).toBe('ANTON_TERMS_CONSENT=true\nCOWORK_KEYCHAIN=false\n');
+  });
+
+  it('writes one off line however often it is turned off', () => {
+    writeUsageEventsPref(envPath, false);
+    writeUsageEventsPref(envPath, false);
+    expect(fs.readFileSync(envPath, 'utf-8')).toBe('COWORK_USAGE_EVENTS=false\n');
+  });
+
+  it('throws when the dotenv cannot be written', () => {
+    fs.rmSync(path.dirname(envPath), { recursive: true, force: true });
+    expect(() => writeUsageEventsPref(envPath, false)).toThrow();
   });
 });

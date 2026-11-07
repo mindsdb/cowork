@@ -19,10 +19,20 @@
  * self-contained.
  *
  * Secret fields (password, current-password, new-password, one-time-code and
- * cc-* autocomplete, and any field once seen as a password) never return their
- * value; they carry `value_hidden`. Challenge frames are only reported when the
- * person can see them: the page lists its frame elements and whether each one
- * shows, and main joins them with the frame tree's URLs (`challengesFrom`).
+ * cc-* autocomplete, and any field once seen as one of those) never return
+ * their value; they carry `value_hidden`, and a type, a select or an editing
+ * key into one is refused. The `watch` request marks every secret field and
+ * starts a MutationObserver, so a "show password" toggle after it still
+ * counts. The tab sends it for each new document and when the person takes
+ * the browser, but Electron runs no isolated-world script while the page is
+ * still loading, so the watch starts only once the page stops loading: a
+ * password the person shows before then, with no read in between, reads as
+ * an ordinary field. It watches the document and the open shadow roots it
+ * finds, and a toggle in a closed shadow root counts only once a read has
+ * seen the field as secret. Challenge frames are reported when the person can
+ * see them: the page lists its frame elements and whether each one shows, and
+ * main joins them with the frame tree's URLs (`challengesFrom`), which counts
+ * a check frame with no element in the DOM by its presence.
  */
 
 import type { Challenge, PageElement, PageScroll, PageSnapshot } from '../shared/browser-contract';
@@ -38,6 +48,10 @@ export interface PageWorldState {
   byElement: WeakMap<Element, number>;
   next: number;
   secret: WeakSet<Element>;
+  /** The secret-field watch, once `watch` has started it on this document. */
+  observer: MutationObserver | null;
+  /** The document and the open shadow roots the watch observes. */
+  watched: WeakSet<Node>;
 }
 
 export interface Box {
@@ -60,10 +74,15 @@ export type PageWorldRequest =
   | { kind: 'snapshot'; maxText: number; maxElements: number }
   | { kind: 'locate'; id: number; reveal: boolean }
   | { kind: 'focusedSecret' }
+  /* Where the focus is while a type step types into element `id`. */
+  | { kind: 'typingFocus'; id: number }
   | { kind: 'viewport' }
-  /* Selects a field's text so typing replaces it; ok is false when there was none. */
-  | { kind: 'selectContents'; id: number }
-  | { kind: 'select'; id: number; values: string[] };
+  /* Focuses a text field for typing; with `select`, selects its text so typing replaces it. */
+  | { kind: 'focusField'; id: number; select: boolean }
+  /* Focuses an element for a key press; `editing` when the key edits text. */
+  | { kind: 'focus'; id: number; editing: boolean }
+  | { kind: 'select'; id: number; values: string[] }
+  | { kind: 'watch' };
 
 export interface RawSnapshot {
   url: string;
@@ -95,7 +114,26 @@ export type LocateResult =
 
 export type SelectResult =
   | { ok: true; chosen: string[] }
-  | { ok: false; reason: 'not_found' | 'not_select' | 'no_option' | 'single'; options?: string[] };
+  | { ok: false; reason: 'not_found' | 'secret' | 'not_select' | 'no_option' | 'single'; options?: string[] };
+
+/** A text field focused for typing. `selected`: its text is selected, so a
+    Backspace clears it. A secret field is left alone, and `unfocusable` means
+    the focus didn't land in it (a disabled or hidden field). */
+export type FocusFieldResult =
+  | { ok: true; selected: boolean }
+  | { ok: false; reason: 'not_found' | 'secret' | 'not_text' | 'unfocusable' };
+
+/** An element focused for a key press. A secret one is left alone when the key edits text. */
+export type FocusResult =
+  | { ok: true }
+  | { ok: false; reason: 'not_found' | 'secret' | 'unfocusable' };
+
+/** The focus before each key of a type step: whether it is on a secret field,
+    and whether it is still in the field the step types into. */
+export interface TypingFocus {
+  secret: boolean;
+  inField: boolean;
+}
 
 /**
  * One read or one small DOM step, run in the isolated world. `world` is the
@@ -109,6 +147,9 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     'spinbutton', 'treeitem',
   ]);
   const SECRET_AUTOCOMPLETE = /(^|\s)(current-password|new-password|one-time-code|cc-[a-z-]+)(\s|$)/;
+  /* An ordinary field's value is read up to this many characters. */
+  const MAX_VALUE_CHARS = 200;
+  const NOT_TEXT_INPUTS = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
   const viewport = { width: Math.round(win.innerWidth), height: Math.round(win.innerHeight) };
   const clean = (value: string | null | undefined, max: number): string =>
     (value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -119,6 +160,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     const value = el.getAttribute('contenteditable');
     return value === '' || value === 'true' || value === 'plaintext-only';
   };
+  /* Editable as part of an editor, its own attribute or not. */
+  const contentEditable = (el: Element | null): boolean => (el as HTMLElement | null)?.isContentEditable === true;
   const boxOf = (el: Element): Box => {
     const rect = el.getBoundingClientRect();
     return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
@@ -139,6 +182,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
     return false;
   };
+  /* An input or textarea a person types text into, or an editor. */
+  const isTextField = (el: Element): boolean => tagOf(el) === 'textarea'
+    || (tagOf(el) === 'input' && !NOT_TEXT_INPUTS.has(inputType(el)))
+    || editable(el) || contentEditable(el);
   const isDisabled = (el: Element): boolean =>
     (el as HTMLButtonElement).disabled === true || el.getAttribute('aria-disabled') === 'true';
 
@@ -218,13 +265,13 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       if (tag === 'input' && inputType(el) === 'password') entry.type = 'password';
     } else if (tag === 'select') {
       const select = el as HTMLSelectElement;
-      entry.value = clean(Array.from(select.selectedOptions).map((o) => o.label || o.text).join(', '), 500);
+      entry.value = clean(Array.from(select.selectedOptions).map((o) => o.label || o.text).join(', '), MAX_VALUE_CHARS);
       entry.options = Array.from(select.options).slice(0, 50).map((o) => clean(o.label || o.text, 120));
     } else if (tag === 'textarea' || (tag === 'input' && role !== 'button' && role !== 'checkbox' && role !== 'radio')) {
       const value = (el as HTMLInputElement).value;
-      if (value) entry.value = value.slice(0, 500);
+      if (value) entry.value = value.slice(0, MAX_VALUE_CHARS);
     } else if (editable(el)) {
-      const value = clean(el.textContent, 500);
+      const value = clean(el.textContent, MAX_VALUE_CHARS);
       if (value) entry.value = value;
     }
     if (role === 'checkbox' || role === 'radio' || role === 'switch') {
@@ -316,6 +363,77 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return active;
   };
 
+  /* A node's parent, or a shadow root's host. */
+  const parentAcross = (node: Node): Node | null => node.parentNode ?? (node.nodeType === 11 ? (node as ShadowRoot).host ?? null : null);
+
+  /* Whether the focus is on `el` or inside it, across shadow roots, or on the
+     editing host `el` is part of. */
+  const focusIn = (el: Element): boolean => {
+    const active = deepActive();
+    for (let at: Node | null = active; at; at = parentAcross(at)) {
+      if (at === el) return true;
+    }
+    return contentEditable(el) && contentEditable(active) && !!active?.contains(el);
+  };
+
+  const focusOnSecret = (): boolean => {
+    const active = deepActive();
+    return !!active && active !== doc.body && isSecret(active);
+  };
+
+  /* Selects a field's text so typing replaces it; false when it held none. */
+  const selectContents = (el: Element): boolean => {
+    const tag = tagOf(el);
+    if (tag === 'input' || tag === 'textarea') {
+      if (!(el as HTMLInputElement).value) return false;
+      (el as HTMLInputElement).select();
+      return true;
+    }
+    const selection = win.getSelection();
+    if (!el.textContent || !selection) return false;
+    const range = doc.createRange();
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  };
+
+  /* The secret-field watch. It observes the document and each open shadow
+     root it finds, once each. */
+  const watchRoot = (root: Node): void => {
+    if (!world.observer || world.watched.has(root)) return;
+    world.watched.add(root);
+    world.observer.observe(root, {
+      subtree: true, childList: true, attributes: true, attributeFilter: ['type', 'autocomplete'], attributeOldValue: true,
+    });
+  };
+  /* Marks every secret field in `node` and below it, open shadow roots
+     included (isSecret remembers each), and watches each open shadow root. */
+  const markSecrets = (node: Node): void => {
+    const top = node.nodeType === 1 ? [node as Element] : [];
+    const own = top[0]?.shadowRoot;
+    for (const el of [...top, ...elementsIn(node), ...(own ? elementsIn(own) : [])]) {
+      isSecret(el);
+      if (el.shadowRoot) watchRoot(el.shadowRoot);
+    }
+  };
+  /* A field that was a password, or had a secret autocomplete, stays secret
+     after it changes; an added one is marked as it arrives. */
+  const onMutations = (records: MutationRecord[]): void => {
+    for (const record of records) {
+      if (record.type === 'childList') {
+        record.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) markSecrets(node);
+        });
+        continue;
+      }
+      const old = (record.oldValue || '').toLowerCase();
+      const was = record.attributeName === 'type' ? old === 'password' : SECRET_AUTOCOMPLETE.test(old);
+      if (was) world.secret.add(record.target as Element);
+      else isSecret(record.target as Element);
+    }
+  };
+
   switch (request.kind) {
     case 'snapshot':
       return snapshot(request.maxText, request.maxElements);
@@ -337,31 +455,32 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
     case 'viewport':
       return viewport;
-    case 'focusedSecret': {
-      const active = deepActive();
-      return { secret: !!active && active !== doc.body && isSecret(active) };
-    }
-    case 'selectContents': {
+    case 'focusedSecret':
+      return { secret: focusOnSecret() };
+    case 'typingFocus': {
       const el = world.ids.get(request.id);
-      if (!el || !el.isConnected) return { ok: false };
-      const tag = tagOf(el);
-      if (tag === 'input' || tag === 'textarea') {
-        if (!(el as HTMLInputElement).value) return { ok: false };
-        (el as HTMLInputElement).select();
-        return { ok: true };
-      }
-      if (!el.textContent) return { ok: false };
-      const selection = win.getSelection();
-      if (!selection) return { ok: false };
-      const range = doc.createRange();
-      range.selectNodeContents(el);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      return { ok: true };
+      return { secret: focusOnSecret(), inField: !!el && el.isConnected && focusIn(el) };
+    }
+    case 'focusField': {
+      const el = world.ids.get(request.id);
+      if (!el || !el.isConnected) return { ok: false, reason: 'not_found' };
+      if (isSecret(el)) return { ok: false, reason: 'secret' };
+      if (!isTextField(el)) return { ok: false, reason: 'not_text' };
+      (el as HTMLElement).focus();
+      if (!focusIn(el)) return { ok: false, reason: 'unfocusable' };
+      return { ok: true, selected: request.select && selectContents(el) };
+    }
+    case 'focus': {
+      const el = world.ids.get(request.id);
+      if (!el || !el.isConnected) return { ok: false, reason: 'not_found' };
+      if (request.editing && isSecret(el)) return { ok: false, reason: 'secret' };
+      if (!focusIn(el)) (el as HTMLElement).focus();
+      return focusIn(el) ? { ok: true } : { ok: false, reason: 'unfocusable' };
     }
     case 'select': {
       const el = world.ids.get(request.id);
       if (!el || !el.isConnected) return { ok: false, reason: 'not_found' };
+      if (isSecret(el)) return { ok: false, reason: 'secret' };
       if (tagOf(el) !== 'select') return { ok: false, reason: 'not_select' };
       const select = el as HTMLSelectElement;
       const options = Array.from(select.options);
@@ -377,6 +496,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return { ok: true, chosen: matches.map((m) => clean((m as HTMLOptionElement).label || (m as HTMLOptionElement).text, 120)) };
     }
+    case 'watch':
+      world.observer ??= new MutationObserver(onMutations);
+      watchRoot(doc);
+      markSecrets(doc);
+      return { ok: true };
   }
 }
 
@@ -399,7 +523,7 @@ const WORLD_STATE_KEY = '__coworkBrowserWorld';
 
 /** The source text that runs `request` in the isolated world. */
 export function pageWorldSource(request: PageWorldRequest): string {
-  const state = `globalThis[${JSON.stringify(WORLD_STATE_KEY)}] ??= { ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet() }`;
+  const state = `globalThis[${JSON.stringify(WORLD_STATE_KEY)}] ??= { ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet() }`;
   return `(${pageWorld.toString()})(document, ${state}, ${JSON.stringify(request)})`;
 }
 
@@ -427,16 +551,6 @@ export function challengeKind(address: string): string | null {
   return null;
 }
 
-/** A frame in the page's frame tree, with its own viewport size when it was asked. */
-export interface FrameInfo {
-  url: string;
-  /** The frame's own innerWidth and innerHeight, or null when it wasn't asked or didn't answer. */
-  size: { width: number; height: number } | null;
-}
-
-/* A check frame smaller than this can't hold a check a person solves. */
-const MIN_CHECK_PX = 30;
-
 function hostOf(address: string): string | null {
   try {
     return new URL(address).hostname;
@@ -446,29 +560,26 @@ function hostOf(address: string): string | null {
 }
 
 /**
- * The checks a person can see: frames in the frame tree whose address is a
- * check's, and that the page shows. When the page's DOM has frame elements
- * from that host, the check counts only if one of them is visible. When it has
- * none (a closed shadow root holds the frame, or another frame does), the
- * frame's own viewport decides: at least MIN_CHECK_PX each way. One entry per
- * host.
+ * The checks a person can see: frames in the frame tree (`frameUrls`, the
+ * main frame left out) whose address is a check's, and that the page shows.
+ * When the page's DOM has frame elements from that host, the check counts
+ * only if one of them is visible. When it has none (a closed shadow root holds
+ * the frame, or another frame does), the frame counts by being there: asking
+ * its size would run script in the frame's own world, where the check's
+ * script could see it. One entry per host.
  */
-export function challengesFrom(frames: FrameInfo[], domFrames: DomFrame[]): Challenge[] {
+export function challengesFrom(frameUrls: string[], domFrames: DomFrame[]): Challenge[] {
   const domByHost = new Map<string, boolean>();
   for (const frame of domFrames) {
     const host = hostOf(frame.url);
     if (host) domByHost.set(host, (domByHost.get(host) ?? false) || frame.visible);
   }
   const found = new Map<string, Challenge>();
-  for (const frame of frames) {
-    const kind = challengeKind(frame.url);
-    const host = hostOf(frame.url);
+  for (const url of frameUrls) {
+    const kind = challengeKind(url);
+    const host = hostOf(url);
     if (!kind || !host || found.has(host)) continue;
-    const inDom = domByHost.get(host);
-    const seen = inDom !== undefined
-      ? inDom
-      : frame.size !== null && frame.size.width >= MIN_CHECK_PX && frame.size.height >= MIN_CHECK_PX;
-    if (seen) found.set(host, { host, kind });
+    if (domByHost.get(host) ?? true) found.set(host, { host, kind });
   }
   return [...found.values()];
 }

@@ -1,8 +1,8 @@
 import type { BrowserWindow, Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { parseStepRequest } from '../shared/browser-contract';
+import { ANTON_REQUEST_TIMEOUT_MS, parseStepRequest, type StepRequest } from '../shared/browser-contract';
 import type { TabHooks } from './browser-sessions';
-import { PAGE_WORLD_ID } from './browser-page-script';
+import { PAGE_READ_TIMEOUT_MS, PAGE_WORLD_ID } from './browser-page-script';
 
 /* A WebContentsView whose page answers the isolated-world reads the tab sends. */
 const electron = vi.hoisted(() => {
@@ -10,6 +10,7 @@ const electron = vi.hoisted(() => {
     listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
     openHandler: ((details: { url: string }) => unknown) | null = null;
     attached = false;
+    attaches = 0;
     sent: string[] = [];
     destroyed = false;
     url = 'about:blank';
@@ -17,7 +18,10 @@ const electron = vi.hoisted(() => {
     mainFrame = { framesInSubtree: [] as unknown[] };
     navigationHistory = { canGoBack: () => false, canGoForward: () => false, goBack: vi.fn(), goForward: vi.fn() };
     debugger = {
-      attach: () => { this.attached = true; },
+      attach: () => {
+        this.attached = true;
+        this.attaches += 1;
+      },
       detach: () => { this.attached = false; },
       isAttached: () => this.attached,
       sendCommand: async (method: string) => {
@@ -43,6 +47,7 @@ const electron = vi.hoisted(() => {
     isDestroyed() { return this.destroyed; }
     close() { this.destroyed = true; }
     reload = vi.fn();
+    reloadIgnoringCache = vi.fn();
     executeJavaScriptInIsolatedWorld = vi.fn(async (world: number, scripts: Array<{ code: string }>) => {
       this.world.push(world);
       const code = scripts[0].code;
@@ -51,6 +56,7 @@ const electron = vi.hoisted(() => {
         return { found: true, box: { x: 10, y: 10, width: 100, height: 20 }, shown: true, inViewport: true, secret: false, disabled: false, tag: 'button', viewport: { width: 800, height: 600 } };
       }
       if (code.includes('"kind":"focusedSecret"')) return { secret: false };
+      if (code.includes('"kind":"watch"')) return { ok: true };
       return { url: this.url, title: 'Title', scroll: { y: 0, height: 600, viewport: 600 }, elements: [], text: '', truncated: false, frames: [], boxes: [], viewport: { width: 800, height: 600 } };
     });
   }
@@ -71,9 +77,32 @@ const electron = vi.hoisted(() => {
 
 vi.mock('electron', () => ({ WebContentsView: electron.WebContentsView, nativeImage: electron.nativeImage }));
 
-const { ElectronTab } = await import('./browser-view');
+const diagnostics = vi.hoisted(() => ({ diagnostic: vi.fn() }));
+vi.mock('../shared/diagnostics', () => diagnostics);
+
+const { ElectronTab, NAVIGATION_WAIT_MS } = await import('./browser-view');
 
 type Contents = InstanceType<typeof electron.FakeContents>;
+
+function stepOf(body: Record<string, unknown>): StepRequest {
+  const parsed = parseStepRequest(body);
+  if (!parsed.ok) throw new Error(parsed.message);
+  return parsed.value;
+}
+
+/* The tab's isolated-world requests of one kind. */
+const worldCalls = (contents: Contents, kind: string) =>
+  contents.executeJavaScriptInIsolatedWorld.mock.calls.filter(([, scripts]) => scripts[0].code.includes(`"kind":"${kind}"`));
+
+function onPlatform(platform: NodeJS.Platform, run: () => void): void {
+  const original = process.platform;
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(process, 'platform', { value: original, configurable: true });
+  }
+}
 
 function setup(popupAllowed = false) {
   const window = { contentView: { addChildView: vi.fn(), removeChildView: vi.fn() } };
@@ -115,8 +144,16 @@ describe('ElectronTab', () => {
     expect(quiet.contents.openHandler!({ url: 'https://pop.test/' })).toEqual({ action: 'deny' });
     const busy = setup(true);
     expect(busy.contents.openHandler!({ url: 'file:///etc/passwd' })).toEqual({ action: 'deny' });
-    const allowed = busy.contents.openHandler!({ url: 'https://pop.test/' }) as { action: string; createWindow: (o: unknown) => WebContents };
+    const allowed = busy.contents.openHandler!({ url: 'https://pop.test/' }) as {
+      action: string;
+      overrideBrowserWindowOptions: { webPreferences: Record<string, unknown> };
+      createWindow: (o: unknown) => WebContents;
+    };
     expect(allowed.action).toBe('allow');
+    // Electron builds the popup's page from these; the view it is wrapped in ignores its own.
+    const popupPreferences = allowed.overrideBrowserWindowOptions.webPreferences;
+    expect(popupPreferences).toMatchObject({ sandbox: true, contextIsolation: true, devTools: false, safeDialogs: true, backgroundThrottling: false, spellcheck: false });
+    expect(popupPreferences).not.toHaveProperty('session');
     const guest = new electron.FakeContents();
     expect(allowed.createWindow({ webContents: guest })).toBe(guest);
     expect(busy.hooks.adopt).toHaveBeenCalledTimes(1);
@@ -131,13 +168,66 @@ describe('ElectronTab', () => {
     expect(contents.world).toEqual([PAGE_WORLD_ID]);
   });
 
+  it('reports a check frame from the frame tree without running script in it', async () => {
+    const { tab, contents } = setup();
+    const frame = { url: 'https://challenges.cloudflare.com/cdn-cgi/x', executeJavaScript: vi.fn() };
+    contents.mainFrame.framesInSubtree = [contents.mainFrame, frame];
+    const page = await tab.read(100);
+    expect(page.challenges).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
+    expect(frame.executeJavaScript).not.toHaveBeenCalled();
+  });
+
+  it('starts the secret-field watch as each document loads, and when asked', () => {
+    const { tab, contents } = setup();
+    contents.listeners['dom-ready'][0]();
+    contents.listeners['did-frame-navigate'][0]({}, 'https://a.test/next', 200, 'OK', true);
+    contents.listeners['did-frame-navigate'][0]({}, 'https://ads.test/', 200, 'OK', false);
+    tab.watchSecrets();
+    expect(worldCalls(contents, 'watch')).toHaveLength(3);
+    expect(contents.world.every((world) => world === PAGE_WORLD_ID)).toBe(true);
+  });
+
+  it('starts the watch once a slow page stops loading, past a read\'s time limit, and reports no failure', async () => {
+    const { contents } = setup();
+    // Electron holds isolated-world script until the page stops loading.
+    contents.executeJavaScriptInIsolatedWorld.mockImplementationOnce(() => new Promise((resolve) => {
+      contents.once('did-stop-loading', () => resolve({ ok: true }));
+    }));
+    diagnostics.diagnostic.mockClear();
+    vi.useFakeTimers();
+    try {
+      contents.listeners['dom-ready'][0]();
+      // A slow image keeps the page loading past a read's time limit.
+      await vi.advanceTimersByTimeAsync(PAGE_READ_TIMEOUT_MS + 5_000);
+      for (const listener of contents.listeners['did-stop-loading']) listener();
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(worldCalls(contents, 'watch')).toHaveLength(1);
+    expect(diagnostics.diagnostic).not.toHaveBeenCalled();
+  });
+
+  it('never throws when the watch cannot start', async () => {
+    const { tab, contents } = setup();
+    contents.executeJavaScriptInIsolatedWorld.mockRejectedValueOnce(new Error('the frame went away'));
+    expect(() => tab.watchSecrets()).not.toThrow();
+    contents.executeJavaScriptInIsolatedWorld.mockImplementationOnce(() => {
+      throw new Error('Object has been destroyed');
+    });
+    expect(() => tab.watchSecrets()).not.toThrow();
+    // A closed tab doesn't ask its page at all.
+    tab.close();
+    tab.watchSecrets();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(worldCalls(contents, 'watch')).toHaveLength(2);
+  });
+
   it('attaches the debugger for one step and detaches after it', async () => {
     const { tab, contents } = setup();
-    const parsed = parseStepRequest({ action: 'click', element: 1 });
-    if (!parsed.ok) throw new Error(parsed.message);
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      await tab.act(parsed.value);
+      await tab.act(stepOf({ action: 'click', element: 1 }));
     } finally {
       vi.useRealTimers();
     }
@@ -150,6 +240,179 @@ describe('ElectronTab', () => {
     contents.debugger.attach();
     tab.abortInput();
     expect(contents.attached).toBe(false);
+  });
+
+  it('ends a wait at once when the person takes over, though no debugger is attached', async () => {
+    const { tab } = setup();
+    vi.useFakeTimers();
+    try {
+      const running = tab.act(stepOf({ action: 'wait', ms: 30_000 }));
+      tab.abortInput();
+      await expect(running).rejects.toMatchObject({ code: 'human_in_control' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ends a navigation still loading when the person takes over', async () => {
+    const { tab, contents } = setup();
+    contents.loadURL.mockImplementationOnce(() => new Promise(() => {}));
+    vi.useFakeTimers();
+    try {
+      const running = tab.act(stepOf({ action: 'navigate', url: 'https://intranet.test/' }));
+      // A sign-in prompt hands the browser to the person mid-load.
+      tab.abortInput();
+      await expect(running).rejects.toMatchObject({ code: 'human_in_control' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never attaches when the person takes over while a first step reads the viewport', async () => {
+    const { tab, contents } = setup();
+    let answer: (viewport: { width: number; height: number }) => void = () => {};
+    contents.executeJavaScriptInIsolatedWorld.mockImplementationOnce(() => new Promise<{ width: number; height: number }>((resolve) => { answer = resolve; }));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const running = tab.act(stepOf({ action: 'click', element: 1 }));
+      tab.abortInput();
+      answer({ width: 800, height: 600 });
+      await expect(running).rejects.toMatchObject({ code: 'human_in_control' });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(contents.attaches).toBe(0);
+    expect(contents.sent).toEqual([]);
+  });
+
+  it('ends a first step at once when the person takes over while the page has not answered its viewport read', async () => {
+    const { tab, contents } = setup();
+    contents.executeJavaScriptInIsolatedWorld.mockImplementationOnce(() => new Promise(() => {}));
+    vi.useFakeTimers();
+    try {
+      const running = tab.act(stepOf({ action: 'click', element: 1 }));
+      let outcome: unknown = 'still waiting';
+      running.catch((error: unknown) => { outcome = error; });
+      tab.abortInput();
+      // No time passes: the read's own time limit plays no part.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(outcome).toMatchObject({ code: 'human_in_control' });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(contents.attaches).toBe(0);
+  });
+
+  it("ends a step the page blocks with page_blocked while anton's client still waits, with room for an included page read", async () => {
+    const { tab, contents } = setup();
+    // A dialog holds the page, so a key the agent sends never lands.
+    const send = contents.debugger.sendCommand;
+    vi.spyOn(contents.debugger, 'sendCommand').mockImplementation((method: string) => (method.startsWith('Input.') ? new Promise<object>(() => {}) : send(method)));
+    vi.useFakeTimers();
+    try {
+      let outcome: unknown = 'still waiting';
+      tab.act(stepOf({ action: 'press', key: 'Escape' })).catch((error: unknown) => { outcome = error; });
+      await vi.advanceTimersByTimeAsync(ANTON_REQUEST_TIMEOUT_MS - PAGE_READ_TIMEOUT_MS - 1);
+      expect(outcome).toMatchObject({ code: 'page_blocked', status: 409 });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(contents.attached).toBe(false);
+  });
+
+  it('answers a navigation still loading once its wait runs out, before the step budget calls the page blocked', async () => {
+    const { tab, contents } = setup();
+    contents.loadURL.mockImplementationOnce(() => new Promise(() => {}));
+    vi.useFakeTimers();
+    try {
+      let outcome: unknown = 'still waiting';
+      tab.act(stepOf({ action: 'navigate', url: 'https://slow.test/' })).then(() => { outcome = 'answered'; }, (error: unknown) => { outcome = error; });
+      await vi.advanceTimersByTimeAsync(NAVIGATION_WAIT_MS);
+      expect(outcome).toBe('answered');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('names the host when the profile refuses an address', async () => {
+    const { tab, contents } = setup();
+    contents.loadURL.mockRejectedValueOnce(Object.assign(new Error('blocked'), { code: 'ERR_BLOCKED_BY_CLIENT' }));
+    await expect(tab.load('http://127.0.0.1:5000/x')).rejects.toMatchObject({ code: 'bad_request', message: 'navigation to 127.0.0.1:5000 is blocked in this browser' });
+  });
+
+  it('names the refused host, not the one asked for, when an allowed address redirects to it', async () => {
+    const { tab, contents } = setup();
+    contents.loadURL.mockRejectedValueOnce(Object.assign(new Error('blocked'), { code: 'ERR_BLOCKED_BY_CLIENT', url: 'http://127.0.0.1:5000/' }));
+    await expect(tab.load('https://a.example/r')).rejects.toMatchObject({ code: 'bad_request', message: 'navigation to 127.0.0.1:5000 is blocked in this browser' });
+    contents.loadURL.mockRejectedValueOnce(Object.assign(new Error('blocked'), { code: 'ERR_BLOCKED_BY_CLIENT', url: 'not an address' }));
+    await expect(tab.load('https://a.example/r')).rejects.toMatchObject({ message: 'navigation to a.example is blocked in this browser' });
+  });
+
+  it('answers a site that asks for a client certificate with none', () => {
+    const { contents } = setup();
+    const event = { preventDefault: vi.fn() };
+    const callback = vi.fn();
+    contents.listeners['select-client-certificate'][0](event, 'https://mtls.test/', [{ subjectName: 'Ada' }], callback);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith();
+  });
+
+  it.each([['win32', true], ['linux', true], ['darwin', false]] as const)("keeps the person's Control+W in the pane on %s: %s", (platform, kept) => {
+    onPlatform(platform, () => {
+      const { contents, hooks } = setup();
+      const input = contents.listeners['before-input-event'][0];
+      const closeKey = { preventDefault: vi.fn() };
+      input(closeKey, { type: 'keyDown', key: 'w', code: 'KeyW', control: true, alt: false });
+      expect(closeKey.preventDefault).toHaveBeenCalledTimes(kept ? 1 : 0);
+      const copyKey = { preventDefault: vi.fn() };
+      input(copyKey, { type: 'keyDown', key: 'c', code: 'KeyC', control: true, alt: false });
+      expect(copyKey.preventDefault).not.toHaveBeenCalled();
+      expect(hooks.personInput).toHaveBeenCalledTimes(2);
+      expect(contents.reload).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    ['win32', 'control', 'meta'],
+    ['linux', 'control', 'meta'],
+    ['darwin', 'meta', 'control'],
+  ] as const)("reloads the site, not the app, on the person's reload chord on %s (%s+R)", (platform, modifier, other) => {
+    onPlatform(platform, () => {
+      const { contents } = setup();
+      const input = contents.listeners['before-input-event'][0];
+      const press = (key: Record<string, unknown>) => {
+        const event = { preventDefault: vi.fn() };
+        input(event, { type: 'keyDown', control: false, meta: false, shift: false, alt: false, ...key });
+        return event.preventDefault.mock.calls.length;
+      };
+      expect(press({ key: 'r', code: 'KeyR', [modifier]: true })).toBe(1);
+      expect([contents.reload.mock.calls.length, contents.reloadIgnoringCache.mock.calls.length]).toEqual([1, 0]);
+      expect(press({ key: 'R', code: 'KeyR', [modifier]: true, shift: true })).toBe(1);
+      expect([contents.reload.mock.calls.length, contents.reloadIgnoringCache.mock.calls.length]).toEqual([1, 1]);
+      // The R key on a Cyrillic layout, which the menu matches by its position.
+      expect(press({ key: 'к', code: 'KeyR', [modifier]: true })).toBe(1);
+      expect(contents.reload).toHaveBeenCalledTimes(2);
+      // The page keeps the other modifier's R, the chord with Alt, the key's release, and R on another layout's key.
+      expect(press({ key: 'r', code: 'KeyR', [other]: true })).toBe(0);
+      expect(press({ key: 'r', code: 'KeyR', [modifier]: true, alt: true })).toBe(0);
+      expect(press({ type: 'keyUp', key: 'r', code: 'KeyR', [modifier]: true })).toBe(0);
+      expect(press({ key: 'k', code: 'KeyR', [modifier]: true })).toBe(0);
+      expect([contents.reload.mock.calls.length, contents.reloadIgnoringCache.mock.calls.length]).toEqual([2, 1]);
+    });
+  });
+
+  it.each([
+    ['the W key on a Cyrillic layout', { key: 'ц', code: 'KeyW' }, true],
+    ['the W key on a Hebrew layout', { key: "'", code: 'KeyW' }, true],
+    ['w on AZERTY, which sits on the Z key', { key: 'w', code: 'KeyZ' }, true],
+    ['z on AZERTY, which sits on the W key', { key: 'z', code: 'KeyW' }, false],
+  ] as const)("keeps Control+W in the pane by what the menu matches: %s", (_layout, key, kept) => {
+    onPlatform('linux', () => {
+      const { contents } = setup();
+      const event = { preventDefault: vi.fn() };
+      contents.listeners['before-input-event'][0](event, { type: 'keyDown', control: true, alt: false, ...key });
+      expect(event.preventDefault).toHaveBeenCalledTimes(kept ? 1 : 0);
+    });
   });
 
   it('answers a sign-in prompt only through the person', () => {

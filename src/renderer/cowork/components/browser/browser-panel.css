@@ -24,7 +24,13 @@
 .browser-panel__tab { flex: 0 0 auto; max-width: 140px; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--r-sm, 6px); background: transparent; color: var(--ink-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .browser-panel__tab.is-active { background: var(--surface-2); color: var(--ink); }
 .browser-panel__download { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
-/* What the person should know before typing into the web viewer (design §9.4). */
+/* A download that waits for the person's answer, on its own row: the text
+   wraps, and Save and Don't save move under it when the pane is narrow, so
+   they are never cut off. The text starts from a fixed width rather than its
+   whole sentence, so it stays on the icon's line and wraps there. */
+.browser-panel__download-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 12px 4px 15px; border-bottom: 1px solid var(--line); color: var(--ink-3); font-size: 11.5px; white-space: normal; overflow-wrap: anywhere; }
+.browser-panel__download-text { flex: 1 1 12rem; min-width: 0; }
+/* What the person should know before typing into the pane. */
 .browser-panel__note { margin: 0; padding: 4px 12px 4px 15px; border-bottom: 1px solid var(--line); color: var(--ink-4); font-size: 11px; line-height: 1.4; }
 
 /* A site's sign-in prompt, shown in place of the page while it waits. */

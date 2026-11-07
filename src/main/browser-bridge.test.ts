@@ -52,6 +52,7 @@ afterEach(async () => {
 
 describe('who may call the bridge', () => {
   it('listens on 127.0.0.1 only', () => {
+    expect(bridge.address).toBe('127.0.0.1');
     expect(bridge.url).toBe(`http://127.0.0.1:${bridge.port}`);
   });
 
@@ -166,6 +167,18 @@ describe('routes', () => {
     expect(reply.headers['x-image-width']).toBe('1024');
     expect(reply.headers['x-image-height']).toBe('640');
     expect(host.factory.tabs[0].screenshot).toHaveBeenCalledWith(true, 70);
+  });
+
+  it.each([
+    ['POST', '/sessions/t-a/tabs/%E0%A4%A/activate'],
+    ['DELETE', '/sessions/t-a/tabs/%E0%A4%A'],
+  ])('answers 400, not 500, to a malformed escape in the tab id of %s %s', async (method, path) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await call('POST', '/sessions', { body: { session_id: 't-a' } });
+    const reply = await call(method, path);
+    expect(reply.status).toBe(400);
+    expect(json(reply)).toEqual({ error: 'bad_request', message: 'the tab id is not valid' });
+    expect(error).not.toHaveBeenCalled();
   });
 
   it('refuses a step with a string element id', async () => {

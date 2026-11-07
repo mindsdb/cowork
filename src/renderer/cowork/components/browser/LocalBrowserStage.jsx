@@ -7,14 +7,30 @@ import { Input } from '../ui/Input';
 import Spinner from '../ui/Spinner';
 import { host } from '../../../platform/host';
 import { useNativeOverlayOpen } from '../../lib/nativeOverlay';
+import { DESKTOP_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 import { BrowserFrame } from './BrowserFrame';
 
 /* The desktop pane: the app's own browser, a native view the app's main
-   process places over this stage. The stage mounts no frame. It reports its
-   bounds as they change, and hides the view whenever something must draw over
-   it (an open modal or popover, the sign-in form below), when the pane closes
-   and when the task changes. The view draws above the page, so hiding it is
-   the only way anything shows on top.
+   process places over this stage. The stage mounts no frame. It shows the
+   task once when the pane opens on it, and hides it only when the pane
+   closes, the task changes or the task's browser closes. Main keeps the task
+   it shows from idle close and from the live-task cap.
+
+   While it shows the task, the stage reports what the view may draw on: the
+   stage's bounds as measured, or NOWHERE while something must draw over it
+   (an open modal or popover, a toast, the sign-in form below). The view draws
+   above the page, so parking it is the only way anything shows on top. Main
+   parks it for any stage under its floor too, a stage with no area included
+   (an ancestor hid it, as Code mode hides the Cowork panel).
+
+   Main answers each placement with whether it draws, since only main knows
+   the UI zoom its floor applies after. When it doesn't draw at the latest
+   bounds the stage measured, the stage says to make the window bigger, so a
+   short window or a zoomed UI never leaves it empty with no reason, during a
+   take over too. Only the latest placement's answer counts, and NOWHERE
+   clears the line, since an overlay or the sign-in form is the reason then.
+   Hiding the task clears it too, so a task that opens again, or the next
+   task, waits for main's answer to its own show.
 
    The person can click and type in the view at any time. Take over tells the
    agent to stop; only Done hands the browser back, and the agent waits for it. */
@@ -22,6 +38,8 @@ import { BrowserFrame } from './BrowserFrame';
 /**
  * @typedef {import('../../../../shared/browser-contract').BrowserViewState} BrowserViewState
  * @typedef {import('../../../../shared/browser-contract').StageBounds} StageBounds
+ * @typedef {import('../../../../shared/browser-contract').PaneShowAnswer} PaneShowAnswer
+ * @typedef {import('../../../../shared/browser-contract').PaneDrawAnswer} PaneDrawAnswer
  */
 
 /* A pane call the main process refused or couldn't answer: logged, since the
@@ -43,10 +61,35 @@ export function stageBounds(stage) {
   };
 }
 
+/**
+ * The view may draw nowhere. Main parks the view off screen for it and keeps
+ * the task the one the pane shows.
+ * @type {StageBounds}
+ */
+export const NOWHERE = Object.freeze({ x: 0, y: 0, width: 0, height: 0 });
+
+/** @param {StageBounds} a @param {StageBounds} b */
+function sameBounds(a, b) {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
 function hostOf(url) {
   try {
     const { protocol, host: name } = new URL(url);
     return protocol === 'http:' || protocol === 'https:' ? name : '';
+  } catch {
+    return '';
+  }
+}
+
+/* Where the page is, as the browser reads it: an http(s) page's host, else
+   its scheme and path (about:blank). Never text the page chooses, such as
+   its title or an address's query or fragment: a fragment changes in place,
+   with no navigation the app checks. */
+function siteOf(url) {
+  try {
+    const { protocol, host: name, pathname } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:' ? name : `${protocol}${pathname}`;
   } catch {
     return '';
   }
@@ -100,6 +143,8 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
   /** @type {[BrowserViewState | null, (s: BrowserViewState | null) => void]} */
   const [state, setState] = useState(null);
   const [exists, setExists] = useState(true);
+  // Main doesn't draw at the latest bounds the stage measured and sent for the task it shows now.
+  const [squeezed, setSqueezed] = useState(false);
   const overlayOpen = useNativeOverlayOpen();
 
   useEffect(() => {
@@ -114,40 +159,85 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
 
   const closed = !exists || state?.open === false;
   const signIn = state?.login ?? null;
-  const showView = !overlayOpen && !closed && !signIn;
+  const mayDraw = !overlayOpen && !signIn;
+  // Whether the view may draw now, for the pane's effect below to read.
+  const mayDrawRef = useRef(mayDraw);
+  // Sends main what the view may draw on now, or null while the pane shows no task.
+  const placeRef = useRef(/** @type {(() => void) | null} */ (null));
+
+  useEffect(() => {
+    mayDrawRef.current = mayDraw;
+    placeRef.current?.();
+  }, [mayDraw]);
 
   useEffect(() => {
     const stage = stageRef.current;
-    if (!showView || !stage) return undefined;
+    if (closed || !stage) return undefined;
     let cancelled = false;
-    let placed = stageBounds(stage);
-    report(browser.show(sessionId, placed).then((answer) => {
-      if (!cancelled && !answer.exists) setExists(false);
+    const target = () => (mayDrawRef.current ? stageBounds(stage) : NOWHERE);
+    /* How many placements the stage sent. Each one's answer from main counts
+       only while it is the latest. */
+    let sent = 0;
+    /**
+     * Numbers a placement and returns what to do with main's answer to it.
+     * NOWHERE clears squeezed at once and its answer is not read, since an
+     * overlay or the sign-in form is why nothing draws then. A measured
+     * placement's answer sets squeezed only while it is the latest and this
+     * effect runs, so a late answer for older bounds never sets or clears it.
+     * @param {StageBounds} bounds
+     * @returns {(drawn: boolean) => void}
+     */
+    const placement = (bounds) => {
+      sent += 1;
+      const mine = sent;
+      if (sameBounds(bounds, NOWHERE)) {
+        setSqueezed(false);
+        return () => {};
+      }
+      return (drawn) => {
+        if (!cancelled && mine === sent) setSqueezed(!drawn);
+      };
+    };
+    const first = target();
+    // What main last got for the view.
+    let placed = first;
+    const shown = placement(first);
+    report(browser.show(sessionId, first).then(/** @param {PaneShowAnswer} answer */ (answer) => {
+      if (cancelled) return;
+      // A task main doesn't have is closed, not squeezed: the pane says so.
+      if (!answer.exists) setExists(false);
+      else shown(answer.drawn);
     }));
     const place = () => {
-      const next = stageBounds(stage);
-      if (next.x === placed.x && next.y === placed.y && next.width === placed.width && next.height === placed.height) return;
+      const next = target();
+      if (sameBounds(next, placed)) return;
       placed = next;
-      report(browser.setBounds(next));
+      const answered = placement(next);
+      report(browser.setBounds(next).then(/** @param {PaneDrawAnswer} answer */ (answer) => answered(answer.drawn)));
     };
+    placeRef.current = place;
     const observer = new ResizeObserver(place);
     observer.observe(stage);
     window.addEventListener('resize', place);
     return () => {
       cancelled = true;
+      /* The answers belong to this showing. Nothing measures the stage until
+         the next one, so the line waits for main's answer to it. */
+      setSqueezed(false);
+      placeRef.current = null;
       observer.disconnect();
       window.removeEventListener('resize', place);
       report(browser.hide());
     };
-  }, [browser, sessionId, showView]);
+  }, [browser, sessionId, closed]);
 
   const personHolds = state?.control.holder === 'human';
-  const site = hostOf(state?.url ?? '');
+  const site = siteOf(state?.url ?? '');
   const reason = state?.control.reason ?? '';
   // The page's own host leads the agent's reason, so a lookalike page can't
   // pass its words off as the app's.
   const hint = personHolds
-    ? `Your turn${site ? ` on ${site}` : ''}${reason ? `: ${reason}` : ''}. Click Done to hand it back to ${agentLabel}.`
+    ? `Your turn on ${site || 'a new tab'}${reason ? `: ${reason}` : ''}. Click Done to hand it back to ${agentLabel}.`
     : `${agentLabel} is using it. Take over to use it yourself.`;
   /* The oldest download still waiting keeps the line until the person
      answers it, so a page can't slip a newer one under their click; with
@@ -164,6 +254,9 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
   }, [waitingId]);
   const downloadArmed = waitingId !== null && armedId === waitingId;
   const tabs = state?.tabs ?? [];
+  /* While the person holds the browser they may sign in to a site, so the
+     note says, in Settings' own words, that sign-ins stay. */
+  const note = `${agentLabel}'s page reads and screenshots go to the model provider that serves your turn.${personHolds ? ` ${DESKTOP_SIGN_INS}` : ''}`;
 
   const actions = state && !closed && (
     <>
@@ -178,12 +271,15 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
     </>
   );
 
+  /* A download that waits for the person's answer gets its own row below
+     the status line, where its text wraps and Save and Don't save stay in the
+     pane at its narrowest. */
   const below = state && !closed && (
     <>
-    <p className="browser-panel__note">{`${agentLabel}'s page reads and screenshots go to the model provider that serves your turn.`}</p>
+    <p className="browser-panel__note">{note}</p>
     <div className="browser-panel__status" role="status">
       {state.loading && <Spinner />}
-      <span className="browser-panel__site">{site || state.title || 'New tab'}</span>
+      <span className="browser-panel__site">{site || 'New tab'}</span>
       {tabs.length > 1 && (
         <span className="browser-panel__tabs">
           {tabs.map((tab) => (
@@ -200,19 +296,21 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
           ))}
         </span>
       )}
-      {latestDownload && (
+      {latestDownload && !waitingId && (
         <span className="browser-panel__download">
           {Ico.download(12)}
           {downloadLine(latestDownload)}
-          {latestDownload.state === 'waiting' && (
-            <>
-              <Button size="sm" variant="primary" disabled={!downloadArmed} onClick={() => report(browser.answerDownload(sessionId, latestDownload.id, true))}>Save</Button>
-              <Button size="sm" variant="subtle" disabled={!downloadArmed} onClick={() => report(browser.answerDownload(sessionId, latestDownload.id, false))}>Don't save</Button>
-            </>
-          )}
         </span>
       )}
     </div>
+    {waitingId && (
+      <div className="browser-panel__download-prompt" role="status">
+        {Ico.download(12)}
+        <span className="browser-panel__download-text">{downloadLine(latestDownload)}</span>
+        <Button size="sm" variant="primary" disabled={!downloadArmed} onClick={() => report(browser.answerDownload(sessionId, waitingId, true))}>Save</Button>
+        <Button size="sm" variant="subtle" disabled={!downloadArmed} onClick={() => report(browser.answerDownload(sessionId, waitingId, false))}>Don't save</Button>
+      </div>
+    )}
     </>
   );
 
@@ -232,6 +330,8 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
           site={signIn.host}
           onAnswer={(answer) => report(browser.answerLogin(sessionId, answer))}
         />
+      ) : squeezed ? (
+        <EmptyState size="sm" className="browser-panel__empty" title="Make the window bigger to see the page" />
       ) : null}
     </BrowserFrame>
   );

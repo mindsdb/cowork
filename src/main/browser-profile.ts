@@ -7,18 +7,21 @@
  * person. It sits under the app's userData because Electron 44 and later keep
  * a fromPath session's cookies across a restart only there (the sandboxed
  * network service writes nowhere else); a profile under the account data root
- * lost every sign-in at each restart. The views never use the app's default
- * session, whose request hook hands the local server's key to loopback
- * requests, and never inherit the main window's preferences.
+ * lost every sign-in at each restart. A launch that can't name its account
+ * gets an in-memory profile instead: its account root is random per launch,
+ * so no later launch would reach that folder, or clear it. The views never
+ * use the app's default session, whose request hook hands the local server's
+ * key to loopback requests, and never inherit the main window's preferences.
  *
  * Each view runs sandboxed with context isolation and web security on, no
  * Node, no preload and no DevTools (DevTools would also detach the agent's
- * debugger), and with Blink's AutomationControlled feature off. Every
- * permission and device request is denied. Top-level navigation is http and
- * https only; the LAN stays reachable, which is a main reason to browse from
- * the person's own machine. Requests a page makes to the local server's port
- * or the bridge's port are cancelled. The user agent loses the app and
- * Electron tokens.
+ * debugger), and with Blink's AutomationControlled and SharedWorker features
+ * off. Every permission and device request is denied. Top-level navigation is
+ * http and https only; the LAN stays reachable, which is a main reason to
+ * browse from the person's own machine. The request listener cancels a page's
+ * requests to the local server's port or the bridge's port, apart from the
+ * two kinds it never sees (PAGE_REQUEST_FILTER_URLS says which). The user
+ * agent loses the app and Electron tokens.
  */
 
 import * as fs from 'fs';
@@ -26,14 +29,30 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import type { Session, WebContents, WebPreferences } from 'electron';
 import { diagnostic } from '../shared/diagnostics';
+import { QUARANTINE_PREFIX } from './account-data';
 
 export const BROWSER_PROFILES_DIR = 'browser-profiles';
+
+/** Whether `accountRoot` is a launch's quarantine root, which can't be named
+    again by any later launch: its name is random per launch. */
+export function isQuarantinedAccountRoot(accountRoot: string): boolean {
+  return path.basename(accountRoot).startsWith(QUARANTINE_PREFIX);
+}
+
+function profileKey(accountRoot: string): string {
+  return createHash('sha256').update(path.resolve(accountRoot)).digest('hex').slice(0, 16);
+}
 
 /** The account's profile folder under the app's userData: one per account
     data root, so each account keeps its own sign-ins. */
 export function browserProfilePath(userDataDir: string, accountRoot: string): string {
-  const key = createHash('sha256').update(path.resolve(accountRoot)).digest('hex').slice(0, 16);
-  return path.join(userDataDir, BROWSER_PROFILES_DIR, key);
+  return path.join(userDataDir, BROWSER_PROFILES_DIR, profileKey(accountRoot));
+}
+
+/** The in-memory partition for a quarantined account root. It has no
+    `persist:` prefix, so its sign-ins end when the app quits. */
+export function browserMemoryPartition(accountRoot: string): string {
+  return `browser-${profileKey(accountRoot)}`;
 }
 
 /** Makes the profile folder and pins it owner-only past the umask. */
@@ -59,7 +78,9 @@ export function browserViewPreferences(session: Session): WebPreferences {
     allowRunningInsecureContent: false,
     webviewTag: false,
     devTools: false,
-    disableBlinkFeatures: 'AutomationControlled',
+    /* A shared worker's WebSockets have no frame, so they would skip the
+       profile's request listener; most sites check for SharedWorker first. */
+    disableBlinkFeatures: 'AutomationControlled,SharedWorker',
     // The agent works in tabs the pane doesn't show.
     backgroundThrottling: false,
     // A page that opens dialogs in a loop gets Chromium's "stop this page" choice.
@@ -77,17 +98,21 @@ export function browserUserAgent(electronUserAgent: string): string {
   return parts.filter((part) => part.startsWith('(') || KEPT_PRODUCTS.has(part.split('/')[0])).join(' ');
 }
 
-/* Every page request passes the profile's one request listener, which
-   cancels three kinds: the protected loopback ports, MindsHub's own hosts and
-   link-local metadata addresses. Everything else, the LAN and other local
-   servers included, stays reachable, because the network is the person's
-   own. */
+/* The profile's one request listener cancels three kinds of request: to the
+   protected loopback ports, to MindsHub's own hosts and to link-local
+   metadata addresses. It sees what a page's frames and dedicated workers
+   request, their WebSockets included. Two kinds skip it: a service worker's
+   WebSockets, since Electron hooks only a WebSocket that belongs to a frame,
+   and any WebTransport session, which Electron doesn't hook at all. Shared
+   workers, whose WebSockets would skip it too, are off in every view
+   (browserViewPreferences). Everything else, the LAN and other local servers
+   included, stays reachable, because the network is the person's own. */
 export const PAGE_REQUEST_FILTER_URLS = ['http', 'https', 'ws', 'wss'].map((scheme) => `${scheme}://*/*`);
 
-/* MindsHub's own hosts (design §8.5): every name under mindshub.ai except the
-   apex and docs.mindshub.ai, and all of mdb.ai and 4nton.ai, apexes included.
-   A MindsHub session in this browser would let the agent mint keys or
-   approve its own cards. */
+/* MindsHub's own hosts: every name under mindshub.ai except the apex and
+   docs.mindshub.ai, and all of mdb.ai and 4nton.ai, apexes included. A
+   MindsHub session in this browser would let the agent mint keys or approve
+   its own cards. */
 const MINDSHUB_WHOLE_ZONES = ['mdb.ai', '4nton.ai'];
 const MINDSHUB_AI_OPEN = new Set(['mindshub.ai', 'docs.mindshub.ai']);
 
@@ -102,16 +127,21 @@ export function isMindsHubHost(hostname: string): boolean {
 
 const METADATA_NAMES = new Set(['metadata', 'metadata.google.internal']);
 
+/* AWS's IPv6 metadata address, in the one spelling both `URL` and Chromium's
+   resolver write it. It sits in fc00::/7 beside the LAN's own private
+   addresses, so only this exact address is refused. */
+const AWS_IPV6_METADATA = 'fd00:ec2::254';
+
 /** Whether `hostname` (as `URL` renders it, or an address a resolver gives)
-    is a link-local address, where cloud metadata services listen:
-    169.254.0.0/16, its IPv4-mapped IPv6 forms, fe80::/10, or a metadata
-    service's name. */
+    is where cloud metadata services listen: 169.254.0.0/16, its IPv4-mapped
+    IPv6 forms, fe80::/10, AWS's fd00:ec2::254, or a metadata service's
+    name. */
 export function isLinkLocalHost(hostname: string): boolean {
   const host = bareHost(hostname);
   if (METADATA_NAMES.has(host)) return true;
   const v4 = mappedIpv4(host) ?? (IPV4.test(host) ? host : null);
   if (v4) return v4.startsWith('169.254.');
-  return /^fe[89ab][0-9a-f]:/.test(host);
+  return /^fe[89ab][0-9a-f]:/.test(host) || host === AWS_IPV6_METADATA;
 }
 
 /** Why a page may not reach `address`, or null when it may: MindsHub's own
@@ -201,8 +231,9 @@ export interface ProfileOptions {
 
 /* A DNS name is checked by what it answers, through the profile's own
    resolver, whose host cache the page's request then uses too:
-   - an answer in 169.254.0.0/16 (or its mapped form) is where cloud metadata
-     listens, so the name is refused like the address. An fe80 answer is not:
+   - an answer in 169.254.0.0/16 (or its mapped form), or AWS's
+     fd00:ec2::254, is where cloud metadata listens, so the name is refused
+     like the address. An fe80 answer is not:
      LAN names (a printer, a NAS) often answer one beside their IPv4 address,
      and the LAN stays reachable;
    - a loopback answer is refused only on a protected port.
@@ -217,7 +248,8 @@ export interface ResolvedRisk {
 function isMetadataAddress(address: string): boolean {
   const host = bareHost(address);
   const v4 = mappedIpv4(host) ?? (IPV4.test(host) ? host : null);
-  return v4 !== null && v4.startsWith('169.254.');
+  if (v4 !== null) return v4.startsWith('169.254.');
+  return host === AWS_IPV6_METADATA;
 }
 
 export async function resolvedRisk(ses: Session, hostname: string): Promise<ResolvedRisk> {

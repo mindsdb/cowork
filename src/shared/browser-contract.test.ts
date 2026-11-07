@@ -7,6 +7,7 @@ import {
   type BridgeErrorCode,
   bridgeUrl,
   electronHostsInAppBrowser,
+  MAX_CONTROL_REASON,
   MAX_SAVED_TABS_PER_PROJECT,
   MIN_IN_APP_BROWSER_ELECTRON_MAJOR,
   parseControlRequest,
@@ -50,12 +51,11 @@ const REQUEST_GUARDS: Record<string, (body: unknown) => Parsed<unknown>> = {
 
 /* Codes only the browser router or the web pod answers. The in-app host never
    sends them: it scopes no turn keys, checks no entitlement or allowance,
-   closes its least recently used task instead of refusing one, starts no pod,
-   holds no commit step and caps no calls in flight. anton maps each to its
-   own reason. */
+   starts no pod, holds no commit step and caps no calls in flight. anton maps
+   each to its own reason. */
 const ROUTER_ONLY = [
   'unscoped', 'out_of_scope', 'not_entitled', 'daily_limit', 'entitlements_unavailable',
-  'at_capacity', 'browser_starting', 'approval_required', 'too_many_requests',
+  'browser_starting', 'approval_required', 'too_many_requests',
 ];
 
 describe('the browser contract fixtures', () => {
@@ -83,6 +83,13 @@ describe('the browser contract fixtures', () => {
     const refused = parseControlRequest({ holder: 'agent', reason: '' });
     expect(refused).toMatchObject({ ok: false, personOnly: true });
     expect(parseControlRequest({ holder: 'nobody' })).not.toHaveProperty('personOnly');
+  });
+
+  it('refuses a hand-over reason over 300 characters instead of cutting it', () => {
+    expect(MAX_CONTROL_REASON).toBe(300);
+    const longest = 'r'.repeat(MAX_CONTROL_REASON);
+    expect(parseControlRequest({ holder: 'human', reason: longest })).toEqual({ ok: true, value: { holder: 'human', reason: longest } });
+    expect(parseControlRequest({ holder: 'human', reason: `${longest}r` })).toEqual({ ok: false, message: 'reason must be a string of at most 300 characters' });
   });
 
   it.each(all.filter(([file, , e]) => e.kind === 'response' && file !== 'error.json'))(
@@ -165,6 +172,14 @@ describe('step requests', () => {
   it('allows the LAN and caps a wait', () => {
     expect(parseStepRequest({ action: 'navigate', url: 'http://192.168.1.10:8080/admin' }).ok).toBe(true);
     expect(parseStepRequest({ action: 'wait', ms: 600_000 })).toMatchObject({ ok: true, value: { step: { ms: 30_000 } } });
+  });
+
+  it('refuses a deeply nested action without serializing it', () => {
+    let action: unknown = 1;
+    for (let i = 0; i < 200_000; i += 1) action = [action];
+    const parsed = parseStepRequest({ action });
+    expect(parsed).toMatchObject({ ok: false });
+    expect(parsed.ok ? '' : parsed.message).toContain('of type object');
   });
 });
 

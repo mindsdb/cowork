@@ -9,6 +9,8 @@ interface AntonTronAPI {
   /** True on shells whose main process hosts the in-app browser. */
   supportsInAppBrowser?: boolean;
   browser?: import('../shared/browser-contract').InAppBrowserBridge;
+  /** Main says the local server took the in-app browser's registration. */
+  onBrowserRegistered?: (cb: () => void) => () => void;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;

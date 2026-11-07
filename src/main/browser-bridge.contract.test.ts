@@ -12,6 +12,7 @@ import { randomBytes } from 'crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BridgeError, type BridgeErrorCode, MAX_SAVED_TABS_PER_PROJECT } from '../shared/browser-contract';
 import { type Bridge, startBridge } from './browser-bridge';
+import { MAX_LIVE_SESSIONS } from './browser-sessions';
 import { fakeHost } from '../../tests/browser-fake-tabs';
 import {
   errorShape,
@@ -132,6 +133,12 @@ describe('the in-app host against the contract fixtures', () => {
     ['browser_unavailable', () => {
       host.sessions.setAvailable(false);
       return call('GET', `/sessions/${SESSION}/page`);
+    }],
+    ['at_capacity', async () => {
+      for (let i = 0; i < MAX_LIVE_SESSIONS; i += 1) {
+        await call('POST', `/sessions/t-held-${i}/control`, { holder: 'human', reason: 'Please sign in' });
+      }
+      return call('POST', '/sessions', { session_id: 't-one-more', url: null });
     }],
   ];
 

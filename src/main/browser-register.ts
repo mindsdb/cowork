@@ -23,7 +23,8 @@ export interface BrowserHostAddress {
 }
 
 export interface RegistrationDeps {
-  /** The local server's port while it runs or starts, else null. */
+  /** The local server's port once the app has started or adopted it, else
+   *  null, during a start too. Nothing is sent while it is null. */
   serverPort(): number | null;
   authHeader(): Record<string, string>;
   fetch: typeof fetch;
