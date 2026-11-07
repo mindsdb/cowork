@@ -5629,8 +5629,8 @@ function AppCore() {
     fetchRuns: fetchScheduleRuns, cancel: cancelResponse, refresh: refreshSchedules,
   });
 
-  const handleRunScheduleNow = async (id) => {
-    const result = await runScheduleNow(id);
+  const handleRunScheduleNow = async (id, options) => {
+    const result = await runScheduleNow(id, options);
     // The server creates the conversation eagerly and returns its id.
     // Mark it in-flight locally so reconcileTaskMessages doesn't inject
     // a spurious "got interrupted" prompt before the 5s poll catches up,

@@ -32,9 +32,11 @@ export function useSchedules() {
     return list;
   }, []);
 
+  // Returns the created schedule, so a caller can run it once at once.
   const handleCreateSchedule = async (payload) => {
-    await createSchedule(payload);
+    const created = await createSchedule(payload);
     await refreshSchedules();
+    return created;
   };
 
   const handleUpdateSchedule = async (id, payload) => {
