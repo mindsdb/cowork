@@ -19,11 +19,11 @@
 //   />
 //
 // Group shape:  { key, name, items }  — `name: null` renders unheaded.
-// Item shape:   { value, label, disabled?, title?, icon?, tag?, ... }  — extra fields
+// Item shape:   { value, label, disabled?, title?, icon?, tag?, note?, ... }  — extra fields
 //   pass through untouched, so domain filters/renderers can read them.
-//   `icon` renders before the label; `tag` renders as a compact right-aligned pill on the row (a model's version
-//   state, the "Needs credits" wallet state, or both) without touching the
-//   label, so search still matches the bare model name and nothing truncates.
+//   `icon` renders before the label; `tag` renders as a compact right-aligned pill on the row (the
+//   availability state); `note` renders as muted "(note)" text after the label. Neither
+//   touches the label, so search still matches the bare model name and nothing truncates.
 //
 // Optional hooks for domain pickers:
 //   - `filter(item, query, contains)`: replaces the default match on
@@ -246,7 +246,10 @@ export function Combobox({
                         {/* Wraps rather than truncates: a name is the one
                             thing a row must show in full, and a locked row's
                             tag plus action can leave it under 100px. */}
-                        <span className="min-w-0 break-words">{item.label}</span>
+                        <span className="min-w-0 break-words">
+                          {item.label}
+                          {item.note && <span className="text-ink-4"> ({item.note})</span>}
+                        </span>
                         {(item.icon || item.tag || item.action) && (
                           <span className="shrink-0 flex items-center gap-[6px]">
                             {item.tag && (

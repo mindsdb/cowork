@@ -906,11 +906,14 @@ export function streamNewSession(text, opts = {}) {
 // signature as `_streamResponse` so the caller's adapter logic
 // (onChunk / onProgress / onToolResult / onDone / onError / onEvent)
 // is identical between fresh-turn and reconnect paths.
-export async function fetchInFlightStatus(conversationId) {
+/** `strict` rethrows a failed or timed-out check instead of answering "not
+ *  running", for a caller that must tell the two apart. */
+export async function fetchInFlightStatus(conversationId, { strict = false, timeoutMs } = {}) {
   if (!conversationId) return { in_flight: false, has_buffer: false, latest_seq: 0 };
   try {
-    return await req(`/responses/in-flight?conversation_id=${encodeURIComponent(conversationId)}`);
-  } catch {
+    return await req(`/responses/in-flight?conversation_id=${encodeURIComponent(conversationId)}`, { timeoutMs });
+  } catch (err) {
+    if (strict) throw err;
     return { in_flight: false, has_buffer: false, latest_seq: 0 };
   }
 }
@@ -1893,8 +1896,13 @@ export async function revealSettingKey(name) {
 export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
 
 // ─── Anton Utilities ────────────────────────────────────────────────────────
+// Every project card asks for its memory at once, and each lookup needs the
+// project list. Only these read-only lookups share one request: a caller
+// reading back after a mutation must not join a request sent before it.
+const fetchProjectsShared = () => dedupe('projects', fetchProjects);
+
 export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
-  const projectId = await resolveProjectId(projectRef, fetchProjects);
+  const projectId = await resolveProjectId(projectRef, fetchProjectsShared);
   const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
   // Coalesced per project. ContextCard, ProjectCard, and the list
   // view's row-stats hook can all ask for the same project's memory
@@ -1902,7 +1910,7 @@ export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
   return dedupe(`memory${suffix}`, async () => {
     const [items, projects] = await Promise.all([
       req(`/memory/${suffix}`),
-      fetchProjects(),
+      fetchProjectsShared(),
     ]);
     const list = Array.isArray(items) ? items : [];
     return groupMemoryItems(list, projects);
@@ -2337,6 +2345,61 @@ export function importSharePointFiles(projectName, { connection, site, driveId, 
 
 // ─── Connector registry ─────────────────────────────────────────────
 //
+// ── Cloud datasource connections ─────────────────────────────────────────
+//
+// The relay at /connectors/datasources/ is the hosted path for PostgreSQL and
+// MySQL: auth holds the encrypted credential and this server never sees it
+// again after the create. Every route here is org-mode only (the server
+// answers 404 outside it by design), so the gate below keeps the desktop
+// connections page from showing an error banner it can do nothing about.
+//
+// A created or edited connection comes back `pending`: auth marks it so and
+// only the gateway's probe completion moves it to verified or failed, so a
+// caller shows that state and refreshes rather than waiting on the response.
+function requireOrgMode(what) {
+  if (!getOrgMode()) {
+    throw new Error(`${what} is a cloud-only feature`);
+  }
+}
+
+const DATASOURCES = '/connectors/datasources/';
+
+export async function listDatasourceConnections() {
+  requireOrgMode('Cloud database connections');
+  return req(DATASOURCES);
+}
+
+export async function createDatasourceConnection(payload) {
+  requireOrgMode('Connecting a cloud database');
+  return req(DATASOURCES, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getDatasourceConnection(connectionId) {
+  requireOrgMode('Cloud database connections');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`);
+}
+
+// `expectedRevision` is the connection revision the form was opened against;
+// auth moves it on every edit, a rename included. The relay refuses with code
+// `stale_version` when it has moved, the only way to tell a conflict apart.
+export async function editDatasourceConnection(connectionId, payload, expectedRevision) {
+  requireOrgMode('Editing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, expected_revision: expectedRevision }),
+  });
+}
+
+export async function deleteDatasourceConnection(connectionId) {
+  requireOrgMode('Removing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+export async function retryDatasourceValidation(connectionId) {
+  requireOrgMode('Retrying a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)
@@ -2389,6 +2452,22 @@ export async function matchConnector(query, maxCandidates = 3) {
 // schema (bypasses Anton-core's built-in registry — needed for
 // OAuth + service-account flows where the legacy email/password
 // engine would reject the credential shape).
+// The saved connection a new form submission would overwrite ({ name, label }), or null.
+export async function fetchSubmissionReplaces({ formId, formSpec, values, skipped, method } = {}) {
+  const res = await req('/connectors/submissions/replaces', {
+    method: 'POST',
+    body: JSON.stringify({
+      form_id: formId,
+      name: '',
+      method: method || null,
+      values: values || {},
+      skipped: skipped || [],
+      form_spec: formSpec || null,
+    }),
+  });
+  return res?.replaces || null;
+}
+
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
   return req('/connectors/connections/save', { method: 'POST', body });
@@ -2554,7 +2633,9 @@ export function streamDataVaultSubmission({
           }
         }
       }
-      onDone?.(cid);
+      // Closed with no response.completed/failed: a partial answer is not a
+      // finished one, and the form is still waiting on its result.
+      onError?.('The form submission was interrupted before it finished. Please try again.');
     } catch (err) {
       // Our own idle abort surfaces as an AbortError too, so check it first.
       if (idledOut) onError?.('The form submission stalled and was ended. Please try again.');
@@ -2852,20 +2933,40 @@ export async function deleteChannelBinding(bindingId) {
 // ─── Attachments And Context ───────────────────────────────────────────────
 
 /** POST /v1/attachments/{project_name}/{session_id}/upload — response body is a JSON array of file attachments. */
-export async function uploadAttachments(files, { projectName, sessionId } = {}) {
+/* A send holds the app-wide stream slot while its files upload, so an upload
+   that never answers blocks every send until a reload. The bound grows with
+   the payload, so a large file on a slow link still has time to finish. */
+const UPLOAD_TIMEOUT_BASE_MS = 60_000;
+const UPLOAD_MIN_BYTES_PER_MS = 128; // ~1 Mbit/s
+
+export function uploadTimeoutMs(totalBytes) {
+  return UPLOAD_TIMEOUT_BASE_MS + Math.ceil((Number(totalBytes) || 0) / UPLOAD_MIN_BYTES_PER_MS);
+}
+
+export async function uploadAttachments(files, { projectName, sessionId, timeoutMs } = {}) {
   if (!projectName || !sessionId) {
     throw new Error('Open a saved task before attaching files (project and conversation id are required).');
   }
   const enc = encodeURIComponent;
   const form = new FormData();
-  Array.from(files).forEach((file) => form.append('files', file));
-  const res = await authFetch(
-    `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
-    { method: 'POST', body: form },
-  );
-  if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+  const list = Array.from(files);
+  list.forEach((file) => form.append('files', file));
+  const totalBytes = list.reduce((sum, file) => sum + (file?.size || 0), 0);
+  const { signal, cancel } = _timeoutSignal(null, timeoutMs ?? uploadTimeoutMs(totalBytes));
+  try {
+    const res = await authFetch(
+      `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
+      { method: 'POST', body: form, signal },
+    );
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (signal?.aborted) throw new Error('The file upload stopped responding. Please try again.');
+    throw err;
+  } finally {
+    cancel();
+  }
 }
 
 /** GET /v1/attachments/{project_name}/{session_id} — response body is a JSON array. */
@@ -3054,6 +3155,77 @@ export async function moveTaskToProject(id, projectName, moveObjects = true) {
   });
 }
 
+// Model comparisons: one task run on two models side by side. Each side is an
+// ordinary conversation the server keeps in a hidden project, so its turns go
+// through the same streaming calls as any task.
+//
+// `null` means the sidecar predates comparisons: the renderer bundle updates
+// over the air ahead of the server, so the Compare screen has to be able to
+// say "update needed" rather than show an empty history.
+/** One page of the history, newest first: `{ comparisons, hasMore }`. Null on
+ *  a server with no comparisons at all. */
+export async function fetchComparisons({ offset = 0 } = {}) {
+  try {
+    const data = await req(offset ? `/comparisons/?offset=${encodeURIComponent(offset)}` : '/comparisons/');
+    return {
+      comparisons: Array.isArray(data?.comparisons) ? data.comparisons : [],
+      // An older server sends no flag: it has no pages beyond the first.
+      hasMore: data?.hasMore === true,
+    };
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return null;
+    throw err;
+  }
+}
+
+export async function fetchComparison(id) {
+  return req(`/comparisons/${encodeURIComponent(id)}`);
+}
+
+/** Tokens and list-price cost per side and turn. Null when this server or its
+ *  gateway cannot say, so the screen simply shows no figure. */
+export async function fetchComparisonUsage(id) {
+  try {
+    const data = await req(`/comparisons/${encodeURIComponent(id)}/usage`, { headers: await hubHeaders() });
+    return data && typeof data === 'object' && data.sides ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createComparison({ title, sides, sourceProjectId } = {}) {
+  return req('/comparisons/', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: title || '',
+      sides: (sides || []).map((side) => ({
+        model: side.model,
+        ...(side.reasoningEffort ? { reasoningEffort: side.reasoningEffort } : {}),
+      })),
+      ...(sourceProjectId ? { sourceProjectId } : {}),
+    }),
+  });
+}
+
+export async function deleteComparison(id) {
+  return req(`/comparisons/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function recordComparisonVerdict(id, turnIndex, winner) {
+  return req(`/comparisons/${encodeURIComponent(id)}/verdicts/${encodeURIComponent(turnIndex)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ winner }),
+  });
+}
+
+/** `modelLabel` names the folder the side's files land in; an older server ignores it. */
+export async function continueComparisonSide(id, label, projectId, modelLabel) {
+  return req(`/comparisons/${encodeURIComponent(id)}/sides/${encodeURIComponent(label)}/continue`, {
+    method: 'POST',
+    body: JSON.stringify({ projectId, ...(modelLabel ? { modelLabel } : {}) }),
+  });
+}
+
 export async function recordTaskVisit(task, autoPin = false) {
   const params = new URLSearchParams({ auto_pin: autoPin ? 'true' : 'false' });
   if (task?.title) params.set('title', task.title);
@@ -3182,7 +3354,7 @@ export const MOCK_DATA = {
     // Flat background by default; opt back into the animated dot grid via
     // Settings → Personalization → Animated background.
     showDots: false,
-    showCounters: true,
+    showCounters: false,
     accentVariant: 'aqua',
     planningProvider: 'minds-cloud',
     planningModel: 'latest:sonnet',

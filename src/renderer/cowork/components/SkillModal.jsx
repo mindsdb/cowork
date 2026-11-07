@@ -196,6 +196,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
       width={SKILL_MODAL_WIDTH}
       height={SKILL_MODAL_HEIGHT}
       labelledBy="skill-modal-title"
+      dismissible={!busy}
     >
       <ModalHeader
         id="skill-modal-title"
@@ -315,8 +316,7 @@ export function SkillModal({ open, onClose, onSaved, onError, onPartialSave, ini
           </aside>
         </div>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" onClick={handleClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" onClick={handleClose} disabled={busy}>Cancel</Button>}>
         <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           {!isEdit && !busy && Ico.plus(14)}
           {busy ? 'Saving…' : retrySlug ? 'Retry sharing' : isEdit ? 'Save' : 'Create'}

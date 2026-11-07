@@ -31,7 +31,7 @@ export function TaskList({
       <CollectionState
         total={rows.length}
         shown={rows.length}
-        empty={{ bordered: true, title: 'No tasks in this project yet', description: 'Type a prompt above to start one.' }}
+        empty={{ title: 'No tasks in this project yet', description: 'Type a prompt above to start one.' }}
       >
         <ListGroup>
           {rows.map((row) => {

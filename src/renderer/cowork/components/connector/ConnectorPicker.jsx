@@ -20,8 +20,8 @@ import { PLATFORM_UI } from '../../../lib/deployment';
 import { Info } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { Card } from '../ui/Card';
-import { Modal } from '../ui/Modal';
-import { Alert, Badge, Button, EmptyState, Select, Tooltip } from '../ui';
+import { Modal, ModalBody, ModalHeader, ModalToolbar } from '../ui/Modal';
+import { Alert, Badge, EmptyState, Select, Tooltip } from '../ui';
 
 // Category → fallback Ico name when a connector doesn't ship its own
 // flat icon. Keep this map small and obvious; "other" → generic puzzle.
@@ -217,6 +217,13 @@ const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
 // subset — it is the whole of what works here.
 const CLOUD_AVAILABLE_TITLE = 'Available here (MindsHub Cloud)';
 
+// Above this many, the cloud side groups by category instead of showing one
+// flat block. The flat block was right while cloud ran a handful of OAuth
+// connectors of one kind; databases add a second kind, and a mixed list is
+// what makes a growing set hard to sort through. Below it, sections would
+// hold a tile each, which reads worse than no sections at all.
+const CLOUD_GROUPING_THRESHOLD = 5;
+
 // Always last in the list, for people who browse instead of searching. It
 // carries no query: Anton asks which system to connect.
 function BuildCustomTile({ onBuildCustom }) {
@@ -362,25 +369,13 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
       open={open}
       onClose={onClose}
       size="md"
-      width="min(720px, 92vw)"
-      maxHeight="min(640px, 86vh)"
       labelledBy="connector-picker-title"
     >
-        {/* Header — title row, then search row, then filter/sort row.
-            All three live in the chrome above the scrollable grid;
-            the grid background (surface-2) provides the visual break. */}
-        <div className="flex items-center justify-between pt-[14px] px-4 pb-2 bg-surface shrink-0">
-          <h2 id="connector-picker-title" className="s-h3 m-0">Connectors Directory</h2>
-          <Tooltip content="Close">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="cursor-pointer bg-transparent border-0 text-ink-3 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none shrink-0"
-            >×</button>
-          </Tooltip>
-        </div>
-        <div className="flex items-center gap-[10px] pt-0 px-4 pb-2 bg-surface shrink-0">
+        <ModalHeader id="connector-picker-title" title="Connectors Directory" onClose={onClose} />
+        {/* Search, then filter/sort, then the cloud note — pinned above
+            the scrolling grid as one "narrow my results" cluster. */}
+        <ModalToolbar style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, padding: '12px 16px' }}>
+        <div className="flex items-center gap-[10px]">
           <label className="focus-within-ring flex-1 inline-flex items-center gap-2 py-2 px-[11px] rounded-card-row bg-surface-2 border border-solid border-line">
             <span className="inline-flex text-ink-3 shrink-0">
               {Ico.search(14)}
@@ -403,11 +398,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
             />
           </label>
         </div>
-        {/* Filter + Sort row — directly under the search so the three
-            "narrow my results" controls (search, filter, sort) read
-            as one cluster. No hard divider line; the body's softer
-            surface-2 plus an inset top shadow handle the break. */}
-        <div className="flex items-center gap-2 flex-wrap pt-0 px-4 pb-[18px] bg-surface shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
           <Select
             variant="pill"
             label="Filter by"
@@ -438,14 +429,16 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           />
         </div>
 
-        {/* This deployment's server already scopes the /connectors/specs/
-            response to what auth's catalogue authorizes (currently Google
-            Drive + Gmail) — this note just explains the short list rather
-            than doing any filtering of its own. */}
-        {PLATFORM_UI && orgMode && (
-          <div className="px-4 pb-3 bg-surface shrink-0">
+        {/* The server scopes the /connectors/specs/ response to what this
+            deployment can actually run, and the desktop-only catalogue is
+            listed below under its own heading. This note points at where the
+            rest of them work; it does no filtering of its own, and it says
+            "the rest" rather than "all", because what runs here is no longer
+            a token subset. */}
+        {PLATFORM_UI && orgMode && desktopOnly.length > 0 && (
+          <div>
             <Alert variant="info">
-              The full range of connectors is coming soon to Cowork Cloud. In the meantime, you can use all Cowork connectors in the{' '}
+              More connectors are on the way here. The rest of them work today in the{' '}
               <button
                 type="button"
                 onClick={() => host.openExternal('https://mindshub.ai/download')}
@@ -458,18 +451,11 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           </div>
         )}
 
-        {/* Body — grid of connector tiles, scrollable.
-            • surface-2 background so tiles (on var(--surface)) sit
-              forward against a quieter base.
-            • boxShadow inset on the top edge gives a soft "tucked
-              under" feel where the body meets the chrome — replaces
-              the hard 1px divider for a cleaner read.
-            • generous padding-top (24px) so the first row of cards
-              has room to breathe under the controls.
-            • `minHeight: 0` is the flexbox gotcha that lets a flex
-              child actually shrink below its content size — without
-              it, `overflowY: auto` never triggers. */}
-        <div className="flex-1 min-h-0 overflow-y-auto pt-6 px-4 pb-4 bg-surface-2 shadow-[inset_0_8px_16px_-10px_rgba(15,16,17,0.10)]">
+        </ModalToolbar>
+
+        {/* Grid of connector tiles on surface-2 so tiles (on --surface)
+            sit forward against a quieter base. */}
+        <ModalBody padding="24px 16px 16px" background="var(--surface-2)">
           {loading && (
             <div className="p-3 text-ink-3 text-[13px]">
               Loading connectors…
@@ -482,14 +468,15 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
           )}
           {!loading && !error && filtered.length === 0 && (offerBuildForQuery ? (
             <EmptyState
-              icon={Ico.search(32)}
+              icon={Ico.search(20)}
               title={<>No connectors match “{trimmedQuery}”</>}
               description="Anton can build one with you: it asks how the system is reached, then sets up and tests the connection."
-              action={(
-                <Button variant="primary" className="max-w-full" onClick={() => onBuildCustom(trimmedQuery)}>
-                  <span className="truncate">Build a custom connector for “{trimmedQuery}”</span>
-                </Button>
-              )}
+              action={{
+                label: <span className="truncate">Build a custom connector for “{trimmedQuery}”</span>,
+                onClick: () => onBuildCustom(trimmedQuery),
+                primary: true,
+                className: 'max-w-full',
+              }}
             />
           ) : (
             <div className="p-3 text-ink-3 text-[13px]">
@@ -514,18 +501,28 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
                   <ConnectorTile key={c.id} connector={c} onPick={onPick} />
                 ))}
             </div>
-          ) : orgMode ? (
-            // Cloud runs only a handful of connectors — too few to be worth
-            // splitting across category sections, where each section would
-            // hold one tile and the same connector would also appear under
-            // Featured. Show all of them as one block instead; the desktop
-            // catalogue below is what gives the directory its body.
+          ) : orgMode && available.length <= CLOUD_GROUPING_THRESHOLD ? (
+            // Few enough to read at a glance: one block, no sections holding a
+            // tile each. The desktop catalogue below gives the directory its body.
             <ConnectorSection
               title={PLATFORM_UI ? CLOUD_AVAILABLE_TITLE : 'Available connectors'}
               connectors={available}
               onPick={onPick}
               className="mb-6"
             />
+          ) : orgMode ? (
+            // Enough to sort through: the same category sections desktop uses,
+            // without Featured, which on cloud would duplicate tiles out of a
+            // set small enough to see whole.
+            groupByCategory(available).map(([cat, list]) => (
+              <ConnectorSection
+                key={cat}
+                title={categoryLabel(cat)}
+                count={list.length}
+                connectors={list}
+                onPick={onPick}
+              />
+            ))
           ) : (
             // Desktop: Featured on top, then every category. A featured
             // connector intentionally appears in both — with ~213 connectors
@@ -561,7 +558,7 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
             connectors={desktopOnly}
             onPick={onDesktopOnly}
           />}
-        </div>
+        </ModalBody>
     </Modal>
   );
 }

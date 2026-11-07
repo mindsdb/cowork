@@ -14,7 +14,8 @@ vi.mock('../../api', () => ({
 vi.mock('../../../platform/host', () => ({
   host: { openExternal: vi.fn() },
 }));
-vi.mock('../ui/Modal', () => ({
+vi.mock('../ui/Modal', async (importOriginal) => ({
+  ...(await importOriginal()),
   Modal: ({ children }) => <div>{children}</div>,
 }));
 

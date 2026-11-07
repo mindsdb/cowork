@@ -27,6 +27,7 @@ import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
 import { productName } from '../../lib/deploymentBrand';
 import { STOCK_SHORT_NAME } from '../../../shared/product-name';
+import { useConfirm } from '../components/ConfirmModal';
 
 const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
@@ -155,6 +156,7 @@ const RESET_CONFIRM_COPY = {
 };
 
 function MemoryView({ data, selected, onSelect, project, projects, setData, setStatus }) {
+  const [confirm, confirmModal] = useConfirm();
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');
@@ -258,7 +260,12 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
   const remove = async (file) => {
     if (!canUseSharedResource(file, 'canDelete')) return;
     const label = labelCategory(file.category);
-    if (!window.confirm(`Delete "${label}" memory? This clears the saved content.`)) return;
+    if (!(await confirm({
+      title: `Delete "${label}" memory?`,
+      message: 'This clears the saved content.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    }))) return;
     try {
       await deleteMemory({
         scope: file.scope || 'Global',
@@ -424,6 +431,7 @@ function MemoryView({ data, selected, onSelect, project, projects, setData, setS
         onConfirm={reset}
         onClose={() => setResetOpen(false)}
       />
+      {confirmModal}
     </>
   );
 }
@@ -458,6 +466,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
 
 
 function ConnectView({ data, setData, setStatus }) {
+  const [confirm, confirmModal] = useConfirm();
   const firstEngine = data.engines?.[0]?.engine || '';
   const initialEngine = (data.engines || []).find((item) => item.engine === firstEngine);
   const [engine, setEngine] = useState(firstEngine);
@@ -543,7 +552,12 @@ function ConnectView({ data, setData, setStatus }) {
   };
 
   const remove = async (conn) => {
-    if (!window.confirm(`Remove datasource "${conn.engine}/${conn.name}"?`)) return;
+    if (!(await confirm({
+      title: 'Remove datasource?',
+      message: `${conn.engine}/${conn.name} will be removed.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    }))) return;
     try {
       await deleteDatasource(conn.engine, conn.name);
       const latest = await fetchDatasources();
@@ -633,6 +647,7 @@ function ConnectView({ data, setData, setStatus }) {
           {busyAction === 'save' ? 'Saving' : 'Save connection'}
         </Button>
       </form>
+      {confirmModal}
     </div>
   );
 }

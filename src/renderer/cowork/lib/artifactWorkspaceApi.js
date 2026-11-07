@@ -111,8 +111,11 @@ function resolveSameOriginDraftUrl(draftUrl) {
  * URL renders fine as HTML. The viewer decides which mode applies
  * with `canFetchDraftWithCredentials`; the credentialed path keeps its
  * same-origin backstop below.
+ *
+ * `countRows` lets the caller count records over the whole body: the result
+ * only carries the cut `content`, and a count of that understates the file.
  */
-export async function loadArtifactDraftText(draftUrl, { withCredentials = true } = {}) {
+export async function loadArtifactDraftText(draftUrl, { withCredentials = true, countRows } = {}) {
   if (!draftUrl) throw new Error('Artifact has no private draft URL');
   const url = withCredentials ? resolveSameOriginDraftUrl(draftUrl) : draftUrl;
   const response = withCredentials ? await authFetch(url) : await fetch(url);
@@ -125,11 +128,16 @@ export async function loadArtifactDraftText(draftUrl, { withCredentials = true }
     throw error;
   }
   const body = await response.text();
-  return {
+  const truncated = body.length > DRAFT_TEXT_MAX;
+  const preview = {
     content: body.slice(0, DRAFT_TEXT_MAX),
-    truncated: body.length > DRAFT_TEXT_MAX,
+    truncated,
     mime: response.headers.get('Content-Type') || '',
   };
+  if (truncated && countRows) {
+    preview.total_rows = Math.max(0, countRows(body) - 1);
+  }
+  return preview;
 }
 
 /*

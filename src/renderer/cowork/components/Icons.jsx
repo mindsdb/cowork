@@ -15,6 +15,8 @@
 // button design.
 import {
   AppWindow,
+  ArrowDown,
+  ArrowLeftRight,
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
@@ -29,6 +31,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Columns2,
   CodeXml,
   Copy,
   Database,
@@ -164,6 +167,8 @@ const Ico = {
   doc:      ico(FileText),
   globe:    ico(Globe),
   brain:    ico(Brain),
+  columns:  ico(Columns2),
+  swap:     ico(ArrowLeftRight),
   database: ico(Database),
   mail:     ico(Mail),
   upload:   ico(Upload),
@@ -197,6 +202,7 @@ const Ico = {
   // Errors the previewed page reported about itself (ENG-3002).
   warning:      ico(TriangleAlert),
   // "Open in the default browser".
+  arrowDown: ico(ArrowDown),
   arrowUpRight: ico(ArrowUpRight),
   // "Insert into the input above" — task-mode sample prompts (ENG-1594).
   arrowUpLeft: ico(ArrowUpLeft, 14),
