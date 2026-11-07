@@ -148,6 +148,7 @@ export default defineConfig({
             'src/renderer/cowork/components/artifact/ArtifactViewerBody.liveApp.test.jsx',
             'src/renderer/cowork/components/WorkspaceSelector.test.jsx',
             'src/renderer/cowork/App.appearancePreview.test.jsx',
+            'src/renderer/cowork/App.updateRestart.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTestPending.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTesting.test.jsx',
             'src/renderer/cowork/views/settings/useSettingsDraft.test.jsx',
