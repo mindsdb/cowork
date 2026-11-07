@@ -49,6 +49,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "OAUTH_PICK_DRIVE_FILES": "oauth:pick-drive-files",
   "OAUTH_REFRESH_ERROR": "oauth:refresh-error",
   "OPEN_EXTERNAL": "app:open-external",
+  "SCHEDULE_KEEP_AWAKE": "schedules:keep-awake",
   "SERVER_RESTART": "server:restart",
   "SERVER_UPDATE_STATUS": "server:update-status",
   "SETTINGS_CHECK_CONFIGURED": "settings:check-configured",
