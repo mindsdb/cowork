@@ -4,7 +4,9 @@
 // the next few runs the form previews, and a sentence that reads the schedule
 // back, so the form, its preview and what is saved can't disagree.
 
-export const CADENCES = ['once', 'hourly', 'daily', 'weekdays', 'weekly'];
+export const CADENCES = ['once', 'every_15_minutes', 'every_30_minutes', 'hourly', 'daily', 'weekdays', 'weekly'];
+// Cadences a fixed number of minutes apart, from the chosen minute.
+export const INTERVAL_MINUTES = { every_15_minutes: 15, every_30_minutes: 30, hourly: 60 };
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -50,11 +52,13 @@ export function nextRuns(when, now = new Date(), count = 3) {
   }
   const runs = [];
   const cursor = new Date(after);
-  if (when.cadence === 'hourly') {
-    cursor.setMinutes(t.m, 0, 0);
+  const step = INTERVAL_MINUTES[when.cadence];
+  if (step) {
+    // Elapsed time, as the server steps them, so a clock change can't shift a run.
+    cursor.setMinutes(t.m % step, 0, 0);
     while (runs.length < count) {
       if (cursor.getTime() > after) runs.push(new Date(cursor));
-      cursor.setHours(cursor.getHours() + 1);
+      cursor.setTime(cursor.getTime() + step * 60 * 1000);
     }
     return runs;
   }
@@ -95,6 +99,8 @@ export function describeWhen(when) {
       const day = new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
       return `Once, on ${day} at ${at}`;
     }
+    case 'every_15_minutes': return 'Every 15 minutes';
+    case 'every_30_minutes': return 'Every 30 minutes';
     case 'hourly': return `Every hour at :${String(when.time || '').split(':')[1] || '00'}`;
     case 'daily': return `Every day at ${at}`;
     case 'weekdays': return `Every weekday at ${at}`;
