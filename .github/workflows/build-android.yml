@@ -52,7 +52,8 @@ jobs:
     steps:
       # First, because missing secrets are what everyone hits before the Play
       # account setup is finished. Lists names only, never values.
-      # GOOGLE_SERVICES_JSON_B64 is optional (FCM push isn't wired up yet).
+      # GOOGLE_SERVICES_JSON_B64 is optional: without it the build has no
+      # Firebase, so push notifications are off on Android (warned below).
       - name: Check required secrets
         env:
           ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
@@ -108,14 +109,15 @@ jobs:
         run: npx cap sync android
 
       # Optional: android/app/build.gradle applies the google-services plugin
-      # only when this file exists and is non-empty.
+      # only when this file exists and is non-empty. Without it the app works
+      # but has no push (the web app sees MindsHubPush.isSupported() = false).
       - name: Write google-services.json (if provided)
         env:
           GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: |
           set -euo pipefail
           if [ -z "${GOOGLE_SERVICES_JSON_B64//[[:space:]]/}" ]; then
-            echo "GOOGLE_SERVICES_JSON_B64 not set; building without Firebase."
+            echo "::warning title=No push notifications on Android::GOOGLE_SERVICES_JSON_B64 is not set, so this build has no Firebase and push notifications are off. Add the secret (mobile/README.md, Push notifications) to turn them on."
             exit 0
           fi
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > mobile/android/app/google-services.json

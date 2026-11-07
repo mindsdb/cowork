@@ -129,6 +129,29 @@ export interface MobileAdapterDeps {
   navigate?: (url: string) => void;
   fetch?: typeof fetch;
   logoutTimeoutMs?: number;
+  /**
+   * Runs first on sign-out, while the tokens are still valid (the mobile app
+   * removes this phone's push token from the user, lib/mobilePush.ts).
+   * Best effort: bounded by `beforeLogoutTimeoutMs`, and a failure never
+   * stops the sign-out.
+   */
+  beforeLogout?: () => Promise<void>;
+  beforeLogoutTimeoutMs?: number;
+}
+
+/** Wait for `task`, at most `ms`; never rejects. */
+async function settleWithin(task: () => Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve().then(task),
+      new Promise<void>((resolve) => { timer = globalThis.setTimeout(resolve, ms); }),
+    ]);
+  } catch {
+    // Signing out anyway.
+  } finally {
+    globalThis.clearTimeout(timer);
+  }
 }
 
 function defaultReplayCallback(url: string): void {
@@ -158,6 +181,8 @@ export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapt
     navigate = (url: string) => window.location.replace(url),
     fetch: fetchImpl = (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
     logoutTimeoutMs = 5_000,
+    beforeLogout,
+    beforeLogoutTimeoutMs = 3_000,
   } = deps;
 
   const runNativeFlow = async (createUrl: () => Promise<string>): Promise<void> => {
@@ -186,6 +211,8 @@ export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapt
       () => keycloak.createRegisterUrl({ ...options, redirectUri: MOBILE_AUTH_REDIRECT_URI }),
     ),
     logout: async (options?: KeycloakLogoutOptions) => {
+      // Before anything invalidates the tokens: the hook may call the API.
+      if (beforeLogout) await settleWithin(beforeLogout, beforeLogoutTimeoutMs);
       // The Keycloak session cookie lives in the system browser, not this
       // webview, so a redirect logout here would not reach it. Ending the
       // session with the refresh token does (it kills the server-side session

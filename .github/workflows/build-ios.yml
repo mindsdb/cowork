@@ -166,6 +166,14 @@ jobs:
             echo "::error::IOS_PROFILE_APP_B64 is a development or ad hoc profile (it lists devices). Use an App Store distribution profile."
             exit 1
           fi
+          # Push (ENG-4023): the Release build signs with App/App.entitlements,
+          # aps-environment=production, so a profile without Push Notifications
+          # would fail at signing with a less readable error.
+          aps="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$plist" 2>/dev/null || true)"
+          if [ "$aps" != "production" ]; then
+            echo "::error::IOS_PROFILE_APP_B64 has no Push Notifications entitlement (aps-environment is '${aps:-missing}', need 'production'). Enable Push Notifications on the ai.mindshub.cowork App ID, regenerate the App Store profile, and update the secret."
+            exit 1
+          fi
 
           # Xcode 16+ reads UserData; older tooling reads MobileDevice.
           for dir in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" \

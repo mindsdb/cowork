@@ -49,6 +49,16 @@ const config: CapacitorConfig = {
     StatusBar: {
       overlaysWebView: true,
     },
+    // Push (ENG-4023): what to show when a notification arrives while the app
+    // is in the foreground. This is static native config, so it cannot tell
+    // which conversation is on screen; showing every push beats hiding them
+    // all (a shared artifact or a different task finishing would go unseen),
+    // and one redundant banner for the task you're watching is the cost. No
+    // `badge`: nothing ever clears it, so it would stick on the icon.
+    // On Android, banner/list also turn on foreground display.
+    PushNotifications: {
+      presentationOptions: ['banner', 'list', 'sound'],
+    },
     SplashScreen: {
       launchShowDuration: 0,
       launchAutoHide: true,

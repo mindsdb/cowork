@@ -100,7 +100,12 @@ describe('getMindsHubAuthPlugin / isAuthCancelled', () => {
   });
 });
 
-function setup(overrides: { authenticate?: MindsHubAuthPlugin['authenticate'] | null; keycloak?: Partial<MobileAdapterKeycloak> } = {}) {
+function setup(overrides: {
+  authenticate?: MindsHubAuthPlugin['authenticate'] | null;
+  keycloak?: Partial<MobileAdapterKeycloak>;
+  beforeLogout?: () => Promise<void>;
+  beforeLogoutTimeoutMs?: number;
+} = {}) {
   const keycloak: MobileAdapterKeycloak = {
     createLoginUrl: vi.fn(async () => 'https://auth.example/login?state=s1'),
     createRegisterUrl: vi.fn(async () => 'https://auth.example/registrations?state=s1'),
@@ -123,6 +128,8 @@ function setup(overrides: { authenticate?: MindsHubAuthPlugin['authenticate'] | 
     replayCallback,
     navigate,
     fetch: fetchMock as unknown as typeof fetch,
+    beforeLogout: overrides.beforeLogout,
+    beforeLogoutTimeoutMs: overrides.beforeLogoutTimeoutMs,
   });
   return { adapter, keycloak, authenticate, replayCallback, navigate, fetchMock };
 }
@@ -217,6 +224,40 @@ describe('createMobileShellAdapter', () => {
     await adapter.logout({ redirectUri: PAGE });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(keycloak.clearToken).toHaveBeenCalled();
+  });
+
+  it('runs beforeLogout (push unregister) before the session ends and the tokens are cleared', async () => {
+    const order: string[] = [];
+    const beforeLogout = vi.fn(async () => { order.push('beforeLogout'); });
+    const { adapter, keycloak, fetchMock } = setup({ keycloak: { refreshToken: 'rt-1' }, beforeLogout });
+    fetchMock.mockImplementation(async () => { order.push('end-session'); return new Response(null, { status: 204 }); });
+    vi.mocked(keycloak.clearToken).mockImplementation(() => { order.push('clearToken'); });
+
+    await adapter.logout({ redirectUri: PAGE });
+
+    expect(order).toEqual(['beforeLogout', 'end-session', 'clearToken']);
+  });
+
+  it('signs out even when beforeLogout fails', async () => {
+    const { adapter, keycloak, navigate } = setup({ beforeLogout: async () => { throw new Error('offline'); } });
+    await adapter.logout({ redirectUri: PAGE });
+    expect(keycloak.clearToken).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(PAGE);
+  });
+
+  it('does not wait on a hung beforeLogout past its timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, keycloak } = setup({ beforeLogout: () => new Promise<void>(() => {}), beforeLogoutTimeoutMs: 3_000 });
+      const done = adapter.logout({ redirectUri: PAGE });
+      await vi.advanceTimersByTimeAsync(2_999);
+      expect(keycloak.clearToken).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await done;
+      expect(keycloak.clearToken).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("names the app's redirect URI unless told otherwise", () => {

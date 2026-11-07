@@ -28,6 +28,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Push (ENG-4023): how Firebase draws a notification it shows on its own
+             (app in the background): a white status-bar glyph, the brand tint and
+             the channel MainActivity creates. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_cowork" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/push_accent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="cowork_updates" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -40,4 +53,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13+: asked at runtime by PushNotifications.requestPermissions(). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
