@@ -43,6 +43,14 @@ export const SUPPORTED_SHELL_WINDOW_DAYS = 14;
 /** Where a shell that cannot update itself sends the user (ENG-849/ENG-1103). */
 export const SHELL_DOWNLOAD_PAGE = 'https://mindshub.ai/download';
 
+/**
+ * The oldest macOS major the newest published shell runs on. Shells on older
+ * macOS stop receiving shell updates (the feed and the installer refuse them),
+ * so "too old" with a download button would send them to an installer that
+ * cannot install.
+ */
+export const MIN_MACOS_FOR_LATEST_SHELL = 13;
+
 export type ShellBuildKind = 'dev' | 'preview' | 'stable' | 'prod';
 export type ShellVersionSource = 'bundled' | 'ota' | 'web';
 
@@ -55,6 +63,8 @@ export interface ShellSupportInput {
   source: ShellVersionSource | null | undefined;
   /** The shell's build kind when it reports one; null on legacy shells. */
   buildKind: ShellBuildKind | null | undefined;
+  /** macOS major version of this machine; null off macOS or when unknown. */
+  macosMajor?: number | null;
 }
 
 export type ShellSupportNotApplicableReason =
@@ -80,6 +90,16 @@ export type ShellSupportVerdict =
     latestShellVersion: string;
     daysBehind: number;
     reason: 'below-floor' | 'outside-window';
+  }
+  | {
+    /** The newest shell does not run on this macOS, so this shell cannot
+     *  update. `below-floor` keeps the floor's data risk visible. */
+    status: 'os-capped';
+    reason: 'behind' | 'below-floor';
+    shellVersion: string;
+    latestShellVersion: string;
+    daysBehind: number;
+    macosMajor: number;
   };
 
 const DAY_MS = 86_400_000;
@@ -123,7 +143,19 @@ export function assessShellSupport(input: ShellSupportInput): ShellSupportVerdic
   }
 
   const floor = parseCalVer(MIN_SUPPORTED_SHELL)!;
-  if (compareCalVer(shell, floor) < 0) {
+  const belowFloor = compareCalVer(shell, floor) < 0;
+  const macosMajor = input.macosMajor;
+  if (macosMajor != null && macosMajor < MIN_MACOS_FOR_LATEST_SHELL) {
+    return {
+      status: 'os-capped',
+      reason: belowFloor ? 'below-floor' : 'behind',
+      shellVersion,
+      latestShellVersion,
+      daysBehind,
+      macosMajor,
+    };
+  }
+  if (belowFloor) {
     return { status: 'too-old', shellVersion, latestShellVersion, daysBehind, reason: 'below-floor' };
   }
   if (daysBehind > SUPPORTED_SHELL_WINDOW_DAYS) {
@@ -197,4 +229,42 @@ export function deriveShellTooOldNotice(
       // the installer.
       return { title, body, actionLabel: 'Download the latest app', action: 'open-download-page' };
   }
+}
+
+// ---------------------------------------------------------------------------
+// The macOS notice
+// ---------------------------------------------------------------------------
+
+export interface ShellOsCappedNotice {
+  title: string;
+  body: string;
+  /** `once`: dismissed for good; `this-launch`: back on the next launch. */
+  dismissal: 'once' | 'this-launch';
+}
+
+/**
+ * What to tell a user whose macOS the newest shell no longer runs on. No
+ * action: nothing the app can do helps, only a macOS update. Returns null
+ * unless the verdict is `os-capped`.
+ */
+export function deriveShellOsCappedNotice(
+  verdict: ShellSupportVerdict | null | undefined,
+): ShellOsCappedNotice | null {
+  if (!verdict || verdict.status !== 'os-capped') return null;
+  const minimum = `macOS ${MIN_MACOS_FOR_LATEST_SHELL} or later`;
+  if (verdict.reason === 'below-floor') {
+    return {
+      title: 'Update macOS to keep using Cowork safely',
+      body: 'This version of the app is unsafe if more than one person signs in to Cowork on this Mac user account: '
+        + 'it can show one account\'s data to the next person who signs in. '
+        + `Newer versions fix this but need ${minimum}.`,
+      dismissal: 'this-launch',
+    };
+  }
+  return {
+    title: 'Your version of macOS no longer receives app updates',
+    body: `This Mac runs macOS ${verdict.macosMajor}. Update to ${minimum} to keep getting app updates. `
+      + 'Some features may stop working over time.',
+    dismissal: 'once',
+  };
 }
