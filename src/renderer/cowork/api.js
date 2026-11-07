@@ -480,12 +480,12 @@ const WARM_CONCURRENCY = 4;
  * repeat the number. */
 const MESSAGE_PAGE_LIMIT = 50;
 
-function _itemsPath(id, { limit, before } = {}) {
+function _itemsPath(id, { limit, before } = {}, base = '/conversations') {
   const params = new URLSearchParams();
   if (limit != null) params.set('limit', String(limit));
   if (before) params.set('before', before);
   const qs = params.toString();
-  return `/conversations/${encodeURIComponent(id)}/items${qs ? `?${qs}` : ''}`;
+  return `${base}/${encodeURIComponent(id)}/items${qs ? `?${qs}` : ''}`;
 }
 
 /** Normalizes a /items response into one shape regardless of which branch
@@ -643,9 +643,16 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
  * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
  */
 export async function fetchSessionResult(id, { timeoutMs } = {}) {
+  return _conversationResult('/conversations', id, { timeoutMs });
+}
+
+/** `fetchSessionResult` against a given route family; both families share
+ * the same existence and outage rules. `extraFields(meta)` adds the
+ * family's own fields to the task. */
+async function _conversationResult(base, id, { timeoutMs } = {}, extraFields = () => ({})) {
   const [metaRes, msgsRes] = await Promise.allSettled([
-    req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }),
-    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }),
+    req(`${base}/${encodeURIComponent(id)}`, { timeoutMs }),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }, base), { timeoutMs }),
   ]);
   if (metaRes.status === 'rejected') {
     const err = metaRes.reason;
@@ -667,8 +674,62 @@ export async function fetchSessionResult(id, { timeoutMs } = {}) {
     ..._conversationToTask(metaRes.value, page.items),
     hasMoreMessages: page.hasMore,
     messagesCursor: page.nextBefore,
+    ...extraFields(metaRes.value),
   };
   return { status: 'ok', task };
+}
+
+/* Channel conversations: the ones the channel runtime created for a route,
+   readable only by org admins through /channel-conversations. Members get
+   403 and deployments outside org mode 404, which both mean "no section";
+   anything else is an outage the admin should see, not a hidden tab. The
+   trailing slash on the list path matters: without it the server answers a
+   307 to an absolute http:// URL. */
+const CHANNEL_CONVERSATIONS = '/channel-conversations';
+
+/**
+ * @returns {Promise<{state:'ok'|'hidden'|'error', items:object[], error?:string}>}
+ */
+export async function fetchChannelConversations() {
+  try {
+    const data = await req(`${CHANNEL_CONVERSATIONS}/`);
+    return { state: 'ok', items: Array.isArray(data?.conversations) ? data.conversations : [] };
+  } catch (err) {
+    if (err && (err.status === 403 || err.status === 404)) return { state: 'hidden', items: [] };
+    return { state: 'error', items: [], error: err?.message || 'Could not load channel conversations' };
+  }
+}
+
+/** `fetchSessionResult` for a channel conversation; the task also carries `channelType`. */
+export async function fetchChannelConversation(id, { timeoutMs } = {}) {
+  return _conversationResult(CHANNEL_CONVERSATIONS, id, { timeoutMs }, (meta) => ({
+    channelType: meta.channelType ?? null,
+  }));
+}
+
+/** `fetchOlderMessages` for a channel conversation, with its rows hydrated the
+ * way the first page's are: the channel view has no App-side hydration step. */
+export async function fetchOlderChannelMessages(id, cursor, { timeoutMs } = {}) {
+  if (!cursor) return null;
+  try {
+    const raw = await req(
+      _itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }, CHANNEL_CONVERSATIONS),
+      { timeoutMs },
+    );
+    const page = _pageFromItemsResponse(raw);
+    return {
+      messages: _hydrateAssistantEvents(page.items),
+      hasMoreMessages: page.hasMore,
+      messagesCursor: page.nextBefore,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Delete a channel conversation as an org admin; throws with `err.status` on failure. */
+export async function deleteChannelConversation(id) {
+  return req(`${CHANNEL_CONVERSATIONS}/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 /**

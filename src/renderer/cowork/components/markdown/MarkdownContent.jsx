@@ -681,6 +681,9 @@ export const MarkdownContent = memo(function MarkdownContent({
      when that `src` may not load. Without it images render as written, which
      is what chat keeps (see remarkArtifactLocalLinks). */
   loadImage = null,
+  /* False renders every image as its alt text, never fetching it: for text
+     from people outside the app, where an image URL is a beacon. */
+  showImages = true,
 }) {
   const rootRef = useRef(null);
   /* Read at click time, so a parent passing fresh callbacks every render
@@ -934,6 +937,9 @@ export const MarkdownContent = memo(function MarkdownContent({
         <MarkdownImage src={src} alt={alt} title={title} loadImage={loadImage} />
       ),
     } : {}),
+    ...(showImages ? {} : {
+      img: ({ alt }) => <span className="text-ink-3">[image: {alt || 'image'}]</span>,
+    }),
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
@@ -962,7 +968,7 @@ export const MarkdownContent = memo(function MarkdownContent({
     },
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, codeOverflowCue, animateStreamingWords, loadImage]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts, codeOverflowCue, animateStreamingWords, loadImage, showImages]);
 
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
