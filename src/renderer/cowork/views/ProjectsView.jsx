@@ -262,6 +262,7 @@ function ProjectDetail({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
+  browserSwitch = null,
   onNavigateToConnectors,
   // Header kebab + inline rename — lets users rename / reveal / delete
   // the active project without bouncing back to the grid. Pin is
@@ -452,6 +453,7 @@ function ProjectDetail({
                 onRemoveAttachment={onRemoveAttachment}
                 disabledConnections={disabledConnections}
                 onUpdateConnectorMute={onUpdateConnectorMute}
+                browserSwitch={browserSwitch}
                 metaReadOnly
                 modelReadOnly={false}
                 codingModeEnabled={codingModeEnabled}
@@ -562,6 +564,7 @@ export default function ProjectsView({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
+  browserSwitch = null,
   onNavigateToConnectors,
   // Forwarded to ProjectDetail's rail Scheduled Tasks card —
   // clicking a row routes to the schedule detail page.
@@ -793,6 +796,7 @@ export default function ProjectsView({
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}
+        browserSwitch={browserSwitch}
         onOpenSettings={onOpenSettings}
         codingModelDefault={codingModelDefault}
         harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}

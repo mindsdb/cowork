@@ -39,7 +39,7 @@ import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
@@ -47,6 +47,9 @@ import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
+import { latestBrowserSession } from '../lib/browserSession';
+import { BrowserPanel } from '../components/browser/BrowserPanel';
+import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
@@ -1784,6 +1787,9 @@ export function redirectForTask(redirects, taskId) {
   return redirects[taskId] || null;
 }
 
+// Module-level so the per-task debounce survives switching tasks (ENG-3188).
+const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1821,6 +1827,7 @@ export default function ChatView({
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
   onUpdateConnectorMute,
+  browserSwitch = null,
   onRemoveAttachment,
   onPinTask,
   onUnpinTask,
@@ -1848,6 +1855,9 @@ export default function ChatView({
   onOpenSettings,
   codingModelDefault,
   harnessClaudeCodeEnabled,
+  // The shared browser is on (Settings → Shared browser, MindsHub): start it
+  // early, when a task that used it opens and on the first keystroke.
+  browserWarmUp = false,
   /* Settings > Appearance "Show where figures came from": mark each figure in
      a finished answer with the step it came from. On unless the user turned
      it off. */
@@ -2042,6 +2052,19 @@ export default function ChatView({
     setArtifactsScope({ projectId: project?.id || '', projectPath: artifactProjectPath });
   }, [project?.id, artifactProjectPath]);
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
+  // The shared browser (ENG-3299): the newest turn that opened it decides what
+  // the right-hand column shows. Closing the pane hides it until a later turn
+  // opens the browser again (a new `key`), or the user reopens it.
+  const browserSession = useMemo(
+    () => latestBrowserSession(visibleMessages, streamingMsg),
+    [visibleMessages, streamingMsg],
+  );
+  const [closedBrowserKey, setClosedBrowserKey] = useState(null);
+  const browserOpen = !!browserSession && closedBrowserKey !== browserSession.key;
+  const hasBrowserStep = !!browserSession;
+  useEffect(() => {
+    if (browserWarmUp && hasBrowserStep) warmBrowser(task.id);
+  }, [browserWarmUp, hasBrowserStep, task.id]);
   // Source of truth for the rail Progress card: the live streaming
   // message's steps if a request is in flight, otherwise the steps
   // from the most recent assistant turn. Both come from the SSE
@@ -2239,7 +2262,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserOpen && !isNarrow ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -3324,6 +3347,7 @@ export default function ChatView({
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
+            browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
             placeholder="Reply…"
             metaReadOnly
@@ -3335,6 +3359,7 @@ export default function ChatView({
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
+            onTypingChange={browserWarmUp ? (typing) => { if (typing) warmBrowser(task.id); } : undefined}
           />
         </div>)}
         </>
@@ -3342,6 +3367,15 @@ export default function ChatView({
       </div>
 
       {!pane && (<>
+      {/* ─── Shared browser ─── takes the right-hand column while open. */}
+      {browserOpen && (
+        <BrowserPanel
+          session={browserSession}
+          agentLabel={harnessLabel(task?.harness) || 'Anton'}
+          onClose={() => setClosedBrowserKey(browserSession.key)}
+        />
+      )}
+
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
       {railFloats && (
@@ -3357,7 +3391,9 @@ export default function ChatView({
       <aside
         // Narrow: fixed overlay that slides in from the right.
         // Wide: inline grid column.
-        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
+        // While the shared browser holds the right-hand column on a wide
+        // screen, the rail steps aside rather than add a third grid track.
+        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${browserOpen && !isNarrow ? 'hidden ' : ''}${
           railFloats
             ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
             : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'

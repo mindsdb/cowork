@@ -147,6 +147,11 @@ export default function Composer({
   conversationId = null,
   disabledConnections = [],
   onUpdateConnectorMute,
+  /**
+   * The shared browser for this task or the next one (ENG-3188): `{on,
+   * onChange}`, shown as a Browser switch in the + menu. Null hides it.
+   */
+  browserSwitch = null,
   onRemoveAttachment,
   placeholder = 'Hi Boss, how can I help you today?',
   disabled = false,
@@ -1261,6 +1266,34 @@ export default function Composer({
                     >
                       {Ico.folder(14)} Add files from SharePoint
                     </button>
+                  )}
+                  {browserSwitch && (
+                    <div
+                      className="menu-item flex-nowrap"
+                      style={{
+                        // cascade-forced: legacy .menu-item sets cursor:pointer.
+                        cursor: 'default',
+                      }}
+                      title="Anton can use your shared browser in this task. Off applies from your next message."
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      {Ico.globe(14)}
+                      <span className="flex-1">Browser</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!!browserSwitch.on}
+                        aria-label={browserSwitch.on ? 'Turn the browser off for this task' : 'Turn the browser on for this task'}
+                        className={`toggle shrink-0${browserSwitch.on ? ' on' : ''}`}
+                        disabled={busy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          browserSwitch.onChange(!browserSwitch.on);
+                        }}
+                      >
+                        <span className="toggle-thumb" />
+                      </button>
+                    </div>
                   )}
                   <button
                     className="menu-item"

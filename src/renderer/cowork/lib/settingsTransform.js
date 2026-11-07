@@ -65,6 +65,12 @@ export const SETTINGS_KEY_MAP = {
   memory_enabled: 'memoryEnabled',
   memory_mode: 'memoryMode',
   episodic_memory: 'episodicMemory',
+  browser_enabled: 'browserEnabled',
+  browser_mode: 'browserMode',
+  browser_service_url: 'browserServiceUrl',
+  browser_service_api_key: 'browserServiceApiKey',
+  browser_proxy: 'browserProxy',
+  browser_city: 'browserCity',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.

@@ -28,6 +28,7 @@ import AccountSection from './AccountSection';
 import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
+import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
@@ -1956,6 +1957,7 @@ export default function SettingsView({
               aria-label="Act first, ask later"
             />
           </Section>
+          <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} />
         </SettingsGroup>
 
         {/* Not on hosted web yet: its turns run in a pod that doesn't receive

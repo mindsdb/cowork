@@ -60,7 +60,10 @@ it.each([
   expect(screen.queryByRole('heading', { name: 'Local endpoint' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'MindsHub' })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Custom provider name')).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
+  // The shared browser's server key is not a model provider's.
+  const providerKeys = screen.queryAllByLabelText(/API key/)
+    .filter((el) => !/browser/i.test(el.getAttribute('aria-label') ?? ''));
+  expect(providerKeys).toEqual([]);
   expect(screen.queryByRole('link', { name: /Sign up|mindshub/i })).not.toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Memory', exact: true })).toBeInTheDocument();
   expect(screen.getByRole('switch', { name: 'Act first, ask later' })).toBeInTheDocument();

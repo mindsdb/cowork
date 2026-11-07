@@ -1,4 +1,5 @@
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { browserStep, withBrowserStep } from './browserSession';
 import { parseFigureSources } from './figureSources';
 
 // Anton /v1/responses → ThinkingStep adapter.
@@ -23,6 +24,8 @@ import { parseFigureSources } from './figureSources';
 //                                 the user, or the turn ends. `.done` ends
 //                                 it, `.cleared` takes it off screen. Never
 //                                 persisted, so only a live turn has one.
+//   response.browser_session_opened — the agent opened the user's browser;
+//                                 one Browser step the chat can open
 //   response.artifact_created   — an artifact this turn produced (any type);
 //                                 carries an `artifact` payload → one card
 //   response.figure_sources     — where each figure in the final answer came
@@ -690,6 +693,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // image…), detected via the artifacts-dir diff, and replays them
   // identically on reload. This is the single, deterministic source of
   // artifact cards. Deduped by slug/path so a replay can't double a card.
+  // The agent opened the user's MindsHub browser (ENG-3299). A Browser step,
+  // so the chat can split and show the live viewer, and a reload reopens it.
+  if (type === 'response.browser_session_opened') {
+    const step = browserStep(event, eventTs);
+    if (!step) return state;
+    return { ...state, steps: withBrowserStep(state.steps, step) };
+  }
+
   if (type === 'response.artifact_created') {
     const art = (event.artifact && typeof event.artifact === 'object') ? event.artifact : {};
     const key = art.slug || art.file_path || art.path || '';
