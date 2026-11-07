@@ -1,9 +1,9 @@
-// Start the shared browser early (ENG-3188). Its pod takes a while to boot,
-// so the chat asks cowork-server to warm it (POST /browse/provision) before
-// the agent needs it: when a task that already used the browser opens, and on
-// the first keystroke in a task's composer. At most once per task every two
-// minutes, fire-and-forget: a failure only means the agent waits a bit longer,
-// so it is never surfaced.
+/* Start the web browser early. It takes a while to boot, so the chat asks
+   cowork-server to warm it (POST /browse/provision) before the agent needs
+   it, only in a task that already used the browser: when the task opens, and
+   when the person types in it. At most once per task every two minutes,
+   fire-and-forget: a failure only means the agent waits a bit longer, so it
+   is never surfaced. ChatView calls it only on the web (its `warmsBrowser`). */
 
 export const WARM_UP_INTERVAL_MS = 2 * 60_000;
 

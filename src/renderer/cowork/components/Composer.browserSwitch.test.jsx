@@ -23,7 +23,7 @@ async function openThePlusMenu() {
 describe('the Browser switch in the + menu', () => {
   it('is on when the task uses the browser, and reports turning it off', async () => {
     const onChange = vi.fn();
-    renderComposer({ browserSwitch: { on: true, onChange } });
+    renderComposer({ browserSwitch: { on: true, onChange, agentLabel: 'Anton' } });
     await openThePlusMenu();
 
     const toggle = await screen.findByRole('switch', { name: /browser off for this task/i });
@@ -33,10 +33,18 @@ describe('the Browser switch in the + menu', () => {
   });
 
   it('shows a task with the browser off as off', async () => {
-    renderComposer({ browserSwitch: { on: false, onChange: vi.fn() } });
+    renderComposer({ browserSwitch: { on: false, onChange: vi.fn(), agentLabel: 'Anton' } });
     await openThePlusMenu();
 
     expect(await screen.findByRole('switch', { name: /browser on for this task/i })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('names the agent the person set, not a fixed one', async () => {
+    renderComposer({ browserSwitch: { on: true, onChange: vi.fn(), agentLabel: 'Cowork' } });
+    await openThePlusMenu();
+
+    const row = (await screen.findByRole('switch', { name: /browser off for this task/i })).parentElement;
+    expect(row).toHaveAttribute('title', 'Cowork can use your shared browser in this task. Off applies from your next message.');
   });
 
   it('is not there when the shared browser is off in Settings', async () => {

@@ -2823,18 +2823,49 @@ export async function duplicateLiveApp({ shareId, projectId }) {
   });
 }
 
-// ─── Shared browser (ENG-3299) ──────────────────────────────────────────────
-// The user's MindsHub browser instance. cowork-server makes each call as the
-// caller (their MindsHub token in X-MindsHub-Authorization, like /hub/*), so a
-// desktop install and the web app go through the same three routes.
+// ─── Shared browser ─────────────────────────────────────────────────────────
 
-// { provisioned, status, endpoint, enabled, available }
-export async function fetchBrowseStatus() {
-  return req('/browse/status', { headers: await hubHeaders() });
+/**
+ * Whether this deployment offers the shared browser to the caller. On the web
+ * `available` means a browser router is configured and the caller's account
+ * may use it; an account it isn't enabled for answers `available: false` with
+ * `status: 'not_entitled'`, and one whose organization turned the browser off
+ * with `status: 'organization_off'`. On the desktop it means the app's own
+ * browser has registered with the local server.
+ *
+ * @typedef {Object} BrowseStatus
+ * @property {boolean} enabled  The person's own switch (Settings), on by default.
+ * @property {boolean} available
+ * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled' | 'organization_off'} status
+ */
+
+/**
+ * A viewer link for the web pane. The router honors it once, before
+ * `ticket_expires_at`, and the viewer it opens closes at `lease_expires_at`.
+ * Both are Unix seconds.
+ *
+ * @typedef {Object} BrowserEmbed
+ * @property {string} session_id
+ * @property {string} view_url
+ * @property {number} ticket_expires_at
+ * @property {number} lease_expires_at
+ */
+
+/**
+ * Sends no MindsHub credential header: the desktop answers from what it holds
+ * locally, and the web shell's Authorization header already names the caller.
+ * A `timeoutMs` that passes aborts the request, which then rejects with no
+ * status.
+ *
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {Promise<BrowseStatus>}
+ */
+export async function fetchBrowseStatus({ timeoutMs } = {}) {
+  return req('/browse/status', { timeoutMs });
 }
 
-// The browser's time zone and language, so the shared browser's pages match
-// the user's and its home connection can default to a city near them.
+/* The browser's time zone and language, so the web browser's pages match the
+   person's. */
 export function browserClientHints() {
   const hints = {};
   try {
@@ -2847,7 +2878,12 @@ export function browserClientHints() {
   return hints;
 }
 
-// Creates (or wakes) the instance and remembers where it is. Same answer shape.
+/**
+ * Web only: wakes the person's browser early, in a task that used it, so it
+ * is up by the time the agent asks for it.
+ *
+ * @returns {Promise<BrowseStatus>}
+ */
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',
@@ -2856,14 +2892,72 @@ export async function provisionBrowser() {
   });
 }
 
-// { proxy_available, prefs, cities: [{ id, label }], effective_city }: whether
-// the shared browser can browse through a home connection, and from where.
-export async function fetchBrowseLocations() {
-  return req('/browse/locations', { headers: await hubHeaders() });
+/**
+ * The browser's record of the person's approval of one held step (the commit
+ * hold). The step may then run once, until `expires_at` (Unix seconds).
+ *
+ * @typedef {Object} BrowserApproval
+ * @property {string} pending_id
+ * @property {boolean} approved
+ * @property {number} expires_at
+ */
+
+/**
+ * Web only: records the person's approval of a step the browser held, before
+ * the chat card that asked is answered. Only the person's own credential is
+ * accepted; a turn key gets 403 `person_only`.
+ *
+ * @param {string} sessionId
+ * @param {string} pendingId
+ * @returns {Promise<BrowserApproval>}
+ */
+export async function approveBrowserStep(sessionId, pendingId) {
+  return req('/browse/approve', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ session_id: sessionId, pending_id: pendingId }),
+  });
 }
 
-// { session_id, view_url, expires_at }: a fresh viewer URL for the side pane.
-export async function embedBrowser(sessionId = 'main') {
+/**
+ * Web only: declines a step the browser held, before the chat card that asked
+ * is answered with anything but Approve. The router's decline drops the held
+ * step and any approval already recorded for it, so a late approval can't
+ * run it. Sends the person's own credential, as approveBrowserStep does. The
+ * card reads nothing from the answer, and waits for it before it answers, so
+ * the call gives up after SHORT_REQUEST_TIMEOUT_MS.
+ *
+ * @param {string} sessionId
+ * @param {string} pendingId
+ * @returns {Promise<unknown>}
+ */
+export async function declineBrowserStep(sessionId, pendingId) {
+  return req('/browse/decline', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ session_id: sessionId, pending_id: pendingId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Web only: signs the person out of every site in their browser, the live
+ * one and the saved sign-ins. Works even when the person's browser access is
+ * off.
+ *
+ * @returns {Promise<{ cleared: boolean }>}
+ */
+export async function signOutOfBrowserSites() {
+  return req('/browse/logins', { method: 'DELETE', headers: await hubHeaders() });
+}
+
+/**
+ * Web only: a fresh viewer link for one session.
+ *
+ * @param {string} sessionId
+ * @returns {Promise<BrowserEmbed>}
+ */
+export async function embedBrowser(sessionId) {
   return req('/browse/embed', {
     method: 'POST',
     headers: await hubHeaders(),

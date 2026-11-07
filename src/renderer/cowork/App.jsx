@@ -62,6 +62,7 @@ import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
+import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
@@ -138,6 +139,8 @@ import {
 } from './CoworkRouter';
 import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
 import { rememberTaskBrowser } from './lib/taskBrowser';
+import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
+import { useNativeOverlay } from './lib/nativeOverlay';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -614,6 +617,19 @@ function AppCore() {
   }, []);
 
   const agentLabel = getAgentLabel(settings);
+
+  /* This UI shows the desktop's in-app browser, so main may register it with
+     the local server, which then offers the agent the browser tool. Once a
+     load; a UI that never says so (an older one) never gets the tool. */
+  const [inAppBrowserRegistered, setInAppBrowserRegistered] = useState(false);
+  useEffect(() => {
+    if (!host.supportsInAppBrowser) return;
+    host.inAppBrowser.ready()
+      .catch((error) => {
+        diagnostic('renderer.app', 'WARNING', 'in_app_browser_ready_failed', error);
+      })
+      .finally(() => setInAppBrowserRegistered(true));
+  }, []);
 
   const [tasks, setTasks] = useState([]);
   // 'loading' until the first list response lands, then 'ready' or 'failed'.
@@ -1780,6 +1796,9 @@ function AppCore() {
     sidebarCollapsibleRoutes,
     sidebarPopout,
   } = useSidebarNav({ isNarrow });
+  /* The narrow-band sidebar popout counts as an overlay, so the desktop
+     browser pane's native view steps aside rather than draw over it. */
+  useNativeOverlay(sidebarPopout && navPopoutOpen);
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin.
@@ -2107,6 +2126,11 @@ function AppCore() {
     handleShellAutoUpdateAction,
     dismissShellUpdate,
   } = useAppUpdates();
+  /* The OTA update curtain covers the window while an update downloads and
+     the UI reloads. It counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const updateCurtainUp = updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading';
+  useNativeOverlay(updateCurtainUp);
 
   // Collapse the three update mechanisms into one shell-first banner (or null).
   // The manual notice is dismissal-filtered here before it can win the slot.
@@ -3451,11 +3475,15 @@ function AppCore() {
     });
   }, []);
 
-  // The + menu shows a Browser switch while the shared browser is on in
-  // Settings (on by default). Off there, no task gets it, so no switch.
-  const browserSwitchShown = settings.browserEnabled !== false;
+  /* The + menu shows a Browser switch only where this deployment offers the
+     browser (GET /browse/status answers `available: true`, never on a
+     self-hosted stack) and while it is on in Settings (on by default). Off
+     there, no task gets it, so no switch (lib/browserSwitch). */
+  const browserOnInSettings = settings.browserEnabled !== false;
+  const browseAvailable = useBrowseAvailable(`${health.status}:${inAppBrowserRegistered}`);
+  const browserSwitchShown = showsBrowserSwitch({ browserOnInSettings, browseAvailable });
   const composerBrowserSwitch = browserSwitchShown
-    ? { on: !composerBrowserOff, onChange: (on) => setComposerBrowserOff(!on) }
+    ? { on: !composerBrowserOff, onChange: (on) => setComposerBrowserOff(!on), agentLabel }
     : null;
 
   // The + menu's Browser switch for one task (ENG-3188): on its record, which
@@ -3647,7 +3675,7 @@ function AppCore() {
       meta?.disabledConnections ?? composerDisabledConnections,
     );
     // Only the composer's own switch: the browser is off only when switched off.
-    const browserOffForSend = !!(meta?.browserOff ?? (browserSwitchShown && composerBrowserOff));
+    const browserOffForSend = newTaskBrowserOff({ callerBrowserOff: meta?.browserOff, browserOnInSettings, composerBrowserOff });
 
     const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
@@ -6096,7 +6124,7 @@ function AppCore() {
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
-            browserWarmUp={browserSwitchShown && settings.browserMode !== 'standalone' && !currentTask?.browserOff}
+            browserOn={taskBrowserOn({ switchShown: browserSwitchShown, taskBrowserOff: currentTask?.browserOff })}
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -6136,7 +6164,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
             browserSwitch={browserSwitchShown && currentTask
-              ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on) }
+              ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
               : null}
             onPinTask={handlePinTask}
             onUnpinTask={handleUnpinTask}
@@ -6764,7 +6792,7 @@ function AppCore() {
       </Modal>
 
       {/* OTA update overlay — shown during auto-update download/reload */}
-      {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
+      {updateCurtainUp && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center',

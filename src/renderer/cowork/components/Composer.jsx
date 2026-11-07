@@ -148,8 +148,9 @@ export default function Composer({
   disabledConnections = [],
   onUpdateConnectorMute,
   /**
-   * The shared browser for this task or the next one (ENG-3188): `{on,
-   * onChange}`, shown as a Browser switch in the + menu. Null hides it.
+   * The shared browser for this task or the next one, shown as a Browser
+   * switch in the + menu. Null hides it.
+   * @type {{ on: boolean, onChange: (on: boolean) => void, agentLabel: string } | null}
    */
   browserSwitch = null,
   onRemoveAttachment,
@@ -1274,7 +1275,7 @@ export default function Composer({
                         // cascade-forced: legacy .menu-item sets cursor:pointer.
                         cursor: 'default',
                       }}
-                      title="Anton can use your shared browser in this task. Off applies from your next message."
+                      title={`${browserSwitch.agentLabel} can use your shared browser in this task. Off applies from your next message.`}
                       onMouseDown={(e) => e.stopPropagation()}
                     >
                       {Ico.globe(14)}

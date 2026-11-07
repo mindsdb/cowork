@@ -36,6 +36,7 @@ import { Toast as BaseToast } from '@base-ui/react/toast';
 import { Check, TriangleAlert, CircleAlert, X } from 'lucide-react';
 import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
+import { useNativeOverlay } from '../../lib/nativeOverlay';
 
 export const useToastManager = BaseToast.useToastManager;
 
@@ -76,8 +77,11 @@ export function ToastProvider({
   );
 }
 
+/* A shown toast counts as an overlay, so the desktop browser pane's native
+   view, which draws above the page, steps aside while it shows. */
 function ToastList() {
   const { toasts } = useToastManager();
+  useNativeOverlay(toasts.length > 0);
   return toasts.map((toast) => <ToastBubble key={toast.id} toast={toast} />);
 }
 
