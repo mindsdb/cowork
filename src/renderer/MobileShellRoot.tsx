@@ -6,7 +6,7 @@
 // a sign-in screen whose buttons open the sheet (lib/mobileAuth.ts). A shell
 // older than MIN_SHELL_VERSION gets an update screen and nothing else.
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ReactKeycloakProvider, useKeycloak } from '@react-keycloak/web';
 import type Keycloak from 'keycloak-js';
 import { ArcadeShell } from './pages/arcade/components';
@@ -15,6 +15,8 @@ import { productName } from './lib/deploymentBrand';
 import { STOCK_PRODUCT_NAME } from '../shared/product-name';
 import { MIN_SHELL_VERSION, shellNeedsUpdate, type MobileShell } from './lib/mobileShell';
 import { WelcomeLoading } from './WelcomeLoading';
+import { mobilePush, mobilePushSignedIn } from './lib/mobilePush';
+import { MobilePushPrompt } from './MobilePushPrompt';
 
 const SIGN_IN_FAILED = 'We could not sign you in. Please try again.';
 
@@ -95,8 +97,19 @@ export function ShellUpdateRequired({ platform }: { platform: MobileShell['platf
 
 function SignedInGate({ children }: { children: ReactNode }) {
   const { keycloak } = useKeycloak();
+  const signedInAs = keycloak.authenticated ? keycloak.subject ?? null : null;
+  // Push (lib/mobilePush.ts): register this phone for the signed-in user if
+  // notifications are allowed; otherwise the soft prompt offers them later.
+  useEffect(() => {
+    if (signedInAs) mobilePushSignedIn(signedInAs);
+  }, [signedInAs]);
   if (!keycloak.authenticated) return <ShellSignIn auth={keycloak} />;
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <MobilePushPrompt controller={mobilePush()} />
+    </>
+  );
 }
 
 export interface MobileShellRootProps {

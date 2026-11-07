@@ -35,11 +35,18 @@ vi.mock('@react-keycloak/web', async () => {
   };
 });
 
+const pushMock = vi.hoisted(() => ({ signedIn: vi.fn() }));
+vi.mock('./lib/mobilePush', () => ({
+  mobilePush: () => null,
+  mobilePushSignedIn: pushMock.signedIn,
+}));
+
 import { MobileShellRoot, ShellSignIn, ShellUpdateRequired } from './MobileShellRoot';
 
 function client(overrides: Partial<{ login: () => Promise<void>; register: () => Promise<void> }> = {}) {
   return {
     get authenticated() { return providerState.authenticated; },
+    subject: 'user-1',
     login: vi.fn(async () => {}),
     register: vi.fn(async () => {}),
     ...overrides,
@@ -63,6 +70,7 @@ afterEach(() => {
   providerState.phase = 'ready';
   providerState.authenticated = false;
   providerState.initOptions = null;
+  pushMock.signedIn.mockClear();
 });
 
 describe('MobileShellRoot', () => {
@@ -77,6 +85,15 @@ describe('MobileShellRoot', () => {
     renderRoot();
     expect(screen.getByTestId('app')).toBeTruthy();
     expect(screen.queryByTestId('shell-sign-in')).toBeNull();
+  });
+
+  it('hands the signed-in user to push registration, and nobody while signed out', () => {
+    renderRoot();
+    expect(pushMock.signedIn).not.toHaveBeenCalled();
+    cleanup();
+    providerState.authenticated = true;
+    renderRoot();
+    expect(pushMock.signedIn).toHaveBeenCalledWith('user-1');
   });
 
   it('holds the welcome view while init runs', () => {

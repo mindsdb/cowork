@@ -21,8 +21,11 @@ vitest, electron-builder) reads it.
 | `ios/App/App.xcodeproj` | Xcode project, scheme `App`, Swift Package Manager (no CocoaPods, no workspace) |
 | `ios/App/App/MindsHubAuthPlugin.swift` | iOS auth plugin |
 | `ios/App/App/MainViewController.swift` | Registers local plugins |
+| `ios/App/App/AppDelegate.swift` | Forwards the APNs device token to the push plugin |
+| `ios/App/App/App.entitlements`, `App.Debug.entitlements` | `aps-environment` for Release (production) and Debug (development) |
 | `android/` | Gradle project, application module `:app` |
-| `android/app/src/main/java/ai/mindshub/cowork/` | `MainActivity`, `MindsHubAuthPlugin` |
+| `android/app/src/main/java/ai/mindshub/cowork/` | `MainActivity` (also creates the push channel), `MindsHubAuthPlugin`, `MindsHubPushPlugin` |
+| `android/app/src/main/res/drawable/ic_stat_cowork.xml` | White status-bar glyph for notifications, from the brand mark |
 
 ## Contract with the web app
 
@@ -47,7 +50,11 @@ breaking change for the shell and needs a matching web change.
   itself with `env(safe-area-inset-*)`. The status bar follows the system
   light/dark setting.
 - **Bundled plugins:** `@capacitor/app`, `@capacitor/haptics`,
-  `@capacitor/share`, `@capacitor/splash-screen`, `@capacitor/status-bar`.
+  `@capacitor/push-notifications`, `@capacitor/share`,
+  `@capacitor/splash-screen`, `@capacitor/status-bar`.
+- **`window.Capacitor.Plugins.PushNotifications`** (the stock plugin) and, on
+  Android only, **`window.Capacitor.Plugins.MindsHubPush.isSupported()`**
+  returning `{ supported: boolean }`. See [Push notifications](#push-notifications).
 
 ## Run it locally
 
@@ -149,6 +156,137 @@ Local plugins aren't found by `cap sync`, so they are registered by hand:
 `MainActivity` on Android. Capacitor injects its bridge into the remote
 `server.url` page, so the page sees `window.Capacitor.Plugins.MindsHubAuth`.
 
+## Push notifications
+
+The app notifies the user when a task finishes, when a scheduled task run
+finishes, and when someone shares an artifact with them. Tapping a
+notification opens the task (or the scheduled task) in the app, or the shared
+artifact's page in the system browser.
+
+### How it fits together
+
+1. The web app (`src/renderer/lib/mobilePush.ts`) talks to
+   `@capacitor/push-notifications` through the bridge. It never fires the OS
+   permission prompt at launch. If notifications are already allowed, it
+   registers right after sign-in. Otherwise it waits until the user starts
+   their first task and shows a small in-app card ("Get notified when your
+   tasks finish", **Turn on** / **Not now**). **Turn on** fires the OS prompt.
+   **Not now** hides the card for 14 days.
+2. The plugin hands back a token: the **APNs device token** on iOS (not an
+   FCM token) and the **FCM registration token** on Android. The web app sends
+   it to the server: `POST /api/v1/push/devices`
+   `{ token, platform: 'ios'|'android', app_version, environment: null }`.
+   It sends each user and token pair once per session. If a server has no
+   push (`404`, `405`, `501`), the web app stops quietly.
+3. The server (cowork-server) sends through APNs or FCM. The payload carries
+   `kind` (`task_finished`, `scheduled_run_finished` or `artifact_shared`),
+   optional `path` (an in-app route such as `/c/<conversationId>`) and
+   optional `url` (a page outside the app). On iOS these are APNs custom keys
+   beside `aps`. On Android they are the FCM `data` map, next to a
+   `notification` block. Without the `notification` block, Android shows
+   nothing while the app is in the background.
+4. **A tap** opens `path` with the app's router. If there is no `path`, it
+   opens `url` in the system browser (a host outside `server.allowNavigation`
+   always leaves the webview). A tap that launches the app arrives before
+   the router exists, and often before sign-in, which reloads the page. The
+   web app keeps the tap in `sessionStorage` for 10 minutes and applies it
+   once the router mounts.
+5. **Sign-out** sends `DELETE /api/v1/push/devices` `{ token }` before the
+   Keycloak tokens are cleared. It is best effort and waits at most 3 seconds.
+   The OS registration is kept: `PushNotifications.unregister()` would turn
+   remote notifications off for the app (iOS) or delete the FCM token
+   (Android), and the next user to sign in on the phone registers the same
+   token as theirs.
+
+**Foreground:** `capacitor.config.ts` sets
+`PushNotifications.presentationOptions: ['banner', 'list', 'sound']`. A push
+that arrives while the app is open still shows a banner. The option is static
+native config, so it can't hide the banner for the one conversation that is on
+screen. Hiding every foreground push would also hide shares and other tasks.
+No `badge`: nothing would ever clear it.
+
+### iOS
+
+- `AppDelegate` forwards `didRegisterForRemoteNotificationsWithDeviceToken`
+  and `didFailToRegisterForRemoteNotificationsWithError` to the plugin through
+  `NotificationCenter` (`.capacitorDidRegisterForRemoteNotifications`), as
+  Capacitor 8 requires.
+- Entitlements: Release signs with `App/App.entitlements`
+  (`aps-environment = production`). Debug signs with `App/App.Debug.entitlements`
+  (`development`, the APNs sandbox). The CI smoke build has
+  `CODE_SIGNING_ALLOWED=NO`, so it doesn't check them.
+- **The App ID `ai.mindshub.cowork` needs the Push Notifications capability,
+  and the App Store profile (`IOS_PROFILE_APP_B64`) must be regenerated after
+  that.** `build-ios.yml` checks that the profile has
+  `aps-environment = production` and fails early if it doesn't. Fastlane's
+  `update_code_signing_settings` doesn't touch `CODE_SIGN_ENTITLEMENTS`.
+- The backend needs an **APNs auth key** (`.p8`, its Key ID and the Team ID).
+  It sends to `api.push.apple.com` for TestFlight and App Store builds, and to
+  `api.sandbox.push.apple.com` for builds run from Xcode. The app sends
+  `environment: null`, so the backend tries production and falls back to the
+  sandbox on `BadDeviceToken`. The APNs topic is the bundle id,
+  `ai.mindshub.cowork`.
+
+### Android
+
+- `@capacitor/push-notifications` uses Firebase Cloud Messaging. Firebase
+  needs `android/app/google-services.json`, which is never committed. CI writes
+  it from `GOOGLE_SERVICES_JSON_B64`, and `app/build.gradle` applies the
+  google-services plugin only when the file is there.
+- **Without that file the build still works, but push is off.** The plugin's
+  `register()` would crash the app, because Firebase isn't initialized and
+  Capacitor rethrows a plugin method's exception. So the web app first asks
+  `MindsHubPush.isSupported()`, which checks for the `google_app_id` resource
+  the google-services plugin generates, and does nothing when it is false.
+  `build-android.yml` warns when the secret is missing.
+- Android 13+ asks for `POST_NOTIFICATIONS` at runtime. The manifest declares
+  it, and `requestPermissions()` asks for it.
+- `MainActivity` creates the notification channel `cowork_updates` ("Task
+  updates", high importance). The manifest makes it Firebase's default channel,
+  with the small icon `@drawable/ic_stat_cowork` (the brand mark as a white
+  glyph) and the accent color `#1F9CB0`.
+- The backend needs an FCM service account for the HTTP v1 API, in the same
+  Firebase project as `google-services.json`.
+
+### Firebase setup
+
+1. In the Firebase console, create a project, or use the MindsDB one, and add
+   an Android app with package `ai.mindshub.cowork`.
+2. Download `google-services.json`, then
+   `base64 -i google-services.json | tr -d '\n'` into the
+   `GOOGLE_SERVICES_JSON_B64` secret. For a local build, copy the file to
+   `android/app/google-services.json` (it is gitignored).
+3. Project settings -> Service accounts -> generate a private key. That JSON
+   goes to the backend, not to this repo.
+
+### Testing on a device
+
+Simulators and emulators are limited. The iOS Simulator (iOS 16+ on an Apple
+silicon Mac) gets a sandbox APNs token only from a signed Debug build, and the
+quickest test there is to drop a payload on it:
+`xcrun simctl push booted ai.mindshub.cowork payload.apns` with
+`{"aps":{"alert":{"title":"Done","body":"Your task finished"}},"kind":"task_finished","path":"/c/<id>"}`.
+That tests the tap and the routing, not delivery from the server. An Android
+emulator needs a Google Play system image to get an FCM token.
+
+End to end:
+
+1. Install a TestFlight or Play internal build on a real phone, or run a Debug
+   build from Xcode or Android Studio on a device (Debug iOS builds use the
+   APNs sandbox).
+2. Sign in, start a task, tap **Turn on**, and allow notifications.
+3. Check that the server stored the token for your user. Then put the app in
+   the background, let the task finish, and tap the notification. It should
+   open `/c/<conversationId>`.
+4. To try a cold start, swipe the app away, send a push, and tap it. The app
+   should open on the task after you sign in.
+5. Sign out. The server should have dropped the token, and a new push to it
+   should no longer reach the phone for that user.
+
+To send one by hand: on iOS, use the Push Notifications console in the Apple
+Developer account (needs the device token). On Android, use Firebase console
+-> Messaging -> "Send test message" with the FCM token.
+
 ## CI
 
 `.github/workflows/mobile-smoke.yml` runs on PRs that touch `mobile/` (called
@@ -241,7 +379,7 @@ are single-line: `base64 -i <file> | tr -d '\n' | pbcopy` on macOS,
 |---|---|---|
 | `IOS_DIST_CERT_B64` | Apple Distribution certificate with its private key, `.p12` | Certificates, IDs & Profiles -> Certificates -> Apple Distribution (from a CSR made in Keychain Access). Install the `.cer`, export certificate + key from Keychain Access as `.p12` with a password, then base64 it. Not the Developer ID certificate the Mac app uses. |
 | `IOS_DIST_CERT_PASSWORD` | The `.p12` export password | |
-| `IOS_PROFILE_APP_B64` | App Store provisioning profile for `ai.mindshub.cowork` | Profiles -> Distribution -> App Store Connect, App ID `ai.mindshub.cowork`, the certificate above. Download the `.mobileprovision`, base64 it. Regenerate it (and this secret) when the certificate changes or capabilities are added. |
+| `IOS_PROFILE_APP_B64` | App Store provisioning profile for `ai.mindshub.cowork` | Profiles -> Distribution -> App Store Connect, App ID `ai.mindshub.cowork` **with Push Notifications enabled**, the certificate above. Download the `.mobileprovision`, base64 it. Regenerate it (and this secret) when the certificate changes or capabilities are added. `build-ios.yml` fails if it has no `aps-environment = production`. |
 | `IOS_PROFILE_SHARE_B64` | Profile for `ai.mindshub.cowork.share` | **Later**, with the share extension. Not read yet. |
 | `ASC_API_KEY_ID` | App Store Connect API key id | Users and Access -> Integrations -> App Store Connect API -> Team Keys, role App Manager. |
 | `ASC_API_ISSUER_ID` | Issuer id shown on that page | |
@@ -259,7 +397,7 @@ The team id and profile name are read from the profile itself; no
 | `ANDROID_KEY_ALIAS` | Key alias (`upload` above) | |
 | `ANDROID_KEY_PASSWORD` | Key password (same as the store password for PKCS12) | |
 | `PLAY_SERVICE_ACCOUNT_JSON_B64` | Play Developer API service account key | Google Cloud -> IAM -> Service accounts -> create, Keys -> add JSON key. In Play Console -> Users and permissions, invite its email with release permissions for the app. Base64 the JSON. |
-| `GOOGLE_SERVICES_JSON_B64` | Firebase config (optional) | Firebase -> project settings -> Android app `ai.mindshub.cowork` -> `google-services.json`, base64 it. When set, CI writes `android/app/google-services.json` and the google-services plugin is applied; when not, the build skips Firebase. Needed for FCM push, which isn't wired up yet. |
+| `GOOGLE_SERVICES_JSON_B64` | Firebase config (optional) | Firebase -> project settings -> Android app `ai.mindshub.cowork` -> `google-services.json`, base64 it. When set, CI writes `android/app/google-services.json` and the google-services plugin is applied. When not, the build skips Firebase and has no push notifications (the workflow logs a warning). See [Push notifications](#push-notifications). |
 
 Optional repository variable: `PLAY_RELEASE_STATUS` (`draft` until the Play
 app's first release is out; see above).
@@ -276,11 +414,9 @@ unsigned bundle and debug builds are unaffected.
 
 ## Not done yet (TODO)
 
-- **Push notifications** (APNs + FCM): needs the APNs auth key, a Firebase
-  project and `google-services.json`. Add `@capacitor/push-notifications`, the
-  Push Notifications capability and the backend sender. (The Android
-  `build.gradle` already applies the google-services plugin when
-  `google-services.json` is present.)
+- **Push follow-ups:** an in-app setting to turn push off for this phone (the
+  web app's Settings has no notifications section yet; today it is the OS
+  setting), and "needs your input" / "approval required" notifications.
 - **Share extension** (`ai.mindshub.cowork.share`, App Group
   `group.ai.mindshub.cowork`): needs its App ID and provisioning profile.
 - **Universal links / app links:** `apple-app-site-association` and
@@ -294,9 +430,11 @@ unsigned bundle and debug builds are unaffected.
 From [ENG-4023](https://linear.app/mindsdb/issue/ENG-4023), still to set up by
 an account holder:
 
-- Apple: App IDs (`ai.mindshub.cowork`, `ai.mindshub.cowork.share`), Apple
-  Distribution certificate, App Store provisioning profiles, APNs key, App Store
-  Connect API key, app record and TestFlight groups.
+- Apple: App IDs (`ai.mindshub.cowork` with Push Notifications,
+  `ai.mindshub.cowork.share`), Apple Distribution certificate, App Store
+  provisioning profiles (made after Push is enabled), APNs auth key (for the
+  backend), App Store Connect API key, app record and TestFlight groups.
 - Google: Play Console organization account and app, upload keystore with Play
-  App Signing, Firebase project, Play Developer API service account.
+  App Signing, Firebase project (`google-services.json` for CI, FCM service
+  account for the backend), Play Developer API service account.
 - GitHub secrets: see [Secrets](#secrets).

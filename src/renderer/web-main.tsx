@@ -52,6 +52,7 @@ import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
 import { keycloak, mobileShellAdapter } from './lib/keycloak';
 import { keycloakInitOptions } from './lib/mobileAuth';
 import { applyMobileShellDocument, mobileShell } from './lib/mobileShell';
+import { startMobilePush } from './lib/mobilePush';
 import { MobileShellRoot } from './MobileShellRoot';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin, seedBrandDefaults } from './lib/skins';
@@ -77,6 +78,10 @@ import { whenI18nReady } from './lib/i18n';
   // viewport-fit=cover, so the safe-area padding applies. Browsers: untouched.
   if (mobileShell) applyMobileShellDocument(mobileShell);
 })();
+
+// Mobile app: listen for push taps before anything else, so a tap that
+// launched the app is kept until the router exists (lib/mobilePush.ts).
+if (mobileShell) startMobilePush();
 
 // Before the redirect below drops the query string: a console link's
 // ?from=console&mode=…&sample=… has to outlive the Keycloak round trip.

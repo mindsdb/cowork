@@ -138,6 +138,7 @@ import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
 import { PLATFORM_UI } from '../lib/deployment';
+import { noteMobilePushTaskStarted, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -2121,6 +2122,9 @@ function AppCore() {
   // web). It's stateless w.r.t. AppCore — nav state flows through context.
   const routerRef = useRef(null);
   if (!routerRef.current) routerRef.current = createCoworkRouter();
+  // Mobile app (ENG-4023): a tapped push notification opens its route here,
+  // including one tapped before the router existed (cold start). No-op elsewhere.
+  useEffect(() => setMobilePushNavigator((path) => { routerRef.current?.navigate(path); }), []);
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
@@ -3873,6 +3877,9 @@ function AppCore() {
     setTasks((prev) => [newT, ...prev]);
     setActiveTaskId(taskId);
     setRoute('task');
+    // Mobile app (ENG-4023): the first task started is when the app offers
+    // "notify me when tasks finish" (once; no-op outside the app).
+    noteMobilePushTaskStarted();
 
     let resolvedId = taskId;
     /*

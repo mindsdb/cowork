@@ -62,6 +62,10 @@ export const mobileShellAdapter = isMobileShell
   ? createMobileShellAdapter({
     keycloak,
     logoutUrl: `${MINDS_KEYCLOAK_URL.replace(/\/$/, '')}/realms/mindsdb/protocol/openid-connect/logout`,
+    // Stop this phone's push notifications for the user signing out, while
+    // the access token can still authenticate the call. Imported lazily:
+    // mobilePush pulls in the API client, which reaches back here through host.ts.
+    beforeLogout: () => import('./mobilePush').then((m) => m.unregisterMobilePushOnSignOut()),
   })
   : null;
 
