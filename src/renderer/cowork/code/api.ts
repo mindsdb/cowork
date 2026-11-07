@@ -217,6 +217,12 @@ export interface CodingSession {
   base_revision?: string | null;
   source_dirty: boolean;
   workspace_warning?: string | null;
+  /** Set while the workspace is put away to save disk; it is rebuilt on next use. */
+  workspace_released_at?: string | null;
+  /** Why archiving kept the workspace instead of putting it away. */
+  workspace_kept_reason?: string | null;
+  /** Why rebuilding a put-away workspace last failed; its work is still saved. */
+  workspace_restore_error?: string | null;
   guidance_summary?: string | null;
   resolved_skills?: ResolvedSkill[];
   skill_roots?: string[];
@@ -1017,10 +1023,12 @@ export function openCodingEventStream(
   after: number,
   onEvent: (event: CodingEvent) => void,
   onError: () => void,
+  onOpen?: () => void,
 ): () => void {
   if (fixtureCodingApi) return () => {};
   const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/stream?after=${after}`;
   const source = new EventSource(url);
+  if (onOpen) source.onopen = onOpen;
   source.addEventListener('coding-event', (raw) => {
     try {
       const parsed: unknown = JSON.parse((raw as MessageEvent).data);
