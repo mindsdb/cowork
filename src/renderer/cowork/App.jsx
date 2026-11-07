@@ -3110,8 +3110,9 @@ function AppCore() {
       // In cloud a connector whose methods carry a `cloud` block is shaped to
       // it: that block replaces the desktop fields and copy whole, and a
       // method without one is not offered, because the relay supports exactly
-      // one method per database connector and refuses the rest. Everything
-      // else, which is every OAuth connector, passes through untouched.
+      // one method per database connector and refuses the rest. OAuth methods
+      // stay beside the cloud form; a connector with no cloud block passes
+      // through untouched.
       const baseSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code
