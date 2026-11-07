@@ -274,22 +274,24 @@ function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
 // the project folder. Clicking opens the file in Drive itself rather
 // than the ContextFileModal preview, since there's no local content to
 // show.
-function DriveReferenceRow({ file, onRequestDelete }) {
-  const openInDrive = () => { if (file.url) host.openExternal(file.url); };
+// A project file that lives in another service (Google Drive, Notion):
+// opens there, and removing it only untags it from this project.
+function ReferenceRow({ file, icon, place, onRequestDelete }) {
+  const openExternally = () => { if (file.url) host.openExternal(file.url); };
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={openInDrive}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInDrive(); } }}
-      title={`Open "${file.name}" in Google Drive`}
+      onClick={openExternally}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openExternally(); } }}
+      title={`Open "${file.name}" in ${place}`}
       className={clsx(
         'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
       )}
     >
-      <span className="text-ink-4 inline-flex flex-none">{Ico.googleDrive(14)}</span>
+      <span className="text-ink-4 inline-flex flex-none">{icon}</span>
       <span className="block truncate text-sm text-ink min-w-0">{file.name || 'untitled'}</span>
       {/* Both actions show together on hover — unlike ContextFileRow's
           single age/trash swap, there's no "normal" state content to
@@ -302,7 +304,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
           role="button"
           tabIndex={-1}
           aria-hidden
-          title="Open in Google Drive"
+          title={`Open in ${place}`}
           className="text-ink-4 inline-flex items-center justify-center"
         >
           {Ico.externalLink(12)}
@@ -314,7 +316,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
               aria-label={`Remove ${file.name || 'file'} from project files`}
               onClick={(e) => {
                 // Don't let the click bubble up to the row — that would
-                // open the file in Drive instead of confirming a delete.
+                // open the file instead of confirming a delete.
                 e.stopPropagation();
                 onRequestDelete(file);
               }}
@@ -334,6 +336,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
 }
 
 export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onAddSharePointFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile,
+  onAddNotionPages, onFetchNotionPages, onRemoveNotionPage,
   projects = [],
 }) {
   const [sections, setSections] = useState([]);
@@ -347,6 +350,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   // so they're tracked separately from `projectFiles` and merged only
   // at render time.
   const [driveFiles, setDriveFiles] = useState([]);
+  // Notion pages added to this project, kept the same way as driveFiles.
+  const [notionPages, setNotionPages] = useState([]);
   const [sessionAttachments, setSessionAttachments] = useState([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [attachmentsError, setAttachmentsError] = useState(null);
@@ -371,6 +376,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   // and doesn't need to participate in app-level routing.
   const [pendingDeleteFile, setPendingDeleteFile] = useState(null);
   const [pendingDeleteDriveFile, setPendingDeleteDriveFile] = useState(null);
+  const [pendingDeleteNotionPage, setPendingDeleteNotionPage] = useState(null);
   const [uploadBusy, setUploadBusy] = useState(false);
   // Separate from uploadBusy: the Drive connect-then-pick flow can now take
   // minutes (waiting on OAuth + the picker), not the near-instant round trip
@@ -378,6 +384,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   // would disable the unrelated "Attach files" (local) item for that whole
   // wait — this only disables the "Attach Google Drive files" item itself.
   const [drivePickerBusy, setDrivePickerBusy] = useState(false);
+  const [notionPickerBusy, setNotionPickerBusy] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
   // Mirror state for the Task Uploads section — separate from project
@@ -556,6 +563,21 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     return () => window.removeEventListener('anton:connections-changed', reloadDriveFiles);
   }, [reloadDriveFiles]);
 
+  const reloadNotionPages = useCallback(() => {
+    if (!onFetchNotionPages || !project?.name) { setNotionPages([]); return; }
+    onFetchNotionPages(project.name)
+      .then((res) => setNotionPages(Array.isArray(res?.files) ? res.files : []))
+      .catch(() => setNotionPages([]));
+  }, [onFetchNotionPages, project?.name]);
+
+  useEffect(() => {
+    reloadNotionPages();
+  }, [reloadNotionPages, refreshKey]);
+
+  useEffect(() => {
+    window.addEventListener('anton:connections-changed', reloadNotionPages);
+    return () => window.removeEventListener('anton:connections-changed', reloadNotionPages);
+  }, [reloadNotionPages]);
   // A SharePoint import can start from the composer as well as here, so the
   // import announces its project and this card refetches that project's files.
   useEffect(() => {
@@ -635,9 +657,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   }, [sections]);
 
   const totalMemoryFiles = useMemo(() => ordered.reduce((n, s) => n + s.files.length, 0), [ordered]);
-  const hasProjectFiles = projectFiles.length > 0;
-  const hasDriveFiles = driveFiles.length > 0;
-  const hasAnyProjectFiles = hasProjectFiles || hasDriveFiles;
+  const totalProjectFiles = projectFiles.length + driveFiles.length + notionPages.length;
+  const hasAnyProjectFiles = totalProjectFiles > 0;
 
   // Suppress the whole card only when there's truly nothing to act
   // on AND no project to upload into. Inside a project we always
@@ -689,7 +710,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
             <span className="section-label">
-              Project files{(projectFiles.length + driveFiles.length) > 1 ? ` · ${projectFiles.length + driveFiles.length}` : ''}
+              Project files{totalProjectFiles > 1 ? ` · ${totalProjectFiles}` : ''}
             </span>
             <OverflowMenu
               icon={Ico.plus(14)}
@@ -717,6 +738,20 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                       .then(() => reloadDriveFiles())
                       .catch((err) => setUploadError(err?.message || 'Could not add Google Drive files.'))
                       .finally(() => setDrivePickerBusy(false));
+                  },
+                },
+                onAddNotionPages && {
+                  id: 'attach-notion',
+                  label: notionPickerBusy ? 'Opening Notion…' : 'Add pages from Notion',
+                  icon: Ico.notion(14),
+                  disabled: notionPickerBusy,
+                  onClick: () => {
+                    setNotionPickerBusy(true);
+                    setUploadError('');
+                    Promise.resolve(onAddNotionPages(project?.name))
+                      .then(() => reloadNotionPages())
+                      .catch((err) => setUploadError(err?.message || 'Could not add Notion pages.'))
+                      .finally(() => setNotionPickerBusy(false));
                   },
                 },
                 onAddSharePointFiles && project?.name && {
@@ -777,9 +812,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             <div
               className={clsx(
                 'flex flex-col gap-0.5',
-                (projectFiles.length + driveFiles.length) > 10 && 'overflow-y-auto pr-1 scroll-clean',
+                totalProjectFiles > 10 && 'overflow-y-auto pr-1 scroll-clean',
               )}
-              style={(projectFiles.length + driveFiles.length) > 10 ? { maxHeight: 220 } : undefined}
+              style={totalProjectFiles > 10 ? { maxHeight: 220 } : undefined}
             >
               {projectFiles.map((f) => (
                 <ContextFileRow
@@ -796,10 +831,21 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 />
               ))}
               {driveFiles.map((f) => (
-                <DriveReferenceRow
+                <ReferenceRow
                   key={`gdrive-${f.id}`}
                   file={f}
+                  icon={Ico.googleDrive(14)}
+                  place="Google Drive"
                   onRequestDelete={(file) => setPendingDeleteDriveFile(file)}
+                />
+              ))}
+              {notionPages.map((p) => (
+                <ReferenceRow
+                  key={`notion-${p._connectionName}-${p.id}`}
+                  file={p}
+                  icon={Ico.notion(14)}
+                  place="Notion"
+                  onRequestDelete={(page) => setPendingDeleteNotionPage(page)}
                 />
               ))}
             </div>
@@ -1169,6 +1215,31 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_remove_drive_file_failed", '[context] remove drive file failed', err);
             setUploadError(err?.message || 'Could not remove file.');
             reloadDriveFiles();
+          }
+        }}
+      />
+
+      <ConfirmModal
+        open={!!pendingDeleteNotionPage}
+        title={`Remove "${pendingDeleteNotionPage?.name || 'page'}" from project files?`}
+        message="The agent will no longer be pointed to this page in this project. The page itself is not affected in Notion."
+        confirmLabel="Remove"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDeleteNotionPage(null)}
+        onConfirm={async () => {
+          const target = pendingDeleteNotionPage;
+          setPendingDeleteNotionPage(null);
+          if (!target || !onRemoveNotionPage) return;
+          setNotionPages((prev) => prev.filter((p) => !(p.id === target.id && p._connectionName === target._connectionName)));
+          try {
+            const res = await onRemoveNotionPage(target.id, target._connectionName, project?.name);
+            if (!res?.ok) throw new Error(res?.reason || 'Could not remove the page.');
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            diagnostic("renderer.cowork.components.rail.ContextCard", "ERROR", "context_remove_notion_page_failed", '[context] remove notion page failed', err);
+            setUploadError(err?.message || 'Could not remove the page.');
+            reloadNotionPages();
           }
         }}
       />

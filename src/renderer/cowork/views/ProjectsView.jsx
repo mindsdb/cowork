@@ -255,10 +255,14 @@ function ProjectDetail({
   connectors = [],
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   onAddGoogleDriveProjectFiles,
   onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
+  onAddNotionProjectPages,
+  onFetchNotionProjectPages,
+  onRemoveNotionProjectPage,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -448,6 +452,7 @@ function ProjectDetail({
                 onNavigateToConnectors={onNavigateToConnectors}
                 onAttachFiles={onAttachFiles}
                 onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+                onAddNotionPages={onAddNotionPages}
                 onAddSharePointFiles={onAddSharePointFiles}
                 onRemoveAttachment={onRemoveAttachment}
                 disabledConnections={disabledConnections}
@@ -474,6 +479,9 @@ function ProjectDetail({
                   onAddSharePointFiles={onAddSharePointFiles}
                   onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
                   onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+                  onAddNotionPages={onAddNotionProjectPages}
+                  onFetchNotionPages={onFetchNotionProjectPages}
+                  onRemoveNotionPage={onRemoveNotionProjectPage}
                 />
               </div>
             )}
@@ -513,6 +521,9 @@ function ProjectDetail({
             onAddSharePointFiles={onAddSharePointFiles}
             onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
             onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+            onAddNotionPages={onAddNotionProjectPages}
+            onFetchNotionPages={onFetchNotionProjectPages}
+            onRemoveNotionPage={onRemoveNotionProjectPage}
           />
           <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
         </aside>
@@ -555,10 +566,14 @@ export default function ProjectsView({
   connectors = [],
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddNotionPages,
   onAddGoogleDriveProjectFiles,
   onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
+  onAddNotionProjectPages,
+  onFetchNotionProjectPages,
+  onRemoveNotionProjectPage,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -786,10 +801,14 @@ export default function ProjectsView({
         onNavigateToConnectors={onNavigateToConnectors}
         onAttachFiles={onAttachFiles}
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+        onAddNotionPages={onAddNotionPages}
         onAddSharePointFiles={onAddSharePointFiles}
         onAddGoogleDriveProjectFiles={onAddGoogleDriveProjectFiles}
         onFetchGoogleDriveProjectFiles={onFetchGoogleDriveProjectFiles}
         onRemoveGoogleDriveProjectFile={onRemoveGoogleDriveProjectFile}
+        onAddNotionProjectPages={onAddNotionProjectPages}
+        onFetchNotionProjectPages={onFetchNotionProjectPages}
+        onRemoveNotionProjectPage={onRemoveNotionProjectPage}
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}
