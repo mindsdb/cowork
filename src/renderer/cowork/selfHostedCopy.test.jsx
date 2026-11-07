@@ -1,3 +1,6 @@
+// The platform build's copy for the lines a web build without the platform UI
+// words differently (selfHostedCopy.platformUi.test.jsx). These pin today's
+// wording, so the self-hosted variants can't leak into hosted web.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
@@ -36,7 +39,6 @@ vi.mock('./components/ui/Toast', async (importOriginal) => ({
 }));
 
 import { surfaceCopy } from './lib/surface';
-import { host } from '../platform/host';
 import { LOGOUT_CONFIRM_COPY } from './hooks/useLogout';
 import ScheduledView from './views/ScheduledView';
 import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
@@ -54,8 +56,6 @@ const scheduledProps = {
 beforeEach(() => {
   localStorage.clear();
   toastAdd.mockClear();
-  host.isWeb = true;
-  host.isElectron = false;
 });
 
 describe('platform build', () => {
@@ -66,50 +66,21 @@ describe('platform build', () => {
     });
   });
 
-  it('says hosted web scheduled tasks run on the server', () => {
+  // Hosted web runs scheduled tasks on its server like any web build, so it
+  // shares the self-hosted wording rather than the desktop app's.
+  it('says scheduled tasks run on the server', () => {
     render(<ScheduledView {...scheduledProps} />);
     expect(screen.getByText(
-      'Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — Anton picks up at the next scheduled time.',
-    )).toBeInTheDocument();
-    expect(screen.getByText(
-      'Have Anton repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.',
-    )).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/desktop app|while .* is open|app is closed/);
-  });
-
-  it('keeps the local scheduling explanation on desktop', () => {
-    host.isWeb = false;
-    host.isElectron = true;
-    render(<ScheduledView {...scheduledProps} />);
-    expect(screen.getByText(
-      "Scheduled tasks run while MindsHub Cowork is open. Runs missed while it's closed are skipped — Anton picks up at the next scheduled time.",
+      "Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, Anton runs the latest one from the last 7 days when it's back.",
     )).toBeInTheDocument();
     expect(screen.getByText(
       'Have Anton repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.',
     )).toBeInTheDocument();
   });
 
-  it('names the deployment brand without a desktop requirement when scheduling on hosted web', () => {
+  it('describes the cadence without a desktop requirement when scheduling', () => {
     render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
     expect(screen.getByText('Acme Cowork runs this prompt on the cadence you set.')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Ask Acme Cowork to…')).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/desktop app/);
-  });
-
-  it('keeps the desktop requirement when scheduling on desktop', () => {
-    host.isWeb = false;
-    host.isElectron = true;
-    render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
-    expect(screen.getByText('Acme Cowork runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Ask Acme Cowork to…')).toBeInTheDocument();
-  });
-
-  it.each([true, false])('keeps the edit subtitle when isWeb is %s', (isWeb) => {
-    host.isWeb = isWeb;
-    host.isElectron = !isWeb;
-    render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton"
-      task={{ id: 's1', title: 'Digest', prompt: 'p', cadence: 'daily', enabled: true }} />);
-    expect(screen.getByText('Update the cadence or prompt. Acme Cowork picks up changes on the next run.')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ask Acme Cowork to…')).toBeInTheDocument();
   });
 

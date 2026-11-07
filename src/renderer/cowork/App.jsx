@@ -82,6 +82,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -5609,6 +5610,18 @@ function AppCore() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
+  // A desktop notification when the server pauses a schedule after repeated
+  // failures, where the OS allows one; clicking it opens that schedule. Until
+  // the user opens it, the Scheduled Tasks page also says so.
+  const { unseen: unseenAutoPauses, markReviewed: markAutoPauseReviewed } = useAutoPauseNotifications(
+    scheduled,
+    (id) => {
+      setWorkspaceMode('cowork');
+      setSelectedScheduleId(id);
+      setRoute('schedule-detail');
+    },
+  );
+
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
@@ -6267,6 +6280,7 @@ function AppCore() {
               if (p) setSelectedProject(p);
               setRoute('projects');
             }}
+            unseenAutoPauses={unseenAutoPauses}
             agentLabel={agentLabel}
           />
         )}
@@ -6287,6 +6301,7 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onReviewedAutoPause={markAutoPauseReviewed}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the

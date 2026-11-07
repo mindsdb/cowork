@@ -1,0 +1,32 @@
+// The desktop app runs scheduled tasks on its own local server, so its copy
+// says they run while the app is open. Web builds say they run on the server
+// (selfHostedCopy tests).
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+
+vi.mock('../platform/host', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, host: { ...actual.host, isWeb: false, isElectron: true } };
+});
+
+import ScheduledView from './views/ScheduledView';
+import ScheduleTaskModal from './components/schedule/ScheduleTaskModal';
+
+const noop = vi.fn();
+const scheduledProps = {
+  scheduled: [], projects: [], selectedProject: null, agentLabel: 'Anton',
+  onCreate: noop, onUpdate: noop, onDelete: noop, onPause: noop, onResume: noop,
+  onRunNow: noop, onOpenSchedule: noop, onOpenProject: noop,
+};
+
+describe('desktop app', () => {
+  it('says scheduled tasks run while the app is open', () => {
+    render(<ScheduledView {...scheduledProps} />);
+    expect(screen.getByText(/^Scheduled tasks run while .+ is open\. If a run was due while it was closed, Anton runs the latest one from the last 7 days when it reopens\.$/)).toBeInTheDocument();
+  });
+
+  it('names the desktop app when scheduling', () => {
+    render(<ScheduleTaskModal open onClose={noop} onSubmit={noop} projects={[]} agentLabel="Anton" />);
+    expect(screen.getByText('Anton runs this prompt on the cadence you set, while the desktop app is open.')).toBeInTheDocument();
+  });
+});

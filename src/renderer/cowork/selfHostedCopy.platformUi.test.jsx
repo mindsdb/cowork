@@ -58,7 +58,7 @@ describe('web build without the platform UI', () => {
   it('says scheduled tasks run on the server', () => {
     render(<ScheduledView {...scheduledProps} />);
     expect(screen.getByText(
-      'Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — Anton picks up at the next scheduled time.',
+      "Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, Anton runs the latest one from the last 7 days when it's back.",
     )).toBeInTheDocument();
     expect(screen.getByText(
       'Have Anton repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.',
