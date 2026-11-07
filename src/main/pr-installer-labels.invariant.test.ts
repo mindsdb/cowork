@@ -7,11 +7,11 @@ import { fileURLToPath } from 'url';
 //
 // The upload jobs in build-installers.yml carry no `if:` of their own — they
 // only `needs:` their build — so a platform's label gate is what stops the
-// upload too. `upload-installer-to-s3.yml` runs on `mdb-prod` and writes a
-// preview build into `previews/` in the production installer bucket, then the
-// PR comment posts its public CloudFront URL. Leaving linux ungated therefore
-// published two downloadable debs from the prod bucket on every internal push,
-// which reads as a build-cost question and is not one.
+// upload too. `upload-installer-to-s3.yml` assumes a write role on the
+// production installer bucket and writes a preview build into `previews/`
+// there, then the PR comment posts its public CloudFront URL. Leaving linux
+// ungated therefore published two downloadable debs from the prod bucket on
+// every internal push, which reads as a build-cost question and is not one.
 //
 // An earlier version of this file's gate also looked for a label name that did
 // not exist (`linux-deb` vs `build-linux-deb`), so the job silently never ran.

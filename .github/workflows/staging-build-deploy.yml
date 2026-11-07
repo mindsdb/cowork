@@ -33,6 +33,7 @@ jobs:
     needs: [run-unit-tests]
     permissions:
       contents: read
+      id-token: write # the build and the scan assume the dev-tier ECR role
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: staging
@@ -42,6 +43,7 @@ jobs:
     needs: [run-unit-tests]
     permissions:
       contents: read
+      id-token: write # the uploads assume the staging installer role
       actions: read # nested setup-failure notification
     uses: ./.github/workflows/build-installers.yml
     with:
