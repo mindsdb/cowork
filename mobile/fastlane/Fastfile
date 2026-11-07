@@ -1,0 +1,145 @@
+# Signed store builds of the Capacitor shell (ENG-4023). Run from mobile/ after
+# `COWORK_ENV=<env> COWORK_BUILD_NUMBER=<n> npx cap sync <platform>`, which
+# bakes the environment and writes the version numbers into the native projects.
+#
+#   bundle exec fastlane ios beta          -> TestFlight
+#   bundle exec fastlane android internal  -> Play internal testing
+#
+# CI (.github/workflows/build-ios.yml, build-android.yml) provides everything
+# below through the environment. Nothing here prints a secret.
+
+require "base64"
+
+APP_ID = "ai.mindshub.cowork".freeze
+
+skip_docs     # don't regenerate fastlane/README.md on every run
+opt_out_usage # no fastlane analytics from CI
+
+def require_env(*names)
+  missing = names.select { |n| ENV[n].to_s.strip.empty? }
+  UI.user_error!("Missing environment variables: #{missing.join(', ')}") unless missing.empty?
+end
+
+def cowork_env
+  ENV.fetch("COWORK_ENV", "staging")
+end
+
+def marketing_version
+  JSON.parse(File.read(File.expand_path("../package.json", __dir__)))["version"]
+end
+
+def build_number
+  ENV.fetch("COWORK_BUILD_NUMBER", "1")
+end
+
+def env_label
+  cowork_env == "prod" ? "production (cowork.mindshub.ai)" : "staging (cowork.staging.mindshub.ai)"
+end
+
+platform :ios do
+  # Needs: ASC_API_KEY_ID, ASC_API_ISSUER_ID, ASC_API_KEY_P8_B64, the Apple
+  # Distribution identity in an unlocked keychain on the search list, and the
+  # App Store profile for ai.mindshub.cowork installed, named by
+  # IOS_PROFILE_APP_NAME, from team IOS_TEAM_ID (the workflow reads both from
+  # the profile itself).
+  desc "Build a signed App Store .ipa and upload it to TestFlight"
+  lane :beta do
+    require_env("ASC_API_KEY_ID", "ASC_API_ISSUER_ID", "ASC_API_KEY_P8_B64",
+                "IOS_PROFILE_APP_NAME", "IOS_TEAM_ID")
+    profile = ENV["IOS_PROFILE_APP_NAME"]
+    team = ENV["IOS_TEAM_ID"]
+
+    app_store_connect_api_key(
+      key_id: ENV["ASC_API_KEY_ID"],
+      issuer_id: ENV["ASC_API_ISSUER_ID"],
+      key_content: ENV["ASC_API_KEY_P8_B64"],
+      is_key_content_base64: true,
+      duration: 1200
+    )
+
+    # Manual signing on the App target only. Passing PROVISIONING_PROFILE_SPECIFIER
+    # as an xcodebuild argument would apply it to every target, including the
+    # Swift packages (CapApp-SPM), which then fail with "does not support
+    # provisioning profiles". This edits the checkout's project.pbxproj, which
+    # is throwaway on a CI runner; locally, discard the change afterwards.
+    update_code_signing_settings(
+      path: "ios/App/App.xcodeproj",
+      targets: ["App"],
+      build_configurations: ["Release"],
+      use_automatic_signing: false,
+      team_id: team,
+      code_sign_identity: "Apple Distribution",
+      profile_name: profile,
+      bundle_identifier: APP_ID
+    )
+
+    build_app(
+      project: "ios/App/App.xcodeproj",
+      scheme: "App",
+      configuration: "Release",
+      clean: true,
+      export_method: "app-store",
+      export_team_id: team,
+      export_options: {
+        signingStyle: "manual",
+        teamID: team,
+        provisioningProfiles: { APP_ID => profile }
+        # The share extension (ai.mindshub.cowork.share) adds its own entry here
+        # once that target and IOS_PROFILE_SHARE_B64 exist.
+      },
+      output_directory: "build/ios",
+      output_name: "MindsHubCowork.ipa",
+      buildlog_path: "build/ios/logs"
+    )
+
+    # Staging and production builds share the bundle id, so "What to Test"
+    # is the only place a tester sees which backend a build talks to. Pilot can
+    # only set it once App Store Connect has processed the build, so this waits
+    # (typically 5-15 minutes) instead of skip_waiting_for_build_processing.
+    upload_to_testflight(
+      changelog: "MindsHub Cowork #{marketing_version} (#{build_number}), #{env_label}.",
+      skip_waiting_for_build_processing: false,
+      wait_processing_timeout_duration: 2700,
+      distribute_external: false
+    )
+  end
+end
+
+platform :android do
+  # Needs: ANDROID_KEYSTORE_PATH (the decoded upload keystore),
+  # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD (read by
+  # android/app/build.gradle's release signingConfig, never put on the gradle
+  # command line, which fastlane echoes) and PLAY_SERVICE_ACCOUNT_JSON_B64.
+  desc "Build a signed release .aab and upload it to Play internal testing"
+  lane :internal do
+    require_env("ANDROID_KEYSTORE_PATH", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS",
+                "ANDROID_KEY_PASSWORD", "PLAY_SERVICE_ACCOUNT_JSON_B64")
+
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: "android",
+      flags: "--no-daemon --stacktrace"
+    )
+    aab = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
+    UI.user_error!("gradle produced no .aab") if aab.to_s.empty? || !File.exist?(aab)
+
+    # `completed`: the internal track has no review and only reaches the
+    # internal testers list, so the point of a tag is that testers get the
+    # build with no console step. Play refuses anything but `draft` while the
+    # app itself is still a draft (before the first manual release), hence the
+    # PLAY_RELEASE_STATUS override.
+    upload_to_play_store(
+      package_name: APP_ID,
+      track: "internal",
+      aab: aab,
+      json_key_data: Base64.decode64(ENV["PLAY_SERVICE_ACCOUNT_JSON_B64"]),
+      release_status: ENV["PLAY_RELEASE_STATUS"].to_s.strip.empty? ? "completed" : ENV["PLAY_RELEASE_STATUS"].strip,
+      version_name: "#{marketing_version} (#{build_number}) #{cowork_env}",
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+end

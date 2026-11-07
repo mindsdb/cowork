@@ -1,0 +1,165 @@
+name: Build Android (Play internal)
+
+# Signed release bundle of the Capacitor shell in mobile/ (ENG-4023), uploaded
+# to the Play internal testing track by fastlane (mobile/fastlane/Fastfile,
+# lane `android internal`).
+#
+# Called by mobile-release.yml, the entry point for a `mobile-v*` tag and for
+# manual runs, so a release shows iOS and Android in one run. Concurrency
+# belongs to that caller.
+#
+# The versionCode is the caller's run number. The very first upload of a new
+# Play app has to be done by hand in the console before the API accepts one.
+# Promotion beyond internal testing is manual in Play Console. Setup and
+# secrets: mobile/README.md, "Releasing".
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: staging | prod (the backend the app loads)
+        required: true
+        type: string
+    # Optional on purpose: the first step names every missing one, which reads
+    # better than GitHub refusing the call over the first it finds.
+    secrets:
+      ANDROID_UPLOAD_KEYSTORE_B64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+      PLAY_SERVICE_ACCOUNT_JSON_B64:
+        required: false
+      GOOGLE_SERVICES_JSON_B64:
+        required: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  play-internal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      COWORK_ENV: ${{ inputs.environment }}
+      COWORK_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      # First, because missing secrets are what everyone hits before the Play
+      # account setup is finished. Lists names only, never values.
+      # GOOGLE_SERVICES_JSON_B64 is optional: without it the build has no
+      # Firebase, so push notifications are off on Android (warned below).
+      - name: Check required secrets
+        env:
+          ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON_B64 }}
+        run: |
+          missing=()
+          for name in ANDROID_UPLOAD_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS \
+                      ANDROID_KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON_B64; do
+            [ -n "${!name//[[:space:]]/}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Missing Android signing secrets::Add these repository secrets, then re-run: ${missing[*]}. How to produce each one: mobile/README.md, section Releasing."
+            exit 1
+          fi
+          echo "All required Android secrets are set."
+
+      - name: Check the environment
+        run: |
+          case "$COWORK_ENV" in
+            staging|prod) echo "Environment: $COWORK_ENV, versionCode: $COWORK_BUILD_NUMBER" ;;
+            *) echo "::error::environment must be staging or prod, got '$COWORK_ENV'"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            mobile/android/*.gradle*
+            mobile/android/**/gradle-wrapper.properties
+
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+          working-directory: mobile
+
+      - name: Sync Android
+        working-directory: mobile
+        run: npx cap sync android
+
+      # Optional: android/app/build.gradle applies the google-services plugin
+      # only when this file exists and is non-empty. Without it the app works
+      # but has no push (the web app sees MindsHubPush.isSupported() = false).
+      - name: Write google-services.json (if provided)
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOGLE_SERVICES_JSON_B64//[[:space:]]/}" ]; then
+            echo "::warning title=No push notifications on Android::GOOGLE_SERVICES_JSON_B64 is not set, so this build has no Firebase and push notifications are off. Add the secret (mobile/README.md, Push notifications) to turn them on."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > mobile/android/app/google-services.json
+          jq -e '.client[].client_info.android_client_info | select(.package_name == "ai.mindshub.cowork")' \
+            mobile/android/app/google-services.json > /dev/null \
+            || { echo "::error::GOOGLE_SERVICES_JSON_B64 has no Android client for ai.mindshub.cowork."; exit 1; }
+
+      - name: Decode the upload keystore
+        env:
+          ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          path="$RUNNER_TEMP/upload-keystore.jks"
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_B64" | base64 --decode > "$path"
+          echo "ANDROID_KEYSTORE_PATH=$path" >> "$GITHUB_ENV"
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: mobile
+
+      - name: Build and upload to Play internal testing
+        working-directory: mobile
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON_B64 }}
+          # Set the repository variable to `draft` while the Play app is still
+          # a draft (see the README); unset means `completed`.
+          PLAY_RELEASE_STATUS: ${{ vars.PLAY_RELEASE_STATUS }}
+        run: bundle exec fastlane android internal
+
+      - name: Upload the .aab
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ inputs.environment }}-${{ github.run_number }}
+          path: mobile/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: ignore
+
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload-keystore.jks" mobile/android/app/google-services.json
