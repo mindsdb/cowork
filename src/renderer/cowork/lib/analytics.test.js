@@ -1593,6 +1593,33 @@ describe('console handoff attribution', () => {
   });
 });
 
+describe('artifact_stats_opened', () => {
+  it('carries the artifact, its access mode and whether it has views', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactStatsOpened } = await importAnalytics();
+
+    trackArtifactStatsOpened({ artifactId: 'a1', accessMode: 'restricted', hasViews: true });
+
+    const event = await sentEvent(fetchMock, 'artifact_stats_opened');
+    expect(event.properties).toMatchObject({
+      artifact_id: 'a1',
+      access_mode: 'restricted',
+      has_views: true,
+    });
+  });
+
+  it('sends a null access mode while the real one is still loading', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactStatsOpened } = await importAnalytics();
+
+    trackArtifactStatsOpened({ artifactId: 'a1', accessMode: null, hasViews: false });
+
+    const event = await sentEvent(fetchMock, 'artifact_stats_opened');
+    expect(event.properties.access_mode).toBeNull();
+    expect(event.properties.has_views).toBe(false);
+  });
+});
+
 describe('onboarding and start events', () => {
   it('onboarding_row_clicked and onboarding_step_completed carry only the step and where it happened', async () => {
     const fetchMock = mockFetch();
