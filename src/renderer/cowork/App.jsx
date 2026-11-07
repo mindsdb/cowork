@@ -82,6 +82,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -89,7 +90,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          allocateConversationId, uploadAttachments,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit,
-         runScheduleNow, fetchDatasources, MOCK_DATA,
+         runScheduleNow, fetchScheduleRuns, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
@@ -716,7 +717,6 @@ function AppCore() {
   // they cross into the task-list and routing domains.
   const {
     scheduled,
-    scheduleRunsIndex,
     refreshSchedules,
     handleCreateSchedule,
     handleUpdateSchedule,
@@ -5622,6 +5622,13 @@ function AppCore() {
     },
   );
 
+  // Stop a schedule's run in flight the way the chat's Stop does: cancel its
+  // conversation's turn. The schedule list doesn't carry that conversation,
+  // so it is read from the newest runs.
+  const handleStopScheduleRun = (id) => stopScheduleRun(id, {
+    fetchRuns: fetchScheduleRuns, cancel: cancelResponse, refresh: refreshSchedules,
+  });
+
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
@@ -5936,7 +5943,6 @@ function AppCore() {
           onMoveTaskToProject={handleOpenMoveModal}
           projects={runnableProjects}
           schedules={scheduled}
-          scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
             if (sidebarPopout) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
@@ -6212,7 +6218,6 @@ function AppCore() {
             loading={projectDetailResolving || !projectsLoaded}
             tasks={tasks}
             scheduled={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             modelMeta={modelMeta}
             model={selectedModel}
@@ -6272,6 +6277,7 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onStopRun={handleStopScheduleRun}
             onOpenSchedule={(task) => {
               setSelectedScheduleId(task.id);
               setRoute('schedule-detail');
@@ -6302,6 +6308,7 @@ function AppCore() {
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
             onReviewedAutoPause={markAutoPauseReviewed}
+            onStopRun={handleStopScheduleRun}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the
@@ -6350,7 +6357,6 @@ function AppCore() {
             tasks={tasks}
             projects={runnableProjects}
             schedules={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             onOpenTask={(id) => selectTask(id)}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
