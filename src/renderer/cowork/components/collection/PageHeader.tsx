@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
 
@@ -7,7 +8,7 @@ import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
 //
 //   • title    top-level collection pages (Projects, Live Artifacts, Connect
 //              Apps and Data, Scheduled, Tasks, Skills) — a display-font title,
-//              optional eyebrow + subtitle, and a right-aligned `actions` slot.
+//              an optional subtitle, and a right-aligned `actions` slot.
 //   • trail    drill-down surfaces (a schedule, a project, a skill) — pass
 //              `crumbs` and/or `current`, or `onBack` for a "← label" link.
 //
@@ -18,24 +19,45 @@ import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
 // Reserving the space on top (rather than the left) keeps the title/crumb left-
 // aligned with the body beneath it instead of pushing it into a lopsided gutter.
 //
-// Styling note: this is on the target stack (Tailwind utilities + `cn`, token
-// colours from tailwind.config), not inline styles. Neither shape draws a
-// divider — the header floats above the body. The one value that stays inline
-// is `subtitleBottom`, a caller-supplied dynamic number. cva isn't used here —
-// the two shapes are structural, not style-variants-on-one-element; cva stays
-// for the ui/ primitives (Button, Badge, …) where it fits.
-export function PageHeader({
+// The subtitle has no width cap of its own: it wraps at the edge of the text
+// column (left of `actions`, or the full page without them), the same width
+// as the body below it. A character cap left it stopping short of a line that
+// isn't on screen (ENG-3998).
+//
+// Styling note: Tailwind utilities + `cn`, token colours from tailwind.config.
+// Neither shape draws a divider — the header floats above the body. cva isn't
+// used here — the two shapes are structural, not style-variants-on-one-element.
+
+export interface PageHeaderCrumb {
+  key?: string;
+  label: string;
+  onClick?: () => void;
+  title?: string;
+  maxWidth?: number;
+}
+
+export interface PageHeaderProps {
   // title shape
-  title, subtitle, eyebrow, subtitleBottom,
+  title?: ReactNode;
+  subtitle?: ReactNode;
   // trail shape
-  crumbs, current, onBack, backLabel = 'Back',
+  crumbs?: PageHeaderCrumb[];
+  current?: string;
+  onBack?: () => void;
+  backLabel?: string;
   // both
+  actions?: ReactNode;
+}
+
+export function PageHeader({
+  title, subtitle,
+  crumbs, current, onBack, backLabel = 'Back',
   actions,
-}) {
-  const isTrail = (crumbs && crumbs.length > 0) || onBack || current != null;
+}: PageHeaderProps) {
+  const hasCrumbs = !!crumbs && crumbs.length > 0;
+  const isTrail = hasCrumbs || !!onBack || current != null;
 
   if (isTrail) {
-    const leadingSep = onBack || (crumbs && crumbs.length > 0);
     return (
       <header
         className={cn(
@@ -55,7 +77,7 @@ export function PageHeader({
           ))}
           {current != null && (
             <>
-              {leadingSep && <CrumbSep />}
+              {(onBack || hasCrumbs) && <CrumbSep />}
               <CrumbCurrent label={current} maxWidth={360} />
             </>
           )}
@@ -73,19 +95,9 @@ export function PageHeader({
           under 18rem, so narrow windows stack instead of crushing the title. */}
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0">
         <div className="min-w-0 flex-[1_1_18rem] flex flex-col gap-1">
-          {eyebrow && (
-            <div className="section-label mb-0.5">
-              {eyebrow}
-            </div>
-          )}
           <h1 className="s-h1 m-0 text-ink">{title}</h1>
           {subtitle && (
-            <p
-              className="m-0 max-w-[64ch] text-[13.5px] leading-[1.5] text-ink-3"
-              style={{ marginBottom: subtitleBottom || 0 }}
-            >
-              {subtitle}
-            </p>
+            <p className="m-0 text-[13.5px] leading-[1.5] text-ink-3">{subtitle}</p>
           )}
         </div>
         {actions && <div className="shrink-0 max-w-full">{actions}</div>}

@@ -17,7 +17,19 @@
 // ReactNode so views can mix values and accents (Projects highlights the
 // pinned count with `var(--accent)`).
 
-export function FilterRow({ search, filter, sort, view, counts, right, chips }) {
+import type { ReactNode } from 'react';
+
+export interface FilterRowProps {
+  search?: ReactNode;
+  filter?: ReactNode;
+  sort?: ReactNode;
+  view?: ReactNode;
+  counts?: ReactNode;
+  right?: ReactNode;
+  chips?: ReactNode;
+}
+
+export function FilterRow({ search, filter, sort, view, counts, right, chips }: FilterRowProps) {
   return (
     <div className="flex flex-col px-8 pb-2">
       <div className="flex flex-wrap items-center gap-2.5">
