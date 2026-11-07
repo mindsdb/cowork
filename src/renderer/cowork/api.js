@@ -2433,6 +2433,23 @@ export async function fetchCanBuildCustomConnector() {
   }
 }
 
+// Save a connector template from its chat card as the caller's own custom
+// connector. The server checks the template again; only org mode has the route.
+export async function saveConnectorDraft(draft) {
+  return req('/connectors/custom', { method: 'POST', body: JSON.stringify(draft) });
+}
+
+// Whether the caller already keeps a custom connector under `id`: true when the
+// spec lookup returns a custom one, false on a 404, null when it can't tell.
+export async function fetchConnectorDraftSaved(id) {
+  try {
+    const spec = await req(`/connectors/specs/${encodeURIComponent(id)}`);
+    return spec?.custom === true;
+  } catch (err) {
+    return err?.status === 404 ? false : null;
+  }
+}
+
 export async function matchConnector(query, maxCandidates = 3) {
   return req('/connectors/specs/match', {
     method: 'POST',

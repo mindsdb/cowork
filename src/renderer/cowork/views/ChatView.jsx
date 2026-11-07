@@ -34,6 +34,7 @@ import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
+import ConnectorDraftCard from '../components/ConnectorDraftCard';
 import AskUserCard from '../components/AskUserCard';
 import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
@@ -701,6 +702,20 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
     <div className="flex flex-col gap-3 mt-1">
       {skills.map((s) => (
         <SkillCard key={s.id} skill={s.data || {}} projectName={projectName} />
+      ))}
+    </div>
+  );
+}
+
+// Renders any badge='Connector' steps as inline connector template cards: a
+// template a cloud turn built, which the member saves from the card.
+function StepConnectorDrafts({ steps }) {
+  const drafts = steps?.filter((s) => s.badge === 'Connector') || [];
+  if (drafts.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3 mt-1">
+      {drafts.map((s) => (
+        <ConnectorDraftCard key={s.id} connector={s.data || {}} />
       ))}
     </div>
   );
@@ -3165,6 +3180,7 @@ export default function ChatView({
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
+                  <StepConnectorDrafts steps={m.steps} />
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
                     <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
@@ -3229,6 +3245,7 @@ export default function ChatView({
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
+                <StepConnectorDrafts steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" showActions={false}>
