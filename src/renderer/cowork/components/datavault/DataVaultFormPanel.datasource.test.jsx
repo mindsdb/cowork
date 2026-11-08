@@ -348,6 +348,56 @@ describe('skipping a field', () => {
   });
 });
 
+// The panel's error sits under the submit button, below the fold on a long
+// database form, and used to outlive the mistake it described.
+describe('a relay refusal on a cloud database form', () => {
+  const MESSAGE = 'host must be reachable from the internet';
+  let scrolled;
+  let originalScrollIntoView;
+
+  // Shaped the way api.js's responseError builds a 4xx refusal.
+  const refusal = () => Object.assign(new Error(MESSAGE), { status: 400, code: 'invalid_connection' });
+  const scrolledToMessage = () => scrolled.mock.contexts.filter((el) => el.textContent === MESSAGE).length;
+
+  beforeEach(() => {
+    originalScrollIntoView = Element.prototype.scrollIntoView;
+    scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    api.createDatasourceConnection.mockRejectedValue(refusal());
+  });
+
+  afterEach(() => {
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+  });
+
+  it('scrolls the message into view, and again on a repeat refusal', async () => {
+    await submitTheForm();
+    expect(await screen.findByText(MESSAGE)).toBeInTheDocument();
+    await waitFor(() => expect(scrolledToMessage()).toBe(1));
+
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+    await waitFor(() => expect(api.createDatasourceConnection).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(MESSAGE)).toBeInTheDocument();
+    await waitFor(() => expect(scrolledToMessage()).toBe(2));
+  });
+
+  it('goes away once a field is edited', async () => {
+    await submitTheForm();
+    expect(await screen.findByText(MESSAGE)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/^Host$/i), 'x');
+    expect(screen.queryByText(MESSAGE)).toBeNull();
+  });
+
+  it('goes away once the Label is edited', async () => {
+    await submitTheForm();
+    expect(await screen.findByText(MESSAGE)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/^Label$/i), 'x');
+    expect(screen.queryByText(MESSAGE)).toBeNull();
+  });
+});
+
 describe('editing an existing connection', () => {
   const EDIT_SPEC = {
     ...SPEC,

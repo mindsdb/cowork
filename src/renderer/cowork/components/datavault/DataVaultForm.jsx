@@ -206,7 +206,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
 
 export function DataVaultForm({
   spec, busy = false, onAction, onMethodChange, conversationId,
-  userLabel, onUserLabelChange,
+  userLabel, onUserLabelChange, onFieldChange,
   hideHeader = false,
 }) {
   // ── Multi-method shape ──────────────────────────────────────────
@@ -470,6 +470,7 @@ export function DataVaultForm({
 
   const updateField = (name, v) => {
     setValues((prev) => ({ ...prev, [name]: v }));
+    onFieldChange?.(name);
     setRequiredErrorsByKey((prev) => {
       if (!prev[stateKey]?.[name]) return prev;
       const next = { ...prev[stateKey] };
