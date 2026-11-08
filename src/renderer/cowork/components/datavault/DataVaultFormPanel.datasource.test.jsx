@@ -27,6 +27,7 @@ vi.mock('../../../platform/host', async (importOriginal) => ({
 }));
 vi.mock('../../lib/analytics', () => ({ trackDataSourceConnected: vi.fn() }));
 
+import { DataVaultForm } from './DataVaultForm';
 import { DataVaultFormPanel } from './DataVaultFormPanel';
 import { clearForm, getForm, setForm } from './formStore';
 import { toCloudSpec } from '../../lib/cloudConnectorSpec';
@@ -211,6 +212,97 @@ describe('submitting a cloud datasource form', () => {
     await submitTheForm();
 
     expect(await screen.findByText('host must be reachable from the internet')).toBeInTheDocument();
+  });
+});
+
+// The relay saves the Label as the connection's name and refuses an empty
+// one, so the form has to ask for it the way it asks for every other field.
+describe('the Label on a cloud database form', () => {
+  // Shaped like the server's MySQL spec and passed through toCloudSpec, so
+  // the flag under test is set the way the app sets it.
+  const MYSQL_SPEC = toCloudSpec({
+    form_id: 'mysql-connector',
+    title: 'Connect MySQL',
+    engine: 'mysql',
+    _connector_id: 'mysql',
+    selected_method: 'host-port',
+    methods: [{
+      id: 'host-port',
+      label: 'Host and port',
+      cloud: {
+        available: true,
+        fields: [
+          { name: 'host', label: 'Host', type: 'text', required: true, default: 'db.example.com' },
+          { name: 'port', label: 'Port', type: 'text', required: true, default: '3306' },
+          { name: 'database', label: 'Database', type: 'text', required: true, default: 'shop' },
+          { name: 'username', label: 'Username', type: 'text', required: true, default: 'readonly' },
+          { name: 'password', label: 'Password', type: 'password', secret: true, required: true, default: 'secret' },
+        ],
+      },
+      actions: [{ id: 'submit', label: 'Connect', kind: 'primary' }],
+    }],
+  });
+
+  const renderPanel = () => render(
+    <DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />,
+  );
+
+  it('is marked required and keeps "Label" as its accessible name', async () => {
+    setForm(CID, MYSQL_SPEC);
+    renderPanel();
+
+    const label = await screen.findByLabelText(/^Label$/i);
+    expect(label).toHaveAttribute('aria-required', 'true');
+    const caption = screen.getByText('Label', { selector: 'label' });
+    expect(caption.parentElement.textContent).toBe('Label*');
+  });
+
+  it('stops an empty Label at the field, with focus on it and nothing sent', async () => {
+    setForm(CID, MYSQL_SPEC);
+    renderPanel();
+
+    const label = await screen.findByLabelText(/^Label$/i);
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(await screen.findByText('Label is required.')).toBeInTheDocument();
+    await waitFor(() => expect(label).toHaveFocus());
+    expect(api.createDatasourceConnection).not.toHaveBeenCalled();
+    // The inline error replaces the message the payload builder would raise.
+    expect(screen.queryByText(/give this connection a name/i)).toBeNull();
+
+    await userEvent.type(label, 'Shop');
+    expect(screen.queryByText('Label is required.')).toBeNull();
+  });
+
+  it('stops an edit whose Label was cleared instead of saving under the old name', async () => {
+    setForm(CID, {
+      ...SPEC,
+      _datasource_edit: { id: 7, expectedRevision: 6 },
+      name: 'Analytics',
+      user_label: 'Analytics',
+    });
+    renderPanel();
+
+    const label = await screen.findByLabelText(/^Label$/i);
+    await userEvent.clear(label);
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(await screen.findByText('Label is required.')).toBeInTheDocument();
+    await waitFor(() => expect(label).toHaveFocus());
+    expect(api.editDatasourceConnection).not.toHaveBeenCalled();
+  });
+
+  it('stays optional on a form that does not go to the relay', async () => {
+    const onAction = vi.fn();
+    const { _cloud_datasource: _unused, ...localSpec } = MYSQL_SPEC;
+    render(<DataVaultForm spec={localSpec} userLabel="" onUserLabelChange={vi.fn()} onAction={onAction} />);
+
+    const label = await screen.findByLabelText(/^Label$/i);
+    expect(label).not.toHaveAttribute('aria-required');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Label is required.')).toBeNull();
   });
 });
 

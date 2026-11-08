@@ -43,6 +43,10 @@ import { computeHeroView, orderMethods } from './methodHero';
 import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 
+// Key for the Label's inline error inside the per-field error map. Not a
+// field name a spec can declare, so it never collides with one.
+const USER_LABEL_ERROR_KEY = '__user_label__';
+
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
 const FONT_MONO    = 'var(--font-mono)';
@@ -274,6 +278,11 @@ export function DataVaultForm({
   // for multi-method, or the top-level fields[] for single-method.
   const fields = isMultiMethod ? (activeMethod?.fields || []) : (spec?.fields || []);
 
+  // The host passes `userLabel={undefined}` to hide the Label (on success),
+  // and there is nothing to label while the method picker is up.
+  const showUserLabel = userLabel !== undefined && !(isMultiMethod && !activeMethod);
+  const userLabelRequired = showUserLabel && !!spec?._cloud_datasource;
+
   // Per-(form, method) input state so flipping methods preserves
   // anything typed under each one. Storing inside a Map keyed by
   // `${form_id}::${method_id || 'default'}` keeps the state shape flat
@@ -288,6 +297,7 @@ export function DataVaultForm({
      every field type has, so the error is at least scrolled into view. */
   const fieldRefs = useRef({});
   const fieldContainerRefs = useRef({});
+  const userLabelRef = useRef(null);
 
   const initialFor = (fs) => {
     const out = {};
@@ -474,6 +484,16 @@ export function DataVaultForm({
     });
   };
 
+  const updateUserLabel = (v) => {
+    onUserLabelChange?.(v);
+    setRequiredErrorsByKey((prev) => {
+      if (!prev[stateKey]?.[USER_LABEL_ERROR_KEY]) return prev;
+      const next = { ...prev[stateKey] };
+      delete next[USER_LABEL_ERROR_KEY];
+      return { ...prev, [stateKey]: next };
+    });
+  };
+
   const skipField = (name) => {
     setSkipped((prev) => {
       const next = new Set(prev);
@@ -509,12 +529,21 @@ export function DataVaultForm({
         const value = values[field.name];
         return value === null || value === undefined || String(value).trim() === '';
       });
-      if (missing.length) {
+      // A cloud database form saves the Label as the connection's name,
+      // which the relay requires; other forms fall back to a generated one.
+      const labelMissing = userLabelRequired && String(userLabel ?? '').trim() === '';
+      if (missing.length || labelMissing) {
         const errors = Object.fromEntries(
           missing.map((field) => [field.name, `${field.label || field.name} is required.`]),
         );
+        if (labelMissing) errors[USER_LABEL_ERROR_KEY] = 'Label is required.';
         setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
         requestAnimationFrame(() => {
+          // The Label sits above the fields, so it is the first one missing.
+          if (labelMissing) {
+            userLabelRef.current?.focus?.();
+            return;
+          }
           const name = missing[0].name;
           (fieldRefs.current[name] || fieldContainerRefs.current[name])?.focus?.();
         });
@@ -576,22 +605,32 @@ export function DataVaultForm({
 
       {/* Generic "name this connection" field — applies to every connector
           regardless of method, so it renders right under the title rather
-          than inside the per-method fields list below. Hidden on success
-          (host passes `userLabel={undefined}` in that case) and while the
-          user is still on the method picker (nothing to label yet). */}
-      {userLabel !== undefined && !(isMultiMethod && !activeMethod) && (
+          than inside the per-method fields list below. */}
+      {showUserLabel && (
         <div className="flex flex-col gap-1">
-          <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
-            Label
-          </label>
+          {/* The marker sits outside the <label> so the input's accessible
+              name stays "Label"; aria-required carries the meaning. */}
+          <div className="flex items-baseline">
+            <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
+              Label
+            </label>
+            {userLabelRequired && (
+              <span aria-hidden="true" className="text-[12px] text-danger ml-[3px]">*</span>
+            )}
+          </div>
           <Input
+            ref={userLabelRef}
             id="connection-user-label"
             type="text"
             value={userLabel}
-            onChange={(v) => onUserLabelChange?.(v)}
+            onChange={updateUserLabel}
             disabled={busy}
+            aria-required={userLabelRequired || undefined}
             placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
           />
+          {requiredErrors[USER_LABEL_ERROR_KEY] && (
+            <div className="text-[11.5px] text-danger">{requiredErrors[USER_LABEL_ERROR_KEY]}</div>
+          )}
         </div>
       )}
 
