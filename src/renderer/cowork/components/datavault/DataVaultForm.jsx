@@ -715,8 +715,10 @@ export function DataVaultForm({
                     `skipable: false` in the spec is still respected.
                     Locked fields (modify-flow identity) drop the
                     skip affordance entirely — there's nothing for
-                    Anton to figure out about a fixed row key. */}
-                {f.skipable !== false && !isLocked && (
+                    Anton to figure out about a fixed row key. A cloud
+                    database form posts straight to the relay, so no
+                    agent ever reads the skipped set there. */}
+                {f.skipable !== false && !isLocked && !spec._cloud_datasource && (
                   <button
                     type="button"
                     onClick={() => isSkipped ? updateField(f.name, values[f.name] ?? '') : skipField(f.name)}

@@ -306,6 +306,48 @@ describe('the Label on a cloud database form', () => {
   });
 });
 
+// No agent reads the skipped set on the relay path, and the server refuses a
+// missing database, username or password, so "skip" would promise nothing.
+describe('skipping a field', () => {
+  it('is not offered on a cloud database form, so a blank password is caught inline', async () => {
+    setForm(CID, toCloudSpec({
+      ...SPEC,
+      _cloud_datasource: undefined,
+      methods: SPEC.methods.map((m) => ({ ...m, cloud: { available: true, fields: m.fields } })),
+    }));
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} onContinue={vi.fn()} onClose={vi.fn()} />);
+
+    const password = await screen.findByLabelText(/^Password$/i);
+    expect(screen.queryByRole('button', { name: /^skip$/i })).toBeNull();
+
+    await userEvent.clear(password);
+    await userEvent.type(screen.getByLabelText(/^Label$/i), 'Analytics');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(await screen.findByText('Password is required.')).toBeInTheDocument();
+    expect(api.createDatasourceConnection).not.toHaveBeenCalled();
+  });
+
+  it('is still offered on a form the agent handles, and the skip reaches it', async () => {
+    const onAction = vi.fn();
+    const { _cloud_datasource: _unused, ...agentSpec } = SPEC;
+    render(<DataVaultForm spec={agentSpec} userLabel="Analytics" onUserLabelChange={vi.fn()} onAction={onAction} />);
+
+    await screen.findByLabelText(/^Password$/i);
+    const skipButtons = screen.getAllByRole('button', { name: /^skip$/i });
+    expect(skipButtons.length).toBe(agentSpec.methods[0].fields.length);
+
+    // Fields render in spec order; password is the fourth.
+    await userEvent.click(skipButtons[3]);
+    expect(screen.getByText(/the agent will figure this one out/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0].skipped).toEqual(['password']);
+    expect(onAction.mock.calls[0][0].values).not.toHaveProperty('password');
+  });
+});
+
 describe('editing an existing connection', () => {
   const EDIT_SPEC = {
     ...SPEC,
