@@ -549,27 +549,20 @@ describe('startServer failure diagnostics', () => {
     );
   });
 
-  it('checkpoints coding tasks on an adopted sidecar before reaping it by port', async () => {
-    // Adoption leaves no ChildProcess handle, and that branch of stopServer
-    // used to go straight to the port kill — the one stop path with no
-    // checkpoint, on exactly the sidecar most likely to hold live tasks.
-    // The owner token is minted at random on first use, so learn it from the
-    // env a real spawn is handed and answer /health with it from then on.
+  it('checkpoints coding tasks on a sidecar with no child handle before reaping it by port', async () => {
+    // A launcher that hands off and exits leaves no ChildProcess handle, and
+    // that branch of stopServer used to go straight to the port kill — the one
+    // stop path with no checkpoint, on a sidecar that may hold live tasks.
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
-      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      setTimeout(() => { healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
       return child as never;
     }) as never);
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
-    const env = (vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions).env ?? {};
-    await stopServer();
     vi.mocked(fetch).mockClear();
     vi.mocked(cp.execFile).mockClear();
     execCalls = [];
 
-    healthOwner = env.COWORK_SERVER_OWNER ?? null;
-    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
-    expect(cp.spawn).toHaveBeenCalledTimes(1); // adopted, not respawned
     await stopServer();
 
     const checkpoint = vi.mocked(fetch);
@@ -1510,14 +1503,14 @@ describe('a store with a pending credential clear', () => {
     setServerStartedHook(null);
   });
 
-  it('settles the held markers when it adopts a running sidecar', async () => {
+  it('settles the held markers when it replaces a running sidecar', async () => {
     await leaveOwnOrphanRunning();
     holdOneStore();
     healthCapabilities = ['coding'];
 
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
 
-    expect(cp.spawn).toHaveBeenCalledTimes(1);
+    expect(cp.spawn).toHaveBeenCalledTimes(2);
     expect(fs.rmSync).toHaveBeenCalledWith(HELD_MARKER, { force: true });
   });
 
@@ -1636,14 +1629,30 @@ describe('app secret handoff', () => {
     expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(fresh.stdin.written).app_secret);
   });
 
-  it('still adopts a running server of its own that predates the protocol, in legacy mode', async () => {
+  it('replaces a running server of its own without app_secret_protocol instead of adopting it', async () => {
     spawnAnswering({});
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
     await stopServer();
+    // The orphan still answers /health as ours, in legacy mode.
+    const fresh = spawnAnswering({ app_secret_protocol: 1 });
 
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
 
+    expect(cp.spawn).toHaveBeenCalledTimes(2);
+    expect(execCalls.some((c) => c.cmd === 'lsof' && c.args.includes(`tcp:${PORT}`))).toBe(true);
+    expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(fresh.stdin.written).app_secret);
+  });
+
+  it('fails the start rather than trusting the old server when it cannot be stopped', async () => {
+    spawnAnswering({});
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    await stopServer();
+    execHandler = (cmd) => (cmd === 'lsof' ? { err: null, stdout: '9999\n' } : { err: new Error('nothing'), stdout: '' });
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(false);
+    expect(getServerDiagnostics().lastError).toBe(`The previous Cowork server on port ${PORT} could not be stopped.`);
     expect(cp.spawn).toHaveBeenCalledTimes(1);
-    expect(isAppSecretProtected()).toBe(false);
   });
 });

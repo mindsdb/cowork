@@ -624,7 +624,7 @@ export function fetchServerVersions(timeoutMs = 800): Promise<{ server: string |
 }
 
 // True when resolveServerPort() found a healthy server that proved to be
-// ours; startServer() re-verifies and adopts it instead of spawning.
+// ours; startServer() re-verifies it and replaces it.
 let _adoptPlanned = false;
 let _portResolved = false;
 
@@ -653,7 +653,7 @@ export async function resolveServerPort(): Promise<number> {
       if (free) serverPort = free;
       diagnostic("main.server-process", "INFO", "server_port_held_by_a_foreign_server_using_instead", `[server] port ${preferred} held by a foreign server; using ${serverPort} instead`);
     } else if (probe.state === 'compatible' && probe.owner) {
-      _adoptPlanned = true; // our own orphan — startServer will re-verify + adopt
+      _adoptPlanned = true; // our own orphan — startServer will re-verify + replace
     }
     // else: not healthy, healthy but owner-less (a pre-ENG-439 server — on a
     // per-user port that's almost certainly our own from before this change),
@@ -749,41 +749,24 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     await resolveServerPort();
   }
 
-  // Pre-flight adoption — adopt ONLY our own already-running server. The most
-  // common cause is an orphan python from a prior session that didn't get
-  // reaped on quit; re-verify via /health that the owner token is ours before
-  // adopting (a foreign server was already routed around in resolveServerPort).
-  let refusedAdoption: 'credential-clear' | 'app-secret' | null = null;
+  // Our own server still running from an earlier app process (an orphan that
+  // was not reaped on quit) is replaced, never adopted. This process can only
+  // know the app secret of a server it spawned, and adopting one without a
+  // secret would let whatever answers with our owner token (readable on disk)
+  // receive MCP access tokens in legacy mode. A foreign server was already
+  // routed around in resolveServerPort.
+  let refusedAdoption: 'credential-clear' | 'not-spawned' | null = null;
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
     const ours = probe.state === 'compatible'
       && probe.owner !== null
       && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment());
-    // A process that is already running never re-runs its startup, so it would
-    // keep serving keys a sign-out marked for clearing. Replace it instead.
     if (ours && hasPendingCredentialClear(currentOrgStoreRoot())) {
       refusedAdoption = 'credential-clear';
       diagnostic("main.server-process", "INFO", "server_not_adopting_the_running_instance_its_store_has_a_pending_credential_clear", '[server] not adopting the running instance: its store has a pending credential clear');
-    } else if (ours && probe.appSecretProtocol === 1) {
-      // It holds a secret an earlier app process generated, which this one
-      // cannot know, so every protected call would be refused. Replace it.
-      refusedAdoption = 'app-secret';
-      diagnostic("main.server-process", "INFO", "server_not_adopting_the_running_instance_it_holds_another_process_app_secret", '[server] not adopting the running instance: it holds an app secret from an earlier app process');
     } else if (ours) {
-      clearAppSecret();
-      serverStarted = true;
-      _adoptedExternal = true;
-      // Adoption only happens on an owner-token match, and the token is bound to
-      // the account, so an adopted server is on this session's root by definition.
-      _runningAccountRoot = currentAccountRoot();
-      _runningAccountDataRoot = accountDataRoot();
-      _runningOrgStoreRoot = currentOrgStoreRoot();
-      noteServerClearsPendingCredentials(probe.clearsPendingCredentials);
-      lastStartError = null;
-      lastStartErrorKind = null;
-      lastPortHolderPid = null;
-      diagnostic("main.server-process", "INFO", "server_adopted_our_own_existing_instance_on_port", `[server] adopted our own existing instance on port ${serverPort}`);
-      return { ok: true, port: serverPort };
+      refusedAdoption = 'not-spawned';
+      diagnostic("main.server-process", "INFO", "server_replacing_a_running_instance_this_process_did_not_spawn", '[server] replacing a running instance this app process did not spawn');
     }
   }
 
