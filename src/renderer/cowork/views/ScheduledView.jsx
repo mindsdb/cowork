@@ -22,7 +22,7 @@ import { Alert, Button } from '../components/ui';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
-import { PLATFORM_UI } from '../../lib/deployment';
+import { host } from '../../platform/host';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 const SORT_OPTIONS = [
@@ -142,9 +142,9 @@ export default function ScheduledView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={PLATFORM_UI
-          ? `Local scheduled ${agentLabel} tasks run while ${STOCK_PRODUCT_NAME} is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`
-          : `Scheduled ${agentLabel} tasks run on the server, even with this tab closed. Runs that slip while the server is down are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
+        subtitle={host.isElectron
+          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. Runs missed while it's closed are skipped — ${agentLabel} picks up at the next scheduled time.`
+          : `Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — ${agentLabel} picks up at the next scheduled time.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
@@ -193,20 +193,11 @@ export default function ScheduledView({
         query={search}
         onClear={() => setSearch('')}
         empty={{
-          bordered: true,
-          icon: (
-            <span className="inline-grid place-items-center w-[48px] h-[48px] rounded-card bg-[color-mix(in_srgb,var(--accent)_12%,var(--surface-2))] text-accent">
-              {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
-            </span>
-          ),
+          icon: Ico.schedule ? Ico.schedule(20) : Ico.clock(20),
           title: 'No scheduled tasks yet',
-          description: `Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them ${PLATFORM_UI ? 'while the desktop app is open' : 'on the server, even with this tab closed'}.`,
-          action: (
-            <Button variant="primary" onClick={openCreate}>
-              {Ico.plus(14)} Schedule your first task
-            </Button>
-          ),
-          className: 'mx-8 my-10',
+          description: `Have ${agentLabel} repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.`,
+          action: { label: 'Schedule your first task', onClick: openCreate },
+          className: 'mx-8 mb-8',
         }}
       >
         <ListGroup className="mx-8 mb-8">
@@ -255,4 +246,3 @@ export default function ScheduledView({
     </div>
   );
 }
-

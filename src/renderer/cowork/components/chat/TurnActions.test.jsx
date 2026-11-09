@@ -1,14 +1,18 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { copyText } from '../lib/clipboard';
-import { CopyResponseButton } from './CopyResponseButton';
+import { copyText } from '../../lib/clipboard';
+import { TurnActions } from './TurnActions';
 
-vi.mock('../lib/clipboard', () => ({ copyText: vi.fn() }));
+vi.mock('../../lib/clipboard', () => ({ copyText: vi.fn() }));
+
+function CopyResponseButton({ text }) {
+  return <TurnActions text={text} copyLabel="Copy response" />;
+}
 
 beforeEach(() => vi.mocked(copyText).mockResolvedValue(true));
 afterEach(() => { vi.clearAllMocks(); vi.useRealTimers(); });
 
-describe('CopyResponseButton', () => {
+describe('TurnActions copy', () => {
   it('copies the original Markdown, including code, and confirms success', async () => {
     const text = '**Done.**\n\n```js\nconst answer = 42;\n```';
     render(<CopyResponseButton text={text} />);
@@ -36,7 +40,7 @@ describe('CopyResponseButton', () => {
   });
 
   it('does not apply a late clipboard result to updated text', async () => {
-    let finish!: (success: boolean) => void;
+    let finish;
     vi.mocked(copyText).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const view = render(<CopyResponseButton text="Partial" />);
     fireEvent.click(screen.getByRole('button', { name: 'Copy response' }));
@@ -51,5 +55,20 @@ describe('CopyResponseButton', () => {
   it('does not offer an empty response', () => {
     render(<CopyResponseButton text={' \n'} />);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+});
+
+describe('TurnActions', () => {
+  it('offers edit and delete only when the turn supports them', () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const view = render(<TurnActions text="Hi" copyLabel="Copy message" />);
+    expect(screen.queryByRole('button', { name: /edit/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    view.rerender(<TurnActions text="Hi" copyLabel="Copy message" onEdit={onEdit} onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole('button', { name: /edit and resend/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onDelete).toHaveBeenCalledTimes(1);
   });
 });

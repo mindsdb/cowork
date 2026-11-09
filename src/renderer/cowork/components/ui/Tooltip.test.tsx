@@ -77,3 +77,21 @@ describe('Tooltip delay token', () => {
     expect(screen.queryByText('Hint')).toBeNull();
   });
 });
+
+describe('Tooltip skin', () => {
+  it('drops the hint-bubble skin when unstyled, leaving its className to style it', async () => {
+    const { Tooltip } = await import('./Tooltip');
+    render(
+      <>
+        <Tooltip content="Hint" delay={0}><button type="button">Plain</button></Tooltip>
+        <Tooltip content="Card" delay={0} unstyled className="preview-card"><button type="button">Rich</button></Tooltip>
+      </>,
+    );
+    await userEvent.hover(screen.getByText('Plain'));
+    expect((await screen.findByText('Hint')).getAttribute('style')).toContain('background');
+    await userEvent.hover(screen.getByText('Rich'));
+    const card = await screen.findByText('Card');
+    expect(card).toHaveClass('preview-card');
+    expect(card.getAttribute('style') ?? '').not.toContain('background');
+  });
+});

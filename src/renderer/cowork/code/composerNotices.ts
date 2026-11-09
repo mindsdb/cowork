@@ -212,3 +212,44 @@ export function messageNotice(kind: 'error' | 'workspace', message: string): Com
     ? { key: `error:${message}`, tone: 'danger', icon: 'warning', title: '', body: message, dismissible: true }
     : { key: `workspace:${message}`, tone: 'warning', icon: 'warning', title: '', body: message, dismissible: true };
 }
+
+type ReleaseState = Pick<CodingSession, 'archived' | 'workspace_released_at' | 'workspace_kept_reason' | 'workspace_restore_error'>;
+
+/**
+ * What the task view says about a workspace put away to save disk: a failed
+ * rebuild first, since it needs the user, then that it is put away, then why
+ * an archived task kept its workspace. Older servers send none of these.
+ */
+export function releaseNotice(session: ReleaseState): ComposerNotice | null {
+  if (session.workspace_restore_error) {
+    return {
+      key: `release-error:${session.workspace_restore_error}`,
+      tone: 'danger',
+      icon: 'warning',
+      title: 'Could not reopen this task’s workspace',
+      body: `${session.workspace_restore_error}. The task’s work is still saved; try again once that is fixed.`,
+      dismissible: false,
+    };
+  }
+  if (session.workspace_released_at) {
+    return {
+      key: `released:${session.workspace_released_at}`,
+      tone: 'warning',
+      icon: 'warning',
+      title: '',
+      body: 'This task’s workspace was put away to save disk. It is rebuilt with all its changes when you continue or review it.',
+      dismissible: true,
+    };
+  }
+  if (session.archived && session.workspace_kept_reason) {
+    return {
+      key: `kept:${session.workspace_kept_reason}`,
+      tone: 'warning',
+      icon: 'warning',
+      title: '',
+      body: `${session.workspace_kept_reason}, so it still uses disk.`,
+      dismissible: true,
+    };
+  }
+  return null;
+}

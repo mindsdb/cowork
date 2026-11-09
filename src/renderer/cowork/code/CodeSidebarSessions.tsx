@@ -59,6 +59,7 @@ export function CodeSidebarSessions({
   onRename,
   onSetArchived,
   onDelete,
+  showCounters = false,
 }: {
   sessions: CodingSession[];
   selectedId: string | null;
@@ -67,6 +68,8 @@ export function CodeSidebarSessions({
   onRename: (id: string, title: string) => Promise<void>;
   onSetArchived: (id: string, archived: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  /** The "Show nav-panel counters" setting: row dates and group counts, as in Cowork's rows. */
+  showCounters?: boolean;
 }) {
   const preferences = useMemo(initialPreferences, []);
   const isUnread = useTaskSeen(sessions, selectedId);
@@ -173,11 +176,15 @@ export function CodeSidebarSessions({
     const working = status.tone === 'accent';
     const needsYou = status.tone === 'warning' || status.tone === 'danger';
     const resting = !working && !needsYou && !unread;
+    // Live status always shows; the date only with counters on, as in
+    // Cowork's rows. With nothing to show, the title runs to the row's end.
+    const restingLabel = needsYou ? status.label : (showCounters ? updated : null);
+    const hasAside = working || needsYou || unread || !!restingLabel;
     const name = session.title || 'untitled coding task';
     return (
       <div
         key={session.id}
-        className={`code-sidebar-session-row${selectedId === session.id ? ' is-selected' : ''}${isPinned ? ' is-pinned' : ''}${resting ? ' is-resting' : ''}`}
+        className={`code-sidebar-session-row${selectedId === session.id ? ' is-selected' : ''}${isPinned ? ' is-pinned' : ''}${resting ? ' is-resting' : ''}${hasAside ? ' has-aside' : ''}`}
       >
         {/* One line, like Cowork's recent rows: the title, then the live
             status (a spinner while it runs, or what needs you in its colour) or, at rest,
@@ -193,12 +200,14 @@ export function CodeSidebarSessions({
           title={`${session.title || 'Untitled coding task'} · ${repository}`}
         >
           <span className="code-sidebar-session__title">{session.title || 'Untitled coding task'}</span>
-          <span className={`code-sidebar-session__aside${needsYou ? ` is-${status.tone}` : ''}`}>
-            {working && <span className="code-sidebar-session__spinner" aria-hidden="true" />}
-            {!working && needsYou && <span className={`code-status-dot is-${status.tone}`} aria-hidden="true" />}
-            {!working && !needsYou && unread && <span className="code-status-dot is-unread" aria-hidden="true" />}
-            {!working && <span className="code-sidebar-session__aside-label">{needsYou ? status.label : updated}</span>}
-          </span>
+          {hasAside && (
+            <span className={`code-sidebar-session__aside${needsYou ? ` is-${status.tone}` : ''}`}>
+              {working && <span className="code-sidebar-session__spinner" aria-hidden="true" />}
+              {!working && needsYou && <span className={`code-status-dot is-${status.tone}`} aria-hidden="true" />}
+              {!working && !needsYou && unread && <span className="code-status-dot is-unread" aria-hidden="true" />}
+              {!working && restingLabel && <span className="code-sidebar-session__aside-label">{restingLabel}</span>}
+            </span>
+          )}
         </button>
         <Menu
           side="bottom"
@@ -218,7 +227,7 @@ export function CodeSidebarSessions({
 
   const sessionGroup = (label: string, items: CodingSession[]) => items.length ? (
     <section className="code-sidebar-session-group" key={label} aria-label={label}>
-      <div className="code-sidebar-session-group__label"><span>{label}</span><b>{items.length}</b></div>
+      <div className="code-sidebar-session-group__label"><span>{label}</span>{showCounters && <b>{items.length}</b>}</div>
       {items.map(sessionRow)}
     </section>
   ) : null;

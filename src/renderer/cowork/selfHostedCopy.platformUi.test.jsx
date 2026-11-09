@@ -1,8 +1,3 @@
-// A web build without the platform UI runs against its own server: no
-// desktop app beside it, no MindsHub sign-in, and scheduled tasks run on that
-// server. Every line below used to tell such a deployment's users about a
-// desktop app or MindsHub. selfHostedCopy.test.jsx pins the same lines on the
-// platform build, where they must not change.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
@@ -63,10 +58,10 @@ describe('web build without the platform UI', () => {
   it('says scheduled tasks run on the server', () => {
     render(<ScheduledView {...scheduledProps} />);
     expect(screen.getByText(
-      'Scheduled Anton tasks run on the server, even with this tab closed. Runs that slip while the server is down are skipped — Anton resumes from the next scheduled occurrence.',
+      'Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — Anton picks up at the next scheduled time.',
     )).toBeInTheDocument();
     expect(screen.getByText(
-      'Create a recurring Anton task — a Monday digest, an hourly log sweep, a daily KPI snapshot. Anton runs them on the server, even with this tab closed.',
+      'Have Anton repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.',
     )).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/desktop app|MindsHub/);
   });
