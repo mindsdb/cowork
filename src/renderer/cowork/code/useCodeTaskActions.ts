@@ -5,6 +5,7 @@ import {
   type CodingSession,
 } from './api';
 import { trackCodeTaskStarted, trackCodeTaskStartFailed } from '../lib/analytics';
+import { markTaskStarted } from './startedTasks';
 
 
 const CONTROL_TIMEOUT_MS = 20_000;
@@ -147,6 +148,7 @@ export function useCodeTaskActions({
         source_contexts: input.sourceContexts,
       });
       trackCodeTaskStarted(created, { origin: 'new', attachmentCount: input.attachments.length });
+      markTaskStarted(created.id);
       // The new task opens from the list cache; without it the view shows
       // "Restoring task…" until the list or detail fetch returns.
       onSessionsChangeRef.current([created, ...sessionsRef.current.filter((item) => item.id !== created.id)]);

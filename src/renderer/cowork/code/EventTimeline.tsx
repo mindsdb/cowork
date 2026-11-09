@@ -34,6 +34,7 @@ import { useStickToBottom } from '../components/chat/useStickToBottom';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, compactPath, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
+import { takeTaskStarted } from './startedTasks';
 import './event-timeline.css';
 
 
@@ -745,20 +746,13 @@ export const EventTimeline = memo(function EventTimeline({
   // events, and the next send must still anchor.
   const seenUserSeq = useRef<number | null>(null);
   const historyLoaded = events.length > 0;
-  // A new task opens with its first message already in the history, so that
-  // message never arrives as a new seq. While its answer hasn't started, anchor
-  // it anyway, as every later send is.
-  const awaitingAnswer = (isActiveStatus(session.status) || session.status === 'ready')
-    && latestUserSeq > 0
-    && !events.some((event) => event.type === 'agent_message' && event.seq > latestUserSeq);
   useEffect(() => {
     if (!historyLoaded) return;
     const previous = seenUserSeq.current;
     seenUserSeq.current = latestUserSeq;
-    if (previous == null ? awaitingAnswer : latestUserSeq > previous) anchorLastTurn();
-    // awaitingAnswer only matters on the first load, which the seq change covers.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyLoaded, latestUserSeq, anchorLastTurn]);
+    // A task just started here anchors its first message like any later send.
+    if (previous == null ? takeTaskStarted(session.id) : latestUserSeq > previous) anchorLastTurn();
+  }, [historyLoaded, latestUserSeq, anchorLastTurn, session.id]);
   useEffect(() => { follow(); }, [latestEventSeq, session.status, follow]);
   return (
     <ChatScroller
