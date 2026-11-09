@@ -365,6 +365,27 @@ describe('CodeComposer', () => {
     expect(onSend).toHaveBeenCalledWith('/status', 'turn', []);
   });
 
+  it('keeps text typed while a slash command is pending when the command fails', async () => {
+    let fail: (error: Error) => void = () => {};
+    const onSend = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const props = {
+      session: { ...baseSession, status: 'completed' as const }, busy: false, onSend, onStop: vi.fn(async () => {}), commands,
+      onClientCommand: vi.fn(), onPermissionChange: vi.fn(async () => {}),
+    };
+    const { rerender } = render(<CodeComposer {...props} />);
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+
+    fireEvent.change(input, { target: { value: '/status' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledWith('/status', 'turn', []);
+    rerender(<CodeComposer {...props} busy />);
+    fireEvent.change(input, { target: { value: 'keep this draft' } });
+
+    fail(new Error('temporarily unavailable'));
+    rerender(<CodeComposer {...props} />);
+    await waitFor(() => expect(input).toHaveValue('/status\nkeep this draft'));
+  });
+
   it('queues messages by default while the agent is working', async () => {
     const { onSend } = renderComposer();
     fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), {

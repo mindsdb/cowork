@@ -161,6 +161,9 @@ export const CodeComposer = memo(function CodeComposer({
     return () => { alive = false; window.clearTimeout(timer); };
   }, [mentionQuery, session.id]);
 
+  // A failed send puts its text back. The field stays editable while a send is
+  // pending, so anything typed since is kept after it.
+  const restorePrompt = (sent: string) => setPrompt((current) => current ? `${sent}\n${current}` : sent);
   const chooseCommand = async (command: EngineCommand) => {
     if (busy) return;
     if (command.name === 'plan' && canPlan && !active) {
@@ -183,7 +186,7 @@ export const CodeComposer = memo(function CodeComposer({
     try {
       await onSend(commandPrompt, active ? 'queue' : 'turn', []);
     } catch {
-      setPrompt(commandPrompt);
+      restorePrompt(commandPrompt);
     }
   };
   const choosePaletteItem = (item: CodePaletteItem) => {
@@ -225,8 +228,7 @@ export const CodeComposer = memo(function CodeComposer({
         await onSend(value, active ? (waiting ? 'queue' : delivery) : 'turn', submittedAttachments);
       }
     } catch {
-      // The field stays editable during the send, so keep anything typed since.
-      setPrompt((current) => current ? `${value}\n${current}` : value);
+      restorePrompt(value);
       setAttachments((current) => mergeReferences(submittedAttachments, current));
     }
   };
