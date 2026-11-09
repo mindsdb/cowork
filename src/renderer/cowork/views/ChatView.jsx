@@ -709,13 +709,13 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
 
 // Renders any badge='Connector' steps as inline connector template cards: a
 // template a cloud turn built, which the member saves from the card.
-function StepConnectorDrafts({ steps }) {
+function StepConnectorDrafts({ steps, onConnect }) {
   const drafts = steps?.filter((s) => s.badge === 'Connector') || [];
   if (drafts.length === 0) return null;
   return (
     <div className="flex flex-col gap-3 mt-1">
       {drafts.map((s) => (
-        <ConnectorDraftCard key={s.id} connector={s.data || {}} />
+        <ConnectorDraftCard key={s.id} connector={s.data || {}} onConnect={onConnect} />
       ))}
     </div>
   );
@@ -1854,6 +1854,8 @@ export default function ChatView({
   deletingTurnMessageId = null,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
+  // Opens a saved custom connector's connect form from its draft card.
+  onConnectCustomConnector,
   onDismissConnectForm,
   onCancelModify,
   onDisconnectModify,
@@ -3180,7 +3182,7 @@ export default function ChatView({
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
-                  <StepConnectorDrafts steps={m.steps} />
+                  <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
                     <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
@@ -3245,7 +3247,7 @@ export default function ChatView({
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
-                <StepConnectorDrafts steps={streamingMsg.steps} />
+                <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" showActions={false}>

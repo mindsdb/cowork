@@ -2392,6 +2392,32 @@ export async function retryDatasourceValidation(connectionId) {
   return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
 }
 
+// ── Custom API connections ───────────────────────────────────────────────
+//
+// A member's own custom connector, connected in the cloud only: the server
+// checks the credentials at the address the member typed, then auth stores
+// them. List and delete relay to auth on the member's own credential.
+
+const CUSTOM_CONNECTIONS = '/connectors/custom-connections/';
+
+export async function connectCustomConnector(connectorId, payload) {
+  requireOrgMode('Connecting a custom connector');
+  return req(`/connectors/custom/${encodeURIComponent(connectorId)}/connect`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listCustomConnections() {
+  requireOrgMode('Custom connections');
+  return req(CUSTOM_CONNECTIONS);
+}
+
+export async function deleteCustomConnection(connectionId) {
+  requireOrgMode('Removing a custom connection');
+  return req(`${CUSTOM_CONNECTIONS}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)

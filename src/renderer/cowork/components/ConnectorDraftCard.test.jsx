@@ -31,6 +31,19 @@ describe('ConnectorDraftCard', () => {
     expect(screen.getByRole('button', { name: 'Saved' }).disabled).toBe(true);
   });
 
+  it('offers Connect once saved, which opens the connector without saving again', async () => {
+    const onConnect = vi.fn();
+    render(<ConnectorDraftCard connector={connector} onConnect={onConnect} />);
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save connector' }));
+    expect(await screen.findByText('Saved. Connect it to add your credentials.')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(onConnect).toHaveBeenCalledWith({ id: 'acme_crm', label: connector.label });
+    expect(api.saveConnectorDraft).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the server refusal and lets the member try again', async () => {
     api.saveConnectorDraft.mockRejectedValue(new Error('label looks like it holds a credential value.'));
     render(<ConnectorDraftCard connector={connector} />);

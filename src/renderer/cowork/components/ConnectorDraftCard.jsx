@@ -3,8 +3,8 @@
 // Rendered for a template a cloud turn built (a `response.connector_drafted`
 // step, badge 'Connector'). The template is model-written, so every field shows
 // as plain text: no Markdown, and the help link is not a link. Nothing is kept
-// until the member presses Save, which stores it as their own connector; they
-// then add credentials in Connect Apps and Data, never in the chat.
+// until the member presses Save, which stores it as their own connector. Once
+// saved, Connect opens its connect form, which never sends to the chat.
 
 import { useEffect, useState } from 'react';
 
@@ -15,6 +15,7 @@ import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { fetchConnectorDraftSaved, saveConnectorDraft } from '../api';
 
 const SAVED_TEXT = 'Saved. Add your credentials in Connect Apps and Data.';
+const SAVED_CONNECT_TEXT = 'Saved. Connect it to add your credentials.';
 const KEPT_TEXT = 'You already keep a connector with this id. Saving again replaces it.';
 
 function text(value) {
@@ -68,7 +69,7 @@ function ConnectorDraftModal({ connector, open, onClose }) {
   );
 }
 
-export default function ConnectorDraftCard({ connector }) {
+export default function ConnectorDraftCard({ connector, onConnect }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -95,7 +96,7 @@ export default function ConnectorDraftCard({ connector }) {
     try {
       await saveConnectorDraft(connector);
       setSaved(true);
-      setStatus({ kind: 'ok', text: SAVED_TEXT });
+      setStatus({ kind: 'ok', text: onConnect ? SAVED_CONNECT_TEXT : SAVED_TEXT });
     } catch (err) {
       setStatus({ kind: 'error', text: err?.message || 'Could not save the connector.' });
     } finally {
@@ -131,14 +132,27 @@ export default function ConnectorDraftCard({ connector }) {
             </div>
           </div>
 
-          <Button
-            size="sm"
-            variant={saved ? 'subtle' : 'primary'}
-            disabled={saving || saved || !id}
-            onClick={handleSave}
-          >
-            {saved ? 'Saved' : saving ? 'Saving…' : kept ? 'Save again' : 'Save connector'}
-          </Button>
+          {saved && onConnect ? (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={(e) => {
+                e?.stopPropagation?.();
+                onConnect({ id, label: text(connector.label) || id });
+              }}
+            >
+              Connect
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant={saved ? 'subtle' : 'primary'}
+              disabled={saving || saved || !id}
+              onClick={handleSave}
+            >
+              {saved ? 'Saved' : saving ? 'Saving…' : kept ? 'Save again' : 'Save connector'}
+            </Button>
+          )}
         </div>
       </Card>
 
