@@ -33,6 +33,7 @@ import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { analyticsEnv, antonDotenvNames, usageEventsOn } from './analytics-env';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
+import { APP_SECRET_STDIN_ENV, appSecretStdinLine, clearAppSecret, newAppSecret, setAppSecretProtocol } from './app-secret';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
 import {
@@ -556,6 +557,8 @@ type HealthProbe = {
   state: 'unreachable' | 'compatible' | 'incompatible';
   owner: string | null;
   clearsPendingCredentials: boolean;
+  /** `app_secret_protocol` as /health sent it; 1 means the server holds a secret. */
+  appSecretProtocol?: unknown;
 };
 
 function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> {
@@ -570,14 +573,16 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> 
           let owner: string | null = null;
           let supportsCoding = false;
           let clearsPendingCredentials = false;
+          let appSecretProtocol: unknown;
           try {
-            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown } | null;
+            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown; app_secret_protocol?: unknown } | null;
             owner = payload?.owner ?? null;
             supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
             clearsPendingCredentials = Array.isArray(payload?.capabilities)
               && payload.capabilities.includes(PENDING_CLEAR_CAPABILITY);
+            appSecretProtocol = payload?.app_secret_protocol;
           } catch { /* non-JSON */ }
-          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials });
+          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol });
         });
       },
     );
@@ -748,7 +753,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   // common cause is an orphan python from a prior session that didn't get
   // reaped on quit; re-verify via /health that the owner token is ours before
   // adopting (a foreign server was already routed around in resolveServerPort).
-  let refusedAdoption = false;
+  let refusedAdoption: 'credential-clear' | 'app-secret' | null = null;
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
     const ours = probe.state === 'compatible'
@@ -757,9 +762,15 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // A process that is already running never re-runs its startup, so it would
     // keep serving keys a sign-out marked for clearing. Replace it instead.
     if (ours && hasPendingCredentialClear(currentOrgStoreRoot())) {
-      refusedAdoption = true;
+      refusedAdoption = 'credential-clear';
       diagnostic("main.server-process", "INFO", "server_not_adopting_the_running_instance_its_store_has_a_pending_credential_clear", '[server] not adopting the running instance: its store has a pending credential clear');
+    } else if (ours && probe.appSecretProtocol === 1) {
+      // It holds a secret an earlier app process generated, which this one
+      // cannot know, so every protected call would be refused. Replace it.
+      refusedAdoption = 'app-secret';
+      diagnostic("main.server-process", "INFO", "server_not_adopting_the_running_instance_it_holds_another_process_app_secret", '[server] not adopting the running instance: it holds an app secret from an earlier app process');
     } else if (ours) {
+      clearAppSecret();
       serverStarted = true;
       _adoptedExternal = true;
       // Adoption only happens on an owner-token match, and the token is bound to
@@ -791,8 +802,10 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   if (refusedAdoption) {
     const holders = await findPortHolders(serverPort);
     if (holders.length > 0) {
-      lastStartError = `The previous Cowork server on port ${serverPort} could not be stopped, so its saved keys could not be cleared.`;
-      lastStartErrorKind = 'credential-clear';
+      lastStartError = refusedAdoption === 'credential-clear'
+        ? `The previous Cowork server on port ${serverPort} could not be stopped, so its saved keys could not be cleared.`
+        : `The previous Cowork server on port ${serverPort} could not be stopped.`;
+      lastStartErrorKind = refusedAdoption === 'credential-clear' ? 'credential-clear' : null;
       lastPortHolderPid = holders[0];
       diagnostic("main.server-process", "ERROR", "server_pid", `[server] ${lastStartError} (pid ${holders.join(', ')})`);
       return { ok: false, reason: lastStartError, port: serverPort };
@@ -936,6 +949,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // COWORK_HOME is set at all.
       ...accountEnv,
       ...orgEnv,
+      // The app secret itself goes over stdin below: cell code inherits this
+      // environment, so only the flag may appear here.
+      [APP_SECRET_STDIN_ENV]: '1',
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it. Bound to the account
@@ -966,12 +982,19 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // the grandchild python survives, holding the port.
     openLogStream();
 
+    const appSecret = newAppSecret();
     const child = spawn(spawnCmd, spawnArgs, {
       cwd: spawnCwd,
       env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
     });
+    // One line, then EOF, so processes the server starts inherit a closed stdin
+    // rather than a pipe that could still carry the secret.
+    child.stdin?.on('error', (err) => {
+      diagnostic("main.server-process", "WARNING", "server_app_secret_stdin_write_failed", err);
+    });
+    child.stdin?.end(appSecretStdinLine(appSecret));
 
     child.stdout.on('data', (d) => {
       const text = d.toString();
@@ -1046,10 +1069,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const waitStartedAt = Date.now();
     let step = decideStartWait({ healthy: false, spawnError, exited: childExited, elapsedMs: 0, capMs: startCapMs });
     let clearsPendingCredentials = false;
+    let appSecretProtocol: unknown;
     while (step.action === 'poll') {
       await sleep(HEALTH_POLL_INTERVAL_MS);
       const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS);
       clearsPendingCredentials = probe.clearsPendingCredentials;
+      appSecretProtocol = probe.appSecretProtocol;
       /* Only an answer naming the owner this child was stamped with can make
          the start ready. Anything else on the port (no owner, or another one)
          may be some other process that took it while the child was still
@@ -1124,6 +1149,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     _runningAccountDataRoot = accountDataRootAtSpawn;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
     noteServerClearsPendingCredentials(clearsPendingCredentials);
+    setAppSecretProtocol(appSecretProtocol);
     // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
     // has certainly written its dotenv by the time it answers /health. Drop the
     // cache HERE, where "a server is now running" is the fact, rather than only
@@ -1207,6 +1233,7 @@ async function stopServerUnlocked(): Promise<void> {
   // Allow the next start to re-resolve the port (re-derive the per-user port
   // and re-check whether anything is running there). ENG-439.
   _portResolved = false;
+  clearAppSecret();
   const proc = serverProcess;
   if (!proc) {
     if (_adoptedExternal) await prepareCodingTasksForShutdown();

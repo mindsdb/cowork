@@ -69,6 +69,17 @@ describe('keychain-service — per-channel service namespacing', () => {
     await svc.deleteRefreshToken('slack', 'x@y.com');
     expect(keytar.deletePassword).toHaveBeenCalledWith('cowork-oauth-preview', 'slack:x@y.com');
   });
+
+  it('keeps MCP access modes in a service of their own, keyed by connection name', async () => {
+    const prod = await loadForKind('prod');
+    await prod.setMcpAccessMode('hubspot', 'acme', 'write');
+    expect(keytar.setPassword).toHaveBeenCalledWith('cowork-mcp-access-mode', 'hubspot:acme', 'write');
+
+    const preview = await loadForKind('preview');
+    await preview.deleteMcpAccessMode('hubspot', 'acme');
+    expect(keytar.deletePassword).toHaveBeenCalledWith('cowork-mcp-access-mode-preview', 'hubspot:acme');
+    expect(fallback.deleteFallbackPassword).toHaveBeenCalledWith('cowork-mcp-access-mode-preview', 'hubspot:acme');
+  });
 });
 
 // keytar throws (rather than returning null) when the OS secure-store

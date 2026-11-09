@@ -83,6 +83,23 @@ export async function deleteRefreshToken(engine: string, accountEmail: string): 
   await deletePassword(SERVICE_NAME, accountKey(engine, accountEmail));
 }
 
+// An MCP connection's read/write/none tool access, held here so cell code
+// cannot raise it by editing the vault file. A service of its own, keyed by
+// the connection name, which is what the server and the UI address it by.
+const ACCESS_MODE_SERVICE = buildKind() === 'prod' ? 'cowork-mcp-access-mode' : `cowork-mcp-access-mode-${buildKind()}`;
+
+export async function getMcpAccessMode(engine: string, name: string): Promise<string | null> {
+  return getPassword(ACCESS_MODE_SERVICE, `${engine}:${name}`);
+}
+
+export async function setMcpAccessMode(engine: string, name: string, mode: string): Promise<void> {
+  await setPassword(ACCESS_MODE_SERVICE, `${engine}:${name}`, mode);
+}
+
+export async function deleteMcpAccessMode(engine: string, name: string): Promise<void> {
+  await deletePassword(ACCESS_MODE_SERVICE, `${engine}:${name}`);
+}
+
 // ENG-1241: the 15 static OAuth client id/secret values that used to ship in
 // a world-readable server-credentials.json inside the app bundle now live
 // here too, alongside per-connector refresh tokens — same service, disjoint

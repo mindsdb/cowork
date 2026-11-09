@@ -2284,11 +2284,18 @@ export async function fetchSavedConnection(engine, name) {
 }
 
 // Changes an MCP-based connection's read/write/none tool-access mode after
-// it's already connected (ENG-487 — HubSpot's connector is the first with
-// an editable-after-connect setting). No PKCE, no reconnect — a purely
-// local write on cowork-server's side (or a proxy to auth in org mode),
-// works identically from Electron and the web SPA.
+// it's already connected. No PKCE, no reconnect. On the desktop
+// it goes through the main process, which holds the mode in the keychain and
+// the secret the local server requires; org mode (and the web SPA) calls the
+// route directly.
 export async function patchConnectionAccessMode(engine, name, accessMode) {
+  if (host.isElectron && !getOrgMode()) {
+    const result = await host.setConnectionAccessMode(engine, name, accessMode);
+    if (result) {
+      if (!result.ok) throw new Error(result.reason || 'Could not change tool access.');
+      return result;
+    }
+  }
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/access-mode`, {
     method: 'PATCH',
     body: JSON.stringify({ access_mode: accessMode }),

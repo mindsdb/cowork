@@ -74,6 +74,9 @@ export const IPC = {
   // Disconnect a builtin OAuth connection: stops the refresh loop,
   // deletes the keychain entry, and removes the vault record.
   KEYCHAIN_REVOKE: 'keychain:revoke',
+  // Changes an MCP connection's tool access on the desktop: main writes the
+  // keychain and calls the server with the app secret.
+  CONNECTIONS_SET_ACCESS_MODE: 'connections:set-access-mode',
   // Fired by the background token-refresh loop when consecutive failures hit
   // threshold (transient) or a 401 makes the refresh token permanently invalid.
   OAUTH_REFRESH_ERROR: 'oauth:refresh-error',

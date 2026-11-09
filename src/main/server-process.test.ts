@@ -100,6 +100,7 @@ import {
 } from './server-process';
 import { NON_PROD_POSTHOG_KEY } from './analytics-env';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
+import { APP_SECRET_HEADER, appSecretHeader, isAppSecretProtected } from './app-secret';
 
 const PORT = 27903;
 /** What the OS hands back when resolveServerPort asks for a free port. Outside
@@ -115,15 +116,27 @@ const spawnedOwner = (): string | null =>
 
 /** A stand-in for the spawned sidecar. Nothing is emitted until a test says
  *  so, so each test drives its own failure mode. */
-function makeChild(): EventEmitter & { pid: number; stdout: EventEmitter; stderr: EventEmitter; exitCode: number | null; killed: boolean; kill: (s?: unknown) => boolean } {
+function makeChild(): EventEmitter & { pid: number; stdin: FakeStdin; stdout: EventEmitter; stderr: EventEmitter; exitCode: number | null; killed: boolean; kill: (s?: unknown) => boolean } {
   const child = new EventEmitter() as ReturnType<typeof makeChild>;
   child.pid = 4242;
+  child.stdin = makeStdin();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.exitCode = null;
   child.killed = false;
   child.kill = () => { child.killed = true; return true; };
   return child;
+}
+
+/** The child's stdin: what was written, and whether it was closed. */
+type FakeStdin = EventEmitter & { written: string; ended: boolean; write: (chunk: string) => boolean; end: (chunk?: string) => void };
+function makeStdin(): FakeStdin {
+  const stdin = new EventEmitter() as FakeStdin;
+  stdin.written = '';
+  stdin.ended = false;
+  stdin.write = (chunk) => { stdin.written += chunk; return true; };
+  stdin.end = (chunk) => { if (chunk) stdin.written += chunk; stdin.ended = true; };
+  return stdin;
 }
 
 /** A stand-in for the on-disk log WriteStream. An EventEmitter so the code
@@ -144,6 +157,8 @@ let healthOwner: string | typeof NO_OWNER_FIELD | null = null;
 /** Capabilities advertised by /health. Code Mode must not adopt a sidecar
  *  merely because it is healthy when the coding routes are absent. */
 let healthCapabilities: string[] = ['coding'];
+/** Extra /health fields, e.g. `app_secret_protocol`. */
+let healthExtra: Record<string, unknown> = {};
 
 /** Records every execFile call and lets a test decide what each one returns. */
 let execCalls: Array<{ cmd: string; args: string[] }> = [];
@@ -215,6 +230,7 @@ beforeEach(() => {
   // starts. A test opts into a healthy backend by flipping `healthOwner`.
   healthOwner = null;
   healthCapabilities = ['coding'];
+  healthExtra = {};
   vi.mocked(http.get).mockImplementation(((_opts: unknown, cb: unknown) => {
     const owner = healthOwner;
     if (owner !== null && typeof cb === 'function') {
@@ -224,8 +240,8 @@ beforeEach(() => {
       setTimeout(() => {
         (cb as (r: unknown) => void)(res);
         res.emit('data', JSON.stringify(owner === NO_OWNER_FIELD
-          ? { capabilities: healthCapabilities }
-          : { owner, capabilities: healthCapabilities }));
+          ? { capabilities: healthCapabilities, ...healthExtra }
+          : { owner, capabilities: healthCapabilities, ...healthExtra }));
         res.emit('end');
       }, 0);
     }
@@ -1533,5 +1549,101 @@ describe('a store with a pending credential clear', () => {
 
     await stopServer();
     expect(activeStoreRoot()).toBeNull();
+  });
+});
+
+describe('app secret handoff', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** Spawns a sidecar whose /health answers with `extra` once it is up. The
+   *  launcher hands off and exits, so stopServer reaps by port. */
+  function spawnAnswering(extra: Record<string, unknown>): ReturnType<typeof makeChild> {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthExtra = extra; healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+    return child;
+  }
+
+  it('writes one JSON line with the secret to stdin, closes it, and keeps the secret out of the env', async () => {
+    const child = spawnAnswering({ app_secret_protocol: 1 });
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    const opts = vi.mocked(cp.spawn).mock.calls[0][2] as cp.SpawnOptions;
+    expect(opts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
+    expect(child.stdin.ended).toBe(true);
+    const lines = child.stdin.written.split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe('');
+    const secret = JSON.parse(lines[0]).app_secret as string;
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(opts.env?.COWORK_APP_SECRET_STDIN).toBe('1');
+    expect(Object.values(opts.env ?? {}).some((v) => String(v).includes(secret))).toBe(false);
+    expect(appSecretHeader()).toEqual({ [APP_SECRET_HEADER]: secret });
+  });
+
+  it('generates a new secret for every spawn', async () => {
+    const first = spawnAnswering({ app_secret_protocol: 1 });
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    await stopServer();
+    healthOwner = null;
+    const second = spawnAnswering({ app_secret_protocol: 1 });
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(first.stdin.written).not.toBe(second.stdin.written);
+    expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(second.stdin.written).app_secret);
+  });
+
+  it.each([
+    ['absent', {}],
+    ['a string', { app_secret_protocol: '1' }],
+    ['another version', { app_secret_protocol: 2 }],
+  ])('stays in legacy mode when app_secret_protocol is %s', async (_label, extra) => {
+    spawnAnswering(extra);
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(isAppSecretProtected()).toBe(false);
+    expect(appSecretHeader()).toEqual({});
+  });
+
+  it('drops protected mode when the server stops', async () => {
+    spawnAnswering({ app_secret_protocol: 1 });
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    expect(isAppSecretProtected()).toBe(true);
+
+    await stopServer();
+
+    expect(appSecretHeader()).toEqual({});
+  });
+
+  it('replaces a running server of its own that holds a secret from an earlier process', async () => {
+    spawnAnswering({ app_secret_protocol: 1 });
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    await stopServer();
+    // The orphan still answers /health as ours, with a secret this run cannot know.
+    healthExtra = { app_secret_protocol: 1 };
+    await resolveServerPort();
+    const fresh = spawnAnswering({ app_secret_protocol: 1 });
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(cp.spawn).toHaveBeenCalledTimes(2);
+    expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(fresh.stdin.written).app_secret);
+  });
+
+  it('still adopts a running server of its own that predates the protocol, in legacy mode', async () => {
+    spawnAnswering({});
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    await stopServer();
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(cp.spawn).toHaveBeenCalledTimes(1);
+    expect(isAppSecretProtected()).toBe(false);
   });
 });

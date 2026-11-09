@@ -12,7 +12,8 @@ vi.mock('./keychain-service', () => ({
 }));
 
 import { getRefreshToken, setRefreshToken } from './keychain-service';
-import { parseAppIdFromClientId, startRefreshLoop, stopAllRefreshLoops } from './token-refresh';
+import { parseAppIdFromClientId, refreshAccessTokenNow, startRefreshLoop, stopAllRefreshLoops } from './token-refresh';
+import { APP_SECRET_HEADER, clearAppSecret, newAppSecret, setAppSecretProtocol } from './app-secret';
 
 describe('parseAppIdFromClientId', () => {
   it('extracts the leading project number from a standard client id', () => {
@@ -232,5 +233,85 @@ describe('tick — refresh outcomes', () => {
 
     await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
     expect(tokenCalls).toHaveLength(1);
+  });
+});
+
+describe('app-held secrets on the refresh path', () => {
+  afterEach(() => {
+    stopAllRefreshLoops();
+    clearAppSecret();
+    vi.restoreAllMocks();
+  });
+
+  const TOKEN_URL = 'https://token.example.com/token';
+
+  /** A token endpoint that rotates the refresh token on every call, and a
+   *  keychain that keeps whatever was last written, like the real ones. */
+  function rotatingProvider() {
+    let stored = 'rt-1';
+    let issued = 1;
+    vi.mocked(getRefreshToken).mockImplementation(async () => stored);
+    vi.mocked(setRefreshToken).mockImplementation(async (_e, _a, token) => { stored = token; });
+    const usedRefreshTokens: string[] = [];
+    const patches: Array<{ headers: Record<string, string>; body: Record<string, string> }> = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = typeof url === 'string' ? url : url.toString();
+      if (href.includes('/credentials')) {
+        return new Response(JSON.stringify({ client_id: 'cid', client_secret: '' }), { status: 200 });
+      }
+      if (href.endsWith('/token') && init?.method === 'PATCH') {
+        patches.push({ headers: init.headers as Record<string, string>, body: JSON.parse(init.body as string) });
+        return new Response('{}', { status: 200 });
+      }
+      if (href === TOKEN_URL) {
+        usedRefreshTokens.push(new URLSearchParams(init?.body as string).get('refresh_token') ?? '');
+        // Slow enough that an unserialized second refresh would read the old token.
+        await new Promise((r) => setTimeout(r, 20));
+        issued++;
+        return new Response(JSON.stringify({ access_token: `at-${issued}`, expires_in: 3600, refresh_token: `rt-${issued}` }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${href}`);
+    }) as unknown as typeof fetch;
+    return { usedRefreshTokens, patches };
+  }
+
+  it('sends the app secret on PATCH /token in protected mode', async () => {
+    const secret = newAppSecret();
+    setAppSecretProtocol(1);
+    const { patches } = rotatingProvider();
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0].headers[APP_SECRET_HEADER]).toBe(secret);
+    expect(patches[0].body.access_token).toBe('at-2');
+  });
+
+  it('sends no app secret in legacy mode', async () => {
+    newAppSecret();
+    setAppSecretProtocol(undefined);
+    const { patches } = rotatingProvider();
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toHaveLength(1));
+    expect(Object.keys(patches[0].headers)).not.toContain(APP_SECRET_HEADER);
+  });
+
+  it('runs a forced refresh after an in-flight tick, never reusing a rotated refresh token', async () => {
+    const { usedRefreshTokens, patches } = rotatingProvider();
+
+    // Already inside the refresh window, so the loop's first tick refreshes too.
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+    const forced = await refreshAccessTokenNow('notion', 'user@example.com:ws-1');
+
+    expect(usedRefreshTokens).toEqual(['rt-1', 'rt-2']);
+    expect(forced).toEqual({ access_token: 'at-3', expires_at: expect.any(String) });
+    expect(patches.map((p) => p.body.access_token)).toEqual(['at-2', 'at-3']);
+  });
+
+  it('returns null for a forced refresh with no loop running', async () => {
+    rotatingProvider();
+    expect(await refreshAccessTokenNow('notion', 'nobody@example.com')).toBeNull();
   });
 });
