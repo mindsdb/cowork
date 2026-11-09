@@ -123,4 +123,17 @@ describe('shell CSP', () => {
     expect(ourDomains(directive(desktopPage, 'frame-src'))).toEqual([]);
     expect(ourDomains(directive(desktopPage, 'child-src'))).toEqual([]);
   });
+
+  /*
+   * A scheme source such as https: would let any frame in the desktop app,
+   * the preview's editor frame included, load any site.
+   */
+  it.each(['frame-src', 'child-src'])('lets the desktop shell frame only its loopback server in %s', (name) => {
+    expect(schemeSources(directive(desktopPage, name))).toEqual([]);
+    expect(directive(desktopPage, name)).toEqual(['http://127.0.0.1:*', 'http://localhost:*']);
+  });
+
+  it('gives frame-src and child-src the same sources in the desktop shell', () => {
+    expect(directive(desktopPage, 'child-src')).toEqual(directive(desktopPage, 'frame-src'));
+  });
 });

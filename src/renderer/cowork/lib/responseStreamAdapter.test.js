@@ -1096,23 +1096,31 @@ describe('ToolProgress rows (ENG-2981)', () => {
 });
 
 describe('response.browser_session_opened', () => {
-  const VIEW = 'https://br-ab12cd34.4nton.ai/sessions/main/view?et=tok';
-
-  it('adds one Browser step the chat can open, and replays the same', () => {
+  it('adds one Browser step per session, naming the session alone', () => {
     const events = [
       { type: 'response.created', response: { id: 'r' } },
-      { type: 'response.browser_session_opened', session_id: 'main', view_url: VIEW, expires_at: 99, at_ms: 5 },
-      { type: 'response.browser_session_opened', session_id: 'main', view_url: `${VIEW}2`, expires_at: 100, at_ms: 6 },
+      { type: 'response.browser_session_opened', session_id: 't-abc', at_ms: 5 },
+      { type: 'response.browser_session_opened', session_id: 't-abc', at_ms: 6 },
     ];
     const state = reduceAll(events);
     const browser = state.steps.filter((s) => s.badge === 'Browser');
     expect(browser).toHaveLength(1);
-    expect(browser[0].data).toEqual({ sessionId: 'main', viewUrl: `${VIEW}2`, expiresAt: 100 });
+    expect(browser[0].data).toEqual({ sessionId: 't-abc' });
   });
 
-  it('ignores a viewer URL it must not frame', () => {
-    const state = reduceAll([{ type: 'response.browser_session_opened', session_id: 'main', view_url: 'https://evil.com/x' }]);
-    expect(state.steps).toEqual([]);
+  it('keeps no viewer link a stored event still carries', () => {
+    const state = reduceAll([{
+      type: 'response.browser_session_opened',
+      session_id: 't-abc',
+      view_url: 'https://evil.example/browser/sessions/t-abc/view?et=tok',
+      expires_at: 99,
+    }]);
+    expect(state.steps.map((s) => s.data)).toEqual([{ sessionId: 't-abc' }]);
+  });
+
+  it('ignores an event with no usable session id', () => {
+    expect(reduceAll([{ type: 'response.browser_session_opened' }]).steps).toEqual([]);
+    expect(reduceAll([{ type: 'response.browser_session_opened', session_id: '../x' }]).steps).toEqual([]);
   });
 });
 

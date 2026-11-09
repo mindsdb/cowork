@@ -1,193 +1,472 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import loginsAnswer from '../../__fixtures__/browser-router/logins_answer.json';
 
-vi.mock('../../api', () => ({
-  fetchBrowseLocations: vi.fn(),
-  fetchBrowseStatus: vi.fn(),
-  provisionBrowser: vi.fn(),
-  updateSettings: vi.fn(),
+const shell = vi.hoisted(() => ({ isWeb: true, inApp: false, clearData: null, usageEvents: true, setUsageEvents: null }));
+/* Main's word that the local server took the in-app browser's registration. */
+const registered = vi.hoisted(() => new Set());
+vi.mock('../../../platform/host', () => ({
+  host: {
+    get isWeb() { return shell.isWeb; },
+    get supportsInAppBrowser() { return shell.inApp; },
+    inAppBrowser: { clearData: (...args) => shell.clearData(...args) },
+    // As the real host answers: null on the web.
+    getUsageEventsPref: async () => (shell.isWeb ? null : shell.usageEvents),
+    setUsageEventsPref: (...args) => shell.setUsageEvents(...args),
+  },
+  onInAppBrowserRegistered: (cb) => {
+    registered.add(cb);
+    return () => registered.delete(cb);
+  },
 }));
 
-import { fetchBrowseLocations, fetchBrowseStatus, provisionBrowser, updateSettings } from '../../api';
-import BrowserSettingsSection, { browserStatusLine, cityHelp, serverUrlProblem } from './BrowserSettingsSection';
+vi.mock('../../api', () => ({
+  fetchBrowseStatus: vi.fn(),
+  provisionBrowser: vi.fn(),
+  signOutOfBrowserSites: vi.fn(),
+}));
 
-describe('browserStatusLine', () => {
-  it('says what state the browser is in', () => {
-    expect(browserStatusLine(null, '')).toBe('Checking your browser…');
-    expect(browserStatusLine({ provisioned: false }, '')).toBe("It starts the first time it's used.");
-    expect(browserStatusLine({ provisioned: true, status: 'running' }, '')).toBe('Ready.');
-    expect(browserStatusLine({ provisioned: true, status: 'booting' }, '')).toMatch(/Starting up/);
-    expect(browserStatusLine({ provisioned: true, status: 'stopped' }, '')).toMatch(/Asleep/);
-    expect(browserStatusLine(null, 'MindsHub refused this request.')).toBe("Couldn't check your browser: MindsHub refused this request.");
-  });
+import { fetchBrowseStatus, provisionBrowser, signOutOfBrowserSites } from '../../api';
+import { READ_TIMEOUT_MS } from '../../lib/browseStatus';
+import BrowserSettingsSection, {
+  DESKTOP_SIGN_INS,
+  NOT_ENTITLED,
+  ORGANIZATION_OFF,
+  SIGN_OUT_HELP,
+  SIGN_OUT_UNCONFIRMED,
+  STATUS_UNCONFIRMED,
+  WEB_JEV_LINE,
+  WEB_SIGN_INS,
+  WEB_SIGN_OUT_HELP,
+  desktopDisclosure,
+  pageContentLine,
+  usageEventsHelp,
+  webDisclosure,
+} from './BrowserSettingsSection';
 
-  it('describes your own server', () => {
-    expect(browserStatusLine({ mode: 'standalone', status: 'not_configured' }, '')).toMatch(/address and API key/);
-    expect(browserStatusLine({ mode: 'standalone', status: 'running' }, '')).toBe('Connected.');
-    expect(browserStatusLine({ mode: 'standalone', status: 'unreachable', endpoint: 'https://b.acme.dev' }, '')).toMatch(/Can't reach the server at https:\/\/b\.acme\.dev/);
-  });
-});
+const AVAILABLE = { enabled: true, available: true, status: 'running' };
 
-describe('serverUrlProblem', () => {
-  it('takes https anywhere and http only on this machine', () => {
-    expect(serverUrlProblem('https://browser.acme.dev')).toBe('');
-    expect(serverUrlProblem('https://browser.acme.dev/')).toBe('');
-    expect(serverUrlProblem('http://localhost:8080')).toBe('');
-    expect(serverUrlProblem('http://127.0.0.1:8080')).toBe('');
-    expect(serverUrlProblem('')).toMatch(/Enter/);
-    expect(serverUrlProblem('http://10.0.0.5:8080')).toMatch(/https/);
-    expect(serverUrlProblem('https://browser.acme.dev/api')).toMatch(/no path/);
-    expect(serverUrlProblem('not a url')).toMatch(/web address/);
+function renderSection(settings = {}, setSetting = vi.fn(), props = {}) {
+  return render(<BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel="Cowork" {...props} />);
+}
+
+/* A read whose connection stalls: no answer and no error until the limit it
+   was given passes, when it rejects as api.js's abort does. */
+function stalls({ timeoutMs }) {
+  return new Promise((_resolve, reject) => {
+    setTimeout(() => reject(new DOMException('The operation was aborted.', 'AbortError')), timeoutMs);
   });
-});
+}
+
+// Lets the status answer (and anything it starts) land before asserting absence.
+async function settled() {
+  await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalled());
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+}
 
 describe('BrowserSettingsSection', () => {
   beforeEach(() => {
-    fetchBrowseLocations.mockReset();
-    fetchBrowseLocations.mockResolvedValue({ proxy_available: false, prefs: null, cities: [], effective_city: '' });
+    shell.isWeb = true;
+    shell.inApp = false;
+    shell.clearData = vi.fn(async () => ({ ok: true }));
+    shell.usageEvents = true;
+    shell.setUsageEvents = vi.fn(async () => true);
+    registered.clear();
     fetchBrowseStatus.mockReset();
     provisionBrowser.mockReset();
-    updateSettings.mockReset();
+    signOutOfBrowserSites.mockReset();
+    signOutOfBrowserSites.mockResolvedValue(loginsAnswer.examples['signed out of every site'].body);
   });
 
-  it('is a switch, with no setup button: turning it on starts a browser that does not exist yet', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: false, status: 'none' });
-    provisionBrowser.mockResolvedValue({ provisioned: true, status: 'provisioning' });
-    const setSetting = vi.fn();
-    render(<BrowserSettingsSection settings={{ browserEnabled: false }} setSetting={setSetting} />);
+  it('renders nothing when the server says the browser is not offered', async () => {
+    fetchBrowseStatus.mockResolvedValue({ enabled: true, available: false, status: 'unavailable' });
+    const { container } = renderSection();
+    await settled();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  describe('on a server with no status route (a 404), which predates the browser', () => {
+    const noRoute = () => Object.assign(new Error('API /browse/status returned 404'), { status: 404 });
+
+    it('renders nothing on the web', async () => {
+      fetchBrowseStatus.mockRejectedValue(noRoute());
+      const { container } = renderSection();
+      await settled();
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('offers no browser on a desktop that hosts the in-app browser', async () => {
+      shell.isWeb = false;
+      shell.inApp = true;
+      fetchBrowseStatus.mockRejectedValue(noRoute());
+      renderSection();
+      // The usage-events group shows whatever the browser's status.
+      await screen.findByRole('switch', { name: 'Send anonymous usage events' });
+      await settled();
+      expect(screen.queryByRole('heading', { level: 2, name: 'Shared browser' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+      expect(screen.queryByText(STATUS_UNCONFIRMED)).not.toBeInTheDocument();
+      expect(screen.queryByText(ORGANIZATION_OFF)).not.toBeInTheDocument();
+      expect(screen.queryByText(NOT_ENTITLED)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('when the status call fails', () => {
+    // cowork-server's own read of MindsHub, or the router behind it, did not answer.
+    const unreachable = () => Object.assign(new Error('MindsHub did not answer'), { status: 503, code: 'mindshub_unreachable' });
+
+    it('says the browser could not be confirmed, and keeps the switch and sign-out', async () => {
+      fetchBrowseStatus.mockRejectedValue(unreachable());
+      const setSetting = vi.fn();
+      renderSection({ browserEnabled: true }, setSetting);
+      expect(await screen.findByText(STATUS_UNCONFIRMED)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('switch', { name: 'Shared browser' }));
+      expect(setSetting).toHaveBeenCalledWith('browserEnabled', false);
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+      expect(signOutOfBrowserSites).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText('Signed out of all sites.')).toBeInTheDocument();
+      // No disclosure is shown for an answer that never came.
+      expect(screen.queryByText(webDisclosure('Cowork'))).not.toBeInTheDocument();
+    });
+
+    it('says so once a read with no answer passes the time limit, and not before', async () => {
+      vi.useFakeTimers();
+      try {
+        fetchBrowseStatus.mockImplementation(stalls);
+        renderSection();
+        await act(async () => { await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1); });
+        expect(fetchBrowseStatus).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText(STATUS_UNCONFIRMED)).not.toBeInTheDocument();
+        await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+        expect(screen.getByText(STATUS_UNCONFIRMED)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps one read out through focus and a visible tab, so the time limit still passes', async () => {
+      vi.useFakeTimers();
+      try {
+        fetchBrowseStatus.mockImplementation(stalls);
+        renderSection();
+        await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+        act(() => {
+          window.dispatchEvent(new Event('focus'));
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        expect(fetchBrowseStatus).toHaveBeenCalledTimes(1);
+        await act(async () => { await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 15_000); });
+        expect(screen.getByText(STATUS_UNCONFIRMED)).toBeInTheDocument();
+        // Once that read has failed, focus asks again.
+        act(() => { window.dispatchEvent(new Event('focus')); });
+        expect(fetchBrowseStatus).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('asks again on Retry, and shows the answer', async () => {
+      fetchBrowseStatus.mockRejectedValueOnce(unreachable()).mockResolvedValue(AVAILABLE);
+      renderSection();
+      await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+      expect(await screen.findByText(webDisclosure('Cowork'))).toBeInTheDocument();
+      expect(fetchBrowseStatus).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText(STATUS_UNCONFIRMED)).not.toBeInTheDocument();
+    });
+
+    it('keeps the last answer when a later read fails', async () => {
+      fetchBrowseStatus.mockResolvedValueOnce(AVAILABLE).mockRejectedValue(unreachable());
+      renderSection();
+      expect(await screen.findByText(webDisclosure('Cowork'))).toBeInTheDocument();
+      act(() => { window.dispatchEvent(new Event('focus')); });
+      await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalledTimes(2));
+      await settled();
+      expect(screen.getByText(webDisclosure('Cowork'))).toBeInTheDocument();
+      expect(screen.queryByText(STATUS_UNCONFIRMED)).not.toBeInTheDocument();
+    });
+
+    it('keeps an answered unavailable when a later read fails', async () => {
+      fetchBrowseStatus.mockResolvedValueOnce({ enabled: true, available: false, status: 'unavailable' }).mockRejectedValue(unreachable());
+      const { container } = renderSection();
+      await settled();
+      act(() => { window.dispatchEvent(new Event('focus')); });
+      await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalledTimes(2));
+      await settled();
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('shows no group on a desktop shell that runs no browser', async () => {
+      shell.isWeb = false;
+      shell.inApp = false;
+      shell.usageEvents = null;
+      fetchBrowseStatus.mockRejectedValue(unreachable());
+      const { container } = renderSection();
+      await settled();
+      expect(container).toBeEmptyDOMElement();
+    });
+  });
+
+  describe('asks the server again', () => {
+    beforeEach(() => {
+      fetchBrowseStatus
+        .mockResolvedValueOnce({ enabled: true, available: false, status: 'unavailable' })
+        .mockResolvedValue(AVAILABLE);
+    });
+
+    it('when the window gets focus', async () => {
+      renderSection();
+      await settled();
+      expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+      act(() => { window.dispatchEvent(new Event('focus')); });
+      expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+    });
+
+    it('when the tab shows again, and not while it is hidden', async () => {
+      const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+      try {
+        renderSection();
+        await settled();
+        act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+        await settled();
+        expect(fetchBrowseStatus).toHaveBeenCalledTimes(1);
+        visibility.mockReturnValue('visible');
+        act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+        expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+        expect(fetchBrowseStatus).toHaveBeenCalledTimes(2);
+      } finally {
+        visibility.mockRestore();
+      }
+    });
+
+    it("when the desktop's browser registers, while the window keeps focus", async () => {
+      shell.isWeb = false;
+      shell.inApp = true;
+      const { unmount } = renderSection();
+      await settled();
+      expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+      expect(registered.size).toBe(1);
+      act(() => { registered.forEach((cb) => cb()); });
+      expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+      expect(fetchBrowseStatus).toHaveBeenCalledTimes(2);
+      unmount();
+      expect(registered.size).toBe(0);
+    });
+
+    it('and keeps only the newest answer', async () => {
+      shell.isWeb = false;
+      shell.inApp = true;
+      let answerFirst;
+      fetchBrowseStatus.mockReset();
+      fetchBrowseStatus
+        .mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve; }))
+        .mockResolvedValue(AVAILABLE);
+      renderSection();
+      await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalledTimes(1));
+      // The browser's registration asks again even with the first read still out.
+      act(() => { registered.forEach((cb) => cb()); });
+      expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+      await act(async () => { answerFirst({ enabled: true, available: false, status: 'unavailable' }); });
+      expect(screen.getByRole('switch', { name: 'Shared browser' })).toBeInTheDocument();
+    });
+  });
+
+  it('shows the switch in its own group once the server offers the browser', async () => {
+    fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    renderSection();
     const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
-    await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalled());
+    expect(toggle).toBeChecked();
+    expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['not_entitled', NOT_ENTITLED],
+    ['organization_off', ORGANIZATION_OFF],
+  ])('says plainly when access is off (%s), with no switch, and still offers sign-out', async (status, line) => {
+    fetchBrowseStatus.mockResolvedValue({ enabled: true, available: false, status });
+    renderSection();
+    expect(await screen.findByText(line)).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(signOutOfBrowserSites).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Signed out of all sites.')).toBeInTheDocument();
+  });
+
+  it('names the organization switch in the words the server pinned', () => {
+    expect(ORGANIZATION_OFF).toBe('Your organization turned off the browser.');
+    expect(NOT_ENTITLED).toBe('Not available for your account.');
+  });
+
+  it.each([true, false])('offers no other place for the browser to run, and no city or proxy (web: %s)', async (web) => {
+    shell.isWeb = web;
+    shell.inApp = !web;
+    fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    renderSection();
+    await screen.findByRole('switch', { name: 'Shared browser' });
+    await settled();
+    expect(screen.queryByText('Where the browser runs')).not.toBeInTheDocument();
+    expect(screen.queryByText('Your own server')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/server address|API key|city/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/proxy|residential|home connection/i)).not.toBeInTheDocument();
+  });
+
+  it('is a switch with no setup step: turning it on only saves the setting', async () => {
+    fetchBrowseStatus.mockResolvedValue({ enabled: false, available: true, status: 'none' });
+    const setSetting = vi.fn();
+    renderSection({ browserEnabled: false }, setSetting);
+    const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
     expect(screen.queryByRole('button', { name: 'Set up' })).not.toBeInTheDocument();
     fireEvent.click(toggle);
     expect(setSetting).toHaveBeenCalledWith('browserEnabled', true);
-    await waitFor(() => expect(provisionBrowser).toHaveBeenCalled());
-  });
-
-  it('turning on a browser that exists only saves the switch', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
-    const setSetting = vi.fn();
-    render(<BrowserSettingsSection settings={{ browserEnabled: false }} setSetting={setSetting} />);
-    await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalled());
-    fireEvent.click(await screen.findByRole('switch', { name: 'Shared browser' }));
-    expect(setSetting).toHaveBeenCalledWith('browserEnabled', true);
+    await settled();
     expect(provisionBrowser).not.toHaveBeenCalled();
   });
 
-  it('shows where it runs, and its status, only while it is on', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
-    const { rerender } = render(<BrowserSettingsSection settings={{}} setSetting={vi.fn()} />);
-    expect(await screen.findByText(/Ready\./)).toBeInTheDocument();
-    expect(screen.getByText('Where the browser runs')).toBeInTheDocument();
-    rerender(<BrowserSettingsSection settings={{ browserEnabled: false }} setSetting={vi.fn()} />);
-    expect(screen.queryByText('Where the browser runs')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Ready\./)).not.toBeInTheDocument();
-  });
+  describe('on the web', () => {
+    beforeEach(() => fetchBrowseStatus.mockResolvedValue(AVAILABLE));
 
-  it('the shared browser is on until someone turns it off', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
-    render(<BrowserSettingsSection settings={{}} setSetting={vi.fn()} />);
-    expect(await screen.findByRole('switch', { name: 'Shared browser' })).toBeChecked();
-  });
-
-  it('switching to your own server shows the address and key fields', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running', mode: 'mindshub' });
-    const setSetting = vi.fn();
-    const { rerender } = render(<BrowserSettingsSection settings={{}} setSetting={setSetting} />);
-    expect(screen.queryByLabelText('Browser server address')).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByText('Your own server'));
-    expect(setSetting).toHaveBeenCalledWith('browserMode', 'standalone');
-    rerender(<BrowserSettingsSection settings={{ browserMode: 'standalone' }} setSetting={setSetting} />);
-    expect(screen.getByLabelText('Browser server address')).toBeInTheDocument();
-    expect(screen.getByLabelText('Browser server API key')).toHaveAttribute('type', 'password');
-    expect(screen.getByText(/Add your server below/)).toBeInTheDocument();
-  });
-
-  it('saves and tests your own server', async () => {
-    fetchBrowseStatus
-      .mockResolvedValueOnce({ provisioned: false, status: 'not_configured', mode: 'standalone' })
-      .mockResolvedValueOnce({ provisioned: true, status: 'running', mode: 'standalone', endpoint: 'https://b.acme.dev' });
-    updateSettings.mockResolvedValue({});
-    const settings = { browserMode: 'standalone', browserServiceUrl: 'https://b.acme.dev/', browserServiceApiKey: 'secret' };
-    render(<BrowserSettingsSection settings={settings} setSetting={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Save and test' }));
-    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({
-      browserMode: 'standalone', browserServiceUrl: 'https://b.acme.dev', browserServiceApiKey: 'secret',
-    }));
-    expect(await screen.findByText(/Connected\./)).toBeInTheDocument();
-  });
-
-  it('refuses plain http to another machine before saving', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: false, status: 'not_configured', mode: 'standalone' });
-    const settings = { browserMode: 'standalone', browserServiceUrl: 'http://10.0.0.5:8080', browserServiceApiKey: 'k' };
-    render(<BrowserSettingsSection settings={settings} setSetting={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Save and test' }));
-    expect(await screen.findByText(/Use https:\/\/ for a server on another machine/)).toBeInTheDocument();
-    expect(updateSettings).not.toHaveBeenCalled();
-  });
-
-  it('shows a rejected API key in the server\'s words', async () => {
-    fetchBrowseStatus
-      .mockResolvedValueOnce({ provisioned: true, status: 'running', mode: 'standalone' })
-      .mockRejectedValueOnce(new Error('The browser service at b.acme.dev rejected the API key.'));
-    updateSettings.mockResolvedValue({});
-    const settings = { browserMode: 'standalone', browserServiceUrl: 'https://b.acme.dev', browserServiceApiKey: 'wrong' };
-    render(<BrowserSettingsSection settings={settings} setSetting={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Save and test' }));
-    expect(await screen.findByText(/rejected the API key/)).toBeInTheDocument();
-  });
-
-  it('hides the home connection settings when the deployment has no proxy', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
-    render(<BrowserSettingsSection settings={{}} setSetting={vi.fn()} />);
-    await screen.findByRole('switch', { name: 'Shared browser' });
-    await waitFor(() => expect(fetchBrowseLocations).toHaveBeenCalled());
-    expect(screen.queryByRole('switch', { name: 'Browse through a home internet connection' })).not.toBeInTheDocument();
-  });
-
-  it('hides them when the locations call fails', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running' });
-    fetchBrowseLocations.mockRejectedValue(new Error('nope'));
-    render(<BrowserSettingsSection settings={{}} setSetting={vi.fn()} />);
-    await screen.findByRole('switch', { name: 'Shared browser' });
-    await waitFor(() => expect(fetchBrowseLocations).toHaveBeenCalled());
-    expect(screen.queryByLabelText('Browser city')).not.toBeInTheDocument();
-  });
-
-  it('turns the home connection off, saves it and tells the browser', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running', mode: 'mindshub' });
-    fetchBrowseLocations.mockResolvedValue({
-      proxy_available: true, prefs: null, cities: [{ id: 'us-los_angeles', label: 'Los Angeles, US' }], effective_city: 'us-los_angeles',
+    it("says websites see MindsDB's addresses, that sign-ins are kept and reused, and what the model provider and Jev get", async () => {
+      renderSection();
+      expect(await screen.findByText(webDisclosure('Cowork'))).toBeInTheDocument();
+      expect(webDisclosure('Cowork')).toMatch(/websites see MindsDB's addresses/);
+      expect(webDisclosure('Cowork')).toMatch(/asks you before a step that submits, buys, sends or deletes/);
+      expect(screen.getByText(WEB_SIGN_INS)).toBeInTheDocument();
+      expect(WEB_SIGN_INS).toMatch(/every organization you belong to, until they go 90 days unused or you sign out of all sites in Settings\.$/);
+      // No deletion with the MindsHub account runs, so the line promises none.
+      expect(WEB_SIGN_INS).not.toMatch(/delet/i);
+      expect(screen.getByText(`${pageContentLine('Cowork')} ${WEB_JEV_LINE}`)).toBeInTheDocument();
+      expect(WEB_JEV_LINE).toMatch(/the goal of each browser step/);
+      expect(WEB_JEV_LINE).toMatch(/first 1,500 characters, and the recent steps, earlier addresses included/);
     });
-    provisionBrowser.mockResolvedValue({ provisioned: true, status: 'running', mode: 'mindshub' });
-    updateSettings.mockResolvedValue({});
-    const setSetting = vi.fn();
-    render(<BrowserSettingsSection settings={{}} setSetting={setSetting} />);
-    const toggle = await screen.findByRole('switch', { name: 'Browse through a home internet connection' });
-    expect(toggle).toBeChecked();
-    expect(screen.getByText('Automatic uses Los Angeles, US. Applies to new tasks.')).toBeInTheDocument();
-    fireEvent.click(toggle);
-    expect(setSetting).toHaveBeenCalledWith('browserProxy', false);
-    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ browserProxy: false }));
-    await waitFor(() => expect(provisionBrowser).toHaveBeenCalled());
+
+    it('names no provider by sign-in on the web', async () => {
+      renderSection({}, vi.fn(), { signedInToMindsHub: true });
+      expect(await screen.findByText(`${pageContentLine('Cowork')} ${WEB_JEV_LINE}`)).toBeInTheDocument();
+      expect(screen.queryByText(/MindsHub when you're signed in/)).not.toBeInTheDocument();
+    });
+
+    it('signs out of every site through the server, keeping saved tabs', async () => {
+      renderSection();
+      expect(await screen.findByText(WEB_SIGN_OUT_HELP)).toBeInTheDocument();
+      expect(WEB_SIGN_OUT_HELP).toMatch(/Saved tabs stay/);
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+      expect(signOutOfBrowserSites).toHaveBeenCalledTimes(1);
+      expect(shell.clearData).not.toHaveBeenCalled();
+      expect(await screen.findByText('Signed out of all sites.')).toBeInTheDocument();
+    });
+
+    it.each([
+      ['with no code', undefined],
+      ['while the browser starts', 'browser_starting'],
+      ['while the browser is unavailable', 'browser_unavailable'],
+    ])('says so when the server could not sign out (%s)', async (_case, code) => {
+      signOutOfBrowserSites.mockRejectedValue(Object.assign(new Error('API /browse/logins returned 424'), { status: 424, code }));
+      renderSection();
+      await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+      expect(await screen.findByText("Couldn't clear the browser's data. Try again.")).toBeInTheDocument();
+    });
+
+    it('says the sign-out may have finished when the server stopped waiting for the browser', async () => {
+      signOutOfBrowserSites.mockRejectedValue(Object.assign(new Error("The browser isn't reachable."), { status: 424, code: 'browser_unreachable' }));
+      renderSection();
+      await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+      expect(await screen.findByText(SIGN_OUT_UNCONFIRMED)).toBeInTheDocument();
+      expect(screen.queryByText("Couldn't clear the browser's data. Try again.")).not.toBeInTheDocument();
+    });
+
+    it('offers no usage-events switch', async () => {
+      renderSection();
+      await screen.findByRole('switch', { name: 'Shared browser' });
+      expect(screen.queryByRole('switch', { name: 'Send anonymous usage events' })).not.toBeInTheDocument();
+    });
   });
 
-  it('greys out the city while the home connection is off, and in your own server mode shows neither', async () => {
-    fetchBrowseStatus.mockResolvedValue({ provisioned: true, status: 'running', mode: 'mindshub' });
-    fetchBrowseLocations.mockResolvedValue({ proxy_available: true, prefs: null, cities: [], effective_city: '' });
-    const { rerender } = render(<BrowserSettingsSection settings={{ browserProxy: false }} setSetting={vi.fn()} />);
-    const toggle = await screen.findByRole('switch', { name: 'Browse through a home internet connection' });
-    expect(toggle).not.toBeChecked();
-    expect(screen.getByLabelText('Browser city')).toBeDisabled();
-    rerender(<BrowserSettingsSection settings={{ browserMode: 'standalone' }} setSetting={vi.fn()} />);
-    expect(screen.queryByLabelText('Browser city')).not.toBeInTheDocument();
-  });
-});
+  describe("on the desktop's in-app browser", () => {
+    beforeEach(() => {
+      shell.isWeb = false;
+      shell.inApp = true;
+      fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    });
 
-describe('cityHelp', () => {
-  const locations = { cities: [{ id: 'gb-london', label: 'London, GB' }], effective_city: 'gb-london' };
-  it('names the automatic pick only when automatic', () => {
-    expect(cityHelp('', locations)).toBe('Automatic uses London, GB. Applies to new tasks.');
-    expect(cityHelp('gb-london', locations)).toBe('Applies to new tasks.');
-    expect(cityHelp('', null)).toBe('Applies to new tasks.');
+    it("says websites see the person's own connection, that no MindsDB server carries it, and that the agent's code can read the sign-ins", async () => {
+      renderSection();
+      expect(await screen.findByText(desktopDisclosure('Cowork'))).toBeInTheDocument();
+      expect(desktopDisclosure('Cowork')).toMatch(/your own connection, and no MindsDB server carries your browsing/);
+      expect(desktopDisclosure('Cowork')).toMatch(/Cowork's code runs as you and can read this browser's sign-ins/);
+      expect(screen.getByText(DESKTOP_SIGN_INS)).toBeInTheDocument();
+      // Session cookies end when the app quits, so the line promises no more than the site keeps.
+      expect(DESKTOP_SIGN_INS).toMatch(/until the site signs you out or you sign out of all sites in Settings\. Some sites sign you out when the app quits\.$/);
+      expect(screen.getByText(pageContentLine('Cowork'))).toBeInTheDocument();
+      expect(screen.queryByText(/MindsHub/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Jev/)).not.toBeInTheDocument();
+    });
+
+    it('names MindsHub as the model provider while the app is signed in to it', async () => {
+      renderSection({}, vi.fn(), { signedInToMindsHub: true });
+      const line = pageContentLine('Cowork', { signedInToMindsHub: true });
+      expect(line).toBe("When Cowork reads a page, its text and a screenshot go to the model provider that serves your turn, MindsHub when you're signed in.");
+      expect(await screen.findByText(line)).toBeInTheDocument();
+    });
+
+    it('signs out of all sites through the app, and says so', async () => {
+      renderSection();
+      expect(await screen.findByText(SIGN_OUT_HELP)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+      expect(shell.clearData).toHaveBeenCalledTimes(1);
+      expect(signOutOfBrowserSites).not.toHaveBeenCalled();
+      expect(await screen.findByText('Signed out of all sites.')).toBeInTheDocument();
+    });
+
+    it('says so when the browser data could not be cleared', async () => {
+      shell.clearData = vi.fn(async () => ({ ok: false }));
+      renderSection();
+      await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+      expect(await screen.findByText("Couldn't clear the browser's data. Try again.")).toBeInTheDocument();
+    });
+
+    it("offers a switch for the agent's usage events, on by default, that saves through the app", async () => {
+      renderSection();
+      const toggle = await screen.findByRole('switch', { name: 'Send anonymous usage events' });
+      expect(toggle).toBeChecked();
+      expect(screen.getByText(usageEventsHelp('Cowork'))).toBeInTheDocument();
+      // It names the agent whose events stop, and MindsDB, which receives them.
+      expect(usageEventsHelp('Cowork')).toBe("Cowork sends MindsDB anonymous usage events, with an installation id, the browser's included, never page text or addresses. Off stops them from the next time you restart the app.");
+      fireEvent.click(toggle);
+      await waitFor(() => expect(shell.setUsageEvents).toHaveBeenCalledWith(false));
+      expect(toggle).not.toBeChecked();
+    });
+
+    it.each([
+      ['the organization turned the browser off', true, () => fetchBrowseStatus.mockResolvedValue({ enabled: true, available: false, status: 'organization_off' })],
+      ['the browser is not registered', true, () => fetchBrowseStatus.mockResolvedValue({ enabled: true, available: false, status: 'unavailable' })],
+      ['the status call fails', true, () => fetchBrowseStatus.mockRejectedValue(new Error('offline'))],
+      ['the shell runs no browser', false, () => fetchBrowseStatus.mockResolvedValue({ enabled: true, available: false, status: 'unavailable' })],
+    ])('keeps the usage-events switch when %s', async (_case, inApp, answer) => {
+      shell.inApp = inApp;
+      answer();
+      renderSection();
+      expect(await screen.findByRole('switch', { name: 'Send anonymous usage events' })).toBeChecked();
+      expect(screen.getByRole('heading', { level: 2, name: 'Usage events' })).toBeInTheDocument();
+    });
+
+    it('puts the usage-events switch back when the app could not save it', async () => {
+      shell.setUsageEvents = vi.fn(async () => false);
+      renderSection();
+      const toggle = await screen.findByRole('switch', { name: 'Send anonymous usage events' });
+      fireEvent.click(toggle);
+      await waitFor(() => expect(shell.setUsageEvents).toHaveBeenCalledWith(false));
+      await waitFor(() => expect(toggle).toBeChecked());
+    });
+
+    it('offers no browser while the server says the browser is not registered', async () => {
+      fetchBrowseStatus.mockResolvedValue({ enabled: true, available: false, status: 'unavailable' });
+      renderSection();
+      await screen.findByRole('switch', { name: 'Send anonymous usage events' });
+      expect(screen.queryByRole('heading', { level: 2, name: 'Shared browser' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
+    });
   });
 });

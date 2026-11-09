@@ -1,5 +1,5 @@
-/* Shared browser pane (ENG-3299): the chat's right-hand column while the agent
-   is using the browser. Same frame language as Code mode's preview panel. */
+/* Shared browser pane: the chat's right-hand column while the agent is using
+   the browser. Same frame language as Code mode's preview panel. */
 .browser-panel-scrim { display: none; }
 .browser-panel { position: relative; display: flex; min-width: 0; min-height: 0; flex-direction: column; border-left: 1px solid var(--line); background: var(--surface); }
 .browser-panel__header { min-height: 56px; padding: 10px 12px 10px 15px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -14,8 +14,35 @@
 /* Covers the frame until the viewer has loaded (the browser may be starting). */
 .browser-panel__starting { position: absolute; inset: 0; display: flex; background: inherit; }
 .browser-panel__loading { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--ink-3); font-size: 12px; }
+.browser-panel__heading-text { min-width: 0; }
 
-@media (max-width: 1159px) {
+/* The desktop pane's status line: the site, the task's tabs and the latest
+   download. The page itself is a native view the app places over the stage. */
+.browser-panel__status { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 12px 4px 15px; border-bottom: 1px solid var(--line); color: var(--ink-3); font-size: 11.5px; overflow: hidden; }
+.browser-panel__site { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.browser-panel__tabs { display: flex; gap: 4px; min-width: 0; overflow-x: auto; }
+.browser-panel__tab { flex: 0 0 auto; max-width: 140px; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--r-sm, 6px); background: transparent; color: var(--ink-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.browser-panel__tab.is-active { background: var(--surface-2); color: var(--ink); }
+.browser-panel__download { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
+/* A download that waits for the person's answer, on its own row: the text
+   wraps, and Save and Don't save move under it when the pane is narrow, so
+   they are never cut off. The text starts from a fixed width rather than its
+   whole sentence, so it stays on the icon's line and wraps there. */
+.browser-panel__download-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 12px 4px 15px; border-bottom: 1px solid var(--line); color: var(--ink-3); font-size: 11.5px; white-space: normal; overflow-wrap: anywhere; }
+.browser-panel__download-text { flex: 1 1 12rem; min-width: 0; }
+/* What the person should know before typing into the pane. */
+.browser-panel__note { margin: 0; padding: 4px 12px 4px 15px; border-bottom: 1px solid var(--line); color: var(--ink-4); font-size: 11px; line-height: 1.4; }
+
+/* A site's sign-in prompt, shown in place of the page while it waits. */
+.browser-panel__login { margin: auto; display: flex; flex-direction: column; gap: 8px; width: min(320px, 90%); }
+.browser-panel__login-title { color: var(--ink); font-size: 13px; font-weight: 620; }
+.browser-panel__login-hint { color: var(--ink-3); font-size: 12px; }
+.browser-panel__login-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* Below BROWSER_PANE_INLINE_MIN (lib/breakpoints.js) the pane floats over the
+   chat instead of taking a grid column; ChatView switches its grid at the same
+   width through useBreakpoint's paneFloats. */
+@media (max-width: 1159.98px) {
   .browser-panel-scrim { position: fixed; z-index: 50; inset: 0; display: block; border: 0; background: rgba(0, 0, 0, .34); backdrop-filter: blur(2px); }
   .browser-panel { position: fixed; z-index: 51; top: 9px; right: 9px; bottom: 9px; width: min(92vw, 900px); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--sh-3); overflow: hidden; }
 }

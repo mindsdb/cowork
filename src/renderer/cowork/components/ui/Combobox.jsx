@@ -43,11 +43,12 @@
 //     always-present row below the model list (ModelSelect's "Effort"
 //     footer) rather than another filterable option.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
 import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
+import { useNativeOverlay } from '../../lib/nativeOverlay';
 import Spinner from './Spinner.jsx';
 import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
@@ -110,6 +111,10 @@ export function Combobox({
     return entries.find((o) => o.value === value) || { value, label: String(value) };
   }, [entries, value]);
   const { contains } = BaseCombobox.useFilter();
+  /* An open popup counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const [popupOpen, setPopupOpen] = useState(false);
+  useNativeOverlay(open ?? popupOpen);
 
   return (
     <BaseCombobox.Root
@@ -120,7 +125,11 @@ export function Combobox({
       // shrinks under it. Pinned in Combobox.test.jsx.
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next, details) => {
+        // The caller may cancel the change, and then the popup stays as it is.
+        onOpenChange?.(next, details);
+        if (!details?.isCanceled) setPopupOpen(next);
+      }}
       isItemEqualToValue={(a, b) => a?.value === b?.value}
       itemToStringLabel={(item) => item?.label ?? ''}
       // Default: match on the display label OR the raw id, across every

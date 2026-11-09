@@ -65,6 +65,8 @@ export const IPC = {
   // Keychain — where the refresh token is stored (file vs macOS keychain)
   KEYCHAIN_PREF_GET: 'keychain:get',
   KEYCHAIN_PREF_SET: 'keychain:set',
+  USAGE_EVENTS_GET: 'usage-events:get',
+  USAGE_EVENTS_SET: 'usage-events:set',
 
   // OAuth — PKCE bridge + builtin connector flow
   OAUTH_CONNECT: 'oauth:connect',
@@ -146,4 +148,23 @@ export const IPC = {
   // Task deletion: stop its PTY host (if running) and remove its git
   // worktree/branch under <project>/.claude_tasks/<taskId>/.
   CODING_REMOVE_TASK: 'coding:remove-task',
+
+  /* The in-app browser's pane (browser-host.ts). Main answers these only from
+     the app's own main frame. BROWSER_READY says this UI shows the in-app
+     browser, which is when main registers it with the local server;
+     BROWSER_STATE is pushed main → renderer on every change of a task's browser,
+     and BROWSER_REGISTERED each time the local server takes the registration. */
+  BROWSER_READY: 'browser:ready',
+  BROWSER_SHOW: 'browser:show',
+  BROWSER_HIDE: 'browser:hide',
+  BROWSER_SET_BOUNDS: 'browser:set-bounds',
+  BROWSER_NAVIGATE: 'browser:navigate',
+  BROWSER_ACTIVATE_TAB: 'browser:activate-tab',
+  BROWSER_TAKE_OVER: 'browser:take-over',
+  BROWSER_HAND_BACK: 'browser:hand-back',
+  BROWSER_ANSWER_LOGIN: 'browser:answer-login',
+  BROWSER_ANSWER_DOWNLOAD: 'browser:answer-download',
+  BROWSER_CLEAR_DATA: 'browser:clear-data',
+  BROWSER_STATE: 'browser:state',
+  BROWSER_REGISTERED: 'browser:registered',
 } as const;
