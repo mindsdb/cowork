@@ -484,6 +484,77 @@ describe('createMobilePush', () => {
   });
 
   describe('sign-out', () => {
+    it('drains pending registrations before deleting every token, including rotated tokens', async () => {
+      const devices = new Set<string>();
+      const finish: Array<() => void> = [];
+      const api = {
+        register: vi.fn(({ token }: { token: string }) => new Promise<void>((resolve) => {
+          finish.push(() => { devices.add(token); resolve(); });
+        })),
+        unregister: vi.fn(async (token: string) => { devices.delete(token); }),
+      };
+      const { controller, plugin } = setup({ api });
+      controller.start();
+      await controller.signedIn('user-1');
+      plugin.emit('registration', { value: 't1' });
+      plugin.emit('registration', { value: 't2' });
+      await flush();
+
+      const logout = controller.unregisterOnSignOut();
+      // Native events can still arrive while a POST is pending, but must not
+      // register the signed-out user again.
+      plugin.emit('registration', { value: 't3' });
+      await flush();
+      expect(api.register).toHaveBeenCalledTimes(2);
+      expect(api.unregister).not.toHaveBeenCalled();
+      finish[1]!();
+      await flush();
+      expect(api.unregister).not.toHaveBeenCalled();
+      finish[0]!();
+      await logout;
+
+      expect([...devices]).toEqual([]);
+      expect(api.unregister.mock.calls).toEqual([['t1'], ['t2']]);
+    });
+
+    it('still deletes after a pending registration fails', async () => {
+      let fail!: (error: Error) => void;
+      const { controller, plugin, api } = setup();
+      api.register.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+      controller.start();
+      await controller.signedIn('user-1');
+      plugin.emit('registration', { value: 't1' });
+      await flush();
+      const logout = controller.unregisterOnSignOut();
+      fail(new Error('connection lost after sending POST'));
+      await logout;
+      expect(api.unregister).toHaveBeenCalledWith('t1');
+    });
+
+    it('finishes old-account cleanup before registering the next account', async () => {
+      let finish!: () => void;
+      const { controller, plugin, api } = setup();
+      api.unregister.mockImplementationOnce(() => new Promise((resolve) => {
+        finish = () => resolve({ ok: true });
+      }));
+      controller.start();
+      await controller.signedIn('user-1');
+      plugin.emit('registration', { value: 't1' });
+      await flush();
+      const logout = controller.unregisterOnSignOut();
+      await flush();
+      const nextLogin = controller.signedIn('user-2');
+      plugin.emit('registration', { value: 't1' });
+      await flush();
+      expect(api.register).toHaveBeenCalledTimes(1);
+      finish();
+      await logout;
+      await nextLogin;
+      plugin.emit('registration', { value: 't1' });
+      await flush();
+      expect(api.register).toHaveBeenCalledTimes(2);
+    });
+
     it('removes this device token from the user and keeps the OS registration', async () => {
       const { controller, plugin, api } = setup();
       const unregisterNative = vi.fn();

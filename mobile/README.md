@@ -191,8 +191,13 @@ artifact's page in the system browser.
    the router exists, and often before sign-in, which reloads the page. The
    web app keeps the tap in `sessionStorage` for 10 minutes and applies it
    once the router mounts.
-5. **Sign-out** sends `DELETE /api/v1/push/devices` `{ token }` before the
-   Keycloak tokens are cleared. It is best effort and waits at most 3 seconds.
+5. **Sign-out** stops new registrations, waits for pending registration POSTs,
+   then sends `DELETE /api/v1/push/devices` `{ token }` for each token registered
+   in this session, including rotated tokens. This prevents a late POST from
+   recreating a row after a successful DELETE. Cleanup runs before the Keycloak
+   tokens are cleared and is best effort: the entire hook waits at most 3 seconds.
+   An offline server or a request that outlasts that deadline can still leave a
+   device registered; guaranteed revocation needs server-side session fencing.
    The OS registration is kept: `PushNotifications.unregister()` would turn
    remote notifications off for the app (iOS) or delete the FCM token
    (Android), and the next user to sign in on the phone registers the same
@@ -282,6 +287,25 @@ End to end:
    should open on the task after you sign in.
 5. Sign out. The server should have dropped the token, and a new push to it
    should no longer reach the phone for that user.
+
+Before calling a mobile build ready, also check:
+
+- Launch while signed out: the sign-in screen stays visible without opening a
+  browser sheet. Tap **Sign in with MindsHub**, cancel, and try again. Complete
+  sign-in and account creation, including Google through the MindsHub page.
+- On an iPhone, attach a new photo and a new video from the task composer.
+  Camera and microphone permission prompts explain their use. Denying access
+  must leave the app usable; granting access must return the attachment.
+- Reply to a task with the keyboard open, answer an agent question, and approve
+  a step. Check the composer and controls around the notch and home indicator.
+- Repeat sign-in, starting a task, replying, and sign-out in the ordinary web
+  app and Electron. Neither should show mobile sign-in or notification prompts.
+
+Passing unit tests and unsigned smoke builds does not verify the Keycloak
+client, APNs/FCM credentials, signed store uploads, or these device flows.
+Record the tested build and device when completing this checklist. Billing UI
+restrictions and the other deferred store-submission work still apply before
+an App Store submission.
 
 To send one by hand: on iOS, use the Push Notifications console in the Apple
 Developer account (needs the device token). On Android, use Firebase console
