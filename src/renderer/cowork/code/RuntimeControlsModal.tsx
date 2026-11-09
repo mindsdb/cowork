@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ModelSelect from '../components/ModelSelect';
+import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import { Field } from '../components/ui/Field';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import Select from '../components/ui/Select';
 import Switch from '../components/ui/Switch';
+import Tooltip from '../components/ui/Tooltip';
 import {
   buildModelPickerOptions,
   withModelPickerFallback,
@@ -52,6 +55,12 @@ export function RuntimeControlsModal({
   const [sandboxBusy, setSandboxBusy] = useState(false);
   const wasOpen = useRef(false);
   const initializedSession = useRef('');
+  const errorRef = useRef<HTMLDivElement>(null);
+  // The form overflows the modal, so an error at its end can land below the
+  // fold. Scroll it into view, next to the footer where the user clicked Apply.
+  useEffect(() => {
+    if (submitError) errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [submitError]);
   useEffect(() => {
     const shouldInitialize = open && (!wasOpen.current || initializedSession.current !== sessionId);
     wasOpen.current = open;
@@ -81,6 +90,10 @@ export function RuntimeControlsModal({
   // Switching to a model that lacks the current level moves to its default, so
   // the update never carries a level the new model cannot run.
   const effortLevels = useMemo(() => effortLevelsFor(draft.model, modelMeta.modelEfforts), [draft.model, modelMeta.modelEfforts]);
+  // The catalog lists levels only for models that have them, so a model
+  // missing from the listing (delisted, or not loaded yet) is unknown, not
+  // level-less. Only a listed model with no levels drops the stored effort.
+  const offersNoEffort = !effortLevels && models.some((model) => model.id === draft.model);
   const chooseModel = (next: string) => {
     setDraft((current) => {
       const levels = effortLevelsFor(next, modelMeta.modelEfforts);
@@ -100,24 +113,26 @@ export function RuntimeControlsModal({
   const apply = async () => {
     setSubmitError('');
     try {
-      await onApply(draft);
+      // A model with no levels rejects any effort, including one the task
+      // still stores from an earlier model. The draft keeps it so switching
+      // back restores it; only the update drops it.
+      await onApply(offersNoEffort ? { ...draft, reasoning_effort: null } : draft);
     } catch (reason) {
-      setSubmitError(reason instanceof Error ? reason.message : 'Could not update task controls.');
+      setSubmitError(reason instanceof Error && reason.message ? reason.message : 'Try again.');
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-controls-title" dismissible={!busy}>
       <ModalHeader
         id="code-controls-title"
-        title="Task controls"
+        title="Task settings"
         subtitle="These settings apply to future turns in this coding task."
-        onClose={busy ? undefined : onClose}
+        onClose={onClose}
       />
       <ModalBody>
         <div className="code-controls-grid">
-          <label className="code-controls-field">
-            <span>Model</span>
+          <Field className="min-w-0" label="Model">
             <ModelSelect
               value={draft.model}
               onValueChange={chooseModel}
@@ -126,10 +141,9 @@ export function RuntimeControlsModal({
               ariaLabel="Task model"
               disabled={busy}
             />
-          </label>
+          </Field>
           {effortLevels && (
-            <label className="code-controls-field">
-              <span>Reasoning</span>
+            <Field className="min-w-0" label="Reasoning">
               <Select
                 value={resolveEffort(draft.reasoning_effort, null, effortLevels) || ''}
                 onValueChange={(next: string) => update('reasoning_effort', next)}
@@ -142,10 +156,9 @@ export function RuntimeControlsModal({
                 placeholder="Effort"
                 disabled={busy}
               />
-            </label>
+            </Field>
           )}
-          <label className="code-controls-field">
-            <span>Permissions</span>
+          <Field className="min-w-0" label="Permissions">
             <Select
               value={draft.permission_mode}
               onValueChange={(next: string) => setDraft((current) => ({
@@ -157,9 +170,8 @@ export function RuntimeControlsModal({
               ariaLabel="Task permissions"
               disabled={busy}
             />
-          </label>
-          <label className="code-controls-field">
-            <span>Personality</span>
+          </Field>
+          <Field className="min-w-0" label="Personality">
             <Select
               value={draft.personality}
               onValueChange={(next: string) => update('personality', next as Personality)}
@@ -167,7 +179,7 @@ export function RuntimeControlsModal({
               ariaLabel="Agent personality"
               disabled={busy}
             />
-          </label>
+          </Field>
           <div className="code-controls-toggle">
             <div><strong>Fast</strong><small>Use priority inference when the model supports it.</small></div>
             <Switch checked={draft.service_tier === 'priority'} onCheckedChange={(checked) => update('service_tier', checked ? 'priority' : 'standard')} disabled={busy} aria-label="Fast inference" />
@@ -236,20 +248,25 @@ export function RuntimeControlsModal({
               )}
             </div>
           )}
-          {submitError && <div className="code-controls-error" role="alert">{submitError}</div>}
+          {submitError && (
+            <div ref={errorRef} className="code-controls-error">
+              <Alert variant="danger" title="Couldn't apply task settings">{submitError}</Alert>
+            </div>
+          )}
         </div>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
-        {/* `.btn:disabled` sets pointer-events: none, so a title on the button
+      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>}>
+        {/* `.btn:disabled` sets pointer-events: none, so a hint on the button
             itself never shows. The wrapper takes the hover instead. */}
-        <span className="inline-flex" title={applyBlockedReason}>
-          <Button
-            variant="primary"
-            disabled={busy || !draft.model || !!applyBlockedReason}
-            onClick={() => void apply()}
-          >Apply</Button>
-        </span>
+        <Tooltip content={applyBlockedReason}>
+          <span className="inline-flex">
+            <Button
+              variant="primary"
+              disabled={busy || !draft.model || !!applyBlockedReason}
+              onClick={() => void apply()}
+            >Apply</Button>
+          </span>
+        </Tooltip>
       </ModalFooter>
     </Modal>
   );

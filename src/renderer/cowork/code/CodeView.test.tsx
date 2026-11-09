@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession, EngineCapability } from './api';
@@ -22,13 +23,16 @@ const mocks = vi.hoisted(() => ({
   commit: vi.fn(),
   setGitIdentity: vi.fn(),
   updateProject: vi.fn(),
+  updateSession: vi.fn(),
   projectsLoad: vi.fn(async () => {}),
   projectsReplace: vi.fn(),
   projectsSetSelectedId: vi.fn(),
+  projectsRemove: vi.fn(),
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
   trackBillingOpened: vi.fn(),
   openCodeExternalUrl: vi.fn(async () => true),
+  create: vi.fn(),
 }));
 
 const credentialListeners = vi.hoisted(() => new Set<() => void>());
@@ -63,6 +67,8 @@ vi.mock('./api', () => ({
     commit: mocks.commit,
     setGitIdentity: mocks.setGitIdentity,
     updateProject: mocks.updateProject,
+    create: mocks.create,
+    updateSession: mocks.updateSession,
   },
   openCodingEventStream: vi.fn(() => () => {}),
   codingErrorCode: (reason: unknown) => (reason instanceof Error ? (reason as Error & { code?: string }).code : undefined),
@@ -81,23 +87,37 @@ vi.mock('./CodeCommandPalette', async (importOriginal) => {
 });
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
-  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview }: {
+  TaskBar: ({ onDelete, onStatus, onRunProjectAction, onToggleReview, onOpenControls }: {
     onDelete: () => void;
     onStatus: () => void;
     onToggleReview: () => void;
+    onOpenControls: () => void;
     onRunProjectAction: (action: { id: string; label: string; resource_id: string; resource_name: string; command: string; preview: boolean }) => void;
   }) => (
     <>
       <button type="button" onClick={onDelete}>Delete menu action</button>
       <button type="button" onClick={onStatus}>Status menu action</button>
       <button type="button" onClick={onToggleReview}>Review menu action</button>
+      <button type="button" onClick={onOpenControls}>Task controls menu action</button>
       <button type="button" onClick={() => onRunProjectAction({
         id: 'preview', label: 'Start preview', resource_id: 'resource-1', resource_name: 'App', command: 'npm run dev', preview: true,
       })}>Run project action</button>
     </>
   ),
 }));
-vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
+vi.mock('./NewTaskPanel', () => ({
+  NewTaskPanel: ({ error, onCreate, onConnectMindsHub }: {
+    error: string;
+    onCreate: (input: object) => Promise<void>;
+    onConnectMindsHub?: () => Promise<void>;
+  }) => (
+    <div data-testid="new-task-panel" data-error={error}>
+      New task panel
+      <button type="button" onClick={() => void onCreate({ path: '/work/app', prompt: 'Fix it', attachments: [] })}>Create stub</button>
+      {onConnectMindsHub && <button type="button" onClick={() => void onConnectMindsHub()}>Connect MindsHub stub</button>}
+    </div>
+  ),
+}));
 vi.mock('./useCodeProjects', () => ({
   useCodeProjects: () => ({
     projects: [{
@@ -106,7 +126,7 @@ vi.mock('./useCodeProjects', () => ({
       permission_mode: 'supervised', created_at: '2026-09-03T09:00:00Z', updated_at: '2026-09-03T09:00:00Z',
     }],
     selected: null, selectedId: 'project-1', setSelectedId: mocks.projectsSetSelectedId,
-    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: vi.fn(),
+    loading: false, error: '', load: mocks.projectsLoad, save: vi.fn(), replace: mocks.projectsReplace, remove: mocks.projectsRemove,
   }),
 }));
 vi.mock('./CodeConnectorsView', () => ({
@@ -317,6 +337,20 @@ describe('CodeView session-list reconciliation', () => {
     expect(mocks.turn).not.toHaveBeenCalled();
   });
 
+  it('clears the refused-task error once the user connects MindsHub', async () => {
+    mocks.create.mockRejectedValueOnce(new Error('MindsHub is not connected. Sign in or configure a MindsHub API key first.'));
+    const onConnectMindsHub = vi.fn(async () => {});
+    renderCode({ newTask: true, onConnectMindsHub });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create stub' }));
+    const panel = screen.getByTestId('new-task-panel');
+    await waitFor(() => expect(panel).toHaveAttribute('data-error', expect.stringMatching(/^MindsHub is not connected/)));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect MindsHub stub' }));
+
+    await waitFor(() => expect(panel).toHaveAttribute('data-error', ''));
+    expect(onConnectMindsHub).toHaveBeenCalledTimes(1);
+  });
+
   it('creates a draft with the browsed project selected', async () => {
     const { props } = renderCode({ tasksOpen: true, tasksProjectId: 'project-1' });
     const newTaskButton = await screen.findByRole('button', { name: 'New task' });
@@ -326,12 +360,25 @@ describe('CodeView session-list reconciliation', () => {
     expect(props.onSelectionChange).toHaveBeenCalledWith(null, true);
   });
 
+  it('deletes a project from its page and returns to Projects', async () => {
+    const user = userEvent.setup();
+    const onOpenProjects = vi.fn();
+    renderCode({ tasksOpen: true, tasksProjectId: 'project-1', onOpenProjects });
+    await user.click(await screen.findByRole('button', { name: 'Web app actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete project' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm delete' }));
+    await waitFor(() => expect(onOpenProjects).toHaveBeenCalledOnce());
+    expect(mocks.projectsRemove).toHaveBeenCalledWith('project-1');
+  });
+
   it.each([
     { tasksOpen: false, tasksProjectId: 'project-1' },
     { tasksOpen: true, tasksProjectId: null },
   ])('closes project settings when task-list navigation changes to %j', async (destination) => {
     const { props, rerender } = renderCode({ tasksOpen: true, tasksProjectId: 'project-1' });
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Web app' }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Web app actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Project settings' }));
     expect(screen.getByText('Project settings modal')).toBeInTheDocument();
     rerender(<CodeView {...props} {...destination} />);
     expect(screen.queryByText('Project settings modal')).not.toBeInTheDocument();
@@ -684,18 +731,18 @@ describe('CodeView session-list reconciliation', () => {
     expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeEnabled();
   });
 
-  it('closes a delete confirmation when the selected task changes', async () => {
-    const first = session('first');
-    const second = session('second');
-    mocks.sessions.mockResolvedValue({ items: [first, second] });
-    const view = renderCode({ sessions: [first, second], selectedId: first.id });
-    await waitFor(() => expect(mocks.sessions).toHaveBeenCalled());
+  it('reports a rejected task settings update in the modal only and keeps it open', async () => {
+    const user = userEvent.setup();
+    mocks.updateSession.mockRejectedValueOnce(new Error('Stop the task terminal before changing task controls'));
+    renderCode({ sessions: [session('task-1')], selectedId: 'task-1' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete menu action' }));
-    expect(screen.getByRole('button', { name: 'Confirm delete' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Task controls menu action' }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
-    view.rerender(<CodeView {...view.props} selectedId={second.id} />);
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Confirm delete' })).toBeNull());
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Stop the task terminal before changing task controls')).toBeInTheDocument();
+    expect(screen.getAllByText('Stop the task terminal before changing task controls')).toHaveLength(1);
+    expect(dialog).toBeInTheDocument();
   });
 
   it('does not present a local folder as a warning just because it is not a Git repository', async () => {
@@ -859,40 +906,6 @@ describe('CodeView session-list reconciliation', () => {
     view.rerender(<CodeView {...view.props} />);
 
     expect(indexReads).toBeLessThan(10);
-  });
-
-  it('routes task status through steering while an agent turn is active', async () => {
-    const active = { ...session('active'), status: 'running' as const };
-    mocks.sessions.mockResolvedValue({ items: [active] });
-    mocks.useCodingSession.mockReturnValue({
-      session: active,
-      events: [],
-      latestEvents: {},
-      git: null,
-      diff: [],
-      loading: false,
-      error: '',
-      refresh: vi.fn(async () => {}),
-      refreshReview: vi.fn(async () => {}),
-    });
-
-    renderCode({ sessions: [active], selectedId: active.id });
-    fireEvent.click(await screen.findByRole('button', { name: 'Status menu action' }));
-
-    await waitFor(() => expect(mocks.steer).toHaveBeenCalledWith(active.id, '/status'));
-    expect(mocks.turn).not.toHaveBeenCalled();
-  });
-});
-
-
-describe('CodeView commit without a Git identity', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.sessions.mockResolvedValue({ items: [session('task-1')] });
-    mocks.useCodingSession.mockReturnValue({
-      session: session('task-1'), events: [], latestEvents: {}, git: null, diff: [], loading: false, error: '',
-      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
-    });
   });
 
   it('asks for the identity, prefilled from the account, then saves it and reruns the same commit', async () => {

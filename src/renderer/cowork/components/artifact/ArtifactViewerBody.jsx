@@ -5,9 +5,15 @@ import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
+import { useDraftImageLoader } from './draftImages';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
+import { LiveAppPreview } from './LiveAppPreview';
+import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
+import { LAUNCH_LIVE_APP_LABEL } from '../../lib/liveAppState';
+import { DocumentPreview } from '../../preview/DocumentPreview';
+import { csvPreviewNotice } from './artifactPreviewUtils';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -39,6 +45,36 @@ function PreviewPlaceholder() {
   );
 }
 
+// Live apps keep their own origin while the pane hosts their trusted bootstrap.
+function LiveAppPanel({ notice, state, reloadKey, onOpen, onLaunch }) {
+  const origin = host.isWeb ? liveAppPreviewOrigin(state) : '';
+  if (origin) return <LiveAppPreview key={`${state.launchId}:${reloadKey}`} origin={origin} launchId={state.launchId} reloadKey={reloadKey} onOpen={onOpen} />;
+  if (!notice) return <PreviewPlaceholder />;
+  const address = notice.address ? new URL(notice.address) : null;
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
+      <div style={{
+        display: 'grid', justifyItems: 'center', gap: 12, maxWidth: 460,
+        textAlign: 'center', fontFamily: FONT_BODY,
+      }}>
+        <div style={{ color: 'var(--ink-2)', fontSize: 13 }}>{notice.text}</div>
+        {address && (
+          <Button onClick={onOpen} title={address.href}>
+            {Ico.arrowUpRight(14)}
+            {address.host}
+          </Button>
+        )}
+        {notice.canLaunch && onLaunch && (
+          <Button onClick={onLaunch}>
+            {Ico.play(14)}
+            {LAUNCH_LIVE_APP_LABEL}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ArtifactViewerBody({
   workspace,
   preview,
@@ -47,6 +83,8 @@ export function ArtifactViewerBody({
 }) {
   const {
     draftUrl: draftPreviewUrl,
+    contentVersion,
+    document: documentPreview,
     error: err,
     setError: setErr,
     isText,
@@ -62,6 +100,7 @@ export function ArtifactViewerBody({
     csv: csvPreview,
     onDownload,
     onOpenOS,
+    liveApp,
     url: previewUrl,
     doc: previewDoc = '',
     kind: previewKind,
@@ -103,6 +142,10 @@ export function ArtifactViewerBody({
   // until the user has been told exactly that and said yes.
   const [confirmRejectHead, setConfirmRejectHead] = useState(null);
   const [confirmRejectError, setConfirmRejectError] = useState('');
+  // One loader for Preview and Edit's split preview, so switching between
+  // them asks for no image twice. Keyed on the viewer's content version, so a
+  // change to the artifact or a Reload asks again.
+  const loadDraftImage = useDraftImageLoader(draftPreviewUrl, contentVersion);
 
   // Once the preview has painted, prepare the HTML editor during idle time.
   // The first Edit click is then a surface swap, not a second parse/download;
@@ -130,6 +173,7 @@ export function ArtifactViewerBody({
       onChange={workspace.setDraft}
       onSave={(content) => workspace.save('Edited artifact', content)}
       draftUrl={draftPreviewUrl}
+      loadImage={loadDraftImage}
     />
   ) : null;
 
@@ -137,6 +181,10 @@ export function ArtifactViewerBody({
     <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
       <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
     </div>
+  ) : liveApp ? (
+    <LiveAppPanel {...liveApp} />
+  ) : documentPreview ? (
+    <DocumentPreview {...documentPreview} />
   ) : isText ? (
     loading || !textPreview ? (
       <PreviewPlaceholder />
@@ -150,7 +198,7 @@ export function ArtifactViewerBody({
         }}
       >
         {textExt === '.md' ? (
-          <MarkdownContent text={textPreview.content} id={artifact.path} />
+          <MarkdownContent text={textPreview.content} id={artifact.path} loadImage={loadDraftImage} />
         ) : textExt === '.csv' && csvPreview ? (
           <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
         ) : (
@@ -168,12 +216,10 @@ export function ArtifactViewerBody({
             gap: 12, flexWrap: 'wrap',
           }}>
             <span>
-              {csvPreview && csvPreview.truncated
-                ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
-                : 'Preview is truncated.'}
+              {csvPreviewNotice(csvPreview)}
             </span>
             <Button onClick={host.isWeb ? onDownload : onOpenOS}>
-              {host.isWeb ? Ico.download(13) : Ico.externalLink(13)}
+              {host.isWeb ? Ico.download(14) : Ico.externalLink(14)}
               {host.isWeb ? 'Download full file' : 'Open full file in OS'}
             </Button>
           </div>
@@ -213,7 +259,7 @@ export function ArtifactViewerBody({
             : 'allow-scripts allow-popups allow-forms allow-modals'}
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
-            opacity: iframeReady ? 1 : 0, transition: 'opacity 180ms ease',
+            opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
           }}
         />
       )}
@@ -227,12 +273,19 @@ export function ArtifactViewerBody({
       <div className={`artifact-viewer-body${commentsOpen && inboxOpen ? ' has-comments-inbox' : ''}`}>
         <div className="artifact-review-stage">
           <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
-            {htmlSource ? (
+            {/* A framed preview sits in its surface from the first render. The
+                workspace source loads separately and, on a slow connection,
+                after the page painted; moving the iframe into a surface only
+                once `htmlSource` turned true re-created it and reloaded the
+                page (ENG-3070). */}
+            {htmlSource || !(isText || isImage) ? (
               <>
-                {(showEditor || retainedEditorKey === editorKey) && (
+                {htmlSource && (showEditor || retainedEditorKey === editorKey) && (
                   <div className="artifact-mode-surface" hidden={!showEditor}>{sourceEditor}</div>
                 )}
-                <div className="artifact-mode-surface" hidden={showEditor}>{previewContent}</div>
+                {!htmlSource && showEditor ? sourceEditor : (
+                  <div className="artifact-mode-surface" hidden={showEditor}>{previewContent}</div>
+                )}
               </>
             ) : showEditor ? sourceEditor : previewContent}
           </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AlertCircle, ChevronRight, FileText } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
@@ -40,7 +41,7 @@ export function RepositoryLocalChanges({
     <section className="code-repository-changes" aria-label={`${name} local changes`}>
       <div className="code-repository-changes__heading">
         <span>
-          <AlertCircle size={15} />
+          <Icon of={AlertCircle} size={16} />
           {name} has {status.change_count} local {status.change_count === 1 ? 'change' : 'changes'}
         </span>
         <Button size="sm" variant="subtle" onClick={() => void toggle()} aria-expanded={open}>
@@ -51,7 +52,7 @@ export function RepositoryLocalChanges({
         <ul>
           {status.changes.map((path) => (
             <li key={path}>
-              <FileText size={13} />
+              <Icon of={FileText} size={14} />
               <span>{path}</span>
             </li>
           ))}
@@ -81,7 +82,7 @@ export function RepositoryLocalChanges({
             files.map((file) => (
               <details key={file.path}>
                 <summary>
-                  <ChevronRight size={13} />
+                  <Icon of={ChevronRight} size={14} />
                   <span>{file.path}</span>
                   <small>
                     +{file.additions} −{file.deletions}

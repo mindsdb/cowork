@@ -34,9 +34,10 @@ const SURFACES = [
   // Round three. Found by running the rules below across the whole renderer
   // rather than by hand -- which is the only reason ChannelBindings and
   // ScheduleDetailView are here at all; no report named them.
-  ['task list open-project tooltip', 'cowork/views/TasksView.jsx'],
+  ['task list project filter', 'cowork/views/TasksView.jsx'],
+  ['task row project link', 'cowork/components/task/TaskRows.jsx'],
   ['scheduled list', 'cowork/views/ScheduledView.jsx'],
-  ['schedule card', 'cowork/components/schedule/ScheduleCard.jsx'],
+  ['schedule row', 'cowork/components/schedule/ScheduleRow.jsx'],
   ['schedule detail hint', 'cowork/views/ScheduleDetailView.jsx'],
   ['channel bindings', 'cowork/views/ChannelBindings.jsx'],
   // Round five, and the first round prompted by the question "did we check
@@ -44,7 +45,7 @@ const SURFACES = [
   // `skill.projects` is an array of names, and these rows carry `projectName`
   // -- so there is no `.name` anywhere for the rules above to catch, and no
   // project object to hand `projectLabel`. `projectLabelByName` resolves them.
-  ['skills scope picker + card + detail', 'cowork/views/SkillsView.jsx'],
+  ['skills scope picker + row + detail', 'cowork/views/SkillsView.jsx'],
   ['recents modal', 'cowork/components/RecentsModal.jsx'],
   ['rail context card heading', 'cowork/components/rail/ContextCard.jsx'],
   ['utilities / memory headings', 'cowork/views/UtilitiesView.jsx'],

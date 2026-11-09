@@ -56,8 +56,9 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
     expect(Array.isArray(tasks)).toBe(true);
     expect(tasks).toHaveLength(60);
     expect(tasks[0].title).toBe('Task 0');
-    // The warm-up still fires, at the original depth, just not awaited.
-    expect(itemsRequested).toBe(50);
+    // The warm-up still fires, just not awaited. Its first wave is bounded
+    // so reads that never settle hold back the rest.
+    expect(itemsRequested).toBe(4);
   });
 
   it('skips the warm-up entirely when no caller is listening', async () => {
@@ -143,5 +144,110 @@ describe('fetchSessions paints on the list alone (ENG-2246)', () => {
       ? Promise.reject(Object.assign(new Error('nope'), { status: 500 }))
       : Promise.resolve(jsonRes(conversations(3))));
     await expect(fetchSessions()).resolves.toHaveLength(3);
+  });
+
+  it('warms a bounded page and reports how much history is left behind it', async () => {
+    // Warming the FULL history of the 50 most recent conversations did not
+    // remove the unbounded fetch, it moved it to startup — and it pre-filled a
+    // long conversation so completely that the loading state and "load
+    // earlier" never engaged for the tasks most likely to be opened.
+    const urls = [];
+    global.fetch = vi.fn((url) => {
+      urls.push(String(url));
+      return String(url).includes('/items')
+        ? Promise.resolve(jsonRes({
+            items: [{ role: 'user', content: 'newest page' }],
+            hasMore: true,
+            nextBefore: 'cursor-deep',
+          }))
+        : Promise.resolve(jsonRes(conversations(1)));
+    });
+
+    const seen = new Map();
+    await fetchSessions({ onItems: (id, msgs, page) => seen.set(id, { msgs, page }) });
+    await vi.waitFor(() => expect(seen.size).toBe(1));
+
+    const itemsUrl = urls.find((u) => u.includes('/items'));
+    expect(itemsUrl).toMatch(/[?&]limit=50\b/);
+    expect(seen.get('c0').page).toEqual({ hasMoreMessages: true, messagesCursor: 'cursor-deep' });
+  });
+
+  it('treats a bare-array response from an older server as a complete history', async () => {
+    global.fetch = vi.fn((url) => (String(url).includes('/items')
+      ? Promise.resolve(jsonRes([{ role: 'user', content: 'all of it' }]))
+      : Promise.resolve(jsonRes(conversations(1)))));
+
+    const seen = new Map();
+    await fetchSessions({ onItems: (id, msgs, page) => seen.set(id, page) });
+    await vi.waitFor(() => expect(seen.size).toBe(1));
+
+    expect(seen.get('c0')).toEqual({ hasMoreMessages: false, messagesCursor: null });
+  });
+});
+
+// Every page load fired all 50 warm-up reads at once. On 22 October
+// one browser reloaded staging up to 13 times a minute; each load sent a burst
+// of exactly 50 `/items` reads, 6,555 of the 7,152 in fifteen minutes, and
+// starved cowork-server's single process until both pods failed readiness.
+describe('fetchSessions warms a bounded number at a time', () => {
+  const settle = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+
+  it('keeps four reads in flight on a slow server, not fifty', async () => {
+    let itemsRequested = 0;
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('/items')) { itemsRequested += 1; return new Promise(() => {}); }
+      return Promise.resolve(jsonRes(conversations(212)));
+    });
+
+    await fetchSessions({ onItems: () => {} });
+    await settle();
+
+    expect(itemsRequested).toBe(4);
+  });
+
+  it('still warms the 50 most recent on a healthy server, one read per finished read', async () => {
+    const pending = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    global.fetch = vi.fn((url) => {
+      if (!String(url).includes('/items')) return Promise.resolve(jsonRes(conversations(212)));
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      return new Promise((resolve) => {
+        pending.push(() => { inFlight -= 1; resolve(jsonRes([])); });
+      });
+    });
+
+    const seen = new Set();
+    await fetchSessions({ onItems: (id) => seen.add(id) });
+    for (let round = 0; round < 60 && pending.length > 0; round += 1) {
+      pending.splice(0).forEach((finish) => finish());
+      await settle();
+    }
+
+    expect(maxInFlight).toBe(4);
+    expect(seen.size).toBe(50);
+    expect(seen).toEqual(new Set(Array.from({ length: 50 }, (_, i) => `c${i}`)));
+  });
+
+  it('stops warming after a failed read, so a failing server gets one wave', async () => {
+    // A server that answered one transcript with a 503 will not answer the
+    // next 46 faster. The rest load when the person opens them.
+    let itemsRequested = 0;
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('/items')) {
+        itemsRequested += 1;
+        return Promise.resolve(jsonRes({ detail: 'busy' }, false, 503));
+      }
+      return Promise.resolve(jsonRes(conversations(212)));
+    });
+
+    const seen = new Set();
+    await expect(fetchSessions({ onItems: (id) => seen.add(id) })).resolves.toHaveLength(212);
+    await settle();
+    await settle();
+
+    expect(itemsRequested).toBe(4);
+    expect(seen.size).toBe(0);
   });
 });

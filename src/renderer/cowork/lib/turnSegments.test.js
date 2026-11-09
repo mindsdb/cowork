@@ -2,16 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { splitTurnSegments, liveSegmentIndex } from './turnSegments';
 
 const work = (id, startedAt = 1) => ({ id, label: id, badge: 'ToolProgress', status: 'completed', startedAt });
-const question = (qid, { answer = null, completedAt = null } = {}) => ({
+const question = (qid, { answer = null, completedAt = null, options, select } = {}) => ({
   id: `question-${qid}`,
   label: `Prompt ${qid}`,
   badge: 'AskUser',
   status: answer ? 'completed' : 'in_progress',
   completedAt,
-  data: { question_id: qid, answer },
+  data: { question_id: qid, answer, options, select },
 });
 const ANSWER = { status: 'answered', values: ['accept'], text: '' };
-const shape = (segments) => segments.map((s) => (s.kind === 'question' ? `Q:${s.step.id}` : s.steps.map((x) => x.id)));
+const shape = (segments) => segments.map((s) => {
+  if (s.kind === 'question') return `Q:${s.step.id}`;
+  if (s.kind === 'message') return `M:${s.step.id}`;
+  return s.steps.map((x) => x.id);
+});
 
 describe('splitTurnSegments', () => {
   it('returns one steps segment when the turn has no questions', () => {
@@ -65,6 +69,78 @@ describe('splitTurnSegments', () => {
     expect(expired(splitTurnSegments(steps, { conversationLive: true }))).toEqual([false, true, false]);
     expect(expired(splitTurnSegments(steps, { conversationLive: false }))).toEqual([false, true, true]);
   });
+
+  describe('reopenable', () => {
+    const TIMEOUT = { status: 'timeout', values: [], text: '' };
+    const flags = (segments) => segments
+      .filter((s) => s.kind === 'question')
+      .map((s) => ({ reopened: s.reopened, expired: s.expired }));
+    const last = (steps, opts = { reopenable: true }) => flags(splitTurnSegments(steps, opts)).at(-1);
+
+    it('reopens the last ask: question when it timed out or was never retired', () => {
+      expect(last([question('ask:1', { answer: TIMEOUT })])).toEqual({ reopened: true, expired: false });
+      expect(last([question('ask:1')])).toEqual({ reopened: true, expired: false });
+    });
+
+    it('keeps write: and limit: cards closed', () => {
+      expect(last([question('write:1', { answer: TIMEOUT })])).toEqual({ reopened: false, expired: false });
+      expect(last([question('limit:1')])).toEqual({ reopened: false, expired: true });
+    });
+
+    it('keeps an answered or skipped question closed', () => {
+      expect(last([question('ask:1', { answer: ANSWER })]).reopened).toBe(false);
+      expect(last([question('ask:1', { answer: { status: 'cancelled', values: [], text: '' } })]).reopened).toBe(false);
+    });
+
+    it('reopens only the last question of the turn', () => {
+      const steps = [question('ask:1', { answer: TIMEOUT }), question('ask:2', { answer: TIMEOUT })];
+      expect(flags(splitTurnSegments(steps, { reopenable: true })).map((f) => f.reopened)).toEqual([false, true]);
+      // An earlier question that timed out is not reopened by a later answered one either.
+      expect(last([question('ask:1', { answer: TIMEOUT }), question('ask:2', { answer: ANSWER })]).reopened).toBe(false);
+    });
+
+    it('shows the reply that followed as the late answer', () => {
+      const opts = [{ value: 'pg', label: 'Postgres' }, { value: 'my', label: 'MySQL' }];
+      const late = (reply, select) => splitTurnSegments(
+        [question('ask:1', { answer: TIMEOUT, options: opts, select })], { reply },
+      ).find((s) => s.kind === 'question').lateAnswer;
+      expect(late('Postgres')).toEqual({ status: 'answered', values: ['pg'], text: '' });
+      expect(late('Postgres, MySQL', 'many')).toEqual({ status: 'answered', values: ['pg', 'my'], text: '' });
+      expect(late('use sqlite')).toEqual({ status: 'answered', values: [], text: 'use sqlite' });
+      expect(late(null)).toBeNull();
+      const write = splitTurnSegments([question('write:1', { answer: TIMEOUT })], { reply: 'Approve' });
+      expect(write.find((s) => s.kind === 'question').lateAnswer).toBeNull();
+    });
+
+    it('reads a comma-joined reply as several picks only on a multi-select question', () => {
+      const opts = [{ value: 'pg', label: 'Postgres' }, { value: 'my', label: 'MySQL' }];
+      const late = (reply, select) => splitTurnSegments(
+        [question('ask:1', { answer: TIMEOUT, options: opts, select })], { reply },
+      ).find((s) => s.kind === 'question').lateAnswer;
+      expect(late('Postgres, MySQL')).toEqual({ status: 'answered', values: [], text: 'Postgres, MySQL' });
+    });
+
+    it('does not split a label that contains a comma', () => {
+      const opts = [
+        { value: 'both', label: 'Marketing, Sales' },
+        { value: 'marketing', label: 'Marketing' },
+        { value: 'sales', label: 'Sales' },
+      ];
+      const late = (reply, select) => splitTurnSegments(
+        [question('ask:1', { answer: TIMEOUT, options: opts, select })], { reply },
+      ).find((s) => s.kind === 'question').lateAnswer;
+      expect(late('Marketing, Sales')).toEqual({ status: 'answered', values: ['both'], text: '' });
+      // On a multi-select question the same reply reads two ways, so it shows as typed.
+      expect(late('Marketing, Sales', 'many')).toEqual({ status: 'answered', values: [], text: 'Marketing, Sales' });
+      expect(late('Marketing, Sales, Marketing', 'many'))
+        .toEqual({ status: 'answered', values: [], text: 'Marketing, Sales, Marketing' });
+    });
+
+    it('changes nothing without reopenable', () => {
+      expect(last([question('ask:1', { answer: TIMEOUT })], {})).toEqual({ reopened: false, expired: false });
+      expect(last([question('ask:1')], {})).toEqual({ reopened: false, expired: true });
+    });
+  });
 });
 
 describe('liveSegmentIndex', () => {
@@ -97,5 +173,39 @@ describe('liveSegmentIndex', () => {
 
   it('is -1 for no segments', () => {
     expect(liveSegmentIndex([])).toBe(-1);
+  });
+});
+
+const brief = (id, completedAt) => ({
+  id, label: '', badge: 'Message', status: 'completed', startedAt: completedAt, completedAt,
+  data: { markdown: `brief ${id}` },
+});
+describe('splitTurnSegments — tool messages', () => {
+  it('puts a message between the steps before and after it', () => {
+    const segments = splitTurnSegments([work('a'), brief('m1', 50), work('b', 60)], { startedAt: 1 });
+    expect(shape(segments)).toEqual([['a'], 'M:m1', ['b']]);
+    expect(segments[1]).toMatchObject({ kind: 'message', key: 'm1' });
+  });
+
+  it('starts the segment after a message when the message showed', () => {
+    const segments = splitTurnSegments([work('a'), brief('m1', 50), work('b', 60)]);
+    expect(segments[2].startedAt).toBe(50);
+  });
+
+  it('keeps an empty segment after a trailing message for the live header', () => {
+    const segments = splitTurnSegments([work('a'), brief('m1', 50)]);
+    expect(shape(segments)).toEqual([['a'], 'M:m1', []]);
+    expect(liveSegmentIndex(segments)).toBe(2);
+  });
+
+  it('mixes with questions in event order', () => {
+    const segments = splitTurnSegments([
+      work('a'),
+      question('q1', { answer: ANSWER, completedAt: 100 }),
+      brief('m1', 150),
+      work('b', 160),
+    ]);
+    expect(shape(segments)).toEqual([['a'], 'Q:question-q1', [], 'M:m1', ['b']]);
+    expect(liveSegmentIndex(segments)).toBe(4);
   });
 });

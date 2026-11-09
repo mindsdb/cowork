@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { Icon } from './ui/Icon';
 import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
@@ -13,15 +14,17 @@ import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDism
 // (ChatView's UsageAlertCard).
 //
 // Colors use the pre-mixed -bg/-border/-text tokens (see Alert.tsx for why
-// `bg-warning/10` cannot work against a var() color).
+// `bg-warning/10` cannot work against a var() color). The dark theme's status
+// -bg tokens are translucent, and the conversation scrolls behind the bar, so
+// each status tone paints its tint as an image over the solid page colour.
 const TONE = {
   // `resting` is the standing allowance figure rather than a warning, so it
   // borrows the app's own surface instead of a status colour: it stays in view
   // until closed and must not read as something being wrong.
   resting: 'bg-surface-2 border-line text-ink-3',
-  info: 'bg-info-bg border-info-border text-info-text',
-  warning: 'bg-warning-bg border-warning-border text-warning-text',
-  danger: 'bg-danger-bg border-danger-border text-danger-text',
+  info: 'bg-bg bg-[image:linear-gradient(var(--info-bg),var(--info-bg))] border-info-border text-info-text',
+  warning: 'bg-bg bg-[image:linear-gradient(var(--warning-bg),var(--warning-bg))] border-warning-border text-warning-text',
+  danger: 'bg-bg bg-[image:linear-gradient(var(--danger-bg),var(--danger-bg))] border-danger-border text-danger-text',
 };
 
 // `dismissKey` narrows a dismissal to one step of a band the resource sits in
@@ -101,7 +104,7 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
           title={shown.resting ? 'Hide' : 'Dismiss'}
           className="absolute top-1 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
         >
-          <X size={14} strokeWidth={1.5} aria-hidden="true" />
+          <Icon of={X} size={14} />
         </button>
       </div>
     </>

@@ -13,6 +13,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { load } from 'js-yaml';
+
+const FIXTURES = load(readFileSync(resolve(import.meta.dirname, '../lib/artifactSurfaces.yaml'), 'utf-8'));
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
@@ -20,6 +25,9 @@ const showItemInFolder = vi.fn();
 const revealArtifact = vi.fn(() => Promise.resolve());
 // Async on purpose — handleDownload awaits it; see the failure-path test.
 const downloadArtifactFile = vi.fn(async () => true);
+/* The request the real download helper makes, for the serve-URL tests that
+   run it. */
+const authFetch = vi.fn();
 // A getter (not a plain property) so tests can flip web-vs-desktop per case
 // without needing a whole new mock module.
 let hostIsWeb = false;
@@ -29,6 +37,13 @@ let hostIsWeb = false;
 // it offered Open / Export / Show in Finder for an artifact that was gone.
 const deleted = vi.fn(() => false);
 const revalidate = vi.fn(() => Promise.resolve());
+/* The shared document gate, stubbed per test: whether the build has the
+   type's renderer and the shell supports the frame is not the card's business. */
+const canPreviewDocument = vi.fn(() => false);
+
+vi.mock('../preview/kinds', () => ({
+  canPreviewDocument: (...a) => canPreviewDocument(...a),
+}));
 
 vi.mock('../lib/artifactsStore', () => ({
   useArtifactLiveness: (card, opts) => deleted(card, opts),
@@ -65,7 +80,7 @@ vi.mock('../components/artifact', () => ({
 // needs to be controllable here.
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, revealArtifact: (...a) => revealArtifact(...a) };
+  return { ...actual, revealArtifact: (...a) => revealArtifact(...a), authFetch: (...a) => authFetch(...a) };
 });
 
 vi.mock('../lib/artifactDownload', () => ({
@@ -74,6 +89,7 @@ vi.mock('../lib/artifactDownload', () => ({
 
 import ChatView, { artifactStepToCard } from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
+import { NO_PREVIEW_DOWNLOADED_NOTE } from '../lib/artifactActions';
 
 const PUBLISHED_URL = 'https://view.staging.mindshub.ai/view/97901f016/845b3777';
 const ARTIFACT_ID = '11111111111141118111111111111111';
@@ -144,6 +160,8 @@ beforeEach(() => {
   deleted.mockReset();
   deleted.mockReturnValue(false);
   revalidate.mockClear();
+  canPreviewDocument.mockReset();
+  canPreviewDocument.mockReturnValue(false);
 });
 afterEach(() => setOrgMode(false));
 
@@ -223,11 +241,75 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
   });
 
-  it('falls back to window.open when the bridge rejects', async () => {
+  it('keeps Download behind "More actions" when the shared link is shown', async () => {
+    // The overflow menu renders in a portal, but React bubbles its events
+    // through the card, which opens the preview on click. The item must save
+    // the file and nothing else.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Download' }));
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('runs a focused action on Enter without opening the preview', async () => {
+    // The card opens the preview on Enter/Space. A key pressed on one of its
+    // buttons must run that button and nothing else.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    screen.getByRole('button', { name: 'Shared link' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('downloads from the overflow menu by keyboard without opening the preview', async () => {
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    screen.getByRole('button', { name: 'More actions' }).focus();
+    await user.keyboard('{Enter}');
+    const item = await screen.findByRole('menuitem', { name: 'Download' });
+    item.focus();
+    await user.keyboard('{Enter}');
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('lets app shortcuts through while an action has focus', async () => {
+    // Only Enter/Space stop at the action row. Cmd+K, Cmd+N and the rest are
+    // window listeners and must still fire with a card button focused.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    const onKey = vi.fn();
+    window.addEventListener('keydown', onKey);
+    try {
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+      screen.getByRole('button', { name: 'Preview' }).focus();
+      await user.keyboard('{Meta>}k{/Meta}');
+
+      expect(onKey).toHaveBeenCalledWith(expect.objectContaining({ key: 'k', metaKey: true }));
+    } finally {
+      window.removeEventListener('keydown', onKey);
+    }
+  });
+
+  it('does not fall back to window.open when the bridge rejects', async () => {
     /*
-     * `host.openExternal` is async. A synchronous try around it returns before
-     * the promise settles, so the fallback never ran on the one failure it was
-     * written for and the rejection escaped unhandled.
+     * host.openExternal is what restricts the agent-writable URL to safe
+     * schemes, so a rejection is caught and the raw URL never reaches
+     * window.open.
      */
     setOrgMode(true);
     const user = userEvent.setup();
@@ -238,7 +320,8 @@ describe('inline artifact banner in org mode', () => {
 
       await user.click(screen.getByRole('button', { name: 'Shared link' }));
 
-      expect(opened).toHaveBeenCalledWith(PUBLISHED_URL, '_blank', 'noopener,noreferrer');
+      expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+      expect(opened).not.toHaveBeenCalled();
     } finally {
       opened.mockRestore();
     }
@@ -266,6 +349,9 @@ describe('inline artifact banner in org mode', () => {
     await user.click(screen.getByRole('button', { name: 'Download' }));
     expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
     expect(openExternal).not.toHaveBeenCalled();
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
   });
 
   it('says why it has nowhere to go when there is no primary file at all', () => {
@@ -291,30 +377,33 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
   });
 
-  it('saves a spreadsheet nobody shared, the case ENG-2044 was filed on', async () => {
+  it('saves a file nobody shared, and says why once the save went through', async () => {
     /*
-     * The shipped defect, end to end: an .xlsx on web. Not previewable, not
+     * The shipped defect, end to end: a file with no preview on web. Not
      * publishable (autopublish is HTML/MD-only), no serve URL (org mode serves
      * no content). Six users hit "no servable file yet" on finished work in a
-     * single week.
+     * single week. Once the save succeeds the card says it downloaded instead.
      */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep({
-      ext: '.xlsx',
+      ext: '.zip',
       action: 'file',
-      file_path: '/proj/.anton/artifacts/model/model.xlsx',
-      path: '/proj/.anton/artifacts/model/model.xlsx',
+      file_path: '/proj/.anton/artifacts/model/model.zip',
+      path: '/proj/.anton/artifacts/model/model.zip',
       publishedUrl: '',
-      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/model.xlsx`,
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/model.zip`,
     }))} />);
 
     await user.click(screen.getByRole('button', { name: 'Download' }));
     expect(downloadArtifactFile).toHaveBeenCalledWith(
-      expect.objectContaining({ draftUrl: expect.stringContaining('model.xlsx') }),
-      { actionPath: '/proj/.anton/artifacts/model/model.xlsx' },
+      expect.objectContaining({ draftUrl: expect.stringContaining('model.zip') }),
+      { actionPath: '/proj/.anton/artifacts/model/model.zip' },
     );
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
   });
 
   it('reports the failure when the authenticated download fails', async () => {
@@ -328,12 +417,12 @@ describe('inline artifact banner in org mode', () => {
     downloadArtifactFile.mockImplementationOnce(async () => false);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep({
-      ext: '.xlsx',
+      ext: '.zip',
       action: 'file',
-      file_path: '/proj/.anton/artifacts/model/model.xlsx',
-      path: '/proj/.anton/artifacts/model/model.xlsx',
+      file_path: '/proj/.anton/artifacts/model/model.zip',
+      path: '/proj/.anton/artifacts/model/model.zip',
       publishedUrl: '',
-      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/model.xlsx`,
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/model.zip`,
     }))} />);
 
     await user.click(screen.getByRole('button', { name: 'Download' }));
@@ -342,6 +431,7 @@ describe('inline artifact banner in org mode', () => {
     expect(await screen.findByText('This artifact has no downloadable file yet.', {
       selector: '.chat-artifact-card__status',
     })).toBeInTheDocument();
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
   });
 
   it('does not offer Download for an unshared fullstack app — its draft is only a shell', () => {
@@ -472,10 +562,10 @@ describe('inline artifact banner label on desktop', () => {
   it('does not call the OS handoff a preview', () => {
     setOrgMode(false);
     render(<ChatView task={taskWithArtifact(artifactStep({
-      ext: '.xlsx',
-      action: 'spreadsheet',
-      file_path: '/proj/.anton/artifacts/sales/sales.xlsx',
-      path: '/proj/.anton/artifacts/sales/sales.xlsx',
+      ext: '.zip',
+      action: 'archive',
+      file_path: '/proj/.anton/artifacts/sales/sales.zip',
+      path: '/proj/.anton/artifacts/sales/sales.zip',
       publishedUrl: '',
     }))} />);
 
@@ -560,12 +650,12 @@ describe('inline artifact banner for a deleted artifact', () => {
 });
 
 describe('a failed action revalidates', () => {
-  // A .pdf has no inline preview, so the primary button is "Show in folder"
+  // A .zip has no inline preview, so the primary button is "Show in folder"
   // (ENG-1988) and the bridge's result is what decides success.
   const pdfTask = () => taskWithArtifact(artifactStep({
-    ext: '.pdf',
-    file_path: '/proj/.anton/artifacts/report/report.pdf',
-    path: '/proj/.anton/artifacts/report/report.pdf',
+    ext: '.zip',
+    file_path: '/proj/.anton/artifacts/report/report.zip',
+    path: '/proj/.anton/artifacts/report/report.zip',
   }));
 
   it('re-checks liveness when revealing fails', async () => {
@@ -601,17 +691,20 @@ describe('inline artifact banner on web', () => {
     // to the file's bytes there (ENG-1988).
     hostIsWeb = true;
     const user = userEvent.setup();
-    const pdfTask = taskWithArtifact(artifactStep({
-      ext: '.pdf',
-      file_path: '/proj/.anton/artifacts/report/report.pdf',
-      path: '/proj/.anton/artifacts/report/report.pdf',
+    const zipTask = taskWithArtifact(artifactStep({
+      ext: '.zip',
+      file_path: '/proj/.anton/artifacts/report/report.zip',
+      path: '/proj/.anton/artifacts/report/report.zip',
     }));
-    render(<ChatView task={pdfTask} />);
+    render(<ChatView task={zipTask} />);
 
     expect(screen.queryByRole('button', { name: 'Show in folder' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
     expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
   });
 
   it('still offers Preview for an HTML artifact', () => {
@@ -644,8 +737,13 @@ describe('inline artifact card layout hooks', () => {
     // keeps its three-track desktop layout at every width.
     expect(card.closest('.chat-transcript-col')).not.toBeNull();
 
-    for (const label of ['Shared link', 'Download', 'Preview']) {
-      expect(actions).toContainElement(screen.getByRole('button', { name: label }));
+    expect(actions).toContainElement(screen.getByRole('button', { name: 'Preview' }));
+    // The secondary and the overflow trigger live in the footer's own
+    // grouped element, which the grid places as the location bar's end.
+    const tools = card.querySelector(':scope > .chat-artifact-card__tools');
+    expect(tools).not.toBeNull();
+    for (const label of ['Shared link', 'More actions']) {
+      expect(tools).toContainElement(screen.getByRole('button', { name: label }));
     }
   });
 
@@ -661,12 +759,14 @@ describe('inline artifact card layout hooks', () => {
     const user = userEvent.setup();
     const { container } = render(<ChatView task={taskWithArtifact(artifactStep())} />);
 
-    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Download' }));
 
     const card = container.querySelector('.chat-artifact-card');
     const status = card.querySelector(':scope > .chat-artifact-card__status');
     expect(status).not.toBeNull();
     expect(card.querySelector('.chat-artifact-card__actions')).not.toContainElement(status);
+    expect(card.querySelector('.chat-artifact-card__tools')).not.toContainElement(status);
   });
 
   it('announces an action result through a region that was already mounted', async () => {
@@ -685,11 +785,308 @@ describe('inline artifact card layout hooks', () => {
     const card = container.querySelector('.chat-artifact-card');
     expect(card).not.toContainElement(live);
 
-    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Download' }));
 
     expect(live).toHaveTextContent('This artifact has no downloadable file yet.');
     const visible = card.querySelector('.chat-artifact-card__status');
     expect(visible).not.toBeNull();
     expect(visible).not.toHaveAttribute('aria-live');
+  });
+});
+
+/*
+ * A file with no preview, clicked on a web host: it downloads once, and the
+ * card says why only after the download went through. Every extension and
+ * surface comes from artifactSurfaces.yaml.
+ */
+const ID = '11111111111141118111111111111111';
+const fileStep = (ext, overrides = {}) => artifactStep({
+  ext,
+  action: 'file',
+  file_path: `/proj/.anton/artifacts/data/data${ext}`,
+  path: `/proj/.anton/artifacts/data/data${ext}`,
+  draftUrl: `/api/v1/artifacts/drafts/proj-1/${ID}/data${ext}`,
+  publishedUrl: '',
+  ...overrides,
+});
+const cardOf = (container) => container.querySelector('.chat-artifact-card');
+const clickCard = {
+  'card body': (user, container) => user.click(cardOf(container)),
+  'card title': (user) => user.click(screen.getByRole('button', { name: 'Current time' })),
+};
+const enterMode = (mode) => {
+  hostIsWeb = true;
+  setOrgMode(mode === 'org web');
+};
+
+describe.each(FIXTURES.webModes)('a file with no preview on %s', (mode) => {
+  describe.each(FIXTURES.clickSurfaces.chatCard)('from the %s', (surface) => {
+    it.each(FIXTURES.noPreviewExtensions)('downloads %s once, then shows the note', async (ext) => {
+      enterMode(mode);
+      const user = userEvent.setup();
+      const { container } = render(<ChatView task={taskWithArtifact(fileStep(ext))} />);
+
+      await clickCard[surface](user, container);
+
+      expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+      expect(downloadArtifactFile.mock.calls[0][0]).toMatchObject({ draftUrl: expect.stringContaining(`data${ext}`) });
+      expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+        selector: '.chat-artifact-card__status',
+      })).toBeInTheDocument();
+      expect(container.querySelector('[role="status"][aria-live="polite"]'))
+        .toHaveTextContent(NO_PREVIEW_DOWNLOADED_NOTE);
+      expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    });
+  });
+
+  it('shows the error and no note when the download fails', async () => {
+    enterMode(mode);
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(fileStep('.zip'))} />);
+
+    await user.click(cardOf(container));
+
+    expect(await screen.findByText('This artifact has no downloadable file yet.', {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
+  });
+});
+
+/*
+ * A card whose only URL is the serve URL, as a local server sends it, through
+ * the real download helper with only authFetch stubbed. The note follows a
+ * 2xx, and a 404 shows the error instead.
+ */
+describe('a file with no preview and only a serve URL on local web', () => {
+  const SERVE = '/api/v1/artifacts/serve/general/data/data.zip';
+  const serveOnlyStep = () => fileStep('.zip', { draftUrl: '', serveUrl: SERVE });
+  let click;
+
+  beforeEach(async () => {
+    enterMode('local web');
+    authFetch.mockReset();
+    const actual = await vi.importActual('../lib/artifactDownload');
+    downloadArtifactFile.mockImplementationOnce(actual.downloadArtifactFile);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:artifact-file');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(FIXTURES.clickSurfaces.chatCard)('from the %s, saves the file after a 2xx, then shows the note', async (surface) => {
+    authFetch.mockResolvedValueOnce({ ok: true, status: 200, blob: async () => new Blob(['zip']) });
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(serveOnlyStep())} />);
+
+    await clickCard[surface](user, container);
+
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
+    expect(authFetch).toHaveBeenCalledExactlyOnceWith(`http://localhost:1${SERVE}?download=1`, { signal: undefined });
+    expect(click).toHaveBeenCalledOnce();
+    expect(click.mock.instances[0]).toMatchObject({ href: 'blob:artifact-file', download: 'data.zip' });
+  });
+
+  it.each(FIXTURES.clickSurfaces.chatCard)('from the %s, shows the error and no note after a 404', async (surface) => {
+    authFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(serveOnlyStep())} />);
+
+    await clickCard[surface](user, container);
+
+    expect(await screen.findByText('This artifact has no downloadable file yet.', {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
+    expect(authFetch).toHaveBeenCalledOnce();
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
+    expect(click).not.toHaveBeenCalled();
+  });
+});
+
+describe('a file with no preview on local web and nothing to download', () => {
+  it.each([
+    ['a card with no URL', { draftUrl: '', serveUrl: '' }],
+    ['a fullstack app', { type: 'fullstack-stateless-app', ext: '.zip' }],
+  ])('offers no Download and no note for %s', async (_name, overrides) => {
+    enterMode('local web');
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(fileStep('.zip', overrides))} />);
+
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+    await user.click(cardOf(container));
+    await user.click(screen.getByRole('button', { name: 'Current time' }));
+
+    expect(downloadArtifactFile).not.toHaveBeenCalled();
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
+    expect(screen.queryByText('No artifact file path is available.')).toBeNull();
+  });
+});
+
+describe.each(FIXTURES.documentPreviewExtensions)('a %s card when the document gate allows it', (ext) => {
+  beforeEach(() => canPreviewDocument.mockReturnValue(true));
+
+  it('asks the gate about this artifact', () => {
+    enterMode('local web');
+    render(<ChatView task={taskWithArtifact(fileStep(ext))} />);
+    expect(canPreviewDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ ext, draftUrl: expect.stringContaining(`data${ext}`) }),
+      expect.objectContaining({ isWeb: true }),
+    );
+  });
+
+  it.each(FIXTURES.webModes)('opens the viewer on %s, with Download beside Preview', async (mode) => {
+    enterMode(mode);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(fileStep(ext))} />);
+
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+    await user.click(cardOf(container));
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(downloadArtifactFile).not.toHaveBeenCalled();
+  });
+
+  it('saves the file from the Download beside Preview, without the note', async () => {
+    enterMode('local web');
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(fileStep(ext))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(NO_PREVIEW_DOWNLOADED_NOTE)).toBeNull();
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('opens the viewer on desktop, with a visible Open that hands the file to the default app', async () => {
+    setOrgMode(false);
+    openPath.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(fileStep(ext))} />);
+
+    await user.click(cardOf(container));
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(openPath).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    expect(openPath).toHaveBeenCalledWith(`/proj/.anton/artifacts/data/data${ext}`);
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+  });
+});
+
+describe.each(FIXTURES.documentPreviewExtensions)('a %s card when the document gate refuses it', (ext) => {
+  /* A build without the type's renderer, or a desktop shell without the frame
+     guard: the card treats the file as one with no preview. */
+  it.each(FIXTURES.webModes)('downloads on %s, then shows the note', async (mode) => {
+    enterMode(mode);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(fileStep(ext))} />);
+
+    await user.click(cardOf(container));
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('opens the default app on desktop', async () => {
+    setOrgMode(false);
+    openPath.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={taskWithArtifact(fileStep(ext))} />);
+
+    await user.click(cardOf(container));
+
+    expect(openPath).toHaveBeenCalledWith(`/proj/.anton/artifacts/data/data${ext}`);
+    expect(downloadArtifactFile).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+});
+
+describe('a live-turn .xlsx card on local web', () => {
+  /*
+   * The reported repro: the card of a turn still streaming. It carries a draft
+   * URL, so it previews when the gate allows it and downloads with the note
+   * when it does not, and never dead-ends on the missing-path text.
+   */
+  const liveTask = () => ({
+    id: 'conv-a',
+    title: 'Alpha task',
+    status: 'active',
+    messages: [
+      { role: 'user', content: 'build me a model' },
+      { role: '_streaming', content: '', steps: [fileStep('.xlsx')] },
+    ],
+  });
+
+  it('downloads with the note when the build has no sheet renderer', async () => {
+    enterMode('local web');
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={liveTask()} />);
+
+    await user.click(cardOf(container));
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
+    expect(screen.queryByText('No artifact file path is available.')).toBeNull();
+  });
+
+  it('previews when the gate allows it', async () => {
+    enterMode('local web');
+    canPreviewDocument.mockReturnValue(true);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={liveTask()} />);
+
+    await user.click(cardOf(container));
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(screen.queryByText('No artifact file path is available.')).toBeNull();
+  });
+
+  /*
+   * A relative path in a task with no project folder leaves the card without a
+   * local path. The document preview and the download both read the card's
+   * draft URL, so neither needs one.
+   */
+  const relativeLiveTask = () => {
+    const task = liveTask();
+    const relative = 'conversations/c1/.anton/artifacts/data/data.xlsx';
+    task.messages[1].steps = [fileStep('.xlsx', { file_path: relative, path: relative })];
+    return task;
+  };
+
+  it('previews a card with no local path when the gate allows it', async () => {
+    enterMode('local web');
+    canPreviewDocument.mockReturnValue(true);
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={relativeLiveTask()} />);
+
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeEnabled();
+    await user.click(cardOf(container));
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+  });
+
+  it('downloads a card with no local path with the note when the gate refuses it', async () => {
+    enterMode('local web');
+    const user = userEvent.setup();
+    const { container } = render(<ChatView task={relativeLiveTask()} />);
+
+    await user.click(cardOf(container));
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(NO_PREVIEW_DOWNLOADED_NOTE, {
+      selector: '.chat-artifact-card__status',
+    })).toBeInTheDocument();
   });
 });

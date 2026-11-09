@@ -121,6 +121,9 @@ pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
 # Disable relocation so macOS always installs to /Applications, even on reinstall.
 /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
 
+# The postinstall reads this to hand the installed app to the console user.
+printf '%s.app\n' "$PRODUCT_NAME" > build/pkg-scripts/installed-app-name
+
 echo "==> Building component pkg (non-relocatable)"
 # --scripts (ENG-1241): runs build/pkg-scripts/postinstall as root right
 # after the payload lands, to stage the OAuth credentials CI writes to
@@ -136,9 +139,16 @@ pkgbuild \
 
 echo "==> Synthesizing distribution"
 productbuild --synthesize --package "$COMPONENT_PKG" "$DIST_XML"
-# Set the installer title shown in the macOS Installer UI and "move to Trash" dialog.
-# The synthesized XML has no <title> element, so insert one after the root tag.
-sed -i '' "s|<installer-gui-script[^>]*>|&\n    <title>${PRODUCT_NAME}</title>|" "$DIST_XML"
+# The synthesized XML has no <title> (shown in the Installer UI and the "move to
+# Trash" dialog) and no OS floor, so insert both after the root tag. The floor
+# makes the installer refuse macOS 12 instead of installing an app that cannot
+# start. One substitution without "\n": BSD sed writes "\n" in a replacement as
+# a literal "n".
+MAC_MINIMUM_MACOS="13.0"
+sed -i '' "s|<installer-gui-script[^>]*>|&<title>${PRODUCT_NAME}</title><allowed-os-versions><os-version min=\"${MAC_MINIMUM_MACOS}\"/></allowed-os-versions>|" "$DIST_XML"
+echo "==> distribution.xml"
+cat "$DIST_XML"
+xmllint --noout "$DIST_XML"
 
 if is_truthy "$MAC_PKG_UNSIGNED"; then
   echo "==> Building unsigned installer pkg"
@@ -222,6 +232,7 @@ fi
 
 # Clean up intermediate files so `release/*.pkg` glob matches only the final artifact.
 rm -f "$COMPONENT_PKG" "$COMPONENT_PLIST" "$DIST_XML"
+rm -f build/pkg-scripts/installed-app-name
 
 echo "==> Final artifact hash"
 shasum -a 256 "$PKG_PATH"

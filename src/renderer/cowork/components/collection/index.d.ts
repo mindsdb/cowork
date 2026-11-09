@@ -12,7 +12,7 @@ export function PageHeader(props: {
   actions?: ReactNode;
 }): ReactNode;
 
-export function FilterRow(props: { search?: ReactNode; sort?: ReactNode; view?: ReactNode; counts?: ReactNode; right?: ReactNode }): ReactNode;
+export function FilterRow(props: { search?: ReactNode; filter?: ReactNode; sort?: ReactNode; view?: ReactNode; counts?: ReactNode; right?: ReactNode; chips?: ReactNode }): ReactNode;
 
 export function SearchInput(props: {
   value: string;
@@ -23,4 +23,22 @@ export function SearchInput(props: {
   shortcut?: string;
 }): ReactNode;
 
+export function SortPill(props: {
+  value: string;
+  onChange: (id: string) => void;
+  options: { id: string; label: string }[];
+  label?: string;
+}): ReactNode;
+
 export function useCollectionShortcut(searchRef: RefObject<HTMLInputElement | null>, enabled?: boolean): void;
+export { CardGrid, ItemCard } from './ItemCard';
+export { ListGroup, ListItem, ListNotice } from './ListGroup';
+export { ItemActions } from './itemParts';
+export type { ItemSlots } from './itemParts';
+export { StatusDot } from './StatusDot';
+export type { StatusTone } from './StatusDot';
+
+export { CollectionState } from './CollectionState';
+export { ViewToggle, useCollectionView } from './ViewToggle';
+export { FilterMenu, FilterChips } from './FilterMenu';
+export type { Filter, FilterOption } from './FilterMenu';

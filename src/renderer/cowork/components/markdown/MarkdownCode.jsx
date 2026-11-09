@@ -6,7 +6,7 @@
 //                                        shows error placeholder.
 //   - everything else                  → plain <code> with our token style
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChartLoadingState, ChartErrorState } from './ChartStates';
 import { MessageChart } from './MessageChart';
 import { parseChartIntent } from './utils';
@@ -15,6 +15,47 @@ import Ico from '../Icons';
 import { Alert } from '../ui';
 import { patchForm, setForm, getForm } from '../datavault/formStore';
 import { parseFormSpec } from '../datavault/parseFormSpec';
+
+/* A code block's scrolling body. With `overflowCue`, a line wider than the
+   block gets a fade on the right edge (gone once scrolled to the end) and a
+   line under the code saying the block scrolls: an overlay scrollbar shows
+   nothing until the user scrolls, so the tail of a long line can go unseen.
+   Measured on mount, when the code changes, on scroll, and on resize. */
+function CodeBlockPre({ overflowCue, source, children }) {
+  const preRef = useRef(null);
+  const [overflow, setOverflow] = useState({ wide: false, atEnd: true });
+  useEffect(() => {
+    const pre = preRef.current;
+    if (!overflowCue || !pre) return undefined;
+    const measure = () => {
+      const wide = pre.scrollWidth > pre.clientWidth;
+      const atEnd = pre.scrollLeft + pre.clientWidth >= pre.scrollWidth - 1;
+      setOverflow((prev) => (prev.wide === wide && prev.atEnd === atEnd ? prev : { wide, atEnd }));
+    };
+    measure();
+    pre.addEventListener('scroll', measure, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(pre);
+    return () => {
+      pre.removeEventListener('scroll', measure);
+      observer?.disconnect();
+    };
+  }, [overflowCue, source]);
+
+  const pre = <pre ref={preRef} className="anton-code-block-pre">{children}</pre>;
+  if (!overflowCue) return pre;
+  return (
+    <>
+      <div className="anton-code-block-scroll">
+        {pre}
+        {overflow.wide && !overflow.atEnd ? <div className="anton-code-block-fade" aria-hidden="true" /> : null}
+      </div>
+      {overflow.wide ? (
+        <div className="anton-code-block-overflow-note">Scroll sideways to see the rest of the line.</div>
+      ) : null}
+    </>
+  );
+}
 
 export function MarkdownCode(props) {
   const lang = props?.className?.replace('language-', '') || '';
@@ -30,6 +71,9 @@ export function MarkdownCode(props) {
   // block branch and never triggers a side-effect renderer.
   const enableForms = props?.enableForms !== false;
   const enableCharts = props?.enableCharts !== false;
+  // Off by default: an answer's code block scrolls with no cue, while a card
+  // asking the user to approve something marks a line it can't show whole.
+  const overflowCue = props?.overflowCue === true;
   // Track whether this block was already complete when first mounted.
   // Historical messages mount with complete=true immediately; live
   // streams mount with complete=false and flip to true when the chunk
@@ -159,7 +203,7 @@ export function MarkdownCode(props) {
           fontFamily: 'var(--font-body)', fontSize: 12.5,
           display: 'inline-flex', alignItems: 'center', gap: 8,
         }}>
-          <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(13)}</span>
+          <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(14)}</span>
           Preparing form…
         </div>
       );
@@ -208,7 +252,7 @@ export function MarkdownCode(props) {
           cursor: 'pointer',
         }}
       >
-        <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(13)}</span>
+        <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(14)}</span>
         <span>
           <strong style={{ color: 'var(--ink)' }}>{formSpec.title || 'Form'}</strong>
           {' — fill it out in the side panel →'}
@@ -271,13 +315,13 @@ export function MarkdownCode(props) {
             <span className="anton-code-block-copy-label" aria-live="polite">Copy</span>
           </button>
         </div>
-        <pre className="anton-code-block-pre">
+        <CodeBlockPre overflowCue={overflowCue} source={raw}>
           <code
             className={`hljs language-${highlighted.language}`}
             data-source={raw}
             dangerouslySetInnerHTML={{ __html: highlighted.html }}
           />
-        </pre>
+        </CodeBlockPre>
       </div>
     );
   }

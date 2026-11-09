@@ -1,0 +1,41 @@
+# What slide.test.ts checks: the outline readOutline reads down a shape's
+# inheritance chain, from the slide's shape to the layout and master
+# placeholders it inherits from. Each link is the inside of a p:sp, in the p
+# and a namespaces, and its colors resolve against the scheme below.
+#
+#   chain    the inside of each p:sp in the chain, the slide's shape first
+#   outline  the color and the width in EMU the outline draws, or null for none
+
+scheme:
+  theme: { accent1: 4472C4 }
+  map: {}
+
+cases:
+  # A slide placeholder whose a:ln sets only a color keeps the width of the
+  # a:ln on the layout placeholder it inherits from.
+  - name: a color on the slide over a width on the layout
+    chain:
+      - <p:spPr><a:ln><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:ln></p:spPr>
+      - <p:spPr><a:ln w="76200"/></p:spPr>
+    outline: { color: '#ff0000', width: 76200 }
+
+  - name: a width on the slide over a color and a width on the layout
+    chain:
+      - <p:spPr><a:ln w="76200"/></p:spPr>
+      - <p:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:ln></p:spPr>
+    outline: { color: '#ff0000', width: 76200 }
+
+  - name: a width over the style's lnRef
+    chain:
+      - <p:spPr><a:ln w="76200"/></p:spPr><p:style><a:lnRef idx="1"><a:schemeClr val="accent1"/></a:lnRef></p:style>
+    outline: { color: '#4472c4', width: 76200 }
+
+  - name: the style's lnRef with no a:ln, at the default width
+    chain:
+      - <p:spPr/><p:style><a:lnRef idx="1"><a:schemeClr val="accent1"/></a:lnRef></p:style>
+    outline: { color: '#4472c4', width: 9525 }
+
+  - name: noFill over the style's lnRef
+    chain:
+      - <p:spPr><a:ln w="76200"><a:noFill/></a:ln></p:spPr><p:style><a:lnRef idx="1"><a:schemeClr val="accent1"/></a:lnRef></p:style>
+    outline: null

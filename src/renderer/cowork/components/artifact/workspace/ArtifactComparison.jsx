@@ -3,6 +3,7 @@ import Ico from '../../Icons';
 import { Button } from '../../ui';
 import { ArtifactHtmlComparison } from './ArtifactHtmlComparison';
 import { createHtmlVisualComparisonDocuments } from './htmlVisualEditorDocument';
+import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
 
 function labelOf(revision, fallback) {
   if (!revision) return fallback;
@@ -77,12 +78,18 @@ export function ArtifactComparison({
     [afterContent, beforeContent],
   );
   const htmlComparison = isHtmlComparison(contentType, comparison?.before, comparison?.after);
+  const documentUrl = absoluteDraftUrl(baseUrl);
   const visualModel = useMemo(
     () => (htmlComparison
-      ? createHtmlVisualComparisonDocuments(beforeContent, afterContent, { baseUrl })
+      ? createHtmlVisualComparisonDocuments(beforeContent, afterContent, { baseUrl: documentUrl })
       : null),
-    [afterContent, baseUrl, beforeContent, htmlComparison],
+    [afterContent, documentUrl, beforeContent, htmlComparison],
   );
+  // Only an open HTML comparison has documents to inline; the component stays
+  // mounted while no comparison is open.
+  const frameUrl = comparison && visualModel ? documentUrl : '';
+  const inlinedBefore = useInlinedFrameDocument(visualModel?.before ?? '', frameUrl);
+  const inlinedAfter = useInlinedFrameDocument(visualModel?.after ?? '', frameUrl);
 
   useEffect(() => {
     for (const node of [beforeRef.current, afterRef.current]) {
@@ -108,7 +115,7 @@ export function ArtifactComparison({
       <header className="artifact-compare-header">
         <div>
           <div className="artifact-compare-kicker">
-            <span className="artifact-compare-eyebrow">{isAgent ? 'Agent suggestion' : 'Revision history'}</span>
+            <span className="section-label">{isAgent ? 'Agent suggestion' : 'Revision history'}</span>
             {changeCount > 0 && <span className="artifact-compare-change-count">{changeLabel}</span>}
           </div>
           <h3 id="artifact-compare-title">
@@ -134,13 +141,16 @@ export function ArtifactComparison({
         <ArtifactHtmlComparison
           key={`${before?.id || 'before'}:${after?.id || 'after'}`}
           model={visualModel}
+          beforeDocument={inlinedBefore.content}
+          afterDocument={inlinedAfter.content}
+          pending={inlinedBefore.pending || inlinedAfter.pending}
           beforeLabel={beforeLabel}
           afterLabel={afterLabel}
         />
       ) : (
         <div className="artifact-compare-grid">
           <section>
-            <div className="artifact-compare-label">Before · {beforeLabel}</div>
+            <div className="artifact-compare-label section-label">Before · {beforeLabel}</div>
             <DiffSource
               lines={changes.before}
               start={changes.beforeStart}
@@ -149,7 +159,7 @@ export function ArtifactComparison({
             />
           </section>
           <section>
-            <div className="artifact-compare-label">After · {afterLabel}</div>
+            <div className="artifact-compare-label section-label">After · {afterLabel}</div>
             <DiffSource
               lines={changes.after}
               start={changes.afterStart}

@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 // Connect Apps and Data — the page that lists everything the user has
 // hooked Anton up with. Mirrors the Projects page layout (header +
 // filter row + grid of cards + empty state). The "+ Connect" CTA
@@ -9,8 +10,22 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Alert, Button, EmptyState, Select } from '../components/ui';
-import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection, patchConnectionAccessMode } from '../api';
+import { Alert, Button, Select } from '../components/ui';
+import {
+  CONNECTIONS_VAULT_KEEP,
+  deleteDatasource,
+  deleteDatasourceConnection,
+  fetchConnector,
+  fetchDatasources,
+  fetchSavedConnection,
+  listDatasourceConnections,
+  patchConnectionAccessMode,
+  retryDatasourceValidation,
+} from '../api';
+import { useOrgMode } from '../../lib/orgMode';
+import { isDatasourceRow, toDatasourceRows } from '../lib/datasourceConnectionRows';
+import { usePendingDatasourceRefresh } from '../hooks/usePendingDatasourceRefresh';
+import DatasourceDetailPanel from '../components/connector/DatasourceDetailPanel';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
 import {
@@ -18,21 +33,25 @@ import {
   FilterRow,
   SearchInput,
   SortPill,
+  CollectionState,
+  CardGrid,
+  ListGroup,
+  ViewToggle,
   useCollectionShortcut,
+  useCollectionView,
 } from '../components/collection';
 import { cn } from '../lib/cn';
+import SharePointSetupModal, { SHAREPOINT_ENGINE } from '../components/sharepoint/SharePointSetupModal';
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
-import ConnectionCard from '../components/connector/ConnectionCard';
+import ConnectionCard, { ConnectionRow } from '../components/connector/ConnectionCard';
+import { useConfirm } from '../components/ConfirmModal';
+import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
-function ConnectButton({ onClick, large = false }) {
+function ConnectButton({ onClick }) {
   return (
-    <Button
-      variant="primary"
-      onClick={onClick}
-      style={large ? { fontSize: 13.5 } : undefined}
-    >
+    <Button variant="primary" onClick={onClick}>
       {Ico.plus(14)} Connect
     </Button>
   );
@@ -48,37 +67,27 @@ const SORT_OPTIONS = [
 function ConnectionsCounts({ search, total, filtered }) {
   const filterActive = (search || '').trim().length > 0;
   const countText = filterActive
-    ? `Showing ${filtered} of ${total}`
+    ? `${filtered} of ${total} connections`
     : `${total} ${total === 1 ? 'connection' : 'connections'}`;
   return <>{countText}</>;
 }
 
-// ─── Connection card ─────────────────────────────────────────────────────
-
-// Trailing dashed card that lives at the end of the connections
-// grid, mirroring the "+ New project" tile in ProjectsView. Click
-// dispatches to the parent's handleConnectNew (same path the page
-// header's "+ Connect" button takes — opens the connector picker).
-// Only rendered when there's at least one existing connection — the
-// EmptyState already covers the zero-connection case.
-function NewConnectionCard({ onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-line-2 bg-transparent px-4 py-3.5 text-ink-3 [font:inherit] [transition:border-color_.15s_ease,color_.15s_ease] hover:border-accent hover:text-accent"
-    >
-      <span className="inline-flex">{Ico.plus(16)}</span>
-      <span className="font-[family-name:var(--font-body)] text-[13px] font-medium">
-        New connection
-      </span>
-    </button>
-  );
-}
-
-// ─── Empty state ─────────────────────────────────────────────────────────
-
 // ─── Connection detail panel ──────────────────────────────────────────────
+
+/* The UI note beside a connection someone else shares with the caller.
+   cowork-server answers this same sentence (SHARED_CONNECTION_REFUSAL in
+   cowork/services/connectors/layered_vault.py) when it refuses a change to any
+   connection the caller can't change, one the operator provides included; the
+   operator's own gets OPERATOR_CONNECTION_NOTE in the UI below. */
+const SHARED_CONNECTION_NOTE = "This connection is shared with you and can't be changed here.";
+
+/* The same read-only note for a connection the operator provides, which no
+   person created or shared. */
+const OPERATOR_CONNECTION_NOTE = "Your operator provides this connection, and it can't be changed here.";
+
+/* Told to the creator of a shared connection beside a setting others pick up:
+   each turn reads the connection live from its creator's vault. */
+const OWN_SHARED_CHANGE_NOTE = "It's shared, so your changes reach everyone it's shared with at their next answer.";
 
 function fmtDate(iso) {
   if (!iso) return '';
@@ -93,12 +102,13 @@ function MetaRow({ label, value }) {
   return (
     <div className="flex items-baseline gap-2">
       <span className="w-[100px] shrink-0 font-[family-name:var(--font-body)] text-[12px] text-ink-4">{label}</span>
-      <span className="truncate font-[family-name:var(--font-mono)] text-[12px] text-ink">{value || '—'}</span>
+      <span className="truncate text-[12px] text-ink">{value || '—'}</span>
     </div>
   );
 }
 
-function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
+function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePoint }) {
+  const [confirm, confirmModal] = useConfirm();
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -151,6 +161,12 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
 
   if (!connection) return null;
 
+  /* Read-only when either the list row or the detail response says
+     `managed: true`; a connection without the field, or the caller's own
+     shared connection (`shared: true` alone), keeps every control. */
+  const managed = connection.managed === true || saved?.managed === true;
+  /* With `managed` false, the caller's own connection that others use. */
+  const shared = connection.shared === true || saved?.shared === true;
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};
   const vaultKeys = new Set(Object.keys(vaultFields));
@@ -237,45 +253,49 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        aria-hidden="true"
-        onClick={onClose}
-        className="fixed inset-0 z-[70] bg-[rgba(0,0,0,0.18)]"
-      />
-
-      {/* Slide-in panel */}
-      <div
-        role="dialog"
-        aria-label={`${spec?.label || connection.engine} connection details`}
-        className="fixed top-0 right-0 bottom-0 z-[71] flex w-[min(400px,_92vw)] flex-col border-l border-y-0 border-r-0 border-solid border-line bg-surface font-[family-name:var(--font-body)] shadow-[-12px_0_40px_rgba(0,0,0,0.12)]"
+      <Modal
+        open
+        onClose={onClose}
+        placement="right"
+        width="min(400px, calc(100vw - 16px))"
+        height="calc(100dvh - 16px)"
+        labelledBy="connection-detail-title"
       >
-        {/* Header */}
-        <div className="flex shrink-0 items-center gap-3 border-b border-x-0 border-t-0 border-solid border-line pt-[18px] px-5 pb-4">
-          <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-2">
-            {spec?.logo_url
-              ? <img src={spec.logo_url} alt="" className="h-[22px] w-[22px] object-contain" />
-              : <span className="inline-flex text-ink-3">{Ico.database(18)}</span>
-            }
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="s-h3 truncate">
-              {spec?.label || connection.engine}
-            </div>
-            <div className="mt-[1px] font-[family-name:var(--font-mono)] text-xs text-ink-4">
-              {connection.name}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="inline-grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-[18px] leading-none text-ink-3"
-          >×</button>
-        </div>
+        <ModalHeader
+          id="connection-detail-title"
+          title={spec?.label || connection.engine}
+          subtitle={<span className="font-[family-name:var(--font-mono)] text-xs text-ink-4">{connection.name}</span>}
+          onClose={onClose}
+          leading={(
+            <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-2">
+              {spec?.logo_url
+                ? <img src={spec.logo_url} alt="" className="h-[22px] w-[22px] object-contain" />
+                : <span className="inline-flex text-ink-3">{Ico.database(20)}</span>
+              }
+            </span>
+          )}
+        />
 
-        {/* Body */}
-        <div className="scroll-clean flex-1 overflow-y-auto py-[18px] px-5">
+        <ModalBody padding="18px 20px">
+          {/* A managed connection has no Reconnect or Disconnect, so its
+              alert names who can reconnect it instead: whoever shared it, or
+              the operator for one no person shared. */}
+          {saved?.fields?.status === 'needs_reconnect' && (
+            <div className="mb-4">
+              <Alert variant="warning" title="Reconnection required">
+                {!managed
+                  ? 'Access for this connection has expired or was revoked. Reconnect to restore access, or disconnect it from its card.'
+                  : shared
+                    ? 'Access for this connection has expired or was revoked. Whoever shared it with you can reconnect it.'
+                    : 'Access for this connection has expired or was revoked. Your operator can reconnect it.'}
+              </Alert>
+            </div>
+          )}
+          {managed && (
+            <p className="m-0 mb-4 text-[12px] text-ink-3" role="note">
+              {shared ? SHARED_CONNECTION_NOTE : OPERATOR_CONNECTION_NOTE}
+            </p>
+          )}
           {loading ? (
             <div className="text-[13px] text-ink-4">Loading…</div>
           ) : (
@@ -290,7 +310,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {/* Credentials */}
               {displayFields.length > 0 && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Credentials
                   </div>
                   <div className="mb-5 overflow-hidden rounded-lg border border-solid border-line">
@@ -323,9 +343,9 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {/* Drive file access — drive.file only grants the app files
                   it creates itself; picking files here grants access to
                   existing ones without widening the OAuth scope. */}
-              {connection.engine === 'google_drive' && (
+              {connection.engine === 'google_drive' && !managed && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Drive files
                   </div>
                   <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
@@ -392,6 +412,24 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                 </>
               )}
 
+              {/* SharePoint keeps its key and sites behind its own routes,
+                  which check the key with Microsoft before saving. */}
+              {connection.engine === SHAREPOINT_ENGINE && !managed && (
+                <>
+                  <div className="section-label mb-2">
+                    Key and sites
+                  </div>
+                  <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
+                    <div className="text-[12px] leading-normal text-ink-3">
+                      Change the app key or the sites this connection may read. Cowork checks the key with Microsoft before saving.
+                    </div>
+                    <Button size="sm" onClick={() => onEditSharePoint?.(connection)} className="self-start">
+                      Edit key and sites
+                    </Button>
+                  </div>
+                </>
+              )}
+
               {/* Tool access — only MCP-based connections have this
                   (ENG-487, HubSpot first): every other connector's access
                   is fixed by whatever OAuth scopes it requested at connect
@@ -402,15 +440,18 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   same field `handleDelete` above already reads it from. A
                   test double that leaves `_method` nested under `fields`
                   instead would pass without ever exercising the real shape. */}
-              {saved?.method === 'mcp' && (
+              {saved?.method === 'mcp' && !managed && (
                 <>
-                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
+                  <div className="section-label mb-2">
                     Tool access
                   </div>
                   <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
                     <div className="text-[12px] leading-normal text-ink-3">
                       What Anton can do with this connection's tools. Changing this doesn't require reconnecting.
                     </div>
+                    {shared && (
+                      <p className="m-0 text-[12px] text-ink-3" role="note">{OWN_SHARED_CHANGE_NOTE}</p>
+                    )}
                     <Select
                       value={vaultFields._access_mode || 'read'}
                       onValueChange={handleChangeAccessMode}
@@ -429,43 +470,33 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               )}
             </>
           )}
-        </div>
+        </ModalBody>
 
-        {/* Footer */}
-        <div className="flex shrink-0 flex-col gap-2 border-t border-x-0 border-b-0 border-solid border-line py-3.5 px-5">
-          {saved?.fields?.status === 'needs_reconnect' && (
-            <Alert variant="warning" title="Reconnection required">
-              Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
-            </Alert>
-          )}
-          {spec && (
+        {/* Disconnecting is the card's own flow; the drawer only manages. A
+            managed connection has no Reconnect here either. */}
+        <ModalFooter cancel={<Button variant="subtle" onClick={onClose}>Close</Button>}>
+          {spec && !managed && (
             <Button
               variant="primary"
-              onClick={() => {
-                if (!window.confirm(
-                  `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
-                )) return;
-                onReconnect?.(connection, spec);
+              onClick={async () => {
+                if (!(await confirm({
+                  title: `Reconnect ${spec.label || connection.engine}?`,
+                  message: connection.engine === SHAREPOINT_ENGINE
+                    ? "You'll update its key and sites. It stays as it is until the new key is checked and saved."
+                    : shared
+                      ? "It's shared, so connect the same account to update it in place for everyone it's shared with."
+                      : "The existing connection will be removed and you'll connect it again from scratch.",
+                  confirmLabel: 'Reconnect',
+                }))) return;
+                onReconnect?.(connection, spec, { shared });
               }}
-              className="w-full justify-center"
             >
               Reconnect
             </Button>
           )}
-          <Button
-            variant="danger"
-            block
-            onClick={() => {
-              if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
-              onDisconnect?.(connection, saved);
-              onClose();
-            }}
-          >
-            {Ico.trash(14)}
-            Remove
-          </Button>
-        </div>
-      </div>
+        </ModalFooter>
+      </Modal>
+      {confirmModal}
     </>
   );
 }
@@ -476,15 +507,27 @@ export default function CustomizeView({
   connectors: initialConnectors = [],
   onConnectNew,
   onModifyConnection,
+  /** Opens the cloud connect form against an existing database connection. */
+  onEditDatasource,
   onReconnect,
   /** Called with the fresh connections array so App can update the sidebar badge + composer list. */
   onConnectionsSynced,
   agentLabel = 'the agent',
 }) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
+  // Cloud database connections, kept apart from `list`. That array is the
+  // OAuth one and every refresh of it replaces the whole thing, so merging
+  // these into it would drop them the next time an OAuth sync ran.
+  const [datasources, setDatasources] = useState([]);
+  const orgMode = useOrgMode();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
+  const { view, setView, effectiveView } = useCollectionView('anton:connections-view');
   const [selectedConn, setSelectedConn] = useState(null);
+  const [selectedDatasource, setSelectedDatasource] = useState(null);
+  // Not alert(): it loses Windows focus the same way as window.confirm.
+  const [deleteError, setDeleteError] = useState(null);
+  const [sharePointEditing, setSharePointEditing] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
@@ -501,6 +544,26 @@ export default function CustomizeView({
       .catch(() => {});
   }, []);
 
+  // Cloud only: the relay's routes answer 404 anywhere else by design.
+  const refreshDatasources = useRef(() => {});
+  refreshDatasources.current = () => {
+    if (!orgMode) return Promise.resolve();
+    return listDatasourceConnections()
+      .then((rows) => setDatasources(toDatasourceRows(rows)))
+      .catch(() => {});
+  };
+  useEffect(() => { refreshDatasources.current(); }, [orgMode]);
+  // Connecting, editing or removing a database happens in the chat panel too,
+  // and this page can be open while it does.
+  useEffect(() => {
+    const onChanged = () => { refreshDatasources.current(); };
+    window.addEventListener('anton:connections-changed', onChanged);
+    return () => window.removeEventListener('anton:connections-changed', onChanged);
+  }, []);
+  // A row captured moments ago is still being checked, and this page is where
+  // its result is meant to appear.
+  usePendingDatasourceRefresh(datasources, () => refreshDatasources.current(), orgMode);
+
   // Keep local mirror in sync with prop changes — refresh after add /
   // remove flips the App-level state.
   useEffect(() => {
@@ -516,7 +579,7 @@ export default function CustomizeView({
     // that silently does nothing.
     if (!onConnectNew) {
       // eslint-disable-next-line no-console
-      console.error('[connectors] CustomizeView rendered without onConnectNew — the Connect CTA has no effect.');
+      diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_customizeview_rendered_without_onconnectnew_the_connect_cta_has_no_effect", '[connectors] CustomizeView rendered without onConnectNew — the Connect CTA has no effect.');
       return;
     }
     onConnectNew();
@@ -552,8 +615,52 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
+  const handleRetryValidation = async (connection) => {
+    await retryDatasourceValidation(connection.datasourceId);
+    await refreshDatasources.current();
+  };
+
+  /* Re-reads the list after a delete. Best effort: the connection is already
+     gone, so a failed refresh must never turn the delete into a failure. */
+  const syncAfterDelete = async () => {
+    try {
+      const fresh = await fetchDatasources();
+      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
+      setList(next);
+      onConnectionsSyncedRef.current?.(next);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      diagnostic("renderer.cowork.views.CustomizeView", "WARNING", "connectors_refresh_after_delete_failed", '[connectors] refresh after delete failed', e);
+    }
+    /* Project files' Context card holds its own Google Drive file list and has
+       no other way to learn a connection just vanished (and with it, that
+       connection's _picked_files grant). */
+    window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+  };
+
+  /* Removes a cloud database connection through the relay. Rejects on any
+     failure, a 404 included, so the database panel's own dialog can say why. */
+  const removeDatasourceConnection = async (connection) => {
+    await deleteDatasourceConnection(connection.datasourceId);
+    await refreshDatasources.current();
+    window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+  };
+
+  /* Resolves true once the connection is gone and false when the delete
+     failed, after telling the person why; a caller that goes on to reconnect
+     must stop on false. A 404 from the vault delete counts as gone; the relay
+     delete of a database connection does not. On desktop, an OAuth or MCP
+     connection resolves true once main's keychain:revoke handler
+     (src/main/app.ts) ran: that handler always answers ok and doesn't report
+     whether its vault delete succeeded. */
   const handleDelete = async (connection, savedDetail) => {
     try {
+      // A database connection lives behind the relay, not the OAuth vault:
+      // the OAuth delete route would not find it.
+      if (isDatasourceRow(connection)) {
+        await removeDatasourceConnection(connection);
+        return true;
+      }
       // For builtin OAuth connections in Electron, keychain:revoke stops the
       // refresh loop, removes the keychain entry, and deletes the vault record.
       if (host.isElectron) {
@@ -567,33 +674,34 @@ export default function CustomizeView({
         // 'browser_oauth_builtin' checks found and fixed in app.ts.
         if ((detail?.method === 'browser_oauth_builtin' || detail?.method === 'mcp') && accountEmail) {
           await host.keychainRevoke(connection.engine, connection.name, accountEmail);
-          const fresh = await fetchDatasources();
-          const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
-          setList(next);
-          onConnectionsSyncedRef.current?.(next);
-          // Project files' Context card holds its own Google Drive file
-          // list and has no other way to learn a connection just vanished
-          // (and with it, that connection's _picked_files grant).
-          window.dispatchEvent(new CustomEvent('anton:connections-changed'));
-          return;
+          await syncAfterDelete();
+          return true;
         }
       }
-      await deleteDatasource(connection.engine, connection.name);
-      const fresh = await fetchDatasources();
-      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
-      setList(next);
-      onConnectionsSyncedRef.current?.(next);
-      window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      try {
+        await deleteDatasource(connection.engine, connection.name);
+      } catch (e) {
+        /* A 404 means someone already removed it, from another tab or, on a
+           shared vault, another person. That is the outcome asked for. */
+        if (e?.status !== 404) throw e;
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[connectors] delete failed', e);
-      alert(`Could not disconnect: ${e?.message || e}`);
+      diagnostic("renderer.cowork.views.CustomizeView", "ERROR", "connectors_delete_failed", '[connectors] delete failed', e);
+      setDeleteError(String(e?.message || e));
+      return false;
     }
+    await syncAfterDelete();
+    return true;
   };
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let out = (list || []).map((connection) => ({ connection, identity: connectionIdentity(connection) }));
+    // One grid: the OAuth connections this page has always shown, plus the
+    // cloud database ones. They are separate state (see above) and joined only
+    // for display, search and sort.
+    const all = [...(list || []), ...datasources];
+    let out = all.map((connection) => ({ connection, identity: connectionIdentity(connection) }));
     if (q) {
       out = out.filter(({ connection, identity }) =>
         [connection.name, connection.engine, identity.title, identity.subtitle]
@@ -614,9 +722,9 @@ export default function CustomizeView({
       }
     });
     return out.map(({ connection }) => connection);
-  }, [list, search, sort]);
+  }, [list, datasources, search, sort]);
 
-  const total = list.length;
+  const total = list.length + datasources.length;
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -640,53 +748,119 @@ export default function CustomizeView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          view={<ViewToggle value={view} onValueChange={setView} />}
           counts={
             <ConnectionsCounts search={search} total={total} filtered={visible.length} />
           }
         />
       )}
 
-      {total === 0 ? (
-        <EmptyState
-          icon={<span className="inline-flex text-ink-4">{Ico.link(32)}</span>}
-          title="No apps connected yet"
-          description={`Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`}
-          action={<ConnectButton onClick={handleConnectNew} large />}
-          style={{ flex: 1 }}
+      <CollectionState
+        total={total}
+        shown={visible.length}
+        query={search}
+        onClear={() => setSearch('')}
+        empty={{
+          icon: Ico.link(20),
+          title: 'No apps connected yet',
+          description: `Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`,
+          action: { label: 'Connect your first app', onClick: handleConnectNew },
+          className: 'mx-8 mb-8',
+        }}
+      >
+        {effectiveView === 'grid' ? (
+          <CardGrid className="px-8 pb-[60px]">
+            {visible.map((c) => (
+              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn} />
+            ))}
+          </CardGrid>
+        ) : (
+          <ListGroup className="mx-8 mb-[60px]">
+            {visible.map((c) => (
+              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn} />
+            ))}
+          </ListGroup>
+        )}
+      </CollectionState>
+
+      {selectedDatasource && (
+        <DatasourceDetailPanel
+          connection={selectedDatasource}
+          onClose={() => setSelectedDatasource(null)}
+          onRetry={async (connection) => {
+            await handleRetryValidation(connection);
+            setSelectedDatasource(null);
+          }}
+          onRemove={async (connection) => {
+            await removeDatasourceConnection(connection);
+            setSelectedDatasource(null);
+          }}
+          onEdit={(connection) => {
+            setSelectedDatasource(null);
+            // The relay requires the password on every edit and nothing here
+            // can pre-fill it, so an edit re-opens the connect form — carrying
+            // the connection, so the form patches that one instead of creating
+            // a second connection under a new name.
+            onEditDatasource?.(connection);
+          }}
         />
-      ) : (
-        <div className="mt-[18px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 pt-1.5 px-8 pb-[60px]">
-          {visible.map((c) => (
-            <ConnectionCard
-              key={`${c.engine}-${c.name}`}
-              connection={c}
-              onDelete={handleDelete}
-              onModify={setSelectedConn}
-            />
-          ))}
-          {/* Trailing dashed "New connection" card — appears only
-              when there's at least one existing connection (the
-              EmptyState handles the zero-connection case with its
-              own larger CTA). Mirrors the Projects pattern. */}
-          <NewConnectionCard onClick={handleConnectNew} />
-        </div>
       )}
+      <Modal
+        open={deleteError != null}
+        onClose={() => setDeleteError(null)}
+        size="sm"
+        width="min(420px, 92vw)"
+        labelledBy="disconnect-error-title"
+      >
+        <ModalHeader id="disconnect-error-title" title="Could not disconnect" />
+        <ModalBody>
+          <div className="s-body">{deleteError}</div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setDeleteError(null)} autoFocus>OK</Button>
+        </ModalFooter>
+      </Modal>
 
       {selectedConn && (
         <ConnectionDetailPanel
           connection={selectedConn}
           onClose={() => setSelectedConn(null)}
-          onDisconnect={async (conn, savedDetail) => {
-            await handleDelete(conn, savedDetail);
+          onEditSharePoint={(conn) => setSharePointEditing(conn.name)}
+          onReconnect={async (conn, spec, { shared = false } = {}) => {
+            // SharePoint is edited in place: its key is checked before it
+            // replaces the stored one, so nothing is deleted first.
+            if (conn.engine === SHAREPOINT_ENGINE) {
+              setSharePointEditing(conn.name);
+              return;
+            }
+            /* The creator's own shared connection is never deleted first:
+               everyone it's shared with would lose it, and cowork-server
+               refuses a new connection under the name the operator still shares
+               (STILL_SHARED_CONNECTION_REFUSAL in
+               cowork/services/connectors/layered_vault.py). Connecting the same
+               account again updates it in place, so its name rides along: a
+               connector with no identity field would otherwise derive a fresh
+               random slug and save a second, private connection. Otherwise a
+               failed delete leaves the old connection in place, so don't start
+               a new connect flow for it; the panel stays open. A connection
+               that is already gone counts as deleted. */
+            if (!shared && !await handleDelete(conn)) return;
             setSelectedConn(null);
-          }}
-          onReconnect={async (conn, spec) => {
-            await handleDelete(conn);
-            setSelectedConn(null);
-            onReconnect?.(spec);
+            onReconnect?.(spec, shared ? { existingName: conn.name } : {});
           }}
         />
       )}
+
+      <SharePointSetupModal
+        open={sharePointEditing !== null}
+        name={sharePointEditing}
+        onClose={() => setSharePointEditing(null)}
+        onSaved={() => {
+          setSharePointEditing(null);
+          setSelectedConn(null);
+          void syncAfterDelete();
+        }}
+      />
     </div>
   );
 }

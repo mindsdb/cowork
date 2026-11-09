@@ -15,6 +15,7 @@ export interface UnavailableModelFields {
   title?: string;
 }
 
+export const MODEL_ROUTER_ID: 'model-router';
 export const MODEL_RESTRICTED_REASON: 'model_restricted';
 export const RESTRICTED_MODEL_TITLE: string;
 
@@ -37,3 +38,4 @@ export function unavailableModelFields(
   id: string,
 ): UnavailableModelFields;
 export function orderByFamily(ids: string[], families?: Record<string, string>): string[];
+export function latestAliasIds(ids: string[], families?: Record<string, string>): Set<string>;

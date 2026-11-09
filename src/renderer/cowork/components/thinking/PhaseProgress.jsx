@@ -95,7 +95,7 @@ function PhaseRow({
           !isDone && !isActive && 'border-[1.4px] border-line'
         )}
       >
-        {isDone && Ico.check(9)}
+        {isDone && Ico.check(12)}
         {isActive && (
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
         )}
@@ -112,7 +112,7 @@ function PhaseRow({
         )}
       </span>
       {hint && (
-        <span className="ml-1 flex-none text-[10.5px] font-mono text-ink-4">
+        <span className="ml-1 flex-none text-xs tabular-nums text-ink-4">
           {hint}
         </span>
       )}

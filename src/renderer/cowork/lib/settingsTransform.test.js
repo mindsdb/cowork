@@ -4,6 +4,7 @@ import {
   resolveModelPickerValue,
   buildModelOptions,
   diffSettingsForWrite,
+  committedSettingsPatch,
   effectiveRoleModel,
   effectiveRoleProvider,
   recommendedModelOptions,
@@ -11,6 +12,7 @@ import {
   clampBudgetValue,
   clampBudgets,
   BUDGET_FIELDS,
+  budgetSpec,
   isBudgetUnlimited,
   resolveBudgetRestore,
   toDisplayUnits,
@@ -19,7 +21,56 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  showJevSwitch,
+  showRouterRoleRow,
+  SETTINGS_KEY_MAP,
 } from './settingsTransform';
+
+describe('favicon settings translation', () => {
+  it('round-trips the image, commits it, and writes an empty removal', () => {
+    const favicon = 'data:image/png;base64,aWNvbg==';
+    expect(transformSettingsRows([{ key: 'favicon', value: favicon, is_sensitive: false }]).favicon).toBe(favicon);
+    expect(diffSettingsForWrite({ favicon }, { favicon: '' })).toEqual({ favicon });
+    expect(committedSettingsPatch({ favicon }, ['favicon'])).toEqual({ favicon });
+    expect(diffSettingsForWrite({ favicon: '' }, { favicon })).toEqual({ favicon: '' });
+    expect(diffSettingsForWrite({ favicon }, { favicon })).toEqual({});
+  });
+});
+
+describe('shared browser settings', () => {
+  it('maps only the switch', () => {
+    const browserKeys = Object.keys(SETTINGS_KEY_MAP).filter((key) => key.startsWith('browser_'));
+    expect(browserKeys).toEqual(['browser_enabled']);
+  });
+
+  it('reads no server address, key, proxy switch or city from the settings rows', () => {
+    const rows = [
+      { key: 'browser_enabled', value: 'false', is_sensitive: false },
+      { key: 'browser_mode', value: 'standalone', is_sensitive: false },
+      { key: 'browser_service_url', value: 'https://browser.example.com', is_sensitive: false },
+      { key: 'browser_service_api_key', value: '***', is_sensitive: true },
+      { key: 'browser_proxy', value: 'false', is_sensitive: false },
+      { key: 'browser_city', value: 'us-x', is_sensitive: false },
+    ];
+    const settings = transformSettingsRows(rows);
+    expect(settings).not.toHaveProperty('browserMode');
+    expect(settings).not.toHaveProperty('browserServiceUrl');
+    expect(settings).not.toHaveProperty('browserServiceApiKey');
+    expect(settings).not.toHaveProperty('browserProxy');
+    expect(settings).not.toHaveProperty('browserCity');
+  });
+});
+
+describe('show_figure_sources translation', () => {
+  it('round-trips the switch both ways and commits it', () => {
+    expect(transformSettingsRows([{ key: 'show_figure_sources', value: 'False', is_sensitive: false }]).showFigureSources).toBe(false);
+    expect(transformSettingsRows([{ key: 'show_figure_sources', value: 'true', is_sensitive: false }]).showFigureSources).toBe(true);
+    expect(diffSettingsForWrite({ showFigureSources: false }, { showFigureSources: true })).toEqual({ show_figure_sources: 'false' });
+    expect(diffSettingsForWrite({ showFigureSources: true }, { showFigureSources: false })).toEqual({ show_figure_sources: 'true' });
+    expect(diffSettingsForWrite({ showFigureSources: true }, { showFigureSources: true })).toEqual({});
+    expect(committedSettingsPatch({ showFigureSources: false }, ['show_figure_sources'])).toEqual({ showFigureSources: false });
+  });
+});
 
 describe('modelLabel', () => {
   it('formats named GPT coding models without a version hyphen', () => {
@@ -636,6 +687,76 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('the limits switch (limits_enabled)', () => {
+  it('reads the stored switch as a boolean', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [{ key: 'limits_enabled', value: 'False', is_sensitive: false, is_set: false }];
+    expect(transformSettingsRows(rows).limitsEnabled).toBe(false);
+  });
+
+  it('keeps the served safety limits apart from the saved budgets', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '40', default: '250', is_sensitive: false, is_set: true },
+      { key: 'max_turn_tokens', value: '25000000', default: '25000000', is_sensitive: false, is_set: false },
+      { key: 'greeting', value: 'hi', default: 'ignored', is_sensitive: false, is_set: true },
+    ];
+    const s = transformSettingsRows(rows);
+    expect(s.maxToolRounds).toBe('40');
+    expect(s.budgetDefaults).toEqual({ maxToolRounds: '250', maxTurnTokens: '25000000' });
+    // Not a server key, so it can never be written back.
+    expect(diffSettingsForWrite({ budgetDefaults: { maxToolRounds: '1' } }, {})).toEqual({});
+  });
+
+  it("reads an older server's default off an unset budget row", async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '50', is_sensitive: false, is_set: false },
+      { key: 'max_turn_tokens', value: '2000000', is_sensitive: false, is_set: true },
+    ];
+    // A stored value says nothing about the default.
+    expect(transformSettingsRows(rows).budgetDefaults).toEqual({ maxToolRounds: '50' });
+  });
+
+  it('edits each budget against the served default', () => {
+    expect(budgetSpec('maxToolRounds', { maxToolRounds: '50' }).fallback).toBe(50);
+    expect(budgetSpec('maxToolRounds', undefined)).toBe(BUDGET_FIELDS.maxToolRounds);
+    expect(budgetSpec('maxToolRounds', { maxToolRounds: 'x' })).toBe(BUDGET_FIELDS.maxToolRounds);
+  });
+
+  it('never restores a served default that is itself "No limit"', () => {
+    const spec = budgetSpec('maxTurnTokens', { maxTurnTokens: '50000000' });
+    expect(resolveBudgetRestore(null, null, spec)).toBe(String(BUDGET_FIELDS.maxTurnTokens.fallback));
+    expect(resolveBudgetRestore(null, null, budgetSpec('maxTurnTokens', { maxTurnTokens: '1250000' }))).toBe('1250000');
+  });
+
+  it('writes a changed switch to its snake_case key', () => {
+    expect(diffSettingsForWrite({ limitsEnabled: true }, { limitsEnabled: false }))
+      .toEqual({ limits_enabled: 'true' });
+  });
+
+  it('rides along with any budget write, so an unchanged "off" stays off', () => {
+    expect(diffSettingsForWrite({ maxToolRounds: '80' }, { maxToolRounds: '50', limitsEnabled: false }))
+      .toEqual({ max_tool_rounds: '80', limits_enabled: 'false' });
+    expect(diffSettingsForWrite({ maxToolRounds: '80', limitsEnabled: true }, { maxToolRounds: '50', limitsEnabled: true }))
+      .toEqual({ max_tool_rounds: '80', limits_enabled: 'true' });
+    expect(diffSettingsForWrite({ tone: 'spicy' }, { tone: 'balanced', limitsEnabled: false }))
+      .toEqual({ tone: 'spicy' });
+  });
+
+  it('is not written to a server that did not send it', () => {
+    // An older server 400s the unknown key and fails the whole save with it.
+    expect(diffSettingsForWrite({ limitsEnabled: true, maxToolRounds: '80' }, { maxToolRounds: '50' }))
+      .toEqual({ max_tool_rounds: '80' });
+  });
+
+  it("defaults the budget fields to the server's safety limits", () => {
+    expect(BUDGET_FIELDS.maxTurnTokens.fallback).toBe(25_000_000);
+    expect(BUDGET_FIELDS.maxToolRounds.fallback).toBe(250);
+    expect(BUDGET_FIELDS.maxContinuations.fallback).toBe(10);
+  });
+});
+
 describe('harness picker enable flags', () => {
   it('transforms the per-harness enable flag into a camelCase boolean', async () => {
     // Anton has no enable flag — it's the default agent and always offered.
@@ -799,17 +920,19 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     expect(byValue.kimi).toEqual({ value: 'kimi', label: 'Kimi K3', disabled: false, provider: 'moonshot' });
   });
 
-  it('tags no row for version state, even with a frozen version listed', () => {
-    // The name carries the version and the pin sits directly under its head (see
-    // the ordering test below), so a "Latest" / "Older version" pill said nothing
-    // the row did not, and its width truncated long names (ENG-2591). The label
-    // stays bare too: ModelSelect shows it verbatim in the closed trigger and
-    // filters on it.
+  it('notes "latest" on the moving alias beside its frozen version, with no pill and a bare label', () => {
+    // A version pill on most rows truncated long names, so version state is a
+    // muted note on the moving alias only, and only where its frozen version is
+    // listed beside it. The label stays bare: ModelSelect shows it verbatim in the
+    // closed trigger and filters on it.
     const options = buildModelOptions(
       'sonnet', ['sonnet', 'sonnet-4-5', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META,
     );
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     for (const o of options) expect(o.tag).toBeUndefined();
+    expect(byValue.sonnet.note).toBe('latest');
+    expect(byValue['sonnet-4-5'].note).toBeUndefined();
+    expect(byValue.kimi.note).toBeUndefined();
     expect(byValue.sonnet.label).toBe('Claude Sonnet 5');
     expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5');
     expect(byValue.kimi.label).toBe('Kimi K3');
@@ -826,6 +949,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     );
     for (const o of options) {
       expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
       expect(o.label || '').not.toContain('latest');
       expect(o.label || '').not.toContain('version');
     }
@@ -870,6 +994,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     });
     expect(options.map((o) => o.value)).toEqual(['sonnet-4-5']);
     expect(options[0].tag).toBeUndefined();
+    expect(options[0].note).toBeUndefined();
     expect(options[0].label).toBe('Claude Sonnet 4.5');
   });
 
@@ -878,7 +1003,10 @@ describe('buildModelOptions — moving vs pinned versions', () => {
       modelProviders: FAMILY_META.modelProviders,
       modelFamilies: { sonnet: 'sonnet', kimi: 'kimi', 'sonnet-4-5': 'sonet' },
     });
-    for (const o of options) expect(o.tag).toBeUndefined();
+    for (const o of options) {
+      expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
+    }
   });
 
   it('carries the backend provider through so the picker stops inferring it', () => {
@@ -893,6 +1021,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     const options = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
     for (const o of options) {
       expect(o.tag).toBeUndefined();
+      expect(o.note).toBeUndefined();
       expect(o.provider).toBeUndefined();
     }
   });
@@ -975,12 +1104,13 @@ describe('the "no limit" switch (ENG-1286)', () => {
 
   it('falls back to the last committed value, then the factory default', () => {
     expect(resolveBudgetRestore(null, '1250000', spec)).toBe('1250000');
-    expect(resolveBudgetRestore(null, null, spec)).toBe('1250000');
-    expect(resolveBudgetRestore('', '', spec)).toBe('1250000');
+    expect(resolveBudgetRestore(null, null, spec)).toBe(String(spec.fallback));
+    expect(resolveBudgetRestore('', '', spec)).toBe(String(spec.fallback));
   });
 
   it('never restores the max, which would leave the switch stuck on', () => {
-    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe('1250000');
+    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe(String(spec.fallback));
+    expect(spec.fallback).toBeLessThan(spec.max);
   });
 
   it('clamps a remembered value that predates a floor change', () => {
@@ -1045,5 +1175,76 @@ describe('routerRoleSubtitle (ENG-1851)', () => {
       .toMatch(/off until a model is picked here/);
     expect(routerRoleSubtitle({ provider: 'minds-cloud', model: null, followsRouterPick: false }))
       .toMatch(/off: no model is available/);
+  });
+});
+
+
+describe('committedSettingsPatch', () => {
+  it('includes only accepted writable keys and masks credential copies', () => {
+    const patch = {
+      anthropicApiKey: 'new-secret',
+      providers: [{ type: 'anthropic', apiKey: 'new-secret', baseUrl: 'https://provider.example' }],
+      maxContinuations: '9',
+      modelEnabled: { opus: true },
+    };
+    expect(committedSettingsPatch(patch, ['anthropic_api_key', 'providers_json'])).toEqual({
+      anthropicApiKey: '***',
+      providers: [{ type: 'anthropic', apiKey: '***', baseUrl: 'https://provider.example' }],
+    });
+  });
+
+  it('preserves credential removal and model tombstones', () => {
+    expect(committedSettingsPatch({ anthropicApiKey: '', planningModel: null },
+      ['anthropic_api_key', 'planning_model'])).toEqual({
+      anthropicApiKey: '', planningModel: null, defaultModel: null,
+    });
+  });
+});
+
+
+// ─── Jev routing ─────────────────────────────────────────────────────
+
+describe('jev routing settings', () => {
+  it('reads and writes the Jev switch under the server key', () => {
+    expect(transformSettingsRows([{ key: 'jev_decisions_enabled', value: 'False' }]))
+      .toMatchObject({ jevDecisionsEnabled: false });
+    expect(diffSettingsForWrite({ jevDecisionsEnabled: false }, { jevDecisionsEnabled: true }))
+      .toEqual({ jev_decisions_enabled: 'false' });
+  });
+
+  it('keeps the routing it holds when the server sends none', () => {
+    const held = { routing: { mode: 'jev' } };
+
+    expect(mergeRecommendedModels(held, { routing: { mode: 'off' } }).routing).toEqual({ mode: 'off' });
+    expect(mergeRecommendedModels(held, {}).routing).toEqual({ mode: 'jev' });
+    expect(mergeRecommendedModels({}, {}).routing).toBeNull();
+  });
+
+  const COMPAT_GATE = { provider: 'openai-compatible', model: 'llama', followsRouterPick: true };
+  const MINDS_GATE = { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false };
+
+  it.each([
+    [null, MINDS_GATE, true], // older server: it still gates on the row
+    [{ mode: 'jev', routerProvider: 'minds-cloud' }, MINDS_GATE, false],
+    [{ mode: 'llm', routerProvider: 'anthropic' }, null, false],
+    // The pick is the only router model there, whatever provider is stored.
+    [{ mode: 'llm', routerProvider: 'openai-compatible' }, COMPAT_GATE, true],
+    [{ mode: 'llm', routerProvider: 'openai-compatible' }, null, true],
+    [{ mode: 'own', routerProvider: 'minds-cloud' }, COMPAT_GATE, true],
+  ])('shows the router row for routing %j and gate %j: %s', (routing, gate, shown) => {
+    expect(showRouterRoleRow(routing, gate)).toBe(shown);
+  });
+
+  it.each([
+    [{ mode: 'jev' }, 'minds-cloud', true],
+    [{ mode: 'off' }, 'minds-cloud', true],
+    // The switch also turns off Jev's completion check on a MindsHub coding model.
+    [{ mode: 'llm' }, 'minds-cloud', true],
+    [{ mode: 'own' }, 'minds-cloud', true],
+    [{ mode: 'llm' }, 'anthropic', false],
+    [{ mode: 'own' }, 'openai-compatible', false],
+    [null, 'minds-cloud', false], // older server: nothing to save
+  ])('shows the Jev switch for routing %j with coding on %s: %s', (routing, coding, shown) => {
+    expect(showJevSwitch(routing, coding)).toBe(shown);
   });
 });

@@ -1,5 +1,6 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Ico from '../components/Icons';
+import type { IconSize } from '../components/ui/Icon';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -26,7 +27,10 @@ import {
 } from './activitySummary';
 import { DiffPatchView } from './DiffPatchView';
 import { accountFailure } from './composerNotices';
-import { CopyResponseButton } from './CopyResponseButton';
+import { ChatScroller } from '../components/chat/ChatScroller';
+import { TurnActions } from '../components/chat/TurnActions';
+import { UserTurn } from '../components/chat/UserTurn';
+import { useStickToBottom } from '../components/chat/useStickToBottom';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, compactPath, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
@@ -205,7 +209,7 @@ function activityRows(events: CodingEvent[]): ActivityRow[] {
 }
 
 
-const STEP_ICON: Record<StepIcon, (size: number) => ReactNode> = {
+const STEP_ICON: Record<StepIcon, (size: IconSize) => ReactNode> = {
   read: Ico.doc,
   search: Ico.search,
   list: Ico.folder,
@@ -224,7 +228,7 @@ const STEP_ICON: Record<StepIcon, (size: number) => ReactNode> = {
 function StepHead({ icon, verb, target, failed, extra }: { icon: StepIcon; verb: string; target: string; failed?: boolean; extra?: ReactNode }) {
   return (
     <>
-      <span className="code-step__icon" aria-hidden="true">{STEP_ICON[icon](13)}</span>
+      <span className="code-step__icon" aria-hidden="true">{STEP_ICON[icon](14)}</span>
       <span className="code-step__label">
         {verb && <span className="code-step__verb">{verb}</span>}
         {verb && target ? ' ' : ''}
@@ -248,7 +252,7 @@ function Step({ head, failed = false, detail }: { head: ReactNode; failed?: bool
     <div className={`${className}${open ? ' is-open' : ''}`}>
       <button type="button" className="code-step__head" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
         {head}
-        <span className="code-step__chevron" aria-hidden="true">{Ico.chevDown(11)}</span>
+        <span className="code-step__chevron" aria-hidden="true">{Ico.chevDown(12)}</span>
       </button>
       {open && <div className="code-step__detail">{detail()}</div>}
     </div>
@@ -360,7 +364,7 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
       <summary>
         {copy}
         {failed && <small>{failures} failed</small>}
-        <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
+        <span className="code-activity-group__chevron">{Ico.chevDown(12)}</span>
       </summary>
       {open && (
         <div className="code-activity-group__body">
@@ -464,7 +468,7 @@ function WorkedSummary({ label, children }: { label: string; children: () => Rea
     <details className="code-worked" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>
         <span>{label}</span>
-        <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
+        <span className="code-activity-group__chevron">{Ico.chevDown(12)}</span>
       </summary>
       {open && <div className="code-worked__body">{children()}</div>}
     </details>
@@ -483,7 +487,7 @@ function TurnChanges({ diff, onOpenReview }: { diff: CodingEvent; onOpenReview?:
   return (
     <section className="code-turn-changes" aria-label="Files changed in this turn">
       <header>
-        <span className="code-turn-changes__icon" aria-hidden="true">{Ico.edit(13)}</span>
+        <span className="code-turn-changes__icon" aria-hidden="true">{Ico.edit(14)}</span>
         <strong>Edited {files.length} {files.length === 1 ? 'file' : 'files'}</strong>
         <LineCounts additions={additions} deletions={deletions} />
         {onOpenReview && <Button size="sm" variant="subtle" className="ml-auto" onClick={onOpenReview}>Review</Button>}
@@ -596,9 +600,9 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
     .find((value) => typeof value === 'string' && value !== event.title);
   return (
     <section className={`code-child-work${running ? ' is-running' : ''}${failed ? ' is-failed' : ''}`} aria-label="Parallel Codex work">
-      <span className="code-child-work__icon">{running ? <Spinner className="text-xs" /> : failed ? Ico.close(11) : Ico.check(11)}</span>
+      <span className="code-child-work__icon">{running ? <Spinner className="text-xs" /> : failed ? Ico.close(12) : Ico.check(12)}</span>
       <div>
-        <small>Parallel work</small>
+        <small className="section-label">Parallel work</small>
         <strong>{event.title || 'Codex worker'}</strong>
         {typeof detail === 'string' && <p>{detail}</p>}
       </div>
@@ -612,7 +616,14 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
 // actions, so the actions close the turn.
 function TimelineEvent({ event, copyable = false, changes }: { event: CodingEvent; copyable?: boolean; changes?: ReactNode }) {
   if (event.type === 'user_message') {
-    return <div className="code-user-message" aria-label="Your message">{event.text}</div>;
+    return (
+      <UserTurn
+        className="code-user-turn"
+        content={event.text}
+        turnId={`code-${event.seq}`}
+        actions={<TurnActions text={event.text} copyLabel="Copy message" align="right" />}
+      />
+    );
   }
   if (event.type === 'agent_message') {
     return (
@@ -624,7 +635,7 @@ function TimelineEvent({ event, copyable = false, changes }: { event: CodingEven
           animateStreamingWords={false}
         />
         {changes}
-        {copyable && <CopyResponseButton text={event.text} />}
+        {copyable && <TurnActions text={event.text} copyLabel="Copy response" isLast />}
       </article>
     );
   }
@@ -667,7 +678,7 @@ function TaskOutcome({
   const errorDetail = technicalDetail || session.last_error || failure?.text || '';
   return (
     <section className={`code-task-outcome is-${status.tone}`}>
-      <span className="code-task-outcome__icon">{Ico.stop(11)}</span>
+      <span className="code-task-outcome__icon">{Ico.stop(12)}</span>
       <div className="code-task-outcome__copy">
         <strong>{status.label}</strong>
         {errorDetail && session.status === 'failed' && (
@@ -720,70 +731,64 @@ export const EventTimeline = memo(function EventTimeline({
     }
     return <TimelineEvent key={key} event={item.event} copyable={answers.has(item.event.seq)} />;
   };
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
+  const stick = useStickToBottom();
+  const { follow, anchorLastTurn } = stick;
+  // A message the user just sent moves to the top of the view, with room for
+  // the answer below it. Opening a task only goes to its end, including when
+  // its history arrives after the first render.
+  const latestUserSeq = useMemo(
+    () => events.reduce((seq, event) => (event.type === 'user_message' ? event.seq : seq), 0),
+    [events],
+  );
+  // Null until the history has arrived. Tracked apart from the user message
+  // itself: a long run can push every user message out of the retained
+  // events, and the next send must still anchor.
+  const seenUserSeq = useRef<number | null>(null);
+  const historyLoaded = events.length > 0;
   useEffect(() => {
-    const element = scrollRef.current;
-    // Live deltas can arrive many times a second. Starting a new smooth-scroll
-    // animation for each one keeps layout and the GPU busy long after the text
-    // has rendered, and can make typing visibly lag. Batched updates should
-    // snap a pinned transcript to its new bottom immediately.
-    if (element && stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
-  }, [latestEventSeq, session.status]);
-  // Stay pinned when the dock grows, e.g. a decision tray opens.
-  useEffect(() => {
-    const element = scrollRef.current;
-    const inner = element?.firstElementChild;
-    if (!element || !inner || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      if (stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
-    });
-    observer.observe(inner, { box: 'border-box' });
-    return () => observer.disconnect();
-  }, []);
+    if (!historyLoaded) return;
+    const previous = seenUserSeq.current;
+    seenUserSeq.current = latestUserSeq;
+    if (previous != null && latestUserSeq > previous) anchorLastTurn();
+  }, [historyLoaded, latestUserSeq, anchorLastTurn]);
+  useEffect(() => { follow(); }, [latestEventSeq, session.status, follow]);
   return (
-    <div
-      ref={scrollRef}
+    <ChatScroller
+      stick={stick}
       className="code-timeline scroll-clean"
-      aria-live="polite"
-      onScroll={(event) => {
-        const element = event.currentTarget;
-        stickToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
-      }}
+      contentClassName="code-timeline__inner chat-column"
     >
-      <div className="code-timeline__inner">
-        {hiddenCount > 0 && (
-          <Button
-            size="xs"
-            className="code-timeline__earlier"
-            onClick={() => setVisibleCount((current) => current + TIMELINE_WINDOW_SIZE)}
-          >
-            Show {Math.min(hiddenCount, TIMELINE_WINDOW_SIZE)} earlier updates
-          </Button>
-        )}
-        {foldFinishedTurns(visibleItems, answers).map((item) => {
-          if (item.kind === 'worked') return <WorkedSummary key={item.key} label={item.label}>{() => item.items.map(renderItem)}</WorkedSummary>;
-          if (item.kind === 'answer') {
-            const changes = item.diff && <TurnChanges diff={item.diff} onOpenReview={onOpenReview} />;
-            return <TimelineEvent key={item.key} event={item.event} copyable changes={changes} />;
-          }
-          return renderItem(item);
-        })}
-        {session.status === 'running' && (
-          <LiveStatus
-            label={runningLabel(session, liveEvents)}
-            step={planPosition(latestTurnPlan(items))}
-            startedAt={turnStartedAt(items)}
-          />
-        )}
-        <TaskOutcome
-          session={session}
-          latestSession={latestEvents.session?.latest}
-          latestError={latestError}
-          recovering={recovering}
+      {hiddenCount > 0 && (
+        <Button
+          size="xs"
+          className="code-timeline__earlier"
+          onClick={() => setVisibleCount((current) => current + TIMELINE_WINDOW_SIZE)}
+        >
+          Show {Math.min(hiddenCount, TIMELINE_WINDOW_SIZE)} earlier updates
+        </Button>
+      )}
+      {foldFinishedTurns(visibleItems, answers).map((item) => {
+        if (item.kind === 'worked') return <WorkedSummary key={item.key} label={item.label}>{() => item.items.map(renderItem)}</WorkedSummary>;
+        if (item.kind === 'answer') {
+          const changes = item.diff && <TurnChanges diff={item.diff} onOpenReview={onOpenReview} />;
+          return <TimelineEvent key={item.key} event={item.event} copyable changes={changes} />;
+        }
+        return renderItem(item);
+      })}
+      {session.status === 'running' && (
+        <LiveStatus
+          label={runningLabel(session, liveEvents)}
+          step={planPosition(latestTurnPlan(items))}
+          startedAt={turnStartedAt(items)}
         />
-      </div>
-    </div>
+      )}
+      <TaskOutcome
+        session={session}
+        latestSession={latestEvents.session?.latest}
+        latestError={latestError}
+        recovering={recovering}
+      />
+    </ChatScroller>
   );
 }, (left, right) => (
   left.events === right.events

@@ -15,6 +15,7 @@ import {
   deleteArtifactAndSync,
   noteArtifactCreated,
   noteArtifactsFromSteps,
+  onArtifactDeleted,
   revalidate,
   scopeKeyOf,
   setArtifactsScope,
@@ -180,6 +181,51 @@ describe('tombstones', () => {
     await revalidate();
 
     expect(artifactDeletedNow(chatCard())).toBe(true);
+  });
+});
+
+describe('onArtifactDeleted', () => {
+  it('hands listeners the card once the server confirms the delete', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([]);
+    vi.mocked(deleteArtifact).mockResolvedValue({ status: 'deleted' });
+    const listener = vi.fn();
+    onArtifactDeleted(listener);
+
+    await deleteArtifactAndSync(serverCard());
+
+    expect(listener).toHaveBeenCalledWith(serverCard());
+  });
+
+  it('stays silent when the DELETE fails', async () => {
+    vi.mocked(deleteArtifact).mockRejectedValue(new Error('Delete failed (500)'));
+    const listener = vi.fn();
+    onArtifactDeleted(listener);
+
+    await expect(deleteArtifactAndSync(serverCard())).rejects.toThrow('Delete failed (500)');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('does not turn a listener error into a failed delete', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([]);
+    vi.mocked(deleteArtifact).mockResolvedValue({ status: 'deleted' });
+    const after = vi.fn();
+    onArtifactDeleted(() => { throw new Error('boom'); });
+    onArtifactDeleted(after);
+
+    await expect(deleteArtifactAndSync(serverCard())).resolves.toEqual({ status: 'deleted' });
+    expect(after).toHaveBeenCalled();
+  });
+
+  it('stops calling a listener after it unsubscribes', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([]);
+    vi.mocked(deleteArtifact).mockResolvedValue({ status: 'deleted' });
+    const listener = vi.fn();
+    const unsubscribe = onArtifactDeleted(listener);
+    unsubscribe();
+
+    await deleteArtifactAndSync(serverCard());
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });
 

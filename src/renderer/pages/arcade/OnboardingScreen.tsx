@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 // Provider onboarding ("POWER UP"), arcade edition.
 //
 // The logic is a 1:1 port of the previous Onboarding page — same phase
@@ -16,6 +17,7 @@ import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/sync
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite } from './sprites';
 import { LegalViewer } from './TermsScreen';
+import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
@@ -80,7 +82,7 @@ export async function persistOnboarding(
     try {
       await deps.syncModels(lines);
     } catch (e) {
-      console.error('[onboarding] best-effort model sync failed', e);
+      diagnostic("renderer.pages.arcade.OnboardingScreen", "ERROR", "onboarding_best_effort_model_sync_failed", '[onboarding] best-effort model sync failed', e);
     }
     return { ok: true };
   } catch (e) {
@@ -684,7 +686,7 @@ export default function OnboardingScreen({
   // effect handles consent + entry itself (loading above, then success below).
   if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
     return (
-      <ArcadeShell title="MindsHub Cowork" subtitle="you're all set">
+      <ArcadeShell title={STOCK_PRODUCT_NAME} subtitle="you're all set">
         <div className="arc-stack" style={{ gap: 18 }}>
           <PixelSprite name="anton" size={84} bob title="Anton" />
           <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>

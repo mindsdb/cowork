@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { GitBranch } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import Combobox from '../components/ui/Combobox';
 import { codingApi } from './api';
 
@@ -53,7 +54,7 @@ export function RepositoryBranchSelect({
           {
             key: 'branches',
             name: null,
-            items: options.map((branch) => ({ value: branch, label: branch, icon: <GitBranch size={13} /> })),
+            items: options.map((branch) => ({ value: branch, label: branch, icon: <Icon of={GitBranch} size={14} /> })),
           },
         ]}
         placeholder="Default branch"

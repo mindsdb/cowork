@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Button from '../components/ui/Button';
+import { Field } from '../components/ui/Field';
 import { Input } from '../components/ui/Input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 
@@ -36,26 +37,22 @@ export function RenameTaskModal({
     }
   };
   return (
-    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-rename-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
-      <ModalHeader id="code-rename-title" title="Rename coding task" onClose={busy ? undefined : onClose} />
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="code-rename-title" dismissible={!busy}>
+      <ModalHeader id="code-rename-title" title="Rename coding task" onClose={onClose} />
       <ModalBody>
-        <label className="code-rename-field">
-          <span>Task name</span>
+        <Field label="Task name" error={error || undefined}>
           <Input
             value={value}
             onChange={setValue}
-            aria-label="Task name"
             autoFocus
             disabled={busy}
             onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) => {
               if (event.key === 'Enter') { event.preventDefault(); void submit(); }
             }}
           />
-          {error && <small className="code-rename-error" role="alert">{error}</small>}
-        </label>
+        </Field>
       </ModalBody>
-      <ModalFooter>
-        <Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>
+      <ModalFooter cancel={<Button variant="subtle" disabled={busy} onClick={onClose}>Cancel</Button>}>
         <Button variant="primary" disabled={busy || !value.trim()} onClick={() => void submit()}>Rename</Button>
       </ModalFooter>
     </Modal>

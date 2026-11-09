@@ -1,0 +1,73 @@
+# The frame's own fixture set. The harness-only renderer in
+# e2e/document-preview/navigation-renderer.ts moves each file's markup into the
+# frame as it is, so these files test what the runtime's link guard, the sandbox
+# and the frame policy cover: links, forms and resource loads, not a renderer's
+# cleaning.
+#
+# Nothing in the frame stops a meta refresh that a renderer leaves in its DOM:
+# it acts as soon as it is inserted, with no click. hostile-meta-refresh.html
+# holds one and sits in this folder unlisted, because it leaves the frame. A
+# renderer must never put a meta with http-equiv or a base element in the
+# frame, and openPreview fails any run whose frame holds one.
+#
+# Each hostile file aims links (plain, new tab, whole window, download, ping,
+# javascript:, image map, SVG), forms and resource loads at one place the app's
+# page policy lets a frame go: docs.google.com, drive.google.com, the Cowork
+# origin (the harness origin stands in for it, through a relative URL),
+# localhost and 127.0.0.1 on another port. The frame must stay at about:srcdoc,
+# and no request may reach any of them.
+- name: in-page link
+  file: clean-fragment-link.html
+  kind: clean
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Quarterly summary, Jump to the totals, "Totals: 1,204 units."]
+
+- name: docs.google.com
+  file: hostile-docs-google.html
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Open Shared notes, End of Shared notes.]
+    textExcludes: [docs.google.com]
+
+- name: drive.google.com
+  file: hostile-drive-google.html
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Open Shared folder, End of Shared folder.]
+    textExcludes: [drive.google.com]
+
+- name: the Cowork origin
+  file: hostile-cowork-origin.html
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Open Workspace files, End of Workspace files.]
+
+- name: localhost
+  file: hostile-localhost.html
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Open Local server, End of Local server.]
+
+- name: 127.0.0.1 on another port
+  file: hostile-loopback-ip.html
+  kind: hostile
+  expect:
+    outcome: rendered
+    units: 1
+    truncated: false
+    textIncludes: [Open Loopback server, End of Loopback server.]

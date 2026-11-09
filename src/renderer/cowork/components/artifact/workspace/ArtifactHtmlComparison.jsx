@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { limitArtifactFrames } from '../artifactPreviewUtils';
 
 function concise(text, limit = 180) {
   const value = String(text || '').trim();
@@ -6,8 +7,25 @@ function concise(text, limit = 180) {
   return value.length > limit ? `${value.slice(0, limit - 1).trimEnd()}…` : value;
 }
 
-export function ArtifactHtmlComparison({ model, beforeLabel, afterLabel }) {
+export function ArtifactHtmlComparison({
+  model,
+  beforeDocument,
+  afterDocument,
+  pending,
+  beforeLabel,
+  afterLabel,
+}) {
   const [activePane, setActivePane] = useState('after');
+  // Inlined documents can be tens of megabytes: scan them once, not on every
+  // switch between the Before and After tabs.
+  const beforeSrcDoc = useMemo(
+    () => (beforeDocument == null ? '' : limitArtifactFrames(beforeDocument)),
+    [beforeDocument],
+  );
+  const afterSrcDoc = useMemo(
+    () => (afterDocument == null ? '' : limitArtifactFrames(afterDocument)),
+    [afterDocument],
+  );
   const primaryChange = model.changes[0] || null;
   const remainingChanges = Math.max(0, model.changes.length - 1);
 
@@ -16,7 +34,7 @@ export function ArtifactHtmlComparison({ model, beforeLabel, afterLabel }) {
       {primaryChange && (
         <div className="artifact-visual-change-summary" aria-label="Changed content summary">
           <div>
-            <span>Before</span>
+            <span className="section-label">Before</span>
             <p>{concise(primaryChange.before)}</p>
           </div>
           <div>
@@ -50,20 +68,28 @@ export function ArtifactHtmlComparison({ model, beforeLabel, afterLabel }) {
 
       <div className="artifact-visual-compare-grid" data-active-pane={activePane}>
         <section data-comparison-pane="before">
-          <div className="artifact-compare-label">Before · {beforeLabel}</div>
-          <iframe
-            title={`Artifact before ${beforeLabel}`}
-            srcDoc={model.before}
-            sandbox="allow-scripts"
-          />
+          <div className="artifact-compare-label section-label">Before · {beforeLabel}</div>
+          {pending ? (
+            <div className="artifact-compare-loading" role="status">Loading page…</div>
+          ) : (
+            <iframe
+              title={`Artifact before ${beforeLabel}`}
+              srcDoc={beforeSrcDoc}
+              sandbox="allow-scripts"
+            />
+          )}
         </section>
         <section data-comparison-pane="after">
-          <div className="artifact-compare-label">After · {afterLabel}</div>
-          <iframe
-            title={`Artifact after ${afterLabel}`}
-            srcDoc={model.after}
-            sandbox="allow-scripts"
-          />
+          <div className="artifact-compare-label section-label">After · {afterLabel}</div>
+          {pending ? (
+            <div className="artifact-compare-loading" role="status">Loading page…</div>
+          ) : (
+            <iframe
+              title={`Artifact after ${afterLabel}`}
+              srcDoc={afterSrcDoc}
+              sandbox="allow-scripts"
+            />
+          )}
         </section>
       </div>
     </div>

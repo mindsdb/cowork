@@ -1,10 +1,13 @@
-import { createLogger, defineConfig } from 'vite';
+import { createLogger, defineConfig, loadEnv } from 'vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import babel from '@rolldown/plugin-babel';
 import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { isSpaNavigation } from './web-spa-fallback';
+import { platformUiEnabled } from '../shared/ui-capabilities';
+import { withDeploymentBrand } from '../shared/deployment-brand';
+import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -46,6 +49,7 @@ try {
 // Default behavior is unchanged when BUILD_TARGET is unset, so existing
 // `npm run build` and `npm run dev` paths are byte-identical to before.
 const IS_WEB = process.env.BUILD_TARGET === 'web';
+const WEB_ENTRY = 'index-web.html';
 
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
 
@@ -70,13 +74,53 @@ const webSpaFallback = {
   name: 'cowork-web-spa-fallback',
   configureServer(server: any) {
     server.middlewares.use((req: any, _res: any, next: any) => {
-      if (isSpaNavigation(req)) req.url = '/index-web.html';
+      if (isSpaNavigation(req)) req.url = `/${WEB_ENTRY}`;
       next();
     });
   },
 };
 
-export default defineConfig({
+// A build-time change to the web entry's page. Only that page has the anchors
+// these transforms look for; the dev server also serves other pages. 'post'
+// runs the transform on the page as shipped.
+function webEntryTransform(name: string, transform: (html: string) => string) {
+  return {
+    name,
+    transformIndexHtml: {
+      order: 'post' as const,
+      handler: (html: string, ctx: { filename: string }) =>
+        path.basename(ctx.filename) === WEB_ENTRY ? transform(html) : html,
+    },
+  };
+}
+
+// Every web build loads a deployment brand at run time
+// (shared/deployment-brand.ts), with the platform UI on or off. The tags go in
+// at build time, so desktop pages stay byte-identical and never request the
+// brand.
+const deploymentBrand = webEntryTransform('cowork-deployment-brand', withDeploymentBrand);
+
+// A web build with the platform UI on is the hosted build, whose preview frame
+// loads signed draft links, so its page's CSP must let a frame load the draft
+// hosts (shared/draft-link-origins.ts). They go in at build time: one hosted
+// build serves every environment, and the self-hosted and white-label pages
+// built from the same template must not name them. The hosted build runs the
+// brand transform too. The brand transform adds tags around the title and
+// icons and before </head>; this one rewrites only the CSP meta tag. Neither
+// adds anything the other checks for, so either order gives the same page
+// (shared/deployment-brand.test.ts).
+const draftLinkFrameSources = webEntryTransform('cowork-draft-link-frame-sources', withDraftLinkFrameSources);
+
+// The build's platform switch: on for desktop, and for web only when
+// VITE_PLATFORM_UI is exactly "true" (shared/ui-capabilities.ts).
+function platformUiFor(mode: string): boolean {
+  return platformUiEnabled(
+    process.env.BUILD_TARGET,
+    loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_PLATFORM_UI,
+  );
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [
     // React Compiler (React 19) — auto-memoizes components and handlers at
     // build time, cutting cascade re-renders (e.g. one Sidebar state change
@@ -86,10 +130,13 @@ export default defineConfig({
     // rides @rolldown/plugin-babel with the exported preset.
     react(),
     babel({ presets: [reactCompilerPreset()] }),
-    ...(IS_WEB ? [webSpaFallback] : []),
+    ...(IS_WEB ? [webSpaFallback, deploymentBrand] : []),
+    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources] : []),
   ],
   customLogger: logger,
   define: {
+    __PLATFORM_UI__: JSON.stringify(platformUiFor(mode)),
+    __WEB_BUILD__: JSON.stringify(IS_WEB),
     __APP_VERSION__: JSON.stringify(appVersion),
     __GIT_HASH__: JSON.stringify(gitHash),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
@@ -108,7 +155,7 @@ export default defineConfig({
     ),
     emptyOutDir: true,
     rollupOptions: IS_WEB
-      ? { input: path.resolve(__dirname, 'index-web.html') }
+      ? { input: path.resolve(__dirname, WEB_ENTRY) }
       : undefined,
   },
   server: {
@@ -123,4 +170,4 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, '../shared'),
     },
   },
-});
+}));

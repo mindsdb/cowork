@@ -118,8 +118,10 @@ export function withArtifactCommentFlag(url) {
   return appendPreviewParam(url, '__antonComments', '1');
 }
 
-const HAS_BASE_TAG_RE = /<base[\s/>]/i;
+// Only a base with an href decides resolution; `<base target>` alone doesn't.
+const HAS_BASE_TAG_RE = /<base\s[^>]*\bhref\s*=/i;
 const HEAD_OPEN_RE = /<head([^>]*)>/i;
+const LEADING_DOCTYPE_RE = /^(\s*<!doctype[^>]*>)/i;
 
 function escapeHtmlAttribute(value) {
   return String(value)
@@ -132,13 +134,32 @@ function escapeHtmlAttribute(value) {
 // fragment — so relative asset/link references inside HTML fetched via
 // `authFetch` resolve the same way they would if the iframe had navigated to
 // `fetchUrl` directly through `src`.
-function draftDirectoryUrl(fetchUrl) {
+export function draftDirectoryUrl(fetchUrl) {
   try {
     const parsed = new URL(fetchUrl);
     parsed.search = '';
     parsed.hash = '';
     parsed.pathname = parsed.pathname.replace(/[^/]*$/, '');
     return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+// A URL path segment, decoded. A bare `%` (`growth_100%.png`) is escaped
+// first, so the rest still decodes; one that still can't stays literal.
+export function decodePathSegment(seg) {
+  try {
+    return decodeURIComponent(seg.replace(/%(?![0-9a-f]{2})/gi, '%25'));
+  } catch {
+    return seg;
+  }
+}
+
+// The draft's file name, decoded.
+export function draftFileName(fetchUrl) {
+  try {
+    return decodePathSegment(new URL(fetchUrl).pathname.split('/').pop());
   } catch {
     return '';
   }
@@ -173,12 +194,14 @@ export const DRAFT_FRAGMENT_GUARD_SCRIPT = "(function(){document.addEventListene
 // `srcdoc` gives the iframe no base URL of its own, so relative
 // `<script src>` / `<link href>` / anchors in fetched draft HTML would
 // otherwise resolve against the parent app's origin instead of the draft's
-// own directory. No-op if the document already declares a `<base>` — a
+// own directory. No-op if the document already declares a `<base href>` — a
 // second one would be inert (the first `<base>` in document order wins) and
 // misleading to read.
-export function injectDraftBaseHref(html, fetchUrl) {
+// `hasBase` lets a caller that has parsed the page say whether it declares a
+// `<base href>`, where the regex could be fooled by the same text in a script.
+export function injectDraftBaseHref(html, fetchUrl, { hasBase } = {}) {
   const baseHref = draftDirectoryUrl(fetchUrl);
-  if (!baseHref || HAS_BASE_TAG_RE.test(html)) return html;
+  if (!baseHref || (hasBase ?? HAS_BASE_TAG_RE.test(html))) return html;
   // Precedent: cowork-server's comments_layer.py escapes `</script>` in its
   // own injected script for the same reason — a literal occurrence would
   // close the tag early. DRAFT_FRAGMENT_GUARD_SCRIPT is a fixed, hand-authored
@@ -191,6 +214,25 @@ export function injectDraftBaseHref(html, fetchUrl) {
   // touches no storage API and cannot throw — anything added here runs
   // ahead of the server's script and must keep that same property.
   const markup = `<base href="${escapeHtmlAttribute(baseHref)}"><script>${guardScript}</script>`;
+  if (HEAD_OPEN_RE.test(html)) return html.replace(HEAD_OPEN_RE, `<head$1>${markup}`);
+  // Never ahead of a doctype, which would drop the page into quirks mode.
+  return LEADING_DOCTYPE_RE.test(html)
+    ? html.replace(LEADING_DOCTYPE_RE, `$1${markup}`)
+    : `${markup}${html}`;
+}
+
+// The shell's frame sources before live apps. The shell also lists the
+// live-app origins so Cowork can frame a running app, and a srcdoc document
+// inherits that; this tag takes them back out, so an artifact page frames only
+// what it could before, whatever a browser makes of its opaque origin.
+const ARTIFACT_FRAME_SOURCES = "'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com";
+export const ARTIFACT_FRAME_POLICY = `frame-src ${ARTIFACT_FRAME_SOURCES}; child-src ${ARTIFACT_FRAME_SOURCES}`;
+
+// One line, like the base tag above: it adds no newline before inline scripts.
+// Only for a document shown, never one an editor saves back.
+export function limitArtifactFrames(html) {
+  if (typeof html !== 'string' || !html) return html;
+  const markup = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_FRAME_POLICY}">`;
   return HEAD_OPEN_RE.test(html)
     ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)
     : `${markup}${html}`;
@@ -275,9 +317,10 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
-// Cheap full-file row count — we only need it to decide whether the
-// "showing N of M" notice should appear and what M is. Counting bytes
-// is fine since `previewArtifact` already capped the content at 200KB.
+// Record count, header included, for the "showing N of M" notice. On a cut
+// preview it would count only the cut text, so the sources count the full
+// text instead: the draft loader through `countRows`, and cowork-server's
+// `count_csv_rows`, which must return the same number for the same text.
 export function countCsvRows(text) {
   if (!text) return 0;
   let n = 0;
@@ -343,4 +386,40 @@ export function csvRowsToGfmTable(rows) {
   ];
 
   return lines.join('\n');
+}
+
+// Table and notice numbers for a CSV preview. A cut text (`truncated`) cannot
+// count its own rows, so its total comes from the source, which counted the
+// full file; `totalRows: null` means the total is unknown.
+export function summarizeCsvPreview(text, { truncated = false, totalRows = null } = {}) {
+  // The cut can fall inside a row: keep the text up to the last line break, so
+  // the table never shows a half row. A text with no line break at all is kept
+  // as it is, so a cut header still renders.
+  const lastBreak = Math.max(text.lastIndexOf('\n'), text.lastIndexOf('\r'));
+  const source = truncated && lastBreak >= 0 ? text.slice(0, lastBreak + 1) : text;
+  const rows = parseCsv(source, CSV_PREVIEW_ROW_LIMIT);
+  if (rows.length === 0) return null;
+  const shownRows = rows.length - 1;
+  // On a cut text, "N of N" would claim the whole file is shown.
+  const total = truncated
+    ? (totalRows > shownRows ? totalRows : null)
+    : Math.max(0, countCsvRows(text) - 1);
+  return {
+    markdown: csvRowsToGfmTable(rows),
+    shownRows,
+    totalRows: total,
+    truncated: truncated || shownRows < total,
+  };
+}
+
+// The notice under a cut preview. A CSV table that shows at least one data row
+// says how many; anything else gets the generic text.
+export function csvPreviewNotice(csvPreview) {
+  if (!csvPreview?.truncated || csvPreview.shownRows === 0) return 'Preview is truncated.';
+  const { shownRows, totalRows } = csvPreview;
+  const shown = shownRows.toLocaleString();
+  if (totalRows === null) {
+    return `Showing first ${shown} ${shownRows === 1 ? 'row' : 'rows'}. The full file is larger than the preview.`;
+  }
+  return `Showing first ${shown} of ${totalRows.toLocaleString()} rows.`;
 }

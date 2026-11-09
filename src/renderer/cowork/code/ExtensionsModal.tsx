@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import { Modal, ModalBody, ModalHeader } from '../components/ui/Modal';
+import { Collapsible } from '../components/ui/Collapsible';
+import { Modal, ModalBody, ModalHeader, ModalToolbar } from '../components/ui/Modal';
 import Spinner from '../components/ui/Spinner';
 import { Tab, TabList, Tabs } from '../components/ui/Tabs';
 import { codingApi, type ExtensionEntry, type ExtensionInventory } from './api';
@@ -93,9 +94,9 @@ export function ExtensionsModal({
         subtitle="Capabilities loaded from this folder, your Codex skills, and Cowork's Skills Library."
         onClose={onClose}
       />
-      <ModalBody>
+      <ModalToolbar flush>
         <Tabs value={tab} onValueChange={(value) => setTab(value as ExtensionTab)}>
-          <TabList className="code-extension-tabs" aria-label="Extension types">
+          <TabList className="code-extension-tabs border-b-0" aria-label="Extension types">
             {TABS.map((item) => (
               <Tab key={item.id} value={item.id}>
                 {item.label}<span>{inventory[item.id].length}</span>
@@ -104,6 +105,8 @@ export function ExtensionsModal({
             <Button icon variant="subtle" size="sm" disabled={loading} onClick={load} aria-label="Refresh task extensions">{Ico.refresh(12)}</Button>
           </TabList>
         </Tabs>
+      </ModalToolbar>
+      <ModalBody>
         {loading ? (
           <div className="code-extension-empty"><Spinner className="text-sm" /> Loading {label.toLowerCase()}…</div>
         ) : error ? (
@@ -114,10 +117,9 @@ export function ExtensionsModal({
           <div className="code-extension-empty">No {label.toLowerCase()} are active for this task.</div>
         )}
         {inventory.errors.length > 0 && (
-          <details className="code-extension-errors">
-            <summary>Some extension sources could not be inspected</summary>
+          <Collapsible variant="compact" className="code-extension-errors" title="Some extension sources could not be inspected">
             <pre>{inventory.errors.join('\n')}</pre>
-          </details>
+          </Collapsible>
         )}
         {inventory.config_path && (
           <div className="code-extension-config">

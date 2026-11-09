@@ -11,8 +11,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
-import { Badge, Tooltip } from '../ui';
-import { Modal } from '../ui/Modal';
+import { Badge } from '../ui';
+import { Modal, ModalBody, ModalHeader, ModalToolbar } from '../ui/Modal';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { CodeBlock } from './CodeBlock';
 
@@ -103,30 +103,16 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
       width="min(1040px, 94vw)"
       height="82vh"
       fullBleed={isNarrow}
-      ariaLabel={modalTitle}
+      labelledBy="scratchpad-title"
     >
-      <div className="scratchpad-modal flex h-full flex-col overflow-hidden">
-
-        {/* Modal header — title + close. Per-cell `step x/y` already
-            says the count, so we don't repeat it here. */}
-        <div className="flex flex-none items-center justify-between border-b border-line px-5 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <span className="inline-flex text-ink-3">{Ico.code(15)}</span>
-            <span className="s-h3 text-ink">
-              {modalTitle}
-            </span>
-          </div>
-          <Tooltip content="Close">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-ink-3 hover:bg-surface-2 hover:text-ink"
-            >
-              ×
-            </button>
-          </Tooltip>
-        </div>
+        {/* Per-cell `step x/y` already says the count, so the title
+            doesn't repeat it. */}
+        <ModalHeader
+          id="scratchpad-title"
+          leading={<span className="inline-flex self-center text-ink-3">{Ico.code(16)}</span>}
+          title={modalTitle}
+          onClose={onClose}
+        />
 
         {/* Tab strip — only when more than one pad. Inline styles via
             CSS variables (instead of Tailwind utility classes) so the
@@ -135,7 +121,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
             etc. didn't have dark-mode partners and rendered as too-
             saturated stripes against the navy surface. */}
         {tabs.length > 1 && (
-          <div className="flex flex-none gap-[2px] px-2 bg-surface border-b border-t-0 border-x-0 border-solid border-line overflow-x-auto">
+          <ModalToolbar flush style={{ padding: '0 8px', gap: 2, overflowX: 'auto' }}>
             {tabs.map((t) => {
               const active = t.id === activeTabId;
               return (
@@ -143,7 +129,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTabId(t.id)}
-                  className="relative inline-flex items-center gap-2 shrink-0 py-[10px] px-3 bg-transparent border-0 cursor-pointer font-[family-name:var(--font-display)] text-sm font-medium tracking-[0] [transition:color_120ms_ease]"
+                  className="relative inline-flex items-center gap-2 shrink-0 py-[10px] px-3 bg-transparent border-0 cursor-pointer font-[family-name:var(--font-display)] text-sm font-medium tracking-[0] [transition:color_var(--dur-hover)_ease]"
                   // Colour is active-state driven; the hover tint only applies to
                   // inactive tabs, so it stays a conditional JS handler rather
                   // than a CSS :hover (which can't see `active`).
@@ -159,7 +145,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                   <Badge
                     variant={active ? 'accent' : 'muted'}
                     size="xs"
-                    className="min-w-[18px] justify-center font-mono tabular-nums"
+                    className="min-w-[18px] justify-center tabular-nums"
                   >{t.cells.length}</Badge>
                   {active && (
                     <span aria-hidden className="absolute left-2 right-2 bottom-[-1px] h-[2px] rounded-[1px] bg-accent" />
@@ -167,11 +153,11 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                 </button>
               );
             })}
-          </div>
+          </ModalToolbar>
         )}
 
         {/* Cells — vertical stack inside the active pad */}
-        <div className="flex-1 overflow-y-auto [-webkit-app-region:no-drag]">
+        <ModalBody padding="0" style={{ WebkitAppRegion: 'no-drag' }}>
           {activeTab?.cells.map((cell, i) => (
             <CellView
               key={cell.id}
@@ -184,8 +170,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
           {(!activeTab || activeTab.cells.length === 0) && (
             <p className="p-8 text-body text-ink-4">No steps in this turn.</p>
           )}
-        </div>
-      </div>
+        </ModalBody>
     </Modal>
   );
 }
@@ -271,7 +256,7 @@ function CellView({ cell, index, total, focused = false }) {
         // layout so non-focused cells don't shift.
         'border-l-2',
         highlight ? 'border-l-accent bg-surface-2' : 'border-l-transparent',
-        'transition-colors duration-700',
+        'transition-colors duration-[calc(var(--dur-layout)*3.5)]',
       )}
     >
       {/* Two-column grid: step-badge | content. Everything visible
@@ -284,7 +269,7 @@ function CellView({ cell, index, total, focused = false }) {
           a single column (see globals.css) so output/code fill the
           full width. */}
       <div className="scratchpad-cell-grid grid items-start grid-cols-[auto_1fr] gap-x-3">
-        <span className="font-mono text-[10.5px] tracking-wider text-ink-4 pt-[2px]">
+        <span className="text-xs tabular-nums text-ink-4 pt-[2px]">
           step {index}/{total}
         </span>
 
@@ -306,13 +291,13 @@ function CellView({ cell, index, total, focused = false }) {
               missing — a "—" placeholder reads as "no data" without
               the meta strip going missing entirely. */}
           {!isToolCall && (
-            <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
+            <div className="flex items-center gap-3 text-xs tabular-nums text-ink-4">
               <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
               <span>exec: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
             </div>
           )}
           {isToolCall && executionMs != null && (
-            <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
+            <div className="flex items-center gap-3 text-xs tabular-nums text-ink-4">
               <span>duration: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
             </div>
           )}
@@ -326,7 +311,7 @@ function CellView({ cell, index, total, focused = false }) {
               label={isToolCall ? 'Arguments' : 'Code'}
               right={!isToolCall && Array.isArray(data.packages) && data.packages.length > 0 ? (
                 <span
-                  className="font-mono text-[10.5px] text-ink-4 truncate max-w-[60%]"
+                  className="text-xs text-ink-4 truncate max-w-[60%]"
                   title={data.packages.join(', ')}
                 >
                   pkgs: <span className="text-ink-3">{data.packages.join(', ')}</span>
@@ -392,12 +377,12 @@ function CodeToggle({ checked, onChange, label = 'Code' }) {
       aria-checked={!!checked}
       aria-label={checked ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
       onClick={() => onChange?.(!checked)}
-      className="inline-flex items-center gap-2 shrink-0 py-1 px-[6px] bg-transparent border-0 rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 hover:text-ink-2 [transition:color_120ms_ease]"
+      className="inline-flex items-center gap-2 shrink-0 py-1 px-[6px] bg-transparent border-0 rounded-[6px] cursor-pointer font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 hover:text-ink-2 [transition:color_var(--dur-hover)_ease]"
     >
       <span>{label}</span>
       <span
         aria-hidden
-        className="relative inline-block w-8 h-[18px] rounded-full [transition:background_180ms_ease]"
+        className="relative inline-block w-8 h-[18px] rounded-full [transition:background_var(--dur-hover)_ease]"
         style={{
           background: checked
             ? 'var(--accent)'
@@ -405,7 +390,7 @@ function CodeToggle({ checked, onChange, label = 'Code' }) {
         }}
       >
         <span
-          className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(15,16,17,0.18)] [transition:left_180ms_cubic-bezier(0.4,0,0.2,1)]"
+          className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(15,16,17,0.18)] [transition:left_var(--dur-hover)_var(--ease-in-out)]"
           style={{ left: checked ? 16 : 2 }}
         />
       </span>
@@ -418,10 +403,7 @@ function Section({ label, muted = false, right, children }) {
   return (
     <div className="mt-4 flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-3">
-        <span className={clsx(
-          'font-display text-[10.5px] font-semibold uppercase tracking-widest',
-          muted ? 'text-ink-4 opacity-60' : 'text-ink-4'
-        )}>
+        <span className={clsx('section-label', muted && 'opacity-60')}>
           {label}
         </span>
         {right}

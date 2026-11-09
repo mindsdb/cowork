@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 /* Anton Chat — Direction A: Conservative.
    Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
    Editorial, document-like. Inter body, Inter headings, mono for operator
@@ -8,42 +9,56 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { projectLabel } from '../lib/projectLabel';
-import { createPortal } from 'react-dom';
+import { cn } from '../lib/cn';
 import Ico from '../components/Icons';
+import { CircleAlert } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { Alert, Badge, Card, Tooltip } from '../components/ui';
+import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
+import { Modal, ModalBody } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { FirstTake } from '../components/thinking/FirstTake';
+import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { copyText } from '../lib/clipboard';
+import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
+import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
 import AskUserCard from '../components/AskUserCard';
+import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
+import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser } from '../lib/browserSession';
+import { BrowserPanel } from '../components/browser/BrowserPanel';
+import { createBrowserWarmUp } from '../lib/browserWarmUp';
+import { useNativeOverlay } from '../lib/nativeOverlay';
+import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
+import { PLATFORM_UI } from '../../lib/deployment';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
-import { artifactOpenTarget } from '../lib/artifactActions';
+import { artifactOpenTarget, NO_PREVIEW_DOWNLOADED_NOTE } from '../lib/artifactActions';
 import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
@@ -51,12 +66,18 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
+import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
+import { ChatScroller } from '../components/chat/ChatScroller';
+import { useStickToBottom } from '../components/chat/useStickToBottom';
+import { useDockInset } from '../components/chat/useDockInset';
+import { TurnActions } from '../components/chat/TurnActions';
+import { UserTurn } from '../components/chat/UserTurn';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -75,10 +96,6 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-const FONT_MONO    = "var(--font-mono)";
-const FONT_BODY    = "'Inter', system-ui, sans-serif";
-
 // ─── small shared atoms ──────────────────────────────────────────────────
 function formatTime(value) {
   if (!value) return '';
@@ -95,68 +112,6 @@ function formatMetaTime(value) {
   if (Number.isNaN(d.getTime())) return '';
   const month = d.toLocaleString('en-US', { month: 'short' });
   return `${month} ${d.getDate()}, ${formatTime(d)}`;
-}
-
-// ─── Shared turn-action toolbar ──────────────────────────────────────────
-// Used by both user and assistant turns for consistent styling. Actions
-// fade in on hover of the parent turn, but stay visible when `isLast`
-// is true (matching Claude's pattern where the most recent exchange
-// always shows its toolbar).
-const ICON_SZ = 15;
-function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = async () => {
-    const text = typeof getText === 'function' ? getText() : '';
-    if (!text) return;
-    const ok = await copyText(text);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    }
-  };
-  return (
-    <div
-      className={`turn-actions${isLast ? ' is-last' : ''} ${align === 'right' ? 'justify-end' : 'justify-start'}`}
-    >
-      {onEdit && (
-        <Tooltip content="Edit and resend">
-          <button
-            type="button"
-            className="turn-action-btn"
-            onClick={onEdit}
-            aria-label="Edit and resend this message"
-          >
-            {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
-          </button>
-        </Tooltip>
-      )}
-      <Tooltip content={copied ? 'Copied' : 'Copy'}>
-        <button
-          type="button"
-          className="turn-action-btn"
-          aria-label={copied ? 'Copied' : 'Copy'}
-          onClick={onCopy}
-          // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
-          // beats a text-accent utility (equal specificity, globals.css loads later).
-          style={copied ? { color: 'var(--accent)' } : undefined}
-        >
-          {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
-        </button>
-      </Tooltip>
-      {onDelete && (
-        <Tooltip content="Delete">
-          <button
-            type="button"
-            className="turn-action-btn turn-action-btn--danger"
-            aria-label="Delete"
-            onClick={onDelete}
-          >
-            {Ico.trash(ICON_SZ)}
-          </button>
-        </Tooltip>
-      )}
-    </div>
-  );
 }
 
 // ─── User pill ───────────────────────────────────────────────────────────
@@ -195,7 +150,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickCard(); } } : undefined}
           onMouseEnter={() => onHoverChange?.(true)}
           onMouseLeave={() => onHoverChange?.(false)}
-          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-[140ms] ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-hover ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         >
           <span
             className="inline-grid place-items-center w-9 h-9 rounded-lg bg-surface-2 flex-shrink-0"
@@ -257,14 +212,14 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-[140ms] ease-[ease] border border-solid ${
+      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-hover ease-[ease] border border-solid ${
         isDanger
           ? 'bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
           : 'bg-transparent border-transparent text-ink-3 hover:bg-[var(--ghost-hover)] active:bg-[var(--ghost-press)] hover:text-ink'
       }`}
     >
       <span className="inline-flex items-center">
-        {typeof renderIcon === 'function' ? renderIcon(13) : null}
+        {typeof renderIcon === 'function' ? renderIcon(14) : null}
       </span>
       {label}
     </button>
@@ -273,9 +228,9 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
 
 function userTurnAttachmentIcon(a) {
   const src = a.source || a.kind || 'file';
-  if (src === 'connector') return Ico.link(13);
-  if (a.mime && String(a.mime).startsWith('image/')) return Ico.image(13);
-  return Ico.doc(13);
+  if (src === 'connector') return Ico.link(14);
+  if (a.mime && String(a.mime).startsWith('image/')) return Ico.image(14);
+  return Ico.doc(14);
 }
 
 function userTurnAttachmentMeta(a) {
@@ -300,129 +255,93 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-// Long user messages clamp to ~8 lines behind a "Show more" toggle so a big
-// pasted prompt doesn't dominate the viewport before the answer starts.
-const USER_CLAMP_MAX_PX = 176;
-
-function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, projectId, conversationId, streaming = false, deleting = false }) {
-  const contentRef = useRef(null);
-  const [collapsed, setCollapsed] = useState(true);
-  const [overflowing, setOverflowing] = useState(false);
+// The user's side of a Cowork turn: the shared UserTurn bubble, plus the
+// attachments and artifact-repair card only Cowork messages carry.
+function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false }) {
   // An "Address with agent" handoff is a machine prompt — ids, a base revision
   // and the raw thread JSON — so it renders as a card rather than as the wall of
   // identifiers it literally is. Null for every ordinary message.
   const repair = parseArtifactRepairPrompt(content);
-  useLayoutEffect(() => {
-    const el = contentRef.current;
-    if (!el) return undefined;
-    // scrollHeight reports full content height even while max-height clamps
-    // the box, so overflow is measurable without expanding first. Re-runs on
-    // width changes (sidebar toggle, window resize) via the ResizeObserver.
-    const measure = () => setOverflowing(el.scrollHeight > USER_CLAMP_MAX_PX + 8);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [content]);
-  return (
-    <div
-      className={`user-turn${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
-      aria-busy={deleting || undefined}
-    >
-      <div className="user-turn-inner">
-        <div className="user-turn-bubble">
-          {/* User messages flow through the same markdown pipeline as
-              assistant turns so fenced code blocks, bold/italic, lists,
-              etc. typed in the composer render properly. Forms and
-              charts are gated off so a user typing a special fence in
-              the composer can't trigger the side-effect renderers
-              reserved for assistant output. */}
-          {repair ? (
-            <ArtifactRepairCard
-              repair={repair}
-              projectId={projectId}
-              streaming={streaming}
-            />
-          ) : (
-          <div
-            ref={contentRef}
-            className={collapsed && overflowing ? 'user-turn-clamp user-turn-clamp--faded' : undefined}
-            style={collapsed && overflowing ? { maxHeight: USER_CLAMP_MAX_PX } : undefined}
-          >
-            <MarkdownContent
-              text={content}
-              variant="user"
-              enableForms={false}
-              enableCharts={false}
-            />
-          </div>
-          )}
-          {!repair && overflowing && (
-            <button
-              type="button"
-              className="user-turn-more"
-              aria-expanded={!collapsed}
-              onClick={() => setCollapsed((c) => !c)}
-            >
-              {collapsed ? 'Show more' : 'Show less'}
-            </button>
-          )}
-        </div>
-        {attachments?.map((a) => {
-          // Image attachments preview inline as a thumbnail (fetched as a
-          // blob — the CSP blocks a direct loopback <img src>). Clicking
-          // opens the full image via the OS/browser. We can only build the
-          // raw URL when the conversation is project-scoped; without it,
-          // fall back to the icon+name chip.
-          const isImage = a.mime && String(a.mime).startsWith('image/');
-          const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
-          if (rawUrl) {
-            return (
-              <AttachmentThumbnail
-                key={a.id}
-                url={rawUrl}
-                alt={a.name || 'Image'}
-                onOpen={() => {
-                  openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
-                }}
-              />
-            );
-          }
-          return (
-            <div key={a.id} className="user-turn-attachment">
-              <span className="user-turn-attachment-icon">
-                {userTurnAttachmentIcon(a)}
-              </span>
-              <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
-              <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
-            </div>
-          );
-        })}
-        {deleting ? (
-          <span
-            // Primary ink, not the usual meta grey: the turn around it is at
-            // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
-            className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
-          >
-            Deleting…
-          </span>
-        ) : (
-          <TurnActions
-            getText={() => content || ''}
-            onEdit={onEdit ? () => onEdit(content) : null}
-            onDelete={onDelete}
-            isLast={isLast}
-            align="right"
-          />
-        )}
+  const attachmentRows = attachments?.map((a) => {
+    // Image attachments preview inline as a thumbnail (fetched as a
+    // blob — the CSP blocks a direct loopback <img src>). Clicking
+    // opens the full image in a browser tab on web and saves it on
+    // desktop (openAuthenticatedResource). We can only build the
+    // raw URL when the conversation is project-scoped; without it,
+    // fall back to the icon+name chip.
+    const isImage = a.mime && String(a.mime).startsWith('image/');
+    const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
+    if (rawUrl) {
+      return (
+        <AttachmentThumbnail
+          key={a.id}
+          url={rawUrl}
+          alt={a.name || 'Image'}
+          onOpen={() => {
+            openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
+          }}
+        />
+      );
+    }
+    return (
+      <div key={a.id} className="user-turn-attachment">
+        <span className="user-turn-attachment-icon">
+          {userTurnAttachmentIcon(a)}
+        </span>
+        <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
+        <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
       </div>
-    </div>
+    );
+  });
+  const actions = deleting ? (
+    <span
+      // Primary ink, not the usual meta grey: the turn around it is at
+      // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
+      className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
+    >
+      Deleting…
+    </span>
+  ) : (
+    <TurnActions
+      text={content || ''}
+      copyLabel="Copy message"
+      onEdit={onEdit ? () => onEdit(content) : null}
+      onDelete={onDelete}
+      isLast={isLast}
+      align="right"
+    />
+  );
+  return (
+    <UserTurn
+      content={content}
+      turnId={turnId}
+      deleting={deleting}
+      attachments={attachmentRows}
+      actions={actions}
+    >
+      {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
+    </UserTurn>
   );
 }
 
 // OrbitProvider `size` for the chat orb — WorkingIndicator's anchor
 // box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
+// The width the chat needs to dock the right rail beside the conversation: a
+// reading column of at least 640px, its 40px gutters, and the 320px rail.
+const RAIL_DOCK_MIN_PX = 640 + 40 * 2 + 320;
+
+// Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
+const INCOMPLETE_REASON_TEXT = {
+  spend_ceiling: 'Stopped early: this task reached its token budget.',
+  round_cap: 'Stopped early: this task reached its step limit.',
+  handback_budget: 'Stopped early: automatic continuations ran out before the task was done.',
+  handback_verifier_failure: "Stopped early: the agent couldn't confirm the task was done.",
+  handback_stuck: 'Stopped early: the agent judged the task stuck.',
+  retry_exhausted: 'Stopped early: the task kept failing.',
+  question_unanswered: 'Stopped early: a question went unanswered.',
+  content_filter: "Stopped early: the model's content filter blocked a reply.",
+};
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
@@ -433,14 +352,14 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
     <div
       // marginTop pulls the answer closer to ITS question (the column gap
       // is sized for the roomier answer → next-question separation).
-      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_.12s_ease]' : ''}`}
+      className={`answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1${deleting ? ' opacity-60 [transition:opacity_var(--dur-hover)_ease]' : ''}`}
       aria-busy={deleting || undefined}
     >
       {children}
       {state !== 'thinking' && (
         <div className="flex items-center gap-2">
           {showActions && !deleting && (
-            <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+            <TurnActions text={copyText || ''} copyLabel="Copy response" onDelete={onDelete} isLast={isLast} />
           )}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
@@ -454,11 +373,133 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
   );
 }
 
-function TextBlock({ text, id, complete = true, conversationId = null }) {
+/** @typedef {import('../lib/figureSources').FigureSources} FigureSources */
+/** @typedef {import('../lib/figureSources').LinkedFigureSource} LinkedFigureSource */
+
+/**
+ * Whether View file can read a figure source's project path in this chat.
+ * The path is relative to the project the answer ran in, and the viewer reads
+ * it from the chat's current project: with no project there is nothing to
+ * read it from, and after Move to project the same path there names another
+ * file. An answer saved before figure sources named their project (no
+ * project_id) reads it from the current project.
+ *
+ * @param {FigureSources | null | undefined} figureSources
+ * @param {string | null} projectId the chat's current project
+ * @param {string | null} projectName
+ */
+function canReadFigurePaths(figureSources, projectId, projectName) {
+  if (!projectName) return false;
+  const ranIn = figureSources?.project_id ?? null;
+  return ranIn == null || ranIn === projectId;
+}
+
+export function TextBlock({
+  text,
+  id,
+  complete = true,
+  conversationId = null,
+  /* A finished answer's figure sources (lib/figureSources), the turn's steps
+     they name, the opener for one of those steps by its id, and the opener
+     for the file a source read, called with the source. */
+  figureSources = null,
+  steps = null,
+  onOpenStep = null,
+  onViewFile = null,
+  // The chat's current project, which View file reads a project path from.
+  projectId = null,
+  projectName = null,
+  // Settings > Appearance "Show where figures came from"; off renders no marks.
+  showFigureSources = true,
+}) {
+  const figures = useMemo(() => {
+    if (!showFigureSources) return null;
+    const linked = linkFigureSteps(figureSources, steps);
+    if (!linked) return null;
+    /* A file this chat cannot read offers no View file: a project path
+       outside the project it reads from, or an attachment with no route to
+       read it by (attachmentRawUrl needs the project and the conversation). */
+    const readsPaths = canReadFigurePaths(figureSources, projectId, projectName);
+    const readable = (source) => ({
+      ...source,
+      path: readsPaths ? source.path : null,
+      attachment_id: source.attachment_id && attachmentRawUrl(projectName, conversationId, source.attachment_id)
+        ? source.attachment_id
+        : null,
+    });
+    return linked.map((figure) => ({ ...figure, sources: figure.sources.map(readable) }));
+  }, [showFigureSources, figureSources, steps, projectId, projectName, conversationId]);
+  /* MarkdownContent is memoized, and callers pass fresh openers every render.
+     Hand it openers that keep their identity and call the latest one at click
+     time, so a settled answer skips re-rendering while another one streams. */
+  const openStepRef = useRef(onOpenStep);
+  const viewFileRef = useRef(onViewFile);
+  useEffect(() => {
+    openStepRef.current = onOpenStep;
+    viewFileRef.current = onViewFile;
+  });
+  const hasOpenStep = !!onOpenStep;
+  const hasViewFile = !!onViewFile;
+  const openStep = useMemo(
+    () => (hasOpenStep ? (stepId) => openStepRef.current?.(stepId) : null),
+    [hasOpenStep],
+  );
+  const viewFile = useMemo(
+    () => (hasViewFile ? (source) => viewFileRef.current?.(source) : null),
+    [hasViewFile],
+  );
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
-  return <MarkdownContent text={text} id={id} complete={complete} conversationId={conversationId} isAssistant />;
+  return (
+    <MarkdownContent
+      text={text}
+      id={id}
+      complete={complete}
+      conversationId={conversationId}
+      isAssistant
+      figureSources={figures}
+      onOpenFigureStep={openStep}
+      onViewFigureFile={viewFile}
+    />
+  );
+}
+
+/**
+ * The figure viewer's file. A project file is read by its path from the
+ * chat's project. A file attached to the chat is read by its files-store id
+ * through its attachment route, and shown as text when it is text; `filePath` is its
+ * name then, for the header and the image check, as the Context card's
+ * attachment viewer does.
+ *
+ * @param {LinkedFigureSource | null} source
+ * @param {string | undefined} projectName
+ * @param {string | undefined} projectPath
+ * @param {string | null | undefined} conversationId
+ */
+function figureFileViewerProps(source, projectName, projectPath, conversationId) {
+  if (!source?.path && source?.attachment_id) {
+    const name = source.label || 'Attached file';
+    return {
+      title: name,
+      filePath: name,
+      rawUrl: attachmentRawUrl(projectName, conversationId, source.attachment_id),
+      showRawText: true,
+    };
+  }
+  return { projectName, projectPath, filePath: source?.path || '' };
+}
+
+/**
+ * The figure viewer's note. It shows the file as it is now, which a later
+ * upload under the same name may have changed; the step shows what it read.
+ *
+ * @param {LinkedFigureSource | null} source
+ */
+function figureFileNote(source) {
+  return source?.stepId
+    ? 'Shows the file as it is now. Open step shows what the step read.'
+    : 'Shows the file as it is now, which may differ from what the step read.';
 }
 
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
@@ -521,21 +562,63 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
 // carries the in-flight header (orb slot, live thought, working label) —
 // `liveSegmentIndex` puts it above a pending card and below an answered one.
 // Every other segment is a finished, collapsed block.
-function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAnswered, onActivateStep, live = null }) {
+// Step ids repeat across turns (`step-1` in every turn); prefixed with the
+// turn's key they are unique across the conversation.
+const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
+
+// A tool's message to the user, rendered like an agent message. Memoised: the
+// live turn re-renders on every progress line, the message never changes.
+const ToolMessage = memo(function ToolMessage({ markdown, id, conversationId }) {
+  return (
+    <MarkdownContent
+      text={markdown}
+      id={id}
+      complete
+      conversationId={conversationId}
+      isAssistant
+      enableForms={false}
+    />
+  );
+});
+
+/** A message that finished live a moment ago (ENG-3554): its steps fold
+ *  shut on screen. Past that, it renders folded like any older turn. */
+const JUST_FINISHED_MS = 2000;
+function justFinished(message) {
+  return typeof message?._justFinishedAt === 'number' && Date.now() - message._justFinishedAt < JUST_FINISHED_MS;
+}
+
+function TurnSegments({ steps, startedAt, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false }) {
   const segments = useMemo(
-    () => splitTurnSegments(steps, { startedAt, conversationLive }),
-    [steps, startedAt, conversationLive],
+    () => splitTurnSegments(steps, { startedAt, conversationLive, reopenable, reply }),
+    [steps, startedAt, conversationLive, reopenable, reply],
   );
   const liveIdx = live ? liveSegmentIndex(segments) : -1;
   // The live segment sits right before a pending question, if there is one.
   const next = live ? segments[liveIdx + 1] : null;
   const pendingQuestion = next?.kind === 'question' && !next.step.data?.answer ? next.step : null;
-  // splitTurnSegments returns a single steps segment when there is no question.
-  const hasQuestion = segments.length > 1;
+  // Any boundary — a question card or a tool's message — keeps the live
+  // header up for the rest of the turn: without it the working indicator
+  // vanishes while the segment below the boundary is still empty.
+  const hasBoundary = segments.length > 1;
 
   const out = [];
   let prevWasCard = false;
   segments.forEach((seg, idx) => {
+    if (seg.kind === 'message') {
+      out.push(
+        // Same spacing as a question card: the message is not part of a block.
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 4 }}>
+          <ToolMessage
+            markdown={seg.step.data?.markdown || ''}
+            id={prefixId(idPrefix, seg.step.id)}
+            conversationId={conversationId}
+          />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
     if (seg.kind === 'question') {
       out.push(
         // Spacing: 4px under a block, 12px between consecutive cards.
@@ -544,7 +627,10 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
             step={seg.step}
             conversationId={conversationId}
             expired={seg.expired}
+            reopened={seg.reopened}
+            lateAnswer={seg.lateAnswer}
             onAnswered={onAnswered}
+            onAnswerAsMessage={onAnswerAsMessage}
           />
         </div>,
       );
@@ -565,9 +651,10 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
         || live.currentThought?.text
         || (live.isActive && !live.hasBodyText)
         || pendingQuestion
-        || (live.isActive && hasQuestion);
+        || (live.isActive && hasBoundary);
       if (!show) return;
       // The header stays the WORKING message — never the live thought text.
+      // When collapsed, ThinkingBlock appends the model-wait status after it.
       // While a question waits, it is the question's label, as before this
       // split (the AskUser step was the last in-progress step).
       const active = [...seg.steps].reverse().find((s) => s.status === 'in_progress');
@@ -579,7 +666,7 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
           isActive={live.isActive}
           slotId={live.slotId}
           currentThought={live.currentThought}
-          currentLabel={pendingQuestion ? pendingQuestion.label : (active?.label || live.placeholderLabel || null)}
+          currentLabel={pendingQuestion ? pendingQuestion.label : ((active && stepDisplayLabel(active)) || live.placeholderLabel || null)}
           onActivateStep={onActivateStep}
         />,
       );
@@ -594,6 +681,8 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, onAn
         startedAt={seg.startedAt}
         isActive={false}
         onActivateStep={onActivateStep}
+        // Only the last block was open on screen while the turn ran.
+        collapseOnMount={collapseOnMount && idx === segments.length - 1}
       />,
     );
     prevWasCard = false;
@@ -621,7 +710,7 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   );
 }
 
-function ArtifactCard({ artifact, onOpen, live = false }) {
+export function ArtifactCard({ artifact, onOpen, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
@@ -632,20 +721,10 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
   const [status, setStatus] = useState(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
-  // Close the export menu on any outside click. Clicks on the menu/toggle
-  // stopPropagation, so this only fires for clicks elsewhere.
-  useEffect(() => {
-    if (!exportOpen) return undefined;
-    const close = () => setExportOpen(false);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [exportOpen]);
 
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
@@ -654,6 +733,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const platform = host.getPlatform();
   const revealLabel = platform === 'darwin' ? 'Show in Finder' : 'Show in folder';
 
+  // `note` reads like `ok` but stays as long as an error, since it is a sentence.
   const showStatus = (kind, text) => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     setStatus({ kind, text });
@@ -672,92 +752,71 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * (.md/.txt/.csv) and images open the in-app viewer — HTML via sandboxed
    * iframe, text via inline markdown / table / preformatted render, images
    * from the serve URL. Anything else falls through to the OS handler via the
-   * Electron bridge. In org mode the same question is answered from the
-   * authenticated draft URL instead, which rules images and fullstack apps out.
+   * Electron bridge, or on web to a download. In org mode the same question is
+   * answered from the authenticated draft URL instead, which rules images and
+   * fullstack apps out. The document types (.xlsx, .docx, .pptx, .pdf) join
+   * both answers wherever the shared document gate allows them.
    */
   const isImage = isImageArtifact(artifact);
-  const canPreviewInline = canPreviewLocally(artifact);
-  const canPreviewDraft = canPreviewOrgDraft(artifact);
+  const canPreviewDoc = canPreviewDocument(artifact, host);
+  const canPreviewInline = canPreviewLocally(artifact) || canPreviewDoc;
+  const canPreviewDraft = canPreviewOrgDraft(artifact) || canPreviewDoc;
   // Thumbnail bytes for the icon slot — same CSP workaround AttachmentThumbnail
   // uses (loopback <img src> is blocked; fetch + blob: URL is not). '' when not
   // an image, or before the artifact card carries a serveUrl (org mode, or the
   // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
+  const hasBridge = host.isElectron || !host.isWeb;
+  const canDownload = canDownloadArtifact(artifact);
   const openTarget = artifactOpenTarget({
     orgMode,
     published,
     canPreviewInline,
     canPreviewDraft,
-    hasBridge: host.isElectron || !host.isWeb,
+    hasBridge,
     hasDraft: canDownloadOrgDraft(artifact),
+    canDownload,
   });
   /*
-   * Org-mode destinations are addressed by the server card, through the draft
-   * URL or the shared URL, so a path this client could not canonicalize does
-   * not disable them. Desktop still needs the local path it hands to the OS.
+   * Org-mode destinations, a download and a document preview are addressed by
+   * the server card, through the draft, serve or shared URL, so a path this
+   * client could not canonicalize does not disable them. The local preview and
+   * the desktop OS handoff still need the local path.
    *
    * `deleted` stays in both branches. It is the one term of `canAct` that says
    * nothing about addressing: a deleted artifact has a perfectly good draft URL
    * and still cannot be opened, so dropping it here would leave a tombstoned
    * card looking live and hand the whole guard to handleOpen alone.
    */
-  const canActivate = orgMode ? (!!openTarget && !deleted) : canAct;
+  const needsLocalPath = !orgMode && openTarget !== 'download' && !canPreviewDoc;
+  const canActivate = !!openTarget && (needsLocalPath ? canAct : !deleted);
   const activateLabel = openTarget === 'published'
     ? 'Open shared artifact'
     : openTarget === 'download'
       ? 'Download'
       : openTarget === 'os' ? 'Open' : 'Open preview';
   /*
-   * What the card says when it has nowhere to go. Org mode has no local file to
-   * blame, and blaming one is actively wrong there: the card prints its own
-   * server path two lines down. Desktop keeps the path reason it can act on.
+   * What the card says when it has nowhere to go. Neither org mode nor web has
+   * a local file to blame, and blaming one is actively wrong there: the card
+   * prints its own server path two lines down. Desktop keeps the path reason it
+   * can act on.
    */
-  const noDestinationReason = orgMode && !openTarget
-    ? 'This artifact cannot be previewed and has no shared link yet.'
+  const noDestinationReason = !openTarget
+    ? (orgMode
+      ? 'This artifact cannot be previewed and has no shared link yet.'
+      : 'This artifact has no downloadable file yet.')
     : (disabledReason || 'No file path');
-  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
-  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
-  // .docx), and HTML→HTML export can overwrite the source artifact in place.
-  // A broken button is worse than no button — re-enable once ENG-1988 lands.
-  const canExport = false;
-  const handleExport = async (fmt) => {
-    setExportOpen(false);
-    if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
-      return;
-    }
-    setExporting(true);
-    showStatus('ok', `Exporting ${fmt.toUpperCase()}…`);
-    try {
-      const res = await exportArtifact(path, fmt);
-      showStatus('ok', `Exported ${res.filename}`);
-      // Desktop: open the result in the OS. Web: it's saved in the artifact
-      // folder and shows in the Artifacts panel.
-      if (!host.isWeb) { try { await host.openPath(res.path); } catch { /* ignore */ } }
-    }
-    catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[artifact-export] failed', e);
-      showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
-      revalidateAfterFailure();
-    }
-    finally {
-      setExporting(false);
-    }
-  };
   /*
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
    *
-   * `host.openExternal` is async, so the await is what makes the catch reach a
-   * rejected bridge call. Without it the try block returns before the promise
-   * settles: the fallback below never runs on the one failure it exists for,
-   * and the rejection escapes as an unhandled one.
+   * Awaited so a rejected bridge call is caught rather than left unhandled.
+   * No raw window.open fallback: host.openExternal is what restricts the
+   * agent-writable URL to http(s)/mailto.
    */
   const handleOpenPublished = async () => {
-    try { await host.openExternal(artifact.publishedUrl); }
-    catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
+    try { await host.openExternal(artifact.publishedUrl); } catch {}
   };
   const handleOpen = async () => {
     /*
@@ -784,19 +843,20 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     if (openTarget === 'download') {
       /*
-       * Org mode, an artifact the draft cannot render and nobody shared: the
-       * authenticated draft URL still streams the file, so the click saves it
-       * instead of dead-ending on "no shared link yet" (ENG-2044).
+       * Nothing here can render the file and nothing shared it: the draft or
+       * serve URL still streams it, so the click saves it instead of
+       * dead-ending, and says why once the save went through.
        */
-      handleDownload();
+      await downloadFile('note', NO_PREVIEW_DOWNLOADED_NOTE);
       return;
     }
     if (openTarget === null) {
-      showStatus('error', orgMode
-        ? noDestinationReason
-        : (disabledReason || 'No artifact file path is available.'));
+      showStatus('error', noDestinationReason);
       return;
     }
+    await openInDefaultApp();
+  };
+  const openInDefaultApp = async () => {
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
       return;
@@ -808,7 +868,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[artifact-open] failed', e);
+      diagnostic("renderer.cowork.views.ChatView", "ERROR", "artifact_open_failed", '[artifact-open] failed', e);
       showStatus('error', e?.message || 'Could not open artifact.');
       revalidateAfterFailure();
     }
@@ -835,29 +895,29 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[artifact-reveal] failed', e || bridgeError);
+      diagnostic("renderer.cowork.views.ChatView", "ERROR", "artifact_reveal_failed", '[artifact-reveal] failed', e || bridgeError);
       showStatus('error', e?.message || bridgeError?.message || bridgeError || 'Could not show artifact.');
       revalidateAfterFailure();
     }
   };
-  const handleDownload = async () => {
-    /*
-     * `canAct` is a desktop notion — a canonical local path. Org mode addresses
-     * the file by its draft URL and never has such a path, so gating on it
-     * there would refuse the one action that works. `deleted` still applies.
-     */
-    if (orgMode ? deleted : !canAct) {
-      showStatus('error', orgMode
-        ? 'This artifact was deleted.'
-        : (disabledReason || 'No artifact file path is available.'));
+  /*
+   * `canAct` is a desktop notion: a canonical local path. A download is
+   * addressed by the draft or serve URL and only names the saved file after
+   * the path, so gating on it would refuse the one action that works. `deleted`
+   * still applies.
+   */
+  const downloadFile = async (doneKind, doneText) => {
+    if (deleted) {
+      showStatus('error', 'This artifact was deleted.');
       return;
     }
     if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
       showStatus('error', 'This artifact has no downloadable file yet.');
       return;
     }
-    showStatus('ok', 'Downloading…');
+    showStatus(doneKind, doneText);
   };
+  const handleDownload = () => downloadFile('ok', 'Downloading…');
   /*
    * One primary action button instead of an Open/Show-in-Finder pair: what it
    * does follows what the artifact actually supports — Preview for anything the
@@ -866,6 +926,8 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
    * file) — never both, and never a generic "Open" that hides which of the
    * two it's about to do. Org mode reads the same rule off the draft URL, and
    * an artifact it cannot render keeps the shared page as its one destination.
+   * A Download that stands in for a preview runs the click itself, so it says
+   * why it downloaded once the save went through.
    */
   const primaryAction = orgMode
     ? (openTarget === 'preview'
@@ -873,22 +935,47 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       : openTarget === 'published'
         ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
         : openTarget === 'download'
-          ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+          ? { label: 'Download', onClick: handleOpen, tooltip: 'Save this artifact\'s file' }
           : null)
-    : canPreviewInline
+    : openTarget === 'preview'
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
-      : host.isWeb
-        ? { label: 'Download', onClick: handleDownload, tooltip: canAct ? `Download ${path}` : '' }
+      : openTarget === 'download'
+        ? { label: 'Download', onClick: handleOpen, tooltip: canAct ? `Download ${path}` : '' }
         // handleReveal already falls back from the Electron bridge to the
         // server-side reveal endpoint and surfaces its own error, so this
         // doesn't gate further on bridge availability the way the old
         // Open button didn't either.
-        : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
+        : openTarget === 'os'
+          ? { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' }
+          : null;
   /*
    * Only when the primary button is the preview: otherwise "Open" already is
    * the shared page and a second button would point at the same place.
    */
   const showSharedLink = orgMode && published && openTarget === 'preview';
+  /*
+   * Org mode: every artifact with a primary file can be saved through its
+   * draft URL, previewable ones included, unless Download already IS the
+   * primary action (ENG-2044). The shared link, when there is one, is the
+   * visible secondary and Download moves behind "…"; otherwise Download is
+   * the secondary.
+   *
+   * A document preview keeps the file one click away beside it: Download on
+   * web, and on desktop Open, which hands the file to the default app.
+   */
+  const sharedLinkAction = !deleted && showSharedLink
+    ? { label: 'Shared link', onClick: handleOpenPublished, tooltip: 'Open the shared artifact in a new tab' }
+    : null;
+  const downloadAction = !deleted && openTarget !== 'download'
+    && (orgMode ? canDownloadOrgDraft(artifact) : (!hasBridge && canPreviewDoc && canDownload))
+    ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+    : null;
+  const openInAppAction = !deleted && !orgMode && hasBridge && canPreviewDoc && openTarget === 'preview'
+    ? { label: 'Open', onClick: openInDefaultApp, tooltip: 'Open in the default app' }
+    : null;
+  const secondaryAction = sharedLinkAction || downloadAction || openInAppAction;
+  const primaryDisabled = needsLocalPath && !canAct;
+  const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -908,165 +995,99 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     <Card
       as="div"
       interactive={canActivate}
-      padding="cozy"
+      flat
+      padding="none"
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
         : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-      className="chat-artifact-card"
+      className="railed chat-artifact-card"
     >
       <div
-        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
-        style={{ opacity: deleted ? 0.7 : 1 }}
+        className={cn(
+          'chat-artifact-card__tile grid size-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-accent-bg text-accent',
+          deleted && 'opacity-70',
+        )}
       >
         {thumbSrc ? (
-          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} className="block size-full object-cover" />
         ) : (
-          isImage ? Ico.image(26) : (artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26))
+          isImage ? Ico.image(16) : (artifact.icon === 'doc' ? Ico.doc(16) : Ico.sparkle(16))
         )}
       </div>
-      <div className="flex flex-col gap-[3px] min-w-0">
-        {/* Title doubles as the primary "open preview" affordance —
-            clicking it routes through the same handler the Open
-            button uses. Hover gets an accent + underline so the
-            interaction reads at a glance. Disabled when there's no
-            path to open. */}
+      <div className="chat-artifact-card__text flex min-w-0 flex-col gap-0.5">
+        {/* The title is a keyboard stop of its own: it opens what the card
+            opens, and carries the reason in `title` when there is nowhere to
+            go. Preflight is off, so the native button chrome is reset here. */}
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
           title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
-          /*
-           * kept inline: `all: unset` writes an inline declaration for every
-           * longhand (incl. color/background), which always beats a Tailwind
-           * utility class of equal-or-lower specificity — so every property
-           * touched by the reset has to stay co-located here, and the hover
-           * recolor below has to keep mutating .style directly for the same reason.
-           */
-          style={{
-            all: 'unset',
-            cursor: canActivate ? 'pointer' : 'not-allowed',
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            display: 'block', minWidth: 0,
-            transition: 'color 120ms ease',
-            opacity: canActivate ? 1 : 0.7,
-          }}
-          onMouseOver={(e) => { if (canActivate) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
-          onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
+          className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
-        <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
-          {artifact.kind || 'live artifact'}
+        <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
+          <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
           {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
         </span>
-        {previewText && (
-          <span
-            title={previewText}
-            className="font-mono text-[10.5px] text-ink-4 mt-0.5 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap"
-          >
-            {previewText}
-          </span>
+        {/* A disabled button takes no hover, so its reason is said here, in
+            the text column: beside the button it would widen the actions
+            track and squeeze the title to nothing. */}
+        {!deleted && primaryAction && primaryReason && (
+          <span className="font-body text-xs text-ink-4">{primaryReason}</span>
         )}
       </div>
-      <div className="chat-artifact-card__actions">
-        {canExport && (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <Tooltip content="Export to another format">
-              {/* Native title only while disabled — a disabled button fires no
-                  hover/focus events, so the styled Tooltip can't open. */}
-              <SmallBtn
-                disabled={!canAct || exporting}
-                onClick={() => setExportOpen((v) => !v)}
-                title={(!canAct || exporting) ? 'Export to another format' : undefined}
-              >
-                Export ▾
-              </SmallBtn>
-            </Tooltip>
-            {exportOpen && (
-              <div
-                role="menu"
-                // No border — floats on --sh-popup alone (ENG-790).
-                className="absolute top-[calc(100%+4px)] right-0 z-20 bg-surface rounded-[10px] shadow-sh-popup p-1 min-w-[140px] flex flex-col gap-0.5"
-              >
-                {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    role="menuitem"
-                    onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
-                    // kept inline: same all:unset cascade-priority reason as the
-                    // title button above — the hover background mutation below
-                    // needs a subsequent inline write to win, so it can't move
-                    // to a hover: utility class either.
-                    style={{
-                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
-                      fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
-                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  >{label}</button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {!deleted && showSharedLink && (
-          <Tooltip content="Open the shared artifact in a new tab">
-            <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
-          </Tooltip>
-        )}
-        {/* Org mode: every artifact with a primary file can be saved through
-            its draft URL, previewable ones included — offered beside Preview /
-            Open, and omitted only when Download already IS the primary
-            action (ENG-2044). */}
-        {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
-          <Tooltip content="Save this artifact's file">
-            <SmallBtn onClick={handleDownload}>Download</SmallBtn>
-          </Tooltip>
-        )}
-        {!deleted && primaryAction && (
-          <Tooltip content={primaryAction.tooltip}>
-            <SmallBtn
-              primary
-              disabled={!orgMode && !canAct}
-              onClick={primaryAction.onClick}
-              title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
-            >
-              {primaryAction.label}
-            </SmallBtn>
-          </Tooltip>
-        )}
+      {/* The card is role="button" with a whole-surface click and Enter/Space
+          handler. Actions, and the overflow menu whose events React bubbles
+          through its portal, must not also open the preview. Only Enter and
+          Space stop here: other keys (Cmd+K, Cmd+N, Escape) must still reach
+          the window-level shortcut listeners. */}
+      <div
+        className="chat-artifact-card__actions"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+      >
+        <ActionBar
+          size="sm"
+          align="start"
+          className="flex-wrap"
+          primary={!deleted && primaryAction
+            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+            : null}
+        />
       </div>
-      {status && (
+      {/* The footer is the artifact's location bar: the path at rest, and the
+          result of an action for the moment it is on screen. One or the
+          other, so a long message never crushes the path beside it. */}
+      {status ? (
         <span
-          className={`chat-artifact-card__status font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+          className={cn('card__rail chat-artifact-card__status text-xs', status.kind === 'error' ? 'text-danger' : 'text-accent')}
         >
           {status.text}
         </span>
+      ) : (
+        <span className="card__rail chat-artifact-card__loc text-xs text-ink-3" title={previewText}>
+          {Ico.folder(12)}
+          <span className="min-w-0 truncate">{previewText}</span>
+        </span>
+      )}
+      {secondaryAction && (
+        <div
+          className="card__rail chat-artifact-card__tools"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+        >
+          <ActionBar
+            size="xs"
+            secondary={secondaryAction}
+            overflow={[sharedLinkAction && downloadAction]}
+          />
+        </div>
       )}
     </Card>
     </>
   );
 }
-
-// The primary ("Open") CTA no longer hard-fills raw --accent (which glared in
-// dark). Both variants are class-based now so the primary can adopt the
-// canonical .btn.primary color logic — opaque accent in light, quiet accent
-// glass in dark — via .chat-card-btn(--primary) in globals.css.
-const SmallBtn = forwardRef(function SmallBtn({ primary, children, onClick, title, disabled, ...rest }, ref) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
-      title={title}
-      disabled={disabled}
-      className={primary ? 'chat-card-btn chat-card-btn--primary' : 'chat-card-btn'}
-      {...rest}
-    >{children}</button>
-  );
-});
 
 // Streaming cursor — blinking accent caret (orb stays on the header).
 function StreamCursor() {
@@ -1107,43 +1128,33 @@ async function waitForServerReady(timeoutMs = 8000) {
 //
 // ── ActionCard: the shared shell for inline "actionable error" cards ───────
 // One chrome for the reconnect / token-limit / model-403 / provider-required
-// cards (previously four byte-identical copies of this scaffolding, drifting
-// one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
-// owns layout and button styling.
-// buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
-// the base for per-button tweaks (e.g. the reconnect busy state). An empty
-// list hides the row (e.g. reconnect's "done" state).
-function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = false }) {
+// cards (ENG-650), drawn by ChatCardShell. Callers own copy, button wiring and
+// the `kind` named in the card's top row (Billing, Model, …); the shell owns
+// layout and the action hierarchy (`cardActions`: the button marked `primary`
+// is the filled action, the next is the quiet secondary, any further ones go
+// behind "…").
+// buttons: [{ label, onClick, primary, disabled, busy }]. An empty list hides
+// the row (e.g. reconnect's "done" state).
+function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
-      <div className="flex flex-col gap-2.5 max-w-[520px] py-4 px-[18px] rounded-xl border border-solid border-line bg-surface">
-        {/* .s-h3 already sets color: var(--ink) — no inline override needed. */}
-        <div className="s-h3">
-          {title}
-        </div>
-        <div className="font-body text-[13.5px] leading-[1.55] text-ink-2">
-          {body}
-        </div>
-        {buttons.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {buttons.map((b, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={b.onClick}
-                disabled={b.disabled}
-                // bg=ink / text=bg so the label keeps contrast in BOTH themes: light →
-                // dark button / light text, dark → light button / dark text. A
-                // hardcoded #fff went invisible in dark mode (ink is near-white
-                // there → white-on-white).
-                className={`rounded-lg py-2 px-3.5 font-body text-[13px] font-medium cursor-pointer ${b.primary ? 'border-0 bg-ink text-bg' : 'border border-solid border-line bg-transparent text-ink'}`}
-                style={b.style}
-              >{b.label}</button>
-            ))}
-          </div>
-        )}
-      </div>
+      <ChatCardShell className="max-w-[560px]" kind={kind} title={title} actions={cardActions(buttons)}>
+        {body}
+      </ChatCardShell>
     </AnswerTurn>
+  );
+}
+
+function ProviderLimitCard({ time, agentLabel, deleting }) {
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      kind="Provider"
+      title="Task stopped"
+      body="The provider's usage limit was reached. Contact your administrator before starting another task."
+    />
   );
 }
 
@@ -1166,17 +1177,10 @@ function ActionCard({ time, agentLabel, title, body, buttons = [], deleting = fa
 // viewer's timezone, and parsing it on the server shifts the day for some
 // users.
 
-/* " at 2:15 PM", or nothing when the gate gave no usable instant, so no
-   sentence promises a schedule the response never named. The guards are
-   `formatResetTime`'s, shared with the composer bar. */
-function refillClause(resetAt, lead) {
-  const time = formatResetTime(resetAt);
-  return time ? `${lead} at ${time}` : lead;
-}
-
 export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
+  if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
      cowork-server that predates it arrives with none, and the hub usage read
      carries the same allowance's refill, so the free way forward still has a
@@ -1188,6 +1192,7 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
+      kind="Billing"
       title="Task stopped"
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={[
@@ -1253,6 +1258,7 @@ function switchToAirButtons(onSwitchToAir) {
 export function BalanceEmptyCard({
   time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
 }) {
+  if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
@@ -1285,6 +1291,7 @@ export function BalanceEmptyCard({
       agentLabel={agentLabel}
       // A billing failure ends the turn; there is no resume,
       // so this is "stopped", never "paused".
+      kind="Billing"
       title="Task stopped"
       body={body}
       buttons={buttons}
@@ -1306,6 +1313,18 @@ export function BalanceEmptyCard({
 export function FreeServingPausedCard({
   time, agentLabel, resetAt, isBillingOwner, deleting = false,
 }) {
+  if (!PLATFORM_UI) {
+    return (
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind="Provider"
+        title="The provider is temporarily unavailable"
+        body="The provider has paused requests. Try again later or contact your administrator."
+      />
+    );
+  }
   /* The sentence lives in lib/usageWarnings because the Settings probe notice
      says the same thing about the same fuse. */
   return (
@@ -1313,6 +1332,7 @@ export function FreeServingPausedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Usage"
       title="Free MindsHub Air is paused"
       body={freeServingPausedCopy(resetAt)}
       buttons={[
@@ -1338,9 +1358,12 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
     <ActionCard
       deleting={deleting}
       time={time}
-      title="Connect a provider to start chatting"
-      body="Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings."
-      buttons={[
+      kind="Connection"
+      title={PLATFORM_UI ? 'Connect a provider to start chatting' : 'Provider setup is required'}
+      body={PLATFORM_UI
+        ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings.'
+        : 'Ask your operator to configure the model provider before starting a task.'}
+      buttons={PLATFORM_UI ? [
         {
           label: 'Start for free',
           // The click only. Whether this card deserves an
@@ -1352,45 +1375,31 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
           },
           primary: true,
         },
-        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
-      ]}
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: false },
+      ] : []}
     />
   );
 }
 
 // ── UsageAlertCard: a usage-state change that happened DURING this task ────
-// ENG-1782. Not an error: the turn kept going. Free tokens ran out and the
-// task moved onto the paid balance, or an auto top up failed. The composer
-// notice carries the same facts for the *next* task; this card explains why
-// *this* one's behaviour changed, in the timeline where it happened.
+// ENG-1782. Not an error: the turn kept going. The composer bar carries the
+// live state for the *next* task; this marks the turn where *this* one's
+// allowance changed, and still reads true after the bar moves on or is closed.
+// It keeps its own link: most people who reach billing from a chat notice never
+// click the bar.
 function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
+  if (!PLATFORM_UI) return null;
   const open = (action) => () => {
-    trackBillingOpened('usage_alert');
+    trackBillingOpened('usage_alert', undefined, kind);
     host.openExternal(usageActionUrl(action, { isBillingOwner }));
   };
-  if (kind === 'free_low') {
-    // Headline names the crossing, not the count: the composer bar carries
-    // the live count a few pixels above, and two identical headlines that
-    // then drift apart (the bar tracks the next poll, this card is frozen at
-    // the crossing) read as two different figures for one number.
-    // The body says what is true of the allowance rather than of this turn.
-    // The router resolves per turn and can land on a paid model, so "this
-    // task is running on free tokens" is a claim the crossing does not prove.
-    return (
-      <ActionCard
-        time={time}
-        agentLabel={agentLabel}
-        title="Free Air allowance running low"
-        body={`${formatPercentShort(fractionLeft)} of your allowance is left. When it is used up, MindsHub Air moves onto your balance${refillClause(resetsAt, ' until it refills')}.`}
-        buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
-      />
-    );
-  }
   if (kind === 'auto_top_up_failed') {
+    // The one notice that asks for something, so it stays a card.
     return (
       <ActionCard
         time={time}
         agentLabel={agentLabel}
+        kind="Billing"
         title="Auto top up failed"
         body="We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running."
         buttons={[
@@ -1400,14 +1409,25 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       />
     );
   }
+  // One quiet line, not a card: the composer bar says the same a few pixels
+  // below. Running low says what is true of the allowance, not of this turn:
+  // the router resolves per turn and can land on a paid model.
+  // No usable refill time drops the clause rather than leaving "refills".
+  const refillsAt = formatResetTime(resetsAt);
+  const text = kind === 'free_low'
+    ? `Free Air allowance ${formatPercentShort(fractionLeft)} left${refillsAt ? ` · refills at ${refillsAt}` : ''}`
+    : `Free Air allowance used up · now using your balance${refillsAt ? ` until ${refillsAt}` : ''}`;
   return (
-    <ActionCard
-      time={time}
-      agentLabel={agentLabel}
-      title="Free Air allowance used up"
-      body={`This task is now using your balance${refillClause(resetsAt, ' until your allowance refills')}.`}
-      buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
-    />
+    <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
+      <Icon of={CircleAlert} size={14} />
+      <span>{text}</span>
+      <span aria-hidden="true">·</span>
+      <button
+        type="button"
+        onClick={open(USAGE_ACTIONS.viewUsage)}
+        className="border-0 bg-transparent p-0 m-0 font-body text-xs underline underline-offset-2 text-[color:inherit] cursor-pointer hover:text-ink-2"
+      >{USAGE_ACTIONS.viewUsage.label}</button>
+    </div>
   );
 }
 
@@ -1429,7 +1449,13 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
 // from a broken card (ENG-1537 review).
 const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
 
-function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = false }) {
+/* `kind` and `title` default to the rate limit's. A busy server (`server_busy`)
+   passes its own: the same wait-then-retry gate, but a cause the user's own
+   requests didn't create. */
+function RateLimitedCard({
+  time, agentLabel, body, retryAt, onRetry, deleting = false,
+  kind = 'Rate limit', title = 'Too many requests too quickly',
+}) {
   const readyAt = useMemo(() => {
     // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
     // derived from the message's created_at + retryAfter: created_at is
@@ -1466,15 +1492,28 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry, deleting = 
       }]
     : [];
 
+  /* A screen reader announces the refusal through this alert region. It mounts
+     empty and fills on the next commit, because a live region announces content
+     changes, not the text it mounts with. The countdown button stays outside
+     it, so its ticking label is not read out every second. */
+  const [announcement, setAnnouncement] = useState('');
+  useEffect(() => {
+    setAnnouncement(body ? `${title}. ${body}` : title);
+  }, [title, body]);
+
   return (
-    <ActionCard
-      deleting={deleting}
-      time={time}
-      agentLabel={agentLabel}
-      title="Too many requests too quickly"
-      body={body}
-      buttons={buttons}
-    />
+    <>
+      <div className="sr-only" role="alert">{announcement}</div>
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind={kind}
+        title={title}
+        body={body}
+        buttons={buttons}
+      />
+    </>
   );
 }
 
@@ -1489,7 +1528,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
 
-  const canReconnect = Boolean(reconnectable) && !isWeb;
+  const canReconnect = PLATFORM_UI && Boolean(reconnectable) && !isWeb;
 
   const reconnect = async () => {
     if (busy) return;
@@ -1530,35 +1569,39 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   // so they never contradict the buttons shown. We deliberately don't reuse the
   // server's copy here: it's provider-aware but not web-aware (it can't know the
   // desktop-only Reconnect is unavailable on web).
-  const title = done
-    ? 'Reconnected'
-    : canReconnect ? 'Reconnect to continue'
-    : reconnectable ? 'Sign in again'
-    : 'Update your API key';
-  const body = done
-    ? 'Your MindsHub session was refreshed. Send your message again to continue.'
-    : err || (
-        canReconnect
-          ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
-          : reconnectable
-            ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
-            : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
-      );
+  const title = !PLATFORM_UI
+    ? 'The provider could not authenticate'
+    : done
+      ? 'Reconnected'
+      : canReconnect ? 'Reconnect to continue'
+      : reconnectable ? 'Sign in again'
+      : 'Update your API key';
+  const body = !PLATFORM_UI
+    ? 'The model provider rejected its credentials. Ask your operator to check the provider configuration.'
+    : done
+      ? 'Your MindsHub session was refreshed. Send your message again to continue.'
+      : err || (
+          canReconnect
+            ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
+            : reconnectable
+              ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
+              : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
+        );
 
   return (
     <ActionCard
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Connection"
       title={title}
       body={body}
-      buttons={done ? [] : [
+      buttons={!PLATFORM_UI || done ? [] : [
         ...(canReconnect ? [{
           label: busy ? 'Reconnecting…' : 'Reconnect',
           onClick: reconnect,
           primary: true,
-          disabled: busy,
-          style: { cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 },
+          busy,
         }] : []),
         // Settings is the primary action when Reconnect isn't available
         // (BYOK key, or web where the IPC flow doesn't exist).
@@ -1610,17 +1653,20 @@ export function ModelUnavailableCard({
   // only, leaving anything already spaced/cased untouched.
   const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
-  if (code === 'model_restricted') {
+  if (code === 'model_restricted' || !PLATFORM_UI) {
     return (
       <ActionCard
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
-        title={`${label} is restricted`}
-        body="An admin in your organization restricted this model. Choose another model in Settings."
-        buttons={[
+        kind="Model"
+        title={code === 'model_restricted' ? `${label} is restricted` : `${label} isn't available right now`}
+        body={!PLATFORM_UI
+          ? 'Ask your operator to check the configured model and its access.'
+          : 'An admin in your organization restricted this model. Choose another model in Settings.'}
+        buttons={PLATFORM_UI ? [
           { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
-        ]}
+        ] : []}
       />
     );
   }
@@ -1647,6 +1693,7 @@ export function ModelUnavailableCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Model"
       title={title}
       body={denied
         ? "You don't have enough credits for this model. Top up your balance to use it."
@@ -1687,10 +1734,10 @@ function ProviderOverloadedCard({
   deleting = false,
 }) {
   const onManaged = Boolean(reconnectable);
-  const who = onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
-  const base = errorText
+  const who = !PLATFORM_UI ? 'The model provider' : onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
+  const base = (PLATFORM_UI && errorText)
     || `${who} had a temporary incident and didn't recover in time. Try again in a moment.`;
-  const body = onManaged
+  const body = !PLATFORM_UI || onManaged
     ? base
     : `${base} MindsHub automatically routes around provider outages like this, so tasks keep running.`;
 
@@ -1699,6 +1746,7 @@ function ProviderOverloadedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
+      kind="Provider"
       title={`${who} is having a temporary issue`}
       body={body}
       buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
@@ -1706,14 +1754,20 @@ function ProviderOverloadedCard({
   );
 }
 
-// Most recent user text before index `i` — the message whose turn failed.
-// Used by failure cards whose action is "resend the failed message".
-function lastUserTextBefore(visibleMessages, i) {
+/* Most recent user message before index `i`, the message whose turn failed,
+   as `{ text, attachments }`, or null when there is none. Used by failure cards
+   whose action is "resend the failed message". `attachments` is the message's
+   own list, [] when it had none: a resend passes it to onSend so the files and
+   Drive references go with the question again, and an empty list keeps the
+   composer's staged files out of the resend. */
+function lastUserMessageBefore(visibleMessages, i) {
   for (let j = i - 1; j >= 0; j--) {
-    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
-    if (typeof c === 'string' && c) return c;
+    const m = visibleMessages[j];
+    if (m?.role === 'user' && typeof m.content === 'string' && m.content) {
+      return { text: m.content, attachments: Array.isArray(m.attachments) ? m.attachments : [] };
+    }
   }
-  return '';
+  return null;
 }
 
 /**
@@ -1734,9 +1788,16 @@ export function redirectForTask(redirects, taskId) {
   return redirects[taskId] || null;
 }
 
+// Module-level so the per-task debounce survives switching tasks (ENG-3188).
+const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
+  // The last /health snapshot, for the diagnostics a user copies off a failed
+  // turn. Read from App rather than re-fetched at click time: the turn may
+  // have failed because the server is the thing that went away.
+  health,
   onSend,
   onSwitchToAirAndResend,
   onBack,
@@ -1762,19 +1823,28 @@ export default function ChatView({
   onAttachFiles,
   onAddGoogleDriveFiles,
   onAddGoogleDriveProjectFiles,
+  onAddSharePointFiles,
   onFetchGoogleDriveProjectFiles,
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
   onUpdateConnectorMute,
+  browserSwitch = null,
   onRemoveAttachment,
   onPinTask,
   onUnpinTask,
   onRenameTask,
   onDeleteTask,
   onDeleteTurn,
-  // User-input index of the turn whose delete is on the wire, or null. The
-  // same index this view hands to onDeleteTurn.
-  deletingTurnIndex = null,
+  // "Load earlier messages": present only when the task's most recent page
+  // doesn't cover its whole history. Fired both by scrolling to the top of
+  // the transcript and by the explicit button. Omitted callers (existing
+  // tests, any surface that doesn't paginate) simply never see either
+  // affordance — task.hasMoreMessages is falsy for them.
+  onLoadEarlierMessages,
+  loadingEarlierMessages,
+  // Anchor id of the turn whose delete is on the wire, or null. The same id
+  // this view hands to onDeleteTurn.
+  deletingTurnMessageId = null,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
   onDismissConnectForm,
@@ -1786,6 +1856,14 @@ export default function ChatView({
   onOpenSettings,
   codingModelDefault,
   harnessClaudeCodeEnabled,
+  /* The shared browser is on for this task: on in Settings and not switched
+     off in the task's + menu. Only then does a Browser step open the pane,
+     and, on the web, a task that used the browser start it early. */
+  browserOn = false,
+  /* Settings > Appearance "Show where figures came from": mark each figure in
+     a finished answer with the step it came from. On unless the user turned
+     it off. */
+  showFigureSources = true,
   onStop,
   projects = [],
   // Messages the user typed while Anton was mid-turn. Displayed as
@@ -1814,9 +1892,13 @@ export default function ChatView({
   // handleSendInTask's pendingQuestionFor check) as soon as the card
   // itself learns the question is gone.
   onQuestionAnswered,
+  // One side of a model comparison: the transcript only. The Compare screen
+  // owns the header, the shared composer and the side panel, so none of them
+  // render here.
+  pane = false,
 }) {
   const scrollRef = useRef(null);
-  const { isNarrow } = useBreakpoint();
+  const { isNarrow, paneFloats } = useBreakpoint();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
@@ -1857,12 +1939,23 @@ export default function ChatView({
     onComposerRedirectConsumed?.(task?.id, redirect.attachments);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerRedirects, task?.id]);
-  // Inline rail only active on wide screens.
-  const effectiveRailOpen = !isNarrow && railOpen;
-  // Narrow-screen overlay rail.
-  const railOverlayOpen = isNarrow && railNarrowOpen;
+  // The rail docks beside the conversation only when the conversation keeps
+  // its full reading width next to it; otherwise it opens over the top.
+  const [railFits, setRailFits] = useState(true);
+  const railFloats = isNarrow || !railFits;
+  const effectiveRailOpen = !pane && !railFloats && railOpen;
+  // A comparison pane never resends on its own: it would give one side a
+  // turn the other never got, and the two would stop being comparable.
+  const sendAgain = pane ? undefined : (text, attachments) => onSend?.(text, attachments);
+  const railOverlayOpen = !pane && railFloats && railNarrowOpen;
+  /* The floating rail drawer counts as an overlay, so the desktop browser
+     pane's native view steps aside rather than draw over it. */
+  useNativeOverlay(railOverlayOpen);
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
+  /* The figure source (a LinkedFigureSource) whose file is open in the
+     figure viewer. null = closed. */
+  const [figureFileSource, setFigureFileSource] = useState(null);
   // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
   // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
   // but render via the inline text path (no iframe, no OS handoff).
@@ -1964,6 +2057,51 @@ export default function ChatView({
     setArtifactsScope({ projectId: project?.id || '', projectPath: artifactProjectPath });
   }, [project?.id, artifactProjectPath]);
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
+  /* The shared browser's pane shows one session: the live turn's, when its
+     Browser step appears, or the one whose Browser step the person clicks.
+     Past turns never open it on their own. Closing it sets null, so a pane
+     closed mid-turn stays closed until a later turn's step or a click opens
+     it. ChatView isn't keyed by task, so a task change starts over. The web
+     shows the browser router's viewer and a desktop shell that hosts the
+     in-app browser shows its own; an older shell has no pane. A comparison
+     pane has no right-hand column. Switching the browser off applies from
+     the next message, so the live turn's own session stays viewable, and its
+     Browser step stays clickable, until that turn ends. */
+  const [shownBrowserId, setShownBrowserId] = useState(null);
+  useEffect(() => {
+    setShownBrowserId(null);
+  }, [task.id]);
+  const liveBrowserId = browserSessionIdIn(streamingMsg?.steps);
+  useEffect(() => {
+    if (browserOn && liveBrowserId) setShownBrowserId(liveBrowserId);
+  }, [browserOn, liveBrowserId, task.id]);
+  const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
+  const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
+  /* The inline pane holds the right-hand column, where a docked rail would
+     go, so the rail and its Expand button step aside. A rail that floats
+     opens over the pane instead. */
+  const railHidden = browserOpen && !paneFloats && !railFloats;
+  /* The web browser takes a while to wake, so a task that used it starts it
+     when it opens and when the person types. The desktop has nothing to
+     start. */
+  const usedBrowser = useMemo(
+    () => conversationUsedBrowser(visibleMessages, streamingMsg),
+    [visibleMessages, streamingMsg],
+  );
+  const warmsBrowser = host.isWeb && browserOn && usedBrowser;
+  useEffect(() => {
+    if (warmsBrowser) warmBrowser(task.id);
+  }, [warmsBrowser, task.id]);
+  /* A click on a step, in the transcript or the rail's progress card. A
+     Browser step shows its session in the pane; any other step opens its
+     cells in the scratchpad viewer, under its message's key `prefix`. */
+  const activateStep = (prefix) => (step) => {
+    if (step?.badge === BROWSER_BADGE) {
+      if (viewable(step.data?.sessionId)) setShownBrowserId(step.data.sessionId);
+      return;
+    }
+    if (prefix) setOpenScratchpadStepId(prefixId(prefix, step.id));
+  };
   // Source of truth for the rail Progress card: the live streaming
   // message's steps if a request is in flight, otherwise the steps
   // from the most recent assistant turn. Both come from the SSE
@@ -1985,12 +2123,25 @@ export default function ChatView({
   // focus-step lookup `steps.find(s => s.id === focusStepId)` returns
   // the FIRST match, which can be the wrong message's step. Prefixing
   // makes the pool unique and keeps focus correlation tight.
-  const messageKey = (m, i) =>
-    `m:${m?.id || `idx-${i}`}`;
+  // A row without an id keys off the nearest id-bearing row before it, so
+  // prepending an older page leaves its key, and its local state, alone.
+  const rowKeys = [];
+  let keyAnchorId = null;
+  let idlessSinceAnchor = 0;
+  visibleMessages.forEach((m, i) => {
+    if (m?.id) {
+      keyAnchorId = m.id;
+      idlessSinceAnchor = 0;
+      rowKeys.push(`m:${m.id}`);
+      return;
+    }
+    idlessSinceAnchor += 1;
+    rowKeys.push(keyAnchorId ? `after:${keyAnchorId}:${m?.role}:${idlessSinceAnchor}` : `m:idx-${i}`);
+  });
+  const messageKey = (_m, i) => rowKeys[i];
   const streamingKey = streamingMsg
     ? `streaming:${streamingMsg.id || 'live'}`
     : null;
-  const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
   const railMsgKey = (() => {
     if (streamingMsg && streamingMsg.steps?.length) return streamingKey;
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
@@ -2028,15 +2179,89 @@ export default function ChatView({
     [visibleMessages, streamingMsg],
   );
 
+  const stick = useStickToBottom(scrollRef);
+  const { scrollToBottom, follow: followEnd, anchorLastTurn } = stick;
+  const dockRef = useDockInset();
+  const scrollAnchorRef = useRef(null);
   useLayoutEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [task.messages.length, isStreaming]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const { action, scrollHeightDelta, anchor } = nextScrollAnchor({
+      taskId: task.id,
+      messages: visibleMessages,
+      previousAnchor: scrollAnchorRef.current,
+      scrollHeight: el.scrollHeight,
+    });
+    // Loading an older page prepends content above what's on screen —
+    // shifting scrollTop by the same delta keeps the reader's position
+    // steady instead of yanking them to the bottom. A reply landing only
+    // follows a reader who was already at the end.
+    if (action === 'hold') el.scrollTop += scrollHeightDelta;
+    else if (action === 'end') scrollToBottom();
+    // In a comparison pane a follow-up arrives in both panes at once, so it
+    // follows the end rather than moving each pane to the new turn's top.
+    else if (action === 'sent') { if (pane) followEnd(); else anchorLastTurn(); }
+    else followEnd();
+    scrollAnchorRef.current = anchor;
+    // visibleMessages is a fresh array every render (task.messages.filter(...),
+    // not memoized) — depending on task.messages.length instead keeps this
+    // effect firing only when the count actually changes, same as before.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.messages.length, isStreaming]);
+
+  // Content can grow while the message count stays put, and the prepend delta
+  // is measured from this snapshot, so it tracks that growth. It never scrolls.
+  useEffect(() => {
+    const col = scrollRef.current?.querySelector('.chat-transcript-col');
+    if (!col) return undefined;
+    const ro = new ResizeObserver(() => {
+      const el = scrollRef.current;
+      const anchor = scrollAnchorRef.current;
+      if (!el || anchor?.taskId !== task.id) return;
+      scrollAnchorRef.current = { ...anchor, scrollHeight: el.scrollHeight };
+    });
+    ro.observe(col);
+    return () => ro.disconnect();
+  }, [task.id]);
+
+  // Inverted infinite scroll: reaching the top of the transcript pulls the
+  // next older page in, which is the behaviour a long conversation is
+  // expected to have. The button below stays as the explicit affordance and
+  // as the fallback wherever IntersectionObserver is unavailable.
+  //
+  // Firing repeatedly is safe: onLoadEarlierMessages guards its own dispatch
+  // against a fetch already in flight and against there being nothing more to
+  // load. Re-running once a load settles re-checks a reader who is still
+  // parked at the top and needs the page after this one.
+  const loadEarlierSentinelRef = useRef(null);
+  useEffect(() => {
+    if (!task.hasMoreMessages || !onLoadEarlierMessages) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const root = scrollRef.current;
+    const sentinel = loadEarlierSentinelRef.current;
+    if (!root || !sentinel) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages({ auto: true }); },
+      // Start the fetch slightly before the top is actually reached, so the
+      // page is usually already there by the time the reader gets there.
+      { root, rootMargin: '200px 0px 0px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [task.hasMoreMessages, task.id, onLoadEarlierMessages, loadingEarlierMessages]);
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area
   // (can't leak into the rail visually when a slot is near the right
   // edge). chatRef stays as the panel-level ancestor.
   const chatRef = useRef(null);
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(([entry]) => setRailFits(entry.contentRect.width >= RAIL_DOCK_MIN_PX));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const convRef = useRef(null);
 
   // The orb anchors to the ThinkingBlock header's WorkingIndicator box —
@@ -2057,7 +2282,7 @@ export default function ChatView({
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
-  const deleteInFlight = deletingTurnIndex != null;
+  const deleteInFlight = deletingTurnMessageId != null;
 
   return (
     <div
@@ -2074,7 +2299,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-[220ms] ease-[cubic-bezier(.2,.7,.3,1)] bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -2090,15 +2315,15 @@ export default function ChatView({
         // for the "header + scrollable body" layout — the 1fr row pins
         // the scroll area to the column's available height, so the inner
         // overflowY can actually scroll.
-        className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0"
+        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
       >
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        <Tooltip content="Expand panel">
+        {!pane && !railHidden && (<Tooltip content="Expand panel">
           <button
             type="button"
-            onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
+            onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
             aria-label="Expand panel"
             // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
             // rail-open state, and the transition's per-state delay) stay inline —
@@ -2110,14 +2335,14 @@ export default function ChatView({
               transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
               pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
               transition:
-                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
-                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
+                `opacity var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(3 * var(--dur-stagger))'}, ` +
+                `transform var(--dur-layout) var(--ease-out) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : 'calc(2 * var(--dur-stagger))'}`,
             }}
             className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
           >
-            {Ico.panelExpandLeft(15)}
+            {Ico.panelExpandLeft(16)}
           </button>
-        </Tooltip>
+        </Tooltip>)}
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating
@@ -2125,12 +2350,12 @@ export default function ChatView({
             corner, staying left-aligned with the transcript below. `--titlebar-
             safe-top` is set on <main> by the shell and is 0 when the sidebar/
             rail covers the zone, so max() keeps the normal 14px padding then. */}
-        <div
+        {!pane && (<div
           // Belt + suspenders: even if a flex child miscalculates by a
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 max-sm:pr-3.5 max-sm:pl-3.5 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-layout ease-out"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -2238,7 +2463,7 @@ export default function ChatView({
               )}
               {task.pinned && !titleEditing && (
                 <span aria-hidden className="inline-flex flex-shrink-0 text-accent">
-                  {Ico.pin(11)}
+                  {Ico.pin(12)}
                 </span>
               )}
               {!titleEditing && (
@@ -2264,9 +2489,9 @@ export default function ChatView({
                       opacity: titleControlsShown ? 1 : 0,
                       pointerEvents: titleControlsShown ? 'auto' : 'none',
                     }}
-                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
+                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-hover ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
                   >
-                    {Ico.moreVert(13)}
+                    {Ico.moreVert(14)}
                   </button>
                 </Tooltip>
               )}
@@ -2278,7 +2503,7 @@ export default function ChatView({
               title now (above) so it stays visually attached to the
               task it acts on. */}
           <div className="flex items-center gap-1 flex-shrink-0" />
-        </div>
+        </div>)}
         {/* Task menu — anchored to the kebab next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,
             Schedule and Turn-into-skill are intentionally excluded
@@ -2320,37 +2545,52 @@ export default function ChatView({
           />
         ) : (
         <>
-        {/* Scrollable conversation.
-            Bottom padding clears the floating composer so every
-            message is reachable when scrolled to the end. Sized
-            generously (~180px) because the composer grows multi-line
-            as the user types longer drafts, plus the attachments
-            row adds height when files / connectors are attached —
-            tighter values clipped the last reply on long sessions.
-            `marginBottom: 25` shortens the scroll container so the
-            chat surface ends with a calm gap above the window edge
-            instead of butting flush against it. */}
-        <div
-          ref={scrollRef}
-          data-scroll="true"
-          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 max-sm:px-3.5 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+        {/* Scrollable conversation. Its end is padded by the measured
+            height of the floating composer (useDockInset), so the last
+            reply always scrolls clear however tall the draft grows. */}
+        <ChatScroller
+          stick={stick}
+          minimap={!pane}
+          scrollProps={{ 'data-scroll': 'true' }}
+          className={`scroll-clean ${pane ? 'pt-4' : 'pt-8'} bg-transparent [-webkit-app-region:no-drag] select-text`}
         >
-          <div className="chat-transcript-col max-w-[720px] mx-auto flex flex-col gap-7">
+          <div className="chat-transcript-col chat-column flex flex-col gap-7">
+            {task.hasMoreMessages && (
+              // Adapted from Sidebar's dashed-pill "Show more" idiom.
+              <button
+                type="button"
+                ref={loadEarlierSentinelRef}
+                onClick={() => onLoadEarlierMessages?.()}
+                disabled={loadingEarlierMessages}
+                className="mt-0 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-center gap-2 hover:bg-surface-2 hover:border-line hover:text-ink disabled:opacity-60 disabled:cursor-default [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease]"
+              >
+                <span>{loadingEarlierMessages ? 'Loading…' : 'Load earlier messages'}</span>
+              </button>
+            )}
             {(() => {
-              // Track the assistant turn index inline so TurnActions
-              // knows which user→answer cycle to delete. The walker
-              // mirrors the server's `_count_displayable_assistant_bubbles`
-              // contract: each assistant entry counts once. We also
-              // count user-input messages so orphan users (stop before
-              // any assistant response) can carry their own delete
-              // affordance with the right turn index.
-              let assistantTurnIdx = -1;
-              let userInputIdx = -1;
               // Skip + orphan rules live together in lib/turnVisibility so a
               // user message whose only assistant bubble is skipped keeps the
               // delete affordance the hidden bubble used to carry (ENG-1304,
               // PR #580 review).
               const isOrphanUser = (atIdx) => isOrphanUserPure(visibleMessages, atIdx);
+              // The id this turn hands to onDeleteTurn: its assistant reply,
+              // or the user row itself when nothing answered it. Resolved from
+              // any row in the turn, so an activity or error card dims with the
+              // exchange it belongs to rather than on its own.
+              const turnAnchorIdAt = (atIdx) => {
+                let start = atIdx;
+                while (start > 0 && visibleMessages[start]?.role !== 'user') start -= 1;
+                if (visibleMessages[start]?.role !== 'user') return null;
+                if (isOrphanUser(start)) return visibleMessages[start].id ?? null;
+                for (let k = start + 1; k < visibleMessages.length; k++) {
+                  if (visibleMessages[k]?.role === 'user') break;
+                  // A reply with no id was never persisted, so the user row still anchors the turn.
+                  if (visibleMessages[k]?.role === 'assistant') return visibleMessages[k].id ?? visibleMessages[start].id ?? null;
+                }
+                return visibleMessages[start].id ?? null;
+              };
+              const isTurnBeingDeleted = (atIdx) => deletingTurnMessageId != null
+                && turnAnchorIdAt(atIdx) === deletingTurnMessageId;
               // Index of the last user or assistant message that renders —
               // its actions stay always-visible (Claude pattern: most recent
               // exchange shows its toolbar). Skipped failed-assistant bubbles
@@ -2360,12 +2600,18 @@ export default function ChatView({
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
-                userInputIdx += 1;
-                const turnIdxForThisUser = userInputIdx;
                 const orphan = isOrphanUser(i);
+                // A question the server never saw has no id; it is removed
+                // locally, by the row itself, once nothing is streaming.
+                const neverSent = !m.id && !isStreaming
+                  && (m._unsent || String(task?.id ?? '').startsWith('tmp-'));
+                let deleteThisTurn = null;
+                if (orphan && !deleteInFlight && onDeleteTurn && m.id) deleteThisTurn = () => onDeleteTurn(m.id);
+                else if (orphan && !deleteInFlight && onDeleteTurn && neverSent) deleteThisTurn = () => onDeleteTurn({ localRow: m });
                 return (
-                  <UserTurn
-                    key={i}
+                  <CoworkUserTurn
+                    key={messageKey(m, i)}
+                    turnId={messageKey(m, i)}
                     content={m.content}
                     attachments={m.attachments}
                     projectName={project?.name}
@@ -2374,14 +2620,12 @@ export default function ChatView({
                     // Only the last turn can still be the one being worked on,
                     // and only then does "Making changes" describe the present.
                     streaming={isStreaming && i === lastTurnIdx}
-                    time={formatTime(m.createdAt)}
-                    // No turn offers a delete while one is out: every other
-                    // turn's index is about to shift when the server reindexes
-                    // what survives, so it would take the wrong exchange.
-                    onDelete={orphan && !deleteInFlight ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
-                    deleting={deletingTurnIndex === turnIdxForThisUser}
+                    // A row the server has seen is hidden until it has an id, not
+                    // sent to 422; no turn offers a delete while one is out.
+                    onDelete={deleteThisTurn}
+                    deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
-                    onEdit={(text) => {
+                    onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
                       // nonce so identical text re-fills the input
@@ -2394,9 +2638,9 @@ export default function ChatView({
                   />
                 );
               }
-              // Past the user branch, userInputIdx names the turn this
-              // message belongs to, whatever kind of row it renders as.
-              const deletingThisTurn = deletingTurnIndex === userInputIdx;
+              // Every row of a turn dims together, so this resolves the
+              // turn's own anchor id from whatever kind of row this is.
+              const deletingThisTurn = isTurnBeingDeleted(i);
               if (m.role === 'activity') {
                 // Activity rows normally live in the rail's Progress
                 // only. Exception: when this is the just-sent
@@ -2408,7 +2652,7 @@ export default function ChatView({
                 // silent between user-send and first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
-                    <AnswerTurn key={i} state="thinking" showActions={false}>
+                    <AnswerTurn key={messageKey(m, i)} state="thinking" showActions={false}>
                       <WorkingIndicator label={m._label || 'Thinking…'} />
                     </AnswerTurn>
                   );
@@ -2432,7 +2676,7 @@ export default function ChatView({
                   : undefined;
                 return (
                   <ConnectIntroBubble
-                    key={i}
+                    key={messageKey(m, i)}
                     title={m.content || 'Connect'}
                     connector={m.connector}
                     onClickCard={reopenForm}
@@ -2458,10 +2702,10 @@ export default function ChatView({
                 // Single CTA on purpose (ENG-1169): the out-of-credits
                 // moment funnels to top-up; BYOK setup stays in Settings.
                 if (m.code === 'token_limit') {
-                  const balancePrevUserText = lastUserTextBefore(visibleMessages, i);
+                  const balanceResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <BalanceEmptyCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2471,8 +2715,8 @@ export default function ChatView({
                          needs one to resend, and a task already on Air has
                          nothing to switch to. */
                       onSwitchToAir={
-                        onSwitchToAirAndResend && balancePrevUserText && taskModelId !== MINDSHUB_AIR_MODEL_ID
-                          ? () => onSwitchToAirAndResend(balancePrevUserText)
+                        onSwitchToAirAndResend && balanceResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
+                          ? () => onSwitchToAirAndResend(balanceResend.text, balanceResend.attachments)
                           : undefined
                       }
                     />
@@ -2483,7 +2727,7 @@ export default function ChatView({
                 if (m.code === 'free_serving_paused') {
                   return (
                     <FreeServingPausedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2497,7 +2741,7 @@ export default function ChatView({
                 if (m.code === 'provider_auth') {
                   return (
                     <ReconnectCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2516,10 +2760,10 @@ export default function ChatView({
                  * `model_restricted` shares the card: an org admin's model
                  * rule, which the card answers with Open Settings only. */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted') {
-                  const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
+                  const deniedResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2528,8 +2772,8 @@ export default function ChatView({
                       failedModel={m.failedModel}
                       modelLabels={modelLabels}
                       onSwitchToAir={
-                        onSwitchToAirAndResend && deniedPrevUserText
-                          ? () => onSwitchToAirAndResend(deniedPrevUserText)
+                        onSwitchToAirAndResend && deniedResend
+                          ? () => onSwitchToAirAndResend(deniedResend.text, deniedResend.attachments)
                           : undefined
                       }
                     />
@@ -2539,15 +2783,15 @@ export default function ChatView({
                 // budget → Retry (resend the last user message), plus a MindsHub
                 // failover nudge for BYOK users (ENG-673).
                 if (m.code === 'provider_overloaded') {
-                  const prevUserText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ProviderOverloadedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={prevUserText ? () => onSend?.(prevUserText) : undefined}
+                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -2577,24 +2821,28 @@ export default function ChatView({
                   const badModel = typeof m.failedModel === 'string' ? m.failedModel.trim() : '';
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Model"
                       title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
-                      body={badModel
-                        ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
-                        : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
-                      /* Open Settings only. cowork-server does apply a turn's
+                      body={!PLATFORM_UI
+                        ? 'The provider cannot serve the configured model. Ask your operator to check the model configuration.'
+                        : badModel
+                          ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
+                          : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
+                      /* With platform UI on, offer Open Settings only.
+                         cowork-server does apply a turn's
                          own model (the request's `model`, handed to
                          providers.build_llm_client as `model_override`), so a
                          "Switch to MindsHub Air" here would move this one task.
                          The dead id lives in the planning_model setting, though,
                          and every new task would fail on it again, so the card
                          sends the user to where the id is set. */
-                      buttons={[
+                      buttons={PLATFORM_UI ? [
                         { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
-                      ]}
+                      ] : []}
                     />
                   );
                 }
@@ -2604,10 +2852,11 @@ export default function ChatView({
                 if (m.code === 'image_format') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image couldn't be read"
                       body="The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again."
                     />
@@ -2622,17 +2871,18 @@ export default function ChatView({
                 // nothing here, so the card offers "Try again" instead —
                 // the same message now sends clean.
                 if (m.code === 'content_recovery') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Conversation"
                       title="Fixed an issue with this conversation"
                       body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2656,10 +2906,11 @@ export default function ChatView({
                 if (m.code === 'content_too_large') {
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Attachment"
                       title="That image is too large"
                       body={m.content}
                     />
@@ -2669,17 +2920,20 @@ export default function ChatView({
                 // (`policy_unavailable`): retryable and not the user's fault,
                 // so the next step is simply resending the failed message.
                 if (m.code === 'policy_unavailable') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="Billing is temporarily unavailable"
-                      body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      kind={PLATFORM_UI ? 'Billing' : 'Provider'}
+                      title={PLATFORM_UI ? 'Billing is temporarily unavailable' : 'The provider is temporarily unavailable'}
+                      body={PLATFORM_UI
+                        ? "MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                        : "The provider couldn't authorize this request. Try again in a moment."}
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2693,17 +2947,91 @@ export default function ChatView({
                  * so it can be improved OTA, same as the other retryable cards
                  * (ENG-2126). */
                 if (m.code === 'worker_unresponsive') {
-                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The agent didn't start"
+                      body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                /* The model call sent nothing until its deadline
+                 * (`model_timeout`), so the server ended the turn. The provider
+                 * is the likely cause, not the request: a retry often works,
+                 * and if it keeps happening another model is the way out. */
+                if (m.code === 'model_timeout') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ActionCard
                       key={i}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="The agent didn't start"
-                      body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
-                      buttons={retryText
-                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                      kind="Agent"
+                      title="The model didn't respond"
+                      body={PLATFORM_UI
+                        ? 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings.'
+                        : 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.'}
+                      buttons={[
+                        ...(resend && sendAgain
+                          ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                          : []),
+                        ...(PLATFORM_UI ? [{ label: 'Open Settings', onClick: () => onOpenSettings?.('agent') }] : []),
+                      ]}
+                    />
+                  );
+                }
+                /* The server stopped while the turn ran (`turn_lost`): a
+                 * shutdown or a crash. The answer above ends where it was cut
+                 * off, and nothing about the question failed, so Try again
+                 * sends it again. A proxy that outlives a crash sends this
+                 * code live; boot recovery saves it for a reload. */
+                if (m.code === 'turn_lost') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The answer was cut off"
+                      body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
+                      buttons={resend && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                /* The UI heard nothing from the turn for its idle window
+                 * (`stalled`). The tab ends only its own reader and sends no
+                 * cancel, so the turn may still be running on the server. A
+                 * saved `stalled` record, from an older client's tagged
+                 * cancel, renders the same card after a reload. Try again
+                 * waits until the conversation has no live turn, as the copy
+                 * asks. */
+                if (m.code === 'stalled') {
+                  const resend = lastUserMessageBefore(visibleMessages, i);
+                  const turnMayBeRunning = isStreaming || !!inFlightSet?.has(task.id);
+                  return (
+                    <ActionCard
+                      key={i}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Agent"
+                      title="The response stalled"
+                      body="Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again."
+                      buttons={resend && !turnMayBeRunning && sendAgain
+                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2715,7 +3043,7 @@ export default function ChatView({
                 if (m.code === 'included_allowance_exhausted') {
                   return (
                     <AllowanceExhaustedCard
-                      key={i}
+                      key={messageKey(m, i)}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
@@ -2729,16 +3057,60 @@ export default function ChatView({
                 // the fix, so the card says so and offers a time-gated Retry —
                 // never a top-up, which is what this used to show (ENG-1537).
                 if (m.code === 'rate_limited') {
-                  const rlRetryText = lastUserTextBefore(visibleMessages, i);
+                  const rlResend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments) : undefined}
+                    />
+                  );
+                }
+                /* No database connection freed in time on cowork-server
+                   (`server_busy`), refused before the stream with a 503 or
+                   ended inside it with response.failed. Waiting is the fix, so
+                   it shares the rate limit's Retry gate, counted down to the
+                   server's Retry-After, under its own title. */
+                if (m.code === 'server_busy') {
+                  const busyResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <RateLimitedCard
                       key={i}
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
+                      kind="Server"
+                      title="The server is busy"
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlRetryText ? () => onSend?.(rlRetryText) : undefined}
+                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments) : undefined}
+                    />
+                  );
+                }
+                /* A proxy in front of the server refused the question with a
+                   503 `cowork_unavailable`: it could open no connection to the
+                   server, as while the server starts again after a crash.
+                   Nothing reached the server, so waiting is the fix, with the
+                   same Retry gate counted down to the proxy's Retry-After. */
+                if (m.code === 'cowork_unavailable') {
+                  const unavailableResend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      kind="Server"
+                      title="The server isn't answering"
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={unavailableResend && sendAgain
+                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments)
+                        : undefined}
                     />
                   );
                 }
@@ -2756,13 +3128,24 @@ export default function ChatView({
                 // the user what to do, so a raw id there would be noise, not
                 // help. A user who wants to report a CARDED failure still has
                 // nothing to quote; that's an intentional gap, not a bug.
+                /* A second question refused with a 409 (`turn_in_progress`)
+                   lands here too: the server's sentence tells the user to wait
+                   for the running answer, and nothing resends it for them. */
                 return (
-                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
+                  <AnswerTurn key={messageKey(m, i)} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
                     <Alert variant="danger">
                       <div>{m.content}</div>
                       {m.requestId && (
-                        <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Reference: {m.requestId}
+                        <div
+                          className="mt-1 text-xs flex items-center gap-2 flex-wrap"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          <span>Reference: {m.requestId}</span>
+                          <CopyDiagnosticsButton
+                            requestId={m.requestId}
+                            code={m.code}
+                            health={health}
+                          />
                         </div>
                       )}
                     </Alert>
@@ -2772,37 +3155,32 @@ export default function ChatView({
               if (m.role === 'provider_required') {
                 return (
                   <ConnectProviderCard
-                    key={i}
+                    key={messageKey(m, i)}
                     deleting={deletingThisTurn}
                     time={formatMetaTime(m.createdAt)}
                     onOpenSettings={onOpenSettings}
                   />
                 );
               }
-              assistantTurnIdx += 1;
               // A turn that failed before producing anything renders no
               // bubble — the blank block above billing cards (ENG-1304).
-              // Counted first so turn indexing is unchanged; the same
-              // predicate keeps isOrphanUser's delete affordance honest.
+              // Same predicate keeps isOrphanUser's delete affordance honest.
               if (isSkippedFailedAssistant(visibleMessages, i)) {
                 return null;
               }
-              // The server keys delete_turn by USER-INPUT index, not
-              // by assistant index. With orphans (stop before any
-              // assistant) those can drift apart, so we use the most
-              // recent user-input index as the turn id for the
-              // assistant — the user that started this cycle.
-              const turnIdxForThisBubble = userInputIdx;
               return (
                 <AnswerTurn
-                  key={i}
+                  key={messageKey(m, i)}
                   state="done"
                   // `createdAt` is never set on a message row, so the replayed
                   // start time supplies this — and a replay with no steps has
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
-                  onDelete={deleteInFlight ? null : () => onDeleteTurn?.(turnIdxForThisBubble)}
+                  // Anchored on this assistant message's own id; hidden, not
+                  // disabled, without one. A partial kept after a transport
+                  // failure whose recovery also failed has none until reload.
+                  onDelete={m.id && !deleteInFlight ? () => onDeleteTurn?.(m.id) : null}
                   deleting={deletingThisTurn}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}
@@ -2810,6 +3188,7 @@ export default function ChatView({
                   {/* Above the text: a question is asked, then answered, then
                       (at most) the turn's closing text streams — so every
                       card and block precedes the text that came after. */}
+                  {justFinished(m) && m._leavingTake && <FirstTake take={null} leavingText={m._leavingTake} />}
                   <TurnSegments
                     steps={m.steps}
                     startedAt={m.startedAt}
@@ -2819,10 +3198,37 @@ export default function ChatView({
                     // here belongs to the live turn, whatever else is in flight
                     // on this conversation.
                     conversationLive={false}
+                    // Only the latest turn, with nothing in flight, can still
+                    // take an answer to a question that timed out: once a newer
+                    // message is sent, the conversation has moved past it. And
+                    // only where a message can be sent: a comparison pane whose
+                    // side takes no message right now gets no onSend.
+                    reopenable={!!onSend && i === lastTurnIdx && !isStreaming && !inFlightSet?.has(task.id)}
+                    reply={visibleMessages[i + 1]?.role === 'user' && typeof visibleMessages[i + 1].content === 'string'
+                      ? visibleMessages[i + 1].content
+                      : null}
                     onAnswered={onQuestionAnswered}
-                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
+                    // [] so a pick does not take the composer's staged files.
+                    onAnswerAsMessage={(text) => onSend?.(text, [])}
+                    onActivateStep={activateStep(messageKey(m, i))}
+                    idPrefix={messageKey(m, i)}
+                    // Only right after it finished live: reopening the task
+                    // later shows the steps already folded.
+                    collapseOnMount={justFinished(m)}
                   />
-                  <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
+                  <TextBlock
+                    text={m.content}
+                    id={m.id || `msg-${i}`}
+                    complete
+                    conversationId={task.id}
+                    figureSources={m.figureSources}
+                    steps={m.steps}
+                    onOpenStep={(stepId) => setOpenScratchpadStepId(prefixId(messageKey(m, i), stepId))}
+                    onViewFile={setFigureFileSource}
+                    projectId={project?.id ?? null}
+                    projectName={project?.name ?? null}
+                    showFigureSources={showFigureSources}
+                  />
                   {m.artifact && (
                     <ArtifactCard
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
@@ -2831,6 +3237,12 @@ export default function ChatView({
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
+                  {m.incompleteReason && (
+                    // role="note": a saved answer's notice must not be announced again on every reload.
+                    <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
+                      {INCOMPLETE_REASON_TEXT[m.incompleteReason] || 'Stopped before it finished.'}
+                    </Alert>
+                  )}
                 </AnswerTurn>
               );
               });
@@ -2862,13 +3274,17 @@ export default function ChatView({
                     stub in App.jsx `withThinkingPlaceholder` ("Creating
                     task…" for new tasks, "Thinking…" for replies).
                     With questions, the header is in the live segment (TurnSegments). */}
+                {/* The instant first take; the adapter drops it once Anton
+                    writes, asks the user, or the turn ends. */}
+                <FirstTake take={streamingMsg.firstTake} />
                 <TurnSegments
                   steps={streamingMsg.steps}
                   startedAt={streamingMsg.startedAt}
                   conversationId={task.id}
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
-                  onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  onActivateStep={activateStep(streamingKey)}
+                  idPrefix={streamingKey}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
                     currentThought: streamingMsg.currentThought,
@@ -2909,7 +3325,7 @@ export default function ChatView({
               {deleteInFlight ? 'Deleting the selected exchange.' : ''}
             </div>
           </div>
-        </div>
+        </ChatScroller>
 
         {/* Floating composer — no gradient fade behind it. Earlier we
             had a 220px linear-gradient(transparent → var(--bg)) overlay
@@ -2917,13 +3333,13 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer absolute left-7 right-7 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
+        {!pane && (<div ref={dockRef} className="chat-floating-composer absolute left-10 right-10 max-sm:left-3.5 max-sm:right-3.5 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
           {queuedMessages.length > 0 && (
-            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_220ms_cubic-bezier(0.32,0.72,0,1)]">
-              <div className="font-mono text-[10.5px] text-accent tracking-[0.08em] uppercase flex items-center gap-1.5">
+            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_var(--dur-layout)_var(--ease-out)]">
+              <div className="section-label text-accent flex items-center gap-1.5">
                 <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent-glow)]" />
                 {queuedMessages.length} queued · waiting for {agentLabel || 'Anton'}
               </div>
@@ -2932,7 +3348,7 @@ export default function ChatView({
                   <span
                     key={q.id}
                     title={q.text}
-                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-[120ms] ease-[ease]"
+                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-hover ease-[ease]"
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
                     <Tooltip content="Remove from queue">
@@ -2941,7 +3357,7 @@ export default function ChatView({
                         onClick={() => onRemoveFromQueue?.(q.id)}
                         aria-label="Remove from queue"
                         className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
-                      >{Ico.close(11)}</button>
+                      >{Ico.close(12)}</button>
                     </Tooltip>
                   </span>
                 ))}
@@ -2964,9 +3380,11 @@ export default function ChatView({
             onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
             onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+            onAddSharePointFiles={onAddSharePointFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
+            browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
             placeholder="Reply…"
             metaReadOnly
@@ -2978,18 +3396,29 @@ export default function ChatView({
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
+            onTypingChange={warmsBrowser ? (typing) => { if (typing) warmBrowser(task.id); } : undefined}
           />
-        </div>
+        </div>)}
         </>
         )}
       </div>
 
+      {!pane && (<>
+      {/* ─── Shared browser ─── takes the right-hand column while open. */}
+      {browserOpen && (
+        <BrowserPanel
+          sessionId={shownBrowserId}
+          agentLabel={harnessLabel(task?.harness) || 'Anton'}
+          onClose={() => setShownBrowserId(null)}
+        />
+      )}
+
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
-      {isNarrow && (
+      {railFloats && (
         <div
           onClick={() => setRailNarrowOpen(false)}
-          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-[280ms] ease-[cubic-bezier(0.32,0.72,0,1)] [-webkit-app-region:no-drag]"
+          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-layout ease-out [-webkit-app-region:no-drag]"
           style={{
             opacity: railOverlayOpen ? 1 : 0,
             pointerEvents: railOverlayOpen ? 'auto' : 'none',
@@ -2997,14 +3426,17 @@ export default function ChatView({
         />
       )}
       <aside
-        // Narrow: fixed overlay that slides in from the right.
-        // Wide: inline grid column.
-        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
-          isNarrow
-            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
-            : 'bg-transparent min-w-0 transition-opacity duration-[180ms] ease-[ease]'
+        /* Narrow: fixed overlay that slides in from the right.
+           Wide: inline grid column.
+           While the shared browser holds the right-hand column on a wide
+           screen, the docked rail steps aside rather than add a third grid
+           track. A floating rail takes no track, so it still opens. */
+        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${railHidden ? 'hidden ' : ''}${
+          railFloats
+            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
+            : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
         }`}
-        style={isNarrow ? {
+        style={railFloats ? {
           transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
         } : {
           visibility: effectiveRailOpen ? 'visible' : 'hidden',
@@ -3021,7 +3453,7 @@ export default function ChatView({
             <button
               type="button"
               className="chat-rail-close"
-              onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
+              onClick={() => railFloats ? setRailNarrowOpen(false) : setRailOpen(false)}
               aria-label="Collapse panel"
               // kept inline: same all:unset cascade-priority reason as ArtifactCard's
               // buttons — every property here stays co-located with the reset, and
@@ -3036,7 +3468,7 @@ export default function ChatView({
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
             >
-              {Ico.panelCollapseRight(15)}
+              {Ico.panelCollapseRight(16)}
             </button>
           </Tooltip>
         </div>
@@ -3044,9 +3476,7 @@ export default function ChatView({
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}
           conversationId={task.id || ''}
-          onActivateStep={(step) => railMsgKey
-            ? setOpenScratchpadStepId(prefixId(railMsgKey, step.id))
-            : null}
+          onActivateStep={activateStep(railMsgKey)}
         />
         <WorkingFolderBox
           project={project}
@@ -3060,10 +3490,12 @@ export default function ChatView({
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
           onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+          onAddSharePointFiles={onAddSharePointFiles}
           onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />
       </aside>
+      </>)}
 
       {/* keyframes for the streaming cursor */}
       <style>{`@keyframes cb { 0%,49%{opacity:1} 50%,100%{opacity:0} }`}</style>
@@ -3079,6 +3511,21 @@ export default function ChatView({
         focusStepId={openScratchpadStepId}
       />
 
+      {/* The file a figure's source read, opened from the figure's popover;
+          one viewer for the whole chat. The agent named the file, so the
+          viewer offers no Open (it hands the file to the OS default app). No
+          Edit or Delete either: the file is the figure's evidence, and the
+          Context card's list would not hear of a change. */}
+      <ContextFileModal
+        open={figureFileSource != null}
+        {...figureFileViewerProps(figureFileSource, project?.name, artifactProjectPath, task?.id)}
+        showOpenAction={false}
+        showEditAction={false}
+        remover={null}
+        note={figureFileNote(figureFileSource)}
+        onClose={() => setFigureFileSource(null)}
+      />
+
       {/* Inline ArtifactCard viewer — same modal the Live artifacts
           page and the Working folder card use. The card only routes
           HTML here; non-HTML opens straight in the OS via openPath. */}
@@ -3091,21 +3538,20 @@ export default function ChatView({
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
 
-      {/* Data-vault connection form — rendered as a centered modal
-          overlay so it's front-and-center when a connector is picked. */}
-      {formActive && createPortal(
-        <div
-          onClick={() => (onDismissConnectForm
-            ? onDismissConnectForm(task?.id || '')
-            : clearDataVaultForm(task?.id || ''))}
-          // autoprefixer adds the -webkit-backdrop-filter prefix at build time,
-          // so no separate WebkitBackdropFilter declaration is needed here.
-          className="fixed inset-0 z-[200] bg-[rgba(0,0,0,0.5)] backdrop-blur-[3px] flex items-center justify-center"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-[min(90vw,460px)] max-h-[85vh] overflow-y-auto rounded-xl"
-          >
+      {/* Data-vault connection form — a centered modal so it's
+          front-and-center when a connector is picked. The panel draws its
+          own header (breadcrumb + X) and actions. */}
+      <Modal
+        open={formActive}
+        onClose={() => (onDismissConnectForm
+          ? onDismissConnectForm(task?.id || '')
+          : clearDataVaultForm(task?.id || ''))}
+        size="sm"
+        width="min(90vw, 460px)"
+        maxHeight="85vh"
+        ariaLabel="Connect"
+      >
+        <ModalBody padding="0">
             <FormErrorBoundary>
               <DataVaultFormPanel
                 conversationId={task?.id || ''}
@@ -3115,10 +3561,8 @@ export default function ChatView({
                 onClose={onDismissConnectForm}
               />
             </FormErrorBoundary>
-          </div>
-        </div>,
-        document.body,
-      )}
+        </ModalBody>
+      </Modal>
     </div>
   );
 }

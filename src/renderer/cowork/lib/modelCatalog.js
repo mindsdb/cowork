@@ -42,6 +42,9 @@ export const OTHER_MAKER = { key: 'other', name: 'Other' };
 // "use account settings" (see ResponsesRequest.model in cowork-server).
 export const MODEL_ROUTER_ID = 'model-router';
 export const MODEL_ROUTER_LABEL = 'Model Router';
+// The same row under an operator's picker (lib/modelPicker), which has no
+// account Settings to route by: the question runs on the operator's models.
+export const OPERATOR_DEFAULT_LABEL = 'Operator default';
 export const MODEL_ROUTER = {
   id: MODEL_ROUTER_ID,
   name: MODEL_ROUTER_LABEL,
@@ -326,6 +329,27 @@ export function unavailableModelFields(modelEnabled, modelDisabledReasons, id) {
 /** True when `id` is a frozen version of some other alias. */
 export function isFrozenAlias(id, families = {}) {
   return !!families && !!families[id] && families[id] !== id;
+}
+
+/**
+ * The moving aliases in `ids` that should say they are the latest: each one with a
+ * frozen version of its own listed beside it.
+ *
+ * A moving alias is labelled with its line only ("Claude Sonnet"), so next to its
+ * pinned twin ("Claude Sonnet 5.5") it reads as a duplicate unless it says it
+ * moves. Alone it reads fine, and marking every moving alias put the marker on
+ * most rows. Presence in `families` is required, so BYOK ids never qualify.
+ */
+export function latestAliasIds(ids, families = {}) {
+  const list = ids || [];
+  const latest = new Set();
+  if (!families) return latest;
+  for (const id of list) {
+    if (!isFrozenAlias(id, families)) continue;
+    const head = families[id];
+    if (families[head] === head && list.includes(head)) latest.add(head);
+  }
+  return latest;
 }
 
 /**

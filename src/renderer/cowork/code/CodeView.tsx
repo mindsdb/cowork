@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
-import { ConfirmModal } from '../components/ConfirmModal';
 import { codingApi, codingErrorCode, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { QuestionCard } from './QuestionCard';
@@ -15,19 +14,22 @@ import { CodeTasksView } from './CodeTasksView';
 import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
+import { useDockInset } from '../components/chat/useDockInset';
 import { ComposerLip } from './ComposerLip';
 import { PromptQueue } from './ComposerMenus';
-import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice } from './composerNotices';
+import { accountFailure, failureNotice, messageNotice, queueNotice, recoveryNotice, releaseNotice } from './composerNotices';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { RuntimeControlsModal } from './RuntimeControlsModal';
-import { RenameTaskModal } from './RenameTaskModal';
+import { DeleteProjectModal } from './DeleteProjectModal';
 import { ProjectSettingsModal } from './ProjectSettingsModal';
+import type { CodeTaskListActions } from './useCodeTaskMenu';
 import { RecoveryModal } from './RecoveryModal';
 import { TaskBar } from './TaskBar';
+import { taskDiskUsage, useWorkspaceUsage } from './workspaceUsage';
 import { TaskTerminal } from './TaskTerminal';
 import { useCodingSession } from './useCodingSession';
 import { supportsTaskCapability } from './taskCapabilities';
@@ -75,10 +77,12 @@ export default function CodeView({
   onOpenTasks = () => {},
   onOpenSkills = () => {},
   onOpenNewTask = () => {},
+  onConnectMindsHub,
   active = true,
   onSessionsChange,
   onSelectionChange,
   onAttentionSelect,
+  taskActions,
 }: {
   sessions: CodingSession[];
   selectedId: string | null;
@@ -102,12 +106,14 @@ export default function CodeView({
   onOpenTasks?: (projectId?: string | null) => void;
   onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
+  onConnectMindsHub?: () => Promise<void>;
   active?: boolean;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
   onAttentionSelect?: (sessionId: string) => void;
+  /** Row actions for the All tasks list; without them its rows have no menu. */
+  taskActions?: CodeTaskListActions;
 }) {
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
   const openReview = useCallback(() => {
@@ -116,17 +122,7 @@ export default function CodeView({
     setPreviewOpen(false);
   }, []);
   // The transcript reserves the floating dock's height so its end scrolls clear.
-  const dockObserver = useRef<ResizeObserver | null>(null);
-  const dockRef = useCallback((dock: HTMLDivElement | null) => {
-    dockObserver.current?.disconnect();
-    dockObserver.current = null;
-    const stage = dock?.parentElement;
-    if (!dock || !stage || typeof ResizeObserver === 'undefined') return;
-    const sync = () => stage.style.setProperty('--code-dock-height', `${dock.offsetHeight}px`);
-    sync();
-    dockObserver.current = new ResizeObserver(sync);
-    dockObserver.current.observe(dock);
-  }, []);
+  const dockRef = useDockInset();
   // A commit that stopped because Git has no author identity on this
   // computer; Review › Deliver shows a setup card and retries this message.
   const [gitIdentitySetup, setGitIdentitySetup] = useState<{ sessionId: string; message: string } | null>(null);
@@ -140,8 +136,8 @@ export default function CodeView({
   const [controlsOpen, setControlsOpen] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
-  const [renameOpen, setRenameOpen] = useState(false);
   const [projectEditor, setProjectEditor] = useState<{ id: string | null } | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [projectBusy, setProjectBusy] = useState(false);
   // Back returns to the originating draft/settings. Project-scoped visits also
   // add newly connected accounts to that project; folder-only visits do not.
@@ -191,7 +187,6 @@ export default function CodeView({
     create: createTask,
     fork: forkTask,
     toggleArchive,
-    remove: deleteTask,
   } = actions;
   useQueuedInstructionResume(session, detail.refresh, setActionError);
   const commitTask = (sessionId: string, message: string) => runAction(async () => {
@@ -225,18 +220,16 @@ export default function CodeView({
       return false;
     });
   }, [catalog.engines, engineId, canSlashCommands, canFork, canControls, canTerminal, canExtensions]);
-  const project = useProjectActions(session?.id);
+  const project = useProjectActions(session?.id, active);
 
   useEffect(() => {
     setReviewOpen(codeFixtureReviewOpen());
     setFilesOpen(false);
     setPreviewOpen(false);
     setTerminalFocusId(null);
-    setDeleteOpen(false);
     setActionError('');
     setControlsOpen(false);
     setExtensionsOpen(false);
-    setRenameOpen(false);
     setResolvingApprovalId(null);
     setResolvingQuestionId(null);
     setRecoveringTaskId(null);
@@ -247,13 +240,20 @@ export default function CodeView({
   }, [newTask, projectsOpen, tasksOpen, connectorsOpen, skillsOpen, selectedId]);
 
   // Keep the editor across explicit Connectors round trips, including a new
-  // project with no ID. Other navigation still closes it.
+  // project with no ID. Other navigation still closes it. This runs during
+  // render, not in an effect: an effect would commit one frame with the stale
+  // editor open, and a Base UI dialog opened and closed in consecutive commits
+  // never unmounts, leaving its backdrop over the app.
   const resumeProjectEditor = useRef<{ id: string | null } | null>(null);
+  const editorRoute = [newTask, projectsOpen, tasksOpen, tasksProjectId, connectorsOpen, skillsOpen, selectedId].join('|');
+  const [projectEditorRoute, setProjectEditorRoute] = useState(editorRoute);
+  if (projectEditorRoute !== editorRoute) {
+    setProjectEditorRoute(editorRoute);
+    setProjectEditor(resumeProjectEditor.current);
+  }
   useEffect(() => {
-    const editor = resumeProjectEditor.current;
     resumeProjectEditor.current = null;
-    setProjectEditor(editor);
-  }, [newTask, projectsOpen, tasksOpen, tasksProjectId, connectorsOpen, skillsOpen, selectedId]);
+  }, [editorRoute]);
 
   // Leaving Connectors by any other route (the sidebar, opening a task) ends
   // the hand-back, so a later standalone visit adds nothing to that project.
@@ -263,6 +263,11 @@ export default function CodeView({
 
   const restoring = !!selectedId && !session;
   const taskBarSession = session;
+  // Only this computer's workspaces are measured; a task elsewhere has none here.
+  const workspaceUsage = useWorkspaceUsage(
+    taskBarSession && taskBarSession.computer_is_local !== false ? taskBarSession.id : null,
+    taskBarSession?.workspace_path || '',
+  );
   const automationError = selectedId ? automationErrors[selectedId] || '' : '';
   const conversationError = detail.error || (reviewOpen ? '' : actionError || automationError || taskList.error);
   // A local folder is a first-class Code workspace, not an exceptional state.
@@ -281,6 +286,7 @@ export default function CodeView({
       models.find((model) => model.id === session.model)?.name || session.model,
     ),
     recoveryNotice(session, latestSessionEvent, latestErrorEvent, taskRecovering),
+    releaseNotice(session),
     messageNotice('error', conversationError),
     messageNotice('workspace', workspaceWarning === conversationError ? '' : workspaceWarning),
     queueNotice(session),
@@ -392,20 +398,9 @@ export default function CodeView({
               setReviewOpen(false);
             }}
             onRunProjectAction={(action) => void startProjectAction(action)}
+            diskUsage={taskDiskUsage(workspaceUsage, taskBarSession.id)}
             onOpenControls={() => setControlsOpen(true)}
-            onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
-            onOpenProject={() => setProjectEditor({ id: taskBarSession.project_id || null })}
-            onRename={() => setRenameOpen(true)}
             onFork={() => void forkTask()}
-            onCompact={() => void runAction(() => codingApi.turn(taskBarSession.id, '/compact'), true)}
-            onStatus={() => void runAction(
-              () => isActiveStatus(taskBarSession.status)
-                ? codingApi.steer(taskBarSession.id, '/status')
-                : codingApi.turn(taskBarSession.id, '/status'),
-              true,
-            )}
-            onArchive={() => void toggleArchive()}
-            onDelete={() => setDeleteOpen(true)}
           />
         )}
 
@@ -448,12 +443,12 @@ export default function CodeView({
         ) : connectorsOpen && !draftSuspended ? null : projectsOpen ? (
           <CodeProjectsView
             projects={projects.projects}
-            selectedId={projects.selectedId}
             loading={projects.loading}
             error={projects.error}
             onOpen={onOpenTasks}
             onCreate={() => setProjectEditor({ id: null })}
             onEdit={(id) => setProjectEditor({ id })}
+            onDelete={setDeletingProjectId}
           />
         ) : tasksOpen ? (
           <CodeTasksView
@@ -466,11 +461,13 @@ export default function CodeView({
             error={taskList.error || projects.error}
             onOpen={(id) => onSelectionChange(id, false)}
             onOpenProject={onOpenTasks}
+            taskActions={taskActions}
             onNewTask={(id) => {
               projects.setSelectedId(id);
               onSelectionChange(null, true);
             }}
             onEditProject={(id) => setProjectEditor({ id })}
+            onDeleteProject={setDeletingProjectId}
             onBack={onOpenProjects}
             onRetry={() => { void taskList.retry(); void projects.load(); }}
           />
@@ -487,6 +484,10 @@ export default function CodeView({
             modelMeta={modelMeta}
             catalog={catalog}
             onCreate={createTask}
+            onConnectMindsHub={onConnectMindsHub ? async () => {
+              await onConnectMindsHub();
+              setActionError('');
+            } : undefined}
             projects={projects.projects}
             selectedProjectId={projects.selectedId}
             connections={connections}
@@ -732,18 +733,6 @@ export default function CodeView({
         ) : (
           <div className="code-loading"><Alert variant="danger">{detail.error || 'This coding task could not be restored.'}</Alert></div>
         )}
-        <ConfirmModal
-          open={deleteOpen}
-          title="Delete this coding task?"
-          message="This removes the task history and any isolated working copy. Your original files are left alone."
-          confirmLabel="Delete task"
-          destructive
-          busy={busy}
-          onClose={() => { if (!busy) setDeleteOpen(false); }}
-          onConfirm={async () => {
-            if (await deleteTask()) setDeleteOpen(false);
-          }}
-        />
         {session && can('task_controls') && (
           <RuntimeControlsModal
             open={controlsOpen}
@@ -751,7 +740,7 @@ export default function CodeView({
             value={{
               model: session.model,
               permission_mode: session.permission_mode,
-              reasoning_effort: session.reasoning_effort || 'high',
+              reasoning_effort: session.reasoning_effort ?? null,
               service_tier: session.service_tier || 'standard',
               personality: session.personality || 'pragmatic',
               network_access: !!session.network_access,
@@ -764,7 +753,13 @@ export default function CodeView({
             applyBlockedReason={isActiveStatus(session.status) ? 'Changes can be applied after the current turn finishes' : undefined}
             onClose={() => setControlsOpen(false)}
             onApply={async (value) => {
-              await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              try {
+                await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              } catch (reason) {
+                // The modal shows this failure; the page banner sits behind it.
+                setActionError('');
+                throw reason;
+              }
               setControlsOpen(false);
             }}
           />
@@ -813,15 +808,15 @@ export default function CodeView({
             setProjectEditor(null);
             onOpenSkills();
           }}
-          onDelete={projectEditor?.id ? async () => {
-            setProjectBusy(true);
-            try {
-              await projects.remove(projectEditor.id!);
-              setProjectEditor(null);
-            } finally {
-              setProjectBusy(false);
-            }
-          } : undefined}
+        />
+        <DeleteProjectModal
+          open={deletingProjectId !== null}
+          onClose={() => setDeletingProjectId(null)}
+          onDelete={async () => {
+            await projects.remove(deletingProjectId!);
+            // The project's own page has nothing left to show.
+            if (tasksOpen && tasksProjectId === deletingProjectId) onOpenProjects();
+          }}
         />
         {session && can('extensions') && (
           <ExtensionsModal
@@ -829,18 +824,6 @@ export default function CodeView({
             sessionId={session.id}
             initialTab={extensionTab}
             onClose={() => setExtensionsOpen(false)}
-          />
-        )}
-        {session && (
-          <RenameTaskModal
-            open={renameOpen}
-            title={session.title}
-            busy={busy}
-            onClose={() => setRenameOpen(false)}
-            onRename={async (title) => {
-              await runAction(() => codingApi.renameSession(session.id, title), true, true);
-              setRenameOpen(false);
-            }}
           />
         )}
       </div>

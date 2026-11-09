@@ -11,20 +11,30 @@
 // working (the reason the old container avoided transforms).
 //
 // Usage (unchanged):
-//   <Modal open={open} onClose={close} size="md" layer="default" labelledBy="connect-title">
+//   <Modal open={open} onClose={close} size="md" layer="default" labelledBy="connect-title" dismissible={!busy}>
 //     <ModalHeader id="connect-title" title="Connect a tool" subtitle="…" onClose={close} />
+//     <ModalToolbar> …tabs / search, pinned above the scroll… </ModalToolbar>
 //     <ModalBody> …content… </ModalBody>
-//     <ModalFooter>
-//       <Button variant="subtle" onClick={close}>Cancel</Button>
+//     <ModalFooter cancel={<Button variant="subtle" onClick={close}>Cancel</Button>}>
+//       <Button variant="subtle" onClick={draft}>Save draft</Button>
 //       <Button variant="primary" onClick={save}>Save</Button>
 //     </ModalFooter>
 //   </Modal>
 //
-// All three slots are optional — pure-content modals can drop the
-// header/footer and put their own chrome inside <ModalBody>.
+// The pattern every modal follows: a header with the title and the X, the
+// body as the only scroll region, and a footer with Cancel on the left edge
+// and the secondary + primary actions on the right (primary rightmost).
+// Delete is its own flow, not part of an edit modal: the overflow menu
+// offers it beside Settings and it opens a <ConfirmModal>. Where that
+// can't work, a delete section goes in the body — never the footer.
+// Read-only and live-apply modals drop the footer; the X is the way out.
+// Nothing inside the body scrolls on its own, except a capped code/log
+// block or a searchable list embedded in a longer form (a repo picker).
 
+import { createContext, useContext, useEffect, useRef } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import Ico from '../Icons';
+import { useNativeOverlay } from '../../lib/nativeOverlay';
 
 // Opacity-only fade for the backdrop/popup on open/close (styled with
 // Tailwind's `data-[]:` variants, matching ui/Menu.jsx / Select.jsx — no
@@ -39,8 +49,8 @@ import Ico from '../Icons';
 // `[transition:...]` property (not Tailwind's `duration-*`/`ease-*`
 // utilities) so the easing keyword is the literal CSS `ease-out`, not
 // Tailwind's differently-curved `ease-out` utility value.
-const FADE_BACKDROP = 'opacity-100 [transition:opacity_160ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
-const FADE_POPUP     = 'opacity-100 [transition:opacity_180ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_BACKDROP = 'opacity-100 [transition:opacity_var(--dur-modal)_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_POPUP     = 'opacity-100 [transition:opacity_var(--dur-modal)_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
 
 const FONT_BODY    = 'var(--font-body)';
 
@@ -59,13 +69,20 @@ const SIZES = {
 //
 //   60   sidepanels, inline overlays inside main UI
 //   80   default content modals (picker, schedule, artifact viewer)
+//   500  palette — Cmd+K search; above the sidebar drawer (101) and chat
+//        overlays (200) it can be opened over, below the title bar
 //   1000 title bar
 //   1100 legal / onboarding overlays
 //   1200 system modals — How-to, anything that must sit on top
 const LAYERS = {
   default: 80,
+  palette: 500,
   system:  1200,
 };
+
+// Lets ModalHeader hide its X whenever the modal can't be dismissed, so the
+// X, Esc and the backdrop always agree.
+const ModalContext = createContext({ dismissible: true });
 
 export function Modal({
   open,
@@ -81,6 +98,9 @@ export function Modal({
   // dismissing would lose work. Maps to Base UI's outside-press dismissal.
   closeOnBackdrop = true,
   closeOnEsc = true,
+  // One switch for "can this be closed right now?" — false (e.g. while a
+  // save is in flight) blocks Esc and the backdrop and hides the header X.
+  dismissible = true,
   // Lock body scroll while open. Base UI reference-counts this across nested
   // modals; `'trap-focus'` traps focus without locking scroll.
   lockBodyScroll = true,
@@ -96,12 +116,18 @@ export function Modal({
   // real Base UI dialog, so it keeps the focus trap + restore, scroll lock,
   // and Esc dismissal a hand-rolled full-screen <div> would drop.
   fullBleed = false,
+  // 'center' | 'left' (pinned near leftOffset) | 'right' (detail drawer)
+  // | 'top' (command palette).
   placement = 'center',
   leftOffset = 0,
   children,
 }) {
   const sz = SIZES[size] || SIZES.md;
+  const backdropCloses = dismissible && closeOnBackdrop;
+  const escCloses = dismissible && closeOnEsc;
   const z  = LAYERS[layer] ?? LAYERS.default;
+  // The desktop browser pane's native view would draw over this modal.
+  useNativeOverlay(open);
 
   // Base UI calls this on every open/close. We only act on close, and honour
   // closeOnEsc by ignoring keyboard-driven closes (Esc goes through either the
@@ -111,16 +137,32 @@ export function Modal({
   const handleOpenChange = (nextOpen, details) => {
     if (nextOpen) return;
     const reason = details?.reason;
-    if ((reason === 'escape-key' || reason === 'close-watcher') && !closeOnEsc) return;
+    if ((reason === 'escape-key' || reason === 'close-watcher') && !escCloses) return;
     onClose?.();
   };
 
+  // Base UI never unmounts a dialog that is closed by an effect of the commit
+  // that opened it. The closed popup stays mounted and inert, and its backdrop
+  // swallows every click. Close is instant here (no exit animation), so a
+  // popup still connected well after close is stranded: finish the unmount
+  // Base UI skipped. Reopening clears the timer.
+  const actionsRef = useRef(null);
+  const popupRef = useRef(null);
+  useEffect(() => {
+    if (open) return undefined;
+    const timer = setTimeout(() => {
+      if (popupRef.current?.isConnected) actionsRef.current?.unmount();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [open]);
+
   return (
     <Dialog.Root
+      actionsRef={actionsRef}
       open={open}
       onOpenChange={handleOpenChange}
       modal={lockBodyScroll ? true : 'trap-focus'}
-      disablePointerDismissal={!closeOnBackdrop}
+      disablePointerDismissal={!backdropCloses}
     >
       <Dialog.Portal>
         <Dialog.Backdrop
@@ -137,7 +179,11 @@ export function Modal({
         <Dialog.Viewport
           style={{
             position: 'fixed', inset: 0, zIndex: z,
-            display: 'flex', alignItems: 'center', justifyContent: placement === 'left' ? 'flex-start' : 'center',
+            display: 'flex', alignItems: placement === 'top' ? 'flex-start' : 'center',
+            justifyContent: placement === 'left' ? 'flex-start' : placement === 'right' ? 'flex-end' : 'center',
+            // `top`: command-palette anchoring, so the box grows downward as results arrive.
+            ...(placement === 'top' ? { paddingTop: 'min(14vh, 120px)' } : {}),
+            ...(placement === 'right' ? { paddingRight: 8 } : {}),
             ...(placement === 'left' ? {
               paddingLeft: `max(8px, min(${leftOffset}px, calc(100vw - ${typeof width === 'number' ? `${width}px` : width || sz.width} - 8px)))`,
             } : {}),
@@ -145,6 +191,7 @@ export function Modal({
           }}
         >
           <Dialog.Popup
+            ref={popupRef}
             className={FADE_POPUP}
             aria-labelledby={labelledBy || undefined}
             aria-label={ariaLabel || undefined}
@@ -174,7 +221,9 @@ export function Modal({
               fontFamily: FONT_BODY,
             }}
           >
-            {children}
+            <ModalContext.Provider value={{ dismissible }}>
+              {children}
+            </ModalContext.Provider>
           </Dialog.Popup>
         </Dialog.Viewport>
       </Dialog.Portal>
@@ -188,9 +237,13 @@ export function Modal({
 // Standardised: Inter 18px / 600 title, optional Inter 13px
 // subtitle underneath, X close button flush right. Bottom border
 // `--line`. The id prop pairs with Modal's `labelledBy` so screen
-// readers announce the title.
+// readers announce the title. The X shows when `onClose` is passed and
+// the Modal is `dismissible`. `leading` takes an icon or tile before the
+// title block.
 
-export function ModalHeader({ id, title, subtitle, onClose, right }) {
+export function ModalHeader({ id, title, subtitle, onClose, right, leading }) {
+  const { dismissible } = useContext(ModalContext);
+  const showClose = Boolean(onClose) && dismissible;
   return (
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: 12,
@@ -198,6 +251,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
       borderBottom: '1px solid var(--line)',
       flexShrink: 0,
     }}>
+      {leading}
       <div style={{ flex: 1, minWidth: 0 }}>
         {title && (
           <div
@@ -218,7 +272,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
         )}
       </div>
       {right}
-      {onClose && (
+      {showClose && (
         <button
           type="button"
           onClick={onClose}
@@ -231,7 +285,7 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
             width: 28, height: 28, borderRadius: 6,
             display: 'inline-grid', placeItems: 'center',
             flexShrink: 0,
-            transition: 'color 120ms ease, background 120ms ease',
+            transition: 'color var(--dur-hover) ease, background var(--dur-hover) ease',
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.color = 'var(--ink)';
@@ -242,9 +296,33 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
             e.currentTarget.style.background = 'transparent';
           }}
         >
-          {Ico.close ? Ico.close(13) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
+          {Ico.close ? Ico.close(14) : <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>}
         </button>
       )}
+    </div>
+  );
+}
+
+
+// ── Toolbar ───────────────────────────────────────────────────────────
+//
+// Pinned strip between the header and the body for tabs, search or
+// filters — it stays put while the body scrolls. `flush` drops the
+// bottom padding so a tab strip's underline sits on the toolbar's own
+// bottom border (give the TabList `border-b-0`). Tabs whose panels live in
+// the body wrap toolbar + body in `<Tabs className="contents">`.
+
+export function ModalToolbar({ children, flush = false, style }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: flush ? '4px 16px 0' : '8px 16px',
+      borderBottom: '1px solid var(--line)',
+      background: 'var(--surface)',
+      flexShrink: 0,
+      ...style,
+    }}>
+      {children}
     </div>
   );
 }
@@ -254,12 +332,15 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
 //
 // Scroll region. `minHeight: 0` is the flexbox gotcha — without it,
 // `overflowY: auto` doesn't actually scroll inside a flex column.
+// The popup is portaled outside the app root, so bare text would fall back
+// to the browser's 16px; pin it to the body size.
 
 export function ModalBody({ children, padding = '16px 18px', background, style }) {
   return (
     <div style={{
       flex: 1, minHeight: 0, overflowY: 'auto',
       padding,
+      fontSize: 'var(--text-base)',
       background: background || 'var(--surface)',
       ...style,
     }}>
@@ -271,15 +352,16 @@ export function ModalBody({ children, padding = '16px 18px', background, style }
 
 // ── Footer ────────────────────────────────────────────────────────────
 //
-// Action row. Defaults to right-aligned (primary on the right);
-// pass `align="space-between"` for forms that want a destructive
-// action on the left (e.g. Delete button on Edit modals).
+// Action row. `cancel` (Cancel, or Close on a modal with no commit) sits
+// on the left edge; children — the secondary then the primary — sit on
+// the right, primary rightmost. Without `cancel` the children right-align.
+// `align` is the legacy layout knob for footers not yet on `cancel`.
 
-export function ModalFooter({ children, align = 'flex-end', style }) {
+export function ModalFooter({ children, cancel, align = 'flex-end', style }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center',
-      justifyContent: align,
+      justifyContent: cancel ? 'space-between' : align,
       gap: 8,
       padding: '12px 16px',
       borderTop: '1px solid var(--line)',
@@ -287,7 +369,12 @@ export function ModalFooter({ children, align = 'flex-end', style }) {
       flexShrink: 0,
       ...style,
     }}>
-      {children}
+      {cancel ? (
+        <>
+          {cancel}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{children}</div>
+        </>
+      ) : children}
     </div>
   );
 }

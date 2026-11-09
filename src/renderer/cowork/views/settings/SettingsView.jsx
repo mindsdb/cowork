@@ -1,9 +1,10 @@
+import { diagnostic } from '../../../../shared/diagnostics';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -16,7 +17,7 @@ import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../component
 import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
-import { SKINS, normalizeSkin } from '../../../lib/skins';
+import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
@@ -27,27 +28,16 @@ import AccountSection from './AccountSection';
 import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
+import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
-
-// Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
-// freshly auto-saved key, without touching any other field — critical so an
-// Appearance auto-save never marks a genuinely-unsaved Provider/Model edit
-// (tracked in the same snapshot, via the shared page-wide Save button) as
-// saved just because it happened to be present at the same time. Returns
-// the input unchanged if it's null or unparseable (defensive: the caller
-// should never hit that path, but a snapshot must never be corrupted).
-export function patchSavedJson(prevJson, key, value) {
-  if (prevJson == null) return prevJson;
-  try {
-    const parsed = JSON.parse(prevJson);
-    parsed[key] = value;
-    return JSON.stringify(parsed);
-  } catch {
-    return prevJson;
-  }
-}
+import { useSettingsDraft } from './useSettingsDraft';
+import { PLATFORM_UI } from '../../../lib/deployment';
+import { providerTestsEnabled } from '../../../lib/providerTests';
+import { visibleProviderCards } from './providerVisibility';
+import { productName } from '../../../lib/deploymentBrand';
+import { STOCK_WORDMARK } from '../../../../shared/product-name';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -62,9 +52,13 @@ const FIELD_ICON_BTN = `${FIELD_ICON_BTN_BASE} absolute right-1 top-1/2 -transla
 const COLOR_SWATCH_INPUT =
   'w-[64px] h-[32px] p-0.5 border border-solid border-line-2 rounded-md bg-surface cursor-pointer';
 
+const FAVICON_MIME_TYPES = ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/svg+xml', 'image/webp'];
+const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'image/svg+xml', webp: 'image/webp' };
+
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
+const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
 
 /* The notice under each Settings > Agent role row after the MindsHub health
    probe was refused, one per `mindsProbeNotice` kind. Exported for the visual
@@ -78,7 +72,10 @@ const LINK_BTN =
 
    `usage` is the `/hub/usage/` view, which decides the allowance copy (a
    refill time, or the no-grant sentence). */
-export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false }) {
+export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false, providerTestsAvailable = true }) {
+  if (!PLATFORM_UI || !providerTestsAvailable) {
+    return <div className="text-[12px] text-ink-3">{PROVIDER_UNAVAILABLE_MESSAGE}</div>;
+  }
   const byok = <div className="text-ink-3">Or add your own provider and API key below.</div>;
   if (notice.kind === 'no_credits') {
     return (
@@ -153,6 +150,9 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false 
    names it and gives the way out. A restricted model has no billing way out,
    so its line has no link. Exported for the visual fixture. */
 export function UnavailableModelHint({ label, restricted }) {
+  if (!PLATFORM_UI) {
+    return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;
+  }
   if (restricted) {
     return (
       <div className="text-[11.5px] text-ink-3">
@@ -188,7 +188,10 @@ export function UnavailableModelHint({ label, restricted }) {
 //     factory default (clearing a saved 500 to retype must not save 50).
 // Escape-dismiss skips blur entirely; clampBudgets() in save() is the
 // backstop that keeps rejectable values out of every PUT.
-function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel }) {
+// `lockedValue`: while the limits switch is off the field is read-only and
+// shows the safety limit in force instead of the user's saved value, which is
+// left untouched for when the switch goes back on.
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel, lockedValue = null }) {
   const { min, max, fallback } = spec;
   const hintId = useId();
   // "No limit" writes the TOP of the range, which already was the off switch —
@@ -197,12 +200,13 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // a server-side validator and no special case in the clamp.
   //
   // The hint below says "only the step and auto-continue caps apply" rather
-  // than promising infinity, and that wording is load-bearing: at ~306 calls
-  // (the server's default 50 rounds x 6 passes) 50M is reached at ~163k per
-  // call, which a long conversation can carry. Never observed — largest turn in
-  // 30 days was 8.26M — but not impossible.
+  // than promising infinity, and that wording is load-bearing: at ~2,750 calls
+  // (the server's default 250 rounds x 11 passes) 50M is reached at ~18k per
+  // call, which almost any conversation carries. Never observed — largest turn
+  // in 30 days was 34.4M — but not impossible.
+  const locked = lockedValue != null;
   const showUnlimited = unlimitedLabel != null && spec.max != null;
-  const isUnlimited = showUnlimited && isBudgetUnlimited(value, spec);
+  const isUnlimited = showUnlimited && isBudgetUnlimited(locked ? lockedValue : value, spec);
   // The number to put back when the switch goes off. A ref, not state: it must
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
@@ -229,12 +233,14 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
             inputMode="decimal"
             min={toDisplay(min)}
             max={toDisplay(max)}
-            disabled={isUnlimited}
+            disabled={locked || isUnlimited}
             // Show the number they'd return to, not the max: a disabled field
             // reading 50000000 invites someone to "fix" it back down by hand.
-            value={isUnlimited
-              ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
-              : toDisplay(value ?? String(fallback))}
+            value={locked
+              ? toDisplay(lockedValue)
+              : isUnlimited
+                ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
+                : toDisplay(value ?? String(fallback))}
             onChange={(e) => setSetting(settingKey, toNatural(e.target.value))}
             onBlur={(e) => {
               if (value == null) return; // untouched — don't materialize the key
@@ -250,7 +256,9 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">million tokens</span>}
         </div>
         <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
-          {isUnlimited ? (
+          {locked ? (
+            <span className="whitespace-nowrap">safety limit</span>
+          ) : isUnlimited ? (
             <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
           ) : (
             <>
@@ -266,6 +274,7 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <Checkbox
               checked={isUnlimited}
+              disabled={locked}
               onCheckedChange={(on) => setSetting(
                 settingKey,
                 on
@@ -318,7 +327,7 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
             aria-label="Clear value"
             className={FIELD_ICON_BTN}
           >
-            {Ico.close(13)}
+            {Ico.close(14)}
           </button>
         </Tooltip>
       )}
@@ -480,7 +489,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
               aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
               className={canCopy ? btnClass : btnClassDisabled}
             >
-              {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
+              {copyState === 'copied' ? Ico.check(14) : Ico.copy(14)}
             </button>
           </Tooltip>
           {(copyState === 'copied' || copyState === 'failed') && (
@@ -494,7 +503,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 // 'copied' pops in, holds, fades on its own 1.5s clock. 'failed'
                 // only pops in and holds — it's cleared by state (next attempt
                 // or blur), not by the animation, so it stays legible.
-                animation: copyState === 'failed' ? 'failed-pop 0.2s ease forwards' : 'copied-pop 1.5s ease forwards',
+                animation: copyState === 'failed' ? 'failed-pop var(--dur-layout) ease forwards' : 'copied-pop 1.5s ease forwards',
               }}
             >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
           )}
@@ -508,7 +517,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             aria-pressed={show}
             className={show ? btnClassActive : btnClass}
           >
-            {show ? Ico.eyeOff(13) : Ico.eye(13)}
+            {show ? Ico.eyeOff(14) : Ico.eye(14)}
           </button>
         </Tooltip>
         <Tooltip content="Clear this key (commits on Save settings)">
@@ -519,7 +528,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             aria-label="Clear key"
             className={hasValue ? btnClass : btnClassDisabled}
           >
-            {Ico.close(13)}
+            {Ico.close(14)}
           </button>
         </Tooltip>
       </div>
@@ -577,7 +586,7 @@ function SetBadge({ hasValue, active }) {
         // we explicitly clear any inherited shadow.
         boxShadow: active ? undefined : 'none',
         animation: active ? 'set-badge-pulse 2.4s ease-in-out infinite' : 'none',
-        transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
+        transition: 'box-shadow var(--dur-hover) ease, background var(--dur-hover) ease, color var(--dur-hover) ease',
       }}
     >
       Set
@@ -678,7 +687,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
     </span>
   );
   return (
-    <div className={`[transition:opacity_.15s_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
+    <div className={`[transition:opacity_var(--dur-hover)_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
       <Section title={titleNode} subtitle={subtitle}>{children}</Section>
     </div>
   );
@@ -693,28 +702,28 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
       aria-label="Settings sections"
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
-      <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
+      <div className="section-label pt-0 px-2.5 pb-1.5">Settings</div>
       {items.map((item, index) => {
         const active = section === item.id;
         // A dead local server cannot accept most settings saves. Keep Backend
         // available as the recovery path and Coding agent available because
-        // the Code opt-in is device-local and works before the runtime starts.
+        // the Code switch is device-local and works before the runtime starts.
         // Hosted rows remain usable because those APIs are managed.
         const disabled = !host.isWeb
           && !serverOnline
           && item.id !== 'backend'
           && item.id !== 'codingAgent';
-        const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
+        const icon = Ico[item.icon] ? Ico[item.icon](14) : null;
         const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
           <Fragment key={item.id}>
-          {showGroup && <div className="mt-3 first:mt-0 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>}
+          {showGroup && <div className="section-label mt-3 first:mt-0 px-2.5 pb-1">{item.group}</div>}
           <button
             type="button"
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
             aria-disabled={disabled ? 'true' : undefined}
-            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
+            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease] ${active
               ? 'bg-surface-2 text-ink font-semibold'
               : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
               ? 'opacity-35 pointer-events-none cursor-default'
@@ -735,7 +744,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
 }
 
 export default function SettingsView({
-  settings, setSetting, onSave,
+  settings: committedSettings, setSetting: setSettingProp, onSave, onAppearancePreview,
   theme, onThemeChange,
   skin, onSkinChange, customTheme, onCustomThemeChange,
   agentLabel,
@@ -764,6 +773,14 @@ export default function SettingsView({
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
 }) {
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const draft = useSettingsDraft(committedSettings);
+  const { settings, setSetting, dirty: settingsDirty } = draft;
+  const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
   const visibleNav = navItemsForHost(
     host.isWeb,
@@ -771,15 +788,32 @@ export default function SettingsView({
     codeModeAccess.enabled,
   );
   const orgMode = useOrgMode();
+  const providerTestsAvailable = providerTestsEnabled(host.isWeb);
   // The `/hub/usage/` view App polls: the probe notice reads it for the
   // allowance copy and the funds link. Null outside the provider (tests).
   const hubUsageCtx = useHubUsageContext();
   const hubUsage = hubUsageCtx?.usage || null;
   const isBillingOwner = !!hubUsage?.isBillingOwner;
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
+  // "Tested" is a brief confirmation. Own its timer so a stale one can't
+  // clear a newer result, and none fires after the view unmounts.
+  const testedTimerRef = useRef(null);
+  const showTested = ({ autoHide = false } = {}) => {
+    clearTimeout(testedTimerRef.current);
+    testedTimerRef.current = null;
+    setTested(true);
+    if (autoHide) testedTimerRef.current = setTimeout(() => setTested(false), 2400);
+  };
+  const resetTested = () => {
+    clearTimeout(testedTimerRef.current);
+    testedTimerRef.current = null;
+    setTested(false);
+  };
+  useEffect(() => () => clearTimeout(testedTimerRef.current), []);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
@@ -789,8 +823,9 @@ export default function SettingsView({
   // locked/unlocked state doesn't read as done loading.
   const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
   // Start by distrusting a persisted provider failure. The mount-time check
-  // below decides whether it is still real before failure UI is shown.
-  const [initialProviderTestDone, setInitialProviderTestDone] = useState(false);
+  // below decides whether it is still real before failure UI is shown. A deployment
+  // with testing disabled keeps the stored result without running connectivity tests.
+  const [initialProviderTestDone, setInitialProviderTestDone] = useState(!providerTestsAvailable);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
   // -Infinity, not 0: performance.now() is already well past 0 by first render, so a
@@ -829,24 +864,6 @@ export default function SettingsView({
   // Starts empty — providers flip to key-edit mode when the user clicks Edit.
   // Cleared automatically after a successful save+test so the pill re-appears.
   const [editingProviders, setEditingProviders] = useState(new Set());
-  // Snapshot of the last-saved settings JSON. While `settings` matches
-  // this snapshot the Save button reads "Saved" — flips back to "Save
-  // settings" the moment the user changes anything.
-  const [lastSavedJson, setLastSavedJson] = useState(null);
-  // Exclude transient test-result fields from the dirty check — they're not
-  // user-editable settings and flip during Save itself, causing the button to
-  // re-enable immediately after a successful save+test cycle.
-  const { providerStatus: _ps, providerStatusDetails: _psd, providerStatusReasons: _psr, ...settingsForDirty } = settings;
-  const currentJson = JSON.stringify(settingsForDirty);
-  const settingsDirty = lastSavedJson !== null && currentJson !== lastSavedJson;
-  // Parsed view of the saved snapshot. The Advanced Settings budget inputs
-  // use it to revert an emptied field to the last COMMITTED value — the
-  // snapshot is the only place that value survives once drafts land in
-  // `settings` (see BudgetNumberField).
-  const lastSavedSettings = useMemo(() => {
-    if (lastSavedJson == null) return null;
-    try { return JSON.parse(lastSavedJson); } catch { return null; }
-  }, [lastSavedJson]);
   // Capability probe for the Advanced Settings budgets: cowork-server's
   // list_settings returns a row for EVERY UserSettings field, so a server
   // with the budget settings always sends both keys and an older one never
@@ -861,27 +878,30 @@ export default function SettingsView({
   const hasBudgetSettings = settings != null
     && 'maxToolRounds' in settings
     && 'maxContinuations' in settings;
-  // Ref-mirror of `settings` so the post-Save snapshot can read the
-  // freshly-refetched value (the closure's `settings` is stale after
-  // the await but the ref tracks every render).
+  // The limits switch, probed the same way. A server without it applies the
+  // budgets on every turn, so they stay editable there.
+  const hasLimitsSwitch = settings != null && 'limitsEnabled' in settings;
+  const limitsOn = !hasLimitsSwitch || settings.limitsEnabled === true;
+  // What a budget field shows while the switch is off: the safety limit the
+  // server serves, or the factory default from a server that doesn't.
+  const safetyLimit = (key) => (limitsOn
+    ? null
+    : settings.budgetDefaults?.[key] ?? String(BUDGET_FIELDS[key].fallback));
+  // Async provider tests merge their status into the latest displayed values.
+  // The draft overlay keeps edits made during those requests intact.
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; });
 
-  // First load: snapshot once `settings` is populated so the resting
-  // state is "Saved" until the user touches anything.
-  useEffect(() => {
-    if (lastSavedJson === null && settings && Object.keys(settings).length > 0) {
-      setLastSavedJson(currentJson);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentJson]);
   const configReady = validation?.configReady ?? settings.configReady;
   const configError = validation?.configError || settings.configError;
 
   // Providers state — surfaced from the server, edited inline, committed
   // on Save settings. The save handler routes through the providers path
   // when `providers` is included on the patch.
-  const providers = Array.isArray(settings.providers) ? settings.providers : [];
+  const configuredProviders = Array.isArray(settings.providers) ? settings.providers : [];
+  const providers = !PLATFORM_UI || configuredProviders.some((p) => p.type === 'minds-cloud')
+    ? configuredProviders : [makeEmptyProvider('minds-cloud'), ...configuredProviders];
+  const visibleProviders = visibleProviderCards(settings, providers, PLATFORM_UI);
   const modelMode = settings.modelMode === 'custom' ? 'custom' : 'default';
   const overrides = settings.modelOverrides || {};
   const recommendedModels = settings.recommendedModels || {};
@@ -890,7 +910,7 @@ export default function SettingsView({
 
   const updateProviders = (next) => setSetting('providers', dedupeByType(next));
   const availableTypesForAdd = PROVIDER_TYPE_ORDER.filter(
-    (t) => !providers.some((p) => p.type === t),
+    (t) => (PLATFORM_UI || t !== 'minds-cloud') && !providers.some((p) => p.type === t),
   );
 
   const roleOverride = (role) => {
@@ -909,6 +929,9 @@ export default function SettingsView({
   // recover. See effectiveRoleModel / effectiveRoleProvider.
   const roleProviderType = (role) => canonicalProviderForRole(role);
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
+  // effectiveRoleProvider already falls back to MindsHub, as the server does.
+  const budgetRowsShown = hasBudgetSettings && !(host.isWeb && PLATFORM_UI);
+  const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -937,7 +960,7 @@ export default function SettingsView({
       ? !!(p.baseUrl || '').trim()
       : !!(p.apiKey || '').trim()
   );
-  const anyProviderFailed = providers.some(
+  const canRetestProviders = providerTestsAvailable && providers.some(
     (p) => providerConfigured(p) && (settings.providerStatus || {})[p.type] === 'fail',
   );
 
@@ -948,10 +971,10 @@ export default function SettingsView({
   // custom-model controls. Falls back to MindsHub when nothing is
   // configured so the unconfigured baseline still surfaces a row.
   const defaultModeProviderType = (() => {
-    const minds = providers.find((p) => p.type === 'minds-cloud');
+    const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
     if (minds && providerConfigured(minds)) return 'minds-cloud';
-    const configured = providers.find(providerConfigured);
-    return configured ? configured.type : 'minds-cloud';
+    const configured = visibleProviders.find(providerConfigured);
+    return configured ? configured.type : PLATFORM_UI ? 'minds-cloud' : '';
   })();
 
   // Which provider types actually drive planning + coding right now.
@@ -976,25 +999,15 @@ export default function SettingsView({
     return types;
   })();
 
-  // Custom providers must carry a non-empty name. Pre-compute so the
-  // Models dropdown can show the name and the Save button knows to
-  // block when any custom row is missing one.
+  // Editable custom providers must carry a non-empty name. Hidden provider
+  // fields must not prevent saving the settings that remain available.
   const providerDisplayName = (p) => {
     if (p.type === 'openai-compatible') return (p.name || '').trim() || 'OpenAI-compatible';
     return typeLabels[p.type] || p.type;
   };
-  const missingCustomNames = providers.some(
+  const missingCustomNames = PLATFORM_UI && providers.some(
     (p) => p.type === 'openai-compatible' && !(p.name || '').trim(),
   );
-
-  // MindsHub is the permanent baseline — always show its row so the
-  // user has a path to a working provider without having to add one.
-  useEffect(() => {
-    if (!providers.some((p) => p.type === 'minds-cloud')) {
-      updateProviders([makeEmptyProvider('minds-cloud'), ...providers]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providers.length, providers.some((p) => p.type === 'minds-cloud')]);
 
   const updateProviderField = (type, key, value) => {
     setLlmDirty(true);
@@ -1012,9 +1025,9 @@ export default function SettingsView({
       delete nextStatus[type];
       delete nextDetails[type];
       delete nextReasons[type];
-      setSetting('providerStatus', nextStatus);
-      setSetting('providerStatusDetails', nextDetails);
-      setSetting('providerStatusReasons', nextReasons);
+      setSettingProp('providerStatus', nextStatus);
+      setSettingProp('providerStatusDetails', nextDetails);
+      setSettingProp('providerStatusReasons', nextReasons);
     }
     if (key === 'baseUrl' && (type === 'openai-compatible' || type === 'gemini')) {
       setSetting('openaiBaseUrl', value);
@@ -1067,6 +1080,7 @@ export default function SettingsView({
   // server merges results into the persisted status map, so dots survive a
   // reload.
   const runProviderTests = async (targetProviders = null) => {
+    if (!providerTestsAvailable) return null;
     const toTest = targetProviders || providers.filter((p) => activeProviderTypes.has(p.type));
     if (toTest.length === 0) return null;
 
@@ -1075,11 +1089,11 @@ export default function SettingsView({
       const current = settingsRef.current?.providerStatus || {};
       const next = { ...current, ...result.providerStatus };
       const changed = Object.keys(result.providerStatus).some((k) => current[k] !== result.providerStatus[k]);
-      if (changed) setSetting('providerStatus', next);
+      if (changed) setSettingProp('providerStatus', next);
     }
     if (result && result.providerStatusDetails) {
       const currentDetails = settingsRef.current?.providerStatusDetails || {};
-      setSetting('providerStatusDetails', { ...currentDetails, ...result.providerStatusDetails });
+      setSettingProp('providerStatusDetails', { ...currentDetails, ...result.providerStatusDetails });
     }
     /* Reasons are replaced per type, not merged: every type this result
        reports a status for loses its held reason first, then takes the new
@@ -1100,7 +1114,7 @@ export default function SettingsView({
       if (sent && typeof sent === 'object') {
         for (const type of reported) nextReasons[type] = sent[type] || null;
       }
-      setSetting('providerStatusReasons', nextReasons);
+      setSettingProp('providerStatusReasons', nextReasons);
     }
     return result;
   };
@@ -1112,7 +1126,7 @@ export default function SettingsView({
   const didMountVerify = useRef(false);
   useEffect(() => {
     if (didMountVerify.current) return;
-    const configured = providers.filter(providerConfigured);
+    const configured = visibleProviders.filter(providerConfigured);
     if (configured.length === 0) {
       // Nothing to verify — the picker's warning reflects config, not a
       // pending network result, so let it show without waiting.
@@ -1180,44 +1194,52 @@ export default function SettingsView({
   };
 
   const save = async () => {
-    // Save runs a validation pass so the banner reflects whether the
-    // new config is usable. Provider tests only fire when the LLM
-    // settings actually changed since the last Save — no point hitting
-    // the network when the user just toggled the dot grid.
-    const shouldTestLlm = llmDirty || anyProviderFailed;
+    const shouldTestLlm = llmDirty || canRetestProviders;
+    const submitted = draft.capture();
+    const normalized = withResolvedRoles(clampBudgets(settings));
+    const patch = clampBudgets(submitted.patch);
+    // Role resolution can add tombstones/provider changes to the user's patch.
+    // Keep unrelated committed settings and appearance previews out of the write.
+    for (const [key, value] of Object.entries(normalized)) {
+      if (JSON.stringify(value) !== JSON.stringify(settings[key])) patch[key] = value;
+    }
     setTesting(true);
-    setTested(false);
+    resetTested();
+    setSaveError(null);
+    let result;
     try {
-      await onSave(withResolvedRoles(clampBudgets(settings)));
-      const result = await validateSettings();
-      setValidation(result);
-      if (shouldTestLlm) {
-        // Use settingsRef.current.providers (post-save, fresh) instead of the
-        // stale closure so newly-added providers with masked keys ('***') are
-        // included — the backend resolves '***' from storage. Running this
-        // after validateSettings (not concurrently) ensures the snapshot below
-        // captures the final 'ok'/'fail' state, not the transient 'testing' state.
-        const freshProviders = settingsRef.current?.providers || [];
-        await runProviderTests(freshProviders.filter(providerConfigured));
+      result = await onSave(patch);
+      if (!mountedRef.current) return;
+      draft.acknowledge(submitted.entries);
+      setSaved(true);
+      if (Object.keys(draft.capture().patch).length === 0) {
         setLlmDirty(false);
         setEditingProviders(new Set());
       }
-      setTested(true);
-      // Snapshot the now-current settings so the Save button flips to
-      // "Saved" until the user makes another edit. settingsRef tracks
-      // the latest re-rendered value (the closure's `settings` is the
-      // pre-save copy and stale by now).
-      const { providerStatus: _ps2, providerStatusDetails: _psd2, providerStatusReasons: _psr2, ...savedForDirty } = settingsRef.current || {};
-      setLastSavedJson(JSON.stringify(savedForDirty));
-      setSaved(true);
-      setTimeout(() => setTested(false), 2400);
+    } catch (err) {
+      setSaveError(err.message || 'Settings could not be saved.');
+      setSaved(false);
+      setTesting(false);
+      return;
+    }
+
+    // Persistence and verification have separate outcomes. A failed check
+    // cannot turn an accepted write into a rejected save or restore a draft.
+    try {
+      const validationResult = await validateSettings();
+      setValidation(validationResult);
+      if (shouldTestLlm) {
+        const freshProviders = result?.settings?.providers || normalized.providers || providers;
+        await runProviderTests(visibleProviderCards(normalized, freshProviders, PLATFORM_UI).filter(providerConfigured));
+      }
+      showTested({ autoHide: true });
     } catch (err) {
       setValidation({
         status: 'error',
         configReady: false,
-        configError: err.message || 'Settings could not be saved.',
+        configError: `Settings saved, but verification failed: ${err.message || 'Configuration could not be checked.'}`,
       });
-      setSaved(false);
+      showTested();
     } finally {
       setTesting(false);
     }
@@ -1226,15 +1248,14 @@ export default function SettingsView({
   const validate = async () => {
     if (testing) return;
     setTesting(true);
-    setTested(false);
+    resetTested();
     try {
       const [result] = await Promise.all([
         validateSettings(),
         runProviderTests(),
       ]);
       setValidation(result);
-      setTested(true);
-      setTimeout(() => setTested(false), 2400);
+      showTested({ autoHide: true });
     } catch (err) {
       setValidation({
         status: 'error',
@@ -1249,14 +1270,17 @@ export default function SettingsView({
   const testButtonLabel = testing
     ? 'Testing…'
     : tested
-      ? (<><span className="inline-flex mr-1.5 align-middle">{Ico.check(13)}</span>Tested</>)
+      ? (<><span className="inline-flex mr-1.5 align-middle">{Ico.check(14)}</span>Tested</>)
       : 'Test';
 
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
 
   const renderSaveFooter = () => {
-    const saveDisabled = (!settingsDirty && !anyProviderFailed) || testing || missingCustomNames;
-    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
+    const saveDisabled = (!settingsDirty && !canRetestProviders) || testing || missingCustomNames;
+    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…'
+      : (!settingsDirty && !canRetestProviders) ? 'No unsaved changes'
+        : !providerTestsAvailable ? 'Save changes.'
+          : canRetestProviders ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
     return (
     <>
       <div
@@ -1264,11 +1288,13 @@ export default function SettingsView({
         className="flex-1 text-[13px] font-medium text-ink-3 inline-flex items-center gap-1.5"
       >
         {testing && <span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />}
-        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
-        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
+        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         <span>
-          {testing ? 'Testing configuration…'
-            : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
+          {saveError ? saveError : testing ? (providerTestsAvailable ? 'Testing configuration…' : 'Saving settings…')
+            : tested ? (configReady
+              ? (providerTestsAvailable ? 'Test passed — provider, model, and credentials look good.' : 'Settings saved.')
+              : (configError || (providerTestsAvailable ? 'Test reported a problem.' : 'Configuration reported a problem.')))
               : saved ? 'Settings saved.'
                 : configError ? configError
                   : 'Changes apply on save.'}
@@ -1285,7 +1311,7 @@ export default function SettingsView({
           className="w-[140px] inline-flex items-center justify-center gap-1.5"
           style={{ opacity: saveDisabled ? 0.55 : 1, cursor: saveDisabled ? 'default' : 'pointer' }}
         >
-          {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
+          {testing ? 'Saving…' : (settingsDirty || canRetestProviders) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
         </Button>
       </Tooltip>
     </>
@@ -1295,14 +1321,14 @@ export default function SettingsView({
   // ───────────────────────── Section renderers ─────────────────────────
 
   const renderAgentSection = () => {
-    const anyProviderConfigured = providers.some(providerConfigured);
+    const anyProviderConfigured = visibleProviders.some(providerConfigured);
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
-          {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
-          {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
+          {/* Platform builds offer BYOK outside SaaS orgs, which use their managed provider. */}
+          {PLATFORM_UI && !orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
-              {providers.map((p) => {
+              {visibleProviders.map((p) => {
                 const configured = providerConfigured(p);
                 const label = typeLabels[p.type] || p.type;
                 const reveal = p.type === 'anthropic' ? 'anthropic'
@@ -1319,20 +1345,27 @@ export default function SettingsView({
                   providerStatusDetails: settings.providerStatusDetails || {},
                   providerStatusReasons: settings.providerStatusReasons || {},
                   configured,
-                  isSsoConnected,
-                  testInProgress: testing,
+                  isSsoConnected: PLATFORM_UI && isSsoConnected,
+                  testInProgress: providerTestsAvailable && testing,
                   initialTestDone: initialProviderTestDone,
                 });
                 const status = st.checking ? 'testing' : st.settled;
                 const detail = configured ? st.detail : '';
                 // The probe's reason names which MindsHub limit a 402/429 was,
                 // which the detail string alone cannot.
-                const friendlyError = friendlyProviderError(detail, configured ? st.reason : null);
+                const neutralProbeError = (!PLATFORM_UI || !providerTestsAvailable) && p.type === 'minds-cloud'
+                  && mindsProbeNotice({ detail, reason: configured ? st.reason : null })
+                  ? PROVIDER_UNAVAILABLE_MESSAGE : '';
+                const friendlyError = neutralProbeError || friendlyProviderError(detail, configured ? st.reason : null);
                 const statusBadge = providerStatusBadge(status, configured);
-                const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
+                const statusPillTitle = status === 'ok'
+                  ? (!providerTestsAvailable && st.raw !== 'ok'
+                    ? 'Connected through MindsHub sign-in.'
+                    : `Last test passed${detail ? ` (${detail})` : ''}`)
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
                     : status === 'testing' ? 'Testing…'
-                      : 'Not tested yet — save settings and run a test to verify.';
+                      : providerTestsAvailable ? 'Not tested yet — save settings and run a test to verify.'
+                        : 'Provider connectivity has not been tested.';
                 const statusPill = statusBadge ? (
                   <Badge
                     title={statusPillTitle}
@@ -1391,7 +1424,7 @@ export default function SettingsView({
                 );
                 // Show the key input when: unconfigured, never tested, or user clicked Edit.
                 // Otherwise the middle column shows the status pill and an Edit button appears.
-                const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
+                const ssoMindsHub = PLATFORM_UI && p.type === 'minds-cloud' && isSsoConnected;
                 // Keep a stale failed provider in badge mode while its fresh test is
                 // pending; otherwise the testing badge is replaced by the masked key.
                 const showKeyInput = ssoMindsHub || !configured || st.settled === 'untested'
@@ -1407,7 +1440,7 @@ export default function SettingsView({
                     {/* Left: name + description */}
                     <div>
                       {titleNode}
-                      {PROVIDER_TYPE_DESC[p.type] && (
+                      {PROVIDER_TYPE_DESC[p.type] && (PLATFORM_UI || p.type !== 'minds-cloud') && (
                         <div className="text-[12px] text-ink-3 mt-1.5 max-w-[380px] leading-[1.45]">
                           {PROVIDER_TYPE_DESC[p.type]}
                         </div>
@@ -1442,7 +1475,7 @@ export default function SettingsView({
                             ariaLabel="Base URL"
                           />
                         )}
-                        {GET_KEY_URL[p.type] && !ssoMindsHub && (
+                        {GET_KEY_URL[p.type] && !ssoMindsHub && (PLATFORM_UI || p.type !== 'minds-cloud') && (
                           <div className="text-[11.5px] text-ink-3">
                             Get your API key at{' '}
                             <Tooltip content={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}>
@@ -1455,7 +1488,7 @@ export default function SettingsView({
                             </Tooltip>
                           </div>
                         )}
-                        {p.type === 'minds-cloud' && !isSsoConnected && (
+                        {PLATFORM_UI && p.type === 'minds-cloud' && !isSsoConnected && (
                           <div className="text-[11.5px] text-ink-3">
                             Don't have an account?{' '}
                             <Tooltip content="Open the MindsHub sign-up page in your browser.">
@@ -1470,7 +1503,7 @@ export default function SettingsView({
                         )}
                         {status === 'fail' && friendlyError && (
                           <div className="text-[11.5px] text-danger flex items-start gap-1.5">
-                            <span className="shrink-0 mt-px">{Ico.key ? Ico.key(11) : '!'}</span>
+                            <span className="shrink-0 mt-px">{Ico.key ? Ico.key(12) : '!'}</span>
                             <span>{friendlyError}</span>
                           </div>
                         )}
@@ -1495,7 +1528,7 @@ export default function SettingsView({
                             size="sm"
                             onClick={() => removeProvider(p.type)}
                             aria-label="Remove this provider"
-                          >{Ico.trash(13)}</Button>
+                          >{Ico.trash(14)}</Button>
                         </Tooltip>
                       )}
                       {!showKeyInput && (
@@ -1505,7 +1538,7 @@ export default function SettingsView({
                             size="sm"
                             onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
                             aria-label="Edit API key"
-                          >{Ico.edit(13)}</Button>
+                          >{Ico.edit(14)}</Button>
                         </Tooltip>
                       )}
                     </div>
@@ -1521,20 +1554,20 @@ export default function SettingsView({
                     onClick={() => setAddPickerOpen(true)}
                     disabled={availableTypesForAdd.length === 0}
                     title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : undefined}
-                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_200ms_ease,transform_200ms_ease]"
+                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                     style={{
                       opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
                       transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
                       pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
                       cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
                     }}
-                  >{Ico.plus(13)} Add provider</Button>
+                  >{Ico.plus(14)} Add provider</Button>
                 </Tooltip>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
                 <div
-                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_220ms_ease,transform_220ms_ease]"
+                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                   style={{
                     opacity: addPickerOpen ? 1 : 0,
                     transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
@@ -1558,23 +1591,22 @@ export default function SettingsView({
                       onClick={() => setAddPickerOpen(false)}
                       aria-label="Close provider picker"
                       className="ml-1"
-                    >{Ico.close(13)}</Button>
+                    >{Ico.close(14)}</Button>
                   </Tooltip>
                 </div>
               </div>
             </SettingsGroup>
           </div>}
-          <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
+          {PLATFORM_UI && <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
             <SettingsGroup title="Model Router">
               {(() => {
                 // The default-mode provider is the implicit fallback for
                 // any role that hasn't been explicitly assigned an
                 // override (keyed MindsHub, else first configured).
                 const defaultProvider =
-                  providers.find((p) => p.type === defaultModeProviderType) ||
-                  providers.find((p) => p.type === 'minds-cloud') ||
-                  providers[0];
-                const multipleProviders = providers.length > 1;
+                  visibleProviders.find((p) => p.type === defaultModeProviderType) ||
+                  visibleProviders[0];
+                const multipleProviders = visibleProviders.length > 1;
 
                 // For each role: render provider selector (when N>1) +
                 // model field. When the user picks a new provider, auto-
@@ -1588,7 +1620,7 @@ export default function SettingsView({
                   // to defaultModeProviderType (which prefers the actually-configured
                   // provider — MindsHub if available, else first configured).
                   const rawType = roleProviderType(role) || (defaultProvider?.type || '');
-                  const rawProvider = providers.find((p) => p.type === rawType);
+                  const rawProvider = visibleProviders.find((p) => p.type === rawType);
                   const curType = (rawProvider && providerConfigured(rawProvider))
                     ? rawType
                     : defaultModeProviderType;
@@ -1599,7 +1631,7 @@ export default function SettingsView({
                   const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
                   const fallbackPair = recommendedPair[curType] || ['', '', ''];
                   const fallbackModel = fallbackPair[roleIdx] || fallbackPair[1] || '';
-                  const provider = providers.find((p) => p.type === curType);
+                  const provider = visibleProviders.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
                   // minds-cloud has no free-text mode (unlike a BYOK provider,
                   // where an unlisted id is just a user-typed custom model) —
@@ -1629,8 +1661,8 @@ export default function SettingsView({
                     providerStatusDetails: settings.providerStatusDetails || {},
                     providerStatusReasons: settings.providerStatusReasons || {},
                     configured: !!(provider && providerConfigured(provider)),
-                    isSsoConnected,
-                    testInProgress: testing,
+                    isSsoConnected: PLATFORM_UI && isSsoConnected,
+                    testInProgress: providerTestsAvailable && testing,
                     initialTestDone: initialProviderTestDone,
                   });
                   const providerUnconfigured = !!curType && st.unconfigured;
@@ -1684,7 +1716,7 @@ export default function SettingsView({
                   );
 
                   const probeNoticeNode = probeNotice ? (
-                    <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} />
+                    <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} providerTestsAvailable={providerTestsAvailable} />
                   ) : null;
 
                   const subtitle = role === 'planning'
@@ -1732,7 +1764,7 @@ export default function SettingsView({
                               invalid={providerUnusable}
                               aria-describedby={(providerUnusable || providerCheckingNotice) ? providerWarnId : undefined}
                               title={`Choose which provider powers the ${role} role.`}
-                              options={providers.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
+                              options={visibleProviders.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
                             />
                           </label>
                         )}
@@ -1803,7 +1835,7 @@ export default function SettingsView({
                                       // when this lands; a reordered list jumps under the cursor.
                                       const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
                                       if (!merged) return;
-                                      for (const [key, value] of Object.entries(merged)) setSetting(key, value);
+                                      for (const [key, value] of Object.entries(merged)) setSettingProp(key, value);
                                       openState.refreshedAt = performance.now();
                                     }).catch(() => { }).finally(() => {
                                       setModelRefreshing((m) => ({ ...m, [role]: false }));
@@ -1879,13 +1911,16 @@ export default function SettingsView({
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
-                    {RoleRow({ role: 'router', label: 'Routing and summarization model' })}
+                    {/* Hidden once the server routes with a decision model:
+                        see showRouterRoleRow for when it stays. */}
+                    {showRouterRoleRow(settings.routing, settings.gate)
+                      && RoleRow({ role: 'router', label: 'Routing and summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
                   </>
                 );
               })()}
             </SettingsGroup>
-          </div>
+          </div>}
         </div>
 
         <SettingsGroup title="Memory">
@@ -1924,17 +1959,40 @@ export default function SettingsView({
           </Section>
         </SettingsGroup>
 
-        {hasBudgetSettings && (
+        <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
+
+        {/* Not on hosted web yet: its turns run in a pod that doesn't receive
+            these limits until the web time limit and the PR that sends them
+            ship, so the switch and values here would not be what a hosted web
+            turn runs under. Self-hosted web runs turns in its own server, where
+            they apply. The Jev switch has no such limit, so it keeps the group. */}
+        {(budgetRowsShown || jevSwitchShown) && (
           <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
+            {budgetRowsShown && <>
+            {hasLimitsSwitch && (
+              <Section
+                title="Limit how much a task can do"
+                subtitle={limitsOn
+                  ? `${agentLabel || 'Anton'} stops or asks before going further at the steps, auto-continues and tokens you set below.`
+                  : `Off: a task runs until it's done, up to a high safety limit where ${agentLabel || 'Anton'} asks before going further. Turn on to set your own limits.`}
+              >
+                <Switch
+                  checked={limitsOn}
+                  onCheckedChange={(v) => setSetting('limitsEnabled', v)}
+                  aria-label="Limit how much a task can do"
+                />
+              </Section>
+            )}
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
             >
               <BudgetNumberField
                 settingKey="maxToolRounds"
+                lockedValue={safetyLimit('maxToolRounds')}
                 value={settings.maxToolRounds}
                 savedValue={lastSavedSettings?.maxToolRounds}
-                spec={BUDGET_FIELDS.maxToolRounds}
+                spec={budgetSpec('maxToolRounds', settings.budgetDefaults)}
                 label="Max steps per task"
                 setSetting={setSetting}
               />
@@ -1945,9 +2003,10 @@ export default function SettingsView({
             >
               <BudgetNumberField
                 settingKey="maxContinuations"
+                lockedValue={safetyLimit('maxContinuations')}
                 value={settings.maxContinuations}
                 savedValue={lastSavedSettings?.maxContinuations}
-                spec={BUDGET_FIELDS.maxContinuations}
+                spec={budgetSpec('maxContinuations', settings.budgetDefaults)}
                 label="Max auto-continues"
                 setSetting={setSetting}
               />
@@ -1964,12 +2023,29 @@ export default function SettingsView({
               >
                 <BudgetNumberField
                   settingKey="maxTurnTokens"
+                  lockedValue={safetyLimit('maxTurnTokens')}
                   value={settings.maxTurnTokens}
                   savedValue={lastSavedSettings?.maxTurnTokens}
-                  spec={BUDGET_FIELDS.maxTurnTokens}
+                  spec={budgetSpec('maxTurnTokens', settings.budgetDefaults)}
                   label="Max tokens per task"
                   setSetting={setSetting}
                   unlimitedLabel="No limit"
+                />
+              </Section>
+            )}
+            </>}
+            {/* An org-level setting, like the budgets: who may change it is
+                the server's call. Its own condition, so a server without the
+                budget rows still shows it. */}
+            {jevSwitchShown && (
+              <Section
+                title="Fast answers with Jev"
+                subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}.`}
+              >
+                <Switch
+                  checked={settings.jevDecisionsEnabled ?? true}
+                  onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
+                  aria-label="Fast answers with Jev"
                 />
               </Section>
             )}
@@ -1987,6 +2063,7 @@ export default function SettingsView({
   // at all (see AutoSaveTag and renderAppearanceSection).
   const [autoSaveStatus, setAutoSaveStatus] = useState({});
   const autoSaveTimersRef = useRef({});
+  const pendingAutoSavesRef = useRef({});
   const autoSaveFadeTimersRef = useRef({});
   const autoSaveRemoveTimersRef = useRef({});
 
@@ -1994,22 +2071,25 @@ export default function SettingsView({
   const AUTO_SAVE_FADE_MS = 500;  // opacity transition duration (matches the inline style below)
 
   const autoSaveSetting = (key, value, { debounceMs = 0 } = {}) => {
-    setSetting(key, value);
+    if (!mountedRef.current) return;
+    const submitted = setSetting(key, value, { autoSave: true });
+    onAppearancePreview?.(key, value);
     clearTimeout(autoSaveTimersRef.current[key]);
+    delete pendingAutoSavesRef.current[key];
     clearTimeout(autoSaveFadeTimersRef.current[key]);
     clearTimeout(autoSaveRemoveTimersRef.current[key]);
 
     const commit = async () => {
-      setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
+      delete pendingAutoSavesRef.current[key];
+      if (mountedRef.current) {
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
+      }
       try {
         await onSave({ [key]: value });
-        // Narrow the "last saved" snapshot to just this field so the
-        // shared page-wide Save button (used by Providers/Model settings
-        // elsewhere in this view) doesn't mistake an auto-saved Appearance
-        // change for a pending manual one — or, worse, mark a genuinely
-        // unsaved Provider edit as "Saved" just because Appearance also
-        // changed at the same time.
-        setLastSavedJson((prev) => patchSavedJson(prev, key, value));
+        if (!mountedRef.current) return;
+        const cleared = draft.acknowledge({ [key]: submitted });
+        if (!cleared.includes(key)) return;
+        onAppearancePreview?.(key, undefined);
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saved', fading: false } }));
         // Hold at full opacity, then fade out, then unmount — a plain status
         // message, not a button, and it disappears on its own.
@@ -2025,14 +2105,16 @@ export default function SettingsView({
           }, AUTO_SAVE_FADE_MS);
         }, AUTO_SAVE_HOLD_MS);
       } catch (err) {
+        if (!mountedRef.current || !draft.isCurrent(key, submitted)) return;
         // Errors don't auto-fade — they stay until the next attempt so a
         // failed save can't go unnoticed.
         setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'error', fading: false } }));
-        console.warn(`Auto-save failed for ${key}:`, err);
+        diagnostic("renderer.cowork.views.settings.SettingsView", "WARNING", "auto_save_failed_for", `Auto-save failed for ${key}:`, err);
       }
     };
 
     if (debounceMs > 0) {
+      pendingAutoSavesRef.current[key] = commit;
       autoSaveTimersRef.current[key] = setTimeout(commit, debounceMs);
     } else {
       commit();
@@ -2040,7 +2122,10 @@ export default function SettingsView({
   };
 
   useEffect(() => () => {
+    onAppearancePreview?.(null);
     Object.values(autoSaveTimersRef.current).forEach(clearTimeout);
+    // Appearance promises automatic persistence, including when closed mid-debounce.
+    Object.values(pendingAutoSavesRef.current).forEach((commit) => { commit(); });
     Object.values(autoSaveFadeTimersRef.current).forEach(clearTimeout);
     Object.values(autoSaveRemoveTimersRef.current).forEach(clearTimeout);
   }, []);
@@ -2060,7 +2145,7 @@ export default function SettingsView({
     }
     return (
       <span style={fadeStyle} className="text-[11.5px] text-[var(--ok)] ml-2 inline-flex items-center gap-1">
-        {Ico.check(11)} Saved
+        {Ico.check(12)} Saved
       </span>
     );
   }
@@ -2081,6 +2166,44 @@ export default function SettingsView({
     const reader = new FileReader();
     reader.onload = () => autoSaveSetting('navLogo', reader.result);
     reader.readAsDataURL(file);
+  };
+
+  const faviconInputRef = useRef(null);
+  const faviconReadRef = useRef(null);
+  const [faviconError, setFaviconError] = useState(null);
+  useEffect(() => () => faviconReadRef.current?.abort(), []);
+  const handleFaviconUpload = (file) => {
+    if (!file) return;
+    faviconReadRef.current?.abort();
+    faviconReadRef.current = null;
+    const mime = file.type || FAVICON_EXTENSION_TYPES[file.name.split('.').pop().toLowerCase()];
+    if (!FAVICON_MIME_TYPES.includes(mime)) {
+      setFaviconError('Choose a PNG, ICO, SVG, or WEBP image.');
+      return;
+    }
+    if (file.size >= 100 * 1024) {
+      setFaviconError('Browser tab icon must be under 100 KB.');
+      return;
+    }
+    setFaviconError(null);
+    const reader = new FileReader();
+    faviconReadRef.current = reader;
+    reader.onload = () => {
+      if (faviconReadRef.current !== reader) return;
+      if (typeof reader.result !== 'string') {
+        setFaviconError("Couldn't read this image. Try another file.");
+        return;
+      }
+      autoSaveSetting('favicon', reader.result);
+    };
+    reader.onerror = () => {
+      if (faviconReadRef.current === reader) setFaviconError("Couldn't read this image. Try another file.");
+    };
+    try {
+      reader.readAsDataURL(file.type ? file : file.slice(0, file.size, mime));
+    } catch {
+      setFaviconError("Couldn't read this image. Try another file.");
+    }
   };
 
   const renderCodingAgentSection = () => (
@@ -2104,21 +2227,27 @@ export default function SettingsView({
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
       <SettingsGroup title="Appearance">
-        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-          <ToggleGroup
-            value={normalizeSkin(skin)}
-            onValueChange={(v) => onSkinChange?.(v)}
-            aria-label="Style"
-            options={SKINS.map((s) => ({
-              value: s.id,
-              label: s.icon && Ico[s.icon]
-                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](13)} {s.label}</span>)
-                : s.label,
-              'aria-label': `${s.label} style`,
-              title: s.title,
-            }))}
-          />
-        </Section>
+        {SKIN_LOCKED ? (
+          <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
+            <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
+          </Section>
+        ) : (
+          <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+            <ToggleGroup
+              value={normalizeSkin(skin)}
+              onValueChange={(v) => onSkinChange?.(v)}
+              aria-label="Style"
+              options={SKINS.map((s) => ({
+                value: s.id,
+                label: s.icon && Ico[s.icon]
+                  ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
+                  : s.label,
+                'aria-label': `${s.label} style`,
+                title: s.title,
+              }))}
+            />
+          </Section>
+        )}
         <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
           <ToggleGroup
             value={theme || 'dark'}
@@ -2127,13 +2256,13 @@ export default function SettingsView({
             options={[
               {
                 value: 'light',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(13)} Light</span>),
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} Light</span>),
                 'aria-label': 'Light theme',
                 title: 'Use the light theme.',
               },
               {
                 value: 'dark',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(13)} Dark</span>),
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} Dark</span>),
                 'aria-label': 'Dark theme',
                 title: 'Use the dark theme.',
               },
@@ -2238,14 +2367,14 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
-        <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
+        <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.navTitle || ''}
                 onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
-                placeholder="MindsHub"
-                title="Replaces the MindsHub wordmark in the nav panel."
+                placeholder={productName(STOCK_WORDMARK)}
+                title={`Replaces the ${productName(STOCK_WORDMARK)} wordmark in the nav panel.`}
                 ariaLabel="Sidebar title text"
               />
             </div>
@@ -2294,7 +2423,7 @@ export default function SettingsView({
                 variant="danger"
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
               >
-                {Ico.trash(13)}
+                {Ico.trash(14)}
                 Remove
               </Button>
             )}
@@ -2311,11 +2440,54 @@ export default function SettingsView({
             <div className="text-[12px] text-danger mt-1.5">{logoError}</div>
           )}
         </Section>
-        <div className="settings-hide-mobile">
-          <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
+        {host.isWeb && (
+          <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              {settings.favicon && (
+                <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
+              )}
+              <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
+                {settings.favicon ? 'Change icon' : 'Upload icon'}
+              </Button>
+              {settings.favicon && (
+                <Button variant="danger" className="whitespace-nowrap" onClick={() => {
+                  faviconReadRef.current?.abort();
+                  faviconReadRef.current = null;
+                  autoSaveSetting('favicon', '');
+                  setFaviconError(null);
+                }} aria-label="Remove browser tab icon">
+                  {Ico.trash(14)} Remove
+                </Button>
+              )}
+              <input ref={faviconInputRef} type="file" accept={`${FAVICON_MIME_TYPES.join(',')},.ico`}
+                aria-label="Browser tab icon file" className="hidden"
+                onChange={(e) => { handleFaviconUpload(e.target.files?.[0]); e.target.value = ''; }} />
+              <AutoSaveTag settingKey="favicon" />
+            </div>
+            {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
+          </Section>
+        )}
+        {/* Gated on its own key. A server older than this setting does not
+            serve the key and rejects a write to it with a 400, and it sends
+            no figure sources to mark either. The renderer ships OTA and
+            leads the installed server. */}
+        {'showFigureSources' in settings && (
+          <Section title="Show where figures came from" subtitle="Underline each figure in an answer with the step it came from, and mark figures no step returned.">
             <div className="flex items-center">
               <Switch
-                checked={settings.showDots}
+                checked={settings.showFigureSources !== false}
+                onCheckedChange={(v) => autoSaveSetting('showFigureSources', v)}
+                aria-label="Show where figures came from"
+              />
+              <AutoSaveTag settingKey="showFigureSources" />
+            </div>
+          </Section>
+        )}
+        <div className="settings-hide-mobile">
+          <Section title="Animated background" subtitle="Animated dot-grid behind the app instead of a flat surface.">
+            <div className="flex items-center">
+              <Switch
+                checked={settings.showDots === true}
                 onCheckedChange={(v) => autoSaveSetting('showDots', v)}
                 aria-label="Animated background"
               />
@@ -2325,14 +2497,14 @@ export default function SettingsView({
           <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
             <div className="flex items-center">
               <Switch
-                checked={settings.showCounters !== false}
+                checked={settings.showCounters === true}
                 onCheckedChange={(v) => autoSaveSetting('showCounters', v)}
                 aria-label="Nav-panel counters"
               />
               <AutoSaveTag settingKey="showCounters" />
             </div>
           </Section>
-          <Section title="Theme toggle button" subtitle="The light/dark button in the sidebar footer.">
+          <Section title="Theme toggle button" subtitle="Light/dark control on the display button in the window corner.">
             <div className="flex items-center">
               <Switch
                 checked={settings.showThemeToggle !== false}
@@ -2342,16 +2514,18 @@ export default function SettingsView({
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
-          <Section title="8-bit style toggle button" subtitle="The gamepad button in the sidebar footer that switches to 8-Bit Arcade style.">
-            <div className="flex items-center">
-              <Switch
-                checked={settings.show8bitToggle !== false}
-                onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
-                aria-label="8-bit style toggle button"
-              />
-              <AutoSaveTag settingKey="show8bitToggle" />
-            </div>
-          </Section>
+          {!SKIN_LOCKED && (
+            <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
+              <div className="flex items-center">
+                <Switch
+                  checked={settings.show8bitToggle !== false}
+                  onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
+                  aria-label="8-bit style toggle button"
+                />
+                <AutoSaveTag settingKey="show8bitToggle" />
+              </div>
+            </Section>
+          )}
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>
@@ -2438,7 +2612,7 @@ export default function SettingsView({
             aria-label={inDetail ? 'Back to settings' : 'Close settings'}
             onClick={() => (inDetail ? onSectionChange?.(null) : onClose?.())}
           >
-            {Ico.chevLeft(22)}
+            {Ico.chevLeft(20)}
           </button>
           <div className="settings-mobile__title" id="settings-mobile-title">
             {activeItem ? activeItem.label : 'Settings'}
@@ -2460,11 +2634,11 @@ export default function SettingsView({
                   && !serverOnline
                   && item.id !== 'backend'
                   && item.id !== 'codingAgent';
-                const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
+                const icon = Ico[item.icon] ? Ico[item.icon](16) : null;
                 return (
                   <Fragment key={item.id}>
                   {(index === 0 || items[index - 1]?.group !== item.group) && (
-                    <div className="pt-4 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-4">{item.group}</div>
+                    <div className="section-label pt-4 px-1 pb-1.5">{item.group}</div>
                   )}
                   <div className="mshell-accordion">
                     <button

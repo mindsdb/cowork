@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, it, vi } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
 
 const { pickCodeFolder } = vi.hoisted(() => ({
   pickCodeFolder: vi.fn(async () => ({ ok: true, path: 'C:\\work\\shared' })),
@@ -69,6 +69,10 @@ it('reuses the shared model picker and applies additional local folders', async 
 
 it('keeps a failed update actionable inside the modal', async () => {
   const user = userEvent.setup();
+  const originalScrollIntoView = Element.prototype.scrollIntoView;
+  const scrollIntoView = vi.fn();
+  Element.prototype.scrollIntoView = scrollIntoView;
+  onTestFinished(() => { Element.prototype.scrollIntoView = originalScrollIntoView; });
   render(
     <RuntimeControlsModal
       open
@@ -82,11 +86,135 @@ it('keeps a failed update actionable inside the modal', async () => {
       modelMeta={{ modelProviders: {}, modelFamilies: {}, modelEnabled: {} }}
       busy={false}
       onClose={vi.fn()}
-      onApply={vi.fn(async () => { throw new Error('Runtime is still active'); })}
+      onApply={vi.fn(async () => { throw new Error('Wait for the active turn to finish before changing task controls'); })}
     />,
   );
   await user.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Runtime is still active');
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent("Couldn't apply task settings");
+  expect(alert).toHaveTextContent('Wait for the active turn to finish before changing task controls');
+  // The form scrolls inside the modal, so the error is scrolled into view.
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+  expect(screen.getByRole('combobox', { name: 'Task model' })).toHaveTextContent('Claude Fable 5');
+});
+
+
+const gptAndKimi = {
+  models: [{ id: 'gpt', name: 'GPT 5.6 Sol' }, { id: 'kimi-k3', name: 'Kimi K3' }],
+  modelMeta: {
+    modelProviders: { gpt: 'openai', 'kimi-k3': 'moonshot' },
+    modelEfforts: { gpt: { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' } },
+  },
+};
+
+
+it('sends no effort when switching to a model that advertises no levels', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'gpt', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      {...gptAndKimi}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  await user.click(screen.getByRole('combobox', { name: 'Task model' }));
+  await user.click(screen.getByRole('option', { name: /Kimi K3/ }));
+  expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ model: 'kimi-k3', reasoning_effort: null })));
+});
+
+
+it('sends no effort for a no-levels task that still stores one from an earlier model', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'kimi-k3', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      {...gptAndKimi}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  await user.click(screen.getByRole('switch', { name: 'Web search' }));
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+    model: 'kimi-k3', reasoning_effort: null, web_search: true,
+  })));
+});
+
+
+it('keeps the stored effort when the task model is missing from the catalog', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'retired-model', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      {...gptAndKimi}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  await user.click(screen.getByRole('switch', { name: 'Web search' }));
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+    model: 'retired-model', reasoning_effort: 'max', web_search: true,
+  })));
+});
+
+
+it('keeps the stored effort before the model catalog loads', async () => {
+  const user = userEvent.setup();
+  const onApply = vi.fn(async () => {});
+  render(
+    <RuntimeControlsModal
+      open
+      sessionId="task-1"
+      value={{
+        model: 'gpt', permission_mode: 'supervised', reasoning_effort: 'max',
+        service_tier: 'standard', personality: 'pragmatic', network_access: false,
+        web_search: false, additional_dirs: [],
+      }}
+      models={[]}
+      modelMeta={{}}
+      busy={false}
+      onClose={vi.fn()}
+      onApply={onApply}
+    />,
+  );
+
+  await user.click(screen.getByRole('switch', { name: 'Web search' }));
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+    model: 'gpt', reasoning_effort: 'max', web_search: true,
+  })));
 });
 
 
@@ -181,15 +309,17 @@ it('keeps the draft editable but blocks Apply while a turn is active', async () 
   const apply = screen.getByRole('button', { name: 'Apply' });
   expect(apply).toBeDisabled();
   // The hint must sit on a hoverable wrapper: `.btn:disabled` sets
-  // pointer-events: none, so a title on the button itself never shows.
-  expect(apply).not.toHaveAttribute('title');
-  expect(apply.parentElement).toHaveAttribute('title', 'Changes can be applied after the current turn finishes');
+  // pointer-events: none, so a hint on the button itself never shows.
+  await user.hover(apply.parentElement!);
+  expect(await screen.findByText('Changes can be applied after the current turn finishes')).toBeInTheDocument();
+  await user.unhover(apply.parentElement!);
   await user.click(screen.getByRole('switch', { name: 'Web search' }));
   expect(screen.getByRole('switch', { name: 'Web search' })).toBeChecked();
 
   rerender(<RuntimeControlsModal {...props} />);
-  expect(apply).toBeEnabled();
-  expect(apply.parentElement).not.toHaveAttribute('title');
-  await user.click(apply);
+  const enabledApply = screen.getByRole('button', { name: 'Apply' });
+  expect(enabledApply).toBeEnabled();
+  expect(screen.queryByText('Changes can be applied after the current turn finishes')).not.toBeInTheDocument();
+  await user.click(enabledApply);
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ web_search: true }));
 });

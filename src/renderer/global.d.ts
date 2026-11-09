@@ -4,6 +4,13 @@ interface AntonTronAPI {
   serverPort?: number | null;
   codeControlPlaneOrigin?: string | null;
   codeModeAvailable?: boolean;
+  /** True on shells whose main process guards the document preview frame. */
+  supportsDocumentPreview?: boolean;
+  /** True on shells whose main process hosts the in-app browser. */
+  supportsInAppBrowser?: boolean;
+  browser?: import('../shared/browser-contract').InAppBrowserBridge;
+  /** Main says the local server took the in-app browser's registration. */
+  onBrowserRegistered?: (cb: () => void) => () => void;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;
@@ -25,6 +32,8 @@ interface AntonTronAPI {
   applyUpdate: () => Promise<boolean>;
   onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
   awaitBootReady: () => Promise<{ ready: boolean }>;
+  drainUpdateJournal: () => Promise<import('../shared/update-journal-types').UpdatePhaseEntry[]>;
+  ackUpdateJournal: (ids: string[]) => Promise<void>;
   getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
   getShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
   checkShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
@@ -46,7 +55,7 @@ interface AntonTronAPI {
     starting: boolean;
     port: number;
     lastError: string | null;
-    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | null;
+    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed' | 'credential-clear' | null;
     portHolderPid: number | null;
     lastExitCode: number | null;
     lastStartAt: number | null;
@@ -120,6 +129,8 @@ interface AntonTronAPI {
   logout: () => Promise<void>;
   getKeychainPref: () => Promise<{ enabled: boolean }>;
   setKeychainPref: (enabled: boolean) => Promise<{ ok: boolean }>;
+  getUsageEventsPref?: () => Promise<{ enabled: boolean }>;
+  setUsageEventsPref?: (enabled: boolean) => Promise<{ ok: boolean }>;
   getPathForFile: (file: File) => string;
 }
 
@@ -138,6 +149,9 @@ interface ShellAutoUpdateSnapshot {
 }
 
 declare global {
+  const __PLATFORM_UI__: boolean;
+  /** True for the web build (BUILD_TARGET=web), false for desktop. */
+  const __WEB_BUILD__: boolean;
   /** App display version injected by Vite at build time. */
   const __APP_VERSION__: string;
   /** Short git commit hash at build time, or '' outside a repo. */
@@ -146,6 +160,8 @@ declare global {
   const __BUILD_TIME__: string;
   interface Window {
     antontron: AntonTronAPI;
+    /** A deployment brand's config, set by /brand/brand.js on web builds. */
+    COWORK_DEPLOYMENT_BRAND?: unknown;
   }
 
   namespace React {

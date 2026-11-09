@@ -1,5 +1,6 @@
 // Pure button-decision logic for turn-error cards, extracted from ChatView so
 // the invariants are unit-testable without rendering.
+import { PLATFORM_UI } from '../../lib/deployment';
 
 // ProviderOverloadedCard (ENG-673): a transient provider incident that outlasted
 // anton's retry budget. The MindsHub failover nudge is the ENG-514 guardrail's crux:
@@ -18,7 +19,7 @@
 // suppress it for a BYOK user).
 export function providerOverloadedButtons({ reconnectable, onRetry, onOpenSettings }) {
   const retry = { label: 'Try again', onClick: () => onRetry?.(), disabled: !onRetry };
-  if (reconnectable) {
+  if (!PLATFORM_UI || reconnectable) {
     // Managed: Retry is the only action, so it's primary.
     return [{ ...retry, primary: true }];
   }

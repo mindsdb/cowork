@@ -1,5 +1,44 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc-channels';
+import { electronHostsInAppBrowser, type BrowserLoginAnswer, type BrowserViewState, type InAppBrowserBridge, type StageBounds } from '../shared/browser-contract';
+
+/* The in-app browser's pane (browser-host.ts). The renderer reaches it only
+   through platform/host.ts, and main answers it only from this window's main
+   frame. */
+const inAppBrowser: InAppBrowserBridge = {
+  ready: () => ipcRenderer.invoke(IPC.BROWSER_READY),
+  show: (sessionId: string, bounds: StageBounds) => ipcRenderer.invoke(IPC.BROWSER_SHOW, sessionId, bounds),
+  hide: () => ipcRenderer.invoke(IPC.BROWSER_HIDE),
+  setBounds: (bounds: StageBounds) => ipcRenderer.invoke(IPC.BROWSER_SET_BOUNDS, bounds),
+  back: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'back'),
+  forward: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'forward'),
+  reload: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, sessionId, 'reload'),
+  activateTab: (sessionId: string, tabId: string) => ipcRenderer.invoke(IPC.BROWSER_ACTIVATE_TAB, sessionId, tabId),
+  takeOver: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_TAKE_OVER, sessionId),
+  handBack: (sessionId: string) => ipcRenderer.invoke(IPC.BROWSER_HAND_BACK, sessionId),
+  answerLogin: (sessionId: string, answer: BrowserLoginAnswer | null) => ipcRenderer.invoke(IPC.BROWSER_ANSWER_LOGIN, sessionId, answer),
+  answerDownload: (sessionId: string, downloadId: string, save: boolean) => ipcRenderer.invoke(IPC.BROWSER_ANSWER_DOWNLOAD, sessionId, downloadId, save),
+  clearData: () => ipcRenderer.invoke(IPC.BROWSER_CLEAR_DATA),
+  onState: (cb: (state: BrowserViewState) => void) => {
+    const listener = (_: unknown, state: BrowserViewState) => cb(state);
+    ipcRenderer.on(IPC.BROWSER_STATE, listener);
+    return () => ipcRenderer.removeListener(IPC.BROWSER_STATE, listener);
+  },
+};
+
+/** What the preload exposes of the in-app browser: the flag and the pane. */
+export interface InAppBrowserExposure {
+  supportsInAppBrowser: boolean;
+  browser: InAppBrowserBridge | undefined;
+}
+
+/** The in-app browser's part of the preload's API. On a supported Electron
+    the flag is true and the pane is there; below the floor the flag is
+    false and there is no pane. */
+export function inAppBrowserExposure(electronVersion: string | undefined, browser: InAppBrowserBridge): InAppBrowserExposure {
+  const supported = electronHostsInAppBrowser(electronVersion);
+  return { supportsInAppBrowser: supported, browser: supported ? browser : undefined };
+}
 
 // ENG-439: main resolves a per-OS-user server port and passes it to the
 // renderer process via additionalArguments. Parse it once here so the host
@@ -22,6 +61,24 @@ contextBridge.exposeInMainWorld('antontron', {
   // switch explicitly disables it; hosted web receives no Electron bridge
   // and therefore cannot expose the feature.
   codeModeAvailable: process.env.COWORK_CODE_MODE_AVAILABLE !== 'false',
+  // This shell's main process guards the document preview frame
+  // (document-preview-guard.ts). The renderer previews .xlsx, .docx, .pptx
+  // and .pdf files only when this is true, so an older shell keeps opening
+  // them in the default app.
+  supportsDocumentPreview: true,
+  // This shell's main process hosts the in-app browser (browser-host.ts), on
+  // Electron 44 or later only. The renderer shows the desktop browser pane
+  // only when this is true, so a UI that updates ahead of an older shell, or
+  // a shell on an unsupported Electron, shows no pane and never registers a
+  // browser.
+  ...inAppBrowserExposure(process.versions.electron, inAppBrowser),
+  /* Main says the local server took the in-app browser's registration
+     (browser-host.ts), so the UI asks GET /browse/status again. */
+  onBrowserRegistered: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.BROWSER_REGISTERED, listener);
+    return () => ipcRenderer.removeListener(IPC.BROWSER_REGISTERED, listener);
+  },
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
@@ -69,9 +126,11 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubFinalize: (organizationId?: string, chosenByUser?: boolean) =>
     ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, chosenByUser),
   // Deliberately a separate method rather than the second argument above.
-  // Renderer bundles update over the air while `src/main/**` only arrives in a
-  // new installer, so a new renderer routinely runs against an older shell —
-  // and an older shell's `mindshubFinalize` silently drops a second argument.
+  // Renderer bundles update over the air while `src/main/**` only arrives when
+  // the shell relaunches into a new build, so a new renderer routinely runs
+  // against an older shell (docs/update-behavior.md, "Supported desktop
+  // window") — and an older shell's `mindshubFinalize` silently drops a second
+  // argument.
   // A method the old preload does not have is something the renderer can
   // actually test for, which the established `typeof bridge.x === 'function'`
   // checks in host.ts already rely on (ENG-2199).
@@ -180,6 +239,9 @@ contextBridge.exposeInMainWorld('antontron', {
   // Keychain preference (Electron-only, mac-relevant)
   getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),
   setKeychainPref: (enabled: boolean) => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_SET, enabled),
+  // The agent's anonymous usage events, the shared browser's included.
+  getUsageEventsPref: () => ipcRenderer.invoke(IPC.USAGE_EVENTS_GET),
+  setUsageEventsPref: (enabled: boolean) => ipcRenderer.invoke(IPC.USAGE_EVENTS_SET, enabled),
 
   // Settings / Onboarding
   readSettings: () => ipcRenderer.invoke(IPC.SETTINGS_READ),
@@ -193,12 +255,14 @@ contextBridge.exposeInMainWorld('antontron', {
 
   // UI Updates
   checkForUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_CHECK),
-  applyUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_APPLY),
+  // `options.force` skips the running-task confirmation (ENG-3291); the renderer
+  // sets it only after the user has confirmed.
+  applyUpdate: (options?: { force?: boolean }) => ipcRenderer.invoke(IPC.UI_UPDATE_APPLY, options),
   getShellUpdate: () => ipcRenderer.invoke(IPC.UI_SHELL_UPDATE_GET),
   getShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_GET),
   checkShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_CHECK),
   downloadShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_DOWNLOAD),
-  installShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_INSTALL),
+  installShellAutoUpdate: (options?: { force?: boolean }) => ipcRenderer.invoke(IPC.SHELL_UPDATE_INSTALL, options),
   onShellAutoUpdate: (cb: (snapshot: Record<string, unknown>) => void) => {
     const listener = (_: any, snapshot: Record<string, unknown>) => cb(snapshot);
     ipcRenderer.on(IPC.SHELL_UPDATE_STATUS, listener);
@@ -209,6 +273,10 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.UI_UPDATE_STATUS, listener);
     return () => ipcRenderer.removeListener(IPC.UI_UPDATE_STATUS, listener);
   },
+  // UI/server update outcomes main journaled while the window was reloading.
+  // The renderer reports them to PostHog on boot and acks what landed.
+  drainUpdateJournal: () => ipcRenderer.invoke(IPC.UPDATE_JOURNAL_DRAIN),
+  ackUpdateJournal: (ids: string[]) => ipcRenderer.invoke(IPC.UPDATE_JOURNAL_ACK, ids),
 
   // Resolves once the boot sequence settles; the renderer awaits this before
   // leaving the loading screen so a boot update can't flash the UI (ENG-749).

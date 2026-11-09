@@ -1,7 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { GitBranch, Folder, RefreshCw } from 'lucide-react';
+import { Icon } from '../components/ui/Icon';
 import Button from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
+import { RadioGroup, Radio } from '../components/ui/RadioGroup';
 import Alert from '../components/ui/Alert';
 import { Input } from '../components/ui/Input';
 import Spinner from '../components/ui/Spinner';
@@ -119,7 +121,7 @@ export function TaskRepositoryDrawer({
       labelledBy={titleId}
     >
       <div className="code-repository-drawer__header">
-        <span className="code-eyebrow">NEW TASK</span>
+        <span className="section-label">New task</span>
         <ModalHeader id={titleId} title="Repositories & folders" onClose={onClose} />
       </div>
       <ModalBody padding="24px" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -136,7 +138,7 @@ export function TaskRepositoryDrawer({
             </label>
             <Input
               id={branchId}
-              leading={<GitBranch size={15} />}
+              leading={<Icon of={GitBranch} size={16} />}
               placeholder="feat/repo-status"
               value={draft.branch || ''}
               onChange={(value) => setDraft({ ...draft, branch: value || null })}
@@ -151,9 +153,9 @@ export function TaskRepositoryDrawer({
           </div>
         )}
         <section className="code-repository-list" aria-label="Include in this task">
-          <div className="code-repository-list__labels">
-            <span>INCLUDE IN THIS TASK</span>
-            <span>{local ? 'START FROM' : ''}</span>
+          <div className="code-repository-list__labels section-label">
+            <span>Include in this task</span>
+            <span>{local ? 'Start from' : ''}</span>
           </div>
           {resources.map((resource) => {
             const checked = ids.includes(resource.id);
@@ -188,7 +190,7 @@ export function TaskRepositoryDrawer({
                   />
                   <span>
                     <strong>
-                      {resource.kind === 'local_folder' && <Folder size={14} />} {resource.name}
+                      {resource.kind === 'local_folder' && <Icon of={Folder} size={14} />} {resource.name}
                     </strong>
                     <small>
                       {location ||
@@ -237,7 +239,7 @@ export function TaskRepositoryDrawer({
                 )}
               </span>
               <Button size="sm" variant="subtle" disabled={loading || checkingBranches} onClick={onRefresh}>
-                <RefreshCw size={13} />
+                <Icon of={RefreshCw} size={14} />
                 Refresh
               </Button>
             </div>
@@ -251,32 +253,28 @@ export function TaskRepositoryDrawer({
               />
             ))}
             {repositories.length > 0 && (
-              <fieldset className="code-repository-policy" disabled={checkingBranches}>
-                <legend>Local changes</legend>
-                <label className={!draft.include_local_changes ? 'is-selected' : ''}>
-                  <input
-                    type="radio"
-                    name="repository-changes"
-                    checked={!draft.include_local_changes}
-                    onChange={() => setDraft({ ...draft, include_local_changes: false })}
-                  />
-                  <span>
-                    <strong>Start from committed code</strong>
-                    <small>Leave local changes on this computer.</small>
-                  </span>
-                </label>
-                <label className={draft.include_local_changes ? 'is-selected' : ''}>
-                  <input
-                    type="radio"
-                    name="repository-changes"
-                    checked={draft.include_local_changes}
-                    onChange={() => setDraft({ ...draft, include_local_changes: true })}
-                  />
-                  <span>
-                    <strong>Include my local changes</strong>
-                    <small>Copy them into this task. Keep originals.</small>
-                  </span>
-                </label>
+              <fieldset className="code-repository-policy">
+                <legend id={`${titleId}-changes`}>Local changes</legend>
+                <RadioGroup
+                  className="code-repository-policy__options"
+                  aria-labelledby={`${titleId}-changes`}
+                  value={draft.include_local_changes ? 'include' : 'committed'}
+                  onValueChange={(next) => setDraft({ ...draft, include_local_changes: next === 'include' })}
+                  disabled={checkingBranches}
+                >
+                  <Radio value="committed" variant="card" size="sm">
+                    <span>
+                      <strong>Start from committed code</strong>
+                      <small>Leave local changes on this computer.</small>
+                    </span>
+                  </Radio>
+                  <Radio value="include" variant="card" size="sm">
+                    <span>
+                      <strong>Include my local changes</strong>
+                      <small>Copy them into this task. Keep originals.</small>
+                    </span>
+                  </Radio>
+                </RadioGroup>
               </fieldset>
             )}
           </>

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 // Regression (ENG-1286, review on PR #636): the "No limit" checkbox wrote
 // `String(spec.unlimited)` — a key that does not exist on BUDGET_FIELDS, so it
@@ -11,8 +12,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 // unchecked; clampBudgets saw NaN and dropped the key, so the save wrote
 // nothing at all.
 //
-// These tests assert the VALUE that reaches setSetting, which is the only
-// thing the bug got wrong.
+// These tests assert the value submitted on Save and the rendered draft.
+// Editing must not write into shared App state.
 vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
@@ -39,6 +40,7 @@ vi.mock('../../lib/analytics', () => ({
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
+import { host } from '../../../platform/host';
 import { BUDGET_FIELDS, diffSettingsForWrite } from '../../lib/settingsTransform';
 
 // The budget group only renders when the server served every budget key — an
@@ -78,6 +80,12 @@ const noLimitBox = () => {
 // Advanced Settings defaults to collapsed — every test below needs its
 // fields visible first.
 const expandAdvanced = () => fireEvent.click(screen.getByRole('button', { name: 'Advanced Settings' }));
+const savePatch = async (props) => {
+  const button = await screen.findByRole('button', { name: /^Save settings$/ });
+  fireEvent.click(button);
+  await waitFor(() => expect(props.onSave).toHaveBeenCalled());
+  return props.onSave.mock.calls.at(-1)[0];
+};
 
 describe('SettingsView — Max tokens per task', () => {
   it('explains the cap without calling the allowance monthly or measured in tokens', () => {
@@ -91,18 +99,15 @@ describe('SettingsView — Max tokens per task', () => {
     expect(subtitle.textContent).not.toMatch(/monthly|of the month|measured in/i);
   });
 
-  it('writes the top of the range when "No limit" is ticked', () => {
+  it('writes the top of the range when "No limit" is ticked', async () => {
     const props = baseProps(withBudgets());
     render(<SettingsView {...props} />);
     expandAdvanced();
 
-    fireEvent.click(noLimitBox());
+    await userEvent.setup().click(noLimitBox());
 
-    // The exact assertion the bug failed: it wrote the string "undefined".
-    expect(props.setSetting).toHaveBeenCalledWith(
-      'maxTurnTokens', String(BUDGET_FIELDS.maxTurnTokens.max),
-    );
-    const [, written] = props.setSetting.mock.calls.at(-1);
+    const written = (await savePatch(props)).maxTurnTokens;
+    expect(written).toBe(String(BUDGET_FIELDS.maxTurnTokens.max));
     expect(Number.isNaN(Number(written))).toBe(false);
   });
 
@@ -112,14 +117,14 @@ describe('SettingsView — Max tokens per task', () => {
     expect(noLimitBox()).toBeChecked();
   });
 
-  it('restores a real number when "No limit" is unticked, never the max', () => {
+  it('restores a real number when "No limit" is unticked, never the max', async () => {
     const props = baseProps(withBudgets({ maxTurnTokens: '50000000' }));
     render(<SettingsView {...props} />);
     expandAdvanced();
 
-    fireEvent.click(noLimitBox());
+    await userEvent.setup().click(noLimitBox());
 
-    const [, written] = props.setSetting.mock.calls.at(-1);
+    const written = (await savePatch(props)).maxTurnTokens;
     // Restoring the max would leave the switch impossible to turn off.
     expect(written).not.toBe(String(BUDGET_FIELDS.maxTurnTokens.max));
     expect(Number(written)).toBeGreaterThanOrEqual(BUDGET_FIELDS.maxTurnTokens.min);
@@ -131,7 +136,7 @@ describe('SettingsView — Max tokens per task', () => {
     expect(screen.getByLabelText('Max tokens per task')).toBeDisabled();
   });
 
-  it('displays and accepts Max tokens per task in millions, storing the natural count', () => {
+  it('displays and accepts Max tokens per task in millions, storing the natural count', async () => {
     const props = baseProps(withBudgets({ maxTurnTokens: '1250000' }));
     render(<SettingsView {...props} />);
     expandAdvanced();
@@ -140,10 +145,10 @@ describe('SettingsView — Max tokens per task', () => {
     expect(input).toHaveValue(1.25); // 1_250_000 tokens, shown as "1.25"
 
     fireEvent.change(input, { target: { value: '2' } });
-    expect(props.setSetting).toHaveBeenCalledWith('maxTurnTokens', '2000000');
+    expect((await savePatch(props)).maxTurnTokens).toBe('2000000');
   });
 
-  it('sends the natural token count over the wire, never the millions-scaled display value', () => {
+  it('sends the natural token count over the wire, never the millions-scaled display value', async () => {
     // The million-scale display is entirely a BudgetNumberField rendering
     // concern (toDisplayUnits/toNaturalUnits) — settings state, the
     // diff-for-write payload, and the server's max_turn_tokens column must
@@ -154,7 +159,7 @@ describe('SettingsView — Max tokens per task', () => {
     expandAdvanced();
 
     fireEvent.change(screen.getByLabelText('Max tokens per task'), { target: { value: '2' } });
-    const [, written] = props.setSetting.mock.calls.at(-1);
+    const written = (await savePatch(props)).maxTurnTokens;
     expect(written).toBe('2000000'); // NOT '2' — the agent reads real tokens
 
     const writes = diffSettingsForWrite(
@@ -173,9 +178,7 @@ describe('SettingsView — Max tokens per task', () => {
     fireEvent.change(input, { target: { value: '' } });
     fireEvent.blur(input);
 
-    expect(props.setSetting).toHaveBeenCalledWith(
-      'maxTurnTokens', String(BUDGET_FIELDS.maxTurnTokens.fallback),
-    );
+    expect(input).toHaveValue(BUDGET_FIELDS.maxTurnTokens.fallback / 1000000);
   });
 
   it('reverts Max steps per task and Max auto-continues to default too, on clear + blur', () => {
@@ -186,16 +189,12 @@ describe('SettingsView — Max tokens per task', () => {
     const steps = screen.getByLabelText('Max steps per task');
     fireEvent.change(steps, { target: { value: '' } });
     fireEvent.blur(steps);
-    expect(props.setSetting).toHaveBeenCalledWith(
-      'maxToolRounds', String(BUDGET_FIELDS.maxToolRounds.fallback),
-    );
+    expect(steps).toHaveValue(BUDGET_FIELDS.maxToolRounds.fallback);
 
     const continuations = screen.getByLabelText('Max auto-continues');
     fireEvent.change(continuations, { target: { value: '' } });
     fireEvent.blur(continuations);
-    expect(props.setSetting).toHaveBeenCalledWith(
-      'maxContinuations', String(BUDGET_FIELDS.maxContinuations.fallback),
-    );
+    expect(continuations).toHaveValue(BUDGET_FIELDS.maxContinuations.fallback);
   });
 
   it('hides the field entirely on a server that does not serve the key', () => {
@@ -207,6 +206,132 @@ describe('SettingsView — Max tokens per task', () => {
     expect(findNoLimit()).toBeUndefined();
     // …while the two budgets that server DOES have stay visible.
     expect(screen.getByLabelText('Max steps per task')).toBeInTheDocument();
+  });
+});
+
+describe('SettingsView — limits switch', () => {
+  const budgetInputs = () => ['Max steps per task', 'Max auto-continues', 'Max tokens per task']
+    .map((label) => screen.getByLabelText(label));
+  const limitsSwitch = () => screen.getByRole('switch', { name: 'Limit how much a task can do' });
+
+  it('is off by default and the budgets cannot be edited', () => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: false }))} />);
+    expandAdvanced();
+    expect(limitsSwitch()).not.toBeChecked();
+    for (const input of budgetInputs()) expect(input).toBeDisabled();
+    // Base UI's checkbox is a span: disabled shows as data-disabled.
+    expect(noLimitBox()).toHaveAttribute('data-disabled');
+  });
+
+  it('turning it on saves the switch and makes the budgets editable', async () => {
+    const props = baseProps(withBudgets({ limitsEnabled: false }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    await userEvent.setup().click(limitsSwitch());
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Max steps per task'), { target: { value: '40' } });
+
+    const patch = await savePatch(props);
+    expect(patch.limitsEnabled).toBe(true);
+    expect(patch.maxToolRounds).toBe('40');
+  });
+
+  it('switching on, editing a budget and switching off again saves the switch off', async () => {
+    const fetched = withBudgets({ limitsEnabled: false });
+    const props = baseProps(fetched);
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    const user = userEvent.setup();
+    await user.click(limitsSwitch());
+    fireEvent.change(screen.getByLabelText('Max steps per task'), { target: { value: '80' } });
+    await user.click(limitsSwitch());
+
+    const writes = diffSettingsForWrite(await savePatch(props), fetched);
+    expect(writes.limits_enabled).toBe('false');
+  });
+
+  const served = { maxToolRounds: '300', maxContinuations: '12', maxTurnTokens: '30000000' };
+  const saved = { maxToolRounds: '40', maxContinuations: '2', maxTurnTokens: '2000000' };
+
+  it('while off, shows the safety limits in force, not the saved values', () => {
+    render(<SettingsView {...baseProps(withBudgets({ ...saved, limitsEnabled: false, budgetDefaults: served }))} />);
+    expandAdvanced();
+    expect(screen.getByLabelText('Max steps per task')).toHaveValue(300);
+    expect(screen.getByLabelText('Max auto-continues')).toHaveValue(12);
+    expect(screen.getByLabelText('Max tokens per task')).toHaveValue(30);
+    expect(screen.getAllByText('safety limit')).toHaveLength(3);
+  });
+
+  it('turning it on shows the saved values, which the off state left untouched', async () => {
+    const props = baseProps(withBudgets({ ...saved, limitsEnabled: false, budgetDefaults: served }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    await userEvent.setup().click(limitsSwitch());
+    expect(screen.getByLabelText('Max steps per task')).toHaveValue(40);
+    expect(screen.getByLabelText('Max auto-continues')).toHaveValue(2);
+    expect(screen.getByLabelText('Max tokens per task')).toHaveValue(2);
+    expect(screen.queryByText('safety limit')).not.toBeInTheDocument();
+
+    const patch = await savePatch(props);
+    expect(patch).toMatchObject({ limitsEnabled: true });
+    expect(patch).not.toHaveProperty('maxToolRounds');
+    expect(patch).not.toHaveProperty('maxTurnTokens');
+  });
+
+  it('while off against a server that sends no safety limits, shows the factory defaults', () => {
+    render(<SettingsView {...baseProps(withBudgets({ ...saved, limitsEnabled: false }))} />);
+    expandAdvanced();
+    expect(screen.getByLabelText('Max steps per task')).toHaveValue(BUDGET_FIELDS.maxToolRounds.fallback);
+  });
+
+  it('with it on, the budgets are editable', () => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: true }))} />);
+    expandAdvanced();
+    expect(limitsSwitch()).toBeChecked();
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+  });
+
+  it('is absent on a server without it, where the budgets apply and stay editable', () => {
+    render(<SettingsView {...baseProps(withBudgets())} />);
+    expandAdvanced();
+    expect(screen.queryByRole('switch', { name: 'Limit how much a task can do' })).not.toBeInTheDocument();
+    for (const input of budgetInputs()) expect(input).toBeEnabled();
+  });
+});
+
+describe('SettingsView — resetting a budget uses the server default', () => {
+  // An older sidecar defaults to 50 steps; saving this renderer's own 250 as a
+  // "reset" would raise the budget and, on a newer server, opt the user in.
+  it('clearing a field saves the served default, not the factory one', async () => {
+    const props = baseProps(withBudgets({ maxToolRounds: '40', budgetDefaults: { maxToolRounds: '50' } }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    const steps = screen.getByLabelText('Max steps per task');
+    fireEvent.change(steps, { target: { value: '' } });
+    fireEvent.blur(steps);
+
+    expect((await savePatch(props)).maxToolRounds).toBe('50');
+  });
+
+  it('shows the served default in the hint', () => {
+    render(<SettingsView {...baseProps(withBudgets({ budgetDefaults: { maxToolRounds: '50' } }))} />);
+    expandAdvanced();
+    expect(screen.getByText('default 50')).toBeInTheDocument();
+  });
+
+  it('unticking "No limit" with nothing remembered restores the served default', async () => {
+    const props = baseProps(withBudgets({
+      maxTurnTokens: '50000000', budgetDefaults: { maxTurnTokens: '1250000' },
+    }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+
+    await userEvent.setup().click(noLimitBox());
+    expect((await savePatch(props)).maxTurnTokens).toBe('1250000');
   });
 });
 
@@ -228,5 +353,40 @@ describe('SettingsView — Advanced Settings collapse', () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByLabelText('Max steps per task')).not.toBeInTheDocument();
+  });
+});
+
+
+describe('SettingsView — limits on hosted web', () => {
+  // Hosted web turns don't receive these limits until the web time limit and
+  // the PR that sends them ship; showing them there would describe limits
+  // those turns don't run under. This suite builds with PLATFORM_UI on, so a
+  // web host here is the hosted app; SettingsView.platformUi.test.jsx covers
+  // self-hosted web, which keeps them.
+  const onWeb = (fn) => () => {
+    host.isWeb = true;
+    try {
+      return fn();
+    } finally {
+      delete host.isWeb;
+    }
+  };
+
+  it('shows neither the switch nor the budgets on hosted web', onWeb(() => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: false, maxTurnTokens: '1250000' }))} />);
+    expect(screen.queryByRole('button', { name: 'Advanced Settings' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Limit how much a task can do' })).not.toBeInTheDocument();
+    for (const label of ['Max steps per task', 'Max auto-continues', 'Max tokens per task']) {
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    }
+  }));
+
+  it('still shows them on desktop', () => {
+    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: false, maxTurnTokens: '1250000' }))} />);
+    expandAdvanced();
+    expect(screen.getByRole('switch', { name: 'Limit how much a task can do' })).toBeInTheDocument();
+    for (const label of ['Max steps per task', 'Max auto-continues', 'Max tokens per task']) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument();
+    }
   });
 });

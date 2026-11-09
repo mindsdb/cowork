@@ -1,0 +1,248 @@
+# Cases for clean.test.ts. Each case puts `html` into a holder element of an
+# inert document, the way render.ts does, runs cleanRenderedNodes on it, and
+# reads the holder's innerHTML. Every `present` string must be in it, and no
+# `absent` string may be.
+
+links:
+  - name: a javascript link loses its href and keeps its text
+    html: '<a href="javascript:document.title=''ran''">Run</a>'
+    present: ['<a>Run</a>']
+    absent: ['javascript']
+  - name: a link to another host loses its href
+    html: '<a href="https://docs.google.com/document/d/x">Docs</a>'
+    present: ['<a>Docs</a>']
+    absent: ['docs.google.com']
+  - name: a path on the app's own origin loses its href
+    html: '<a href="/api/v1/artifacts/x">Same origin</a>'
+    present: ['<a>Same origin</a>']
+    absent: ['/api/v1']
+  - name: a link to a fragment keeps its href
+    html: '<a href="#later">Later</a>'
+    present: ['href="#later"']
+  - name: an SVG link loses its xlink:href
+    html: '<svg><a xlink:href="http://127.0.0.1:9/x"><text>Shape</text></a></svg>'
+    present: ['<text>Shape</text>']
+    absent: ['127.0.0.1', 'href']
+  - name: an SVG use keeps a fragment reference
+    html: '<svg><use href="#shape"></use></svg>'
+    present: ['href="#shape"']
+  - name: an image map area loses its href
+    html: '<map name="m"><area href="http://localhost:9/x"></map>'
+    absent: ['localhost', 'href']
+  - name: an SVG image keeps a data href, as docx-preview draws a VML picture
+    html: '<svg><image href="data:image/png;base64,iVBORw0KGgo=" width="100%" height="100%"></image></svg>'
+    present: ['href="data:image/png;base64,iVBORw0KGgo="']
+  - name: an SVG image keeps a blob xlink:href
+    html: '<svg><image xlink:href="blob:null/1234"></image></svg>'
+    present: ['href="blob:null/1234"']
+  - name: an SVG image loses a data href after a no-break space
+    html: '<svg><image href="&#xA0;data:image/png;base64,iVBORw0KGgo="></image></svg>'
+    present: ['<image']
+    absent: ['data:', 'href']
+  - name: an SVG image loses an href to another host
+    html: '<svg><image href="https://lh3.googleusercontent.com/a/x"></image></svg>'
+    present: ['<image']
+    absent: ['googleusercontent', 'href']
+  - name: a link loses a data href
+    html: '<a href="data:text/html,Hello">Data</a><svg><a href="data:image/png;base64,iVBORw0KGgo="><text>Shape</text></a></svg>'
+    present: ['<a>Data</a>', '<text>Shape</text>']
+    absent: ['data:', 'href']
+  - name: an SVG use loses a data href
+    html: '<svg><use href="data:image/svg+xml,%3Csvg%2F%3E"></use></svg>'
+    absent: ['data:', 'href']
+
+sources:
+  - name: an image from another host loses its src
+    html: '<img src="https://lh3.googleusercontent.com/a/x" alt="remote">'
+    present: ['alt="remote"']
+    absent: ['googleusercontent', 'src=']
+  - name: an image whose source is the word null loses its src
+    html: '<img src="null" alt="missing">'
+    present: ['alt="missing"']
+    absent: ['src=']
+  - name: a data image keeps its src
+    html: '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="inline">'
+    present: ['src="data:image/gif;base64,R0lGODlhAQABAAAAACw="']
+  - name: a blob image keeps its src
+    html: '<img src="blob:null/1234" alt="blob">'
+    present: ['src="blob:null/1234"']
+  - name: a data image source after spaces, a tab or a line break keeps its src, as the URL parser strips them
+    html: '<img src=" &#9;&#10;data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="spaced">'
+    present: ['src=', 'data:image/gif;base64,R0lGODlhAQABAAAAACw="']
+  - name: a data image source after a no-break space loses its src, as the URL parser reads it as a path on the frame's origin
+    html: '<img src="&#xA0;data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="no-break space">'
+    present: ['alt="no-break space"']
+    absent: ['src=', 'data:']
+  - name: a data image source after a byte order mark loses its src
+    html: '<img src="&#xFEFF;data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="byte order mark">'
+    present: ['alt="byte order mark"']
+    absent: ['src=', 'data:']
+  - name: srcset, ping, background and poster go
+    html: '<img srcset="https://x/a.png 2x"><a ping="https://x/p">p</a><table background="https://x/b.png"></table><video poster="https://x/v.png"></video>'
+    absent: ['srcset', 'ping', 'background', 'poster', 'https']
+  - name: form targets go
+    html: '<form action="https://x/f"><button formaction="https://x/g">Go</button></form>'
+    absent: ['action', 'https']
+  - name: event handlers go
+    html: '<p onclick="alert(1)" onmouseover="alert(2)">Text</p>'
+    present: ['<p>Text</p>']
+    absent: ['onclick', 'onmouseover', 'alert']
+
+elements:
+  - name: frames and embedded objects go with what they hold
+    html: '<p>Kept</p><iframe srcdoc="&lt;p&gt;Imported chunk text&lt;/p&gt;"></iframe><object data="https://x/o"></object><embed src="https://x/e">'
+    present: ['<p>Kept</p>']
+    absent: ['iframe', 'Imported chunk text', 'object', 'embed']
+  - name: script, link, meta and base go
+    html: '<script>alert(1)</script><link rel="stylesheet" href="https://x/s.css"><meta http-equiv="refresh" content="0;url=https://x/"><base href="https://x/"><p>Kept</p>'
+    present: ['<p>Kept</p>']
+    absent: ['script', 'alert', 'link', 'meta', 'refresh', 'base']
+  - name: SVG animation elements go, so nothing rewrites an attribute later
+    html: '<svg><a><animate attributeName="href" values="https://x/"></animate><set attributeName="href" to="https://x/"></set><text>Shape</text></a></svg>'
+    present: ['<text>Shape</text>']
+    absent: ['animate', '<set', 'https']
+
+attributes:
+  - name: an SVG paint server on another host goes
+    html: '<svg><rect fill="url(http://localhost:9/vml-fill#paint)"></rect></svg>'
+    absent: ['localhost', 'fill=']
+  - name: an SVG fill whose url name is escaped goes
+    html: '<svg><rect fill="u\72l(http://localhost:9/x#p)"></rect></svg>'
+    absent: ['localhost', 'fill=']
+  - name: an SVG stroke whose url name is escaped goes
+    html: '<svg><rect stroke="u\72l(http://localhost:9/x#p)"></rect></svg>'
+    absent: ['localhost', 'stroke=']
+  - name: an SVG paint server in the same document stays
+    html: '<svg><rect fill="url(#paint)"></rect></svg>'
+    present: ['fill="url(#paint)"']
+  - name: a plain attribute stays
+    html: '<p class="docx-paragraph" lang="ko-KR">안녕하세요</p>'
+    present: ['class="docx-paragraph"', 'lang="ko-KR"', '안녕하세요']
+
+inlineStyles:
+  - name: a background image from another host goes and the colour stays
+    html: '<p style="color: red; background-image: url(https://docs.google.com/vml-style)">Text</p>'
+    present: ['color']
+    absent: ['background', 'docs.google.com']
+  - name: a cursor from loopback goes
+    html: '<p style="cursor: url(http://127.0.0.1:9/vml-cursor), auto">Text</p>'
+    absent: ['cursor', '127.0.0.1']
+  - name: an image set goes
+    html: '<p style="background-image: image-set(''https://x/a.png'' 1x)">Text</p>'
+    absent: ['image-set', 'https']
+  - name: a data background stays
+    html: '<p style="background-image: url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)">Text</p>'
+    present: ['data:image/gif']
+  - name: a custom property that could carry a URL goes
+    html: '<p style="--hidden: url(https://x/a.png); --font: Calibri">Text</p>'
+    present: ['--font']
+    absent: ['--hidden', 'https']
+  - name: an SVG style background goes
+    html: '<svg style="width: 100pt; background-image: url(https://docs.google.com/vml-style)"></svg>'
+    present: ['width']
+    absent: ['background', 'docs.google.com']
+
+styleSheets:
+  - name: a declaration that loads from another host goes and its rule stays
+    html: '<style>.docx p { color: red; background-image: url(https://lh3.googleusercontent.com/a/x) }</style>'
+    present: ['.docx p', 'color']
+    absent: ['background', 'googleusercontent']
+  - name: a rule that a hostile font name closed and opened loses what loads
+    html: '<style>.docx { font-family: y }*{background-image:url(https://lh3.googleusercontent.com/a/x)}z{x:y }</style>'
+    present: ['font-family']
+    absent: ['background', 'googleusercontent']
+  - name: an import goes
+    html: '<style>@import url(https://x/s.css); p { color: red }</style>'
+    absent: ['import', 'https']
+  - name: a font face keeps a data source
+    html: '<style>@font-face { font-family: Embedded; src: url(data:font/ttf;base64,AAEAAA==) }</style>'
+    present: ['font-face', 'data:font/ttf']
+  - name: a font face loses a remote source
+    html: '<style>@font-face { font-family: Remote; src: url(https://x/f.ttf) }</style>'
+    present: ['font-face']
+    absent: ['https', 'src']
+  - name: a media rule keeps its rules and loses what loads
+    html: '<style>@media print { p { color: red; background: url(https://x/b.png) } }</style>'
+    present: ['media', 'color']
+    absent: ['https', 'url(']
+  - name: a rule type docx-preview never writes goes
+    html: '<style>@supports (display: grid) { p { color: red } } p { color: blue }</style>'
+    present: ['blue']
+    absent: ['supports']
+
+customProperties:
+  - name: a picture bullet keeps its data image, as docx-preview writes it
+    html: '<style>p.docx-num-1-0:before { content: " "; display: inline-block; background: var(--docx-rid1); width: 9pt; height: 9pt } .docx-wrapper { --docx-rid1: url(data:image/png;base64,AA==) }</style>'
+    present: ['var(--docx-rid1)', '--docx-rid1', 'data:image/png;base64,AA==']
+  - name: a picture bullet keeps its blob picture, as render.ts gives it to docx-preview
+    html: '<style>p.docx-num-1-0:before { content: " "; display: inline-block; background: var(--docx-rid1); width: 9pt; height: 9pt } .docx-wrapper { --docx-rid1: url(blob:null/6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f) }</style>'
+    present: ['var(--docx-rid1)', '--docx-rid1', 'url(blob:null/6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f)']
+  - name: a blob url() followed by a remote url() goes
+    html: '<style>.docx-wrapper { --b: url(blob:null/x) url(https://x/a.png); color: red }</style>'
+    present: ['color']
+    absent: ['--b', 'https']
+  - name: a url() to another host goes and the rule stays
+    html: '<style>.docx-wrapper { --h: url(https://x/a.png); color: red }</style>'
+    present: ['color']
+    absent: ['--h', 'https']
+  - name: a quoted data url() wrapped around a remote url() goes
+    html: '<style>.docx-wrapper { --m: url("data:x" url(https://x/a.png)); color: red }</style>'
+    present: ['color']
+    absent: ['--m', 'https']
+  - name: an escaped url name goes
+    html: '<style>.docx-wrapper { --e: \75rl(https://x/a.png); color: red }</style>'
+    present: ['color']
+    absent: ['--e', 'https']
+  - name: a data url() followed by a remote url() goes
+    html: '<style>.docx-wrapper { --d: url(data:x) url(https://x/a.png); color: red }</style>'
+    present: ['color']
+    absent: ['--d', 'https']
+
+# A value that holds var(), env() or attr() keeps its text as written, escapes
+# included, until the frame's document substitutes it. Only bare var(--name)
+# references, as docx-preview writes them, may stay in one. happy-dom drops a
+# background-image it can't parse, where Chromium keeps it as written, so the
+# hostile cases use cursor and list-style-image, which load an image too and
+# which happy-dom keeps as written.
+substitutions:
+  - name: an env() fallback that spells url() with an escape goes, in a VML style
+    html: '<svg style="width: 100pt; list-style-image: env(a, \75rl(http://127.0.0.1:9/vml-env))"></svg>'
+    present: ['width']
+    absent: ['list-style-image', '127.0.0.1', 'env(']
+  - name: an env() fallback that spells url() with an escape goes, in a style rule
+    html: '<style>.docx span { color: #000;cursor:env(a,\75rl(http://127.0.0.1:9/styles-env)) }</style>'
+    present: ['.docx span', 'color']
+    absent: ['cursor', '127.0.0.1', 'env(']
+  - name: a var() fallback that spells url() with an escape goes
+    html: '<p style="color: red; cursor: var(--u, \75rl(http://127.0.0.1:9/var-fallback))">Text</p>'
+    present: ['color']
+    absent: ['cursor', '127.0.0.1']
+  - name: a var() with a plain fallback goes
+    html: '<p style="color: red; cursor: var(--docx-cursor, pointer)">Text</p>'
+    present: ['color']
+    absent: ['cursor', 'var(']
+  - name: an attr() goes
+    html: '<p style="color: red; list-style-image: attr(data-picture)">Text</p>'
+    present: ['color']
+    absent: ['list-style-image', 'attr(']
+  - name: a var() next to another function goes
+    html: '<p style="color: red; cursor: calc(var(--w) * 2)">Text</p>'
+    present: ['color']
+    absent: ['cursor', 'calc(']
+  - name: a var() whose name is escaped goes
+    html: '<p style="color: red; list-style-image: v\61r(--x, \75rl(http://127.0.0.1:9/escaped-var))">Text</p>'
+    present: ['color']
+    absent: ['list-style-image', '127.0.0.1']
+  - name: a comment that hides a quote around an escaped url() goes
+    html: '<style>.docx p { color: red; cursor: none /* " */ v\61r(--x, \75rl(http://127.0.0.1:9/comment)) /* " */ }</style>'
+    present: ['color']
+    absent: ['cursor', '127.0.0.1']
+  - name: a theme color, a bare var() as docx-preview writes it, stays
+    html: '<style>.docx span { color: var(--docx-accent1-color) }</style>'
+    present: ['color: var(--docx-accent1-color)']
+  - name: a theme font after a named font, as docx-preview writes it, stays
+    html: '<p style="font-family: Calibri, var(--docx-minorHAnsi-font)">Text</p>'
+    present: ['font-family: Calibri, var(--docx-minorHAnsi-font)']
+  - name: a list number keeps the escaped tab inside its content string
+    html: '<style>p.docx-num-1-0:before { content: "1." counter(docx-num-1-0, decimal) "\9"; counter-increment: docx-num-1-0 }</style>'
+    present: ['content: "1." counter(docx-num-1-0']

@@ -80,3 +80,31 @@ describe('artifact card project link', () => {
     ).toBeNull();
   });
 });
+
+describe('artifact card footer rail', () => {
+  it('shows the project and the last update in the grid card footer', () => {
+    render(<ArtifactsView artifacts={[ARTIFACT]} projects={[PROJECT]} onOpenProject={vi.fn()} />);
+
+    const link = screen.getByRole('button', { name: PROJECT.display_name });
+    const rail = link.closest('.card__rail');
+    expect(rail).not.toBeNull();
+    expect(rail).toHaveTextContent(ARTIFACT.updated);
+  });
+});
+
+describe('artifact row actions', () => {
+  // Paul flagged hover-only row actions as a bug: ↗ and ⋯ show at rest, in
+  // flow, so they never cover the project link in the meta. Pinned by
+  // class/attribute: happy-dom computes no Tailwind.
+  it('shows open and menu at rest without covering the project link', () => {
+    localStorage.setItem('anton:artifacts-view', 'list');
+    render(<ArtifactsView artifacts={[ARTIFACT]} projects={[PROJECT]} onOpenProject={vi.fn()} />);
+
+    for (const name of ['Open', 'Artifact menu']) {
+      const cluster = screen.getByRole('button', { name }).closest('[data-item-actions]');
+      expect(cluster).not.toHaveClass('opacity-0');
+      expect(cluster).not.toHaveClass('absolute');
+    }
+    expect(screen.getByRole('button', { name: PROJECT.display_name })).toBeInTheDocument();
+  });
+});

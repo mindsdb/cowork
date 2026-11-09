@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { ConfirmModal } from '../components/ConfirmModal';
 import Button from '../components/ui/Button';
+import { Textarea } from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import type { DeliveryRecord, SourceContext } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
@@ -77,9 +78,9 @@ export function SourceUpdateSection({
             <article className="code-source-update" key={`${context.provider}:${context.url}`}>
               <div className="code-source-update__summary">
                 <SafeCodeExternalLink className="code-source-update__link" value={context.url}>
-                  <span>{sourceProviderLabel(context.provider)}</span>
+                  <span className="section-label">{sourceProviderLabel(context.provider)}</span>
                   <strong>{sourceContextLabel(context)} · {context.title}</strong>
-                  {Ico.externalLink(11)}
+                  {Ico.externalLink(12)}
                 </SafeCodeExternalLink>
                 <div className="code-source-update__actions">
                   {canComplete && <Button size="sm" variant="subtle" disabled={busy} onClick={() => setCompletionContext(context)}>Complete issue</Button>}
@@ -99,9 +100,9 @@ export function SourceUpdateSection({
               )}
               {isActive && activeContext && (
                 <div className="code-source-update__composer">
-                  <textarea
+                  <Textarea
                     value={text}
-                    onChange={(event) => setText(event.target.value)}
+                    onChange={setText}
                     placeholder={`Write an update for ${sourceContextLabel(activeContext)}…`}
                     rows={4}
                     autoFocus

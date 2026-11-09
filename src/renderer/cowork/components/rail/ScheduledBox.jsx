@@ -42,7 +42,7 @@ function ScheduledList({ items, onSelect }) {
               fontSize: 12.5, color: 'var(--ink-2)',
               cursor: clickable ? 'pointer' : 'default',
               transition: clickable
-                ? 'background 120ms ease, color 120ms ease'
+                ? 'background var(--dur-hover) ease, color var(--dur-hover) ease'
                 : undefined,
             }}
             onMouseOver={clickable ? (e) => {
@@ -55,7 +55,7 @@ function ScheduledList({ items, onSelect }) {
             } : undefined}
           >
             <span className="text-ink-3 inline-flex shrink-0">
-              {Ico.clock(13)}
+              {Ico.clock(14)}
             </span>
             <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
               {label}
@@ -73,11 +73,10 @@ function ScheduledList({ items, onSelect }) {
 export function ScheduledBox({
   items = [],
   defaultOpen = true,
-  maxBodyHeight = 320,
   onSelect,
 }) {
   return (
-    <RailCard title="Scheduled Tasks" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
+    <RailCard title="Scheduled Tasks" defaultOpen={defaultOpen}>
       <ScheduledList items={items} onSelect={onSelect} />
     </RailCard>
   );

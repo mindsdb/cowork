@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // MUST be first: sets the per-channel Electron app name (→ userData dir) before
 // any module that reads app.getPath('userData') at load time (e.g. token-store),
 // then starts the crash reporter so a native crash while the rest loads leaves
@@ -11,10 +12,13 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, activeAccountDataRoot, runningServerPort, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
+import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
+import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
+import { installQuitSignalHandlers } from './quit-signals';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
@@ -64,7 +68,8 @@ import {
   settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
-import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkStatePath, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { usageEventsOn, writeUsageEventsPref } from './analytics-env';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
@@ -73,8 +78,13 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
+import { folderPickerDefaultPath } from './folder-picker';
 import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
+import { guardDocumentPreviewFrames } from './document-preview-guard';
+import { mainWindowWebPreferences } from './main-window-preferences';
+import { addRedoOnCmdY, EDIT_MENU_ID } from './edit-menu';
+import { serverTokenListener } from './server-token-listener';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -84,29 +94,59 @@ import {
   killAllCodingTerminals,
   removeCodingTask,
 } from './coding-terminal';
+import { installMainErrorDialog } from './main-error-dialog';
+import { InAppBrowserHost } from './browser-host';
+import { composeStartedHook } from './browser-register';
+import { markDownloaded } from './download-quarantine';
 
-/* Re-hand the MindsHub credential to every sidecar that comes up.
+installMainErrorDialog();
+
+/* The in-app browser (browser-host.ts): Electron's own Chromium in the app's
+ * window, which the agent drives through a loopback bridge. It starts
+ * listening when the app is ready and registers with the sidecar only once
+ * the UI says it shows the browser. */
+const inAppBrowser = new InAppBrowserHost({
+  serverPort: getServerPort,
+  runningServerPort,
+  authHeader,
+  accountRoot: accountDataRoot,
+  sidecarAccountRoot: activeAccountDataRoot,
+  storesRoot: activeStoreRoot,
+  downloadsDir: () => app.getPath('downloads'),
+  markDownloaded,
+  profileSession: (dir) => session.fromPath(dir),
+  memorySession: (partition) => session.fromPartition(partition),
+  fetch: (input, init) => fetch(input, init),
+  electronVersion: () => process.versions.electron,
+  userDataDir: () => app.getPath('userData'),
+});
+
+/* Re-hand the MindsHub credential, then the in-app browser's address, to every
+ * sidecar that comes up.
  *
- * The sidecar holds it in memory only, so a process that just started holds
+ * The sidecar holds both in memory only, so a process that just started holds
  * nothing: an auto-update, the sidebar's stop/start, and the installer's first
  * start all leave a signed-in user with `config_ready: false` until something
  * pushes again. Registered at module scope so the hook is in place before the
- * first start, whichever path gets there first.
+ * first start, whichever path gets there first. The hook slot holds one
+ * function, so both steps run from one composed hook, each even when the other
+ * fails.
  *
- * It settles the resume barrier too: a sidecar restarting mid-handoff is
- * exactly when a turn is parked waiting for one. */
-setServerStartedHook(handOffMindsCredentialToStartedSidecar);
+ * The credential step settles the resume barrier too: a sidecar restarting
+ * mid-handoff is exactly when a turn is parked waiting for one. The browser
+ * step also notices an account or organization switch (the sidecar restarts
+ * on other stores) and changes the bridge's key. */
+setServerStartedHook(composeStartedHook(
+  handOffMindsCredentialToStartedSidecar,
+  () => inAppBrowser.serverStarted(),
+));
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
 }
 
-function getCoworkStatePath(): string {
-  return coworkStatePath();
-}
-
-function clearStoredProviderState(): void {
-  const statePath = getCoworkStatePath();
+function clearStoredProviderState(accountRoot: string): void {
+  const statePath = coworkStatePathIn(accountRoot);
   if (!fs.existsSync(statePath)) return;
   try {
     const raw = fs.readFileSync(statePath, 'utf-8');
@@ -121,7 +161,7 @@ function clearStoredProviderState(): void {
     delete prefs.providerStatusDetails;
     fs.writeFileSync(statePath, JSON.stringify(parsed, null, 2) + '\n', 'utf-8');
   } catch (error) {
-    console.warn('[logout] failed to clear provider state', error);
+    diagnostic("main.app", "WARNING", "logout_failed_to_clear_provider_state", '[logout] failed to clear provider state', error);
   }
 }
 
@@ -193,7 +233,7 @@ async function serverConfigured(): Promise<{
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) {
-      console.warn(`[checkConfigured] /health returned HTTP ${res.status}; falling back to .env`);
+      diagnostic("main.app", "WARNING", "checkconfigured_health_returned_http_falling_back_to_env", { status: res.status });
       return null;
     }
     const data = await res.json() as {
@@ -202,7 +242,7 @@ async function serverConfigured(): Promise<{
       minds_runtime_credential_required?: boolean;
     };
     if (typeof data.config_ready !== 'boolean') {
-      console.warn('[checkConfigured] /health had no config_ready; falling back to .env');
+      diagnostic("main.app", "WARNING", "checkconfigured_health_had_no_config_ready_falling_back_to_env", '[checkConfigured] /health had no config_ready; falling back to .env');
       return null;
     }
     return {
@@ -211,7 +251,7 @@ async function serverConfigured(): Promise<{
       mindsRuntimeCredentialRequired: mindsRuntimeCredentialRequirementFromHealth(data),
     };
   } catch (err) {
-    console.warn('[checkConfigured] could not reach server /health; falling back to .env:', err);
+    diagnostic("main.app", "WARNING", "checkconfigured_could_not_reach_server_health_falling_back_to_env", '[checkConfigured] could not reach server /health; falling back to .env:', err);
     return null;
   }
 }
@@ -364,12 +404,12 @@ function armOtaBootSelfHeal(win: BrowserWindow) {
   };
   const recover = (why: string) => {
     disarm();
-    console.error(`[main] OTA renderer ${why} at boot — rolling back to bundled`);
+    diagnostic("main.app", "ERROR", "main_ota_renderer_at_boot_rolling_back_to_bundled", `[main] OTA renderer ${why} at boot — rolling back to bundled`);
     // Fire-and-forget: rollbackUI records the quarantine synchronously before
     // its first await, and the bundled renderer we load below doesn't depend on
     // the async cache shuffle. Swallow a rejected cleanup so it can't become an
     // unhandled rejection and take down the main process mid-self-heal.
-    void rollbackUI().catch((err) => console.error('[main] UI rollback failed', err));
+    void rollbackUI().catch((err) => diagnostic("main.app", "ERROR", "main_ui_rollback_failed", '[main] UI rollback failed', err));
     if (!win.isDestroyed()) win.loadFile(getBundledPath());
   };
   const onOk = () => disarm();
@@ -413,24 +453,15 @@ function createWindow() {
     trafficLightPosition: process.platform === 'darwin' ? { x: 20, y: 24 } : undefined,
     backgroundColor: '#0a0a0f',
     show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      // ENG-439: hand the resolved (per-OS-user) server port to the renderer
-      // synchronously, so getApiOrigin() addresses our own sidecar instead of
-      // a hardcoded 26866 that could belong to another OS user.
-      additionalArguments: [`--cowork-server-port=${getServerPort()}`],
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: false,
-      // Disable Chromium's same-origin/mixed-content checks so the renderer
-      // (loaded from file://) can fetch http://127.0.0.1:<antonPort>/v1/*.
-      // Safe in this context: app is local, network calls only target the
-      // loopback python server we spawn ourselves. CSP in index.html still
-      // allowlists the exact origins for defense in depth.
-      // codeql[js/electron-disable-websecurity]
-      webSecurity: false,
-    },
+    webPreferences: mainWindowWebPreferences(getServerPort()),
   });
+  // The in-app browser's tabs are children of this window; they close with it.
+  inAppBrowser.attachWindow(mainWindow);
+
+  // Marks the document preview frame, cancels navigations it starts, and
+  // holds srcdoc subframes in place. Registered before the window loads
+  // anything, so no frame is created unseen.
+  const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);
 
   // Inject the server's bearer token into every request the renderer makes to
   // the loopback API — including browser-initiated loads (images, iframes and
@@ -442,31 +473,16 @@ function createWindow() {
   // so it can't leak elsewhere. No-op when the server runs without auth.
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
-    (details, callback) => {
-      const forward = () => {
-        const token = getServerAuthToken();
-        if (token) {
-          try {
-            const url = new URL(details.url);
-            const isDirectServerCall = url.port === String(getServerPort());
-            // Dev mode (DEV_MODE=live / VITE_DEV=1) loads the renderer from Vite,
-            // so API calls resolve same-origin to Vite's own port and get proxied
-            // to the real sidecar server-side — this hook never sees the final
-            // 127.0.0.1:<serverPort> request to attach the header to. Scoped to
-            // /api/ so static asset/module requests through Vite aren't touched.
-            const isViteProxiedApiCall =
-              viteDevPort !== null && url.port === viteDevPort && url.pathname.startsWith('/api/');
-            if (isDirectServerCall || isViteProxiedApiCall) {
-              details.requestHeaders['Authorization'] = `Bearer ${token}`;
-            }
-          } catch {
-            // Malformed URL — leave the headers untouched.
-          }
-        }
-        callback({ requestHeaders: details.requestHeaders });
-      };
-
-      const gated = gateMindsResponseCreationRequest(
+    // The document preview frame, any frame inside it and a request with no
+    // frame get no token (server-token-listener.ts, document-preview-guard.ts).
+    // The Minds gate holds response-creation requests until the resumed
+    // credential is ready, and cancels them when it never is.
+    serverTokenListener({
+      guard: previewGuard,
+      serverPort: getServerPort,
+      token: getServerAuthToken,
+      viteDevPort,
+      gate: (details, settle) => gateMindsResponseCreationRequest(
         details,
         getServerPort(),
         isMindsResumeCredentialGateActive(),
@@ -474,15 +490,12 @@ function createWindow() {
         waitForMindsResumeCredential,
         (ready) => {
           if (!ready) {
-            console.warn('[minds-auth] response creation aborted while the resumed credential remained unavailable');
-            callback({ cancel: true });
-            return;
+            diagnostic("main.app", "WARNING", "minds_auth_response_creation_aborted_while_the_resumed_credential_remained_unavailable", '[minds-auth] response creation aborted while the resumed credential remained unavailable');
           }
-          forward();
+          settle(ready);
         },
-      );
-      if (!gated) forward();
-    },
+      ),
+    }),
   );
 
   // Renderer loading priority:
@@ -492,16 +505,16 @@ function createWindow() {
   // 4. Production → OTA cached bundle or bundled fallback
   if (devMode === 'live') {
     const port = process.env.VITE_RENDERER_PORT || '5173';
-    console.log(`[main] DEV_MODE=live — loading from http://localhost:${port}`);
+    diagnostic("main.app", "INFO", "main_dev_mode_live_loading_from_http_localhost", `[main] DEV_MODE=live — loading from http://localhost:${port}`);
     mainWindow.loadURL(`http://localhost:${port}`);
   } else if (isDev) {
     mainWindow.loadURL(process.env.VITE_RENDERER_URL || 'http://localhost:5173');
   } else if (devMode === 'full') {
-    console.log('[main] DEV_MODE=full — using bundled renderer, skipping OTA cache');
+    diagnostic("main.app", "INFO", "main_dev_mode_full_using_bundled_renderer_skipping_ota_cache", '[main] DEV_MODE=full — using bundled renderer, skipping OTA cache');
     mainWindow.loadFile(getBundledPath());
   } else {
     const rendererPath = getRendererPath();
-    console.log(`[main] loading renderer from ${rendererPath}`);
+    diagnostic("main.app", "INFO", "main_loading_renderer_from", `[main] loading renderer from ${rendererPath}`);
     // Boot self-heal: arm BEFORE the load (so the result can't be missed) when
     // serving an activated OTA bundle. A bad hot-update rolls back to the
     // app-bundled renderer instead of re-loading the broken bundle every launch.
@@ -637,6 +650,8 @@ async function performMindsSignOut() {
  * the real implementations it drives.
  */
 function mindsSignOutDeps(): SignOutDeps {
+  // Read once with the stores, so the marks and the list agree on it.
+  let serverClears: boolean | null = null;
   return {
     getRevokeToken,
     getRefreshToken,
@@ -653,7 +668,20 @@ function mindsSignOutDeps(): SignOutDeps {
     httpRequest,
     getAuthHeader: authHeader,
     scrubEnvCredentials,
-    getAntonEnvPath,
+    captureSignOutStores: () => {
+      const home = coworkHome();
+      const active = readActiveAccount(home);
+      const activeStore = activeStoreRoot();
+      serverClears = serverClearsPendingCredentials();
+      return {
+        accountRoot: accountDataHome(home, active),
+        stores: storesToClearAtSignOut(home, active, activeStore, serverClears),
+        activeStore,
+      };
+    },
+    markStoresForCredentialClear: (stores, activeStore) =>
+      markStoresForSignOut(coworkHome(), stores, activeStore, serverClears),
+    getAntonEnvPath: coworkEnvPathIn,
     clearStoredProviderState,
     startSidecarFlush: () => {
       void startSignOutSidecarFlush({
@@ -1081,7 +1109,7 @@ function setupIPC() {
       if (!result.refresh_token) {
         // Session won't survive a restart without it — loud so a failing
         // machine's log explains the next-launch sign-out (ENG-761).
-        console.warn('[mindshub:auth] Keycloak returned no refresh_token — session will not persist across restarts');
+        diagnostic("main.app", "WARNING", "mindshub_auth_keycloak_returned_no_refresh_token_session_will_not_persist_across_restarts", '[mindshub:auth] Keycloak returned no refresh_token — session will not persist across restarts');
       }
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
@@ -1132,7 +1160,7 @@ function setupIPC() {
   ipcMain.handle(IPC.MINDSHUB_FINALIZE, async (_e, organizationId?: string, chosenByUser?: boolean) => {
     const token = getAccessToken();
     if (!token) {
-      console.error('[mindshub:finalize] no cached access token — login may not have completed');
+      diagnostic("main.app", "ERROR", "mindshub_finalize_no_cached_access_token_login_may_not_have_completed", '[mindshub:finalize] no cached access token — login may not have completed');
       return { ok: false, reason: 'No cached MindsHub access token.' };
     }
     // `chosenByUser` travels separately from the id because the id alone does
@@ -1152,7 +1180,7 @@ function setupIPC() {
     // readiness check reconciles a reload rather than a live document.
     if (isServerRunning() || isServerStarting()) {
       if (!(await ensureSidecarOnCurrentAccountRoot())) {
-        console.error('[mindshub:finalize] could not move the sidecar onto this account root');
+        diagnostic("main.app", "ERROR", "mindshub_finalize_could_not_move_the_sidecar_onto_this_account_root", '[mindshub:finalize] could not move the sidecar onto this account root');
         return { ok: false, reason: 'Could not open this account\'s data. Restart Cowork and try again.' };
       }
     }
@@ -1162,7 +1190,7 @@ function setupIPC() {
       chosenByUser: chosenByUser === true,
     });
     if (!selected.token) {
-      console.error('[mindshub:finalize] could not select an organization:', selected.error);
+      diagnostic("main.app", "ERROR", "mindshub_finalize_could_not_select_an_organization", '[mindshub:finalize] could not select an organization:', selected.error);
       return { ok: false, reason: selected.error || 'Could not select a MindsHub organization.' };
     }
     /*
@@ -1180,7 +1208,7 @@ function setupIPC() {
      */
     const flushWait = await awaitSignOutSidecarFlush(SIGN_OUT_FLUSH_SIGN_IN_WAIT_MS);
     if (flushWait === 'timeout') {
-      console.warn('[mindshub:finalize] sign-out sidecar restart still running; continuing');
+      diagnostic("main.app", "WARNING", "mindshub_finalize_sign_out_sidecar_restart_still_running_continuing", '[mindshub:finalize] sign-out sidecar restart still running; continuing');
     }
     try {
       const { dataRootChanged } = await commitMindsSignIn();
@@ -1196,7 +1224,7 @@ function setupIPC() {
         }
       }
     } catch (err: any) {
-      console.error('[mindshub:finalize] commitMindsSignIn failed:', err);
+      diagnostic("main.app", "ERROR", "mindshub_finalize_commitmindssignin_failed", '[mindshub:finalize] commitMindsSignIn failed:', err);
       return { ok: false, reason: `Failed to save MindsHub settings: ${err?.message || err}` };
     }
     // The organization the presented token names. The ranking asks for one and
@@ -1241,7 +1269,7 @@ function setupIPC() {
       }
       return { ok: true };
     } catch (err: any) {
-      console.error('[mindshub:set-user-key] failed:', err);
+      diagnostic("main.app", "ERROR", "mindshub_set_user_key_failed", '[mindshub:set-user-key] failed:', err);
       return { ok: false, reason: err?.message || 'Could not save the MindsHub key.' };
     }
   });
@@ -1281,7 +1309,7 @@ function setupIPC() {
         organizationId: readActiveOrg(accountDataRoot()),
       };
     } catch (err) {
-      console.warn('[account] could not resolve the signed-in account', err);
+      diagnostic("main.app", "WARNING", "account_could_not_resolve_the_signed_in_account", '[account] could not resolve the signed-in account', err);
       // No account means the purge is a no-op, so the verdict cannot matter.
       event.returnValue = { accountId: null, legacyState: 'keep' };
     }
@@ -1343,7 +1371,7 @@ function setupIPC() {
     // "this history is mine" and would see nothing, with no error.
     const claim = adoptDefaultRootAsIncumbent(home, active.accountId);
     if (claim.kind !== 'claimed' || claim.accountId !== active.accountId) {
-      console.warn('[account] could not take the default root:', claim.kind);
+      diagnostic("main.app", "WARNING", "account_could_not_take_the_default_root", '[account] could not take the default root:', claim.kind);
       return { ok: false, reason: 'claim-failed' };
     }
     settleOwnership(home);
@@ -1371,16 +1399,16 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
-    console.log('[server] restart requested');
+    diagnostic("main.app", "INFO", "server_restart_requested", '[server] restart requested');
     await stopServer();
     // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
     // the cache so the webRequest hook re-reads it on the next request.
     resetServerAuthTokenCache();
     const result = await startServer({});
     if (result.ok) {
-      console.log(`[server] restarted on http://127.0.0.1:${result.port}`);
+      diagnostic("main.app", "INFO", "server_restarted_on_http_127_0_0_1", `[server] restarted on http://127.0.0.1:${result.port}`);
     } else {
-      console.error(`[server] restart failed: ${result.reason}`);
+      diagnostic("main.app", "ERROR", "server_restart_failed", `[server] restart failed: ${result.reason}`);
     }
     return result;
   });
@@ -1415,6 +1443,24 @@ function setupIPC() {
     return true;
   });
 
+  // The agent's anonymous usage events, the shared browser's included:
+  // COWORK_USAGE_EVENTS in the account's dotenv, written only when off.
+  // server-process.ts passes ANTON_ANALYTICS_ENABLED=false to the sidecar it
+  // starts next, so a change applies from the next server start.
+  ipcMain.handle(IPC.USAGE_EVENTS_GET, () => ({ enabled: usageEventsOn(readEnvFile()) }));
+
+  ipcMain.handle(IPC.USAGE_EVENTS_SET, async (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') return { ok: false };
+    try {
+      ensureAccountDataRoot();
+      writeUsageEventsPref(coworkEnvPath(), enabled);
+      return { ok: true };
+    } catch (error) {
+      diagnostic("main.app", "ERROR", "usage_events_failed_to_set_preference", '[usage-events] failed to set preference', error);
+      return { ok: false };
+    }
+  });
+
   // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
   // When enabled the refresh token lives in the macOS keychain; otherwise
   // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
@@ -1443,7 +1489,7 @@ function setupIPC() {
       migrateRefreshTokenStore(enabled);
       return { ok: true };
     } catch (error) {
-      console.error('[keychain] failed to set preference', error);
+      diagnostic("main.app", "ERROR", "keychain_failed_to_set_preference", '[keychain] failed to set preference', error);
       return { ok: false };
     }
   });
@@ -1509,17 +1555,20 @@ function setupIPC() {
   // Native directory selection for the first-class Code workspace. The
   // renderer receives only the user-selected path; filesystem access and Git
   // orchestration remain in the local sidecar.
+  let lastPickedFolder: string | null = null;
   ipcMain.handle(IPC.CODE_PICK_FOLDER, async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, reason: 'window unavailable' };
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose a folder',
+      defaultPath: folderPickerDefaultPath(lastPickedFolder, app.getPath('home')),
       // `createDirectory` exposes New Folder in the macOS panel;
       // `promptToCreate` provides the equivalent typed-path flow on Windows.
       // The native default confirmation label (Open) matches both platforms.
       properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
     });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
-    return { ok: true, path: path.resolve(result.filePaths[0]) };
+    lastPickedFolder = path.resolve(result.filePaths[0]);
+    return { ok: true, path: lastPickedFolder };
   });
 
   ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
@@ -1571,6 +1620,7 @@ function setupIPC() {
   // can check/apply in any build (dev, unpackaged, server-down). The gated
   // boot/periodic polling is started separately by initUpdater().
   registerUpdateHandlers(() => mainWindow);
+  registerUpdateJournalHandlers();
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
@@ -1593,25 +1643,25 @@ async function purgeHttpCacheOnUpgrade(): Promise<void> {
     if (last === current) return;
     await session.defaultSession.clearCache();
     fs.writeFileSync(markerPath, JSON.stringify({ version: current }) + '\n', 'utf-8');
-    console.log(`[cache] purged HTTP cache on upgrade (${last || 'none'} → ${current})`);
+    diagnostic("main.app", "INFO", "cache_purged_http_cache_on_upgrade", `[cache] purged HTTP cache on upgrade (${last || 'none'} → ${current})`);
   } catch (err) {
-    console.warn('[cache] HTTP cache purge failed (non-fatal)', err);
+    diagnostic("main.app", "WARNING", "cache_http_cache_purge_failed_non_fatal", '[cache] HTTP cache purge failed (non-fatal)', err);
   }
 }
 
 // One line per startup step up to [channels], so the stdout of a startup that
 // dies natively names the last step it reached.
-console.log('[boot] modules loaded');
+diagnostic("main.app", "INFO", "boot_modules_loaded", '[boot] modules loaded');
 
 app.whenReady().then(async () => {
-  console.log('[boot] app ready');
+  diagnostic("main.app", "INFO", "boot_app_ready", '[boot] app ready');
 
-  console.log('[boot] migrate legacy home');
+  diagnostic("main.app", "INFO", "boot_migrate_legacy_home", '[boot] migrate legacy home');
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
 
-  console.log('[boot] account data root');
+  diagnostic("main.app", "INFO", "boot_account_data_root", '[boot] account data root');
   // Answer, once and before anything can create a database, whether this
   // install already held data. It decides whether an account may take the
   // default root or has to be asked, and it can only be observed BEFORE the
@@ -1635,13 +1685,13 @@ app.whenReady().then(async () => {
     void refreshMindsCredentialAfterResume();
   });
 
-  console.log('[boot] uv isolation');
+  diagnostic("main.app", "INFO", "boot_uv_isolation", '[boot] uv isolation');
   // Isolate this channel's uv tool install (cowork-server binary + venv) so
   // build kinds on one machine don't share one binary. Must run before the
   // installer's presence check and before the server starts.
   applyChannelUvIsolation();
 
-  console.log('[boot] channel consistency');
+  diagnostic("main.app", "INFO", "boot_channel_consistency", '[boot] channel consistency');
   // Guard the two environment axes against silent disagreement: the build kind
   // (data home / branch) must target the API host the canonical channel model
   // says it should. A mismatch means a build was wired to talk to the wrong
@@ -1650,14 +1700,14 @@ app.whenReady().then(async () => {
   {
     const c = checkChannelConsistency(buildKind(), MINDS_API_HOST);
     if (!c.ok) {
-      console.warn(
+      diagnostic("main.app", "WARNING", "channels_build_env_mismatch_build_kind_expects_the_backend_but_this_build_points_at_check_the_ci_min",
         `[channels] BUILD/ENV MISMATCH: build kind "${c.kind}" expects the ` +
           `"${c.expectedSlug || 'prod'}" backend (${c.expectedApiHost}) but this build ` +
           `points at "${c.actualSlug || 'prod'}" (${c.actualApiHost}). ` +
           `Check the CI minds_api_url / build_kind inputs.`,
       );
     } else {
-      console.log(`[channels] build kind "${c.kind}" → ${c.actualApiHost} (consistent)`);
+      diagnostic("main.app", "INFO", "channels_build_kind_consistent", `[channels] build kind "${c.kind}" → ${c.actualApiHost} (consistent)`);
     }
   }
 
@@ -1736,7 +1786,7 @@ app.whenReady().then(async () => {
           ],
         } as Electron.MenuItemConstructorOptions]
       : [{ role: 'fileMenu' } as Electron.MenuItemConstructorOptions]),
-    { role: 'editMenu' },
+    { role: 'editMenu', id: EDIT_MENU_ID },
     {
       label: 'View',
       submenu: [
@@ -1780,10 +1830,19 @@ app.whenReady().then(async () => {
       ],
     },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  const appMenu = Menu.buildFromTemplate(template);
+  addRedoOnCmdY(appMenu);
+  Menu.setApplicationMenu(appMenu);
 
   ensureDefaultProject();
   setupIPC();
+  inAppBrowser.registerIpc(ipcMain);
+  try {
+    await inAppBrowser.start();
+  } catch (err) {
+    // The app works without its browser; the agent just doesn't get the tool.
+    diagnostic("main.app", "WARNING", "browser_host_did_not_start", err);
+  }
   // ENG-439: decide the (per-OS-user) server port before the window exists so
   // the renderer can be handed the resolved port via additionalArguments,
   // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.
@@ -1823,7 +1882,7 @@ app.whenReady().then(async () => {
   const bootUpdateDone = () => resolveBootUpdate();
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
-      console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
+      diagnostic("main.app", "INFO", "server_skipped_cowork_server_not_installed_setup_screen_will_handle", '[server] skipped: cowork-server not installed; setup screen will handle.');
       resolveBootServer();
       bootUpdateDone();  // no boot poll on this path — don't strand the gate
       return;
@@ -1853,12 +1912,12 @@ app.whenReady().then(async () => {
           fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
         }
       } else if (outcome.status === 'transient') {
-        console.warn('[auth] boot token refresh failed transiently — keeping session, retry scheduled');
+        diagnostic("main.app", "WARNING", "auth_boot_token_refresh_failed_transiently_keeping_session_retry_scheduled", '[auth] boot token refresh failed transiently — keeping session, retry scheduled');
       } else if (outcome.status === 'handoff_pending') {
         // Expected at boot: the sidecar starts below, and its start hook pushes.
-        console.log('[auth] boot token refreshed — sidecar gets it when it starts');
+        diagnostic("main.app", "INFO", "auth_boot_token_refreshed_sidecar_gets_it_when_it_starts", '[auth] boot token refreshed — sidecar gets it when it starts');
       } else if (outcome.status !== 'ok') {
-        console.warn(`[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
+        diagnostic("main.app", "WARNING", "auth_boot_token_refresh_skipped_keeping_session", `[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
       }
     }
 
@@ -1867,14 +1926,15 @@ app.whenReady().then(async () => {
       // The server is installed but won't boot. Two self-heal paths, tried in
       // order; each rebuilds the venv with a clean --force --reinstall on the
       // source it was installed from, then we retry start once.
-      console.error(`[server] start failed (${result.reason}); attempting recovery`);
+      diagnostic("main.app", "ERROR", "server_start_failed_attempting_recovery", `[server] start failed (${result.reason}); attempting recovery`);
 
       // 1. Venv stranded on an unsupported Python (a pre-3.12 install an
       //    in-place update loaded newer 3.12+ code into) — crashes at import
       //    time. Recreating it re-selects a supported interpreter.
       const recreated = await recreateVenvIfUnsupportedPython();
       if (recreated) {
-        console.log('[server] recreated venv on a supported Python; retrying start');
+        diagnostic("main.app", "INFO", "server_recreated_venv_on_a_supported_python_retrying_start", '[server] recreated venv on a supported Python; retrying start');
+        recordUpdatePhase({ channel: 'server', phase: 'repaired', trigger: 'boot', errorCode: 'unsupported-python' });
         result = await startServer();
       }
 
@@ -1888,17 +1948,18 @@ app.whenReady().then(async () => {
       //    that already did a --force --reinstall.
       const failureLog = getServerDiagnostics().recentLog;
       if (!result.ok && !recreated && await repairServerInstall(failureLog)) {
-        console.log('[server] repaired the server environment; retrying start');
+        diagnostic("main.app", "INFO", "server_repaired_the_server_environment_retrying_start", '[server] repaired the server environment; retrying start');
+        recordUpdatePhase({ channel: 'server', phase: 'repaired', trigger: 'boot', errorCode: 'broken-install' });
         result = await startServer();
       }
     }
     if (result.ok) {
-      console.log(`[server] running on http://127.0.0.1:${result.port}`);
+      diagnostic("main.app", "INFO", "server_running_on_http_127_0_0_1", `[server] running on http://127.0.0.1:${result.port}`);
       // Resume refresh loops for Google OAuth connections already in the
       // vault from prior sessions — fire-and-forget, failures are per-entry.
       startOrphanRefreshLoops().catch(() => {});
     } else {
-      console.error(`[server] start failed: ${result.reason}`);
+      diagnostic("main.app", "ERROR", "server_start_failed", `[server] start failed: ${result.reason}`);
     }
     /* One-time migration off a minted device key.
      *
@@ -1916,7 +1977,7 @@ app.whenReady().then(async () => {
      * the live credential rather than the leftover it is looking for. */
     const migrating = Boolean(readEnvFile()['ANTON_MINDS_API_KEY']);
     if (migrating) {
-      console.log('[minds-auth] this install still holds a minted device key — signing out to migrate');
+      diagnostic("main.app", "INFO", "minds_auth_this_install_still_holds_a_minted_device_key_signing_out_to_migrate", '[minds-auth] this install still holds a minted device key — signing out to migrate');
       try {
         await performMindsSignOut();
         /*
@@ -1928,7 +1989,7 @@ app.whenReady().then(async () => {
          */
         await awaitSignOutSidecarFlush(SERVER_START_CAP_MS);
       } catch (err) {
-        console.warn('[minds-auth] migration sign-out failed; will retry next launch', err);
+        diagnostic("main.app", "WARNING", "minds_auth_migration_sign_out_failed_will_retry_next_launch", '[minds-auth] migration sign-out failed; will retry next launch', err);
       }
       // The marker is the `.env` line, and `performMindsSignOut` scrubs it
       // best-effort — it logs a failed write and presses on. So confirm the
@@ -1936,7 +1997,7 @@ app.whenReady().then(async () => {
       // it survived, this runs again on the next launch, and every launch after
       // that, signing the user out each time with nothing saying why.
       if (readEnvFile()['ANTON_MINDS_API_KEY']) {
-        console.error('[minds-auth] migration ran but ANTON_MINDS_API_KEY is still in .env — it will retry next launch');
+        diagnostic("main.app", "ERROR", "minds_auth_migration_ran_but_anton_minds_api_key_is_still_in_env_it_will_retry_next_launch", '[minds-auth] migration ran but ANTON_MINDS_API_KEY is still in .env — it will retry next launch');
       }
     }
 
@@ -1992,16 +2053,16 @@ app.whenReady().then(async () => {
     if (app.isPackaged && !devMode && mainWindow) {
       initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled(), bootUpdateDone);
     } else if (!app.isPackaged) {
-      console.log('[updater] skipped — not a packaged build');
+      diagnostic("main.app", "INFO", "updater_skipped_not_a_packaged_build", '[updater] skipped — not a packaged build');
       bootUpdateDone();  // no boot poll → nothing for the loading gate to wait on
     } else if (devMode) {
-      console.log(`[updater] skipped — DEV_MODE=${devMode}`);
+      diagnostic("main.app", "INFO", "updater_skipped_dev_mode", `[updater] skipped — DEV_MODE=${devMode}`);
       bootUpdateDone();
     } else {
       bootUpdateDone();  // no window to update against
     }
   }).catch((err) => {
-    console.error('[server] check-and-start failed:', err);
+    diagnostic("main.app", "ERROR", "server_check_and_start_failed", '[server] check-and-start failed:', err);
     resolveBootServer();  // never leave checkConfigured() awaiting a stuck boot
     bootUpdateDone();     // ...or the loading gate awaiting a boot that never ran
   });
@@ -2056,13 +2117,13 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
         if (!refreshToken) continue;
         startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style);
-        console.log(`[token-refresh] resumed loop for ${engine}:${accountEmail}`);
+        diagnostic("main.app", "INFO", "token_refresh_resumed_loop_for", `[token-refresh] resumed loop for ${engine}:${accountEmail}`);
       } catch (err) {
-        console.warn(`[token-refresh] could not resume loop for ${engine}/${name}:`, err);
+        diagnostic("main.app", "WARNING", "token_refresh_could_not_resume_loop_for", `[token-refresh] could not resume loop for ${engine}/${name}:`, err);
       }
     }
   } catch (err) {
-    console.warn('[token-refresh] orphan cleanup failed:', err);
+    diagnostic("main.app", "WARNING", "token_refresh_orphan_cleanup_failed", '[token-refresh] orphan cleanup failed:', err);
   }
 }
 
@@ -2090,17 +2151,18 @@ async function drainServerForQuit(): Promise<void> {
     new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8_000)),
   ]);
   if (!applyDrained) {
-    console.warn('[updater] update-maintenance did not drain before the quit ceiling; an on-quit shell install may overlap an in-flight apply');
+    diagnostic("main.app", "WARNING", "updater_update_maintenance_did_not_drain_before_the_quit_ceiling_an_on_quit_shell_install_may_overla", '[updater] update-maintenance did not drain before the quit ceiling; an on-quit shell install may overlap an in-flight apply');
   }
-  // Hard ceiling so a wedged python can't pin the quit indefinitely.
-  // stopServer's own SIGTERM(6s) + SIGKILL(1.5s) chain stays inside
-  // this window, but a misbehaving OS-level process delay could push
-  // past it; if so we'd rather quit than leave the user waiting on the
-  // dock icon. Both numbers end early the moment the child exits, so a
-  // healthy quit is still immediate.
+  // Hard ceiling so a wedged python can't pin the quit indefinitely. It is
+  // stopServer's own worst case (prepare-shutdown + SIGTERM + SIGKILL grace),
+  // so a slow but clean stop is never reaped half a second from finishing; a
+  // misbehaving OS-level process delay could still push past it, and then
+  // we'd rather quit than leave the user waiting on the dock icon. Both
+  // numbers end early the moment the child exits, so a healthy quit is still
+  // immediate.
   const stopped = await Promise.race([
     stopServer().then(() => true),
-    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8_000)),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), SERVER_STOP_CEILING_MS)),
   ]);
 
   // stopServer lost the race. The usual reason is that a start still holds
@@ -2109,7 +2171,7 @@ async function drainServerForQuit(): Promise<void> {
   // never even ran. Quitting here would leave that python behind to bind the
   // port unsupervised. Reap it directly, without the lock, still bounded.
   if (!stopped) {
-    console.warn('[server] stop did not finish before the quit ceiling; force-reaping the sidecar');
+    diagnostic("main.app", "WARNING", "server_stop_did_not_finish_before_the_quit_ceiling_force_reaping_the_sidecar", '[server] stop did not finish before the quit ceiling; force-reaping the sidecar');
     await Promise.race([
       forceReapServer(),
       new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
@@ -2141,3 +2203,7 @@ app.on('before-quit', (event) => {
     app.quit();
   });
 });
+
+// Termination signals (Ctrl-C under `npm run dev`) go through the same drain,
+// once. The helper waits for the app to be ready; see quit-signals.ts for why.
+void installQuitSignalHandlers(app);

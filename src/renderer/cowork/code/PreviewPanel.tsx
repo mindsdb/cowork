@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { getApiOrigin } from '../../platform/host';
 import { safeCodeExternalUrl } from './developerTools';
@@ -54,12 +55,12 @@ export function PreviewPanel({
       <aside id="code-preview-panel" className="code-preview" aria-label="Live preview">
         <header className="code-preview__header">
           <div>
-            <div className="code-eyebrow">PROJECT ACTION</div>
+            <div className="section-label">Project action</div>
             <div className="code-preview__title">Preview</div>
           </div>
           <div className="code-preview__actions">
-            <Button icon size="sm" variant="subtle" aria-label="Reload preview" disabled={!previewUrl} onClick={() => setGeneration((current) => current + 1)}>{Ico.reload(13)}</Button>
-            <Button icon size="sm" variant="subtle" aria-label="Open preview in browser" disabled={!previewUrl} onClick={() => void openCodeExternalUrl(previewUrl)}>{Ico.arrowUpRight(13)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label="Reload preview" disabled={!previewUrl} onClick={() => setGeneration((current) => current + 1)}>{Ico.reload(14)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label="Open preview in browser" disabled={!previewUrl} onClick={() => void openCodeExternalUrl(previewUrl)}>{Ico.arrowUpRight(14)}</Button>
             <Button icon size="sm" variant="subtle" aria-label="Close preview" onClick={onClose}>{Ico.close(14)}</Button>
           </div>
         </header>
@@ -72,9 +73,9 @@ export function PreviewPanel({
             value={viewport}
             onValueChange={(value) => setViewport(value as Viewport)}
             options={[
-              { value: 'responsive', label: Ico.computer(13), 'aria-label': 'responsive preview' },
-              { value: 'tablet', label: Ico.appWindow(13), 'aria-label': 'tablet preview' },
-              { value: 'mobile', label: Ico.phone(13), 'aria-label': 'mobile preview' },
+              { value: 'responsive', label: Ico.computer(14), 'aria-label': 'responsive preview' },
+              { value: 'tablet', label: Ico.appWindow(14), 'aria-label': 'tablet preview' },
+              { value: 'mobile', label: Ico.phone(14), 'aria-label': 'mobile preview' },
             ]}
           />
         </div>
@@ -92,11 +93,13 @@ export function PreviewPanel({
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div className="code-preview__empty">
-              <span>{Ico.globe(20)}</span>
-              <strong>No local preview yet</strong>
-              <p>Run a project action that listens on the task’s development port.</p>
-            </div>
+            <EmptyState
+              size="sm"
+              className="code-preview__empty"
+              icon={Ico.globe(20)}
+              title="No local preview yet"
+              description="Run a project action that listens on the task’s development port."
+            />
           )}
         </div>
       </aside>

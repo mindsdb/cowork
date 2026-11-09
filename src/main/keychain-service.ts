@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 import { buildKind } from './cowork-home';
 import { getFallbackPassword, setFallbackPassword, deleteFallbackPassword } from './keychain-fallback';
 
@@ -36,7 +37,7 @@ async function getPassword(service: string, account: string): Promise<string | n
     const keytar = await getKeytar();
     value = await keytar.getPassword(service, account);
   } catch (err) {
-    console.warn(`[keychain-service] keytar.getPassword failed for ${service}, using file fallback:`, err);
+    diagnostic("main.keychain-service", "WARNING", "keychain_service_keytar_getpassword_failed_for_using_file_fallback", `[keychain-service] keytar.getPassword failed for ${service}, using file fallback:`, err);
     return getFallbackPassword(service, account);
   }
   // Not found in the real keychain - check the fallback in case this entry
@@ -53,7 +54,7 @@ async function setPassword(service: string, account: string, value: string): Pro
     // real-keychain deletion can never be shadowed by an old fallback value.
     deleteFallbackPassword(service, account);
   } catch (err) {
-    console.warn(`[keychain-service] keytar.setPassword failed for ${service}, using file fallback:`, err);
+    diagnostic("main.keychain-service", "WARNING", "keychain_service_keytar_setpassword_failed_for_using_file_fallback", `[keychain-service] keytar.setPassword failed for ${service}, using file fallback:`, err);
     setFallbackPassword(service, account, value);
   }
 }
@@ -63,7 +64,7 @@ async function deletePassword(service: string, account: string): Promise<void> {
     const keytar = await getKeytar();
     await keytar.deletePassword(service, account);
   } catch (err) {
-    console.warn(`[keychain-service] keytar.deletePassword failed for ${service}:`, err);
+    diagnostic("main.keychain-service", "WARNING", "keychain_service_keytar_deletepassword_failed_for", `[keychain-service] keytar.deletePassword failed for ${service}:`, err);
   }
   // Always clear the fallback entry too - a prior setPassword may have
   // written there regardless of how this delete's own keytar call went.

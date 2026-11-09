@@ -1,4 +1,5 @@
 import { ExternalLink, RefreshCw } from 'lucide-react';
+import { Icon } from '../../components/ui/Icon';
 import { Badge, Button, Meter } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
@@ -33,7 +34,7 @@ function ActionButton({ action, isBillingOwner, variant = 'default' }) {
   return (
     <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner)}>
       {action.label}
-      <ExternalLink size={12} strokeWidth={1.5} aria-hidden="true" />
+      <Icon of={ExternalLink} size={12} />
     </Button>
   );
 }
@@ -99,12 +100,20 @@ function autoTopUpLine(auto) {
     case 'payment_failed':
       return { text: "Auto top up failed: we couldn't charge your card. Update your payment method to resume it.", tone: 'text-danger-text' };
     case 'cap_reached':
-      return { text: `${rule} Paused for now: this month's cap is reached.`, tone: 'text-warning-text' };
+      return { text: `${rule} Paused to stay within this month's cap.`, tone: 'text-warning-text' };
     case 'pending_action':
       return { text: `${rule} Waiting on your bank to confirm the latest charge.`, tone: 'text-warning-text' };
     default:
       return { text: rule, tone: 'text-ink-3' };
   }
+}
+
+// Mirrors the usage bar's balance_low copy, so "turn on" only shows when auto top up is off.
+function lowBalanceLine(auto) {
+  if (!auto?.enabled) return 'Running low. Add funds or turn on auto top up to keep tasks running.';
+  if (auto.status === 'ok') return 'Running low. Auto top up will refill it.';
+  if (auto.status === 'pending_action') return 'Running low. Auto top up is waiting on your bank.';
+  return 'Running low. Add funds to keep tasks running.';
 }
 
 function periodLabel(spend) {
@@ -134,7 +143,7 @@ function BalanceCard({ balance, auto, spend, isBillingOwner }) {
         {empty
           ? "Empty. Paid models won't run until you add funds."
           : low
-            ? 'Running low. Add funds or turn on auto top up to keep tasks running.'
+            ? lowBalanceLine(auto)
             : 'Used by paid models, and by MindsHub Air once the free tokens run out.'}
       </div>
       {spend && (
@@ -184,7 +193,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
         <div className="flex gap-2">
           {ctx?.refresh && (
             <Button variant="default" size="sm" onClick={() => ctx.refresh()}>
-              <RefreshCw size={12} strokeWidth={1.5} aria-hidden="true" />
+              <Icon of={RefreshCw} size={12} />
               Try again
             </Button>
           )}

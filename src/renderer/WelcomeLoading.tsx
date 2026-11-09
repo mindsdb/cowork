@@ -2,6 +2,8 @@
 // the web entry's Keycloak init gate so a reload never paints an empty page.
 
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
+import { productName } from './lib/deploymentBrand';
+import { STOCK_PRODUCT_NAME } from '../shared/product-name';
 
 /**
  * Map skin + theme to the onboarding shell's look. arcade.css reads
@@ -27,7 +29,7 @@ export function WelcomeLoading({ status }: { status?: string | null }) {
     >
       <OrbitMorph state="thinking" size={72} />
       <div className="arc-welcome-title">
-        Welcome to MindsHub Cowork
+        Welcome to {productName(STOCK_PRODUCT_NAME)}
       </div>
       {status && (
         <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)' }}>

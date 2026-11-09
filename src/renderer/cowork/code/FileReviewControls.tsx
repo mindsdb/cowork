@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
+import { Textarea } from '../components/ui/Input';
+import Kbd from '../components/ui/Kbd';
 import { ConfirmModal } from '../components/ConfirmModal';
 import type { DiffFile } from './api';
 
@@ -50,31 +52,31 @@ export function FileReviewControls({
           {file.unstaged && <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => void run(() => onAction('stage'))}>Stage</Button>}
           {file.staged && <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => void run(() => onAction('unstage'))}>Unstage</Button>}
           <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => setCommenting((current) => !current)}>
-            {Ico.code(11)} Ask Codex
+            {Ico.code(12)} Ask Codex
           </Button>
           {canMutate && (
             <Button icon size="xs" variant="danger" aria-label={`Discard changes to ${file.path}`} disabled={busy || localBusy} onClick={() => setDiscardOpen(true)}>
-              {Ico.trash(11)}
+              {Ico.trash(12)}
             </Button>
           )}
         </div>
       </div>
       {commenting && (
         <div className="code-file-review__comment">
-          <textarea
+          <Textarea
             value={note}
             rows={3}
             autoFocus
             aria-label={`Review note for ${file.path}`}
             placeholder="What should change in this file?"
-            onChange={(event) => setNote(event.target.value)}
-            onKeyDown={(event) => {
+            onChange={setNote}
+            onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
               if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') void sendNote();
               if (event.key === 'Escape') setCommenting(false);
             }}
           />
           <div>
-            <span>Ctrl/⌘ ↵ to send</span>
+            <span><Kbd>Ctrl/⌘</Kbd> <Kbd>↵</Kbd> to send</span>
             <Button size="xs" variant="subtle" disabled={localBusy} onClick={() => setCommenting(false)}>Cancel</Button>
             <Button size="xs" variant="tinted" disabled={!note.trim() || localBusy} onClick={() => void sendNote()}>Send to Codex</Button>
           </div>

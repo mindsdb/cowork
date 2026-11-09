@@ -31,7 +31,7 @@ function RepositoryResults({ connectionName, query, existing, disabled, onChoose
         const added = existing.includes(repositoryKey(repository.clone_url));
         return <li key={repository.clone_url}>
           <button type="button" disabled={disabled || added} onClick={() => onChoose(repository)}>
-            <span aria-hidden="true">{Ico.code(15)}</span>
+            <span aria-hidden="true">{Ico.code(14)}</span>
             <span className="code-repository-picker__identity">
               <strong>{repository.full_name}</strong>
               <small>{repository.private ? 'Private' : 'Public'}{repository.archived ? ' · Archived' : ''}</small>
@@ -73,7 +73,7 @@ export function RepositoryPicker({ connections, existingUrls, disabled = false, 
   }}>
     <header className="code-repository-picker__header">
       <strong><img src="logos/github.svg" alt="" /> GitHub repositories</strong>
-      <Button icon size="sm" variant="subtle" aria-label="Close repository picker" disabled={disabled} onClick={onClose}>{Ico.close(13)}</Button>
+      <Button icon size="sm" variant="subtle" aria-label="Close repository picker" disabled={disabled} onClick={onClose}>{Ico.close(14)}</Button>
     </header>
     {accounts.length > 1 && <Select value={account.name} onValueChange={(value) => { setChosenAccount(value); setQuery(''); }}
       options={accounts.map((item) => ({ value: item.name, label: item.user_label || item.display_name || item.name }))}
@@ -89,7 +89,7 @@ export function RepositoryPicker({ connections, existingUrls, disabled = false, 
     </>}
     <div className="code-repository-picker__url">
       <Button size="sm" variant="subtle" onClick={() => setUrlOpen((value) => !value)} disabled={disabled} aria-expanded={urlOpen}>
-        {Ico.link(13)} Paste repository URL
+        {Ico.link(14)} Paste repository URL
       </Button>
       {urlOpen && <div className="code-resource-url-row">
         <Input value={url} onChange={setUrl} placeholder="https://github.com/org/repository.git" aria-label="Git repository URL" disabled={disabled} autoFocus

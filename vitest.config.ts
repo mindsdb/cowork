@@ -7,9 +7,18 @@ const compilerPreset = reactCompilerPreset();
 // Main (node), renderer (happy-dom), and compiled credential-refresh regressions.
 // setupFiles must be listed per project — root-level ones don't reach projects.
 export default defineConfig({
+  /* Renderer tests run as the hosted web build, a web build with the platform
+     UI on, unless they mock lib/deployment or lib/buildTarget. */
+  define: { __PLATFORM_UI__: 'true', __WEB_BUILD__: 'true' },
   plugins: [react()],
   test: {
     sequence: { setupFiles: 'list' },
+    /* Vitest never loads the renderer's Vite config, so the document preview
+       bundles and their registry are generated here before any test imports them. */
+    globalSetup: ['scripts/preview-bundles.mjs'],
+    /* The generator runs on Node's own loader in its tests, as it does in the
+       npm hooks, so its import() of a renderer's build.config.mjs works. */
+    server: { deps: { external: [/\/scripts\/preview-bundles\.mjs$/] } },
     // Floors are measured values — raise them as coverage grows, never lower.
     // `include` = whole src tree, so new untested modules count against them.
     coverage: {
@@ -30,6 +39,16 @@ export default defineConfig({
         'src/main/server-source.ts': { statements: 100, branches: 90 },
         'src/shared/server-status.ts': { statements: 100, branches: 100 },
         'src/shared/minds-endpoint.ts': { statements: 100, branches: 100 },
+        // The deployment brand's reader and page tags. A field check that stops
+        // running fails nowhere visible: the page just shows stock text, or
+        // shows a brand value it should have dropped.
+        'src/shared/deployment-brand.ts': { statements: 100, branches: 100 },
+        'src/renderer/lib/deploymentBrand.ts': { statements: 100, branches: 100 },
+        // The brand's style defaults and the pause on a failed load, which
+        // keeps a broken deploy from overwriting a browser's saved style.
+        'src/renderer/lib/skins.ts': { statements: 91, branches: 97 },
+        // The style lock's hold on the corner and phone top-bar buttons.
+        'src/renderer/cowork/lib/displayToggle.js': { statements: 100, branches: 100 },
         'src/main/server-process.ts': { statements: 60, branches: 45 },
         // The sign-out sequence and the sidecar restart it no longer waits for.
         // Pinned for the same reason as the entries above: the ordering has no
@@ -43,6 +62,10 @@ export default defineConfig({
         'src/renderer/cowork/hooks/useLogout.js': { statements: 100, branches: 93 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
+        // What a comparison treats as the same question, a finished turn and a
+        // continued side's cut-off. A wrong answer here reads as a plausible
+        // screen, so the tests that pin it stay pinned.
+        'src/renderer/cowork/lib/compareSides.js': { statements: 98, branches: 93 },
         // The liveness decision and its store. Pinned for the same reason as the
         // entries above: these exist because a stale artifact card shipped, and
         // the value is entirely in the branch table that proves each fail-open
@@ -77,6 +100,24 @@ export default defineConfig({
         // that proves the refusals still fire.
         'src/main/account-data.ts': { statements: 99, branches: 98 },
         'src/renderer/cowork/lib/accountLocalState.ts': { statements: 90, branches: 94 },
+        /* Whether a skill offers "Who can use it". A missing server flag must
+           read as no on the desktop too, and a control that wrongly appears
+           looks like a working feature until its request is refused. */
+        'src/renderer/cowork/lib/skillSharing.js': { statements: 100, branches: 100 },
+        /* The desktop in-app browser's guards: the bridge's request checks,
+           the profile's lockdown and destination refusals, the host's
+           downloads and account moves, and the tasks' control and caps. A
+           refusal that stops firing looks like a browser that works, so the
+           branch table is what proves each one still does. */
+        'src/main/browser-bridge.ts': { statements: 86, branches: 78 },
+        'src/main/browser-profile.ts': { statements: 91, branches: 88 },
+        'src/main/browser-host.ts': { statements: 89, branches: 78 },
+        'src/main/browser-sessions.ts': { statements: 94, branches: 84 },
+        /* The web commit hold's card and the web pane's viewer link. A card
+           answered without the browser's approval, or a frame for another
+           session's viewer, looks like a working page. */
+        'src/renderer/cowork/lib/browserApproval.js': { statements: 98, branches: 95 },
+        'src/renderer/cowork/lib/browserSession.js': { statements: 98, branches: 95 },
       },
     },
     projects: [
@@ -113,6 +154,18 @@ export default defineConfig({
           name: 'renderer-compiled',
           environment: 'happy-dom',
           include: [
+            // App/Settings regressions import these compiled consumers too. Run
+            // their dedicated cases so coverage includes both execution forms.
+            'src/renderer/cowork/hooks/useLogout.test.js',
+            // The production build compiles the pane: its memoized handlers read state during render.
+            'src/renderer/cowork/components/artifact/LiveAppPreview.test.jsx',
+            'src/renderer/cowork/components/artifact/ArtifactViewerBody.liveApp.test.jsx',
+            'src/renderer/cowork/components/WorkspaceSelector.test.jsx',
+            'src/renderer/cowork/App.appearancePreview.test.jsx',
+            'src/renderer/cowork/views/settings/SettingsView.providerTestPending.test.jsx',
+            'src/renderer/cowork/views/settings/SettingsView.providerTesting.test.jsx',
+            'src/renderer/cowork/views/settings/useSettingsDraft.test.jsx',
+            'src/renderer/cowork/views/settings/SettingsView.discardUnsaved.test.jsx',
             'src/renderer/cowork/code/useCodingCatalog.test.tsx',
             'src/renderer/cowork/code/CodeComposer.test.tsx',
             'src/renderer/cowork/code/CodeView.test.tsx',

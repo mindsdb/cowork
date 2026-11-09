@@ -91,6 +91,9 @@ function sourcePrompt(contexts: SourceContext[]): string {
 }
 
 
+const NO_CODING_MODELS = 'No coding models are available.';
+
+
 export function useNewTaskDraft({
   busy,
   defaultEngineId,
@@ -364,11 +367,15 @@ export function useNewTaskDraft({
        mentions them. */
     if (selectedModelOption?.restricted) return 'An admin restricted this model. Choose another model.';
     if (selectedModelOption?.locked) return 'Add credits or choose an available model.';
-    if (enabledModelOptions.length === 0) return catalogError ? '' : 'No coding models are available.';
+    if (enabledModelOptions.length === 0) return catalogError ? '' : NO_CODING_MODELS;
     if (!selectedModelValid) return 'Choose a model to continue.';
     if (!workspaceSelected) return 'Choose a folder to continue.';
     return '';
   })();
+
+  // cowork-server answers an empty model list, not an error, when MindsHub is
+  // not connected, so this is how a user without MindsHub first shows up.
+  const noCodingModels = readinessMessage === NO_CODING_MODELS;
 
   const readinessKind = loading || busy
     ? 'loading'
@@ -421,6 +428,7 @@ export function useNewTaskDraft({
     prompt,
     setPrompt,
     catalogError: catalogError || codingCatalog.error || codingCatalog.modelError(engineId),
+    noCodingModels,
     engineId,
     setEngineId,
     model,

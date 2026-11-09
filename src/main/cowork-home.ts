@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Single source of truth for the global Cowork config home.
 //
 // History: the desktop app, cowork-server, and the agent used to scatter
@@ -183,7 +184,7 @@ export function ensureAccountDataRoot(): string {
       // Best-effort: a root that cannot be tightened is still the right root,
       // and failing the session over file modes would be worse than the
       // exposure it guards against.
-      console.warn('[cowork-home] could not restrict the account data root', err);
+      diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_restrict_the_account_data_root", '[cowork-home] could not restrict the account data root', err);
     }
   }
   return root;
@@ -202,11 +203,23 @@ export function ensureAccountDataRoot(): string {
  * with the account, so a second account on one machine accepts terms again.
  */
 export function coworkEnvPath(): string {
-  return path.join(accountDataRoot(), '.env');
+  return coworkEnvPathIn(accountDataRoot());
 }
 
 export function coworkStatePath(): string {
-  return path.join(accountDataRoot(), 'state.json');
+  return coworkStatePathIn(accountDataRoot());
+}
+
+/** The account's dotenv under a given account root, for a caller that captured
+ *  the root before the account record could change (sign-out). */
+export function coworkEnvPathIn(accountRoot: string): string {
+  return path.join(accountRoot, '.env');
+}
+
+/** The account's provider state under a given account root, for the same
+ *  reason as `coworkEnvPathIn`. */
+export function coworkStatePathIn(accountRoot: string): string {
+  return path.join(accountRoot, 'state.json');
 }
 
 export function readEnvFile(): Record<string, string> {
@@ -269,7 +282,7 @@ export function carryTermsConsentToFreshRoot(disclaimedHome: string): void {
       mode: 0o600,
     });
   } catch (err) {
-    console.warn('[cowork-home] could not carry the terms answer onto the fresh root', err);
+    diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_carry_the_terms_answer_onto_the_fresh_root", '[cowork-home] could not carry the terms answer onto the fresh root', err);
   }
 }
 

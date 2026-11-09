@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 import { clearDraftsForOrganizationSwitch } from './draftStore';
 import { clearCachedSettings } from './settingsCache';
 import {
@@ -212,7 +213,7 @@ export function prepareForOrganizationReload({
     clearDraftsForOrganizationSwitch();
   }
   if (!consumeReloadBudget()) {
-    console.warn('[organization] too many reloads in a row; staying put and refusing tokens');
+    diagnostic("renderer.cowork.lib.organizationTransition", "WARNING", "organization_too_many_reloads_in_a_row_staying_put_and_refusing_tokens", '[organization] too many reloads in a row; staying put and refusing tokens');
     reloadBlocked = true;
     for (const listener of reloadBlockedListeners) listener();
     return;

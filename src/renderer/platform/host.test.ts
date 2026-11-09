@@ -20,11 +20,36 @@ const keycloakMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/keycloak', () => keycloakMock);
 
+// Wraps the real diagnostic so tests can assert which events host.ts emitted.
+const diagnosticSpy = vi.hoisted(() => vi.fn());
+vi.mock('../../shared/diagnostics', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../shared/diagnostics')>();
+  return {
+    ...actual,
+    diagnostic: (...args: Parameters<typeof actual.diagnostic>) => {
+      diagnosticSpy(...args);
+      actual.diagnostic(...args);
+    },
+  };
+});
+
+// Define only userAgentData: spreading navigator would drop its prototype getters.
+// `undefined` models a Chromium without the API.
+const withUaPlatformVersion = (platformVersion: unknown) => {
+  Object.defineProperty(window.navigator, 'userAgentData', {
+    configurable: true,
+    value: platformVersion === undefined
+      ? undefined
+      : { getHighEntropyValues: vi.fn(async () => ({ platformVersion })) },
+  });
+};
+
 function setUrl(url: string) {
   (window as unknown as { happyDOM: { setURL(u: string): void } }).happyDOM.setURL(url);
 }
 
 beforeEach(() => {
+  diagnosticSpy.mockClear();
   delete (window as unknown as Record<string, unknown>).antontron;
   keycloakMock.listWebOrganizations.mockReset();
   keycloakMock.switchWebOrganization.mockReset();
@@ -36,6 +61,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete (window.navigator as unknown as Record<string, unknown>).userAgentData;
   vi.unstubAllGlobals();
   setUrl('http://localhost:3000/');
 });
@@ -201,8 +227,9 @@ describe('MindsHub organizations', () => {
 });
 
 describe('mindshubFinalize() across shell versions', () => {
-  // Renderer bundles update over the air while `src/main/**` only arrives in a
-  // new installer, so a newer renderer against an older shell is routine. An
+  // Renderer bundles update over the air while `src/main/**` only arrives when
+  // the shell relaunches into a new build, so a newer renderer against an older
+  // shell is routine (ENG-1047 bounds how much older, see getShellSupport). An
   // older shell's `mindshubFinalize` takes only `organizationId` and silently
   // drops a second argument, which is how an explicit pick would reach main
   // without the flag that protects it (ENG-2199).
@@ -263,6 +290,12 @@ describe('web mode (no bridge)', () => {
     expect(host.codeModeAvailable).toBe(false);
   });
 
+  it('supportsDocumentPreview is true on web, where no bridge decides it', async () => {
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(true);
+    expect(host.host.supportsDocumentPreview).toBe(true);
+  });
+
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
     const host = await importHost();
     expect(host.getApiOrigin()).toBe('http://localhost:3000');
@@ -307,7 +340,86 @@ describe('web mode (no bridge)', () => {
     const host = await importHost();
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     await host.openExternal('https://example.com');
-    expect(open).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
+    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer');
+  });
+
+  it('openExternal opens a mailto: link from chat', async () => {
+    const host = await importHost();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    open.mockClear();
+    await host.openExternal('mailto:team@example.com');
+    expect(open).toHaveBeenCalledWith('mailto:team@example.com', '_blank', 'noopener,noreferrer');
+  });
+
+  it.each(['javascript:alert(document.domain)', 'file:///etc/passwd', 'data:text/html,<script>1</script>', 'not a url'])(
+    'openExternal refuses a non-http(s)/mailto URL instead of opening it: %s',
+    async (url) => {
+      const host = await importHost();
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      // Spies are not restored between tests in this file, so drop earlier calls.
+      open.mockClear();
+      await host.openExternal(url);
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+
+  it('openPendingTab opens a blank tab with its opener already cut', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    open.mockClear();
+
+    const pending = host.openPendingTab();
+
+    expect(open).toHaveBeenCalledWith('', '_blank');
+    expect(pending).not.toBeNull();
+    expect(tab.opener).toBeNull();
+    expect(tab.location.replace).not.toHaveBeenCalled();
+  });
+
+  it('openPendingTab returns null when the browser blocks the tab', async () => {
+    const host = await importHost();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    expect(host.openPendingTab()).toBeNull();
+  });
+
+  it('a pending tab goes to an https address', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(host.openPendingTab()?.navigate('https://draft.example/_t/x/index.html')).toBe(true);
+    expect(tab.location.replace).toHaveBeenCalledWith('https://draft.example/_t/x/index.html');
+  });
+
+  it.each(['javascript:alert(document.domain)', 'file:///etc/passwd', 'not a url'])(
+    'a pending tab refuses what openExternal refuses, and stays where it is: %s',
+    async (url) => {
+      const host = await importHost();
+      const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
+      vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+      expect(host.openPendingTab()?.navigate(url)).toBe(false);
+      expect(tab.location.replace).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a pending tab the user closed is left closed, and that is not a failure', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, closed: true, location: { replace: vi.fn() }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(host.openPendingTab()?.navigate('https://draft.example/_t/x/index.html')).toBe(true);
+    expect(tab.location.replace).not.toHaveBeenCalled();
+  });
+
+  it('closing a pending tab the user already closed throws nothing', async () => {
+    const host = await importHost();
+    const tab = { opener: {}, location: { replace: vi.fn() }, close: vi.fn(() => { throw new Error('gone'); }) };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+
+    expect(() => host.openPendingTab()?.close()).not.toThrow();
+    expect(tab.close).toHaveBeenCalled();
   });
 
   it('MindsHub PKCE bridges refuse with a reason (web uses Keycloak redirect)', async () => {
@@ -348,6 +460,61 @@ describe('electron mode (bridge present)', () => {
     host = await importHost();
     expect(host.codeModeAvailable).toBe(false);
   });
+
+  it('hears the in-app browser registration only on a shell that hosts the browser', async () => {
+    const stop = vi.fn();
+    const subscribe = vi.fn(() => stop);
+    const cb = vi.fn();
+    (window as unknown as Record<string, unknown>).antontron = { supportsInAppBrowser: true, browser: {}, onBrowserRegistered: subscribe };
+    let host = await importHost();
+    expect(host.host.onInAppBrowserRegistered(cb)).toBe(stop);
+    expect(subscribe).toHaveBeenCalledWith(cb);
+
+    subscribe.mockClear();
+    for (const bridge of [{ supportsInAppBrowser: false, onBrowserRegistered: subscribe }, { supportsInAppBrowser: true, browser: {} }]) {
+      (window as unknown as Record<string, unknown>).antontron = bridge;
+      host = await importHost();
+      expect(host.onInAppBrowserRegistered(cb)).toEqual(expect.any(Function));
+    }
+    delete (window as unknown as Record<string, unknown>).antontron;
+    host = await importHost();
+    expect(host.onInAppBrowserRegistered(cb)).toEqual(expect.any(Function));
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+
+  it('answers that nothing exists or draws where no shell hosts the in-app browser', async () => {
+    const bounds = { x: 0, y: 0, width: 800, height: 800 };
+    for (const bridge of [undefined, { supportsInAppBrowser: false }]) {
+      if (bridge) (window as unknown as Record<string, unknown>).antontron = bridge;
+      else delete (window as unknown as Record<string, unknown>).antontron;
+      const host = await importHost();
+      await expect(host.inAppBrowser.show('t-a', bounds)).resolves.toEqual({ exists: false, drawn: false });
+      await expect(host.inAppBrowser.setBounds(bounds)).resolves.toEqual({ drawn: false });
+    }
+  });
+
+  it('supportsDocumentPreview is true only when the bridge reports literal true', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: true };
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(true);
+    expect(host.host.supportsDocumentPreview).toBe(true);
+  });
+
+  it('supportsDocumentPreview is false on a shell whose bridge omits the flag', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+    expect(host.supportsDocumentPreview).toBe(false);
+    expect(host.host.supportsDocumentPreview).toBe(false);
+  });
+
+  it.each([false, 'true', 1, {}])(
+    'supportsDocumentPreview is false when the bridge reports %j',
+    async (value) => {
+      (window as unknown as Record<string, unknown>).antontron = { supportsDocumentPreview: value };
+      const host = await importHost();
+      expect(host.supportsDocumentPreview).toBe(false);
+    },
+  );
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {
     (window as unknown as Record<string, unknown>).antontron = { serverPort: 12345 };
@@ -914,6 +1081,34 @@ describe('electron mode (bridge present)', () => {
   });
 });
 
+describe('checkConfigured() on web reads the deployment flags from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => body }));
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  }
+
+  it('reports live apps only when /health says true', async () => {
+    const fetch = stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: false, live_apps: true });
+    const host = await importHost();
+
+    await expect(host.checkConfigured()).resolves.toEqual({
+      configured: true, provider: 'minds_cloud', orgMode: false, liveApps: true, draftLinks: false,
+    });
+    expect(String((fetch.mock.calls[0] as unknown[])[0])).toMatch(/\/api\/v1\/health\/$/);
+  });
+
+  it.each([
+    ['absent', {}],
+    ['false', { live_apps: false }],
+    ['a string', { live_apps: 'true' }],
+  ])('reports no live apps when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, ...flag });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ liveApps: false });
+  });
+});
+
 describe('web settings access — loopback-gated /raw (ENG-817)', () => {
   // In the console-hosted web build the browser reaches cowork-server from the
   // docker bridge, not loopback, so /settings/raw 403s. The .env is legacy and
@@ -975,5 +1170,421 @@ describe('web settings access — loopback-gated /raw (ENG-817)', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network down'); }));
     const host = await importHost();
     await expect(host.saveSettings('ANTON_X=1')).rejects.toThrow();
+  });
+});
+
+describe('getShellSupport() — the supported desktop window (ENG-1047)', () => {
+  // The UI bundle hot-updates while the shell waits for a relaunch, so this
+  // check runs in the renderer and reads the installed shell over the bridge
+  // and the newest published shell from the live manifest. It must show
+  // nothing on web, on stable/preview, and whenever a version it needs cannot
+  // be read — only a prod shell below the window gets a verdict of `too-old`.
+  const manifest = (shellVersion: unknown) =>
+    vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion }) }));
+
+
+  it('caps a macOS 12 prod shell that is not the newest', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    withUaPlatformVersion('12.7.4');
+    (window as unknown as Record<string, unknown>).antontron = {
+      getPlatform: () => 'darwin',
+      getUIVersion: async () => ({ app: '2.26.10.1.1', ui: '2.26.10.4.1', source: 'ota', buildKind: 'prod' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'os-capped', reason: 'behind', macosMajor: 12 });
+  });
+
+  it('reads the macOS major only on macOS, and null when it cannot', async () => {
+    withUaPlatformVersion('6.8.0'); // Linux reports the kernel here
+    (window as unknown as Record<string, unknown>).antontron = { getPlatform: () => 'linux' };
+    let host = await importHost();
+    await expect(host.getMacosMajor()).resolves.toBeNull();
+
+    withUaPlatformVersion('15.1.0');
+    (window as unknown as Record<string, unknown>).antontron = { getPlatform: () => 'darwin' };
+    host = await importHost();
+    await expect(host.getMacosMajor()).resolves.toBe(15);
+
+    withUaPlatformVersion('');
+    host = await importHost();
+    await expect(host.getMacosMajor()).resolves.toBeNull();
+
+    withUaPlatformVersion(undefined);
+    host = await importHost();
+    await expect(host.getMacosMajor()).resolves.toBeNull();
+  });
+
+  it('judges a prod shell below the floor as too old', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.9.1.3', ui: '2.26.10.4.1', source: 'ota', buildKind: 'prod' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({
+      status: 'too-old', reason: 'below-floor', shellVersion: '2.26.9.1.3', latestShellVersion: '2.26.10.4.1',
+    });
+  });
+
+  it('judges the floor shell and the newest shell as supported, whatever the UI version', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    (window as unknown as Record<string, unknown>).antontron = {
+      // A legacy shell: no buildKind on the bridge reply.
+      getUIVersion: async () => ({ app: '2.26.9.21.1', ui: '2.26.11.20.1', source: 'ota' }),
+    };
+    let host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'supported' });
+
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.10.4.1', ui: null, source: 'bundled', buildKind: 'prod' }),
+    };
+    host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'supported', daysBehind: 0 });
+  });
+
+  it('never judges a stable or preview shell', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    for (const buildKind of ['stable', 'preview']) {
+      (window as unknown as Record<string, unknown>).antontron = {
+        getUIVersion: async () => ({ app: '2.26.8.1.1-597-g0f28d663', ui: null, source: 'bundled', buildKind }),
+      };
+      const host = await importHost();
+      await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'not-applicable', reason: 'non-prod' });
+    }
+    // A stable shell too old to report its build kind still carries the
+    // git-describe distance that a shipped prod shell never has.
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.8.1.1-597-g0f28d663', ui: null, source: 'bundled' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'not-applicable', reason: 'untagged-shell' });
+  });
+
+  it('shows nothing when the installed version does not parse', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    (window as unknown as Record<string, unknown>).antontron = {
+      // The package.json fallback a never-stamped build reports (ENG-2988).
+      getUIVersion: async () => ({ app: '2.0.7', ui: null, source: 'bundled' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'not-applicable', reason: 'unparseable-shell' });
+  });
+
+  it('shows nothing when the manifest cannot be read or has no shellVersion', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.9.1.3', ui: null, source: 'bundled', buildKind: 'prod' }),
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    let host = await importHost();
+    await expect(host.getShellSupport()).resolves.toBeNull();
+
+    vi.stubGlobal('fetch', manifest(undefined));
+    host = await importHost();
+    await expect(host.getShellSupport()).resolves.toBeNull();
+  });
+
+  it('is null on web, where there is no shell', async () => {
+    vi.stubGlobal('fetch', manifest('2.26.10.4.1'));
+    const host = await importHost();
+    await expect(host.getShellSupport()).resolves.toBeNull();
+  });
+
+  it('fetches the manifest once per renderer for both the reinstall notice and the window check', async () => {
+    const fetchMock = manifest('2.26.10.4.1');
+    vi.stubGlobal('fetch', fetchMock);
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.9.1.3', ui: null, source: 'bundled', buildKind: 'prod' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+    await expect(host.getShellSupport()).resolves.toMatchObject({ status: 'too-old' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads the manifest for an explicit check, so a shell published after launch is reported', async () => {
+    // Legacy shells (no getShellUpdate bridge) reach the manifest through
+    // Settings' Check for updates. The launch-time callers share one read, but
+    // an explicit check must not be stuck on it.
+    let shellVersion = '2.26.10.4.1';
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.9.1.3', ui: null, source: 'bundled', buildKind: 'prod' }),
+    };
+    const host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+    await expect(host.getShellSupport()).resolves.toMatchObject({ latestShellVersion: '2.26.10.4.1' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    shellVersion = '2.26.10.7.1';
+    await expect(host.checkForUpdates()).resolves.toMatchObject({
+      shellUpdateAvailable: true, shellVersion: '2.26.10.7.1',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The fresh read becomes the shared one; a later mount-time read reuses it.
+    await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.7.1' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('is on the curated `host` object, which App.tsx and Settings call through', async () => {
+    const mod = await importHost();
+    expect(typeof mod.host.getShellSupport).toBe('function');
+  });
+});
+
+describe('shell update offers on macOS below the shell minimum', () => {
+
+  const shellReply = {
+    ok: true,
+    offline: false,
+    updateAvailable: true,
+    uiUpdateAvailable: false,
+    serverUpdateAvailable: false,
+    shellUpdateAvailable: true,
+    shellVersion: '2.26.10.4.1',
+    shellDownloadUrl: 'https://example.test/installer.pkg',
+  };
+  const autoFailed = {
+    phase: 'failed' as const,
+    mode: 'manual' as const,
+    channel: 'prod' as const,
+    currentVersion: '2.26.10.1.1',
+    recoverable: false,
+    errorCode: 'x',
+  };
+  const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  const setup = async (platform: string, platformVersion: unknown, extra: Record<string, unknown> = {}) => {
+    withUaPlatformVersion(platformVersion);
+    const listeners: Record<string, (v: unknown) => void> = {};
+    (window as unknown as Record<string, unknown>).antontron = {
+      getPlatform: () => platform,
+      getShellUpdate: vi.fn(async () => ({
+        available: true,
+        latestVersion: '2.26.10.4.1',
+        currentVersion: '2.26.10.1.1',
+        downloadUrl: 'https://example.test/installer.pkg',
+      })),
+      checkForUpdate: vi.fn(async () => shellReply),
+      onUpdateStatus: vi.fn((cb: (v: unknown) => void) => {
+        listeners.status = cb;
+        return () => { delete listeners.status; };
+      }),
+      getShellAutoUpdate: vi.fn(async () => autoFailed),
+      checkShellAutoUpdate: vi.fn(async () => autoFailed),
+      downloadShellAutoUpdate: vi.fn(async () => autoFailed),
+      onShellAutoUpdate: vi.fn((cb: (v: unknown) => void) => {
+        listeners.auto = cb;
+        return () => { delete listeners.auto; };
+      }),
+      ...extra,
+    };
+    return { host: await importHost(), listeners };
+  };
+
+  describe('macOS 12', () => {
+    it('reports no shell update although the bridge has one', async () => {
+      const { host } = await setup('darwin', '12.7.4');
+      await expect(host.getShellUpdate()).resolves.toBeNull();
+    });
+
+    it('reports no shell update from the manifest fallback either', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion: '2.26.10.4.1' }) })));
+      const { host } = await setup('darwin', '12.7.4', {
+        getShellUpdate: undefined,
+        getUIVersion: async () => ({ app: '2.26.10.1.1', ui: '2.26.10.4.1', source: 'ota', buildKind: 'prod' }),
+      });
+      await expect(host.getShellUpdate()).resolves.toBeNull();
+    });
+
+    it('strips the shell offer from a check result', async () => {
+      const { host } = await setup('darwin', '12.7.4');
+      const result = await host.checkForUpdates();
+      expect(result).toMatchObject({
+        ok: true, updateAvailable: false, shellUpdateAvailable: false, uiUpdateAvailable: false,
+      });
+      expect(result).not.toHaveProperty('shellVersion');
+      expect(result).not.toHaveProperty('shellDownloadUrl');
+    });
+
+    it('keeps a UI update that comes with a shell offer', async () => {
+      const { host } = await setup('darwin', '12.7.4', {
+        checkForUpdate: vi.fn(async () => ({ ...shellReply, uiUpdateAvailable: true })),
+      });
+      const result = await host.checkForUpdates();
+      expect(result).toMatchObject({ updateAvailable: true, uiUpdateAvailable: true, shellUpdateAvailable: false });
+      expect(result).not.toHaveProperty('shellVersion');
+    });
+
+    it('strips the shell offer from a legacy check reply plus manifest result', async () => {
+      const { host } = await setup('darwin', '12.7.4', {
+        checkForUpdate: vi.fn(async () => ({ updateAvailable: false })),
+      });
+      await expect(host.checkForUpdates()).resolves.toMatchObject({ updateAvailable: false, shellUpdateAvailable: false });
+    });
+
+    it('drops shell-available pushes and forwards other phases', async () => {
+      const { host, listeners } = await setup('darwin', '12.7.4');
+      const cb = vi.fn();
+      host.onUpdateStatus(cb);
+      listeners.status({ phase: 'available' });
+      expect(cb).toHaveBeenCalledWith({ phase: 'available' });
+      listeners.status({ phase: 'shell-available', version: '2.26.10.4.1' });
+      await flush();
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('turns every auto-update snapshot into idle', async () => {
+      const { host, listeners } = await setup('darwin', '12.7.4');
+      for (const read of [host.getShellAutoUpdate, host.checkShellAutoUpdate, host.downloadShellAutoUpdate]) {
+        await expect(read()).resolves.toMatchObject({ phase: 'idle', currentVersion: '2.26.10.1.1', errorCode: 'x' });
+      }
+      const cb = vi.fn();
+      host.onShellAutoUpdate(cb);
+      listeners.auto(autoFailed);
+      await flush();
+      expect(cb).toHaveBeenCalledWith(expect.objectContaining({ phase: 'idle', errorCode: 'x' }));
+    });
+
+    it('keeps snapshot order and stops forwarding after unsubscribe', async () => {
+      const { host, listeners } = await setup('darwin', '12.7.4');
+      const seen: string[] = [];
+      const off = host.onShellAutoUpdate((s) => seen.push(`${s.targetVersion}`));
+      listeners.auto({ ...autoFailed, targetVersion: 'a' });
+      listeners.auto({ ...autoFailed, targetVersion: 'b' });
+      await flush();
+      expect(seen).toEqual(['a', 'b']);
+      listeners.auto({ ...autoFailed, targetVersion: 'c' });
+      off();
+      await flush();
+      expect(seen).toEqual(['a', 'b']);
+    });
+
+    it('keeps delivering auto-update snapshots after a callback throws', async () => {
+      const { host, listeners } = await setup('darwin', '12.7.4');
+      const seen: string[] = [];
+      host.onShellAutoUpdate((s) => {
+        seen.push(`${s.targetVersion}`);
+        if (s.targetVersion === 'a') throw new Error('boom');
+      });
+      listeners.auto({ ...autoFailed, targetVersion: 'a' });
+      listeners.auto({ ...autoFailed, targetVersion: 'b' });
+      await flush();
+      expect(seen).toEqual(['a', 'b']);
+    });
+  });
+
+  describe('macOS 15', () => {
+    it('passes every offer through', async () => {
+      const { host, listeners } = await setup('darwin', '15.1.0');
+      await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+      await expect(host.checkForUpdates()).resolves.toMatchObject({
+        updateAvailable: true, shellUpdateAvailable: true, shellVersion: '2.26.10.4.1',
+      });
+      const cb = vi.fn();
+      host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      await flush();
+      expect(cb).toHaveBeenCalledWith({ phase: 'shell-available' });
+      await expect(host.getShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+      const auto = vi.fn();
+      host.onShellAutoUpdate(auto);
+      listeners.auto(autoFailed);
+      await flush();
+      expect(auto).toHaveBeenCalledWith(expect.objectContaining({ phase: 'failed' }));
+    });
+
+    it('passes the auto-update check and download snapshots through', async () => {
+      const { host } = await setup('darwin', '15.1.0');
+      await expect(host.checkShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+      await expect(host.downloadShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+    });
+
+    it('survives a throwing status callback and still delivers the next push', async () => {
+      const { host, listeners } = await setup('darwin', '15.1.0');
+      const seen: string[] = [];
+      host.onUpdateStatus((status) => {
+        seen.push(status.version ?? '');
+        if (status.version === 'a') throw new Error('boom');
+      });
+      listeners.status({ phase: 'shell-available', version: 'a' });
+      listeners.status({ phase: 'shell-available', version: 'b' });
+      await flush();
+      expect(seen).toEqual(['a', 'b']);
+      expect(diagnosticSpy).toHaveBeenCalledWith(
+        'renderer.platform.host', 'WARNING', 'host_update_status_callback_failed',
+        '[host] an update status callback threw', expect.any(Error),
+      );
+    });
+
+    it('does not forward a pending shell-available push after unsubscribe', async () => {
+      const { host, listeners } = await setup('darwin', '15.1.0');
+      const cb = vi.fn();
+      const off = host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      off();
+      await flush();
+      expect(cb).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Linux', () => {
+    it('passes every offer through whatever the UA data says', async () => {
+      const { host, listeners } = await setup('linux', '6.8.0');
+      await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+      await expect(host.checkForUpdates()).resolves.toMatchObject({ shellUpdateAvailable: true });
+      const cb = vi.fn();
+      host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      await flush();
+      expect(cb).toHaveBeenCalledWith({ phase: 'shell-available' });
+      await expect(host.getShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+    });
+  });
+
+  describe('macOS with an unreadable version', () => {
+    it('does not block offers, and says so once', async () => {
+      const { host, listeners } = await setup('darwin', undefined);
+      await host.getShellUpdate();
+      await host.checkForUpdates();
+      expect(diagnosticSpy.mock.calls.filter((c) => c[2] === 'host_macos_version_unreadable')).toHaveLength(1);
+      expect(diagnosticSpy).toHaveBeenCalledWith(
+        'renderer.platform.host', 'WARNING', 'host_macos_version_unreadable',
+        '[host] could not read the macOS version; shell offers stay visible',
+      );
+      await expect(host.getShellUpdate()).resolves.toMatchObject({ version: '2.26.10.4.1' });
+      await expect(host.checkForUpdates()).resolves.toMatchObject({ updateAvailable: true, shellUpdateAvailable: true });
+      const cb = vi.fn();
+      host.onUpdateStatus(cb);
+      listeners.status({ phase: 'shell-available' });
+      await flush();
+      expect(cb).toHaveBeenCalledWith({ phase: 'shell-available' });
+      await expect(host.getShellAutoUpdate()).resolves.toMatchObject({ phase: 'failed' });
+    });
+  });
+});
+
+// toMatchObject, not toEqual: other deployment flags read from /health sit
+// next to this one in the same result.
+describe('checkConfigured() on web reads draft_links from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => body })));
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('reports draft links only when /health says true', async () => {
+    stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: true, draft_links: true });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ orgMode: true, draftLinks: true });
+  });
+
+  it.each([
+    ['absent', {}],
+    ['false', { draft_links: false }],
+    ['a string', { draft_links: 'true' }],
+  ])('reports no draft links when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, ...flag });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ draftLinks: false });
   });
 });

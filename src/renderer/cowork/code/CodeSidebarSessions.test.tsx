@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodingSession } from './api';
@@ -27,6 +28,15 @@ function session(id: string, status: CodingSession['status'], updatedAt: string)
 }
 
 
+function rowActions() {
+  return {
+    onRename: vi.fn().mockResolvedValue(undefined),
+    onSetArchived: vi.fn().mockResolvedValue(undefined),
+    onDelete: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+
 describe('CodeSidebarSessions', () => {
   beforeEach(() => window.localStorage.clear());
 
@@ -41,6 +51,7 @@ describe('CodeSidebarSessions', () => {
         selectedId="active"
         onSelect={onSelect}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
 
@@ -62,10 +73,30 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
 
-    expect(screen.getByText('Archived')).toBeInTheDocument();
+    const archivedToggle = screen.getByRole('button', { name: /Archived/ });
+    expect(archivedToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /Task old, Completed/ })).toBeNull();
+
+    fireEvent.click(archivedToggle);
+    expect(archivedToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
+  });
+
+  it('opens the archived group when the selected task is archived', () => {
+    const sessions = [
+      session('active', 'completed', '2026-08-21T09:00:00Z'),
+      { ...session('old', 'completed', '2026-08-20T09:00:00Z'), archived: true },
+    ];
+    const props = { sessions, onSelect: vi.fn(), onSetPinned: vi.fn().mockResolvedValue(undefined), ...rowActions() };
+    const view = render(<CodeSidebarSessions {...props} selectedId={null} />);
+    expect(screen.getByRole('button', { name: /Archived/ })).toHaveAttribute('aria-expanded', 'false');
+
+    view.rerender(<CodeSidebarSessions {...props} selectedId="old" />);
+    expect(screen.getByRole('button', { name: /Archived/ })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: /Task old, Completed/ })).toBeInTheDocument();
   });
 
@@ -80,6 +111,7 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
 
@@ -99,6 +131,7 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
 
@@ -119,16 +152,20 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={onSetPinned}
+        {...rowActions()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pin Task done' }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Actions for Task done' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Pin' }));
 
     await waitFor(() => expect(onSetPinned).toHaveBeenCalledWith('done', true));
     const pinnedGroup = screen.getByRole('region', { name: 'Pinned' });
     expect(pinnedGroup).toHaveTextContent('Task done');
     expect(pinnedGroup).not.toHaveTextContent('Task running');
-    expect(screen.getByRole('button', { name: 'Unpin Task done' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Actions for Task done' }));
+    expect(screen.getByRole('menuitem', { name: 'Unpin' })).toBeInTheDocument();
   });
 
   it('restores the task and explains the problem when pinning fails', async () => {
@@ -139,14 +176,16 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={onSetPinned}
+        {...rowActions()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pin Task done' }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Actions for Task done' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Pin' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent("Couldn't pin this task.");
     expect(screen.queryByRole('region', { name: 'Pinned' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Pin Task done' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('can organize tasks by project and remembers that display choice', () => {
@@ -159,6 +198,7 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
 
@@ -187,6 +227,7 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
 
@@ -205,6 +246,33 @@ describe('CodeSidebarSessions', () => {
     expect(container.querySelectorAll('.code-status-dot.is-unread')).toHaveLength(1);
   });
 
+  it('shows row dates and group counts only with nav-panel counters on, as Cowork does', () => {
+    const sessions = [
+      { ...session('done', 'completed', '2026-08-21T12:00:00Z'), pinned: true },
+      session('approval', 'awaiting_approval', '2026-08-21T12:00:00Z'),
+    ];
+    const props = {
+      sessions,
+      selectedId: null,
+      onSelect: vi.fn(),
+      onSetPinned: vi.fn().mockResolvedValue(undefined),
+      ...rowActions(),
+    };
+    const { container, rerender } = render(<CodeSidebarSessions {...props} />);
+    const row = (id: string) => screen.getByRole('button', { name: new RegExp(`^Task ${id},`) }).closest('.code-sidebar-session-row')!;
+
+    // Off: no date and no count, so a resting title has the row to itself.
+    expect(row('done').querySelector('.code-sidebar-session__aside')).toBeNull();
+    expect(row('done')).not.toHaveClass('has-aside');
+    expect(container.querySelector('.code-sidebar-session-group__label b')).toBeNull();
+    // Live status is not a counter: what needs the user still shows.
+    expect(row('approval')).toHaveTextContent('Needs approval');
+
+    rerender(<CodeSidebarSessions {...props} showCounters />);
+    expect(row('done').querySelector('.code-sidebar-session__aside-label')).not.toBeNull();
+    expect(container.querySelector('.code-sidebar-session-group__label b')).toHaveTextContent('1');
+  });
+
   it('keeps each row to one line without repeating the shared project name', () => {
     render(
       <CodeSidebarSessions
@@ -215,6 +283,7 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
     const button = screen.getByRole('button', { name: /^Task a,/ });
@@ -231,6 +300,7 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
 
@@ -245,7 +315,7 @@ describe('CodeSidebarSessions', () => {
   it('clears the unread mark once the task has been opened', () => {
     window.localStorage.setItem('cowork:code-task-seen:v1', JSON.stringify({ baseline: '2026-08-21T10:00:00Z', seen: {} }));
     const sessions = [session('done', 'completed', '2026-08-21T11:00:00Z'), session('other', 'completed', '2026-08-21T09:00:00Z')];
-    const props = { sessions, onSelect: vi.fn(), onSetPinned: vi.fn().mockResolvedValue(undefined) };
+    const props = { sessions, onSelect: vi.fn(), onSetPinned: vi.fn().mockResolvedValue(undefined), ...rowActions() };
     const { rerender } = render(<CodeSidebarSessions {...props} selectedId={null} />);
     expect(screen.getByRole('button', { name: /^Task done, Completed, unread/ })).toBeInTheDocument();
 
@@ -264,6 +334,7 @@ describe('CodeSidebarSessions', () => {
         selectedId={null}
         onSelect={vi.fn()}
         onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
       />,
     );
 
@@ -274,5 +345,92 @@ describe('CodeSidebarSessions', () => {
     const older = screen.getByRole('button', { name: /Task older-running, Working/ });
     expect(newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  });
+
+  it('renames a task from its row menu', async () => {
+    const actions = rowActions();
+    render(
+      <CodeSidebarSessions
+        sessions={[session('done', 'completed', '2026-08-21T08:00:00Z')]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...actions}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Actions for Task done' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const field = screen.getByRole('textbox', { name: 'Task name' });
+    await user.clear(field);
+    await user.type(field, 'Renamed{Enter}');
+
+    await waitFor(() => expect(actions.onRename).toHaveBeenCalledWith('done', 'Renamed'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('archives and restores a task from its row menu', async () => {
+    const actions = rowActions();
+    render(
+      <CodeSidebarSessions
+        sessions={[
+          session('done', 'completed', '2026-08-21T08:00:00Z'),
+          { ...session('old', 'completed', '2026-08-20T08:00:00Z'), archived: true },
+        ]}
+        selectedId="old"
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...actions}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Actions for Task done' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    expect(actions.onSetArchived).toHaveBeenCalledWith('done', true);
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Task old' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Restore' }));
+    expect(actions.onSetArchived).toHaveBeenCalledWith('old', false);
+  });
+
+  it('deletes a task only after confirmation', async () => {
+    const actions = rowActions();
+    render(
+      <CodeSidebarSessions
+        sessions={[session('done', 'completed', '2026-08-21T08:00:00Z')]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...actions}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Actions for Task done' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(actions.onDelete).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Delete task' }));
+
+    await waitFor(() => expect(actions.onDelete).toHaveBeenCalledWith('done'));
+  });
+
+  it('keeps archive and delete unavailable while a turn is running', async () => {
+    render(
+      <CodeSidebarSessions
+        sessions={[session('running', 'running', '2026-08-21T08:00:00Z')]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onSetPinned={vi.fn().mockResolvedValue(undefined)}
+        {...rowActions()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Actions for Task running' }));
+    expect(screen.getByRole('menuitem', { name: 'Archive' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).not.toHaveAttribute('aria-disabled', 'true');
   });
 });

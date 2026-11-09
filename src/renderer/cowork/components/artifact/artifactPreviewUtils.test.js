@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  draftFileName,
   isAbsoluteArtifactPreviewUrl,
   TEXT_PREVIEW_EXTS,
   withArtifactCommentFlag,
@@ -9,11 +10,14 @@ import {
   canFetchDraftWithCredentials,
   draftNavigationIsAuthorized,
   countCsvRows,
+  csvPreviewNotice,
   csvRowsToGfmTable,
   CSV_PREVIEW_ROW_LIMIT,
   draftPreviewErrorMessage,
   parseCsv,
+  summarizeCsvPreview,
   DRAFT_FRAGMENT_GUARD_SCRIPT,
+  limitArtifactFrames, ARTIFACT_FRAME_POLICY
 } from './artifactPreviewUtils';
 import { TEXT_PREVIEW_EXTS as SHARED_TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
 
@@ -126,6 +130,31 @@ describe('draftNavigationIsAuthorized', () => {
  * base from that URL; srcdoc needs the same base stated explicitly or every
  * relative <script src>/<link href>/anchor in the document breaks.
  */
+describe('draftFileName', () => {
+  it('names the file, decoded, without the query', () => {
+    expect(draftFileName('https://cowork.example/api/v1/artifacts/drafts/p/a/Q3%20report.html?v=2'))
+      .toBe('Q3 report.html');
+  });
+
+  it('keeps a name with a bare % literal', () => {
+    expect(draftFileName('https://cowork.example/api/v1/artifacts/drafts/p/a/100%.html')).toBe('100%.html');
+  });
+});
+
+describe('injectDraftBaseHref, base and doctype handling', () => {
+  const url = 'https://cowork.example/api/v1/artifacts/drafts/p/a/index.html';
+
+  it('adds the base when the page has only a <base target>', () => {
+    expect(injectDraftBaseHref('<html><head><base target="_blank"></head></html>', url))
+      .toContain('<base href="https://cowork.example/api/v1/artifacts/drafts/p/a/">');
+  });
+
+  it('puts the base after a doctype, never ahead of it, when there is no <head>', () => {
+    expect(injectDraftBaseHref('<!DOCTYPE html>\n<title>x</title>', url))
+      .toMatch(/^<!DOCTYPE html><base href=/);
+  });
+});
+
 describe('injectDraftBaseHref', () => {
   it('inserts a base tag pointing at the draft directory, inside <head>', () => {
     const html = '<html><head><title>Deck</title></head><body>Hi</body></html>';
@@ -475,6 +504,28 @@ describe('countCsvRows', () => {
   ])('agrees with parseCsv on the row count for %s', (_label, text) => {
     expect(countCsvRows(text)).toBe(parseCsv(text).length);
   });
+
+  // Keep in sync with SHARED_CASES in cowork-server tests/test_artifact_preview_csv.py:
+  // the server counts the rows of a cut CSV by these same rules.
+  const SHARED_CASES = [
+    ['', 0],
+    ['id,name', 1],
+    ['id,name\n', 1],
+    ['id,name\n1,Ada\n2,Grace\n', 3],
+    ['id,name\n1,Ada', 2],
+    ['\uFEFFid,name\n1,Ada\n', 2],
+    ['\uFEFF"a,b",c\n1,2\n', 2],
+    ['id,note\n1,"two\nlines"\n', 2],
+    ['id,note\n1,"say ""hi""\nthere"\n', 2],
+    ['id,note\n1,part"ial\n2,fine\n', 3],
+    ['id,name\r1,Ada\r2,Grace\r', 3],
+    ['id,name\r\n1,Ada\r\n', 2],
+    ['"abc\n', 0],
+  ];
+
+  it.each(SHARED_CASES)('counts %j as %i records', (text, expected) => {
+    expect(countCsvRows(text)).toBe(expected);
+  });
 });
 
 describe('csvRowsToGfmTable', () => {
@@ -513,5 +564,93 @@ describe('CSV_PREVIEW_ROW_LIMIT', () => {
     expect(CSV_PREVIEW_ROW_LIMIT).toBe(100);
     expect(parseCsv(`id\n${'1\n'.repeat(500)}`, CSV_PREVIEW_ROW_LIMIT))
       .toHaveLength(CSV_PREVIEW_ROW_LIMIT + 1);
+  });
+});
+
+describe('limitArtifactFrames', () => {
+  const policy = (html) => new DOMParser().parseFromString(html, 'text/html')
+    .querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');
+
+  it('frames only what the shell allowed before live apps, in the head and on one line', () => {
+    const html = limitArtifactFrames('<!doctype html><html><head><title>x</title></head><body><script>a()</script></body></html>');
+    expect(policy(html)).toBe(ARTIFACT_FRAME_POLICY);
+    expect(ARTIFACT_FRAME_POLICY).not.toMatch(/view\.localhost/);
+    expect(html.split('\n')).toHaveLength(1);
+    expect(html.indexOf('Content-Security-Policy')).toBeLessThan(html.indexOf('<title>'));
+  });
+
+  it('heads a document that has no head of its own', () => {
+    expect(policy(limitArtifactFrames('<p>no head</p>'))).toBe(ARTIFACT_FRAME_POLICY);
+  });
+
+  it('passes an empty document through', () => {
+    expect(limitArtifactFrames('')).toBe('');
+    expect(limitArtifactFrames(undefined)).toBeUndefined();
+  });
+});
+
+describe('summarizeCsvPreview', () => {
+  const manyRows = (n) => `id,name\n${Array.from({ length: n }, (_, i) => `${i},row${i}\n`).join('')}`;
+
+  it('counts an uncut file itself', () => {
+    expect(summarizeCsvPreview(manyRows(150))).toMatchObject({ shownRows: 100, totalRows: 150, truncated: true });
+    expect(summarizeCsvPreview(manyRows(30))).toMatchObject({ shownRows: 30, totalRows: 30, truncated: false });
+  });
+
+  it('takes the total of a cut file from the source', () => {
+    const preview = summarizeCsvPreview(manyRows(150), { truncated: true, totalRows: 20_000 });
+
+    expect(preview).toMatchObject({ shownRows: 100, totalRows: 20_000, truncated: true });
+  });
+
+  it('leaves the total of a cut file unknown when the source gave none', () => {
+    const preview = summarizeCsvPreview(manyRows(150), { truncated: true, totalRows: null });
+
+    expect(preview).toMatchObject({ shownRows: 100, totalRows: null, truncated: true });
+  });
+
+  it('never claims a cut file is shown whole', () => {
+    const preview = summarizeCsvPreview(manyRows(30), { truncated: true, totalRows: 30 });
+
+    expect(preview).toMatchObject({ shownRows: 30, totalRows: null, truncated: true });
+  });
+
+  it('drops the row the cut fell inside', () => {
+    const preview = summarizeCsvPreview(`${manyRows(30)}30,par`, { truncated: true, totalRows: 20_000 });
+
+    expect(preview.shownRows).toBe(30);
+    expect(preview.markdown).not.toContain('par');
+  });
+
+  it('keeps the table when the cut leaves only part of the header', () => {
+    const preview = summarizeCsvPreview('id,na', { truncated: true, totalRows: 20_000 });
+
+    expect(preview).toMatchObject({ shownRows: 0, truncated: true });
+  });
+
+  it('returns null for nothing to show', () => {
+    expect(summarizeCsvPreview('')).toBeNull();
+  });
+});
+
+describe('csvPreviewNotice', () => {
+  it('states the shown rows and the known total', () => {
+    expect(csvPreviewNotice({ shownRows: 100, totalRows: 20_000, truncated: true })).toBe('Showing first 100 of 20,000 rows.');
+  });
+
+  it('says the file is larger than the preview when the total is unknown', () => {
+    expect(csvPreviewNotice({ shownRows: 100, totalRows: null, truncated: true }))
+      .toBe('Showing first 100 rows. The full file is larger than the preview.');
+    expect(csvPreviewNotice({ shownRows: 1, totalRows: null, truncated: true }))
+      .toBe('Showing first 1 row. The full file is larger than the preview.');
+  });
+
+  it('falls back to the generic text when no data row is shown', () => {
+    expect(csvPreviewNotice({ shownRows: 0, totalRows: 20_000, truncated: true })).toBe('Preview is truncated.');
+  });
+
+  it('falls back to the generic text without a CSV table that leaves rows out', () => {
+    expect(csvPreviewNotice(null)).toBe('Preview is truncated.');
+    expect(csvPreviewNotice({ shownRows: 30, totalRows: 30, truncated: false })).toBe('Preview is truncated.');
   });
 });

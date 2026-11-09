@@ -29,7 +29,7 @@ export const IconButton = forwardRef(function IconButton(
         background: idleBg, border: 0, color: idleFg,
         width: size, height: size, borderRadius: 8, flexShrink: 0,
         display: 'inline-grid', placeItems: 'center',
-        transition: 'background .12s ease, color .12s ease',
+        transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease',
         ...style,
       }}
       onMouseEnter={(e) => {

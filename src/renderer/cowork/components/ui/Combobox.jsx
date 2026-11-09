@@ -19,11 +19,11 @@
 //   />
 //
 // Group shape:  { key, name, items }  — `name: null` renders unheaded.
-// Item shape:   { value, label, disabled?, title?, icon?, tag?, ... }  — extra fields
+// Item shape:   { value, label, disabled?, title?, icon?, tag?, note?, ... }  — extra fields
 //   pass through untouched, so domain filters/renderers can read them.
-//   `icon` renders before the label; `tag` renders as a compact right-aligned pill on the row (a model's version
-//   state, the "Needs credits" wallet state, or both) without touching the
-//   label, so search still matches the bare model name and nothing truncates.
+//   `icon` renders before the label; `tag` renders as a compact right-aligned pill on the row (the
+//   availability state); `note` renders as muted "(note)" text after the label. Neither
+//   touches the label, so search still matches the bare model name and nothing truncates.
 //
 // Optional hooks for domain pickers:
 //   - `filter(item, query, contains)`: replaces the default match on
@@ -43,18 +43,20 @@
 //     always-present row below the model list (ModelSelect's "Effort"
 //     footer) rather than another filterable option.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
+import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
+import { useNativeOverlay } from '../../lib/nativeOverlay';
 import Spinner from './Spinner.jsx';
 import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
-const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CARET_UP_DOWN = <Icon of={ChevronsUpDown} size={12} />;
 
-const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
+const CHECK = <Icon of={Check} size={12} />;
 
-const SEARCH = <Search size={14} strokeWidth={1.5} aria-hidden="true" />;
+const SEARCH = <Icon of={Search} size={14} />;
 
 export function Combobox({
   value,
@@ -109,6 +111,10 @@ export function Combobox({
     return entries.find((o) => o.value === value) || { value, label: String(value) };
   }, [entries, value]);
   const { contains } = BaseCombobox.useFilter();
+  /* An open popup counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const [popupOpen, setPopupOpen] = useState(false);
+  useNativeOverlay(open ?? popupOpen);
 
   return (
     <BaseCombobox.Root
@@ -119,7 +125,11 @@ export function Combobox({
       // shrinks under it. Pinned in Combobox.test.jsx.
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next, details) => {
+        // The caller may cancel the change, and then the popup stays as it is.
+        onOpenChange?.(next, details);
+        if (!details?.isCanceled) setPopupOpen(next);
+      }}
       isItemEqualToValue={(a, b) => a?.value === b?.value}
       itemToStringLabel={(item) => item?.label ?? ''}
       // Default: match on the display label OR the raw id, across every
@@ -245,7 +255,10 @@ export function Combobox({
                         {/* Wraps rather than truncates: a name is the one
                             thing a row must show in full, and a locked row's
                             tag plus action can leave it under 100px. */}
-                        <span className="min-w-0 break-words">{item.label}</span>
+                        <span className="min-w-0 break-words">
+                          {item.label}
+                          {item.note && <span className="text-ink-4"> ({item.note})</span>}
+                        </span>
                         {(item.icon || item.tag || item.action) && (
                           <span className="shrink-0 flex items-center gap-[6px]">
                             {item.tag && (

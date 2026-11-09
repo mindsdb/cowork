@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // The MindsHub credential the sidecar runs on, held in this process and pushed
 // over loopback instead of written to disk.
 //
@@ -31,7 +32,7 @@
 import { BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
-import { getServerPort, isServerRunning, isServerStarting } from './server-process';
+import { getServerPort, isServerRunning } from './server-process';
 import { authHeader } from './server-auth';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
 import { settleMindsResumeCredentialGate } from './minds-resume-gate';
@@ -68,7 +69,7 @@ async function resolveMindsCredentialSelection(): Promise<ResolvedMindsCredentia
     // session credential too. keychain-service already falls back to its
     // encrypted file when keytar throws, so reaching here means both stores
     // failed — fall through and present the token rather than nothing.
-    console.warn('[minds-credential] could not read the stored key', error);
+    diagnostic("main.minds-credential", "WARNING", "minds_credential_could_not_read_the_stored_key", '[minds-credential] could not read the stored key', error);
   }
   const accessToken = getAccessToken();
   return {
@@ -129,9 +130,11 @@ export function pushMindsCredential(value: string | null, options?: MindsCredent
  * "the sidecar refused", which are different failures: only the second is worth
  * warning about or retrying on a timer. Boot refreshes tokens before it starts
  * a sidecar, and `setServerStartedHook` pushes as soon as one comes up.
+ * A start in progress counts as no sidecar yet: until its owner check passes,
+ * whatever answers the port may not be ours.
  */
 export function isMindsCredentialSidecarReachable(): boolean {
-  return isServerRunning() || isServerStarting();
+  return isServerRunning();
 }
 
 async function pushMindsCredentialNow(
@@ -142,7 +145,7 @@ async function pushMindsCredentialNow(
   // successful retry must notify, even when it arrives on a refresh tick.
   // This state is owned by the PUT queue, not by rotating JWT values.
   if (invalidateCatalog) _catalogInvalidationPending = true;
-  if (!isServerRunning() && !isServerStarting()) return false;
+  if (!isServerRunning()) return false;
   const port = getServerPort();
   if (!port) return false;
   try {
@@ -163,9 +166,9 @@ async function pushMindsCredentialNow(
       // connect a provider. The next start after the sidecar updates re-pushes,
       // because `setServerStartedHook` in index.ts runs this on every start.
       if (res.status === 404) {
-        console.warn('[minds-credential] the running sidecar has no hand-over route — it predates this build; retrying after it updates');
+        diagnostic("main.minds-credential", "WARNING", "minds_credential_the_running_sidecar_has_no_hand_over_route_it_predates_this_build_retrying_after_it", '[minds-credential] the running sidecar has no hand-over route — it predates this build; retrying after it updates');
       } else {
-        console.warn('[minds-credential] hand-over returned', res.status);
+        diagnostic("main.minds-credential", "WARNING", "minds_credential_hand_over_returned", { status: res.status });
       }
       return false;
     }
@@ -183,7 +186,7 @@ async function pushMindsCredentialNow(
     }
     return true;
   } catch (error) {
-    console.warn('[minds-credential] hand-over failed', error);
+    diagnostic("main.minds-credential", "WARNING", "minds_credential_hand_over_failed", '[minds-credential] hand-over failed', error);
     return false;
   }
 }
@@ -294,7 +297,7 @@ async function forgetStoredKey(): Promise<void> {
   try {
     await deleteMindsApiKey(mindsKeyScope());
   } catch (error) {
-    console.warn('[minds-credential] could not delete the stored key', error);
+    diagnostic("main.minds-credential", "WARNING", "minds_credential_could_not_delete_the_stored_key", '[minds-credential] could not delete the stored key', error);
   }
 }
 

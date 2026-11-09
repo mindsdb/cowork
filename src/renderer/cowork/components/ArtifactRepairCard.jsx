@@ -52,7 +52,7 @@ export default function ArtifactRepairCard({ repair, projectId, streaming = fals
     <div className="artifact-repair-card">
       <div className="artifact-repair-card-head">
         <span className={`artifact-repair-card-icon ${TONE_CLASS[tone] || TONE_CLASS.idle}`}>
-          {busy ? <Spinner /> : Ico.sparkle(15)}
+          {busy ? <Spinner /> : Ico.sparkle(16)}
         </span>
         <span className="artifact-repair-card-title">
           {label}

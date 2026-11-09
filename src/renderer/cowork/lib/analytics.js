@@ -1,3 +1,4 @@
+import { diagnostic } from '../../../shared/diagnostics';
 // Desktop PostHog analytics: fire-and-forget event capture via the Capture API
 // directly (no posthog-js dependency).
 //
@@ -31,6 +32,10 @@ const EVENTS = {
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
   AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id? } — only on the first task within 30 min of a console handoff
   COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled } — Home composer interactive after a console handoff
+  ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
+  ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
+  EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
+  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars? } — the first message of a new task; never carries its text
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -103,8 +108,20 @@ const EVENTS = {
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
-  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version } desktop, per launch (ENG-921)
-  SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
+  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
+  SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, install_source, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
+  // One UI or server update outcome, journaled by main while the window
+  // reloaded and reported by the next renderer to boot (see drainUpdateJournal).
+  // `phase`: applied (live and healthy) | rolled-back (health check failed,
+  // previous version restored; a UI rollback also quarantines the bundle) |
+  // failed (nothing changed, or the rollback failed; `error_code` says which) |
+  // repaired (a reinstall that was not a version move: stream repair, venv
+  // rebuild) | skipped (an offered UI this pass did not download: behind a
+  // failed server update, or withdrawn by the time it ran). `from`/`to` are that layer's versions. `trigger` is which check
+  // applied it. Sent with `journal_id` as the event uuid (PostHog dedupes a
+  // resend) and the outcome's time as the event time (day counts are by
+  // when it happened, not when it was reported).
+  UPDATE_PHASE:             'update_phase',             // { channel: 'ui'|'server', phase, from, to, error_code, trigger: 'boot'|'periodic'|'manual', duration_ms, build_kind, component, repair, journal_id, journaled_at } desktop, one per outcome, arrives one launch late
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
@@ -117,6 +134,13 @@ const EVENTS = {
   CODE_VIEW_OPENED:         'code_view_opened',         // {}  first switch into the Code workspace per launch
   CODE_TASK_STARTED:        'code_task_started',        // { task_id, origin: 'new'|'fork', engine_id, model, reasoning_effort?, permission_mode, task_mode, workspace_kind, in_project, computer_is_local, attachment_count, source_context_count }
   CODE_TASK_START_FAILED:   'code_task_start_failed',   // { origin, engine_id?, model?, in_project?, code, status? }
+  // Compare Models. Model ids, counts and costs only: never a prompt or title.
+  COMPARE_VIEW_OPENED:      'compare_view_opened',      // {}  first open of Compare Models per launch
+  COMPARISON_STARTED:       'comparison_started',       // { comparison_id, model_a, model_b, effort_a?, effort_b?, from_project, file_count, example_id? }
+  COMPARISON_FOLLOW_UP_SENT:'comparison_follow_up_sent',// { comparison_id, target: 'both'|'a'|'b', turn_index }
+  COMPARISON_VERDICT_RECORDED:'comparison_verdict_recorded', // { comparison_id, turn_index, winner, winner_model?, other_model?, changed, ...cost }
+  COMPARISON_CONTINUED:     'comparison_continued',     // { comparison_id, side, model, other_model, turns, carried_all, chose_winner?, ...cost }
+  // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, cost_stale?, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same' (complete figures only)
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -193,7 +217,7 @@ const isDebug = memoizedFlag(
 );
 
 function dlog(...args) {
-  if (isDebug()) console.log('[analytics]', ...args);
+  if (isDebug()) diagnostic("renderer.cowork.lib.analytics", "INFO", "analytics", '[analytics]', ...args);
 }
 
 // ── Identity state ─────────────────────────────────────────────────
@@ -408,13 +432,20 @@ async function getDistinctId() {
 // when the POST actually succeeded (2xx). Both capture() and the `$identify`
 // merge go through here so the request shape and error handling stay in one
 // place. `keepalive` lets an event fired just before quit/navigation flush.
-function postCapture(event, distinctId, properties) {
+// `envelope` lets a caller fix the event's identity and time instead of the
+// send's. PostHog dedupes on `uuid`, so a resend with the same one is one
+// event, and buckets by `timestamp`, so a late send lands on the day the
+// thing happened.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function postCapture(event, distinctId, properties, envelope = {}) {
+  const at = envelope.timestamp ? new Date(envelope.timestamp) : null;
   const body = JSON.stringify({
     api_key: POSTHOG_KEY,
     event,
     distinct_id: distinctId,
     properties: { ...properties, $lib: LIB },
-    timestamp: new Date().toISOString(),
+    timestamp: at && !Number.isNaN(at.getTime()) ? at.toISOString() : new Date().toISOString(),
+    ...(typeof envelope.uuid === 'string' && UUID_RE.test(envelope.uuid) ? { uuid: envelope.uuid } : {}),
   });
   return fetch(`${POSTHOG_HOST}/capture/`, {
     method: 'POST',
@@ -475,10 +506,12 @@ function mergeAnonIntoAccount(sub) {
  * Fire-and-forget capture of one product event. Never throws, never blocks.
  * @param {string} event one of the EVENTS values.
  * @param {object} [properties] event-specific props (see EVENTS for the shape).
+ * @param {{ uuid?: string, timestamp?: string }} [envelope] a stable event id
+ *   and the time the event happened, for events sent later than they occur.
  * @returns {Promise<boolean>} true only when the POST actually succeeded, so
  *   one-shot callers (trackAppInstalled, trackFirstQuery) can gate on delivery.
  */
-function capture(event, properties = {}) {
+function capture(event, properties = {}, envelope = {}) {
   if (!POSTHOG_KEY) {
     dlog('skip', event, '— no POSTHOG_KEY (VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN unset)');
     return Promise.resolve(false);
@@ -565,7 +598,7 @@ function capture(event, properties = {}) {
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
       dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
-      return postCapture(event, captureId, eventProps);
+      return postCapture(event, captureId, eventProps, envelope);
     })
     .catch((err) => {
       dlog('capture failed for', event, err);
@@ -613,6 +646,71 @@ export function trackAgentSessionStarted() {
     EVENTS.AGENT_SESSION_STARTED,
     fresh ? { entry_source: pending.entry_source, example_id: pending.example_id } : {}
   );
+}
+
+// How the next new task is being started, for new_task_message_sent: the
+// checklist and the app's own sends set it just before they send, and anything
+// unset is the composer.
+const START_VIA_TTL_MS = 60 * 1000;
+let pendingStartVia = null;
+
+export function setStartVia(via) {
+  pendingStartVia = via ? { via, at: Date.now() } : null;
+}
+
+// Runs a send that starts a new task under a start label. The label is kept
+// only if the send goes out: a refused one (answers false) or a failed one
+// (throws) must not leave it for the next, unrelated message.
+export async function sendWithStartVia(via, send) {
+  setStartVia(via);
+  try {
+    const sent = await send();
+    if (!sent) setStartVia(null);
+    return sent;
+  } catch (err) {
+    setStartVia(null);
+    throw err;
+  }
+}
+
+export function trackOnboardingRowClicked(stepId) {
+  capture(EVENTS.ONBOARDING_ROW_CLICKED, { step_id: stepId });
+}
+
+export function trackOnboardingStepCompleted(stepId, via) {
+  capture(EVENTS.ONBOARDING_STEP_COMPLETED, { step_id: stepId, via });
+}
+
+export function trackExamplePicked(exampleId, list) {
+  capture(EVENTS.EXAMPLE_PICKED, { example_id: exampleId, list });
+}
+
+/**
+ * The first message of a new task, described but never quoted: what kind of
+ * start it was (see classifyStart), how many files came with it, whether it
+ * holds a link, and how long it is. `added_chars` is what the person added to a
+ * start or example, a paste or details. Joined to the account's later turns
+ * and visits, this is how a start is judged. Read before the session-start
+ * event, which clears the console attribution this one uses.
+ */
+export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
+  const entry = pendingEntryAttribution && Date.now() - pendingEntryAttribution.at <= ENTRY_ATTRIBUTION_TTL_MS
+    ? pendingEntryAttribution : null;
+  const pending = pendingStartVia;
+  pendingStartVia = null;
+  const fresh = pending && Date.now() - pending.at <= START_VIA_TTL_MS;
+  const via = fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer');
+  const body = typeof text === 'string' ? text : '';
+  const props = {
+    start_kind: start?.start_kind || 'free_text',
+    via,
+    attachments,
+    has_link: /\b(?:https?:\/\/|www\.)\S+/i.test(body),
+    chars: body.length,
+  };
+  if (start?.example_id) props.example_id = start.example_id;
+  if (start?.added_chars != null) props.added_chars = start.added_chars;
+  capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }
 
 // The console handoff's arrival: the Home composer is on screen and usable,
@@ -707,10 +805,13 @@ export function trackTurnFailed(conversationId, event) {
 //
 // `workspaceMode` is 'code' when Code Mode sent them and omitted otherwise, so
 // every existing chat-side series keeps its meaning.
-export function trackBillingOpened(trigger, workspaceMode) {
+// `kind` names which in-chat usage notice was clicked ('free_low', 'free_used',
+// 'auto_top_up_failed'), so `usage_alert` can be split by notice.
+export function trackBillingOpened(trigger, workspaceMode, kind) {
   capture(EVENTS.BILLING_OPENED, {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,
+    kind: kind || undefined,
   });
 }
 
@@ -761,6 +862,67 @@ export function trackCodeTaskStartFailed(origin, input, reason) {
     in_project: input ? Boolean(input.projectId) : undefined,
     code: (reason && typeof reason.code === 'string' && reason.code) || 'unknown',
     status: reason && typeof reason.status === 'number' ? reason.status : undefined,
+  });
+}
+
+// Compare Models, from first open to Continue: who finds it, which model pairs
+// people try, whether the cheaper side wins or ties, and whether a comparison
+// turns into a real task. Model ids, counts and costs only, never a prompt or
+// a title. `cost` is comparisonCostProps(usage) from lib/compareSides.
+let compareViewOpenedThisLaunch = false;
+export function trackCompareViewOpened() {
+  if (compareViewOpenedThisLaunch) return;
+  compareViewOpenedThisLaunch = true;
+  capture(EVENTS.COMPARE_VIEW_OPENED);
+}
+
+export function trackComparisonStarted(comparison, { fileCount = 0, exampleId = null } = {}) {
+  if (!comparison?.id) return;
+  const [a, b] = comparison.sides || [];
+  capture(EVENTS.COMPARISON_STARTED, {
+    comparison_id: comparison.id,
+    model_a: a?.model || 'unknown',
+    model_b: b?.model || 'unknown',
+    effort_a: a?.reasoningEffort || undefined,
+    effort_b: b?.reasoningEffort || undefined,
+    from_project: Boolean(comparison.sourceProjectId),
+    file_count: fileCount,
+    example_id: exampleId || undefined,
+  });
+}
+
+export function trackComparisonFollowUpSent(comparisonId, target, turnIndex) {
+  if (!comparisonId) return;
+  capture(EVENTS.COMPARISON_FOLLOW_UP_SENT, { comparison_id: comparisonId, target, turn_index: turnIndex });
+}
+
+export function trackComparisonVerdictRecorded(comparisonId, { turnIndex, winner, models = {}, changed = false, cost = {} }) {
+  if (!comparisonId) return;
+  const picked = winner === 'a' || winner === 'b';
+  capture(EVENTS.COMPARISON_VERDICT_RECORDED, {
+    comparison_id: comparisonId,
+    turn_index: turnIndex,
+    winner,
+    winner_model: picked ? models[winner] : undefined,
+    other_model: picked ? models[winner === 'a' ? 'b' : 'a'] : undefined,
+    changed,
+    ...cost,
+    cheaper_won: picked && cost.cheaper_side && cost.cheaper_side !== 'same' ? cost.cheaper_side === winner : undefined,
+  });
+}
+
+export function trackComparisonContinued(comparisonId, { side, models = {}, turns, carriedAll, verdict = null, cost = {} }) {
+  if (!comparisonId) return;
+  capture(EVENTS.COMPARISON_CONTINUED, {
+    comparison_id: comparisonId,
+    side,
+    model: models[side],
+    other_model: models[side === 'a' ? 'b' : 'a'],
+    turns,
+    carried_all: carriedAll,
+    chose_winner: verdict === 'a' || verdict === 'b' ? verdict === side : undefined,
+    ...cost,
+    chose_cheaper: cost.cheaper_side && cost.cheaper_side !== 'same' ? cost.cheaper_side === side : undefined,
   });
 }
 
@@ -910,7 +1072,79 @@ export async function trackBootScreenResolved(target) {
     server_deps_ready: Boolean(status?.serverDepsReady),
     build_kind: version?.buildKind ?? null,
     shell_version: version?.app || null,
+    // The running UI bundle, named explicitly beside the shell so a per-layer
+    // adoption chart reads off this one event. Same value as app_version.
+    ui_version: APP_VERSION || null,
+    // Null when the sidecar is not up yet (a boot that lands on 'auth').
+    server_version: await readServerVersion(),
   });
+}
+
+// The sidecar's version from /health, bounded and best-effort. api.js imports
+// this module, so it is loaded lazily here rather than at the top.
+async function readServerVersion() {
+  try {
+    const { fetchHealth } = await import('../api');
+    const health = await fetchHealth({ timeoutMs: 3000 });
+    return health?.server_version || null;
+  } catch {
+    return null;
+  }
+}
+
+/** One journaled UI/server update outcome (src/main/update-journal.ts).
+ *  Resolves true only when PostHog took it, so the drain can ack it. The
+ *  journal id is the event's uuid, so a resend after a lost ack is one event,
+ *  and the outcome's own time is the event's, so a late send counts on the
+ *  day the update happened. */
+export function trackUpdatePhase(entry) {
+  if (!host.isElectron || !entry) return Promise.resolve(false);
+  return capture(EVENTS.UPDATE_PHASE, {
+    channel: entry.channel,
+    phase: entry.phase,
+    from: entry.from ?? null,
+    to: entry.to ?? null,
+    error_code: entry.errorCode ?? null,
+    trigger: entry.trigger ?? null,
+    duration_ms: entry.durationMs ?? null,
+    build_kind: entry.buildKind ?? null,
+    // Server channel: which component the versions name (an anton-only
+    // release shares cowork-server's number), and whether the move was the
+    // stream repair, whatever its outcome.
+    component: entry.component ?? null,
+    repair: Boolean(entry.repair),
+    journal_id: entry.id,
+    journaled_at: entry.at ?? null,
+  }, { uuid: entry.id, timestamp: entry.at });
+}
+
+// Update outcomes happen in main and the window reloads mid-apply, so main
+// journals them and this renderer reports them on boot: one event per entry,
+// then an ack for the ones PostHog took. The rest stay in the journal for the
+// next launch (main leases them briefly so a reload mid-drain does not send
+// them twice, and the stable uuid dedupes a resend whose ack was lost). Runs
+// once per renderer; a reload is a fresh renderer.
+let journalDrained = false;
+export async function drainUpdateJournal() {
+  if (!host.isElectron || journalDrained) return;
+  journalDrained = true;
+  let entries;
+  try {
+    entries = await host.drainUpdateJournal();
+  } catch {
+    return;
+  }
+  const delivered = [];
+  for (const entry of entries ?? []) {
+    if (!entry?.id) continue;
+    // One at a time: the journal is small, and a burst would race the identity
+    // resolution every capture waits on.
+    if (await trackUpdatePhase(entry).catch(() => false)) delivered.push(entry.id);
+  }
+  if (delivered.length === 0) return;
+  try {
+    await host.ackUpdateJournal(delivered);
+  } catch { /* unacked entries are re-sent next launch under the same uuid */ }
 }
 
 // Auto mode skips `available`, so `downloading` counts as it. An install on quit
@@ -939,6 +1173,7 @@ export function trackShellUpdatePhase(snapshot) {
       current_version: install.version,
       target_version: install.expected,
       error_code: install.applied ? null : 'install-not-applied',
+      install_source: install.source ?? null,
     });
   }
   const phase = snapshot.phase === 'downloading' ? 'available' : snapshot.phase;
@@ -949,6 +1184,9 @@ export function trackShellUpdatePhase(snapshot) {
     ...base,
     phase,
     trigger: snapshot.trigger ?? null,
+    // 'boot' is the launch-time install of a stranded download (ENG-2764);
+    // 'user' is a Restart click. Null outside the installing milestone.
+    install_source: phase === 'installing' ? (snapshot.installSource ?? null) : null,
     current_version: snapshot.currentVersion || null,
     target_version: snapshot.targetVersion ?? null,
     error_code: snapshot.errorCode ?? null,
@@ -971,6 +1209,7 @@ export function resetDeviceIdentity() {
   mergeInFlight.clear();
   // The next account's first Code visit is its own.
   codeViewOpenedThisLaunch = false;
+  compareViewOpenedThisLaunch = false;
   try {
     window.localStorage.removeItem(DEVICE_ID_KEY);
     window.localStorage.removeItem(IDENTITY_MERGED_KEY);

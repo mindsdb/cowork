@@ -21,15 +21,23 @@ vi.mock('electron', () => ({
   app: { isPackaged: true, getPath: () => '/tmp/cowork-test-logs' },
 }));
 /** The account's dotenv. Empty for every test but the account-root one, which
- *  needs the value to CHANGE to see whether the cached token was re-read. */
-const envState = vi.hoisted(() => ({ authToken: null as string | null }));
+ *  needs the value to CHANGE to see whether the cached token was re-read, and
+ *  the usage-events ones, which set `accountVars`. */
+const envState = vi.hoisted(() => ({
+  authToken: null as string | null,
+  kind: 'prod',
+  accountVars: {} as Record<string, string>,
+}));
 vi.mock('./cowork-home', () => ({
   coworkHome: () => '/tmp/cowork-test-home',
   // The organization store root resolves through this. A mock without it fails
   // every test in this file, not only the organization ones.
   accountDataRoot: () => accountState.dataRoot,
-  buildKind: () => 'prod',
-  readEnvFile: () => (envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
+  buildKind: () => envState.kind,
+  readEnvFile: () => ({
+    ...(envState.authToken ? { COWORK_AUTH_TOKEN: envState.authToken } : {}),
+    ...envState.accountVars,
+  }),
 }));
 /** Only the root resolution is faked; the rest of account-data stays real so
  *  the owner token every other test in this file depends on is unchanged. */
@@ -83,13 +91,27 @@ import {
   setServerStartedHook,
   ensureSidecarOnCurrentAccountRoot,
   sidecarIsOnCurrentStores,
+  serverClearsPendingCredentials,
+  forgetServerCapability,
+  activeStoreRoot,
+  activeAccountDataRoot,
+  isServerStarting,
+  runningServerPort,
 } from './server-process';
+import { NON_PROD_POSTHOG_KEY } from './analytics-env';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
 
 const PORT = 27903;
 /** What the OS hands back when resolveServerPort asks for a free port. Outside
  *  the per-user band so a test can tell a relocation from the preferred port. */
 const FREE_PORT = 41999;
+/** Where the install's owner secret lives under the test home. */
+const OWNER_FILE = path.join('/tmp/cowork-test-home', '.server_owner');
+
+/** The owner the latest spawn was stamped with: what that sidecar answers at
+ *  /health. Differs from 'owner-token' for another account or organization. */
+const spawnedOwner = (): string | null =>
+  (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as cp.SpawnOptions | undefined)?.env?.COWORK_SERVER_OWNER ?? null;
 
 /** A stand-in for the spawned sidecar. Nothing is emitted until a test says
  *  so, so each test drives its own failure mode. */
@@ -113,8 +135,12 @@ function makeLogStream(): EventEmitter & { write: () => boolean; end: () => void
   return s;
 }
 
-/** Owner token /health answers with, or null to make every probe fail. */
-let healthOwner: string | null = null;
+/** A /health answer with no owner field at all, as a server from before the
+ *  owner echo sends. Not the same as '', an owner field left empty. */
+const NO_OWNER_FIELD = Symbol('no owner field');
+/** Owner token /health answers with, NO_OWNER_FIELD to leave the field out,
+ *  or null to make every probe fail. */
+let healthOwner: string | typeof NO_OWNER_FIELD | null = null;
 /** Capabilities advertised by /health. Code Mode must not adopt a sidecar
  *  merely because it is healthy when the coding routes are absent. */
 let healthCapabilities: string[] = ['coding'];
@@ -134,6 +160,7 @@ let signals: Array<[number, string]> = [];
 
 beforeEach(() => {
   envState.authToken = null;
+  envState.accountVars = {};
   accountState.root = null;
   accountState.dataRoot = '/tmp/cowork-test-home';
   accountState.orgStoreRoot = null;
@@ -155,8 +182,10 @@ beforeEach(() => {
     return true;
   }) as never);
 
-  // The packaged binary exists; no dev source tree does.
-  vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === '/fake/bin/cowork-server');
+  /* The packaged binary exists; no dev source tree does. The owner secret file
+   * exists too and reads 'owner-token', so a sidecar spawned for the default
+   * root is stamped 'owner-token', and a fake /health answering that is ours. */
+  vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === '/fake/bin/cowork-server' || String(p) === OWNER_FILE);
   vi.mocked(fs.readFileSync).mockReturnValue('owner-token\n' as never);
   vi.mocked(fs.mkdirSync).mockReturnValue(undefined as never);
   vi.mocked(fs.writeFileSync).mockReturnValue(undefined);
@@ -194,7 +223,9 @@ beforeEach(() => {
       res.resume = () => {};
       setTimeout(() => {
         (cb as (r: unknown) => void)(res);
-        res.emit('data', JSON.stringify({ owner, capabilities: healthCapabilities }));
+        res.emit('data', JSON.stringify(owner === NO_OWNER_FIELD
+          ? { capabilities: healthCapabilities }
+          : { owner, capabilities: healthCapabilities }));
         res.emit('end');
       }, 0);
     }
@@ -216,6 +247,59 @@ afterEach(() => {
 });
 
 describe('startServer failure diagnostics', () => {
+  it.each(['SIGKILL', 'SIGSEGV'])('persists an unexpected %s after the backend is ready', async (signal) => {
+    let persisted = '';
+    const stream = makeLogStream();
+    stream.write = ((chunk: string) => { persisted += chunk; return true; }) as never;
+    vi.mocked(fs.createWriteStream).mockReturnValue(stream as never);
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return child as never;
+    }) as never);
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+      child.emit('exit', null, signal);
+      const events = persisted.trim().split('\n').map((line) => JSON.parse(line));
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ event: 'backend_exited', log_level: 'ERROR', exit_signal: signal });
+      expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ exit_signal: signal });
+      expect(getServerDiagnostics().lastStopIntentional).toBe(false);
+      expect(isServerRunning()).toBe(false);
+    } finally {
+      output.mockRestore();
+      await stopServer();
+    }
+  });
+
+  it('keeps an intentional signal shutdown out of failure diagnostics', async () => {
+    let persisted = '';
+    const stream = makeLogStream();
+    stream.write = ((chunk: string) => { persisted += chunk; return true; }) as never;
+    vi.mocked(fs.createWriteStream).mockReturnValue(stream as never);
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return child as never;
+    }) as never);
+    vi.mocked(process.kill).mockImplementation((() => {
+      child.killed = true;
+      setTimeout(() => child.emit('exit', null, 'SIGTERM'), 0);
+      return true;
+    }) as never);
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+      await stopServer();
+      expect(persisted).toBe('');
+      expect(output).not.toHaveBeenCalled();
+      expect(getServerDiagnostics().lastStopIntentional).toBe(true);
+    } finally {
+      output.mockRestore();
+    }
+  });
+
   it('reports a spawn error instead of a health timeout, and keeps it in the log tail', async () => {
     // Regression: the spawn had no 'error' listener, so an AV-blocked or
     // missing executable was reported as "no /health within 15000ms" with an
@@ -425,8 +509,10 @@ describe('startServer failure diagnostics', () => {
 
   it('checkpoints active coding tasks before terminating the sidecar tree', async () => {
     const child = makeChild();
-    healthOwner = 'owner-token';
-    vi.mocked(cp.spawn).mockImplementation((() => child as never) as never);
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return child as never;
+    }) as never);
     vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
       signals.push([pid, String(signal)]);
       child.exitCode = 0;
@@ -793,6 +879,137 @@ describe('post-start credential hook', () => {
   });
 });
 
+/*
+ * Another OS user's process can take the port while the child is still
+ * importing and answer /health before the child tries to bind. The child then
+ * loses the bind and exits. Reading that answer as ready would run the started
+ * hook, which hands the listener the MindsHub credential, the server's key and
+ * the in-app browser's key.
+ */
+describe('an answer from a listener this start did not stamp', () => {
+  afterEach(async () => {
+    setServerStartedHook(null);
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** A child that loses the bind to `owner`'s listener a few polls in. */
+  function spawnLosingTo(owner: string | typeof NO_OWNER_FIELD): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = owner; }, 0);
+      setTimeout(() => { child.exitCode = 1; child.emit('exit', 1); }, 700);
+      return child as never;
+    }) as never);
+  }
+
+  it.each<[string, string | typeof NO_OWNER_FIELD]>([
+    ['no owner field', NO_OWNER_FIELD],
+    ['an empty owner', ''],
+    ['another owner', 'someone-elses-token'],
+  ])('does not read a healthy answer with %s as ready, and runs no hook', async (_label, owner) => {
+    const hook = vi.fn();
+    setServerStartedHook(hook);
+    spawnLosingTo(owner);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(false);
+    expect(getServerDiagnostics().lastErrorKind).toBe('exited');
+    expect(hook).not.toHaveBeenCalled();
+    expect(isServerRunning()).toBe(false);
+    expect(runningServerPort()).toBeNull();
+  });
+
+  it.each([
+    ['another owner', 'someone-elses-token'],
+    ['an empty owner', ''],
+  ])('does not call the start too old on an incompatible answer with %s', async (_label, owner) => {
+    healthCapabilities = [];
+    spawnLosingTo(owner);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(false);
+    expect(getServerDiagnostics().lastErrorKind).toBe('exited');
+  });
+
+  /* A server from before the owner echo also predates the coding capability.
+   * Failing the start runs no hook, so it need not wait for the child to exit. */
+  it('calls the start too old at once on an answer with no owner field and no coding capability, and runs no hook', async () => {
+    const hook = vi.fn();
+    setServerStartedHook(hook);
+    healthCapabilities = [];
+    spawnLosingTo(NO_OWNER_FIELD);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(false);
+    expect(getServerDiagnostics().lastErrorKind).toBe('incompatible');
+    expect(hook).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * cowork-server reads the owner it echoes from an unprefixed OWNER before
+ * COWORK_SERVER_OWNER, so an OWNER inherited from the shell would stand in for
+ * the stamped value and no start would read as ours.
+ */
+describe('the owner a spawned sidecar echoes', () => {
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    if (isServerRunning()) await stopServer();
+  });
+
+  it('is the stamped owner even when the environment carries an OWNER of its own', async () => {
+    vi.stubEnv('OWNER', 'from-the-shell');
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation(((_cmd: string, _args: string[], opts: cp.SpawnOptions) => {
+      setTimeout(() => {
+        // What cowork-server echoes: OWNER when set, else COWORK_SERVER_OWNER.
+        healthOwner = opts.env?.OWNER ?? opts.env?.COWORK_SERVER_OWNER ?? '';
+        child.exitCode = 0;
+        child.emit('exit', 0);
+      }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(true);
+    expect(spawnedOwner()).toBe('owner-token');
+  });
+});
+
+describe('runningServerPort', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  it('is null while a start is pending, the port once the start succeeds, and null after a stop', async () => {
+    const child = makeChild();
+    let comeUp: () => void = () => {};
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      comeUp = () => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); };
+      return child as never;
+    }) as never);
+
+    const started = startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    try {
+      await vi.waitFor(() => expect(cp.spawn).toHaveBeenCalled());
+      expect(isServerStarting()).toBe(true);
+      expect(runningServerPort()).toBeNull();
+    } finally {
+      // A start left pending would hold up every later test.
+      comeUp();
+    }
+    expect((await started).ok).toBe(true);
+    expect(runningServerPort()).toBe(PORT);
+
+    await stopServer();
+    expect(runningServerPort()).toBeNull();
+  });
+});
+
 describe('the sidecar account root', () => {
   afterEach(async () => {
     if (isServerRunning()) await stopServer();
@@ -802,7 +1019,7 @@ describe('the sidecar account root', () => {
   function spawnHealthy(): void {
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
-      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      setTimeout(() => { healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
       return child as never;
     }) as never);
   }
@@ -879,6 +1096,36 @@ describe('the sidecar account root', () => {
     await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
     expect(getServerAuthToken()).toBe('token-for-the-second-root');
   });
+
+  it('names the account data root a sidecar starts and runs on until it stops, even after the record moves', async () => {
+    const SECOND = '/tmp/cowork-test-home/accounts/second-account';
+    accountState.root = 'second-account';
+    accountState.dataRoot = SECOND;
+    const child = makeChild();
+    let comeUp: () => void = () => {};
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      comeUp = () => { healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); };
+      return child as never;
+    }) as never);
+    expect(activeAccountDataRoot()).toBeNull();
+
+    const started = startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    try {
+      await vi.waitFor(() => expect(cp.spawn).toHaveBeenCalled());
+      expect(activeAccountDataRoot()).toBe(SECOND);
+    } finally {
+      // A start left pending would hold up every later test.
+      comeUp();
+    }
+    expect((await started).ok).toBe(true);
+    // A sign-in records another account; the sidecar still serves this one.
+    accountState.root = 'third-account';
+    accountState.dataRoot = '/tmp/cowork-test-home/accounts/third-account';
+    expect(activeAccountDataRoot()).toBe(SECOND);
+
+    await stopServer();
+    expect(activeAccountDataRoot()).toBeNull();
+  });
 });
 
 // An organization switch keeps the same ACCOUNT, so nothing comparing account
@@ -892,7 +1139,7 @@ describe('the sidecar organization stores', () => {
   function spawnHealthy(): void {
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
-      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      setTimeout(() => { healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
       return child as never;
     }) as never);
   }
@@ -938,6 +1185,79 @@ describe('the sidecar organization stores', () => {
   });
 });
 
+describe('the sidecar analytics destination', () => {
+  afterEach(async () => {
+    envState.kind = 'prod';
+    if (isServerRunning()) await stopServer();
+  });
+
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  const spawnedEnv = (): Record<string, string> =>
+    (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> }).env;
+
+  it('points a staging build\'s anton at the non-production project', async () => {
+    envState.kind = 'stable';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv().ANTON_POSTHOG_KEY).toBe(NON_PROD_POSTHOG_KEY);
+    expect(spawnedEnv().ANTON_DEPLOYMENT_ENV).toBe('staging');
+  });
+
+  it('keeps an opt-out written in a dotenv file anton reads', async () => {
+    // anton ranks the process environment above its dotenv files, so a key
+    // injected here would override this empty one and switch PostHog back on.
+    const dotenv = path.join(os.homedir(), '.cowork', '.env');
+    const exists = vi.mocked(fs.existsSync).getMockImplementation();
+    const read = vi.mocked(fs.readFileSync).getMockImplementation();
+    vi.mocked(fs.existsSync).mockImplementation((p) => p === dotenv || (exists ? exists(p) : false));
+    vi.mocked(fs.readFileSync).mockImplementation(((p: fs.PathOrFileDescriptor, ...rest: unknown[]) =>
+      p === dotenv ? 'ANTON_POSTHOG_KEY=\n' : (read ? (read as (...a: unknown[]) => unknown)(p, ...rest) : 'owner-token\n')) as never);
+    envState.kind = 'stable';
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv()).not.toHaveProperty('ANTON_POSTHOG_KEY');
+    expect(spawnedEnv().ANTON_DEPLOYMENT_ENV).toBe('staging');
+  });
+
+  it('leaves a prod build on anton\'s own default, labelled prod', async () => {
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv().ANTON_POSTHOG_KEY).toBeUndefined();
+    expect(spawnedEnv().ANTON_DEPLOYMENT_ENV).toBe('prod');
+  });
+
+  // The Settings switch is written to the account dotenv and read at each start.
+  it('turns anton\'s usage events off when the person switched them off, above an inherited value', async () => {
+    vi.stubEnv('ANTON_ANALYTICS_ENABLED', 'true');
+    envState.accountVars = { COWORK_USAGE_EVENTS: 'false' };
+    try {
+      spawnHealthy();
+      await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+      expect(spawnedEnv().ANTON_ANALYTICS_ENABLED).toBe('false');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('leaves anton\'s usage events as the environment has them while the switch is on, the default', async () => {
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(spawnedEnv().ANTON_ANALYTICS_ENABLED).toBe(process.env.ANTON_ANALYTICS_ENABLED);
+  });
+});
+
 // Adoption matches the owner token exactly, so an orphan from another
 // organization must not match — while OUR OWN stale orphan still must, or the
 // documented rule breaks: it would keep the preferred port while we move to a
@@ -950,14 +1270,10 @@ describe('adopting a sidecar across organizations', () => {
   function spawnHealthy(): void {
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
-      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      setTimeout(() => { healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
       return child as never;
     }) as never);
   }
-
-  const spawnedOwner = (): string =>
-    (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> })
-      .env.COWORK_SERVER_OWNER;
 
   it('stamps a different owner for a partitioned organization', async () => {
     spawnHealthy();
@@ -985,5 +1301,237 @@ describe('adopting a sidecar across organizations', () => {
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
 
     expect(spawnedOwner()).toBe(withNoRecord);
+  });
+});
+
+describe('a store with a pending credential clear', () => {
+  const MARKER = path.join('/tmp/cowork-test-home', '.pending-credential-clear');
+
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** Spawns a sidecar that hands off and exits, then answers /health as the
+   *  orphan it left behind, owned by this session. */
+  async function leaveOwnOrphanRunning(): Promise<void> {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    const env = (vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions).env ?? {};
+    await stopServer();
+    healthOwner = env.COWORK_SERVER_OWNER ?? null;
+  }
+
+  function markStore(): void {
+    vi.mocked(fs.existsSync).mockImplementation((p) =>
+      String(p) === '/fake/bin/cowork-server' || String(p) === MARKER);
+  }
+
+  function spawnFresh(): void {
+    const fresh = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => fresh as never) as never);
+  }
+
+  /*
+   * An adopted process never re-runs its startup, so it would keep serving the
+   * keys the sign-out was supposed to remove.
+   */
+  it('replaces a running sidecar for that store instead of adopting it', async () => {
+    await leaveOwnOrphanRunning();
+    markStore();
+    spawnFresh();
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(cp.spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails the start when the sidecar it refused still holds the port', async () => {
+    await leaveOwnOrphanRunning();
+    markStore();
+    spawnFresh();
+    execHandler = (cmd) => (cmd === 'lsof' ? { err: null, stdout: '9999\n' } : { err: new Error('nothing found'), stdout: '' });
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(false);
+    expect(cp.spawn).toHaveBeenCalledTimes(1);
+    expect(getServerDiagnostics().lastErrorKind).toBe('credential-clear');
+    expect(getServerDiagnostics().portHolderPid).toBe(9999);
+  });
+
+  it('names a start that died on a failed credential clear', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => {
+        child.stdout.emit('data', Buffer.from(
+          '[ERROR] cowork.services.pending_credential_clear: pending credential clear failed for store /tmp/cowork-test-home (OperationalError)\n',
+        ));
+        child.exitCode = 3;
+        child.emit('exit', 3);
+      }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(false);
+    expect(getServerDiagnostics().lastErrorKind).toBe('credential-clear');
+  });
+
+  it('still calls an ordinary boot death an exit', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => {
+        child.stdout.emit('data', Buffer.from('ERROR:    Application startup failed. Exiting.\n'));
+        child.exitCode = 3;
+        child.emit('exit', 3);
+      }, 0);
+      return child as never;
+    }) as never);
+
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(getServerDiagnostics().lastErrorKind).toBe('exited');
+  });
+
+  /** A sidecar whose launcher hands off and exits once healthy, so a stop
+   *  reaps it by port rather than waiting on a child exit. */
+  function spawnHandingOff(): void {
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      const child = makeChild();
+      setTimeout(() => { healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  it('remembers whether the running sidecar clears a pending store itself', async () => {
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(serverClearsPendingCredentials()).toBe(false);
+    await stopServer();
+
+    healthOwner = null;
+    healthCapabilities = ['coding', 'pending-credential-clear'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(serverClearsPendingCredentials()).toBe(true);
+  });
+
+  /*
+   * A run whose sidecar never answers has only the record a previous run left.
+   * Module state is per process, so a fresh module stands in for a new run.
+   */
+  it('falls back to the recorded answer before any sidecar has answered in this run', async () => {
+    const recordPath = path.join('/tmp/cowork-test-home', '.server-clears-pending-credentials');
+    vi.resetModules();
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === recordPath);
+    expect((await import('./server-process')).serverClearsPendingCredentials()).toBe(true);
+
+    vi.resetModules();
+    vi.mocked(fs.existsSync).mockImplementation(() => false);
+    expect((await import('./server-process')).serverClearsPendingCredentials()).toBeNull();
+  });
+
+  it('records on disk what the started sidecar can do, for a run where none comes up', async () => {
+    const recordPath = path.join('/tmp/cowork-test-home', '.server-clears-pending-credentials');
+
+    healthCapabilities = ['coding', 'pending-credential-clear'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(fs.writeFileSync).toHaveBeenCalledWith(recordPath, '', expect.anything());
+    await stopServer();
+
+    healthOwner = null;
+    healthCapabilities = ['coding'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(fs.rmSync).toHaveBeenCalledWith(recordPath, { force: true });
+  });
+
+  const LIST = path.join('/tmp/cowork-test-home', '.pending-credential-clear-unconfirmed');
+  const HELD_STORE = '/tmp/cowork-test-home/orgs/org-held';
+  const HELD_MARKER = path.join(HELD_STORE, '.pending-credential-clear');
+
+  /** A list a sign-out left before any sidecar had answered, holding one store. */
+  function holdOneStore(): void {
+    const exists = vi.mocked(fs.existsSync).getMockImplementation();
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === LIST || (exists ? exists(p) : false));
+    const read = vi.mocked(fs.readFileSync).getMockImplementation();
+    vi.mocked(fs.readFileSync).mockImplementation(((p: unknown, ...rest: unknown[]) =>
+      String(p) === LIST ? `${HELD_STORE}\n` : (read ? read(p as never, ...(rest as [never])) : 'owner-token\n')) as never);
+  }
+
+  it('takes back the markers a sign-out held when the first sidecar ignores them', async () => {
+    const listPath = LIST;
+    const heldStore = HELD_STORE;
+    holdOneStore();
+
+    healthCapabilities = ['coding'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(fs.rmSync).toHaveBeenCalledWith(path.join(heldStore, '.pending-credential-clear'), { force: true });
+    expect(fs.rmSync).toHaveBeenCalledWith(listPath, { force: true });
+  });
+
+  it('keeps the held markers for a first sidecar that reads them, and settles before the started hook', async () => {
+    holdOneStore();
+    let settledBeforeHook = false;
+    setServerStartedHook(async () => {
+      settledBeforeHook = vi.mocked(fs.rmSync).mock.calls.some(([p]) => String(p) === LIST);
+    });
+
+    healthCapabilities = ['coding', 'pending-credential-clear'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(fs.rmSync).not.toHaveBeenCalledWith(HELD_MARKER, expect.anything());
+    expect(settledBeforeHook).toBe(true);
+    setServerStartedHook(null);
+  });
+
+  it('settles the held markers when it adopts a running sidecar', async () => {
+    await leaveOwnOrphanRunning();
+    holdOneStore();
+    healthCapabilities = ['coding'];
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(cp.spawn).toHaveBeenCalledTimes(1);
+    expect(fs.rmSync).toHaveBeenCalledWith(HELD_MARKER, { force: true });
+  });
+
+  /*
+   * An answer recorded from the server being replaced must not decide a
+   * sign-out that lands before the new one answers.
+   */
+  it('forgets the replaced server\'s answer, in this run and on disk', async () => {
+    healthCapabilities = ['coding'];
+    spawnHandingOff();
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(serverClearsPendingCredentials()).toBe(false);
+    await stopServer();
+
+    forgetServerCapability();
+
+    expect(serverClearsPendingCredentials()).toBeNull();
+    for (const name of ['.server-clears-pending-credentials', '.server-ignores-pending-credentials']) {
+      expect(fs.rmSync).toHaveBeenCalledWith(path.join('/tmp/cowork-test-home', name), { force: true });
+    }
+  });
+
+  it('names the store a running sidecar serves, and none once it stops', async () => {
+    accountState.orgStoreRoot = '/tmp/cowork-test-home/orgs/org-b';
+    spawnHandingOff();
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(activeStoreRoot()).toBe('/tmp/cowork-test-home/orgs/org-b');
+
+    await stopServer();
+    expect(activeStoreRoot()).toBeNull();
   });
 });

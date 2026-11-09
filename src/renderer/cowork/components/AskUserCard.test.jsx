@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AskUserCard from './AskUserCard';
+import { MarkdownContent } from './markdown/MarkdownContent';
 
 const submitAnswer = vi.fn(async () => ({ accepted: true }));
 vi.mock('../api', async (importOriginal) => {
@@ -66,6 +67,59 @@ describe('AskUserCard', () => {
     renderCard();
     await user.click(screen.getByRole('button', { name: /mysql/i }));
     expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['my'] });
+  });
+
+  it('picks an option with its number key while focus is in the options', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('2');
+    expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['my'] });
+  });
+
+  it('toggles multi-select options with number keys and still waits for Send', async () => {
+    const user = userEvent.setup();
+    renderCard({ select: 'many' });
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('1');
+    await user.keyboard('2');
+    expect(submitAnswer).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /mysql/i })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+    expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['pg', 'my'] });
+  });
+
+  it('ignores number keys typed outside the options and numbers with no option', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <input aria-label="Reply" />
+        <AskUserCard step={step()} conversationId="conv-1" onAnswered={vi.fn()} />
+      </>,
+    );
+    await user.click(screen.getByRole('textbox', { name: 'Reply' }));
+    await user.keyboard('1');
+    screen.getByRole('button', { name: /postgres/i }).focus();
+    await user.keyboard('9');
+    expect(submitAnswer).not.toHaveBeenCalled();
+  });
+
+  it('keeps option names free of the key hint and check mark', () => {
+    // Unanswered: every option carries a key hint.
+    const { unmount } = renderCard();
+    expect(screen.getByRole('button', { name: 'postgres primary' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'mysql' })).toBeInTheDocument();
+    unmount();
+    // Answered: the chosen option carries the check mark.
+    renderCard({ answer: { status: 'answered', values: ['my'] } });
+    expect(screen.getByRole('button', { name: 'mysql' })).toBeInTheDocument();
+  });
+
+  it('marks the chosen option with a check and no outline', async () => {
+    renderCard({ answer: { status: 'answered', values: ['my'] } });
+    const chosen = screen.getByRole('button', { name: /mysql/i });
+    expect(chosen.querySelector('svg')).not.toBeNull();
+    expect(chosen.className).not.toMatch(/(^|\s)border-accent(\s|$)/);
   });
 
   it('multi-select accumulates and submits once', async () => {
@@ -157,7 +211,7 @@ describe('AskUserCard', () => {
     expect(shown.querySelector('strong')).toHaveTextContent('Answered:');
   });
 
-  it('shows no hover effect or pointer cursor on disabled options and Send', () => {
+  it('shows no hover effect or pointer cursor on disabled options, and holds Send until a pick', () => {
     const { unmount } = renderCard({ answer: { status: 'answered', values: [], text: 'other' } });
     for (const name of [/postgres/i, /mysql/i]) {
       const option = screen.getByRole('button', { name });
@@ -169,7 +223,9 @@ describe('AskUserCard', () => {
     renderCard({ select: 'many' });
     const send = screen.getByRole('button', { name: /^send$/i });
     expect(send).toBeDisabled();
-    expectInertWhenDisabled(send);
+    // Send is the card's one primary action: a pick enables it.
+    fireEvent.click(screen.getByRole('button', { name: /postgres/i }));
+    expect(send).toBeEnabled();
   });
 
   it('says so when the question was skipped', () => {
@@ -210,8 +266,8 @@ describe('AskUserCard', () => {
     expect(screen.getByRole('button', { name: /postgres/i })).toBeDisabled();
     const skip = screen.getByRole('button', { name: /skip/i });
     expect(skip).toBeDisabled();
-    // ...and looks it: Skip dims like the options.
-    expect(skip).toHaveClass('disabled:opacity-60', 'disabled:cursor-default');
+    // ...and so is every other button on the card.
+    for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled();
     await act(async () => { release({ accepted: true }); });
   });
 
@@ -332,5 +388,100 @@ describe('AskUserCard', () => {
     expect(container.querySelector('canvas')).toBeNull();
     expect(screen.queryByText(/side panel/i)).toBeNull();
     expect(screen.queryByText(/Form spec did not parse/i)).toBeNull();
+  });
+
+  describe('a code line wider than the card', () => {
+    const CUE = 'Scroll sideways to see the rest of the line.';
+    const prompt = [
+      'Approve this change?',
+      '',
+      '```json',
+      '{"plan":"Q4-main","site":"TOR-01","sku":"A-100234","qty_before":5,"note":"x","qty":1000000}',
+      '```',
+    ].join('\n');
+
+    /* happy-dom does no layout, so a code block's widths come from here:
+       `content` px of code in a `box` px block. */
+    const widths = { content: 0, box: 0 };
+    const isCode = (el) => el.classList.contains('anton-code-block-pre');
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+        .mockImplementation(function scrollWidth() { return isCode(this) ? widths.content : 0; });
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+        .mockImplementation(function clientWidth() { return isCode(this) ? widths.box : 0; });
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
+
+    it('fades the right edge and says the block scrolls', () => {
+      Object.assign(widths, { content: 750, box: 500 });
+      const { container } = renderCard({ prompt });
+      expect(screen.getByText(CUE)).toBeInTheDocument();
+      expect(container.querySelector('.anton-code-block-fade')).not.toBeNull();
+    });
+
+    it('shows no cue for a block that fits', () => {
+      Object.assign(widths, { content: 500, box: 500 });
+      const { container } = renderCard({ prompt });
+      expect(container.querySelector('.anton-code-block-pre')).not.toBeNull();
+      expect(screen.queryByText(CUE)).toBeNull();
+      expect(container.querySelector('.anton-code-block-fade')).toBeNull();
+    });
+
+    it('checks again when the card is resized', () => {
+      let resized = null;
+      vi.stubGlobal('ResizeObserver', class {
+        constructor(callback) { resized = callback; }
+        observe() {}
+        disconnect() {}
+      });
+      Object.assign(widths, { content: 500, box: 500 });
+      renderCard({ prompt });
+      expect(screen.queryByText(CUE)).toBeNull();
+      Object.assign(widths, { box: 300 });
+      act(() => resized());
+      expect(screen.getByText(CUE)).toBeInTheDocument();
+    });
+
+    it('leaves the code block of an answer without the cue', () => {
+      Object.assign(widths, { content: 750, box: 500 });
+      render(<MarkdownContent text={prompt} complete />);
+      expect(screen.queryByText(CUE)).toBeNull();
+    });
+  });
+
+  describe('reopened after its turn timed out', () => {
+    const TIMEOUT = { status: 'timeout', values: [], text: '' };
+
+    it('sends a pick as a message by its label, not to the answer broker', async () => {
+      const user = userEvent.setup();
+      const onAnswerAsMessage = vi.fn();
+      renderCard({ answer: TIMEOUT }, { reopened: true, onAnswerAsMessage });
+      expect(screen.queryByText(/timed out/i)).toBeNull();
+      await user.click(screen.getByRole('button', { name: /postgres/i }));
+      expect(onAnswerAsMessage).toHaveBeenCalledWith('postgres');
+      expect(submitAnswer).not.toHaveBeenCalled();
+      // Busy until the new turn closes the card, so a second click sends nothing.
+      await user.click(screen.getByRole('button', { name: /mysql/i }));
+      expect(onAnswerAsMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a multi-select as one message of labels', async () => {
+      const user = userEvent.setup();
+      const onAnswerAsMessage = vi.fn();
+      renderCard({ answer: TIMEOUT, select: 'many' }, { reopened: true, onAnswerAsMessage });
+      await user.click(screen.getByRole('button', { name: /postgres/i }));
+      await user.click(screen.getByRole('button', { name: /mysql/i }));
+      await user.click(screen.getByRole('button', { name: /^send$/i }));
+      expect(onAnswerAsMessage).toHaveBeenCalledWith('postgres, mysql');
+    });
+
+    it('offers no Skip and says typing works even for a select-only question', () => {
+      renderCard({ answer: TIMEOUT, allow_custom: false }, { reopened: true, onAnswerAsMessage: vi.fn() });
+      expect(screen.queryByRole('button', { name: /skip/i })).toBeNull();
+      expect(screen.getByText(/type your own answer below/i)).toBeInTheDocument();
+    });
   });
 });

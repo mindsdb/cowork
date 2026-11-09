@@ -14,9 +14,16 @@ const instance = vi.hoisted(() => ({
   login: vi.fn(),
   logout: vi.fn(async () => {}),
   updateToken: vi.fn(async (_minValidity?: number) => false),
+  isTokenExpired: vi.fn((_minValidity?: number) => false),
   clearToken: vi.fn(),
 }));
 vi.mock('keycloak-js', () => ({ default: vi.fn(function () { return instance; }) }));
+
+const previews = vi.hoisted(() => ({
+  closeLiveAppPreviews: vi.fn(async () => {}),
+  closeLiveAppPreviewsForSignOut: vi.fn(async () => {}),
+}));
+vi.mock('../cowork/lib/liveAppPreview', () => previews);
 
 import { MINDS_KEYCLOAK_URL } from './mindsUrls';
 import {
@@ -102,6 +109,8 @@ function signedIn(options: {
 }
 
 beforeEach(() => {
+  previews.closeLiveAppPreviews.mockReset().mockResolvedValue(undefined);
+  previews.closeLiveAppPreviewsForSignOut.mockReset().mockResolvedValue(undefined);
   __resetOrganizationTransitionForTests();
   lockHeld = false;
   locks.request.mockClear();
@@ -115,6 +124,7 @@ beforeEach(() => {
   instance.login.mockReset();
   instance.logout.mockReset().mockResolvedValue(undefined);
   instance.updateToken.mockReset().mockResolvedValue(false);
+  instance.isTokenExpired.mockReset().mockReturnValue(false);
   instance.clearToken.mockReset();
 });
 
@@ -139,6 +149,18 @@ describe('keycloak logout()', () => {
       expect.objectContaining({ redirectUri: expect.any(String) }),
     );
   });
+});
+
+it('closes app previews before ending the account session', async () => {
+  keycloak.authenticated = true;
+  let release: () => void = () => {};
+  previews.closeLiveAppPreviewsForSignOut.mockReturnValueOnce(new Promise<void>(resolve => { release = resolve; }));
+  const pending = logout();
+  expect(instance.logout).not.toHaveBeenCalled();
+  release();
+  await pending;
+  expect(instance.logout).toHaveBeenCalledOnce();
+  expect(previews.closeLiveAppPreviews).not.toHaveBeenCalled();
 });
 
 describe('getAccessToken()', () => {
@@ -180,6 +202,43 @@ describe('getAccessToken()', () => {
     finishRefresh(true);
 
     await expect(token).rejects.toThrow('Organization change is in progress');
+  });
+
+  /* keycloak-js cannot abort a refresh, and a Keycloak that never answers
+     would otherwise hold every API request behind it. */
+  it('returns a still-valid token at the deadline when the refresh never settles', async () => {
+    vi.useFakeTimers();
+    signedIn();
+    instance.updateToken.mockImplementationOnce(() => new Promise<boolean>(() => {}));
+
+    let settled: string | null | undefined;
+    void getAccessToken().then((token) => { settled = token; });
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(settled).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(settled).toBe('access-token');
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps waiting for the refresh when the token has already expired', async () => {
+    vi.useFakeTimers();
+    signedIn();
+    instance.isTokenExpired.mockReturnValue(true);
+    let finishRefresh: (value: boolean) => void = () => {};
+    instance.updateToken.mockImplementationOnce(
+      () => new Promise<boolean>((resolve) => { finishRefresh = resolve; }),
+    );
+
+    let settled: string | null | undefined;
+    void getAccessToken().then((token) => { settled = token; });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBeUndefined();
+
+    keycloak.token = 'refreshed-token';
+    finishRefresh(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe('refreshed-token');
   });
 });
 

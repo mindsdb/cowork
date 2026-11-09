@@ -1,3 +1,4 @@
+import { diagnostic } from '../../shared/diagnostics';
 /**
  * Sync .env-style settings lines to the cowork-server SQLite database.
  *
@@ -174,10 +175,7 @@ export async function syncModelsToDb(lines: string[]): Promise<boolean> {
           // PREVIOUS id if one was already stored — which for an install
           // already holding a bad model means it stays bad until the user
           // changes it in Settings. The turn-time card is what surfaces that.
-          console.warn(
-            `[settings] server refused ${settingKey}="${value}" (${status}) — ` +
-            'not retrying; the stored value is unchanged',
-          );
+          diagnostic('renderer.lib.syncSettings', 'WARNING', 'setting_value_refused', { setting_key: settingKey, status });
         } else {
           allOk = false;
         }

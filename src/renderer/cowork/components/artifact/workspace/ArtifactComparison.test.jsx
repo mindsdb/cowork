@@ -1,7 +1,20 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { inlineHtmlFromApi } from '../../../lib/inlineHtmlAssets';
 import { ArtifactComparison } from './ArtifactComparison';
+
+vi.mock('../../../../platform/host', () => ({
+  host: { getApiOrigin: () => 'http://127.0.0.1:4000' },
+}));
+vi.mock('../../../lib/inlineHtmlAssets', () => ({ inlineHtmlFromApi: vi.fn() }));
+
+const DRAFT_URL = '/api/v1/artifacts/drafts/p/a/deck.html';
+const INLINED = '<!--inlined-->';
+
+beforeEach(() => {
+  inlineHtmlFromApi.mockReset();
+});
 
 const HTML_COMPARISON = {
   kind: 'agent',
@@ -16,6 +29,57 @@ const HTML_COMPARISON = {
 };
 
 describe('ArtifactComparison', () => {
+  function renderHtmlComparison() {
+    render(
+      <ArtifactComparison
+        comparison={HTML_COMPARISON}
+        contentType="html"
+        baseUrl={DRAFT_URL}
+        busy={false}
+        onClose={vi.fn()}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+  }
+
+  function paneDocument(title) {
+    return screen.getByTitle(title).getAttribute('srcdoc');
+  }
+
+  it('shows the panes once both documents are inlined', async () => {
+    const reads = [];
+    inlineHtmlFromApi.mockImplementation((html) => new Promise((resolve) => {
+      reads.push(() => resolve(`${html}${INLINED}`));
+    }));
+
+    renderHtmlComparison();
+    expect(screen.queryByTitle('Artifact before Revision 4')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Loading page…')).toHaveLength(2);
+
+    await act(async () => { reads[0](); });
+    expect(screen.queryByTitle('Artifact after Revision 5')).not.toBeInTheDocument();
+
+    await act(async () => { reads[1](); });
+    expect(paneDocument('Artifact before Revision 4')).toContain(INLINED);
+    expect(paneDocument('Artifact after Revision 5')).toContain(INLINED);
+    expect(paneDocument('Artifact before Revision 4')).toContain(
+      '<base href="http://127.0.0.1:4000/api/v1/artifacts/drafts/p/a/deck.html">',
+    );
+  });
+
+  it('shows both panes when inlining one of them fails', async () => {
+    inlineHtmlFromApi
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockImplementationOnce(async (html) => `${html}${INLINED}`);
+
+    renderHtmlComparison();
+
+    expect(await screen.findByTitle('Artifact before Revision 4')).toBeInTheDocument();
+    expect(paneDocument('Artifact before Revision 4')).not.toContain(INLINED);
+    expect(paneDocument('Artifact after Revision 5')).toContain(INLINED);
+  });
+
   it('shows a rendered HTML comparison before exposing source', async () => {
     const user = userEvent.setup();
     render(

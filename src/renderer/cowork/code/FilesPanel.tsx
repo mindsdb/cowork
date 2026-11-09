@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 import Input from '../components/ui/Input';
 import Menu from '../components/ui/Menu';
 import Spinner from '../components/ui/Spinner';
@@ -233,7 +234,7 @@ export function FilesPanel({
         />
         <header className="code-files__header">
           <div>
-            <div className="code-eyebrow">TASK CONTEXT</div>
+            <div className="section-label">Task context</div>
             <div className="code-files__title">Files</div>
           </div>
           <Button icon size="sm" variant="subtle" aria-label="Close files panel" onClick={onClose}>{Ico.close(14)}</Button>
@@ -247,14 +248,14 @@ export function FilesPanel({
               ariaLabel="Project folder"
               trigger={(
                 <Button size="sm" variant="subtle" aria-label={`Resource: ${selectedResource.name}`}>
-                  {Ico.folder(13)}<span>{selectedResource.name}</span>{resources.length > 1 && Ico.chevDown(10)}
+                  {Ico.folder(14)}<span>{selectedResource.name}</span>{resources.length > 1 && Ico.chevDown(12)}
                 </Button>
               )}
               items={resources.map((resource) => ({
                 key: resource.id,
                 label: resource.name,
-                icon: Ico.folder(13),
-                hint: resource.id === selectedResource.id ? Ico.check(11) : undefined,
+                icon: Ico.folder(14),
+                hint: resource.id === selectedResource.id ? Ico.check(12) : undefined,
                 onClick: () => chooseResource(resource.id),
               }))}
             />
@@ -263,7 +264,7 @@ export function FilesPanel({
             value={query}
             onChange={setQuery}
             size="sm"
-            leading={Ico.search(13)}
+            leading={Ico.search(14)}
             wrapperClassName="code-files__search"
             placeholder="Search task files"
             aria-label="Search task files"
@@ -273,10 +274,10 @@ export function FilesPanel({
         <div className="code-files__body scroll-clean">
           {loading && !file && <div className="code-files__loading"><Spinner /> Loading…</div>}
           {!loading && resources.length === 0 && !error && (
-            <div className="code-files__empty"><span>{Ico.folder(18)}</span><strong>No task files available</strong><p>This task does not have a prepared working copy on this computer.</p></div>
+            <EmptyState size="sm" icon={Ico.folder(20)} title="No task files available" description="This task does not have a prepared working copy on this computer." />
           )}
           {!!query && !loading && results.length === 0 && !error && (
-            <div className="code-files__empty"><span>{Ico.search(18)}</span><strong>No matches</strong><p>Try a filename, symbol, or phrase from the code.</p></div>
+            <EmptyState size="sm" icon={Ico.search(20)} title="No matches" description="Try a filename, symbol, or phrase from the code." />
           )}
           {!!query && results.length > 0 && (
             <div className="code-files__results">
@@ -311,7 +312,7 @@ export function FilesPanel({
                 <button type="button" className="code-files__entry" key={`${entry.kind}:${entry.path}`} onClick={() => chooseEntry(entry)}>
                   <span>{entry.kind === 'directory' ? Ico.folder(14) : Ico.code(14)}</span>
                   <strong>{entry.name}</strong>
-                  {entry.kind === 'directory' && <i>{Ico.chevRight(11)}</i>}
+                  {entry.kind === 'directory' && <i>{Ico.chevRight(12)}</i>}
                 </button>
               ))}
               {!loading && entries.length === 0 && <div className="code-files__folder-empty">This folder is empty.</div>}
@@ -354,7 +355,7 @@ export function FilesPanel({
                     disabled={file.line_start <= 1 || loading}
                     onClick={() => openFileWindow(Math.max(1, file.line_start - FILE_WINDOW_LINES))}
                   >
-                    {Ico.chevLeft(11)} Previous
+                    {Ico.chevLeft(12)} Previous
                   </Button>
                   <span>{file.line_start}–{file.line_end}</span>
                   <Button
@@ -363,7 +364,7 @@ export function FilesPanel({
                     disabled={file.line_end >= file.line_count || loading}
                     onClick={() => openFileWindow(file.line_end + 1)}
                   >
-                    Next {Ico.chevRight(11)}
+                    Next {Ico.chevRight(12)}
                   </Button>
                 </nav>
               )}

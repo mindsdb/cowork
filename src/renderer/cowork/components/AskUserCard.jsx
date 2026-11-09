@@ -1,11 +1,29 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { submitAnswer } from '../api';
+import {
+  BROWSER_APPROVE_VALUE,
+  UNREADABLE_APPROVAL,
+  browserApprovalIds,
+  declineBrowserApproval,
+  isBrowserApprovalCard,
+  recordBrowserApproval,
+} from '../lib/browserApproval';
+import { host } from '../../platform/host';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
+import ChatCardShell from './ChatCardShell';
+import { cn } from '../lib/cn';
+import Ico from './Icons';
+import Kbd from './ui/Kbd';
 
-// Unselected option and Send. Hover is `enabled:` only and the cursor resets
-// when disabled: `hover:` also matches a disabled button, and globals.css
-// gives every button a pointer, so a settled card still looked live.
-const QUIET_BUTTON = 'border-line bg-surface text-ink enabled:hover:bg-surface-3 enabled:hover:border-line-2 disabled:opacity-60';
+// An option button. Hover is `enabled:` only and the cursor resets when
+// disabled: `hover:` also matches a disabled button, and globals.css gives
+// every button a pointer, so a settled card still looked live. Explicit bg-*
+// on both branches: preflight is off, so a button with no background falls
+// through to native chrome. Only unselected options dim: the chosen one is
+// the answer.
+const OPTION = 'flex w-full items-center gap-3 rounded-lg border-0 px-3 py-2 text-left text-sm transition-colors disabled:cursor-default';
+const OPTION_IDLE = 'bg-transparent text-ink enabled:hover:bg-surface-3 disabled:opacity-60';
+const OPTION_SELECTED = 'bg-accent-bg text-ink font-medium';
 
 /**
  * An inline question card: the agent is blocked until this is answered.
@@ -13,22 +31,32 @@ const QUIET_BUTTON = 'border-line bg-surface text-ink enabled:hover:bg-surface-3
  * The answered state is driven by `step.data.answer`, which arrives on the
  * `response.ask_user_answered` event — never by the local click. That is what
  * makes the card correct after a reload and in a second tab.
+ *
+ * A `reopened` card belongs to a finished turn whose question timed out: no
+ * broker waits on it, so a pick goes out as a normal message instead.
  */
-export default function AskUserCard({ step, conversationId, onAnswered, expired = false }) {
+export default function AskUserCard({ step, conversationId, onAnswered, onAnswerAsMessage, expired = false, reopened = false, lateAnswer = null }) {
   const q = step?.data || {};
-  const answer = q.answer || null;
+  const answer = lateAnswer || q.answer || null;
   const isMany = q.select === 'many';
   const [picked, setPicked] = useState([]);
   const [gone, setGone] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Why the browser refused the person's approval of a held step, if it did.
+  const [refusal, setRefusal] = useState('');
+  /* The held step whose approval the browser has recorded for this card, so
+     an Approve after a card answer that failed doesn't record it again. */
+  const recordedApproval = useRef(null);
   const promptId = useId();
 
-  const settled = Boolean(answer) || expired || gone;
+  const settled = !reopened && (Boolean(answer) || expired || gone);
 
   // Only a multi-line prompt is markdown: the ask_user tool asks for one
   // plain-text line, and markdown would lose text in it ("<div>" vanishes,
   // "__init__" turns bold). The multi-line PRD brief needs softBreaks for its
-  // single-newline lines; forms and charts stay off so a fence is plain code.
+  // single-newline lines; forms and charts stay off so a fence is plain code,
+  // and a code line too wide for the card is marked as scrolling, since the
+  // person approves what the brief shows.
   // Memoised: ChatView re-renders on every streamed delta, and each card
   // would otherwise re-parse its brief every time.
   const prompt = q.prompt || '';
@@ -37,6 +65,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
       <MarkdownContent
         text={prompt}
         softBreaks
+        codeOverflowCue
         neutralizeLoopback
         enableForms={false}
         enableCharts={false}
@@ -62,6 +91,39 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   const send = async (payload) => {
     if (settled || busy) return;
     setBusy(true);
+    if (reopened) {
+      // Stays busy: the sent message starts a new turn, which closes this card.
+      const labelOf = (v) => (q.options || []).find((o) => o.value === v)?.label || v;
+      onAnswerAsMessage?.(payload.values.map(labelOf).join(', '));
+      return;
+    }
+    /* The commit hold on the web: on Approve the browser records the approval
+       first, and the card is answered only once it has. Any other answer
+       declines the held step first, which also drops an approval recorded
+       before, and the card is answered whatever the decline answers. */
+    if (host.isWeb && isBrowserApprovalCard(q.question_id)) {
+      const held = browserApprovalIds(q.question_id);
+      const approving = payload.values?.length === 1 && payload.values[0] === BROWSER_APPROVE_VALUE;
+      if (approving && !held) {
+        setRefusal(UNREADABLE_APPROVAL);
+        setBusy(false);
+        return;
+      }
+      if (approving && recordedApproval.current !== held.pendingId) {
+        const recorded = await recordBrowserApproval(held);
+        if (!recorded.ok) {
+          setRefusal(recorded.message);
+          setBusy(false);
+          return;
+        }
+        recordedApproval.current = held.pendingId;
+      }
+      if (!approving && held) {
+        recordedApproval.current = null;
+        await declineBrowserApproval(held);
+      }
+    }
+    setRefusal('');
     const result = await submitAnswer(conversationId, q.question_id, payload);
     // `busy` is cleared ONLY for a failure the user can retry. On success the
     // card stays disabled until `settled` flips, which needs the
@@ -100,13 +162,53 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
   // to serve.
   const answerText = answer?.text || chosenLabels.join(', ');
 
+  // Single-select submits on the option click, so it has no primary; a
+  // multi-select stages picks until Send. The hint says what the composer
+  // enforces: a select-only question refuses typed text (it would be rejected
+  // as an answer, and it cannot be sent as a message without deadlocking the
+  // blocked turn), so the user learns it before hitting it.
+  const actions = settled ? null : {
+    leading: (
+      <span className="font-body text-xs leading-snug text-ink-4">
+        {q.allow_custom || reopened
+          ? '…or type your own answer below.'
+          : 'Pick an option above — a typed reply won\'t be accepted. Skip to type something else.'}
+      </span>
+    ),
+    secondary: reopened ? null : { label: 'Skip', onClick: () => send({ skipped: true }), disabled: busy },
+    primary: isMany
+      ? { label: 'Send', onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
+      : null,
+  };
+
   return (
-    <div className="rounded-lg border border-line bg-surface-2 p-3">
+    // No kind row: the turn's "Question for you" step already names the card.
+    <ChatCardShell
+      tone="question"
+      kind={false}
+      actions={actions}
+      footer={settled ? (
+        <>
+          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">Skipped.</div> : null}
+          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">No answer — timed out.</div> : null}
+          {/* Body text, not a status caption: a composer-typed answer is not
+              echoed as a user message anywhere else. The bold prefix (styled
+              like markdown bold) sets it apart from the prompt, which uses the
+              same prose style. */}
+          {answerText ? (
+            <MarkdownPlainText>
+              <strong className="font-semibold text-ink">Answered:</strong> {answerText}
+            </MarkdownPlainText>
+          ) : null}
+          {expired || gone ? <div className="text-xs text-ink-4">This question is no longer active.</div> : null}
+        </>
+      ) : null}
+    >
       {/* Only paragraphs reset their outer margins in the markdown sizes;
           drop them for a leading heading or trailing list in the card. */}
       <div
         id={promptId}
-        className="mb-2 [&>.markdown-content>:first-child]:mt-0 [&>.markdown-content>:last-child]:mb-0"
+        className="mb-2 text-ink [&>.markdown-content>:first-child]:mt-0 [&>.markdown-content>:last-child]:mb-0"
       >
         {promptBody}
       </div>
@@ -123,8 +225,22 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
           worse to a screen reader than an honest toggle group. `aria-pressed`
           is therefore set in BOTH modes — for single-select it reflects the
           server's recorded answer. */}
-      <div className="flex flex-col gap-1.5" role="group" aria-labelledby={promptId}>
-        {(q.options || []).map((option) => {
+      <div
+        className="group/opts flex flex-col gap-0.5"
+        role="group"
+        aria-labelledby={promptId}
+        // 1–9 pick an option while focus is in the options (never from the
+        // composer, so typing a reply can't answer by accident).
+        onKeyDown={(e) => {
+          if (settled || busy || e.metaKey || e.ctrlKey || e.altKey) return;
+          const n = Number(e.key);
+          const option = Number.isInteger(n) && n >= 1 && n <= 9 ? (q.options || [])[n - 1] : null;
+          if (!option) return;
+          e.preventDefault();
+          onOption(option.value);
+        }}
+      >
+        {(q.options || []).map((option, index) => {
           // Single-select submits on click, so "selected" only ever means
           // the server-confirmed answer. Multi-select stages picks locally
           // until Send, so before settling it must reflect that local
@@ -142,84 +258,26 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
               data-chosen={isSelected ? 'true' : 'false'}
               aria-pressed={isSelected}
               onClick={() => onOption(option.value)}
-              // Explicit bg-* on every branch: Tailwind preflight is off in
-              // this app (globals.css already owns the reset), so a button
-              // with no background falls through to the browser's native
-              // button chrome instead of the app's surface tokens — that's
-              // what read as "grey, low-contrast" before this class was added.
-              // Only unselected options dim: the chosen one is the answer.
-              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:cursor-default ${
-                isSelected ? 'border-accent bg-accent-bg text-ink font-medium' : QUIET_BUTTON
-              }`}
+              className={cn(OPTION, isSelected ? OPTION_SELECTED : OPTION_IDLE)}
             >
-              <span>{option.label || option.value}</span>
-              {option.detail ? (
-                <span className="text-[11px] text-ink-4">{option.detail}</span>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span>{option.label || option.value}</span>
+                {option.detail ? (
+                  <span className="text-xs font-normal text-ink-4">{option.detail}</span>
+                ) : null}
+              </span>
+              {isSelected ? (
+                <span aria-hidden className="ml-auto inline-flex shrink-0 text-accent">{Ico.check(14)}</span>
+              ) : !settled && index < 9 ? (
+                // Shown only while the options have keyboard focus, when 1–9 work.
+                <span aria-hidden className="ml-auto hidden shrink-0 opacity-60 group-focus-within/opts:inline-flex"><Kbd>{index + 1}</Kbd></span>
               ) : null}
             </button>
           );
         })}
       </div>
 
-      {isMany && !settled ? (
-        <button
-          type="button"
-          disabled={picked.length === 0 || busy}
-          onClick={() => send({ values: picked })}
-          className={`mt-2 rounded-md border px-2.5 py-1 text-[12px] transition-colors disabled:cursor-default ${QUIET_BUTTON}`}
-        >
-          Send
-        </button>
-      ) : null}
-
-      {!settled ? (
-        <div className="mt-2 flex items-center gap-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => send({ skipped: true })}
-            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline disabled:opacity-60 disabled:cursor-default"
-          >
-            Skip
-          </button>
-          {q.allow_custom ? (
-            <span className="text-[11px] text-ink-4">
-              …or type your own answer below.
-            </span>
-          ) : (
-            // Select-only: the composer refuses to send typed text while this
-            // question is up (it would be rejected as an answer, and it cannot
-            // be sent as a message without deadlocking the blocked turn). Say so
-            // here, so the user learns it before hitting it.
-            <span className="text-[11px] text-ink-4">
-              Pick an option above — a typed reply won&apos;t be accepted. Skip to type
-              something else.
-            </span>
-          )}
-        </div>
-      ) : null}
-
-      {answer?.status === 'cancelled' ? (
-        <div className="mt-2 text-[11.5px] text-ink-4">Skipped.</div>
-      ) : null}
-      {answer?.status === 'timeout' ? (
-        <div className="mt-2 text-[11.5px] text-ink-4">No answer — timed out.</div>
-      ) : null}
-      {/* Body text, not a status caption: a composer-typed answer is not echoed
-          as a user message anywhere else. The bold prefix (styled like markdown
-          bold) sets it apart from the prompt, which uses the same prose style. */}
-      {answerText ? (
-        <div className="mt-2">
-          <MarkdownPlainText>
-            <strong className="font-semibold text-ink">Answered:</strong> {answerText}
-          </MarkdownPlainText>
-        </div>
-      ) : null}
-      {expired || gone ? (
-        <div className="mt-2 text-[11.5px] text-ink-4">
-          This question is no longer active.
-        </div>
-      ) : null}
-    </div>
+      {refusal && !settled ? <div role="alert" className="mt-2 text-xs text-danger">{refusal}</div> : null}
+    </ChatCardShell>
   );
 }

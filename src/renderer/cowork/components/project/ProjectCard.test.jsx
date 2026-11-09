@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { visibleStats } from './ProjectCard.jsx';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { ProjectCard, ProjectRow, visibleStats } from './ProjectCard.jsx';
+
+vi.mock('../../api', () => ({
+  fetchMemory: () => Promise.resolve({}),
+  fetchArtifacts: () => Promise.resolve([]),
+  countNonEmptyMemory: () => 0,
+}));
 
 describe('visibleStats', () => {
   it('pluralizes each stat, using the singular form for exactly 1', () => {
@@ -23,5 +30,33 @@ describe('visibleStats', () => {
     expect(visibleStats({ tasks: 0, memories: 0, schedules: 0, artifacts: 0 })).toEqual([]);
     expect(visibleStats({})).toEqual([]);
     expect(visibleStats(undefined)).toEqual([]);
+  });
+});
+
+// Pin + menu always show, in flow, so they never cover the name field, the
+// title, or a row's meta. Pinned by class: happy-dom computes no Tailwind.
+describe.each([
+  ['ProjectCard', ProjectCard],
+  ['ProjectRow', ProjectRow],
+])('%s actions', (_name, Item) => {
+  const project = { id: 'p1', name: 'alpha', path: '/p/alpha' };
+  const cluster = () => screen.getByRole('button', { name: 'Project menu' }).closest('[data-item-actions]');
+
+  it('sit in flow and stay visible at rest', () => {
+    render(<Item project={project} />);
+    expect(cluster()).not.toHaveClass('absolute');
+    expect(cluster()).not.toHaveClass('opacity-0');
+  });
+
+  it('sit in flow and stay visible on a pinned project', () => {
+    render(<Item project={project} pinned />);
+    expect(cluster()).not.toHaveClass('absolute');
+    expect(cluster()).not.toHaveClass('opacity-0');
+  });
+
+  it('sit in flow beside the rename field instead of over it', () => {
+    render(<Item project={project} editing />);
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    expect(cluster()).not.toHaveClass('absolute');
   });
 });

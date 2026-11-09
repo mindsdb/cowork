@@ -12,16 +12,23 @@
 // queue should drain next. The finishing task is preferred so its own
 // follow-up messages keep FIFO order; a queue whose task no longer
 // exists (deleted or merged mid-flight) is skipped rather than wedging
-// the drain loop.
-export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
-  const exists = existingTaskIds instanceof Set
-    ? (id) => existingTaskIds.has(id)
-    : (id) => Array.isArray(existingTaskIds) && existingTaskIds.includes(id);
+// the drain loop. A task in `runningTaskIds` (a set or list) is skipped
+// too: its turn is still running, so its follow-up waits for that turn's
+// own end instead of replacing it.
+export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId, runningTaskIds) {
+  const exists = (id) => includesId(existingTaskIds, id);
   const hasQueue = (id) =>
-    Array.isArray(queues?.[id]) && queues[id].length > 0 && exists(id);
+    Array.isArray(queues?.[id]) && queues[id].length > 0 && exists(id)
+    && !includesId(runningTaskIds, id);
 
   if (preferredTaskId && hasQueue(preferredTaskId)) return preferredTaskId;
   return Object.keys(queues || {}).find(hasQueue) || null;
+}
+
+// Membership in a Set or an array of ids; anything else holds nothing.
+function includesId(ids, id) {
+  if (ids instanceof Set) return ids.has(id);
+  return Array.isArray(ids) && ids.includes(id);
 }
 
 // Decide whether the single app-wide stream slot is stranded and must be
@@ -103,6 +110,34 @@ export function reservationReleaseDecision(
 export function finishedCids(prevIds, nextIds, streamingTaskId) {
   const next = new Set(nextIds);
   return [...prevIds].filter((cid) => !next.has(cid) && cid !== streamingTaskId);
+}
+
+// "Run now" answers with the run's conversation before the server starts the
+// run, so the in-flight list can leave it out for a few seconds. Until the
+// server lists it once, a poll without it means not started yet, not finished.
+export const UNLISTED_RUN_GRACE_MS = 30_000;
+
+// When the window that pressed "Run now" asks again whether the run has
+// started, so it can attach to it. They add up to the grace period.
+export const RUN_START_PROBE_DELAYS_MS = [500, 1000, 1500, 2000, 3000, 3000, 4000, 5000, 5000, 5000];
+
+// What one in-flight probe says about a run started with "Run now": 'running',
+// 'ended' (it started and finished between probes, so it left a buffer), or
+// 'not-started'. The run's conversation is new, so any buffer is this run's.
+export function runStartProbeOutcome(status) {
+  if (status?.in_flight) return 'running';
+  if (status?.has_buffer) return 'ended';
+  return 'not-started';
+}
+
+// `awaiting` maps each run started here to when it was started. Returns the
+// runs a poll that didn't list them should still count as in flight: those the
+// server has never listed, within the grace period.
+export function runsAwaitingTheirStart(awaiting, listedIds, now, graceMs = UNLISTED_RUN_GRACE_MS) {
+  const listed = new Set(listedIds);
+  return [...awaiting]
+    .filter(([cid, startedAt]) => !listed.has(cid) && now - startedAt < graceMs)
+    .map(([cid]) => cid);
 }
 
 // Re-key queued messages when the server mints a canonical id for a task

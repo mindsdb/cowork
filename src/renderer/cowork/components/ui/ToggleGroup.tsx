@@ -14,11 +14,15 @@
 //
 //   <ToggleGroup size="sm" ... />
 //   <ToggleGroup disabled={busy} ... />
+//
+// The selected fill is one pill that slides to the chosen option rather than
+// each option painting its own, so a change reads as motion, not a swap.
 
-import { Fragment } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle as BaseToggle } from '@base-ui/react/toggle';
 import { cn } from '../../lib/cn';
+import { Tooltip } from './Tooltip';
 
 // Outer container sizes mirror toolbar controls (SearchInput / SortPill).
 // Container padding (2px) + item vertical padding + font line-height ≈ same
@@ -38,6 +42,8 @@ export interface ToggleGroupOption {
   icon?: React.ReactNode;
   title?: string;
   'aria-label'?: string;
+  /** A hover/focus hint, for an option whose label may be hidden. Replaces `title`. */
+  tooltip?: React.ReactNode;
 }
 
 export interface ToggleGroupProps {
@@ -48,6 +54,8 @@ export interface ToggleGroupProps {
   disabled?: boolean;
   className?: string;
   'aria-label'?: string;
+  /** Overrides the size's item padding, e.g. to tighten a mostly icon-only group. */
+  itemPadding?: string;
 }
 
 export function ToggleGroup({
@@ -58,9 +66,36 @@ export function ToggleGroup({
   disabled = false,
   className,
   'aria-label': ariaLabel,
+  itemPadding,
 }: ToggleGroupProps) {
   const cs = CONTAINER_SIZE[size] ?? CONTAINER_SIZE.md;
   const is = ITEM_SIZE[size] ?? ITEM_SIZE.md;
+  const groupRef = useRef<HTMLDivElement>(null);
+  const items = useRef(new Map<string, HTMLElement>());
+  const [pill, setPill] = useState<{ x: number; w: number } | null>(null);
+  // The pill lands without sliding on first paint; only later moves animate.
+  const [settled, setSettled] = useState(false);
+
+  // Measured, not computed: option widths change when labels hide at narrow
+  // widths, so the pill follows the group's size as well as the selection.
+  useLayoutEffect(() => {
+    const group = groupRef.current;
+    const measure = () => {
+      const el = items.current.get(value);
+      // No layout (hidden, or a DOM without one): the option paints its own fill.
+      setPill(el && el.offsetWidth ? { x: el.offsetLeft, w: el.offsetWidth } : null);
+    };
+    measure();
+    if (!group || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(group);
+    return () => observer.disconnect();
+  }, [value, options.length]);
+  useLayoutEffect(() => {
+    if (!pill || settled) return undefined;
+    const frame = requestAnimationFrame(() => setSettled(true));
+    return () => cancelAnimationFrame(frame);
+  }, [pill, settled]);
 
   return (
     <BaseToggleGroup
@@ -73,15 +108,36 @@ export function ToggleGroup({
         if (next) onValueChange(next);
       }}
       disabled={disabled}
-      className={cn('inline-flex items-center', disabled && 'opacity-[0.55]', className)}
+      ref={groupRef}
+      className={cn('relative inline-flex items-center', disabled && 'opacity-[0.55]', className)}
       style={{
         padding: cs.padding,
         borderRadius: cs.borderRadius,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
+        background: 'var(--toggle-track-bg, var(--surface-2))',
+        border: 'var(--toggle-track-border, 1px solid var(--line))',
       }}
       aria-label={ariaLabel}
     >
+      {pill && (
+        <span
+          aria-hidden="true"
+          data-toggle-pill=""
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: cs.padding,
+            bottom: cs.padding,
+            width: pill.w,
+            transform: `translateX(${pill.x}px)`,
+            borderRadius: is.borderRadius,
+            background: 'var(--toggle-selected-bg, var(--surface-3))',
+            boxShadow: 'var(--toggle-selected-shadow, inset 0 0 0 1px var(--line-2))',
+            transition: settled
+              ? 'transform var(--dur-layout) var(--ease-out), width var(--dur-layout) var(--ease-out)'
+              : 'none',
+          }}
+        />
+      )}
       {options.map((opt, i) => {
         // A divider between two UNselected neighbors reads as a segmented
         // control; between a selected item and its neighbor it would cut
@@ -91,6 +147,40 @@ export function ToggleGroup({
         // either side of the boundary is the current selection.
         const prev = options[i - 1];
         const dividerHidden = value === opt.value || (prev && value === prev.value);
+        const toggle = (
+          <BaseToggle
+            value={opt.value}
+            ref={(el: HTMLElement | null) => {
+              if (el) items.current.set(opt.value, el);
+              else items.current.delete(opt.value);
+            }}
+            aria-label={opt['aria-label'] || opt.title}
+            title={opt.tooltip ? undefined : opt.title}
+            // Ink lives in classes, not the style below, so an unselected
+            // option can darken a step on hover.
+            className={cn(
+              'relative inline-flex items-center gap-[6px] text-ink-3 data-[pressed]:text-ink',
+              disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:text-ink-2',
+            )}
+            style={(state: { pressed: boolean }) => ({
+              padding: itemPadding ?? is.padding,
+              borderRadius: is.borderRadius,
+              fontFamily: 'var(--font-body)',
+              fontSize: is.fontSize,
+              border: 0,
+              background: state.pressed && !pill
+                ? 'var(--toggle-selected-bg, var(--surface-3))'
+                : 'transparent',
+              boxShadow: state.pressed && !pill
+                ? 'var(--toggle-selected-shadow, inset 0 0 0 1px var(--line-2))'
+                : 'none',
+              transition: 'background var(--dur-hover) ease, color var(--dur-hover) ease',
+            })}
+          >
+            {opt.icon && <span className="inline-flex">{opt.icon}</span>}
+            {opt.label}
+          </BaseToggle>
+        );
         return (
           <Fragment key={opt.value}>
             {i > 0 && (
@@ -105,34 +195,11 @@ export function ToggleGroup({
                   // items.
                   background: 'color-mix(in srgb, var(--line) 55%, transparent)',
                   opacity: dividerHidden ? 0 : 1,
-                  transition: 'opacity 0.15s ease',
+                  transition: 'opacity var(--dur-hover) ease',
                 }}
               />
             )}
-            <BaseToggle
-              value={opt.value}
-              aria-label={opt['aria-label'] || opt.title}
-              title={opt.title}
-              className={cn('inline-flex items-center gap-[6px]', disabled ? 'cursor-not-allowed' : 'cursor-pointer')}
-              style={(state: { pressed: boolean }) => ({
-                padding: is.padding,
-                borderRadius: is.borderRadius,
-                fontFamily: 'var(--font-body)',
-                fontSize: is.fontSize,
-                border: 0,
-                background: state.pressed
-                  ? 'var(--toggle-selected-bg, var(--surface-3))'
-                  : 'transparent',
-                color: state.pressed ? 'var(--ink)' : 'var(--ink-3)',
-                boxShadow: state.pressed
-                  ? 'var(--toggle-selected-shadow, inset 0 0 0 1px var(--line-2))'
-                  : 'none',
-                transition: 'background 0.15s ease, color 0.15s ease',
-              })}
-            >
-              {opt.icon && <span className="inline-flex">{opt.icon}</span>}
-              {opt.label}
-            </BaseToggle>
+            {opt.tooltip ? <Tooltip content={opt.tooltip}>{toggle}</Tooltip> : toggle}
           </Fragment>
         );
       })}

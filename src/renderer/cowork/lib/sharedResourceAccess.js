@@ -11,6 +11,11 @@ export function canUseSharedResource(resource, capability, isWeb = host.isWeb) {
   return !isWeb;
 }
 
+/** Older servers have no selective shares; their existing projects remain runnable. */
+export function canRunProject(project) {
+  return !project?.shared && project?.capabilities?.canRun !== false;
+}
+
 /**
  * Desktop historically treats both default project names as system-owned.
  * Cowork Cloud has one immutable project, `general`; a hosted project named
@@ -28,10 +33,11 @@ export const OTHER_ACTOR_LABEL = 'Another member';
 export const UNKNOWN_ACTOR_LABEL = 'Unknown';
 
 /**
- * The server no longer stores email addresses, and returns one only when the
- * actor is the viewer themselves. Everyone else arrives as a bare user id,
- * which is a UUID no member can read and which we have no directory to
- * resolve, so it never reaches the screen.
+ * Attribution carries an email only when the actor is the viewer themselves
+ * (shared_resources.py); live-app sharing's `ownerEmail` and `receivedFrom`,
+ * which do name an owner, never reach this helper. Everyone else arrives as a
+ * bare user id, which is a UUID no member can read and which we have no
+ * directory to resolve, so it never reaches the screen.
  */
 export function actorLabel(actor) {
   if (!actor) return '';

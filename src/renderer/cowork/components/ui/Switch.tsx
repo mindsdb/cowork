@@ -12,7 +12,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
 const trackVariants = cva(
-  'relative inline-flex shrink-0 cursor-pointer rounded-full border-0 p-0.5 transition-colors duration-150',
+  'relative inline-flex shrink-0 cursor-pointer rounded-full border-0 p-0.5 transition-colors duration-hover',
   {
     variants: {
       size: {
@@ -27,7 +27,7 @@ const trackVariants = cva(
 );
 
 const thumbVariants = cva(
-  'block rounded-full bg-white shadow-sm transition-[left] duration-150 absolute top-0.5',
+  'block rounded-full bg-white shadow-sm transition-[left] duration-hover absolute top-0.5',
   {
     variants: {
       size: {

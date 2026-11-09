@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { ComposerFrame } from '../components/chat/ComposerFrame';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import { Textarea } from '../components/ui/Input';
@@ -221,8 +222,9 @@ export const CodeComposer = memo(function CodeComposer({
   };
   return (
     <div className="code-composer">
-      <div
-        className={`code-composer__shell${draggingFiles ? ' is-dragging-files' : ''}`}
+      <ComposerFrame
+        className="code-composer__shell"
+        dragging={draggingFiles}
         onDragEnter={(event) => {
           if (event.dataTransfer.types.includes('Files')) {
             event.preventDefault();
@@ -373,11 +375,11 @@ export const CodeComposer = memo(function CodeComposer({
               onValueChange={(value: string) => setDelivery(value === 'steer' ? 'steer' : 'queue')}
               options={[{ value: 'queue', label: 'Queue' }, { value: 'steer', label: 'Steer' }]} />}
             {(!active || hasDraft) && <Button variant="primary" size="sm" disabled={busy || !hasDraft || sendBlocked} onClick={() => void submit()} aria-label={active ? delivery === 'steer' && !waiting ? 'Steer current turn' : 'Queue instruction' : 'Send follow-up'}>
-              {Ico.send(13)} {active ? delivery === 'steer' && !waiting ? 'Steer' : 'Queue' : 'Send'}
+              {Ico.send(14)} {active ? delivery === 'steer' && !waiting ? 'Steer' : 'Queue' : 'Send'}
             </Button>}
           </div>
         </div>
-      </div>
+      </ComposerFrame>
       <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
     </div>
   );

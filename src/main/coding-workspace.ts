@@ -36,9 +36,16 @@ const TASKS_SUBDIR = 'tasks';
 const SHARED_DIRS = ['.anton', 'skills'];
 const GITIGNORE_ENTRIES = ['.anton/', 'skills/', `${MINDSHUB_DIRNAME}/`];
 
+// Windows caps paths at 260 characters unless Git opts in, and deep
+// dependency trees in a task worktree routinely exceed that. Passed per
+// command so the user's repo and global config are left untouched.
+function platformConfigArgs(): string[] {
+  return process.platform === 'win32' ? ['-c', 'core.longpaths=true'] : [];
+}
+
 function git(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd }, (err, stdout, stderr) => {
+    execFile('git', [...platformConfigArgs(), ...args], { cwd }, (err, stdout, stderr) => {
       if (err) reject(Object.assign(err, { stdout, stderr }));
       else resolve({ stdout, stderr });
     });

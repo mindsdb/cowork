@@ -1,5 +1,7 @@
+import { PLATFORM_UI } from '../../lib/deployment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchHubUsage } from '../api';
+import { isAppVisible, subscribeAppVisibility } from '../code/useAppVisible';
 
 /* The signed-in account's usage: the free MindsHub Air allowance, paid
    balance, auto top up.
@@ -26,7 +28,7 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
 
   const refresh = useCallback(async () => {
     const mine = generation.current;
-    if (!sub) {
+    if (!PLATFORM_UI || !sub) {
       setUsage(DARK);
       return;
     }
@@ -45,16 +47,22 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
   useEffect(() => {
     generation.current += 1;
     refresh();
-    if (!sub) return undefined;
+    if (!PLATFORM_UI || !sub) return undefined;
     // Coming back from the console after a top up should clear the bar at
     // once, not on the next tick.
     const onFocus = () => { refresh(); };
     window.addEventListener('focus', onFocus);
     // Nothing to warn about while nobody is looking; focus refreshes anyway.
-    const tick = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') refresh(); };
+    // isAppVisible, not document.visibilityState: on macOS Electron the
+    // document reads visible while the window is minimized. Subscribing is
+    // what starts the window signal, which nothing else attaches outside
+    // Code Mode.
+    const tick = () => { if (isAppVisible()) refresh(); };
+    const unsubscribeVisibility = subscribeAppVisibility(tick);
     const timer = pollMs ? setInterval(tick, pollMs) : null;
     return () => {
       window.removeEventListener('focus', onFocus);
+      unsubscribeVisibility();
       if (timer) clearInterval(timer);
     };
   }, [refresh, sub, pollMs]);

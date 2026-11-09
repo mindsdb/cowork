@@ -49,11 +49,13 @@
 //   - `variant="unstyled"` — wiring only, for domain controls that use an
 //     established trigger treatment such as Composer's `meta-pill`.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
 import { ChevronDown, ChevronsUpDown, Check } from 'lucide-react';
+import { Icon } from './Icon';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
+import { useNativeOverlay } from '../../lib/nativeOverlay';
 import Spinner from './Spinner.jsx';
 
 // Exported for Combobox, which renders a popup-based trigger that
@@ -68,7 +70,7 @@ export const triggerVariants = cva(
     // beveled/uneven instead of a clean line.
     'font-body bg-surface border border-solid border-line rounded-[var(--r)] text-ink',
     'cursor-pointer outline-none box-border',
-    '[transition:border-color_.12s_ease,box-shadow_.15s_ease]',
+    '[transition:border-color_var(--dur-hover)_ease,box-shadow_var(--dur-hover)_ease]',
     'hover:border-line-2',
     'focus-visible:border-accent focus-visible:shadow-[var(--ring)]',
     'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
@@ -79,6 +81,8 @@ export const triggerVariants = cva(
       variant: {
         field: 'w-full px-[10px] py-[7px] text-[13px]',
         pill: 'rounded-[7px] px-[11px] py-[7px] bg-surface-2 text-ink-2 text-[12.5px]',
+        // Borderless until hover: for display controls (sort) beside filter pills.
+        quiet: 'gap-[6px] rounded-[7px] px-[9px] py-[7px] bg-transparent border-transparent text-ink-3 text-[12.5px] hover:border-transparent hover:bg-surface-2',
       },
       size: {
         md: '',
@@ -104,10 +108,10 @@ export function PickerMenuHeading({ children }) {
   );
 }
 
-const CHEVRON_DOWN = <ChevronDown size={11} strokeWidth={1.5} aria-hidden="true" />;
-const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CHEVRON_DOWN = <Icon of={ChevronDown} size={12} />;
+const CARET_UP_DOWN = <Icon of={ChevronsUpDown} size={12} />;
 
-const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
+const CHECK = <Icon of={Check} size={12} />;
 
 // Flattens the options tree (unwrapping groups, dropping separators) into
 // the `{ value, label }` pairs Base UI's Root `items` prop wants — that's
@@ -135,7 +139,7 @@ function renderOptions(options) {
     if (Array.isArray(opt.options)) {
       return (
         <BaseSelect.Group key={opt.group ?? i}>
-          <BaseSelect.GroupLabel className="pt-[6px] px-[14px] pb-[2px] text-[11px] font-semibold text-ink-4 uppercase tracking-[0.04em]">
+          <BaseSelect.GroupLabel className="section-label pt-[6px] px-[14px] pb-[2px]">
             {opt.group}
           </BaseSelect.GroupLabel>
           {renderOptions(opt.options)}
@@ -210,6 +214,8 @@ export function Select({
   // Optional identity shown only inside the open popup. Composer controls
   // use this to stay terse when closed without making a menu ambiguous.
   menuLabel,
+  // Quiet-variant icon before the value (the sort arrows).
+  leading,
   ariaLabel,
   title,
   id,
@@ -228,6 +234,10 @@ export function Select({
 }) {
   const itemsForLabels = useMemo(() => flattenForLabels(options), [options]);
   const selectedLabel = itemsForLabels.find((item) => item.value === value)?.label;
+  /* An open popup counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const [popupOpen, setPopupOpen] = useState(false);
+  useNativeOverlay(open ?? popupOpen);
 
   return (
     <BaseSelect.Root
@@ -237,7 +247,11 @@ export function Select({
       // option list. A user can't pick null from a listbox, so never forward it.
       onValueChange={(next) => { if (next != null) onValueChange?.(next); }}
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next, details) => {
+        // The caller may cancel the change, and then the popup stays as it is.
+        onOpenChange?.(next, details);
+        if (!details?.isCanceled) setPopupOpen(next);
+      }}
       disabled={disabled}
       id={id}
       name={name}
@@ -262,6 +276,7 @@ export function Select({
         style={{ width, minWidth, ...style }}
         {...rest}
       >
+        {variant === 'quiet' && leading && <span className="inline-flex shrink-0 text-ink-4">{leading}</span>}
         {variant === 'pill' && (label || ariaLabel) && (
           <span className="text-ink-4 text-[11.5px]">{label || ariaLabel}:</span>
         )}

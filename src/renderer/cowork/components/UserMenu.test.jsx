@@ -34,11 +34,13 @@ import UserMenu from './UserMenu';
 import { PERSONAL_ORG_LABEL as PERSONAL_LABEL } from '../../../shared/minds-orgs';
 import ToastProvider from './ui/Toast';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
+import { readLastOrgId } from '../lib/orgLanding';
 import {
   MINDS_BILLING_URL,
   MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
   MINDS_SUPPORT_URL,
+  consoleUrlFor,
 } from '../../lib/mindsUrls';
 
 // `useToastManager` throws outside a provider, and the real tree always has
@@ -149,15 +151,29 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     expect(hostMock.openExternal).not.toHaveBeenCalled();
   });
 
+  /* Console links carry the account they were opened for (ENG-3274); with no
+     organization listed yet, that is all they can carry. Support is not the
+     console and stays bare. */
   it.each([
-    ['Billing & Usage', MINDS_BILLING_URL],
-    ['Members', MINDS_MEMBERS_URL],
+    ['Billing & Usage', consoleUrlFor(MINDS_BILLING_URL, { subject: 'user-1' })],
+    ['Members', consoleUrlFor(MINDS_MEMBERS_URL, { subject: 'user-1' })],
     ['Help & Feedback', MINDS_SUPPORT_URL],
   ])('opens %s in the OS browser', (label, url) => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
     expect(hostMock.openExternal).toHaveBeenCalledWith(url);
+  });
+
+  it('names the active organization on console links so the browser lands on it (ENG-3274)', () => {
+    orgsMock.state = { orgs: [ACME, PERSONAL], activeOrg: ACME, activeOrgId: ACME.id, switching: false };
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Members/ }));
+    const opened = new URL(hostMock.openExternal.mock.calls[0][0]);
+    expect(`${opened.origin}${opened.pathname}`).toBe(MINDS_MEMBERS_URL);
+    expect(opened.searchParams.get('organization')).toBe(ACME.id);
+    expect(opened.searchParams.get('subject')).toBe('user-1');
   });
 
   // On web, host.logout() ends the Keycloak browser session, so Logout is a
@@ -196,7 +212,9 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Billing & Usage/ }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('nav');
-    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      consoleUrlFor(MINDS_BILLING_URL, { subject: 'user-1' }),
+    );
   });
 
   it.each([['Members'], ['Help & Feedback'], ['Settings']])(
@@ -282,6 +300,33 @@ describe('UserMenu — organization picker', () => {
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
     expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
+  });
+
+  // MindsHub UI lands a company member in the company organization, but
+  // never over a pick from this menu, in this tab or a new one.
+  it('keeps a personal pick from here in a new tab, where landing would otherwise move it', async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    try {
+      withOrgs([ACME, PERSONAL], ACME);
+      const first = renderMenu(<UserMenu user={user} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+      await waitFor(() => expect(readLastOrgId(user.sub)).toBe('org-personal'));
+      first.unmount();
+
+      // The new tab: same browser storage, a fresh session, in Personal.
+      sessionStorage.clear();
+      orgsMock.switchOrg.mockClear();
+      withOrgs([ACME, PERSONAL], PERSONAL);
+      renderMenu(<UserMenu user={user} />);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(orgsMock.switchOrg).not.toHaveBeenCalled();
+    } finally {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
   });
 
   it('acknowledges the click on the row that was clicked, before the switch lands', async () => {
@@ -374,6 +419,43 @@ describe('UserMenu — organization picker', () => {
     expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent).toContain('acme.example');
   });
 
+  // The pick is remembered only once the switch went through, or may have:
+  // remembered before it, a refused switch would land the next session in the
+  // organization the person was refused.
+  it('keeps the last organization when the switch is refused', async () => {
+    localStorage.clear();
+    try {
+      withOrgs([ACME, PERSONAL], ACME);
+      orgsMock.switchOrg.mockResolvedValue({ ok: false, error: 'MindsHub would not switch. Nothing changed.' });
+      renderMenu(<UserMenu user={user} />);
+      // Landing records the company organization in use.
+      await waitFor(() => expect(readLastOrgId(user.sub)).toBe('org-acme'));
+
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+
+      expect(await screen.findByText('MindsHub would not switch. Nothing changed.')).toBeInTheDocument();
+      expect(readLastOrgId(user.sub)).toBe('org-acme');
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it('remembers a pick whose switch asks for a reload', async () => {
+    localStorage.clear();
+    try {
+      withOrgs([ACME, PERSONAL], ACME);
+      orgsMock.switchOrg.mockResolvedValue({ ok: false, reloadRequired: true });
+      renderMenu(<UserMenu user={user} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Personal/ }));
+
+      await waitFor(() => expect(readLastOrgId(user.sub)).toBe('org-personal'));
+    } finally {
+      localStorage.clear();
+    }
+  });
+
   it('does not render a refusal while an indeterminate web switch reloads', async () => {
     orgsMock.switchOrg.mockResolvedValue({
       ok: false,
@@ -400,6 +482,8 @@ describe('UserMenu — organization picker', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Manage organization/ }));
-    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_GENERAL_URL);
+    expect(hostMock.openExternal).toHaveBeenCalledWith(
+      consoleUrlFor(MINDS_GENERAL_URL, { organizationId: ACME.id, subject: 'user-1' }),
+    );
   });
 });
