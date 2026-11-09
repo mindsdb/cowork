@@ -65,6 +65,17 @@ export function connectSpecFor({ full, baseSpec, label, orgMode, editingConnecti
 }
 
 /**
+ * Whether a connector whose form could not be loaded may fall back to a
+ * connect chat. Not a custom connector in cloud: nothing in that chat can
+ * connect it, so the turn could only invite its key into the conversation.
+ * @param {{orgMode: boolean, connector: {custom?: boolean}}} args
+ * @returns {boolean}
+ */
+export function mayConnectThroughChat({ orgMode, connector }) {
+  return !(orgMode && connector?.custom === true);
+}
+
+/**
  * The connect request body from the form's values: the address apart, the
  * template's own fields as values, empty ones left out.
  * @param {Record<string, unknown>} values

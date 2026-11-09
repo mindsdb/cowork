@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ADDRESS_FIELD,
   connectSpecFor,
+  mayConnectThroughChat,
   customConnectPayload,
   describeConnectFailure,
   isCustomConnectionRow,
@@ -131,5 +132,16 @@ describe('the form a picked connector opens', () => {
 
     expect(spec._cloud_datasource).toBe(true);
     expect(spec._custom_connect).toBeUndefined();
+  });
+});
+
+describe('a connector whose form could not be loaded', () => {
+  it('never falls back to a connect chat when it is a custom connector in cloud', () => {
+    expect(mayConnectThroughChat({ orgMode: true, connector: { id: 'acme_crm', custom: true } })).toBe(false);
+  });
+
+  it('may still fall back for any other connector, and on desktop', () => {
+    expect(mayConnectThroughChat({ orgMode: true, connector: { id: 'gmail' } })).toBe(true);
+    expect(mayConnectThroughChat({ orgMode: false, connector: { id: 'acme_crm', custom: true } })).toBe(true);
   });
 });

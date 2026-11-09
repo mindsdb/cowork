@@ -65,6 +65,10 @@ describe('connecting a custom connector', () => {
       name: 'Acme CRM', address: 'api.acme.example', values: { api_key: KEY },
     });
     expect(getForm(CID).title).toBe('Connected Acme CRM');
+    // The success screen's own buttons, not the form's Connect and Cancel.
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /View connectors/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
     expect(changed).toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(onContinue).not.toHaveBeenCalled();

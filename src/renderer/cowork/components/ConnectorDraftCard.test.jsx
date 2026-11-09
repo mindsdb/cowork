@@ -40,7 +40,7 @@ describe('ConnectorDraftCard', () => {
     expect(await screen.findByText('Saved. Connect it to add your credentials.')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
-    expect(onConnect).toHaveBeenCalledWith({ id: 'acme_crm', label: connector.label });
+    expect(onConnect).toHaveBeenCalledWith({ id: 'acme_crm', label: connector.label, custom: true });
     expect(api.saveConnectorDraft).toHaveBeenCalledTimes(1);
   });
 

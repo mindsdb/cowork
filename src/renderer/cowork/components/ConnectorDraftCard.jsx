@@ -138,7 +138,7 @@ export default function ConnectorDraftCard({ connector, onConnect }) {
               variant="primary"
               onClick={(e) => {
                 e?.stopPropagation?.();
-                onConnect({ id, label: text(connector.label) || id });
+                onConnect({ id, label: text(connector.label) || id, custom: true });
               }}
             >
               Connect

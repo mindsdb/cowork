@@ -54,6 +54,6 @@ describe('connector template card under the answer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save connector' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Connect' }));
 
-    expect(onConnectCustomConnector).toHaveBeenCalledWith({ id: 'acme_crm', label: 'Acme CRM' });
+    expect(onConnectCustomConnector).toHaveBeenCalledWith({ id: 'acme_crm', label: 'Acme CRM', custom: true });
   });
 });

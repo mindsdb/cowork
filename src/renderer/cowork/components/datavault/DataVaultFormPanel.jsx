@@ -227,6 +227,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           _is_probing: false,
           form_error: '',
           _is_success: true,
+          // The form's Connect and Cancel would override the success screen's own buttons.
+          actions: null,
           title: `Connected ${connection?.name || spec._custom_connect.label}`,
           subtitle: 'The check passed and your credentials are stored. You can see them in Connect Apps and Data.',
         });
