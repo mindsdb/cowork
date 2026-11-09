@@ -10,9 +10,17 @@ vi.mock('electron', () => ({
     stop(this: { started: Set<number> }, id: number) { this.started.delete(id); },
     isStarted(this: { started: Set<number> }, id: number) { return this.started.has(id); },
   },
+  powerMonitor: {
+    battery: false,
+    listeners: {} as Record<string, Array<() => void>>,
+    isOnBatteryPower(this: { battery: boolean }) { return this.battery; },
+    on(this: { listeners: Record<string, Array<() => void>> }, name: string, fn: () => void) {
+      (this.listeners[name] ||= []).push(fn);
+    },
+  },
 }));
 
-import { powerSaveBlocker } from 'electron';
+import { powerMonitor, powerSaveBlocker } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { LEASE_MS, createKeepAwake, registerKeepAwakeHandlers } from './keep-awake';
 
@@ -78,6 +86,67 @@ describe('createKeepAwake', () => {
     expect(keepAwake.active).toBe(false);
     expect(blocker.stop).toHaveBeenCalledTimes(1);
   });
+
+  describe('on battery', () => {
+    function power(onBattery: boolean) {
+      const state = { onBattery };
+      return { state, onBattery: () => state.onBattery };
+    }
+
+    it('does not hold on battery, and holds once plugged in', () => {
+      const blocker = fakeBlocker();
+      const p = power(true);
+      const keepAwake = createKeepAwake(blocker, fakeTimers(), p);
+
+      keepAwake.set(true);
+      expect(blocker.start).not.toHaveBeenCalled();
+      expect(keepAwake.active).toBe(false);
+
+      p.state.onBattery = false;
+      keepAwake.powerChanged();
+      expect(keepAwake.active).toBe(true);
+    });
+
+    it('ends the hold when unplugged and starts it again when plugged back in', () => {
+      const blocker = fakeBlocker();
+      const p = power(false);
+      const keepAwake = createKeepAwake(blocker, fakeTimers(), p);
+
+      keepAwake.set(true);
+      expect(keepAwake.active).toBe(true);
+
+      p.state.onBattery = true;
+      keepAwake.powerChanged();
+      expect(keepAwake.active).toBe(false);
+      expect(blocker.stop).toHaveBeenCalledTimes(1);
+
+      p.state.onBattery = false;
+      keepAwake.powerChanged();
+      expect(keepAwake.active).toBe(true);
+      expect(blocker.start).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not hold after plugging in once the request was withdrawn or lapsed', () => {
+      const blocker = fakeBlocker();
+      const timers = fakeTimers();
+      const p = power(true);
+      const keepAwake = createKeepAwake(blocker, timers, p);
+
+      keepAwake.set(true);
+      timers.fire();  // the renderer stopped renewing it while on battery
+      p.state.onBattery = false;
+      keepAwake.powerChanged();
+      expect(keepAwake.active).toBe(false);
+
+      p.state.onBattery = true;
+      keepAwake.set(true);
+      keepAwake.set(false);
+      p.state.onBattery = false;
+      keepAwake.powerChanged();
+      expect(keepAwake.active).toBe(false);
+      expect(blocker.start).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('registerKeepAwakeHandlers', () => {
@@ -99,6 +168,29 @@ describe('registerKeepAwakeHandlers', () => {
 
     end(s);
     expect(blocker.started.size).toBe(0);
+  });
+
+  it('follows the power source the OS reports', () => {
+    const monitor = powerMonitor as unknown as { battery: boolean; listeners: Record<string, Array<() => void>> };
+    monitor.battery = true;
+    try {
+      registerKeepAwakeHandlers();
+      const s = sender();
+      handlers[IPC.SCHEDULE_KEEP_AWAKE]({ sender: s }, true);
+      expect(blocker.started.size).toBe(0);
+
+      monitor.battery = false;
+      monitor.listeners['on-ac'].forEach((fn) => fn());
+      expect(blocker.started.size).toBe(1);
+
+      monitor.battery = true;
+      monitor.listeners['on-battery'].forEach((fn) => fn());
+      expect(blocker.started.size).toBe(0);
+
+      handlers[IPC.SCHEDULE_KEEP_AWAKE]({ sender: s }, false);
+    } finally {
+      monitor.battery = false;
+    }
   });
 
   it('keeps the hold through an in-page navigation', () => {

@@ -35,6 +35,7 @@ it('is on unless turned off, and saves the opt-out at once', async () => {
   const toggle = screen.getByRole('switch', { name: 'Stay awake for scheduled tasks' });
   expect(toggle).toHaveAttribute('aria-checked', 'true');
   expect(screen.getByText(/every 15 or 30 minutes is always about to run/)).toBeInTheDocument();
+  expect(screen.getByText(/On battery it can sleep as usual/)).toBeInTheDocument();
 
   fireEvent.click(toggle);
 

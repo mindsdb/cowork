@@ -2538,7 +2538,7 @@ export default function SettingsView({
       <SettingsGroup title="Desktop">
         <Section
           title="Stay awake for scheduled tasks"
-          subtitle="Keeps this computer from sleeping on its own while a scheduled task is running or about to run. A task that runs every 15 or 30 minutes is always about to run, so it keeps the computer awake the whole time the app is open. The screen can still turn off. It can't wake a computer that's already asleep, and closing the lid or choosing Sleep still sleeps it."
+          subtitle="While this computer is plugged in, keeps it from sleeping on its own when a scheduled task is running or about to run. On battery it can sleep as usual. A task that runs every 15 or 30 minutes is always about to run, so it keeps the computer awake the whole time the app is open and plugged in. The screen can still turn off. It can't wake a computer that's already asleep, and closing the lid or choosing Sleep still sleeps it."
         >
           <div className="flex items-center">
             <Switch
