@@ -3,7 +3,7 @@ import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
+import { isModelLocked, isModelRestricted, isModelZdrRestricted } from '../../lib/modelCatalog';
 import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
@@ -149,9 +149,16 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
    that lands, leaves the user sitting on a model they can no longer run. This
    names it and gives the way out. A restricted model has no billing way out,
    so its line has no link. Exported for the visual fixture. */
-export function UnavailableModelHint({ label, restricted }) {
+export function UnavailableModelHint({ label, restricted, zdr }) {
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;
+  }
+  if (zdr) {
+    return (
+      <div className="text-[11.5px] text-ink-3">
+        {label} is not ZDR-compliant, and zero data retention is on for your organization. Choose another model.
+      </div>
+    );
   }
   if (restricted) {
     return (
@@ -1874,6 +1881,7 @@ export default function SettingsView({
                                 <UnavailableModelHint
                                   label={displayModelLabel(curModel, settings.modelLabels || {})}
                                   restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                                  zdr={isModelZdrRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
                                 />
                               )}
                             </>);

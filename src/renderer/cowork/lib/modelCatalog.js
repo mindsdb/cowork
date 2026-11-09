@@ -255,10 +255,17 @@ export const MODEL_RESTRICTED_REASON = 'model_restricted';
 /* The row tooltip for a restricted model. */
 export const RESTRICTED_MODEL_TITLE = 'An admin in your organization restricted this model.';
 
+/* The `modelDisabledReasons` value for a row the org's zero data retention blocks. */
+export const ZDR_RESTRICTED_REASON = 'zdr_restricted';
+
+/* The row tooltip for a ZDR-blocked model. */
+export const ZDR_RESTRICTED_MODEL_TITLE = 'Zero data retention is on, so only models from ZDR-compliant providers can be used.';
+
 /* Every `disabled_reason` the renderer recognizes on a MindsHub model row: an
-   admin's model rule, the empty wallet, and the spent allowance. */
+   admin's model rule, zero data retention, the empty wallet, and the spent allowance. */
 const KNOWN_MODEL_DISABLED_REASONS = new Set([
   MODEL_RESTRICTED_REASON,
+  ZDR_RESTRICTED_REASON,
   'wallet_empty',
   'included_allowance_exhausted',
 ]);
@@ -268,7 +275,7 @@ const KNOWN_MODEL_DISABLED_REASONS = new Set([
  * renderer recognizes, id → reason.
  *
  * cowork-server relays any non-empty `disabled_reason` string MindsHub sends. An
- * entry whose value is not one of the three known reasons is dropped, so its row
+ * entry whose value is not one of the known reasons is dropped, so its row
  * reads as having no reason, the same as a row from a server too old to send
  * one: "Needs credits". Anything that is not a plain object gives `{}`.
  *
@@ -283,7 +290,8 @@ export function knownModelDisabledReasons(raw) {
 }
 
 /**
- * True when `id` is unavailable because an org admin's model rule blocks it.
+ * True when `id` is unavailable because an org rule blocks it: an admin's model
+ * rule or zero data retention. Credits cannot unlock either.
  *
  * `modelDisabledReasons` is cowork-server's relay of MindsHub's per-row
  * `disabled_reason`, taken from the MindsHub listing only. A reason counts only
@@ -291,8 +299,15 @@ export function knownModelDisabledReasons(raw) {
  * can run, and the reason only says why it cannot.
  */
 export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
+  const reason = (modelDisabledReasons || {})[id];
   return isModelLocked(modelEnabled, id)
-    && (modelDisabledReasons || {})[id] === MODEL_RESTRICTED_REASON;
+    && (reason === MODEL_RESTRICTED_REASON || reason === ZDR_RESTRICTED_REASON);
+}
+
+/** True when `id` is unavailable because the org's zero data retention blocks it. */
+export function isModelZdrRestricted(modelEnabled, modelDisabledReasons, id) {
+  return isModelLocked(modelEnabled, id)
+    && (modelDisabledReasons || {})[id] === ZDR_RESTRICTED_REASON;
 }
 
 /**
@@ -300,6 +315,7 @@ export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
  *   disabled?: true,
  *   locked?: true,
  *   restricted?: true,
+ *   zdr?: true,
  *   tag?: string,
  *   title?: string,
  * }} UnavailableModelFields
@@ -313,6 +329,8 @@ export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
  * - Restricted by an admin: disabled and `restricted`, tagged "Restricted", with
  *   the admin tooltip. Never `locked`, so ModelSelect attaches no "Add credits"
  *   button: money cannot unlock an admin rule.
+ * - Blocked by zero data retention: the same, plus `zdr`, tagged "ZDR restricted" with
+ *   the ZDR tooltip.
  * - Anything else unavailable (the wallet, the spent allowance, or a server too
  *   old to send a reason): disabled and `locked`, tagged "Needs credits".
  *
@@ -320,6 +338,9 @@ export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
  */
 export function unavailableModelFields(modelEnabled, modelDisabledReasons, id) {
   if (!isModelLocked(modelEnabled, id)) return {};
+  if (isModelZdrRestricted(modelEnabled, modelDisabledReasons, id)) {
+    return { disabled: true, restricted: true, zdr: true, tag: 'ZDR restricted', title: ZDR_RESTRICTED_MODEL_TITLE };
+  }
   if (isModelRestricted(modelEnabled, modelDisabledReasons, id)) {
     return { disabled: true, restricted: true, tag: 'Restricted', title: RESTRICTED_MODEL_TITLE };
   }

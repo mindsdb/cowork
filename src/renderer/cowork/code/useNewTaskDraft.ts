@@ -363,8 +363,9 @@ export function useNewTaskDraft({
     /* A catalog error already shows in the alert below, so these stay quiet
        rather than repeat it. */
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
-    /* An admin's model rule is not something credits unlock, so it never
+    /* An admin's model rule or ZDR is not something credits unlock, so neither
        mentions them. */
+    if (selectedModelOption?.zdr) return 'Zero data retention is on and this model is not ZDR-compliant. Choose another model.';
     if (selectedModelOption?.restricted) return 'An admin restricted this model. Choose another model.';
     if (selectedModelOption?.locked) return 'Add credits or choose an available model.';
     if (enabledModelOptions.length === 0) return catalogError ? '' : NO_CODING_MODELS;

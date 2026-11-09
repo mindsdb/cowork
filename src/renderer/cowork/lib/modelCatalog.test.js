@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  modelMaker, groupModelOptions, isModelLocked, isModelRestricted, unavailableModelFields,
+  modelMaker, groupModelOptions, isModelLocked, isModelRestricted, isModelZdrRestricted, unavailableModelFields,
   knownModelDisabledReasons, orderByFamily, latestAliasIds, OTHER_MAKER,
 } from './modelCatalog';
 
@@ -250,8 +250,13 @@ describe('isModelLocked', () => {
    lift. The reason map says which rows those are; the enabled map stays the
    authority on whether a row runs at all. */
 describe('isModelRestricted / unavailableModelFields', () => {
-  const ENABLED = { mindshub_air: true, opus: false, fable: false, haiku: false };
-  const REASONS = { opus: 'model_restricted', fable: 'wallet_empty', haiku: 'included_allowance_exhausted' };
+  const ENABLED = { mindshub_air: true, opus: false, fable: false, haiku: false, sonnet: false };
+  const REASONS = {
+    opus: 'model_restricted',
+    fable: 'wallet_empty',
+    haiku: 'included_allowance_exhausted',
+    sonnet: 'zdr_restricted',
+  };
 
   it('names a disabled row with the model_restricted reason as restricted', () => {
     expect(isModelRestricted(ENABLED, REASONS, 'opus')).toBe(true);
@@ -260,6 +265,19 @@ describe('isModelRestricted / unavailableModelFields', () => {
       restricted: true,
       tag: 'Restricted',
       title: 'An admin in your organization restricted this model.',
+    });
+  });
+
+  it('names a disabled row with the zdr_restricted reason as ZDR-restricted, not Needs credits', () => {
+    expect(isModelRestricted(ENABLED, REASONS, 'sonnet')).toBe(true);
+    expect(isModelZdrRestricted(ENABLED, REASONS, 'sonnet')).toBe(true);
+    expect(isModelZdrRestricted(ENABLED, REASONS, 'opus')).toBe(false);
+    expect(unavailableModelFields(ENABLED, REASONS, 'sonnet')).toEqual({
+      disabled: true,
+      restricted: true,
+      zdr: true,
+      tag: 'ZDR restricted',
+      title: 'Zero data retention is on, so only models from ZDR-compliant providers can be used.',
     });
   });
 
@@ -285,14 +303,20 @@ describe('isModelRestricted / unavailableModelFields', () => {
 
   it('never marks a restricted row locked, which is what would attach Add credits', () => {
     expect(unavailableModelFields(ENABLED, REASONS, 'opus').locked).toBeUndefined();
+    expect(unavailableModelFields(ENABLED, REASONS, 'sonnet').locked).toBeUndefined();
   });
 });
 
 /* cowork-server relays any non-empty `disabled_reason` string, so the renderer
    narrows the relay to the reasons it knows before anything reads it. */
 describe('knownModelDisabledReasons', () => {
-  it('keeps each of the three known reasons', () => {
-    const relayed = { opus: 'model_restricted', fable: 'wallet_empty', haiku: 'included_allowance_exhausted' };
+  it('keeps each of the known reasons', () => {
+    const relayed = {
+      opus: 'model_restricted',
+      sonnet: 'zdr_restricted',
+      fable: 'wallet_empty',
+      haiku: 'included_allowance_exhausted',
+    };
     expect(knownModelDisabledReasons(relayed)).toEqual(relayed);
   });
 

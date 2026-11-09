@@ -416,6 +416,35 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
+  it('says a project default model is blocked by ZDR, and never mentions credits or an admin', async () => {
+    const user = userEvent.setup();
+    const zdrProject = { ...project, default_model: 'fable' };
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={{ ...modelMeta, modelDisabledReasons: { fable: 'zdr_restricted' } }}
+        projects={[zdrProject]}
+        selectedProjectId={zdrProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
+
+    expect(await screen.findByText(
+      'Zero data retention is on and this model is not ZDR-compliant. Choose another model.',
+    )).toBeInTheDocument();
+    expect(screen.queryByText('Add credits or choose an available model.')).not.toBeInTheDocument();
+    expect(screen.queryByText('An admin restricted this model. Choose another model.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+  });
+
   it.each(['local', 'shared'])('preserves the draft, project, attachments, permissions and chosen model during %s catalogue refresh', async (source) => {
     const user = userEvent.setup();
     const onCreate = vi.fn(async () => {});
