@@ -153,7 +153,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
       await user.hover(screen.getByTestId('org-option-locked'));
-      expect(await screen.findByText('Only admins can share with everyone in the organization')).toBeInTheDocument();
+      expect(await screen.findByText("Your role can't share with everyone in the organization")).toBeInTheDocument();
       await user.click(radio(/^Everyone at Acme/));
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-checked', 'false');
       expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
@@ -198,7 +198,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
       await user.hover(screen.getByTestId('org-option-locked'));
       expect(await screen.findByText("Couldn't reach MindsHub")).toBeInTheDocument();
-      expect(screen.queryByText('Only admins can share with everyone in the organization')).toBeNull();
+      expect(screen.queryByText("Your role can't share with everyone in the organization")).toBeNull();
       expect(screen.getByRole('alert')).toHaveTextContent("Couldn't reach MindsHub to check what you can share.");
       await user.click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledTimes(1);
