@@ -32,31 +32,37 @@ function FolderFiles({ state }) {
   if (state.error) {
     return <p className="text-xs px-1 pb-0.5 text-danger">{state.error}</p>;
   }
-  if (state.files.length === 0) {
+  // A cut listing may hold no visible files at all, so it is never "empty".
+  if (state.files.length === 0 && !state.truncated) {
     return <p className="text-[12px] text-ink-4 px-1 pb-0.5">No files in this folder.</p>;
   }
   return (
-    <div
-      className={clsx('flex flex-col gap-0.5', state.files.length > 10 && 'overflow-y-auto pr-1 scroll-clean')}
-      style={state.files.length > 10 ? { maxHeight: 220 } : undefined}
-    >
-      {state.files.map((file) => (
+    <>
+      {state.files.length > 0 && (
         <div
-          key={file.path}
-          data-testid="folder-file-row"
-          title={file.path}
-          className="grid items-center gap-2 rounded-card-row px-1 py-1 grid-cols-[14px_minmax(0,1fr)]"
+          className={clsx('flex flex-col gap-0.5', state.files.length > 10 && 'overflow-y-auto pr-1 scroll-clean')}
+          style={state.files.length > 10 ? { maxHeight: 220 } : undefined}
         >
-          <span className="text-ink-4 inline-flex flex-none">{Ico.doc(14)}</span>
-          <span className="block truncate text-sm text-ink min-w-0">{file.path}</span>
+          {state.files.map((file) => (
+            <div
+              key={file.path}
+              data-testid="folder-file-row"
+              title={file.path}
+              className="grid items-center gap-2 rounded-card-row px-1 py-1 grid-cols-[14px_minmax(0,1fr)]"
+            >
+              <span className="text-ink-4 inline-flex flex-none">{Ico.doc(14)}</span>
+              <span className="block truncate text-sm text-ink min-w-0">{file.path}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+      {/* Outside the scroll box, so it shows without scrolling past every row. */}
       {state.truncated && (
         <p className="text-[11.5px] text-ink-4 px-1 py-1">
           This folder holds more files than the list can show, so some are missing here.
         </p>
       )}
-    </div>
+    </>
   );
 }
 

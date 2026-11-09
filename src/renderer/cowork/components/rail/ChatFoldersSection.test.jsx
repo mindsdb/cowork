@@ -75,6 +75,35 @@ describe('ChatFoldersSection', () => {
     expect(within(row).queryByRole('button')).toBeNull();
   });
 
+  it('keeps the cut-listing notice outside the scrolling file list', async () => {
+    const files = Array.from({ length: 30 }, (_, i) => ({ path: `f${i}.csv`, name: `f${i}.csv`, is_dir: false }));
+    api.listConversationFolderFiles.mockResolvedValue({ files, truncated: true });
+    await renderSection();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show files in docs' }));
+    });
+
+    const rows = await screen.findAllByTestId('folder-file-row');
+    const scroller = rows[0].parentElement;
+    expect(scroller.style.maxHeight).toBe('220px');
+    const notice = screen.getByText(/holds more files than the list can show/);
+    expect(scroller.contains(notice)).toBe(false);
+  });
+
+  it('does not call a cut listing empty when none of its files are shown', async () => {
+    api.listConversationFolderFiles.mockResolvedValue({
+      files: [{ path: '.git/config', name: 'config', is_dir: false }],
+      truncated: true,
+    });
+    await renderSection();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show files in docs' }));
+    });
+
+    expect(await screen.findByText(/holds more files than the list can show/)).toBeTruthy();
+    expect(screen.queryByText('No files in this folder.')).toBeNull();
+  });
+
   it('adds the folder the picker returns and lists it', async () => {
     api.listConversationFolders
       .mockResolvedValueOnce({ folders: [] })
