@@ -4,7 +4,7 @@ import { getServerPort } from './server-process';
 import { getRefreshToken, setRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { authHeader } from './server-auth';
-import { appSecretHeader } from './app-secret';
+import { appSecretHeader, serverMayReceiveTokens } from './app-secret';
 import { IPC } from '../shared/ipc-channels';
 import { describeFetchError } from './fetch-error';
 import { TOKEN_EXCHANGE_TIMEOUT_MS } from './oauth-service';
@@ -148,6 +148,12 @@ async function refresh(
   key: string,
   state: LoopState,
 ): Promise<{ access_token: string; expires_at: string } | null> {
+  // Checked before the provider call: a rotating refresh token spent while
+  // the result cannot be delivered would be lost.
+  if (!serverMayReceiveTokens()) {
+    diagnostic("main.token-refresh", "INFO", "token_refresh_skipped_no_trusted_server", `[token-refresh] skipped for ${key}: no trusted server to deliver to`);
+    return null;
+  }
   if (!OAUTH_CREDENTIALS[engine]) {
     diagnostic("main.token-refresh", "ERROR", "token_refresh_no_credentials_configured_for_engine", `[token-refresh] no credentials configured for engine: ${engine}`);
     return null;
@@ -365,6 +371,7 @@ export function parseAppIdFromClientId(clientId: string): string {
 }
 
 async function patchToken(engine: string, name: string, updates: Record<string, string>): Promise<void> {
+  if (!serverMayReceiveTokens()) throw new Error('no trusted server');
   const url = `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}/token`;
   const res = await fetch(url, {
     method: 'PATCH',

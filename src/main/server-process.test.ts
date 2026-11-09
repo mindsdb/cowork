@@ -76,6 +76,11 @@ vi.mock('./uv-paths', () => ({
 vi.mock('./credential-provisioning', () => ({
   loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
 }));
+/** The keychain marker that the one-time access-mode migration has run. */
+const keychainState = vi.hoisted(() => ({ migrated: false }));
+vi.mock('./keychain-service', () => ({
+  isMcpAccessModeMigrated: async () => keychainState.migrated,
+}));
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
@@ -100,7 +105,8 @@ import {
 } from './server-process';
 import { NON_PROD_POSTHOG_KEY } from './analytics-env';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
-import { APP_SECRET_HEADER, appSecretHeader, isAppSecretProtected } from './app-secret';
+import { APP_SECRET_HEADER, appSecretHeader, isAppSecretProtected, serverMayReceiveTokens } from './app-secret';
+import * as crypto from 'crypto';
 
 const PORT = 27903;
 /** What the OS hands back when resolveServerPort asks for a free port. Outside
@@ -159,6 +165,19 @@ let healthOwner: string | typeof NO_OWNER_FIELD | null = null;
 let healthCapabilities: string[] = ['coding'];
 /** Extra /health fields, e.g. `app_secret_protocol`. */
 let healthExtra: Record<string, unknown> = {};
+/** What /health sends as `app_secret_proof` for a challenge: the HMAC under
+ *  the secret the latest spawn was handed, a wrong value, or nothing. */
+let healthProof: 'valid' | 'wrong' | 'none' = 'valid';
+/** Every challenge a /health probe sent. */
+let challengesSeen: string[] = [];
+
+function proofFor(challenge: string): string | undefined {
+  if (healthProof === 'none') return undefined;
+  if (healthProof === 'wrong') return 'ab'.repeat(32);
+  const child = vi.mocked(cp.spawn).mock.results.at(-1)?.value as { stdin?: { written: string } } | undefined;
+  const secret = child?.stdin?.written ? JSON.parse(child.stdin.written).app_secret : 'none';
+  return crypto.createHmac('sha256', secret).update(challenge).digest('hex');
+}
 
 /** Records every execFile call and lets a test decide what each one returns. */
 let execCalls: Array<{ cmd: string; args: string[] }> = [];
@@ -231,8 +250,15 @@ beforeEach(() => {
   healthOwner = null;
   healthCapabilities = ['coding'];
   healthExtra = {};
-  vi.mocked(http.get).mockImplementation(((_opts: unknown, cb: unknown) => {
+  healthProof = 'valid';
+  challengesSeen = [];
+  keychainState.migrated = false;
+  vi.mocked(http.get).mockImplementation(((opts: { headers?: Record<string, string> }, cb: unknown) => {
     const owner = healthOwner;
+    const challenge = opts?.headers?.['X-Cowork-App-Challenge'];
+    if (challenge) challengesSeen.push(challenge);
+    const proof = challenge && healthExtra.app_secret_protocol === 1 ? proofFor(challenge) : undefined;
+    const extra = { ...healthExtra, ...(proof ? { app_secret_proof: proof } : {}) };
     if (owner !== null && typeof cb === 'function') {
       const res = new EventEmitter() as EventEmitter & { statusCode: number; resume: () => void };
       res.statusCode = 200;
@@ -240,8 +266,8 @@ beforeEach(() => {
       setTimeout(() => {
         (cb as (r: unknown) => void)(res);
         res.emit('data', JSON.stringify(owner === NO_OWNER_FIELD
-          ? { capabilities: healthCapabilities, ...healthExtra }
-          : { owner, capabilities: healthCapabilities, ...healthExtra }));
+          ? { capabilities: healthCapabilities, ...extra }
+          : { owner, capabilities: healthCapabilities, ...extra }));
         res.emit('end');
       }, 0);
     }
@@ -1654,5 +1680,104 @@ describe('app secret handoff', () => {
     expect(result.ok).toBe(false);
     expect(getServerDiagnostics().lastError).toBe(`The previous Cowork server on port ${PORT} could not be stopped.`);
     expect(cp.spawn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('health proof', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+    setServerStartedHook(null);
+  });
+
+  function spawnAnswering(extra: Record<string, unknown>, handOff = true): ReturnType<typeof makeChild> {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => {
+        healthExtra = extra;
+        healthOwner = spawnedOwner();
+        if (handOff) { child.exitCode = 0; child.emit('exit', 0); }
+      }, 0);
+      return child as never;
+    }) as never);
+    return child;
+  }
+
+  it('is protected only with a proof of the secret over a fresh challenge', async () => {
+    spawnAnswering({ app_secret_protocol: 1 });
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(isAppSecretProtected()).toBe(true);
+    expect(challengesSeen.length).toBeGreaterThan(0);
+    expect(challengesSeen.every((c) => /^[0-9a-f]{64}$/.test(c))).toBe(true);
+    expect(new Set(challengesSeen).size).toBe(challengesSeen.length);
+  });
+
+  it.each([
+    ['a wrong proof', 'wrong' as const, false],
+    ['no proof', 'none' as const, false],
+    ['a wrong proof, after the migration', 'wrong' as const, true],
+  ])('refuses a server claiming the protocol with %s', async (_label, proof, migrated) => {
+    keychainState.migrated = migrated;
+    healthProof = proof;
+    const child = spawnAnswering({ app_secret_protocol: 1 }, false);
+    const hook = vi.fn(async () => {});
+    setServerStartedHook(hook);
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      child.exitCode = 0;
+      setTimeout(() => child.emit('exit', 0), 0);
+      return true;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(false);
+    expect(getServerDiagnostics().lastError).toBe('The backend did not prove it was started by this app, so it was stopped.');
+    expect(signals).toContainEqual([-4242, 'SIGTERM']);
+    expect(execCalls.some((c) => c.cmd === 'lsof' && c.args.includes(`tcp:${PORT}`))).toBe(true);
+    expect(isServerRunning()).toBe(false);
+    expect(hook).not.toHaveBeenCalled();
+    expect(appSecretHeader()).toEqual({});
+    expect(serverMayReceiveTokens()).toBe(false);
+  });
+
+  it('accepts a server without the protocol in legacy mode before the migration', async () => {
+    spawnAnswering({});
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(isAppSecretProtected()).toBe(false);
+    expect(serverMayReceiveTokens()).toBe(true);
+  });
+
+  it('refuses a server without the protocol once the migration has run', async () => {
+    keychainState.migrated = true;
+    spawnAnswering({});
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(false);
+    expect(getServerDiagnostics().lastError).toBe('The backend did not prove it was started by this app, so it was stopped.');
+    expect(serverMayReceiveTokens()).toBe(false);
+  });
+
+  it('re-verifies a handed-off server and replaces one that no longer proves the secret', async () => {
+    spawnAnswering({ app_secret_protocol: 1 });
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(isAppSecretProtected()).toBe(true);
+
+    // A stand-in now answers the port with our owner token but not our secret.
+    healthProof = 'wrong';
+    const fresh = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthProof = 'valid'; fresh.exitCode = 0; fresh.emit('exit', 0); }, 0);
+      return fresh as never;
+    }) as never);
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(cp.spawn).toHaveBeenCalledTimes(2);
+    expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(fresh.stdin.written).app_secret);
   });
 });

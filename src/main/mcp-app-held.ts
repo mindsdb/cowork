@@ -2,7 +2,7 @@ import { diagnostic } from '../shared/diagnostics';
 import { getServerPort } from './server-process';
 import { authHeader } from './server-auth';
 import { appSecretGeneration, appSecretHeader, isAppSecretProtected } from './app-secret';
-import { deleteMcpAccessMode, getMcpAccessMode, setMcpAccessMode } from './keychain-service';
+import { deleteMcpAccessMode, getMcpAccessMode, isMcpAccessModeMigrated, markMcpAccessModeMigrated, setMcpAccessMode } from './keychain-service';
 import { hasRefreshLoop, refreshAccessTokenNow, startRefreshLoop } from './token-refresh';
 
 /*
@@ -23,8 +23,9 @@ function connectionUrl(engine: string, name: string, suffix = ''): string {
   return `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}${suffix}`;
 }
 
-/** The keychain's mode, else `fallback` (the vault file's legacy value) when
- *  valid, else 'read', written to the keychain when it had none. Null when that
+/** The keychain's mode, else `fallback` (the vault file's value, passed only
+ *  before the one-time migration) when valid, else 'read', written to the
+ *  keychain when it had none. Null when that
  *  write failed: the server only strips the file's copy once it has a mode, so
  *  a mode the keychain does not hold must not be handed over. */
 async function keychainAccessMode(engine: string, name: string, fallback?: unknown): Promise<AccessMode | null> {
@@ -68,38 +69,90 @@ export async function handOverAfterConnect(engine: string, name: string, accessT
   });
 }
 
+// Start-up hand-over retries per connection: a provider or the server can be
+// briefly unreachable right after a start, and until the hand-over lands the
+// connection has no token on the server.
+const RETRY_DELAYS_MS = [5_000, 15_000, 60_000];
+const RETRY_STEADY_MS = 5 * 60_000;
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+type HandOver = { outcome: 'done' | 'retry' | 'gone'; modeInKeychain: boolean };
+
 /** Run on every server start. Fire-and-forget from the started hook: a
- *  refresh waits on the provider, and until it lands the server falls back to
- *  the vault file, whose mode defaults to read. */
+ *  refresh waits on the provider, and until it lands the server holds mode
+ *  read and no token for the connection. */
 export async function syncAppHeldMcpConnections(): Promise<void> {
   if (!isAppSecretProtected()) return;
+  for (const timer of retryTimers.values()) clearTimeout(timer);
+  retryTimers.clear();
   const generation = appSecretGeneration();
   const stillCurrent = () => appSecretGeneration() === generation;
-  const base = `http://127.0.0.1:${getServerPort()}/api/v1/connectors`;
+  // An unreadable marker counts as set: the file's mode is the one cell code
+  // can write, so it is trusted only when the keychain says it is still needed.
+  let migrated = true;
+  let markerReadable = false;
   try {
-    const listRes = await fetch(`${base}/connections/`, { headers: authHeader() });
+    migrated = await isMcpAccessModeMigrated();
+    markerReadable = true;
+  } catch (err) {
+    diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_migration_marker_unreadable', err);
+  }
+  try {
+    const listRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/`, { headers: authHeader() });
     if (!listRes.ok) return;
     const connections = await listRes.json() as Array<{ engine: string; name: string }>;
+    let everyModeInKeychain = true;
     for (const { engine, name } of connections) {
       if (!stillCurrent()) return;
-      try {
-        const detailRes = await fetch(connectionUrl(engine, name), { headers: authHeader() });
-        if (!detailRes.ok) continue;
-        const detail = await detailRes.json() as { method?: string; fields?: Record<string, string> };
-        if (detail.method !== 'mcp') continue;
-        const fields = detail.fields || {};
-
-        const mode = await keychainAccessMode(engine, name, fields._access_mode);
-        const token = fields.status === 'needs_reconnect' ? null : await freshAccessToken(engine, name, fields);
-        if (!stillCurrent()) return;
-        if (!mode && !token) continue;
-        await putAppHeld(engine, name, { ...(token ?? {}), ...(mode ? { access_mode: mode } : {}) });
-      } catch (err) {
-        diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_sync_failed_for_connection', `[mcp-app-held] could not hand over ${engine}/${name}:`, err);
+      const result = await handOverConnection(engine, name, migrated, stillCurrent);
+      if (result.outcome === 'retry') {
+        if (!result.modeInKeychain) everyModeInKeychain = false;
+        scheduleRetry(engine, name, migrated, stillCurrent, 0);
       }
+    }
+    if (!migrated && markerReadable && everyModeInKeychain && stillCurrent()) {
+      await markMcpAccessModeMigrated();
     }
   } catch (err) {
     diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_sync_failed', '[mcp-app-held] sync failed:', err);
+  }
+}
+
+function scheduleRetry(engine: string, name: string, migrated: boolean, stillCurrent: () => boolean, attempt: number): void {
+  const key = `${engine}:${name}`;
+  const delay = RETRY_DELAYS_MS[attempt] ?? RETRY_STEADY_MS;
+  retryTimers.set(key, setTimeout(() => {
+    retryTimers.delete(key);
+    if (!stillCurrent()) return;
+    void handOverConnection(engine, name, migrated, stillCurrent).then((result) => {
+      if (result.outcome === 'retry' && stillCurrent()) scheduleRetry(engine, name, migrated, stillCurrent, attempt + 1);
+    });
+  }, delay));
+}
+
+/** One connection's hand-over. `retry` when anything that should have worked
+ *  failed; `gone` when there is nothing (left) to hand over. */
+async function handOverConnection(engine: string, name: string, migrated: boolean, stillCurrent: () => boolean): Promise<HandOver> {
+  try {
+    const detailRes = await fetch(connectionUrl(engine, name), { headers: authHeader() });
+    if (detailRes.status === 404) return { outcome: 'gone', modeInKeychain: true };
+    if (!detailRes.ok) return { outcome: 'retry', modeInKeychain: false };
+    const detail = await detailRes.json() as { method?: string; fields?: Record<string, string> };
+    if (detail.method !== 'mcp') return { outcome: 'gone', modeInKeychain: true };
+    const fields = detail.fields || {};
+
+    const mode = await keychainAccessMode(engine, name, migrated ? undefined : fields._access_mode);
+    const token = fields.status === 'needs_reconnect'
+      ? { kind: 'none' as const }
+      : await freshAccessToken(engine, name, fields);
+    if (!stillCurrent()) return { outcome: 'gone', modeInKeychain: mode !== null };
+    const body = { ...(token.kind === 'ok' ? token.token : {}), ...(mode ? { access_mode: mode } : {}) };
+    const put = Object.keys(body).length > 0 ? await putAppHeld(engine, name, body) : true;
+    const done = put && mode !== null && token.kind !== 'failed';
+    return { outcome: done ? 'done' : 'retry', modeInKeychain: mode !== null };
+  } catch (err) {
+    diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_sync_failed_for_connection', `[mcp-app-held] could not hand over ${engine}/${name}:`, err);
+    return { outcome: 'retry', modeInKeychain: false };
   }
 }
 
@@ -107,21 +160,22 @@ async function freshAccessToken(
   engine: string,
   name: string,
   fields: Record<string, string>,
-): Promise<{ access_token: string; expires_at: string } | null> {
+): Promise<{ kind: 'ok'; token: { access_token: string; expires_at: string } } | { kind: 'none' } | { kind: 'failed' }> {
   const accountEmail = fields.account_email;
-  if (!accountEmail) return null;
+  if (!accountEmail) return { kind: 'none' };
   if (!hasRefreshLoop(engine, accountEmail)) {
     const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`, { headers: authHeader() });
-    if (!specRes.ok) return null;
+    if (!specRes.ok) return { kind: 'failed' };
     const spec = await specRes.json() as Record<string, any>;
     const oauth = spec?.form?.methods?.find((m: any) => m.id === 'mcp')?.oauth;
-    if (!oauth?.token_url || oauth.supports_refresh === false) return null;
+    if (!oauth?.token_url || oauth.supports_refresh === false) return { kind: 'none' };
     startRefreshLoop(
       engine, name, accountEmail, fields.expires_at || new Date().toISOString(),
       oauth.token_url, oauth.token_auth_style, oauth.refresh_token_optional === true,
     );
   }
-  return refreshAccessTokenNow(engine, accountEmail);
+  const token = await refreshAccessTokenNow(engine, accountEmail);
+  return token ? { kind: 'ok', token } : { kind: 'failed' };
 }
 
 /** On disconnect, so a later connection under the same name starts at read. */

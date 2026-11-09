@@ -70,6 +70,15 @@ describe('keychain-service — per-channel service namespacing', () => {
     expect(keytar.deletePassword).toHaveBeenCalledWith('cowork-oauth-preview', 'slack:x@y.com');
   });
 
+  it('keeps the migration marker in the access-mode service, apart from any connection', async () => {
+    const svc = await loadForKind('prod');
+    await expect(svc.isMcpAccessModeMigrated()).resolves.toBe(false);
+    await svc.markMcpAccessModeMigrated();
+    expect(keytar.setPassword).toHaveBeenCalledWith('cowork-mcp-access-mode', '__migration_done__', '1');
+    keytar.getPassword.mockResolvedValue('1');
+    await expect(svc.isMcpAccessModeMigrated()).resolves.toBe(true);
+  });
+
   it('keeps MCP access modes in a service of their own, keyed by connection name', async () => {
     const prod = await loadForKind('prod');
     await prod.setMcpAccessMode('hubspot', 'acme', 'write');

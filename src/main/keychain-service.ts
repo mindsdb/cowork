@@ -100,6 +100,19 @@ export async function deleteMcpAccessMode(engine: string, name: string): Promise
   await deletePassword(ACCESS_MODE_SERVICE, `${engine}:${name}`);
 }
 
+// Set once every MCP connection's mode has moved from the vault file into the
+// keychain. From then on the file's mode is never read: cell code can write it.
+// Connection keys always contain a colon, so this cannot collide with one.
+const ACCESS_MODE_MIGRATION_ACCOUNT = '__migration_done__';
+
+export async function isMcpAccessModeMigrated(): Promise<boolean> {
+  return (await getPassword(ACCESS_MODE_SERVICE, ACCESS_MODE_MIGRATION_ACCOUNT)) !== null;
+}
+
+export async function markMcpAccessModeMigrated(): Promise<void> {
+  await setPassword(ACCESS_MODE_SERVICE, ACCESS_MODE_MIGRATION_ACCOUNT, '1');
+}
+
 // ENG-1241: the 15 static OAuth client id/secret values that used to ship in
 // a world-readable server-credentials.json inside the app bundle now live
 // here too, alongside per-connector refresh tokens — same service, disjoint

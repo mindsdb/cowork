@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 // token-refresh.ts pulls in keychain-service.ts, which imports the native
 // `keytar` module at load time — fine on macOS (Keychain Services), but it
@@ -13,7 +13,13 @@ vi.mock('./keychain-service', () => ({
 
 import { getRefreshToken, setRefreshToken } from './keychain-service';
 import { parseAppIdFromClientId, refreshAccessTokenNow, startRefreshLoop, stopAllRefreshLoops } from './token-refresh';
-import { APP_SECRET_HEADER, clearAppSecret, newAppSecret, setAppSecretProtocol } from './app-secret';
+import { APP_SECRET_HEADER, clearAppSecret, newAppSecret, setServerTrust } from './app-secret';
+
+// A legacy server is running unless a test says otherwise.
+beforeEach(() => {
+  newAppSecret();
+  setServerTrust('legacy');
+});
 
 describe('parseAppIdFromClientId', () => {
   it('extracts the leading project number from a standard client id', () => {
@@ -277,7 +283,7 @@ describe('app-held secrets on the refresh path', () => {
 
   it('sends the app secret on PATCH /token in protected mode', async () => {
     const secret = newAppSecret();
-    setAppSecretProtocol(1);
+    setServerTrust('protected');
     const { patches } = rotatingProvider();
 
     startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
@@ -289,7 +295,7 @@ describe('app-held secrets on the refresh path', () => {
 
   it('sends no app secret in legacy mode', async () => {
     newAppSecret();
-    setAppSecretProtocol(undefined);
+    setServerTrust('legacy');
     const { patches } = rotatingProvider();
 
     startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
@@ -308,6 +314,18 @@ describe('app-held secrets on the refresh path', () => {
     expect(usedRefreshTokens).toEqual(['rt-1', 'rt-2']);
     expect(forced).toEqual({ access_token: 'at-3', expires_at: expect.any(String) });
     expect(patches.map((p) => p.body.access_token)).toEqual(['at-2', 'at-3']);
+  });
+
+  it.each(['untrusted', 'none'] as const)('neither refreshes nor sends a token while the server is %s', async (trust) => {
+    setServerTrust(trust);
+    const { usedRefreshTokens, patches } = rotatingProvider();
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+    const forced = await refreshAccessTokenNow('notion', 'user@example.com:ws-1');
+
+    expect(forced).toBeNull();
+    expect(usedRefreshTokens).toEqual([]);
+    expect(patches).toEqual([]);
   });
 
   it('returns null for a forced refresh with no loop running', async () => {

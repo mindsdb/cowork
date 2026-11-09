@@ -33,7 +33,8 @@ import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { analyticsEnv, antonDotenvNames, usageEventsOn } from './analytics-env';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
-import { APP_SECRET_STDIN_ENV, appSecretStdinLine, clearAppSecret, newAppSecret, setAppSecretProtocol } from './app-secret';
+import { APP_CHALLENGE_HEADER, APP_SECRET_STDIN_ENV, appSecretStdinLine, clearAppSecret, judgeServer, newAppChallenge, newAppSecret, serverTrust, setServerTrust } from './app-secret';
+import { isMcpAccessModeMigrated } from './keychain-service';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
 import {
@@ -64,7 +65,7 @@ export const SERVER_STOP_CEILING_MS = PREPARE_SHUTDOWN_TIMEOUT_MS + SIGTERM_GRAC
 const SERVER_HOST = '127.0.0.1';
 const DEV_OAUTH_ENV_FILE = path.join(os.homedir(), '.cowork-dev', '.env');
 
-// ENG-439: the sidecar binds a loopback port, which is machine-global, not
+// The sidecar binds a loopback port, which is machine-global, not
 // per-OS-user. With fast user switching, whichever user launches first owns
 // the port and every other user's app would adopt it — driving the first
 // user's server and reading/writing their data. Two guards close that:
@@ -92,7 +93,7 @@ function serverOwnerSecret(): string {
   const token = crypto.randomBytes(16).toString('hex');
   try {
     // Owner-only perms (0700 dir / 0600 file): the token decides which
-    // servers count as ours (ENG-439). macOS home dirs are commonly
+    // servers count as ours. macOS home dirs are commonly
     // traversable, so a readable token would let another OS user pass their
     // server off as ours, or have ours routed around as foreign. chmod after
     // write pins the mode regardless of umask.
@@ -557,14 +558,18 @@ type HealthProbe = {
   state: 'unreachable' | 'compatible' | 'incompatible';
   owner: string | null;
   clearsPendingCredentials: boolean;
-  /** `app_secret_protocol` as /health sent it; 1 means the server holds a secret. */
+  /** `app_secret_protocol` and `app_secret_proof` as /health sent them. */
   appSecretProtocol?: unknown;
+  appSecretProof?: unknown;
 };
 
-function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> {
+function probeHealthOnce(port: number, timeoutMs: number, challenge?: string): Promise<HealthProbe> {
   return new Promise((resolve) => {
     const req = http.get(
-      { hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: timeoutMs },
+      {
+        hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: timeoutMs,
+        ...(challenge ? { headers: { [APP_CHALLENGE_HEADER]: challenge } } : {}),
+      },
       (res) => {
         if (res.statusCode !== 200) { res.resume(); resolve({ state: 'unreachable', owner: null, clearsPendingCredentials: false }); return; }
         let body = '';
@@ -574,15 +579,17 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> 
           let supportsCoding = false;
           let clearsPendingCredentials = false;
           let appSecretProtocol: unknown;
+          let appSecretProof: unknown;
           try {
-            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown; app_secret_protocol?: unknown } | null;
+            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown; app_secret_protocol?: unknown; app_secret_proof?: unknown } | null;
             owner = payload?.owner ?? null;
             supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
             clearsPendingCredentials = Array.isArray(payload?.capabilities)
               && payload.capabilities.includes(PENDING_CLEAR_CAPABILITY);
             appSecretProtocol = payload?.app_secret_protocol;
+            appSecretProof = payload?.app_secret_proof;
           } catch { /* non-JSON */ }
-          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol });
+          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol, appSecretProof });
         });
       },
     );
@@ -655,7 +662,7 @@ export async function resolveServerPort(): Promise<number> {
     } else if (probe.state === 'compatible' && probe.owner) {
       _adoptPlanned = true; // our own orphan — startServer will re-verify + replace
     }
-    // else: not healthy, healthy but owner-less (a pre-ENG-439 server — on a
+    // else: not healthy, healthy but owner-less (a server from before owner tokens — on a
     // per-user port that's almost certainly our own from before this change),
     // or our own but too old. Keep the preferred port; startServer reaps
     // whatever's there and respawns. A cross-user kill can't succeed (different
@@ -668,6 +675,18 @@ export async function resolveServerPort(): Promise<number> {
   }
   return serverPort;
 }
+
+// An unreadable marker counts as set, so a keychain failure cannot open the
+// legacy path to a server that does not prove the secret.
+async function accessModesMigrated(): Promise<boolean> {
+  try {
+    return await isMcpAccessModeMigrated();
+  } catch {
+    return true;
+  }
+}
+
+const UNTRUSTED_SERVER_ERROR = 'The backend did not prove it was started by this app, so it was stopped.';
 
 export interface StartServerResult {
   ok: boolean;
@@ -727,9 +746,13 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // whose exit event can invalidate our state. Re-probe it when the renderer
     // asks us to ensure the backend is running; otherwise a dead one leaves
     // every recovery attempt as a no-op.
+    // Whatever answers there now must still prove the secret, since the
+    // process we spawned is gone and the port could be someone else's.
     if (!_adoptedExternal) return { ok: true, port: serverPort };
-    const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())) {
+    const challenge = newAppChallenge();
+    const probe = await probeHealthOnce(serverPort, 700, challenge);
+    if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())
+      && judgeServer(probe, challenge, await accessModesMigrated()) === serverTrust()) {
       return { ok: true, port: serverPort };
     }
     diagnostic("main.server-process", "WARNING", "server_adopted_instance_on_port_is_no_longer_healthy_starting_a_replacement", `[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
@@ -935,7 +958,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // The app secret itself goes over stdin below: cell code inherits this
       // environment, so only the flag may appear here.
       [APP_SECRET_STDIN_ENV]: '1',
-      // ENG-439: stamp the server we spawn with our owner token so a future
+      // Stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and replace it, while another
       // OS user's app sees a mismatch and never touches it. Bound to the account
       // this server is started for, so an orphan still holding a previous
@@ -1052,12 +1075,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const waitStartedAt = Date.now();
     let step = decideStartWait({ healthy: false, spawnError, exited: childExited, elapsedMs: 0, capMs: startCapMs });
     let clearsPendingCredentials = false;
-    let appSecretProtocol: unknown;
+    let lastProbe: HealthProbe | null = null;
+    let lastChallenge = '';
     while (step.action === 'poll') {
       await sleep(HEALTH_POLL_INTERVAL_MS);
-      const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS);
+      lastChallenge = newAppChallenge();
+      const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS, lastChallenge);
+      lastProbe = probe;
       clearsPendingCredentials = probe.clearsPendingCredentials;
-      appSecretProtocol = probe.appSecretProtocol;
       /* Only an answer naming the owner this child was stamped with can make
          the start ready. Anything else on the port (no owner, or another one)
          may be some other process that took it while the child was still
@@ -1079,20 +1104,34 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       });
     }
 
-    if (step.action === 'fail') {
-      const elapsedMs = Date.now() - waitStartedAt;
-      // The one boot death with its own remedy: a sign-out's credential clear
-      // that the backend refused to start past.
-      const kind = step.kind === 'exited' && recentStderr.includes(PENDING_CLEAR_FAILURE_LOG)
-        ? 'credential-clear'
-        : step.kind;
-      lastStartErrorKind = kind;
-      lastStartError = startFailureMessage({
-        kind,
-        exitCode: childExitCode,
-        spawnError,
-        elapsedMs,
-      });
+    // The answer that made the start ready must prove the secret, or once
+    // access modes have left the vault file it gets nothing and is stopped.
+    let untrusted = false;
+    if (step.action !== 'fail' && lastProbe) {
+      const verdict = judgeServer(lastProbe, lastChallenge, await accessModesMigrated());
+      setServerTrust(verdict);
+      untrusted = verdict === 'untrusted';
+    }
+
+    if (step.action === 'fail' || untrusted) {
+      if (step.action === 'fail') {
+        const elapsedMs = Date.now() - waitStartedAt;
+        // The one boot death with its own remedy: a sign-out's credential clear
+        // that the backend refused to start past.
+        const kind = step.kind === 'exited' && recentStderr.includes(PENDING_CLEAR_FAILURE_LOG)
+          ? 'credential-clear'
+          : step.kind;
+        lastStartErrorKind = kind;
+        lastStartError = startFailureMessage({
+          kind,
+          exitCode: childExitCode,
+          spawnError,
+          elapsedMs,
+        });
+      } else {
+        lastStartErrorKind = null;
+        lastStartError = UNTRUSTED_SERVER_ERROR;
+      }
       diagnostic("main.server-process", "ERROR", "server_start_failed_on_port", `[server] start failed on port ${serverPort}: ${lastStartError}`);
       // Reap the spawned child instead of leaving it as a zombie
       // pinning the port. If we don't, every failed restart leaks a
@@ -1116,6 +1155,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
           await Promise.race([exited, sleep(1_000)]);
         }
       }
+      // The untrusted answer may have come from a handed-off server or from
+      // another process that took the port, so reap by port as well.
+      if (untrusted) await killProcessOnPort(serverPort);
       // Whatever still holds the port after the reap is a real, nameable
       // cause the user can act on — as opposed to the panel's old guess that
       // "a stale process" might be involved.
@@ -1132,7 +1174,6 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     _runningAccountDataRoot = accountDataRootAtSpawn;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
     noteServerClearsPendingCredentials(clearsPendingCredentials);
-    setAppSecretProtocol(appSecretProtocol);
     // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
     // has certainly written its dotenv by the time it answers /health. Drop the
     // cache HERE, where "a server is now running" is the fact, rather than only

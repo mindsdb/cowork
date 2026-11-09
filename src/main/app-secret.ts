@@ -14,15 +14,26 @@ import * as crypto from 'crypto';
 
 export const APP_SECRET_HEADER = 'X-Cowork-App-Secret';
 export const APP_SECRET_STDIN_ENV = 'COWORK_APP_SECRET_STDIN';
+export const APP_CHALLENGE_HEADER = 'X-Cowork-App-Challenge';
+
+/**
+ * What this process may send the running server:
+ * - protected: it proved it holds our secret; tokens go to memory there.
+ * - legacy: a server without the protocol, before the one-time migration ran;
+ *   today's behaviour, tokens in the vault file.
+ * - untrusted: it could not prove the secret when it had to; nothing goes to it.
+ * - none: no verified server.
+ */
+export type ServerTrust = 'none' | 'protected' | 'legacy' | 'untrusted';
 
 let secret: string | null = null;
-let protectedMode = false;
+let trust: ServerTrust = 'none';
 
-/** A fresh secret for the server about to be spawned. Protected mode stays off
- *  until that server's /health says it holds it. */
+/** A fresh secret for the server about to be spawned. Nothing is trusted
+ *  until that server's /health proves it holds it. */
 export function newAppSecret(): string {
   secret = crypto.randomBytes(32).toString('hex');
-  protectedMode = false;
+  trust = 'none';
   return secret;
 }
 
@@ -31,28 +42,61 @@ export function appSecretStdinLine(value: string): string {
   return `${JSON.stringify({ app_secret: value })}\n`;
 }
 
-/** Records what the spawned server's /health said. Anything but protocol 1
- *  is legacy mode: no header, no app-held calls. */
-export function setAppSecretProtocol(protocol: unknown): void {
-  protectedMode = secret !== null && protocol === 1;
+/** A fresh challenge for one /health probe. */
+export function newAppChallenge(): string {
+  return crypto.randomBytes(32).toString('hex');
 }
 
-/** For a server this process did not spawn, or no server at all. */
+function proofMatches(challenge: string, proof: unknown): boolean {
+  if (!secret || typeof proof !== 'string' || !/^[0-9a-f]{64}$/.test(proof)) return false;
+  const expected = crypto.createHmac('sha256', secret).update(challenge).digest();
+  return crypto.timingSafeEqual(expected, Buffer.from(proof, 'hex'));
+}
+
+/**
+ * Judges one /health answer to `challenge`. A server that claims the protocol
+ * must prove the secret. One without it is a pre-protocol server, acceptable
+ * only until the migration has moved access modes out of the vault file;
+ * after that it is indistinguishable from a stand-in started to collect tokens.
+ */
+export function judgeServer(
+  health: { appSecretProtocol?: unknown; appSecretProof?: unknown },
+  challenge: string,
+  migrated: boolean,
+): ServerTrust {
+  if (health.appSecretProtocol === 1) return proofMatches(challenge, health.appSecretProof) ? 'protected' : 'untrusted';
+  return migrated ? 'untrusted' : 'legacy';
+}
+
+export function setServerTrust(value: ServerTrust): void {
+  trust = value === 'protected' && !secret ? 'untrusted' : value;
+}
+
+export function serverTrust(): ServerTrust {
+  return trust;
+}
+
+/** For a stopped server, or none at all. */
 export function clearAppSecret(): void {
   secret = null;
-  protectedMode = false;
+  trust = 'none';
 }
 
 export function isAppSecretProtected(): boolean {
-  return protectedMode;
+  return trust === 'protected';
+}
+
+/** Whether access tokens may be sent to the server at all. */
+export function serverMayReceiveTokens(): boolean {
+  return trust === 'protected' || trust === 'legacy';
 }
 
 /** Identifies the server run a multi-step sync started against, so a sync
  *  that outlives a restart stops instead of writing into the next run. */
 export function appSecretGeneration(): string | null {
-  return protectedMode ? secret : null;
+  return trust === 'protected' ? secret : null;
 }
 
 export function appSecretHeader(): Record<string, string> {
-  return protectedMode && secret ? { [APP_SECRET_HEADER]: secret } : {};
+  return trust === 'protected' && secret ? { [APP_SECRET_HEADER]: secret } : {};
 }
