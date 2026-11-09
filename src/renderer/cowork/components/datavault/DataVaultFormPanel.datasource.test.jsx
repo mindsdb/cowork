@@ -305,6 +305,19 @@ describe('the Label on a cloud database form', () => {
     expect(api.editDatasourceConnection).not.toHaveBeenCalled();
   });
 
+  it('drops its error when a different form replaces this one', async () => {
+    const { rerender } = render(
+      <DataVaultForm spec={MYSQL_SPEC} userLabel="" onUserLabelChange={vi.fn()} onAction={vi.fn()} />,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: /connect/i }));
+    expect(await screen.findByText('Label is required.')).toBeInTheDocument();
+
+    rerender(
+      <DataVaultForm spec={{ ...MYSQL_SPEC, form_id: 'postgres-connector' }} userLabel="" onUserLabelChange={vi.fn()} onAction={vi.fn()} />,
+    );
+    await waitFor(() => expect(screen.queryByText('Label is required.')).toBeNull());
+  });
+
   it('stays optional on a form that does not go to the relay', async () => {
     const onAction = vi.fn();
     const { _cloud_datasource: _unused, ...localSpec } = MYSQL_SPEC;
@@ -354,6 +367,8 @@ describe('skipping a field', () => {
     await userEvent.click(screen.getByRole('button', { name: /connect/i }));
 
     expect(await screen.findByText('Password is required.')).toBeInTheDocument();
+    // The Label was filled, so only the password is reported.
+    expect(screen.queryByText('Label is required.')).toBeNull();
     expect(api.createDatasourceConnection).not.toHaveBeenCalled();
   });
 
