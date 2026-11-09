@@ -3408,13 +3408,15 @@ export async function runScheduleNow(id) {
   return req(`/schedules/${encodeURIComponent(id)}/run-now`, { method: 'POST' });
 }
 
-export async function fetchScheduleRuns(id, { limit = 100 } = {}) {
+export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}) {
   // Returns { runs: [{ id, scheduleId, startedAt, finishedAt, durationMs,
   // status, error, conversationId, isManual }] }
-  // Newest first.
+  // Newest first. A failed read is an empty list, unless `strict`, where it
+  // throws so a caller acting on the list can say so.
   try {
     return await req(`/schedules/${encodeURIComponent(id)}/runs?limit=${encodeURIComponent(limit)}`);
-  } catch {
+  } catch (err) {
+    if (strict) throw err;
     return { schedule_id: id, runs: [] };
   }
 }

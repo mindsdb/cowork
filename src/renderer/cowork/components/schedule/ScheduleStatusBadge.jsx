@@ -19,7 +19,8 @@ export function lastRunFailed(task) {
 export function scheduleStatusBadge(task, failedLabel = 'Last failed') {
   const state = scheduleState(task);
   if (task.running) {
-    // Paused while a run was going: that run finishes, nothing follows it.
+    // Paused while a run was going: that run finishes, and nothing else starts
+    // until the task is resumed.
     if (state === 'paused' || state === 'auto_paused') return { label: 'Paused · finishing run', variant: 'accent' };
     return { label: 'Running', variant: 'accent' };
   }
