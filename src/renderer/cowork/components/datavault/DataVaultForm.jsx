@@ -43,8 +43,8 @@ import { computeHeroView, orderMethods } from './methodHero';
 import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 
-// Key for the Label's inline error inside the per-field error map. Not a
-// field name a spec can declare, so it never collides with one.
+// Key for the Label's inline error inside the per-field error map. It is
+// read only on a cloud database form, whose specs never name a field this.
 const USER_LABEL_ERROR_KEY = '__user_label__';
 
 const FONT_BODY    = 'var(--font-body)';
@@ -629,7 +629,7 @@ export function DataVaultForm({
             aria-required={userLabelRequired || undefined}
             placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
           />
-          {requiredErrors[USER_LABEL_ERROR_KEY] && (
+          {userLabelRequired && requiredErrors[USER_LABEL_ERROR_KEY] && (
             <div className="text-[11.5px] text-danger">{requiredErrors[USER_LABEL_ERROR_KEY]}</div>
           )}
         </div>

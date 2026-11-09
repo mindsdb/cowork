@@ -274,6 +274,19 @@ describe('the Label on a cloud database form', () => {
     expect(screen.queryByText('Label is required.')).toBeNull();
   });
 
+  it('treats a Label of only spaces as empty', async () => {
+    setForm(CID, MYSQL_SPEC);
+    renderPanel();
+
+    const label = await screen.findByLabelText(/^Label$/i);
+    await userEvent.type(label, '   ');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(await screen.findByText('Label is required.')).toBeInTheDocument();
+    await waitFor(() => expect(label).toHaveFocus());
+    expect(api.createDatasourceConnection).not.toHaveBeenCalled();
+  });
+
   it('stops an edit whose Label was cleared instead of saving under the old name', async () => {
     setForm(CID, {
       ...SPEC,
@@ -303,6 +316,19 @@ describe('the Label on a cloud database form', () => {
 
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Label is required.')).toBeNull();
+  });
+
+  it('does not repeat an agent field error under the Label, whatever the field is called', async () => {
+    const spec = {
+      form_id: 'agent-form',
+      title: 'Connect something',
+      fields: [{ name: '__user_label__', label: 'Workspace', type: 'text', required: true }],
+      actions: [{ id: 'submit', label: 'Connect', kind: 'primary' }],
+    };
+    render(<DataVaultForm spec={spec} userLabel="" onUserLabelChange={vi.fn()} onAction={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: /connect/i }));
+
+    expect(await screen.findAllByText('Workspace is required.')).toHaveLength(1);
   });
 });
 
@@ -395,6 +421,21 @@ describe('a relay refusal on a cloud database form', () => {
 
     await userEvent.type(screen.getByLabelText(/^Label$/i), 'x');
     expect(screen.queryByText(MESSAGE)).toBeNull();
+  });
+
+  it('leaves the error of a form the agent handles as it was', async () => {
+    const AGENT_MESSAGE = 'agent submit refused';
+    const { _cloud_datasource: _unused, ...agentSpec } = SPEC;
+    setForm(CID, agentSpec);
+    const onSubmit = vi.fn(async () => { throw new Error(AGENT_MESSAGE); });
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={onSubmit} onContinue={vi.fn()} onClose={vi.fn()} />);
+    await userEvent.type(await screen.findByLabelText(/^Label$/i), 'Analytics');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+    expect(await screen.findByText(AGENT_MESSAGE)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/^Host$/i), 'x');
+    expect(screen.getByText(AGENT_MESSAGE)).toBeInTheDocument();
+    expect(scrolled.mock.contexts.filter((el) => el.textContent === AGENT_MESSAGE)).toHaveLength(0);
   });
 });
 
