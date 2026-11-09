@@ -17,6 +17,10 @@ describe('shouldKeepAwake', () => {
     ['an auto-paused schedule', [{ state: 'auto_paused', nextRunAt: at(1) }], false],
     ['a missed one-off', [{ state: 'missed', cadence: 'once', nextRunAt: at(-120) }], false],
     ['an older server without state', [{ enabled: true, nextRunAt: at(10) }], true],
+    ['a 15-minute task between runs', [{ state: 'active', cadence: 'every_15_minutes', nextRunAt: at(14) }], true],
+    ['a 30-minute task between runs', [{ state: 'active', cadence: 'every_30_minutes', nextRunAt: at(29) }], true],
+    ['an hourly task between runs', [{ state: 'active', cadence: 'hourly', nextRunAt: at(59) }], false],
+    ['a paused 15-minute task', [{ state: 'paused', cadence: 'every_15_minutes', nextRunAt: at(14) }], false],
     ['no schedules', [], false],
   ])('%s', (_name, schedules, expected) => {
     expect(shouldKeepAwake(schedules, { now, windowMs })).toBe(expected);
