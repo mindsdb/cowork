@@ -1588,3 +1588,22 @@ describe('checkConfigured() on web reads draft_links from /health', () => {
     await expect(host.checkConfigured()).resolves.toMatchObject({ draftLinks: false });
   });
 });
+
+describe('setScheduleKeepAwake()', () => {
+  it('passes the state to the bridge on Electron', async () => {
+    const setScheduleKeepAwake = vi.fn(async () => {});
+    (window as unknown as Record<string, unknown>).antontron = { setScheduleKeepAwake };
+    const host = await importHost();
+    host.setScheduleKeepAwake(true);
+    host.setScheduleKeepAwake(false);
+    expect(setScheduleKeepAwake.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('does nothing on web or on a shell without the channel', async () => {
+    let host = await importHost();
+    expect(() => host.setScheduleKeepAwake(true)).not.toThrow();
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    expect(() => host.setScheduleKeepAwake(true)).not.toThrow();
+  });
+});

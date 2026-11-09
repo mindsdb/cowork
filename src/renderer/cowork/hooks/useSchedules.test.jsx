@@ -47,6 +47,17 @@ describe('useSchedules', () => {
     expect(result.current.scheduled).toEqual([]);
   });
 
+  it('refreshSchedules keeps the last known list when the read fails', async () => {
+    api.fetchSchedules.mockResolvedValueOnce({ schedules: [{ id: 's1', running: true }], runs_index: {} });
+    const { result } = renderHook(() => useSchedules());
+    await act(async () => { await result.current.refreshSchedules(); });
+    api.fetchSchedules.mockResolvedValueOnce(null);
+    let ret;
+    await act(async () => { ret = await result.current.refreshSchedules(); });
+    expect(ret).toEqual([{ id: 's1', running: true }]);
+    expect(result.current.scheduled).toEqual([{ id: 's1', running: true }]);
+  });
+
   it('handleCreateSchedule creates then refreshes the list', async () => {
     api.fetchSchedules.mockResolvedValue({ schedules: [{ id: 'new' }], runs_index: {} });
     const { result } = renderHook(() => useSchedules());
