@@ -274,6 +274,25 @@ describe('the Label on a cloud database form', () => {
     expect(screen.queryByText('Label is required.')).toBeNull();
   });
 
+  it('flags the Label and every empty field together on a blank form, focusing the Label', async () => {
+    const blank = structuredClone(MYSQL_SPEC);
+    for (const method of blank.methods) {
+      for (const field of method.fields) delete field.default;
+    }
+    setForm(CID, blank);
+    renderPanel();
+
+    const label = await screen.findByLabelText(/^Label$/i);
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(await screen.findByText('Label is required.')).toBeInTheDocument();
+    for (const name of ['Host', 'Port', 'Database', 'Username', 'Password']) {
+      expect(screen.getByText(`${name} is required.`)).toBeInTheDocument();
+    }
+    await waitFor(() => expect(label).toHaveFocus());
+    expect(api.createDatasourceConnection).not.toHaveBeenCalled();
+  });
+
   it('treats a Label of only spaces as empty', async () => {
     setForm(CID, MYSQL_SPEC);
     renderPanel();
