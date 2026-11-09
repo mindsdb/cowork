@@ -678,9 +678,9 @@ export async function resolveServerPort(): Promise<number> {
 
 // An unreadable marker counts as set, so a keychain failure cannot open the
 // legacy path to a server that does not prove the secret.
-async function accessModesMigrated(): Promise<boolean> {
+async function accessModesMigrated(storeRoot: string): Promise<boolean> {
   try {
-    return await isMcpAccessModeMigrated();
+    return await isMcpAccessModeMigrated(storeRoot);
   } catch {
     return true;
   }
@@ -752,7 +752,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const challenge = newAppChallenge();
     const probe = await probeHealthOnce(serverPort, 700, challenge);
     if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())
-      && judgeServer(probe, challenge, await accessModesMigrated()) === serverTrust()) {
+      && judgeServer(probe, challenge, await accessModesMigrated(_runningOrgStoreRoot ?? currentOrgStoreRoot())) === serverTrust()) {
       return { ok: true, port: serverPort };
     }
     diagnostic("main.server-process", "WARNING", "server_adopted_instance_on_port_is_no_longer_healthy_starting_a_replacement", `[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
@@ -1039,6 +1039,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       diagnostic("main.server-process", "ERROR", "cowork_server_spawn_failed", err);
     });
     child.on('exit', (code, signal) => {
+      const wasCurrent = serverProcess === child;
       childExited = true;
       childExitCode = code;
       serverStarted = false;
@@ -1051,6 +1052,10 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // panel instead of a calm "you stopped it" message.
       lastStopIntentional = _stopRequested;
       _stopRequested = false;
+      // Until a new server proves the secret, whatever takes the port must get
+      // no tokens. A launcher that hands off exits before trust is set, so
+      // this changes nothing for it.
+      if (wasCurrent && !lastStopIntentional) setServerTrust('none');
       if (!lastStopIntentional && code !== 0) {
         // A signal death has no numeric exit code. Keep its terminal evidence
         // even when the backend could not write a diagnostic before it died.
@@ -1108,7 +1113,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // access modes have left the vault file it gets nothing and is stopped.
     let untrusted = false;
     if (step.action !== 'fail' && lastProbe) {
-      const verdict = judgeServer(lastProbe, lastChallenge, await accessModesMigrated());
+      const verdict = judgeServer(lastProbe, lastChallenge, await accessModesMigrated(orgStoreRootAtSpawn));
       setServerTrust(verdict);
       untrusted = verdict === 'untrusted';
     }

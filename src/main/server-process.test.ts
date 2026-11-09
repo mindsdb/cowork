@@ -76,10 +76,10 @@ vi.mock('./uv-paths', () => ({
 vi.mock('./credential-provisioning', () => ({
   loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
 }));
-/** The keychain marker that the one-time access-mode migration has run. */
-const keychainState = vi.hoisted(() => ({ migrated: false }));
+/** The store roots whose one-time access-mode migration has run. */
+const keychainState = vi.hoisted(() => ({ migratedRoots: new Set<string>() }));
 vi.mock('./keychain-service', () => ({
-  isMcpAccessModeMigrated: async () => keychainState.migrated,
+  isMcpAccessModeMigrated: async (root: string) => keychainState.migratedRoots.has(root),
 }));
 vi.mock('fs');
 vi.mock('child_process');
@@ -252,7 +252,7 @@ beforeEach(() => {
   healthExtra = {};
   healthProof = 'valid';
   challengesSeen = [];
-  keychainState.migrated = false;
+  keychainState.migratedRoots.clear();
   vi.mocked(http.get).mockImplementation(((opts: { headers?: Record<string, string> }, cb: unknown) => {
     const owner = healthOwner;
     const challenge = opts?.headers?.['X-Cowork-App-Challenge'];
@@ -1683,6 +1683,9 @@ describe('app secret handoff', () => {
   });
 });
 
+/** The store root a session on the default account and organization uses. */
+const DEFAULT_STORE = '/tmp/cowork-test-home';
+
 describe('health proof', () => {
   afterEach(async () => {
     if (isServerRunning()) await stopServer();
@@ -1718,7 +1721,7 @@ describe('health proof', () => {
     ['no proof', 'none' as const, false],
     ['a wrong proof, after the migration', 'wrong' as const, true],
   ])('refuses a server claiming the protocol with %s', async (_label, proof, migrated) => {
-    keychainState.migrated = migrated;
+    if (migrated) keychainState.migratedRoots.add(DEFAULT_STORE);
     healthProof = proof;
     const child = spawnAnswering({ app_secret_protocol: 1 }, false);
     const hook = vi.fn(async () => {});
@@ -1752,7 +1755,7 @@ describe('health proof', () => {
   });
 
   it('refuses a server without the protocol once the migration has run', async () => {
-    keychainState.migrated = true;
+    keychainState.migratedRoots.add(DEFAULT_STORE);
     spawnAnswering({});
 
     const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
@@ -1778,6 +1781,52 @@ describe('health proof', () => {
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
 
     expect(cp.spawn).toHaveBeenCalledTimes(2);
+    expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(fresh.stdin.written).app_secret);
+  });
+});
+
+describe('health proof per store, and after a crash', () => {
+  afterEach(async () => {
+    if (isServerRunning()) await stopServer();
+  });
+
+  it('judges a server by the migration marker of the store it was started on', async () => {
+    keychainState.migratedRoots.add(DEFAULT_STORE);
+    accountState.orgStoreRoot = '/tmp/cowork-test-home/orgs/org-b';
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthExtra = {}; healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    expect(serverMayReceiveTokens()).toBe(true);
+    expect(isAppSecretProtected()).toBe(false);
+  });
+
+  it('sends no tokens after the server crashes, until a new one proves the secret', async () => {
+    const crashed = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthExtra = { app_secret_protocol: 1 }; healthOwner = spawnedOwner(); }, 0);
+      return crashed as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(serverMayReceiveTokens()).toBe(true);
+
+    crashed.exitCode = 1;
+    crashed.emit('exit', 1, null);
+
+    expect(serverMayReceiveTokens()).toBe(false);
+    expect(appSecretHeader()).toEqual({});
+
+    const fresh = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { fresh.exitCode = 0; fresh.emit('exit', 0); }, 0);
+      return fresh as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    expect(isAppSecretProtected()).toBe(true);
     expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(fresh.stdin.written).app_secret);
   });
 });

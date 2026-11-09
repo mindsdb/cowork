@@ -1,5 +1,5 @@
 import { diagnostic } from '../shared/diagnostics';
-import { getServerPort } from './server-process';
+import { activeStoreRoot, getServerPort } from './server-process';
 import { authHeader } from './server-auth';
 import { appSecretGeneration, appSecretHeader, isAppSecretProtected } from './app-secret';
 import { deleteMcpAccessMode, getMcpAccessMode, isMcpAccessModeMigrated, markMcpAccessModeMigrated, setMcpAccessMode } from './keychain-service';
@@ -28,12 +28,12 @@ function connectionUrl(engine: string, name: string, suffix = ''): string {
  *  keychain when it had none. Null when that
  *  write failed: the server only strips the file's copy once it has a mode, so
  *  a mode the keychain does not hold must not be handed over. */
-async function keychainAccessMode(engine: string, name: string, fallback?: unknown): Promise<AccessMode | null> {
+async function keychainAccessMode(storeRoot: string, engine: string, name: string, fallback?: unknown): Promise<AccessMode | null> {
   try {
-    const stored = await getMcpAccessMode(engine, name);
+    const stored = await getMcpAccessMode(storeRoot, engine, name);
     if (isAccessMode(stored)) return stored;
     const mode: AccessMode = isAccessMode(fallback) ? fallback : 'read';
-    await setMcpAccessMode(engine, name, mode);
+    await setMcpAccessMode(storeRoot, engine, name, mode);
     return mode;
   } catch (err) {
     diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_keychain_access_mode_failed', `[mcp-app-held] keychain access mode failed for ${engine}/${name}:`, err);
@@ -60,8 +60,9 @@ async function putAppHeld(
 /** After an MCP connection is saved: hand over the token the connect just got
  *  and the mode the keychain holds for it (a reconnect keeps its mode). */
 export async function handOverAfterConnect(engine: string, name: string, accessToken: string, expiresAt: string): Promise<void> {
-  if (!isAppSecretProtected()) return;
-  const mode = await keychainAccessMode(engine, name);
+  const storeRoot = activeStoreRoot();
+  if (!isAppSecretProtected() || !storeRoot) return;
+  const mode = await keychainAccessMode(storeRoot, engine, name);
   await putAppHeld(engine, name, {
     access_token: accessToken,
     expires_at: expiresAt,
@@ -82,7 +83,10 @@ type HandOver = { outcome: 'done' | 'retry' | 'gone'; modeInKeychain: boolean };
  *  refresh waits on the provider, and until it lands the server holds mode
  *  read and no token for the connection. */
 export async function syncAppHeldMcpConnections(): Promise<void> {
-  if (!isAppSecretProtected()) return;
+  // The store the server runs on, fixed for this run: modes and the marker are
+  // kept per store.
+  const storeRoot = activeStoreRoot();
+  if (!isAppSecretProtected() || !storeRoot) return;
   for (const timer of retryTimers.values()) clearTimeout(timer);
   retryTimers.clear();
   const generation = appSecretGeneration();
@@ -92,7 +96,7 @@ export async function syncAppHeldMcpConnections(): Promise<void> {
   let migrated = true;
   let markerReadable = false;
   try {
-    migrated = await isMcpAccessModeMigrated();
+    migrated = await isMcpAccessModeMigrated(storeRoot);
     markerReadable = true;
   } catch (err) {
     diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_migration_marker_unreadable', err);
@@ -104,35 +108,35 @@ export async function syncAppHeldMcpConnections(): Promise<void> {
     let everyModeInKeychain = true;
     for (const { engine, name } of connections) {
       if (!stillCurrent()) return;
-      const result = await handOverConnection(engine, name, migrated, stillCurrent);
+      const result = await handOverConnection(storeRoot, engine, name, migrated, stillCurrent);
       if (result.outcome === 'retry') {
         if (!result.modeInKeychain) everyModeInKeychain = false;
-        scheduleRetry(engine, name, migrated, stillCurrent, 0);
+        scheduleRetry(storeRoot, engine, name, migrated, stillCurrent, 0);
       }
     }
     if (!migrated && markerReadable && everyModeInKeychain && stillCurrent()) {
-      await markMcpAccessModeMigrated();
+      await markMcpAccessModeMigrated(storeRoot);
     }
   } catch (err) {
     diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_sync_failed', '[mcp-app-held] sync failed:', err);
   }
 }
 
-function scheduleRetry(engine: string, name: string, migrated: boolean, stillCurrent: () => boolean, attempt: number): void {
+function scheduleRetry(storeRoot: string, engine: string, name: string, migrated: boolean, stillCurrent: () => boolean, attempt: number): void {
   const key = `${engine}:${name}`;
   const delay = RETRY_DELAYS_MS[attempt] ?? RETRY_STEADY_MS;
   retryTimers.set(key, setTimeout(() => {
     retryTimers.delete(key);
     if (!stillCurrent()) return;
-    void handOverConnection(engine, name, migrated, stillCurrent).then((result) => {
-      if (result.outcome === 'retry' && stillCurrent()) scheduleRetry(engine, name, migrated, stillCurrent, attempt + 1);
+    void handOverConnection(storeRoot, engine, name, migrated, stillCurrent).then((result) => {
+      if (result.outcome === 'retry' && stillCurrent()) scheduleRetry(storeRoot, engine, name, migrated, stillCurrent, attempt + 1);
     });
   }, delay));
 }
 
 /** One connection's hand-over. `retry` when anything that should have worked
  *  failed; `gone` when there is nothing (left) to hand over. */
-async function handOverConnection(engine: string, name: string, migrated: boolean, stillCurrent: () => boolean): Promise<HandOver> {
+async function handOverConnection(storeRoot: string, engine: string, name: string, migrated: boolean, stillCurrent: () => boolean): Promise<HandOver> {
   try {
     const detailRes = await fetch(connectionUrl(engine, name), { headers: authHeader() });
     if (detailRes.status === 404) return { outcome: 'gone', modeInKeychain: true };
@@ -141,7 +145,7 @@ async function handOverConnection(engine: string, name: string, migrated: boolea
     if (detail.method !== 'mcp') return { outcome: 'gone', modeInKeychain: true };
     const fields = detail.fields || {};
 
-    const mode = await keychainAccessMode(engine, name, migrated ? undefined : fields._access_mode);
+    const mode = await keychainAccessMode(storeRoot, engine, name, migrated ? undefined : fields._access_mode);
     const token = fields.status === 'needs_reconnect'
       ? { kind: 'none' as const }
       : await freshAccessToken(engine, name, fields);
@@ -178,9 +182,12 @@ async function freshAccessToken(
   return token ? { kind: 'ok', token } : { kind: 'failed' };
 }
 
-/** On disconnect, so a later connection under the same name starts at read. */
+/** On disconnect, so a later connection under the same name starts at read.
+ *  Only the running store's entry: another account's same-named connection
+ *  is a different connection. */
 export async function forgetAccessMode(engine: string, name: string): Promise<void> {
-  await deleteMcpAccessMode(engine, name);
+  const storeRoot = activeStoreRoot();
+  if (storeRoot) await deleteMcpAccessMode(storeRoot, engine, name);
 }
 
 /** The desktop UI's access-mode change. The keychain is written first so a
@@ -191,8 +198,10 @@ export async function setConnectionAccessMode(
   name: string,
   mode: AccessMode,
 ): Promise<{ ok: true; access_mode: AccessMode } | { ok: false; status?: number; reason: string }> {
-  const previous = await getMcpAccessMode(engine, name);
-  await setMcpAccessMode(engine, name, mode);
+  const storeRoot = activeStoreRoot();
+  if (!storeRoot) return { ok: false, reason: 'The backend is not running.' };
+  const previous = await getMcpAccessMode(storeRoot, engine, name);
+  await setMcpAccessMode(storeRoot, engine, name, mode);
   let res: Response | null = null;
   try {
     res = await fetch(connectionUrl(engine, name, '/access-mode'), {
@@ -205,8 +214,8 @@ export async function setConnectionAccessMode(
   }
   if (res?.ok) return { ok: true, access_mode: mode };
 
-  if (isAccessMode(previous)) await setMcpAccessMode(engine, name, previous);
-  else await deleteMcpAccessMode(engine, name);
+  if (isAccessMode(previous)) await setMcpAccessMode(storeRoot, engine, name, previous);
+  else await deleteMcpAccessMode(storeRoot, engine, name);
   const detail = res ? (await res.json().catch(() => null) as { detail?: unknown } | null)?.detail : null;
   return {
     ok: false,

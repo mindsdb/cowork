@@ -2,20 +2,40 @@ import { readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./server-process', () => ({ getServerPort: () => 4000 }));
+/** The store root the running server serves (one per Cowork account and organization). */
+const store = vi.hoisted(() => ({ root: '/home/.cowork' as string | null }));
+vi.mock('./server-process', () => ({ getServerPort: () => 4000, activeStoreRoot: () => store.root }));
 vi.mock('./server-auth', () => ({ authHeader: () => ({ Authorization: 'Bearer bearer' }) }));
 
-/** The OS keychain's access-mode entries, keyed `${engine}:${name}`. */
-const keychain = vi.hoisted(() => ({ modes: new Map<string, string>(), failWrites: false, migrated: false }));
+/** The OS keychain's access-mode entries per store root, keyed `${engine}:${name}`,
+ *  and the roots whose migration marker is set. `modes` and `migrated` read
+ *  the running store's. */
+const keychain = vi.hoisted(() => {
+  const byRoot = new Map<string, Map<string, string>>();
+  const migratedRoots = new Set<string>();
+  const of = (root: string) => {
+    if (!byRoot.has(root)) byRoot.set(root, new Map());
+    return byRoot.get(root)!;
+  };
+  return {
+    byRoot,
+    migratedRoots,
+    of,
+    failWrites: false,
+    get modes() { return of(store.root!); },
+    get migrated() { return migratedRoots.has(store.root!); },
+    set migrated(value: boolean) { if (value) migratedRoots.add(store.root!); else migratedRoots.delete(store.root!); },
+  };
+});
 vi.mock('./keychain-service', () => ({
-  getMcpAccessMode: async (engine: string, name: string) => keychain.modes.get(`${engine}:${name}`) ?? null,
-  setMcpAccessMode: async (engine: string, name: string, mode: string) => {
+  getMcpAccessMode: async (root: string, engine: string, name: string) => keychain.of(root).get(`${engine}:${name}`) ?? null,
+  setMcpAccessMode: async (root: string, engine: string, name: string, mode: string) => {
     if (keychain.failWrites) throw new Error('keychain locked');
-    keychain.modes.set(`${engine}:${name}`, mode);
+    keychain.of(root).set(`${engine}:${name}`, mode);
   },
-  deleteMcpAccessMode: async (engine: string, name: string) => { keychain.modes.delete(`${engine}:${name}`); },
-  isMcpAccessModeMigrated: async () => keychain.migrated,
-  markMcpAccessModeMigrated: async () => { keychain.migrated = true; },
+  deleteMcpAccessMode: async (root: string, engine: string, name: string) => { keychain.of(root).delete(`${engine}:${name}`); },
+  isMcpAccessModeMigrated: async (root: string) => keychain.migratedRoots.has(root),
+  markMcpAccessModeMigrated: async (root: string) => { keychain.migratedRoots.add(root); },
 }));
 
 /** The refresh path: a loop exists and a forced refresh yields a new token. */
@@ -89,9 +109,10 @@ function protectedMode(): string {
 }
 
 beforeEach(() => {
-  keychain.modes.clear();
+  store.root = '/home/.cowork';
+  keychain.byRoot.clear();
+  keychain.migratedRoots.clear();
   keychain.failWrites = false;
-  keychain.migrated = false;
   refresh.token = { access_token: 'at-fresh', expires_at: '2030-01-01T00:00:00.000Z' };
 });
 
@@ -212,6 +233,63 @@ describe('one-time migration of the vault file\'s mode', () => {
 
     expect(requests.find((r) => r.method === 'PUT')!.body?.access_mode).toBe('read');
     expect(keychain.modes.get('hubspot:acme')).toBe('read');
+  });
+});
+
+describe('access modes per store', () => {
+  const ROOT_A = '/home/.cowork';
+  const ROOT_B = '/home/.cowork/accounts/b';
+
+  it('keeps separate modes for the same connection name in two stores', async () => {
+    protectedMode();
+    fakeServer([]);
+    store.root = ROOT_A;
+    await setConnectionAccessMode('notion', 'ws', 'write');
+    store.root = ROOT_B;
+    const requests = fakeServer([{ engine: 'notion', name: 'ws', method: 'mcp' }]);
+
+    await handOverAfterConnect('notion', 'ws', 'at-1', '2030-01-01T00:00:00.000Z');
+
+    expect(requests[0].body?.access_mode).toBe('read');
+    expect(keychain.of(ROOT_A).get('notion:ws')).toBe('write');
+    expect(keychain.of(ROOT_B).get('notion:ws')).toBe('read');
+  });
+
+  it('forgets only the running store\'s mode on disconnect', async () => {
+    keychain.of(ROOT_A).set('notion:ws', 'write');
+    keychain.of(ROOT_B).set('notion:ws', 'write');
+    store.root = ROOT_B;
+
+    await forgetAccessMode('notion', 'ws');
+
+    expect(keychain.of(ROOT_B).has('notion:ws')).toBe(false);
+    expect(keychain.of(ROOT_A).get('notion:ws')).toBe('write');
+  });
+
+  it('migrates a store\'s file mode even when another store\'s marker is set', async () => {
+    protectedMode();
+    keychain.migratedRoots.add(ROOT_A);
+    store.root = ROOT_B;
+    const requests = fakeServer([{ engine: 'hubspot', name: 'acme', method: 'mcp', fields: { _access_mode: 'write' } }]);
+
+    await syncAppHeldMcpConnections();
+
+    expect(requests.find((r) => r.method === 'PUT')!.body?.access_mode).toBe('write');
+    expect(keychain.of(ROOT_B).get('hubspot:acme')).toBe('write');
+    expect([...keychain.migratedRoots].sort()).toEqual([ROOT_A, ROOT_B].sort());
+  });
+
+  it('hands nothing over, and changes no mode, with no server running', async () => {
+    protectedMode();
+    store.root = null;
+    const requests = fakeServer([{ engine: 'hubspot', name: 'acme', method: 'mcp' }]);
+
+    await syncAppHeldMcpConnections();
+    const result = await setConnectionAccessMode('hubspot', 'acme', 'write');
+
+    expect(result.ok).toBe(false);
+    expect(requests).toEqual([]);
+    expect(keychain.byRoot.size).toBe(0);
   });
 });
 
