@@ -21,7 +21,7 @@ import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
-import { Button, Tooltip } from './components/ui';
+import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
@@ -34,6 +34,7 @@ import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
+import CompareView from './views/CompareView';
 import CodeView from './code/CodeView';
 import { useCodeModeAccess } from './code/codeModeAccess';
 import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/defaults';
@@ -61,6 +62,7 @@ import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
+import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useNotionPagePicker } from './hooks/useNotionPagePicker';
 import NotionPagePickerModal from './components/NotionPagePickerModal';
@@ -123,7 +125,9 @@ import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
+import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
+import { PLATFORM_UI } from '../lib/deployment';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -137,6 +141,9 @@ import {
   loadConversation,
 } from './CoworkRouter';
 import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
+import { rememberTaskBrowser } from './lib/taskBrowser';
+import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
+import { useNativeOverlay } from './lib/nativeOverlay';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -605,6 +612,9 @@ function AppCore() {
   // server's values within one fetch. This removes the hard-coded copy whose
   // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
   const [settings, setSettings] = useState(loadCachedSettings);
+  // Whether this session's settings have arrived from the server, so a choice
+  // that depends on them (such as the models an operator offers) is final.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [appearancePreview, setAppearancePreview] = useState({});
   const appearanceSettings = { ...settings, ...appearancePreview };
   const previewAppearance = useCallback((key, value) => {
@@ -617,6 +627,19 @@ function AppCore() {
   }, []);
 
   const agentLabel = getAgentLabel(settings);
+
+  /* This UI shows the desktop's in-app browser, so main may register it with
+     the local server, which then offers the agent the browser tool. Once a
+     load; a UI that never says so (an older one) never gets the tool. */
+  const [inAppBrowserRegistered, setInAppBrowserRegistered] = useState(false);
+  useEffect(() => {
+    if (!host.supportsInAppBrowser) return;
+    host.inAppBrowser.ready()
+      .catch((error) => {
+        diagnostic('renderer.app', 'WARNING', 'in_app_browser_ready_failed', error);
+      })
+      .finally(() => setInAppBrowserRegistered(true));
+  }, []);
 
   const [tasks, setTasks] = useState([]);
   // 'loading' until the first list response lands, then 'ready' or 'failed'.
@@ -737,6 +760,8 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  /** The + menu's Browser switch, off for the next new task (ENG-3188). */
+  const [composerBrowserOff, setComposerBrowserOff] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState(null);
   // Set by the checklist's "Try an example" row; Home answers it and clears it.
   const [examplesRequest, setExamplesRequest] = useState(0);
@@ -1716,6 +1741,10 @@ function AppCore() {
   const sendableModelId = useCallback((id) => (
     pickerMode === 'off' ? (id ?? null) : offeredModelId(id, offeredModels(models, settings.modelEnabled))
   ), [pickerMode, models, settings.modelEnabled]);
+  const showCompare = useMemo(
+    () => compareAvailable({ platformUi: PLATFORM_UI, pickerMode, models, modelEnabled: settings.modelEnabled }),
+    [pickerMode, models, settings.modelEnabled],
+  );
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
@@ -1777,6 +1806,9 @@ function AppCore() {
     sidebarCollapsibleRoutes,
     sidebarPopout,
   } = useSidebarNav({ isNarrow });
+  /* The narrow-band sidebar popout counts as an overlay, so the desktop
+     browser pane's native view steps aside rather than draw over it. */
+  useNativeOverlay(sidebarPopout && navPopoutOpen);
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin.
@@ -2104,6 +2136,11 @@ function AppCore() {
     handleShellAutoUpdateAction,
     dismissShellUpdate,
   } = useAppUpdates();
+  /* The OTA update curtain covers the window while an update downloads and
+     the UI reloads. It counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const updateCurtainUp = updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading';
+  useNativeOverlay(updateCurtainUp);
 
   // Collapse the three update mechanisms into one shell-first banner (or null).
   // The manual notice is dismissal-filtered here before it can win the slot.
@@ -2195,6 +2232,7 @@ function AppCore() {
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
+        setSettingsLoaded(true);
       }
     });
   }, [refreshSchedules, reloadArtifacts]);
@@ -2368,6 +2406,7 @@ function AppCore() {
     prevRouteForComposerMuteRef.current = route;
     if (prev === 'task' && (route === 'home' || route === 'projects')) {
       setComposerDisabledConnections([]);
+      setComposerBrowserOff(false);
     }
   }, [route]);
 
@@ -3458,6 +3497,25 @@ function AppCore() {
     });
   }, []);
 
+  /* The + menu shows a Browser switch only where this deployment offers the
+     browser (GET /browse/status answers `available: true`, never on a
+     self-hosted stack) and while it is on in Settings (on by default). Off
+     there, no task gets it, so no switch (lib/browserSwitch). */
+  const browserOnInSettings = settings.browserEnabled !== false;
+  const browseAvailable = useBrowseAvailable(`${health.status}:${inAppBrowserRegistered}`);
+  const browserSwitchShown = showsBrowserSwitch({ browserOnInSettings, browseAvailable });
+  const composerBrowserSwitch = browserSwitchShown
+    ? { on: !composerBrowserOff, onChange: (on) => setComposerBrowserOff(!on), agentLabel }
+    : null;
+
+  // The + menu's Browser switch for one task (ENG-3188): on its record, which
+  // every send to it reads, and on this device so it survives a reload.
+  const handleTaskBrowserSwitch = useCallback((taskId, on) => {
+    if (!taskId) return;
+    rememberTaskBrowser(taskId, !on);
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, browserOff: !on } : t)));
+  }, []);
+
   const handleRemoveAttachment = async (id) => {
     const target = composerAttachments.find((a) => a.id === id);
     setComposerAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
@@ -3638,6 +3696,8 @@ function AppCore() {
     const disabledForSend = normalizeComposerDisabledConnections(
       meta?.disabledConnections ?? composerDisabledConnections,
     );
+    // Only the composer's own switch: the browser is off only when switched off.
+    const browserOffForSend = newTaskBrowserOff({ callerBrowserOff: meta?.browserOff, browserOnInSettings, composerBrowserOff });
 
     const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
@@ -3692,6 +3752,7 @@ function AppCore() {
       harness: meta?.harness || null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       // Stamp a client-side timestamp so the Sidebar's sort-by-
       // updatedAt sees this task as the freshest. Without it, brand-
       // new tasks would sort to the bottom (no updatedAt) until the
@@ -3712,6 +3773,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // The tmp- id was never stored; the task's real one is.
+      if (browserOffForSend) rememberTaskBrowser(sid, true);
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
       // The canonical id isn't loadable yet either — keep the loader off it.
@@ -3799,6 +3862,7 @@ function AppCore() {
       harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
@@ -3978,6 +4042,8 @@ function AppCore() {
     // whether the chat is on screen or not.
     const mutesForSend = opts.disabledConnections
       ?? (tasksRef.current.find((t) => t.id === id) || targetTask).disabledConnections;
+    // Its Browser switch, read the same way (handleTaskBrowserSwitch).
+    const browserOffForSend = !!(tasksRef.current.find((t) => t.id === id) || targetTask).browserOff;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
     // turn + the action card and stop before any in-flight reservation.
@@ -4329,6 +4395,7 @@ function AppCore() {
       reasoningEffort: taskEffort,
       attachmentIds,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId || id, ctrl)) return;
         // Adopt the server's canonical id as soon as it lands. The
@@ -5898,6 +5965,7 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          showCompare={showCompare}
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
           pins={pins}
@@ -6063,6 +6131,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            browserSwitch={composerBrowserSwitch}
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
@@ -6097,6 +6166,7 @@ function AppCore() {
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
+            browserOn={taskBrowserOn({ switchShown: browserSwitchShown, taskBrowserOff: currentTask?.browserOff })}
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -6139,6 +6209,9 @@ function AppCore() {
             disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
+            browserSwitch={browserSwitchShown && currentTask
+              ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
+              : null}
             onPinTask={handlePinTask}
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
@@ -6270,6 +6343,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            browserSwitch={composerBrowserSwitch}
             onOpenSchedule={(task) => {
               // Same handler ScheduledView uses — routes to the
               // schedule detail page for the clicked row.
@@ -6404,6 +6478,28 @@ function AppCore() {
         )}
 
         {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {/* A link to Compare where it isn't offered: the operator picks every
+            question's model (known from the build), or, once settings are in,
+            offers none to choose from. */}
+        {route === 'compare' && !showCompare && (settingsLoaded || pickerMode === 'off') && (
+          <EmptyState
+            title="Compare Models isn't available here"
+            description="There are no models to choose from on this deployment, so there's nothing to compare. Your operator decides which models you can pick."
+            action={{ label: 'New task', onClick: newTask, primary: true }}
+          />
+        )}
+        {route === 'compare' && showCompare && (
+          <CompareView
+            models={models}
+            modelMeta={modelMeta}
+            // Only projects the person can run tasks in: a comparison copies
+            // its source's files, and Continue moves a side into one.
+            projects={runnableProjects}
+            agentLabel={agentLabel}
+            onOpenTask={(id) => { if (id) selectTask(id); }}
+            onOpenSettings={openSettings}
+          />
+        )}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             projects={runnableProjects}
@@ -6763,7 +6859,7 @@ function AppCore() {
       />
 
       {/* OTA update overlay — shown during auto-update download/reload */}
-      {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
+      {updateCurtainUp && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center',

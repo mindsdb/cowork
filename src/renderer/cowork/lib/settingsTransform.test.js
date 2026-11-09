@@ -12,6 +12,7 @@ import {
   clampBudgetValue,
   clampBudgets,
   BUDGET_FIELDS,
+  budgetSpec,
   isBudgetUnlimited,
   resolveBudgetRestore,
   toDisplayUnits,
@@ -20,6 +21,9 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  showJevSwitch,
+  showRouterRoleRow,
+  SETTINGS_KEY_MAP,
 } from './settingsTransform';
 
 describe('favicon settings translation', () => {
@@ -30,6 +34,30 @@ describe('favicon settings translation', () => {
     expect(committedSettingsPatch({ favicon }, ['favicon'])).toEqual({ favicon });
     expect(diffSettingsForWrite({ favicon: '' }, { favicon })).toEqual({ favicon: '' });
     expect(diffSettingsForWrite({ favicon }, { favicon })).toEqual({});
+  });
+});
+
+describe('shared browser settings', () => {
+  it('maps only the switch', () => {
+    const browserKeys = Object.keys(SETTINGS_KEY_MAP).filter((key) => key.startsWith('browser_'));
+    expect(browserKeys).toEqual(['browser_enabled']);
+  });
+
+  it('reads no server address, key, proxy switch or city from the settings rows', () => {
+    const rows = [
+      { key: 'browser_enabled', value: 'false', is_sensitive: false },
+      { key: 'browser_mode', value: 'standalone', is_sensitive: false },
+      { key: 'browser_service_url', value: 'https://browser.example.com', is_sensitive: false },
+      { key: 'browser_service_api_key', value: '***', is_sensitive: true },
+      { key: 'browser_proxy', value: 'false', is_sensitive: false },
+      { key: 'browser_city', value: 'us-x', is_sensitive: false },
+    ];
+    const settings = transformSettingsRows(rows);
+    expect(settings).not.toHaveProperty('browserMode');
+    expect(settings).not.toHaveProperty('browserServiceUrl');
+    expect(settings).not.toHaveProperty('browserServiceApiKey');
+    expect(settings).not.toHaveProperty('browserProxy');
+    expect(settings).not.toHaveProperty('browserCity');
   });
 });
 
@@ -659,6 +687,76 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('the limits switch (limits_enabled)', () => {
+  it('reads the stored switch as a boolean', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [{ key: 'limits_enabled', value: 'False', is_sensitive: false, is_set: false }];
+    expect(transformSettingsRows(rows).limitsEnabled).toBe(false);
+  });
+
+  it('keeps the served safety limits apart from the saved budgets', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '40', default: '250', is_sensitive: false, is_set: true },
+      { key: 'max_turn_tokens', value: '25000000', default: '25000000', is_sensitive: false, is_set: false },
+      { key: 'greeting', value: 'hi', default: 'ignored', is_sensitive: false, is_set: true },
+    ];
+    const s = transformSettingsRows(rows);
+    expect(s.maxToolRounds).toBe('40');
+    expect(s.budgetDefaults).toEqual({ maxToolRounds: '250', maxTurnTokens: '25000000' });
+    // Not a server key, so it can never be written back.
+    expect(diffSettingsForWrite({ budgetDefaults: { maxToolRounds: '1' } }, {})).toEqual({});
+  });
+
+  it("reads an older server's default off an unset budget row", async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '50', is_sensitive: false, is_set: false },
+      { key: 'max_turn_tokens', value: '2000000', is_sensitive: false, is_set: true },
+    ];
+    // A stored value says nothing about the default.
+    expect(transformSettingsRows(rows).budgetDefaults).toEqual({ maxToolRounds: '50' });
+  });
+
+  it('edits each budget against the served default', () => {
+    expect(budgetSpec('maxToolRounds', { maxToolRounds: '50' }).fallback).toBe(50);
+    expect(budgetSpec('maxToolRounds', undefined)).toBe(BUDGET_FIELDS.maxToolRounds);
+    expect(budgetSpec('maxToolRounds', { maxToolRounds: 'x' })).toBe(BUDGET_FIELDS.maxToolRounds);
+  });
+
+  it('never restores a served default that is itself "No limit"', () => {
+    const spec = budgetSpec('maxTurnTokens', { maxTurnTokens: '50000000' });
+    expect(resolveBudgetRestore(null, null, spec)).toBe(String(BUDGET_FIELDS.maxTurnTokens.fallback));
+    expect(resolveBudgetRestore(null, null, budgetSpec('maxTurnTokens', { maxTurnTokens: '1250000' }))).toBe('1250000');
+  });
+
+  it('writes a changed switch to its snake_case key', () => {
+    expect(diffSettingsForWrite({ limitsEnabled: true }, { limitsEnabled: false }))
+      .toEqual({ limits_enabled: 'true' });
+  });
+
+  it('rides along with any budget write, so an unchanged "off" stays off', () => {
+    expect(diffSettingsForWrite({ maxToolRounds: '80' }, { maxToolRounds: '50', limitsEnabled: false }))
+      .toEqual({ max_tool_rounds: '80', limits_enabled: 'false' });
+    expect(diffSettingsForWrite({ maxToolRounds: '80', limitsEnabled: true }, { maxToolRounds: '50', limitsEnabled: true }))
+      .toEqual({ max_tool_rounds: '80', limits_enabled: 'true' });
+    expect(diffSettingsForWrite({ tone: 'spicy' }, { tone: 'balanced', limitsEnabled: false }))
+      .toEqual({ tone: 'spicy' });
+  });
+
+  it('is not written to a server that did not send it', () => {
+    // An older server 400s the unknown key and fails the whole save with it.
+    expect(diffSettingsForWrite({ limitsEnabled: true, maxToolRounds: '80' }, { maxToolRounds: '50' }))
+      .toEqual({ max_tool_rounds: '80' });
+  });
+
+  it("defaults the budget fields to the server's safety limits", () => {
+    expect(BUDGET_FIELDS.maxTurnTokens.fallback).toBe(25_000_000);
+    expect(BUDGET_FIELDS.maxToolRounds.fallback).toBe(250);
+    expect(BUDGET_FIELDS.maxContinuations.fallback).toBe(10);
+  });
+});
+
 describe('harness picker enable flags', () => {
   it('transforms the per-harness enable flag into a camelCase boolean', async () => {
     // Anton has no enable flag — it's the default agent and always offered.
@@ -1006,12 +1104,13 @@ describe('the "no limit" switch (ENG-1286)', () => {
 
   it('falls back to the last committed value, then the factory default', () => {
     expect(resolveBudgetRestore(null, '1250000', spec)).toBe('1250000');
-    expect(resolveBudgetRestore(null, null, spec)).toBe('1250000');
-    expect(resolveBudgetRestore('', '', spec)).toBe('1250000');
+    expect(resolveBudgetRestore(null, null, spec)).toBe(String(spec.fallback));
+    expect(resolveBudgetRestore('', '', spec)).toBe(String(spec.fallback));
   });
 
   it('never restores the max, which would leave the switch stuck on', () => {
-    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe('1250000');
+    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe(String(spec.fallback));
+    expect(spec.fallback).toBeLessThan(spec.max);
   });
 
   it('clamps a remembered value that predates a floor change', () => {
@@ -1099,5 +1198,53 @@ describe('committedSettingsPatch', () => {
       ['anthropic_api_key', 'planning_model'])).toEqual({
       anthropicApiKey: '', planningModel: null, defaultModel: null,
     });
+  });
+});
+
+
+// ─── Jev routing ─────────────────────────────────────────────────────
+
+describe('jev routing settings', () => {
+  it('reads and writes the Jev switch under the server key', () => {
+    expect(transformSettingsRows([{ key: 'jev_decisions_enabled', value: 'False' }]))
+      .toMatchObject({ jevDecisionsEnabled: false });
+    expect(diffSettingsForWrite({ jevDecisionsEnabled: false }, { jevDecisionsEnabled: true }))
+      .toEqual({ jev_decisions_enabled: 'false' });
+  });
+
+  it('keeps the routing it holds when the server sends none', () => {
+    const held = { routing: { mode: 'jev' } };
+
+    expect(mergeRecommendedModels(held, { routing: { mode: 'off' } }).routing).toEqual({ mode: 'off' });
+    expect(mergeRecommendedModels(held, {}).routing).toEqual({ mode: 'jev' });
+    expect(mergeRecommendedModels({}, {}).routing).toBeNull();
+  });
+
+  const COMPAT_GATE = { provider: 'openai-compatible', model: 'llama', followsRouterPick: true };
+  const MINDS_GATE = { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false };
+
+  it.each([
+    [null, MINDS_GATE, true], // older server: it still gates on the row
+    [{ mode: 'jev', routerProvider: 'minds-cloud' }, MINDS_GATE, false],
+    [{ mode: 'llm', routerProvider: 'anthropic' }, null, false],
+    // The pick is the only router model there, whatever provider is stored.
+    [{ mode: 'llm', routerProvider: 'openai-compatible' }, COMPAT_GATE, true],
+    [{ mode: 'llm', routerProvider: 'openai-compatible' }, null, true],
+    [{ mode: 'own', routerProvider: 'minds-cloud' }, COMPAT_GATE, true],
+  ])('shows the router row for routing %j and gate %j: %s', (routing, gate, shown) => {
+    expect(showRouterRoleRow(routing, gate)).toBe(shown);
+  });
+
+  it.each([
+    [{ mode: 'jev' }, 'minds-cloud', true],
+    [{ mode: 'off' }, 'minds-cloud', true],
+    // The switch also turns off Jev's completion check on a MindsHub coding model.
+    [{ mode: 'llm' }, 'minds-cloud', true],
+    [{ mode: 'own' }, 'minds-cloud', true],
+    [{ mode: 'llm' }, 'anthropic', false],
+    [{ mode: 'own' }, 'openai-compatible', false],
+    [null, 'minds-cloud', false], // older server: nothing to save
+  ])('shows the Jev switch for routing %j with coding on %s: %s', (routing, coding, shown) => {
+    expect(showJevSwitch(routing, coding)).toBe(shown);
   });
 });

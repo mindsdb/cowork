@@ -247,6 +247,7 @@ export default function HomeView({
   onAddNotionPages,
   disabledConnections = [],
   onUpdateConnectorMute,
+  browserSwitch = null,
   onNavigateToConnectors,
   onCreateProject,
   configReady, configError, onOpenSettings,
@@ -638,6 +639,7 @@ export default function HomeView({
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
+              browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}
               onTypingChange={setIsTyping}
               codingModeEnabled={codingModeEnabled}

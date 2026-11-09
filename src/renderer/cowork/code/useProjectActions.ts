@@ -5,12 +5,16 @@ import {
   type ProjectActionSummary,
 } from './api';
 import { getTerminalShellPreference } from './terminalPreferences';
+import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 
 
-const PREVIEW_STATUS_REFRESH_MS = 1_500;
+// Fast while a run action is coming up, so its preview appears promptly; a
+// preview already up only needs to notice when its server dies.
+const PREVIEW_PENDING_REFRESH_MS = 1_500;
+const PREVIEW_OPEN_REFRESH_MS = 10_000;
 
 
-export function useProjectActions(sessionId: string | null | undefined) {
+export function useProjectActions(sessionId: string | null | undefined, active = true) {
   const [actions, setActions] = useState<ProjectActionSummary[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewPending, setPreviewPending] = useState(false);
@@ -46,12 +50,15 @@ export function useProjectActions(sessionId: string | null | undefined) {
   // Keep following the server while a preview is open or a run action is still
   // coming up: the URL appears once the command listens and disappears again
   // when it dies, even though its shell tab stays open.
+  // Code Mode stays mounted behind Cowork mode, so poll only while it is the
+  // visible surface.
   useEffect(() => {
-    if (!sessionId || (!previewUrl && !previewPending)) return undefined;
-    let active = true;
+    if (!active || !sessionId || (!previewUrl && !previewPending)) return undefined;
+    let alive = true;
     const refresh = () => {
+      if (!isAppVisible()) return;
       void codingApi.projectActions(sessionId).then((page) => {
-        if (!active) return;
+        if (!alive) return;
         setActions(page.items);
         setPreviewUrl(page.preview_url || null);
         setPreviewPending(!!page.preview_pending);
@@ -60,12 +67,17 @@ export function useProjectActions(sessionId: string | null | undefined) {
         // be running. The next interval reconciles it with server state.
       });
     };
-    const timer = window.setInterval(refresh, PREVIEW_STATUS_REFRESH_MS);
+    const timer = window.setInterval(
+      refresh,
+      previewPending ? PREVIEW_PENDING_REFRESH_MS : PREVIEW_OPEN_REFRESH_MS,
+    );
+    const unsubscribeVisibility = subscribeAppVisibility(refresh);
     return () => {
-      active = false;
+      alive = false;
       window.clearInterval(timer);
+      unsubscribeVisibility();
     };
-  }, [previewPending, previewUrl, sessionId]);
+  }, [active, previewPending, previewUrl, sessionId]);
 
   const run = useCallback(async (action: ProjectActionSummary): Promise<ProjectActionRunResponse> => {
     if (!sessionId) throw new Error('Open a coding task before running a project action.');

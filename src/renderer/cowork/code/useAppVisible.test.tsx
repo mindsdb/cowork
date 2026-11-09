@@ -11,7 +11,7 @@ vi.mock('../../platform/host', () => ({
   },
 }));
 
-import { useAppVisible } from './useAppVisible';
+import { subscribeAppVisibility, useAppVisible } from './useAppVisible';
 
 
 afterEach(() => {
@@ -42,4 +42,19 @@ it('stays hidden while the document itself is hidden', () => {
 
   act(() => setDocumentVisibility('visible'));
   expect(result.current).toBe(true);
+});
+
+
+it('notifies once when both signals report the same restore', () => {
+  const listener = vi.fn();
+  const unsubscribe = subscribeAppVisibility(listener);
+  act(() => setDocumentVisibility('hidden'));
+  act(() => windowSignal.send!(false));
+  expect(listener).toHaveBeenCalledTimes(1);
+
+  act(() => windowSignal.send!(true));
+  expect(listener).toHaveBeenCalledTimes(1);
+  act(() => setDocumentVisibility('visible'));
+  expect(listener).toHaveBeenCalledTimes(2);
+  unsubscribe();
 });
