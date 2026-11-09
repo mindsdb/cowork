@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { STAND_IN_PHRASES, answerBody, initialStreamState, looksLikeAnswer, reduceStream, reduceAll, standInPhrase, stepDisplayLabel, truncateLabel, visibleFirstTake } from './responseStreamAdapter';
+import { STAND_IN_PHRASES, answerBody, initialStreamState, liveTurnEndedAt, looksLikeAnswer, reduceStream, reduceAll, standInPhrase, stepDisplayLabel, truncateLabel, visibleFirstTake } from './responseStreamAdapter';
 
 const ASK = {
   type: 'response.ask_user',
@@ -197,6 +197,14 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
 
     expect(state.currentThought).toBeNull();
     expect(state.status).toBe('done');
+  });
+
+  it('ends a turn that ran on screen no earlier than its terminal event arrived', () => {
+    // The live counter read 1m 22s when the event, stamped at 1m 20s, arrived
+    // two seconds late; the finished time must not drop below it.
+    expect(liveTurnEndedAt(81000, 83000)).toBe(83000);
+    expect(liveTurnEndedAt(81000, 80000)).toBe(81000);
+    expect(liveTurnEndedAt(null, 83000)).toBe(83000);
   });
 
   it('records when the turn ended, off the terminal event', () => {

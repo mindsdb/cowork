@@ -60,6 +60,17 @@ export function visibleFirstTake(firstTake) {
   return firstTake && !firstTake.cleared && firstTake.text ? firstTake : null;
 }
 
+/**
+ * When a turn that ran on screen ended, for its finished "Worked for" time.
+ * The live counter ticks on this machine's clock until the terminal event
+ * arrives, so the finished time runs at least that long: ending at the
+ * server's stamp alone would come out shorter by however late the event
+ * arrived, and the time would visibly drop as the turn finished.
+ */
+export function liveTurnEndedAt(endedAt, now = Date.now()) {
+  return Math.max(endedAt ?? 0, now);
+}
+
 export function initialStreamState() {
   return {
     responseId: null,

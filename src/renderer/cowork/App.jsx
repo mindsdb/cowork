@@ -98,7 +98,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
          SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
-import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
+import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
 import {
@@ -2490,7 +2490,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
-        const finalEndedAt = streamState.endedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -3891,7 +3891,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
-        const finalEndedAt = streamState.endedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -4394,7 +4394,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
-        const finalEndedAt = streamState.endedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -4785,7 +4785,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
-        const finalEndedAt = streamState.endedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
