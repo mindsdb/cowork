@@ -99,6 +99,7 @@ export const CodeComposer = memo(function CodeComposer({
   const [delivery, setDelivery] = useState<'queue' | 'steer'>('queue');
   const [draftMode, setDraftMode] = useState<TaskMode | undefined>(() => readComposerDraft(session.id)?.taskMode);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historyDraftRef = useRef('');
   const active = isActiveStatus(session.status);
   const canPlan = supportsPlanning && !!onModeSend;
@@ -137,6 +138,14 @@ export const CodeComposer = memo(function CodeComposer({
     setAttachments((current) => mergeReferences(current, [referenceRequest.item]));
   }, [referenceRequest]);
   useEffect(() => setCommandIndex(0), [commandQuery]);
+  // The "+" menu hands focus back to its own button when it closes, so after
+  // the file dialog Enter would reopen the menu. Cancel is a native-only event.
+  useEffect(() => {
+    const input = fileInputRef.current;
+    const refocus = () => textareaRef.current?.focus();
+    input?.addEventListener('cancel', refocus);
+    return () => input?.removeEventListener('cancel', refocus);
+  }, []);
   useEffect(() => {
     setMentionIndex(0);
     if (mentionQuery == null) {
@@ -152,6 +161,9 @@ export const CodeComposer = memo(function CodeComposer({
     return () => { alive = false; window.clearTimeout(timer); };
   }, [mentionQuery, session.id]);
 
+  // A failed send puts its text back. The field stays editable while a send is
+  // pending, so anything typed since is kept after it.
+  const restorePrompt = (sent: string) => setPrompt((current) => current ? `${sent}\n${current}` : sent);
   const chooseCommand = async (command: EngineCommand) => {
     if (busy) return;
     if (command.name === 'plan' && canPlan && !active) {
@@ -174,7 +186,7 @@ export const CodeComposer = memo(function CodeComposer({
     try {
       await onSend(commandPrompt, active ? 'queue' : 'turn', []);
     } catch {
-      setPrompt(commandPrompt);
+      restorePrompt(commandPrompt);
     }
   };
   const choosePaletteItem = (item: CodePaletteItem) => {
@@ -216,8 +228,8 @@ export const CodeComposer = memo(function CodeComposer({
         await onSend(value, active ? (waiting ? 'queue' : delivery) : 'turn', submittedAttachments);
       }
     } catch {
-      setPrompt(value);
-      setAttachments(submittedAttachments);
+      restorePrompt(value);
+      setAttachments((current) => mergeReferences(submittedAttachments, current));
     }
   };
   return (
@@ -266,12 +278,15 @@ export const CodeComposer = memo(function CodeComposer({
           onRemove={(path) => setAttachments((current) => current.filter((item) => item.path !== path))}
         />
         <Textarea
+          ref={textareaRef}
           value={prompt}
           onChange={(value: string) => { setPrompt(value); setHistoryIndex(null); }}
           rows={2}
           placeholder={active ? waiting ? 'Queue a follow-up while the agent waits…' : delivery === 'steer' ? 'Steer the current work…' : 'Add a follow-up for after this turn…' : notStarted ? 'Start a new task to continue' : recoverable ? 'Reopen the task, then say how to continue…' : mode === 'plan' ? 'Refine the plan…' : 'Ask for another change…'}
           aria-label="Follow-up instruction"
-          disabled={busy || notStarted}
+          // Not disabled while a send is in flight: a disabled field drops
+          // focus, so whatever the reader types next would be lost.
+          disabled={notStarted}
           onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {
             if (!event.clipboardData.files.length) return;
             event.preventDefault();
@@ -355,6 +370,7 @@ export const CodeComposer = memo(function CodeComposer({
             onChange={(event) => {
               attachFiles(event.target.files);
               event.target.value = '';
+              textareaRef.current?.focus();
             }}
           />
           <ComposerAddMenu disabled={busy} onAttach={() => fileInputRef.current?.click()}
