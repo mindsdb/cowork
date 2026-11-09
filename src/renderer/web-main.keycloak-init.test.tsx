@@ -33,7 +33,7 @@ vi.mock('./cowork/lib/organizationTransition', () => ({
   isOrganizationReloadBlocked: () => false,
   subscribeOrganizationReloadBlocked: () => () => {},
 }));
-vi.mock('./lib/skins', () => ({ loadSkin: () => 'normal' }));
+vi.mock('./lib/skins', () => ({ loadSkin: () => 'normal', seedBrandDefaults: () => {} }));
 
 // Unmount the previous case's root so its focus listener does not stay attached.
 const mountedRoots = vi.hoisted(() => [] as Array<{ unmount: () => void }>);
