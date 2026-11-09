@@ -48,11 +48,17 @@ describe('the custom connect form', () => {
 
 describe('the connect request', () => {
   it('sends the address apart and only the non-empty template values', () => {
-    const values = { [ADDRESS_FIELD]: ' api.acme.example ', api_key: 'k', workspace: '', user_label: 'Mine' };
+    const values = { [ADDRESS_FIELD]: ' api.acme.example ', api_key: 'k', workspace: '' };
 
     expect(customConnectPayload(values, 'Acme')).toEqual({
       name: 'Acme', address: 'api.acme.example', values: { api_key: 'k' },
     });
+  });
+
+  it('keeps a template field whatever its name; the connection name travels apart', () => {
+    const values = { [ADDRESS_FIELD]: 'api.acme.example', api_key: 'k', user_label: 'tenant-7' };
+
+    expect(customConnectPayload(values, 'Acme').values).toEqual({ api_key: 'k', user_label: 'tenant-7' });
   });
 });
 

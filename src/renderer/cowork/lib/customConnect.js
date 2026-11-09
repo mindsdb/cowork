@@ -74,7 +74,7 @@ export function connectSpecFor({ full, baseSpec, label, orgMode, editingConnecti
 export function customConnectPayload(values, name) {
   const fieldValues = {};
   for (const [key, value] of Object.entries(values || {})) {
-    if (key === ADDRESS_FIELD || key === 'user_label') continue;
+    if (key === ADDRESS_FIELD) continue;
     if (typeof value === 'string' && value !== '') fieldValues[key] = value;
   }
   const address = typeof values?.[ADDRESS_FIELD] === 'string' ? values[ADDRESS_FIELD].trim() : '';
