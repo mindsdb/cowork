@@ -34,6 +34,7 @@ import { useStickToBottom } from '../components/chat/useStickToBottom';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, compactPath, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
+import { takeTaskStarted } from './startedTasks';
 import './event-timeline.css';
 
 
@@ -749,8 +750,9 @@ export const EventTimeline = memo(function EventTimeline({
     if (!historyLoaded) return;
     const previous = seenUserSeq.current;
     seenUserSeq.current = latestUserSeq;
-    if (previous != null && latestUserSeq > previous) anchorLastTurn();
-  }, [historyLoaded, latestUserSeq, anchorLastTurn]);
+    // A task just started here anchors its first message like any later send.
+    if (previous == null ? takeTaskStarted(session.id) : latestUserSeq > previous) anchorLastTurn();
+  }, [historyLoaded, latestUserSeq, anchorLastTurn, session.id]);
   useEffect(() => { follow(); }, [latestEventSeq, session.status, follow]);
   return (
     <ChatScroller

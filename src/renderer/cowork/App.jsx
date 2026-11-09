@@ -3757,7 +3757,7 @@ function AppCore() {
       // The canonical id isn't loadable yet either — keep the loader off it.
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
+        t.id === previousId || t.id === taskId ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -3915,10 +3915,10 @@ function AppCore() {
           const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
-            return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
+            return { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
           return finalContent
-            ? { ...t, id: finalId, status: 'idle', messages: [...msgs, {
+            ? { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
                 // Client-only: lets its steps fold shut instead of vanishing
@@ -3932,7 +3932,7 @@ function AppCore() {
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
                 ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
-            : { ...t, id: finalId, status: 'idle', messages: msgs };
+            : { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: msgs };
         }));
         // Follow the rename only if this conversation is still on screen; the
         // person may have moved to another one while the answer ran.
@@ -4287,7 +4287,7 @@ function AppCore() {
       moveDraft(previousId, sid);
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+        t.id === previousId || t.id === id ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       // Move the in-flight + active refs onto the new id so cancel /
       // reconcile passes look at the right key.
@@ -4635,7 +4635,7 @@ function AppCore() {
       moveDraft(previousId, sid);
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+        t.id === previousId || t.id === id ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
