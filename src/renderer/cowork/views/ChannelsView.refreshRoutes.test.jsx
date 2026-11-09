@@ -15,6 +15,7 @@ const ROUTE = {
 let bindingFetches = 0;
 
 vi.mock('../api', () => ({
+  fetchChannelConversations: vi.fn(async () => ({ state: 'hidden', items: [] })),
   fetchChannelPlugins: vi.fn(async () => [DISCORD]),
   fetchChannelStatus: vi.fn(async () => ({ channels: [] })),
   fetchChannelConfig: vi.fn(async () => ({ fields: {} })),

@@ -15,7 +15,9 @@ import Ico from '../components/Icons';
 import { iconSize } from '../components/ui/Icon';
 import { Badge, Button, Field, Tooltip } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
+import ChannelConversations from './ChannelConversations';
 import {
+  fetchChannelConversations,
   fetchChannelPlugins,
   fetchChannelStatus,
   fetchChannelConfig,
@@ -338,6 +340,11 @@ export default function ChannelsView() {
   const [selectedType, setSelectedType] = useState(null);
   // Bumped by Refresh so the Routes panel refetches its bindings.
   const [refreshCount, setRefreshCount] = useState(0);
+  // Org admins only: the server answers 403 to a member and 404 outside org
+  // mode, and both mean no Conversations tab. Loaded on its own so a slow or
+  // failing list never holds up the channel setup above.
+  const [conversations, setConversations] = useState({ state: 'hidden', items: [] });
+  const [tab, setTab] = useState('setup');
 
   async function refresh() {
     const [pl, st] = await Promise.all([fetchChannelPlugins(), fetchChannelStatus()]);
@@ -345,12 +352,25 @@ export default function ChannelsView() {
     setStatusByType(Object.fromEntries((st.channels || []).map((c) => [c.channel_type, c])));
     setLoading(false);
   }
-  useEffect(() => { refresh(); }, []);
+
+  async function loadConversations() {
+    const result = await fetchChannelConversations();
+    setConversations(result);
+    if (result.state === 'hidden') setTab('setup');
+  }
+
+  useEffect(() => {
+    refresh();
+    loadConversations();
+  }, []);
 
   function refreshAll() {
     setRefreshCount((n) => n + 1);
     refresh();
+    loadConversations();
   }
+
+  const showConversations = conversations.state !== 'hidden';
 
   // Fall back to the first plugin so the detail pane is never empty once the
   // list loads; an explicit click overrides it.
@@ -372,7 +392,25 @@ export default function ChannelsView() {
         </p>
         <ChannelAgentSelect />
       </div>
-      {loading ? (
+      {showConversations && (
+        <div className="channels-agent-tabs channels-pad" role="tablist" aria-label="Channels section">
+          {[['setup', 'Setup'], ['conversations', 'Conversations']].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              className={`channels-agent-tab${tab === id ? ' is-active' : ''}`}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {showConversations && tab === 'conversations' ? (
+        <ChannelConversations list={conversations} onReload={loadConversations} onChanged={refreshAll} />
+      ) : loading ? (
         <p className="channels-muted channels-pad">Loading channels…</p>
       ) : plugins.length === 0 ? (
         <p className="channels-muted channels-pad">
