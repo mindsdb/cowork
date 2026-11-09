@@ -588,10 +588,10 @@ function justFinished(message) {
   return typeof message?._justFinishedAt === 'number' && Date.now() - message._justFinishedAt < JUST_FINISHED_MS;
 }
 
-function TurnSegments({ steps, startedAt, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false }) {
+function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false }) {
   const segments = useMemo(
-    () => splitTurnSegments(steps, { startedAt, conversationLive, reopenable, reply }),
-    [steps, startedAt, conversationLive, reopenable, reply],
+    () => splitTurnSegments(steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
+    [steps, startedAt, endedAt, conversationLive, reopenable, reply],
   );
   const liveIdx = live ? liveSegmentIndex(segments) : -1;
   // The live segment sits right before a pending question, if there is one.
@@ -679,6 +679,7 @@ function TurnSegments({ steps, startedAt, conversationId, conversationLive, reop
         key={seg.key}
         steps={seg.steps}
         startedAt={seg.startedAt}
+        endedAt={seg.endedAt}
         isActive={false}
         onActivateStep={onActivateStep}
         // Only the last block was open on screen while the turn ran.
@@ -3193,6 +3194,7 @@ export default function ChatView({
                   <TurnSegments
                     steps={m.steps}
                     startedAt={m.startedAt}
+                    endedAt={m.endedAt}
                     conversationId={task.id}
                     // A completed turn by construction — `visibleMessages`
                     // excludes the `_streaming` row — so no question rendered

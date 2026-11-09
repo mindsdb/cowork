@@ -67,6 +67,8 @@ export function initialStreamState() {
     /** 'pending' | 'thinking' | 'streaming' | 'done' | 'error' */
     status: 'pending',
     startedAt: null,
+    /** When the turn finished, off its terminal event; null while it runs. */
+    endedAt: null,
     /** ThinkingStep[] in order */
     steps: [],
     /** Live "train of thought" text that isn't part of the final answer
@@ -546,6 +548,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'done',
+      endedAt: eventTs,
       currentThought: null,
       firstTake: CLEARED_TAKE,
       assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
@@ -597,6 +600,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'error',
+      endedAt: eventTs,
       error: event.error || event.message || 'Response failed',
       // Stable wire code (e.g. 'token_limit') so the renderer can show a
       // richer affordance — the out-of-credits card — instead of plain text.

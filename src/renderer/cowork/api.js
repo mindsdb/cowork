@@ -346,7 +346,7 @@ function _hydrateAssistantEvents(messages) {
     out.push({
       ...rest,
       ...(state.steps?.length > 0
-        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
+        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null, endedAt: rest.endedAt || state.endedAt || null }
         : {}),
       ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,

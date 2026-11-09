@@ -2490,6 +2490,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = streamState.endedAt;
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -2525,6 +2526,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -3889,6 +3891,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = streamState.endedAt;
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -3928,6 +3931,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -4390,6 +4394,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = streamState.endedAt;
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -4425,6 +4430,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -4779,6 +4785,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = streamState.endedAt;
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -4804,6 +4811,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),

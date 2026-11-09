@@ -199,6 +199,19 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
     expect(state.status).toBe('done');
   });
 
+  it('records when the turn ended, off the terminal event', () => {
+    const done = reduceAll([
+      { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+      { type: 'response.completed', at_ms: 81000 },
+    ], initialStreamState(), now);
+    expect(done).toMatchObject({ startedAt: 1000, endedAt: 81000 });
+    const failed = reduceAll([
+      { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+      { type: 'response.failed', at_ms: 5000 },
+    ], initialStreamState(), now);
+    expect(failed.endedAt).toBe(5000);
+  });
+
   it('clears the burst on response.failed', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },
