@@ -264,6 +264,7 @@ export function reduceServerEvents(events, fallbackStartedAt) {
   return {
     steps: state.steps || [],
     startedAt: state.startedAt || fallbackStartedAt || null,
+    endedAt: state.endedAt || null,
     figureSources: state.figureSources,
     // 'done' once the persisted events carried response.completed,
     // 'error' on response.failed — the authoritative "this turn
@@ -350,7 +351,7 @@ export function hydrateMessagesFromServerEvents(messages) {
       ...completeFlag,
       ...(reduced.incompleteReason ? { incompleteReason: reduced.incompleteReason } : {}),
       ...(reduced.steps.length > 0
-        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
+        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt, endedAt: rest.endedAt || reduced.endedAt }
         : {}),
       ...(reduced.figureSources ? { figureSources: reduced.figureSources } : {}),
       ...(liveAnswer || {}),
