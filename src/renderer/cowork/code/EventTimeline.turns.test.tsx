@@ -82,6 +82,21 @@ describe('following new events', () => {
     expect((container.querySelector('.chat-scroller__reserve') as HTMLElement).style.height).toBe('');
   });
 
+  it('anchors a new task\'s first message, which is already in the history it opens with', () => {
+    const { container, rerender } = render(<EventTimeline {...props([])} session={session('running')} />);
+    rerender(<EventTimeline {...props([event(1, 'user_message', 'Fix the parser')])} session={session('running')} />);
+    expect(timeline(container).scrollTop).toBe(1376);
+    box.height = 2600;
+    rerender(<EventTimeline {...props([event(1, 'user_message', 'Fix the parser'), ...live.slice(1)])} session={session('running')} />);
+    // Held at the turn, not following the answer to the end.
+    expect(timeline(container).scrollTop).toBe(1376);
+  });
+
+  it('opens a running task at its end once its answer has started', () => {
+    const { container } = render(<EventTimeline {...props(live)} session={session('running')} />);
+    expect(timeline(container).scrollTop).toBe(1400);
+  });
+
   it('anchors a send after a long run has dropped every earlier user message', () => {
     const run = [event(7000, 'agent_message', 'Done', { item_id: 'm' })];
     const { container, rerender } = render(<EventTimeline {...props(run)} session={session('running')} />);

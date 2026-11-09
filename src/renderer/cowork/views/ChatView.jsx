@@ -2188,6 +2188,7 @@ export default function ChatView({
     if (!el) return;
     const { action, scrollHeightDelta, anchor } = nextScrollAnchor({
       taskId: task.id,
+      renamedFrom: task.renamedFrom,
       messages: visibleMessages,
       previousAnchor: scrollAnchorRef.current,
       scrollHeight: el.scrollHeight,
