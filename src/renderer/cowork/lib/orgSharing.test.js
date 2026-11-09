@@ -11,6 +11,7 @@ import {
   ARTIFACT_SHARE_UNKNOWN,
   MINDSHUB_UNREACHABLE_HINT,
   ORG_ADMIN_ONLY_HINT,
+  ORG_ARTIFACT_SHARE_WITHHELD_HINT,
   SHARED_KIND,
   SHARING_OFF,
   alwaysOnHelp,
@@ -272,7 +273,7 @@ describe('Everyone at the org', () => {
   const caps = { ...SHARING_OFF, enabled: true };
   it('reads the capability of the kind being shared', () => {
     expect(orgShareLockReason({ ...caps, canShareSkillsOrg: true }, SHARED_KIND.SKILL)).toBeNull();
-    expect(orgShareLockReason({ ...caps, canShareSkillsOrg: true }, SHARED_KIND.ARTIFACT)).toBe(ORG_ADMIN_ONLY_HINT);
+    expect(orgShareLockReason({ ...caps, canShareSkillsOrg: true }, SHARED_KIND.ARTIFACT)).toBe(ORG_ARTIFACT_SHARE_WITHHELD_HINT);
     expect(orgShareLockReason({ ...caps, canShareArtifactsOrg: true }, SHARED_KIND.ARTIFACT)).toBeNull();
     expect(orgShareLockReason({ ...caps, canShareArtifactsOrg: true }, SHARED_KIND.SKILL)).toBe(ORG_ADMIN_ONLY_HINT);
   });

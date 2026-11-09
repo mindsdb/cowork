@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { id: 'computers', label: 'Computers', icon: 'computer', group: 'Code' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App' },
   { id: 'branding', label: 'Branding', icon: 'building', group: 'App' },
+  { id: 'desktop', label: 'Desktop', icon: 'computer', group: 'App' },
   { id: 'channels', label: 'Channels', icon: 'chats', group: 'App' },
   { id: 'updates', label: 'Updates', icon: 'refresh', group: 'System' },
   { id: 'backend', label: 'Backend', icon: 'database', group: 'System' },

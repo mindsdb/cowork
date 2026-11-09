@@ -538,7 +538,7 @@ describe('CodeView session-list reconciliation', () => {
     renderCode({ sessions: [active], selectedId: active.id });
     fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
     expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
     pending.reject(new Error('The agent is between turns; queue this instruction instead.'));
 
@@ -548,7 +548,7 @@ describe('CodeView session-list reconciliation', () => {
     expect(screen.queryByRole('button', { name: 'Steer with queued instruction 1' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show 1 more notice' }));
     expect(screen.getByRole('button', { name: 'Steer with queued instruction 1' })).toBeEnabled();
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeEnabled();
   });
 
   it.each(['approval', 'question'] as const)('keeps the pending %s actionable without offering a new queued steer', async kind => {
@@ -601,7 +601,7 @@ describe('CodeView session-list reconciliation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
     current = awaiting;
     view.rerender(<CodeView {...view.props} sessions={[current]} />);
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
     expect(screen.getByRole('button', { name: 'Approval' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
@@ -633,14 +633,14 @@ describe('CodeView session-list reconciliation', () => {
     current = awaiting;
     view.rerender(<CodeView {...view.props} sessions={[current]} />);
     fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
     // The approval answers first; the steer is still outstanding.
     await act(async () => { approval.resolve(awaiting); for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
     await act(async () => { steer.resolve(awaiting); for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeEnabled();
   });
 
   it('can answer a question that arrives while a steer RPC is still pending', async () => {
@@ -656,7 +656,7 @@ describe('CodeView session-list reconciliation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
     current = { ...current, status: 'awaiting_approval', pending_question: { id: 'q1', questions: [{ id: 'layout', header: 'Layout', question: 'Which layout?', isOther: true, isSecret: false }] } };
     view.rerender(<CodeView {...view.props} sessions={[current]} />);
-    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Compact' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(mocks.answerQuestion).toHaveBeenCalledWith(current.id, 'q1', { layout: ['Compact'] }));
@@ -697,7 +697,7 @@ describe('CodeView session-list reconciliation', () => {
 
       renderCode({ sessions: [active], selectedId: active.id });
       fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
-      expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeDisabled();
 
       await act(async () => {
         vi.advanceTimersByTime(20_000);
@@ -705,7 +705,7 @@ describe('CodeView session-list reconciliation', () => {
       });
 
       expect(screen.getByText(/did not accept the steer in time/)).toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Add to prompt' })).toBeEnabled();
     } finally {
       vi.useRealTimers();
     }

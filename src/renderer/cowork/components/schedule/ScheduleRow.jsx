@@ -34,7 +34,7 @@ function cadenceLabel(cadence) {
 
 export default function ScheduleRow({
   task, busy = false, projects = [], onOpenProject,
-  onOpen, onRunNow, onPause, onResume, onEdit, onDelete,
+  onOpen, onRunNow, onStopRun, onPause, onResume, onEdit, onDelete,
 }) {
   // Resolve the project name from the stored id (server keys by UUID, ENG-1255).
   const projectMatch = task.projectId
@@ -77,7 +77,7 @@ export default function ScheduleRow({
         : cadenceLabel(task.cadence)}
     </span>
   );
-  // Badge variants (accent, muted, danger, success) are StatusDot tones.
+  // Badge variants (accent, muted, warning, danger, success) are StatusDot tones.
   const statusDot = <StatusDot tone={status.variant}>{status.label}</StatusDot>;
 
   return (
@@ -88,10 +88,19 @@ export default function ScheduleRow({
       onActivate={() => onOpen?.(task)}
       actions={(
           <>
-            <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
-              {busy ? <Spinner /> : Ico.send(14)}
-              Run
-            </Button>
+            {/* While a run is going there is nothing to start: the same
+                place stops it instead. */}
+            {task.running ? (
+              <Button variant="subtle" size="sm" onClick={() => onStopRun?.(task)} disabled={busy}>
+                {busy ? <Spinner /> : Ico.stop(12)}
+                Stop
+              </Button>
+            ) : (
+              <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
+                {busy ? <Spinner /> : Ico.send(14)}
+                Run
+              </Button>
+            )}
             <OverflowMenu
               items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
               disabled={busy}

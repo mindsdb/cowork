@@ -30,6 +30,7 @@ import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import OrgBrandingFields from './OrgBrandingFields';
+import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
@@ -1992,6 +1993,8 @@ export default function SettingsView({
           </Section>
         </SettingsGroup>
 
+        <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
+
         {/* Not on hosted web yet: its turns run in a pod that doesn't receive
             these limits until the web time limit and the PR that sends them
             ship, so the switch and values here would not be what a hosted web
@@ -2657,6 +2660,27 @@ export default function SettingsView({
       </SettingsGroup>
     </SettingsSectionPanel>
   ) : null);
+  const renderDesktopSection = () => (
+    // How the app behaves on this computer. Desktop only (settingsNavigation
+    // leaves it out on web). Every control here saves itself.
+    <SettingsSectionPanel autoSaved>
+      <SettingsGroup title="Desktop">
+        <Section
+          title="Stay awake for scheduled tasks"
+          subtitle="While plugged in, keeps this computer from sleeping when a scheduled task is running or about to run. It can't wake a computer that's already asleep or stop it sleeping when you close the lid."
+        >
+          <div className="flex items-center">
+            <Switch
+              checked={settings.scheduleKeepAwake !== false}
+              onCheckedChange={(v) => autoSaveSetting('scheduleKeepAwake', v)}
+              aria-label="Stay awake for scheduled tasks"
+            />
+            <AutoSaveTag settingKey="scheduleKeepAwake" />
+          </div>
+        </Section>
+      </SettingsGroup>
+    </SettingsSectionPanel>
+  );
 
   const renderChannelsSection = () => (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -2813,6 +2837,7 @@ export default function SettingsView({
       {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
       {effectiveSection === 'branding' && renderBrandingSection()}
+      {effectiveSection === 'desktop' && renderDesktopSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}

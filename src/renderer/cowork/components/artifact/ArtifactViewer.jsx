@@ -713,8 +713,9 @@ export function ArtifactViewer({
             // The files the draft loads from its folder can't carry the token
             // either, so inline them with it. The inliner never reads above the
             // draft's own folder, so that folder is its root. If inlining fails,
-            // the draft still shows as it loaded. Goes once drafts are served
-            // by signed link (ENG-3215).
+            // the draft still shows as it loaded. This branch is removed once
+            // drafts are served by signed link; the inliner stays, because the
+            // HTML editor and the revision comparison use it too.
             const html = await inlineHtmlFromApi(doc.content, {
               rootUrl: draftDirectoryUrl(fetchUrl),
               filePath: draftFileName(fetchUrl),

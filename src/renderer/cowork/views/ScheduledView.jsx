@@ -41,11 +41,17 @@ export default function ScheduledView({
   onPause,
   onResume,
   onRunNow,
+  // (scheduleId) — stops the schedule's run in flight, as the chat's Stop does.
+  onStopRun,
   onOpenSchedule,
   // Optional — receives the project object when a card or list row's
   // "project:" label is clicked. Wired by App.jsx to setSelected
   // Project + setRoute('projects'), the same path Live artifacts uses.
   onOpenProject,
+  // Auto-paused schedules the user has not opened since they were paused
+  // (useAutoPauseNotifications). Shown here until each is reviewed, so a
+  // pause is not missed when its desktop notification was not.
+  unseenAutoPauses = [],
   agentLabel,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -142,9 +148,11 @@ export default function ScheduledView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={host.isElectron
-          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. Runs missed while it's closed are skipped — ${agentLabel} picks up at the next scheduled time.`
-          : `Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — ${agentLabel} picks up at the next scheduled time.`}
+        // Desktop runs its own server, so tasks stop with the app. Every web
+        // build, hosted or self-hosted, runs them on a server that stays up.
+        subtitle={!host.isWeb
+          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while it was closed, ${agentLabel} runs the latest one from the last 7 days when it reopens.`
+          : `Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one from the last 7 days when it's back.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
@@ -182,6 +190,24 @@ export default function ScheduledView({
         />
       )}
 
+      {unseenAutoPauses.length > 0 && (
+        <Alert
+          variant="danger"
+          className="mx-8 mb-3"
+          title={unseenAutoPauses.length === 1
+            ? `“${unseenAutoPauses[0].title || 'Untitled schedule'}” was paused after failing several runs in a row`
+            : `${unseenAutoPauses.length} scheduled tasks were paused after failing several runs in a row`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {unseenAutoPauses.map((task) => (
+              <Button key={task.id} size="sm" onClick={() => onOpenSchedule?.(task)}>
+                {unseenAutoPauses.length === 1 ? 'Review' : `Review “${task.title || 'Untitled schedule'}”`}
+              </Button>
+            ))}
+          </div>
+        </Alert>
+      )}
+
       {error && (
         <Alert variant="danger" className="mx-8 mb-3">{error}</Alert>
       )}
@@ -209,6 +235,7 @@ export default function ScheduledView({
               busy={busyId === task.id}
               onOpen={() => onOpenSchedule?.(task)}
               onRunNow={() => runAction(task.id, onRunNow)}
+              onStopRun={() => runAction(task.id, onStopRun)}
               onPause={() => runAction(task.id, onPause)}
               onResume={() => runAction(task.id, onResume)}
               onEdit={() => openEdit(task)}
@@ -246,3 +273,4 @@ export default function ScheduledView({
     </div>
   );
 }
+

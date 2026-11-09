@@ -23,6 +23,7 @@ import {
   routerRoleSubtitle,
   showJevSwitch,
   showRouterRoleRow,
+  SETTINGS_KEY_MAP,
 } from './settingsTransform';
 
 describe('favicon settings translation', () => {
@@ -33,6 +34,40 @@ describe('favicon settings translation', () => {
     expect(committedSettingsPatch({ favicon }, ['favicon'])).toEqual({ favicon });
     expect(diffSettingsForWrite({ favicon: '' }, { favicon })).toEqual({ favicon: '' });
     expect(diffSettingsForWrite({ favicon }, { favicon })).toEqual({});
+  });
+});
+
+describe('shared browser settings', () => {
+  it('maps only the switch', () => {
+    const browserKeys = Object.keys(SETTINGS_KEY_MAP).filter((key) => key.startsWith('browser_'));
+    expect(browserKeys).toEqual(['browser_enabled']);
+  });
+
+  it('reads no server address, key, proxy switch or city from the settings rows', () => {
+    const rows = [
+      { key: 'browser_enabled', value: 'false', is_sensitive: false },
+      { key: 'browser_mode', value: 'standalone', is_sensitive: false },
+      { key: 'browser_service_url', value: 'https://browser.example.com', is_sensitive: false },
+      { key: 'browser_service_api_key', value: '***', is_sensitive: true },
+      { key: 'browser_proxy', value: 'false', is_sensitive: false },
+      { key: 'browser_city', value: 'us-x', is_sensitive: false },
+    ];
+    const settings = transformSettingsRows(rows);
+    expect(settings).not.toHaveProperty('browserMode');
+    expect(settings).not.toHaveProperty('browserServiceUrl');
+    expect(settings).not.toHaveProperty('browserServiceApiKey');
+    expect(settings).not.toHaveProperty('browserProxy');
+    expect(settings).not.toHaveProperty('browserCity');
+  });
+});
+
+describe('keep-awake setting translation', () => {
+  it('reads the server row and writes the opt-out back to it', () => {
+    expect(transformSettingsRows([{ key: 'schedule_keep_awake', value: false }]).scheduleKeepAwake).toBe(false);
+    expect(diffSettingsForWrite({ scheduleKeepAwake: false }, { scheduleKeepAwake: true }))
+      .toEqual({ schedule_keep_awake: 'false' });
+    expect(committedSettingsPatch({ scheduleKeepAwake: false }, ['schedule_keep_awake']))
+      .toEqual({ scheduleKeepAwake: false });
   });
 });
 

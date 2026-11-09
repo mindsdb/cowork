@@ -80,6 +80,16 @@ describe('following new content', () => {
     }
   });
 
+  it('keeps a new chat\'s first message at the top when the chat takes its server id', () => {
+    const sent = [{ role: 'user', id: 'u1', content: 'first question' }];
+    const { container, rerender } = render(<ChatView task={taskWith([], { id: 'tmp-1' })} />);
+    rerender(<ChatView task={taskWith(sent, { id: 'tmp-1' })} />);
+    const anchoredTop = scroller(container).scrollTop;
+    box.height = 3000;
+    rerender(<ChatView task={taskWith([...sent, { role: 'assistant', id: 'a1', content: 'answer' }], { id: 'conv-a', renamedFrom: 'tmp-1' })} />);
+    expect(scroller(container).scrollTop).toBe(anchoredTop);
+  });
+
   it('opens another conversation at its end', () => {
     const { container, rerender } = render(<ChatView task={taskWith(first)} />);
     box.scrollReaderTo(scroller(container), 300);

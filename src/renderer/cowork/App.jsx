@@ -62,6 +62,7 @@ import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
+import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useAccountUser } from './hooks/useAccountUser';
 import { LiveAppAvailabilityWatcher } from './hooks/useLiveAppAvailability';
@@ -87,13 +88,16 @@ import { takeSettingsDeepLink } from './lib/settingsDeepLink';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { stopScheduleRun } from './lib/stopScheduleRun';
+import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
+import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit,
-         runScheduleNow, fetchDatasources, MOCK_DATA,
+         runScheduleNow, fetchScheduleRuns, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
@@ -142,6 +146,9 @@ import {
   loadConversation,
 } from './CoworkRouter';
 import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
+import { rememberTaskBrowser } from './lib/taskBrowser';
+import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
+import { useNativeOverlay } from './lib/nativeOverlay';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -619,6 +626,19 @@ function AppCore() {
 
   const agentLabel = getAgentLabel(settings);
 
+  /* This UI shows the desktop's in-app browser, so main may register it with
+     the local server, which then offers the agent the browser tool. Once a
+     load; a UI that never says so (an older one) never gets the tool. */
+  const [inAppBrowserRegistered, setInAppBrowserRegistered] = useState(false);
+  useEffect(() => {
+    if (!host.supportsInAppBrowser) return;
+    host.inAppBrowser.ready()
+      .catch((error) => {
+        diagnostic('renderer.app', 'WARNING', 'in_app_browser_ready_failed', error);
+      })
+      .finally(() => setInAppBrowserRegistered(true));
+  }, []);
+
   const [tasks, setTasks] = useState([]);
   // 'loading' until the first list response lands, then 'ready' or 'failed'.
   // Without this an in-flight load and a genuinely empty account render the
@@ -720,7 +740,6 @@ function AppCore() {
   // they cross into the task-list and routing domains.
   const {
     scheduled,
-    scheduleRunsIndex,
     refreshSchedules,
     handleCreateSchedule,
     handleUpdateSchedule,
@@ -738,6 +757,8 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  /** The + menu's Browser switch, off for the next new task (ENG-3188). */
+  const [composerBrowserOff, setComposerBrowserOff] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState(null);
   // Set by the checklist's "Try an example" row; Home answers it and clears it.
   const [examplesRequest, setExamplesRequest] = useState(0);
@@ -1805,6 +1826,9 @@ function AppCore() {
     [brandingDraft, savedOrgBranding],
   );
   useEffect(() => { if (!settingsOpen) setBrandingDraft(null); }, [settingsOpen]);
+  /* The narrow-band sidebar popout counts as an overlay, so the desktop
+     browser pane's native view steps aside rather than draw over it. */
+  useNativeOverlay(sidebarPopout && navPopoutOpen);
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin. `look` is the
@@ -2145,6 +2169,11 @@ function AppCore() {
     handleShellAutoUpdateAction,
     dismissShellUpdate,
   } = useAppUpdates();
+  /* The OTA update curtain covers the window while an update downloads and
+     the UI reloads. It counts as an overlay, so the desktop browser pane's
+     native view steps aside rather than draw over it. */
+  const updateCurtainUp = updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading';
+  useNativeOverlay(updateCurtainUp);
 
   // Collapse the three update mechanisms into one shell-first banner (or null).
   // The manual notice is dismissal-filtered here before it can win the slot.
@@ -2410,6 +2439,7 @@ function AppCore() {
     prevRouteForComposerMuteRef.current = route;
     if (prev === 'task' && (route === 'home' || route === 'projects')) {
       setComposerDisabledConnections([]);
+      setComposerBrowserOff(false);
     }
   }, [route]);
 
@@ -3501,6 +3531,25 @@ function AppCore() {
     });
   }, []);
 
+  /* The + menu shows a Browser switch only where this deployment offers the
+     browser (GET /browse/status answers `available: true`, never on a
+     self-hosted stack) and while it is on in Settings (on by default). Off
+     there, no task gets it, so no switch (lib/browserSwitch). */
+  const browserOnInSettings = settings.browserEnabled !== false;
+  const browseAvailable = useBrowseAvailable(`${health.status}:${inAppBrowserRegistered}`);
+  const browserSwitchShown = showsBrowserSwitch({ browserOnInSettings, browseAvailable });
+  const composerBrowserSwitch = browserSwitchShown
+    ? { on: !composerBrowserOff, onChange: (on) => setComposerBrowserOff(!on), agentLabel }
+    : null;
+
+  // The + menu's Browser switch for one task (ENG-3188): on its record, which
+  // every send to it reads, and on this device so it survives a reload.
+  const handleTaskBrowserSwitch = useCallback((taskId, on) => {
+    if (!taskId) return;
+    rememberTaskBrowser(taskId, !on);
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, browserOff: !on } : t)));
+  }, []);
+
   const handleRemoveAttachment = async (id) => {
     const target = composerAttachments.find((a) => a.id === id);
     setComposerAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
@@ -3681,6 +3730,8 @@ function AppCore() {
     const disabledForSend = normalizeComposerDisabledConnections(
       meta?.disabledConnections ?? composerDisabledConnections,
     );
+    // Only the composer's own switch: the browser is off only when switched off.
+    const browserOffForSend = newTaskBrowserOff({ callerBrowserOff: meta?.browserOff, browserOnInSettings, composerBrowserOff });
 
     const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
@@ -3734,6 +3785,7 @@ function AppCore() {
       harness: meta?.harness || null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       // Stamp a client-side timestamp so the Sidebar's sort-by-
       // updatedAt sees this task as the freshest. Without it, brand-
       // new tasks would sort to the bottom (no updatedAt) until the
@@ -3754,12 +3806,14 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // The tmp- id was never stored; the task's real one is.
+      if (browserOffForSend) rememberTaskBrowser(sid, true);
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
       // The canonical id isn't loadable yet either — keep the loader off it.
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
+        t.id === previousId || t.id === taskId ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -3841,6 +3895,7 @@ function AppCore() {
       harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
@@ -3916,10 +3971,10 @@ function AppCore() {
           const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
-            return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
+            return { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
           return finalContent
-            ? { ...t, id: finalId, status: 'idle', messages: [...msgs, {
+            ? { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
                 // Client-only: lets its steps fold shut instead of vanishing
@@ -3933,7 +3988,7 @@ function AppCore() {
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
                 ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
-            : { ...t, id: finalId, status: 'idle', messages: msgs };
+            : { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: msgs };
         }));
         // Follow the rename only if this conversation is still on screen; the
         // person may have moved to another one while the answer ran.
@@ -4005,6 +4060,8 @@ function AppCore() {
     // whether the chat is on screen or not.
     const mutesForSend = opts.disabledConnections
       ?? (tasksRef.current.find((t) => t.id === id) || targetTask).disabledConnections;
+    // Its Browser switch, read the same way (handleTaskBrowserSwitch).
+    const browserOffForSend = !!(tasksRef.current.find((t) => t.id === id) || targetTask).browserOff;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
     // turn + the action card and stop before any in-flight reservation.
@@ -4286,7 +4343,7 @@ function AppCore() {
       moveDraft(previousId, sid);
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+        t.id === previousId || t.id === id ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       // Move the in-flight + active refs onto the new id so cancel /
       // reconcile passes look at the right key.
@@ -4353,6 +4410,7 @@ function AppCore() {
       reasoningEffort: taskEffort,
       attachmentIds,
       disabledConnections: disabledForSend,
+      browserOff: browserOffForSend,
       onEvent(ev) {
         if (!isCurrentStream(resolvedId || id, ctrl)) return;
         // Adopt the server's canonical id as soon as it lands. The
@@ -4633,7 +4691,7 @@ function AppCore() {
       moveDraft(previousId, sid);
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+        t.id === previousId || t.id === id ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -5663,6 +5721,37 @@ function AppCore() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
+  // A desktop notification when the server pauses a schedule after repeated
+  // failures, where the OS allows one; clicking it opens that schedule. Until
+  // the user opens it, the Scheduled Tasks page also says so.
+  const { unseen: unseenAutoPauses, markReviewed: markAutoPauseReviewed } = useAutoPauseNotifications(
+    scheduled,
+    (id) => {
+      setWorkspaceMode('cowork');
+      setSelectedScheduleId(id);
+      setRoute('schedule-detail');
+    },
+  );
+
+  // Stop a schedule's run in flight the way the chat's Stop does: cancel its
+  // conversation's turn. The schedule list doesn't carry that conversation,
+  // so it is read from the newest runs.
+  const handleStopScheduleRun = (id) => stopScheduleRun(id, {
+    fetchRuns: fetchScheduleRuns, cancel: cancelResponse, refresh: refreshSchedules,
+  });
+
+  // Hold off idle sleep while a scheduled run is in flight or about to fire,
+  // unless the user turned it off in Settings. Desktop only; a no-op on web.
+  // Said again on every poll (`scheduled` is a new list each time): the shell
+  // lets a hold lapse when it stops hearing it.
+  const keepAwake = shouldKeepAwake(scheduled, {
+    windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
+    enabled: settings.scheduleKeepAwake !== false,
+  });
+  useEffect(() => {
+    host.setScheduleKeepAwake(keepAwake);
+  }, [keepAwake, scheduled]);
+  useEffect(() => () => { host.setScheduleKeepAwake(false); }, []);
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
@@ -5980,7 +6069,6 @@ function AppCore() {
           onMoveTaskToProject={handleOpenMoveModal}
           projects={runnableProjects}
           schedules={scheduled}
-          scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
             if (sidebarPopout) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
@@ -6092,6 +6180,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            browserSwitch={composerBrowserSwitch}
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
@@ -6126,6 +6215,7 @@ function AppCore() {
             modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
+            browserOn={taskBrowserOn({ switchShown: browserSwitchShown, taskBrowserOff: currentTask?.browserOff })}
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -6164,6 +6254,9 @@ function AppCore() {
             disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
+            browserSwitch={browserSwitchShown && currentTask
+              ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
+              : null}
             onPinTask={handlePinTask}
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
@@ -6258,7 +6351,6 @@ function AppCore() {
             loading={projectDetailResolving || !projectsLoaded}
             tasks={tasks}
             scheduled={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             modelMeta={modelMeta}
             model={selectedModel}
@@ -6291,6 +6383,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            browserSwitch={composerBrowserSwitch}
             onOpenSchedule={(task) => {
               // Same handler ScheduledView uses — routes to the
               // schedule detail page for the clicked row.
@@ -6318,6 +6411,7 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onStopRun={handleStopScheduleRun}
             onOpenSchedule={(task) => {
               setSelectedScheduleId(task.id);
               setRoute('schedule-detail');
@@ -6326,6 +6420,7 @@ function AppCore() {
               if (p) setSelectedProject(p);
               setRoute('projects');
             }}
+            unseenAutoPauses={unseenAutoPauses}
             agentLabel={agentLabel}
           />
         )}
@@ -6346,6 +6441,8 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onReviewedAutoPause={markAutoPauseReviewed}
+            onStopRun={handleStopScheduleRun}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the
@@ -6394,7 +6491,6 @@ function AppCore() {
             tasks={tasks}
             projects={runnableProjects}
             schedules={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             onOpenTask={(id) => selectTask(id)}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
@@ -6804,7 +6900,7 @@ function AppCore() {
       </Modal>
 
       {/* OTA update overlay — shown during auto-update download/reload */}
-      {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
+      {updateCurtainUp && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center',

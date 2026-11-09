@@ -12,6 +12,13 @@ import { beforeEach } from 'vitest';
 
 process.env.TZ = 'UTC';
 
+// Since Electron 42, require('electron') downloads the Electron binary when it
+// is missing, and a main-process module requires it lazily (outside vi.mock's
+// reach). Unit tests never launch Electron, so point it at a dist that is never
+// read: require('electron') returns a path string, as it did when npm ci
+// fetched the binary, and no test downloads it.
+process.env.ELECTRON_OVERRIDE_DIST_PATH = '/nonexistent/electron-dist-for-unit-tests';
+
 // The real Electron document is standards mode. happy-dom starts in quirks
 // mode unless told otherwise, which changes layout behavior and makes KaTeX
 // disable its renderer while the test modules are loading.
