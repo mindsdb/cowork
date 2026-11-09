@@ -43,10 +43,6 @@ import { computeHeroView, orderMethods } from './methodHero';
 import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 
-// Key for the Label's inline error inside the per-field error map. It is
-// read only on a cloud database form, whose specs never name a field this.
-const USER_LABEL_ERROR_KEY = '__user_label__';
-
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
 const FONT_MONO    = 'var(--font-mono)';
@@ -290,6 +286,8 @@ export function DataVaultForm({
   const [valuesByKey, setValuesByKey] = useState({});
   const [skippedByKey, setSkippedByKey] = useState({});
   const [requiredErrorsByKey, setRequiredErrorsByKey] = useState({});
+  // Kept apart from the per-field map, whose keys are whatever a spec names.
+  const [userLabelError, setUserLabelError] = useState('');
   /* Focus target for the first field that fails the required check.
      `fieldRefs` holds the real control, which is what we want the caret in,
      but only `Input` and `Textarea` forward a ref — a `select` or `boolean`
@@ -315,6 +313,7 @@ export function DataVaultForm({
       setValuesByKey({});
       setSkippedByKey({});
       setRequiredErrorsByKey({});
+      setUserLabelError('');
       setLocalSelectedMethod(null);
     }
   }, [spec?.form_id]);
@@ -487,12 +486,7 @@ export function DataVaultForm({
 
   const updateUserLabel = (v) => {
     onUserLabelChange?.(v);
-    setRequiredErrorsByKey((prev) => {
-      if (!prev[stateKey]?.[USER_LABEL_ERROR_KEY]) return prev;
-      const next = { ...prev[stateKey] };
-      delete next[USER_LABEL_ERROR_KEY];
-      return { ...prev, [stateKey]: next };
-    });
+    setUserLabelError('');
   };
 
   const skipField = (name) => {
@@ -537,8 +531,8 @@ export function DataVaultForm({
         const errors = Object.fromEntries(
           missing.map((field) => [field.name, `${field.label || field.name} is required.`]),
         );
-        if (labelMissing) errors[USER_LABEL_ERROR_KEY] = 'Label is required.';
         setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
+        setUserLabelError(labelMissing ? 'Label is required.' : '');
         requestAnimationFrame(() => {
           // The Label sits above the fields, so it is the first one missing.
           if (labelMissing) {
@@ -629,8 +623,8 @@ export function DataVaultForm({
             aria-required={userLabelRequired || undefined}
             placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
           />
-          {userLabelRequired && requiredErrors[USER_LABEL_ERROR_KEY] && (
-            <div className="text-[11.5px] text-danger">{requiredErrors[USER_LABEL_ERROR_KEY]}</div>
+          {userLabelRequired && userLabelError && (
+            <div className="text-[11.5px] text-danger">{userLabelError}</div>
           )}
         </div>
       )}

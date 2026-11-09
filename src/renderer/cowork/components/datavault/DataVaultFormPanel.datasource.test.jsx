@@ -318,7 +318,7 @@ describe('the Label on a cloud database form', () => {
     expect(screen.queryByText('Label is required.')).toBeNull();
   });
 
-  it('does not repeat an agent field error under the Label, whatever the field is called', async () => {
+  it('keeps an agent field error to its own field, whatever the field is called', async () => {
     const spec = {
       form_id: 'agent-form',
       title: 'Connect something',
@@ -328,7 +328,10 @@ describe('the Label on a cloud database form', () => {
     render(<DataVaultForm spec={spec} userLabel="" onUserLabelChange={vi.fn()} onAction={vi.fn()} />);
     await userEvent.click(await screen.findByRole('button', { name: /connect/i }));
 
+    // Not repeated under the Label, and not cleared by typing a Label.
     expect(await screen.findAllByText('Workspace is required.')).toHaveLength(1);
+    await userEvent.type(screen.getByLabelText(/^Label$/i), 'a');
+    expect(screen.getAllByText('Workspace is required.')).toHaveLength(1);
   });
 });
 
