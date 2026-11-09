@@ -15,6 +15,7 @@ import { diagnostic } from '../../shared/diagnostics';
 // so call sites can branch / hide affordances.
 
 import type { MindsOrg } from '../../shared/minds-orgs';
+import type { InAppBrowserBridge } from '../../shared/browser-contract';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import type { UpdatePhaseEntry } from '../../shared/update-journal-types';
@@ -56,6 +57,43 @@ export const codeModeAvailable: boolean =
    files in the default app. */
 export const supportsDocumentPreview: boolean =
   isWeb || bridge.supportsDocumentPreview === true;
+
+/* Whether this shell hosts the in-app browser: Electron's own Chromium, shown
+   natively in the browser pane. Only a desktop shell whose preload reports
+   exactly true and exposes the browser bridge does, so an older shell shows no
+   desktop pane. The web shows the browser router's viewer instead. */
+export const supportsInAppBrowser: boolean =
+  isElectron && bridge.supportsInAppBrowser === true && typeof bridge.browser === 'object' && bridge.browser !== null;
+
+const NO_BROWSER: InAppBrowserBridge = {
+  ready: async () => {},
+  show: async () => ({ exists: false, drawn: false }),
+  hide: async () => {},
+  setBounds: async () => ({ drawn: false }),
+  back: async () => {},
+  forward: async () => {},
+  reload: async () => {},
+  activateTab: async () => {},
+  takeOver: async () => {},
+  handBack: async () => {},
+  answerLogin: async () => {},
+  answerDownload: async () => {},
+  clearData: async () => ({ ok: false }),
+  onState: () => () => {},
+};
+
+/** The in-app browser's bridge, or one that does nothing where there is none. */
+export const inAppBrowser: InAppBrowserBridge = supportsInAppBrowser ? bridge.browser : NO_BROWSER;
+
+/* Main says the local server took the in-app browser's registration, so
+   GET /browse/status can answer differently from then on. It never fires on
+   the web, or on a shell without the in-app browser. */
+export function onInAppBrowserRegistered(cb: () => void): () => void {
+  if (supportsInAppBrowser && typeof bridge.onBrowserRegistered === 'function') {
+    return bridge.onBrowserRegistered(cb);
+  }
+  return () => {};
+}
 
 // ---- Platform identity --------------------------------------------------
 
@@ -1721,6 +1759,23 @@ export async function setKeychainPref(enabled: boolean): Promise<boolean> {
   return false;
 }
 
+// Whether the desktop's agent sends its anonymous usage events, the shared
+// browser's included (COWORK_USAGE_EVENTS in the account's dotenv; on unless
+// turned off). Null where the shell can't say: the web, or an older shell.
+export async function getUsageEventsPref(): Promise<boolean | null> {
+  if (isElectron && typeof bridge.getUsageEventsPref === 'function') {
+    return (await bridge.getUsageEventsPref()).enabled;
+  }
+  return null;
+}
+
+export async function setUsageEventsPref(enabled: boolean): Promise<boolean> {
+  if (isElectron && typeof bridge.setUsageEventsPref === 'function') {
+    return (await bridge.setUsageEventsPref(enabled)).ok;
+  }
+  return false;
+}
+
 export async function getAccessToken(): Promise<string | null> {
   if (isElectron && typeof bridge.getAccessToken === 'function') {
     return bridge.getAccessToken();
@@ -1829,6 +1884,9 @@ export const host = {
   isElectron,
   codeModeAvailable,
   supportsDocumentPreview,
+  supportsInAppBrowser,
+  inAppBrowser,
+  onInAppBrowserRegistered,
   getPlatform,
   isMac,
   getApiOrigin,
@@ -1899,6 +1957,8 @@ export const host = {
   onMindsHubAuthChanged,
   getKeychainPref,
   setKeychainPref,
+  getUsageEventsPref,
+  setUsageEventsPref,
   getAccessToken,
   logout,
   keychainRevoke,

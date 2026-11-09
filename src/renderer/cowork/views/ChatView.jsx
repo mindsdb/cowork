@@ -39,7 +39,7 @@ import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
@@ -47,6 +47,10 @@ import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
+import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser } from '../lib/browserSession';
+import { BrowserPanel } from '../components/browser/BrowserPanel';
+import { createBrowserWarmUp } from '../lib/browserWarmUp';
+import { useNativeOverlay } from '../lib/nativeOverlay';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
 import { host, isWeb } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
@@ -1784,6 +1788,9 @@ export function redirectForTask(redirects, taskId) {
   return redirects[taskId] || null;
 }
 
+// Module-level so the per-task debounce survives switching tasks (ENG-3188).
+const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1821,6 +1828,7 @@ export default function ChatView({
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
   onUpdateConnectorMute,
+  browserSwitch = null,
   onRemoveAttachment,
   onPinTask,
   onUnpinTask,
@@ -1848,6 +1856,10 @@ export default function ChatView({
   onOpenSettings,
   codingModelDefault,
   harnessClaudeCodeEnabled,
+  /* The shared browser is on for this task: on in Settings and not switched
+     off in the task's + menu. Only then does a Browser step open the pane,
+     and, on the web, a task that used the browser start it early. */
+  browserOn = false,
   /* Settings > Appearance "Show where figures came from": mark each figure in
      a finished answer with the step it came from. On unless the user turned
      it off. */
@@ -1886,7 +1898,7 @@ export default function ChatView({
   pane = false,
 }) {
   const scrollRef = useRef(null);
-  const { isNarrow } = useBreakpoint();
+  const { isNarrow, paneFloats } = useBreakpoint();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
@@ -1936,6 +1948,9 @@ export default function ChatView({
   // turn the other never got, and the two would stop being comparable.
   const sendAgain = pane ? undefined : (text, attachments) => onSend?.(text, attachments);
   const railOverlayOpen = !pane && railFloats && railNarrowOpen;
+  /* The floating rail drawer counts as an overlay, so the desktop browser
+     pane's native view steps aside rather than draw over it. */
+  useNativeOverlay(railOverlayOpen);
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
   /* The figure source (a LinkedFigureSource) whose file is open in the
@@ -2042,6 +2057,51 @@ export default function ChatView({
     setArtifactsScope({ projectId: project?.id || '', projectPath: artifactProjectPath });
   }, [project?.id, artifactProjectPath]);
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
+  /* The shared browser's pane shows one session: the live turn's, when its
+     Browser step appears, or the one whose Browser step the person clicks.
+     Past turns never open it on their own. Closing it sets null, so a pane
+     closed mid-turn stays closed until a later turn's step or a click opens
+     it. ChatView isn't keyed by task, so a task change starts over. The web
+     shows the browser router's viewer and a desktop shell that hosts the
+     in-app browser shows its own; an older shell has no pane. A comparison
+     pane has no right-hand column. Switching the browser off applies from
+     the next message, so the live turn's own session stays viewable, and its
+     Browser step stays clickable, until that turn ends. */
+  const [shownBrowserId, setShownBrowserId] = useState(null);
+  useEffect(() => {
+    setShownBrowserId(null);
+  }, [task.id]);
+  const liveBrowserId = browserSessionIdIn(streamingMsg?.steps);
+  useEffect(() => {
+    if (browserOn && liveBrowserId) setShownBrowserId(liveBrowserId);
+  }, [browserOn, liveBrowserId, task.id]);
+  const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
+  const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
+  /* The inline pane holds the right-hand column, where a docked rail would
+     go, so the rail and its Expand button step aside. A rail that floats
+     opens over the pane instead. */
+  const railHidden = browserOpen && !paneFloats && !railFloats;
+  /* The web browser takes a while to wake, so a task that used it starts it
+     when it opens and when the person types. The desktop has nothing to
+     start. */
+  const usedBrowser = useMemo(
+    () => conversationUsedBrowser(visibleMessages, streamingMsg),
+    [visibleMessages, streamingMsg],
+  );
+  const warmsBrowser = host.isWeb && browserOn && usedBrowser;
+  useEffect(() => {
+    if (warmsBrowser) warmBrowser(task.id);
+  }, [warmsBrowser, task.id]);
+  /* A click on a step, in the transcript or the rail's progress card. A
+     Browser step shows its session in the pane; any other step opens its
+     cells in the scratchpad viewer, under its message's key `prefix`. */
+  const activateStep = (prefix) => (step) => {
+    if (step?.badge === BROWSER_BADGE) {
+      if (viewable(step.data?.sessionId)) setShownBrowserId(step.data.sessionId);
+      return;
+    }
+    if (prefix) setOpenScratchpadStepId(prefixId(prefix, step.id));
+  };
   // Source of truth for the rail Progress card: the live streaming
   // message's steps if a request is in flight, otherwise the steps
   // from the most recent assistant turn. Both come from the SSE
@@ -2239,7 +2299,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -2260,7 +2320,7 @@ export default function ChatView({
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        {!pane && (<Tooltip content="Expand panel">
+        {!pane && !railHidden && (<Tooltip content="Expand panel">
           <button
             type="button"
             onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
@@ -3150,7 +3210,7 @@ export default function ChatView({
                     onAnswered={onQuestionAnswered}
                     // [] so a pick does not take the composer's staged files.
                     onAnswerAsMessage={(text) => onSend?.(text, [])}
-                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
+                    onActivateStep={activateStep(messageKey(m, i))}
                     idPrefix={messageKey(m, i)}
                     // Only right after it finished live: reopening the task
                     // later shows the steps already folded.
@@ -3223,7 +3283,7 @@ export default function ChatView({
                   conversationId={task.id}
                   conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
-                  onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  onActivateStep={activateStep(streamingKey)}
                   idPrefix={streamingKey}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
@@ -3324,6 +3384,7 @@ export default function ChatView({
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
+            browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
             placeholder="Reply…"
             metaReadOnly
@@ -3335,6 +3396,7 @@ export default function ChatView({
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
             harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
+            onTypingChange={warmsBrowser ? (typing) => { if (typing) warmBrowser(task.id); } : undefined}
           />
         </div>)}
         </>
@@ -3342,6 +3404,15 @@ export default function ChatView({
       </div>
 
       {!pane && (<>
+      {/* ─── Shared browser ─── takes the right-hand column while open. */}
+      {browserOpen && (
+        <BrowserPanel
+          sessionId={shownBrowserId}
+          agentLabel={harnessLabel(task?.harness) || 'Anton'}
+          onClose={() => setShownBrowserId(null)}
+        />
+      )}
+
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}
       {railFloats && (
@@ -3355,9 +3426,12 @@ export default function ChatView({
         />
       )}
       <aside
-        // Narrow: fixed overlay that slides in from the right.
-        // Wide: inline grid column.
-        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
+        /* Narrow: fixed overlay that slides in from the right.
+           Wide: inline grid column.
+           While the shared browser holds the right-hand column on a wide
+           screen, the docked rail steps aside rather than add a third grid
+           track. A floating rail takes no track, so it still opens. */
+        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${railHidden ? 'hidden ' : ''}${
           railFloats
             ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-layout ease-out'
             : 'bg-transparent min-w-0 transition-opacity duration-layout ease-[ease]'
@@ -3402,9 +3476,7 @@ export default function ChatView({
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}
           conversationId={task.id || ''}
-          onActivateStep={(step) => railMsgKey
-            ? setOpenScratchpadStepId(prefixId(railMsgKey, step.id))
-            : null}
+          onActivateStep={activateStep(railMsgKey)}
         />
         <WorkingFolderBox
           project={project}

@@ -1095,6 +1095,35 @@ describe('ToolProgress rows (ENG-2981)', () => {
   });
 });
 
+describe('response.browser_session_opened', () => {
+  it('adds one Browser step per session, naming the session alone', () => {
+    const events = [
+      { type: 'response.created', response: { id: 'r' } },
+      { type: 'response.browser_session_opened', session_id: 't-abc', at_ms: 5 },
+      { type: 'response.browser_session_opened', session_id: 't-abc', at_ms: 6 },
+    ];
+    const state = reduceAll(events);
+    const browser = state.steps.filter((s) => s.badge === 'Browser');
+    expect(browser).toHaveLength(1);
+    expect(browser[0].data).toEqual({ sessionId: 't-abc' });
+  });
+
+  it('keeps no viewer link a stored event still carries', () => {
+    const state = reduceAll([{
+      type: 'response.browser_session_opened',
+      session_id: 't-abc',
+      view_url: 'https://evil.example/browser/sessions/t-abc/view?et=tok',
+      expires_at: 99,
+    }]);
+    expect(state.steps.map((s) => s.data)).toEqual([{ sessionId: 't-abc' }]);
+  });
+
+  it('ignores an event with no usable session id', () => {
+    expect(reduceAll([{ type: 'response.browser_session_opened' }]).steps).toEqual([]);
+    expect(reduceAll([{ type: 'response.browser_session_opened', session_id: '../x' }]).steps).toEqual([]);
+  });
+});
+
 // ENG-3436: an answer that stopped early says why on response.completed.
 describe('incompleteReason', () => {
   it('starts null', () => {
