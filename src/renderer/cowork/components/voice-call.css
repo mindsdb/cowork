@@ -9,71 +9,50 @@
   left: 16px;
   bottom: 16px;
   width: 300px;
-  padding: 14px 14px 12px;
+  padding: 12px 12px 10px;
   border: 1px solid var(--line);
   border-radius: var(--r-xl, 16px);
   background: var(--surface);
   color: var(--ink);
-  box-shadow: var(--sh-3, 0 18px 48px rgb(0 0 0 / 0.25));
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.08);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .voice-call--docked {
   position: static;
   width: auto;
   margin: 0 10px 8px;
-  padding: 12px 12px 10px;
   border-radius: var(--r-lg, 12px);
-  box-shadow: var(--sh-1, none);
+  box-shadow: none;
 }
-.voice-call__head { display: flex; align-items: center; gap: 10px; }
-.voice-call__orb {
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, color-mix(in srgb, var(--accent) 45%, #fff), var(--accent));
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
-}
-.voice-call--docked .voice-call__orb { width: 30px; height: 30px; }
-.voice-call__orb.is-talking { animation: voice-call-pulse 1.2s ease-out infinite; }
-@keyframes voice-call-pulse {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
-  100% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--accent) 0%, transparent); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .voice-call__orb.is-talking { animation: none; box-shadow: 0 0 0 3px var(--accent); }
-}
-.voice-call__title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
-.voice-call__sub { font-weight: 400; color: var(--ink-4); }
-.voice-call__status { font-size: 12px; color: var(--ink-3); }
-.voice-call__captions { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; line-height: 1.4; }
-.voice-call__caption { padding: 4px 8px; border-radius: var(--r, 8px); background: var(--surface-2); color: var(--ink-2); }
-.voice-call__caption.is-user { align-self: flex-end; color: var(--ink); }
-.voice-call__caption.is-old { opacity: 0.65; }
-.voice-call__controls { display: flex; justify-content: flex-end; gap: 8px; }
-.voice-call__close { flex: 0 0 auto; align-self: flex-start; width: 24px; height: 24px; display: inline-grid; place-items: center; border: 0; border-radius: var(--r-sm, 6px); background: transparent; color: var(--ink-3); cursor: pointer; }
-.voice-call__close:hover { color: var(--ink); background: var(--surface-2); }
-.voice-call__btn { width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface-2); color: var(--ink); cursor: pointer; }
-.voice-call__btn:hover { background: color-mix(in srgb, var(--ink) 10%, var(--surface-2)); }
-.voice-call__btn--danger { border-color: transparent; background: #d93025; color: #fff; }
-.voice-call__btn--danger:hover { background: #b3261e; }
+.voice-waves { display: block; width: 100%; height: 44px; }
 
-/* 8-bit: square corners, a hard pixel shadow, a blocky orb that blinks in
-   steps instead of glowing. */
-body[data-skin="8bit"] .voice-call { border-width: 2px; border-color: var(--ink); border-radius: 0; box-shadow: 4px 4px 0 0 var(--ink); }
-body[data-skin="8bit"] .voice-call--docked { box-shadow: 3px 3px 0 0 var(--ink); }
-body[data-skin="8bit"] .voice-call__orb { border-radius: 0; background: var(--accent); box-shadow: inset -4px -4px 0 0 color-mix(in srgb, var(--ink) 35%, transparent); }
-body[data-skin="8bit"] .voice-call__orb.is-talking { animation: voice-call-blink 0.6s steps(2, jump-none) infinite; }
-@keyframes voice-call-blink { 0% { opacity: 1; } 100% { opacity: 0.35; } }
-body[data-skin="8bit"] .voice-call__caption,
-body[data-skin="8bit"] .voice-call__close { border-radius: 0; }
-body[data-skin="8bit"] .voice-call__btn { border: 2px solid var(--ink); border-radius: 0; box-shadow: 2px 2px 0 0 var(--ink); }
-body[data-skin="8bit"] .voice-call__btn:active { transform: translate(2px, 2px); box-shadow: none; }
+.voice-call__row { display: flex; align-items: center; gap: 10px; }
+.voice-call__who { min-width: 0; flex: 1; }
+.voice-call__title { font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: 0.01em; }
+.voice-call__status { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-3); }
+.voice-call__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: voice-call-dot 2.4s ease-in-out infinite; }
+@keyframes voice-call-dot { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .voice-call__dot { animation: none; } }
+
+.voice-call__controls { display: flex; gap: 6px; flex: 0 0 auto; }
+/* Mute is the composer's Send; muted, it rests like a dormant Send. */
+.voice-call__mic.is-off { background: var(--accent-bg); color: color-mix(in srgb, var(--accent) 70%, transparent); }
+/* End is the composer's Stop. */
+.voice-call__end { background: var(--danger-bg); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); }
+.voice-call__end:hover:not(:disabled) { background: var(--danger); color: #fff; border-color: var(--danger); }
+.voice-call__text-btn { border: 1px solid var(--line); border-radius: var(--r-8, 8px); background: transparent; color: var(--ink-2); font: inherit; font-size: 12px; padding: 5px 10px; cursor: pointer; }
+.voice-call__text-btn:hover { background: var(--surface-2); color: var(--ink); }
+
+/* 8-bit: a hard border and square corners, no shadow; the dot blinks. */
+body[data-skin="8bit"] .voice-call { border: 2px solid var(--ink); border-radius: 0; box-shadow: none; }
+body[data-skin="8bit"] .voice-call__dot { border-radius: 0; animation: voice-call-blink 1s steps(2, jump-none) infinite; }
+@keyframes voice-call-blink { 0% { opacity: 1; } 100% { opacity: 0.2; } }
+body[data-skin="8bit"] .voice-call__text-btn { border-radius: 0; border-width: 2px; border-color: var(--ink); }
 
 /* The top-right call icon while a call runs (TopShortcuts). */
-.top-shortcut--live { color: #34a853; }
+.top-shortcut--live { color: var(--accent); }
 
 @media (max-width: 639.98px) {
   .voice-call {

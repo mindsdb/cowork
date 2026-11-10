@@ -13,6 +13,8 @@
 //   for GPT-Live to say (its 500-token limit: forTheAvatar trims it).
 // - Hang-up sends `session.close` and waits briefly for `session.closed`, so
 //   the session ends and its usage is final.
+// - `meters` holds an AnalyserNode for each voice ({agent, user}), for the
+//   card's sound waves. Listening only: the audio element plays the voice.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startVoiceSession } from '../../api';
@@ -52,7 +54,8 @@ export function useVoiceCall({ onAsk, context }) {
   const [working, setWorking] = useState(false);
   const [micOn, setMicOn] = useState(true);
 
-  const call = useRef(null); // { peer, channel, microphone, audio }
+  const call = useRef(null); // { peer, channel, microphone, audio, listening }
+  const meters = useRef({ agent: null, user: null });
   const heard = useRef({ pending: '', lastTurn: '' });
   const speakingTimer = useRef(null);
   const onAskRef = useRef(onAsk);
@@ -69,6 +72,8 @@ export function useVoiceCall({ onAsk, context }) {
     try { current.channel?.close(); } catch { /* already closed */ }
     try { current.peer?.close(); } catch { /* already closed */ }
     if (current.audio) current.audio.srcObject = null;
+    meters.current = { agent: null, user: null };
+    current.listening?.close?.().catch?.(() => {});
   }, []);
 
   const send = useCallback((event) => {
@@ -158,13 +163,30 @@ export function useVoiceCall({ onAsk, context }) {
       const peer = new RTCPeerConnection();
       const audio = new Audio();
       audio.autoplay = true;
-      call.current = { peer, audio };
+      // Started by the click that started the call, so the browser lets it run.
+      const listening = typeof AudioContext === 'function' ? new AudioContext() : null;
+      call.current = { peer, audio, listening };
+      const meter = (stream) => {
+        if (!listening) return null;
+        try {
+          const analyser = listening.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.78;
+          listening.createMediaStreamSource(stream).connect(analyser);
+          return analyser;
+        } catch {
+          return null;
+        }
+      };
       peer.addEventListener('track', (e) => {
-        audio.srcObject = new MediaStream([e.track]);
+        const voice = new MediaStream([e.track]);
+        audio.srcObject = voice;
         audio.play().catch(() => {});
+        meters.current = { ...meters.current, agent: meter(voice) };
       });
       const microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
       call.current.microphone = microphone;
+      meters.current = { ...meters.current, user: meter(microphone) };
       microphone.getAudioTracks().forEach((t) => peer.addTrack(t, microphone));
       // The event channel exists before the offer, so it is negotiated with it.
       const channel = peer.createDataChannel(CHANNEL);
@@ -224,7 +246,7 @@ export function useVoiceCall({ onAsk, context }) {
   }, [cleanup, send]);
 
   return {
-    phase, notice, captions, agentSpeaking, working, micOn,
+    phase, notice, captions, agentSpeaking, working, micOn, meters,
     start, end, toggleMic,
     dismiss: () => { setPhase('idle'); setNotice(''); },
   };

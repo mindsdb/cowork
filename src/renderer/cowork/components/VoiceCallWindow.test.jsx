@@ -17,16 +17,15 @@ describe('the voice call card', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('says it is an AI voice, shows what Anton is doing and the captions, and hangs up', async () => {
+  it('shows what Anton is doing without the transcript, and mutes and ends like the composer', async () => {
     const c = call({ working: true, captions: { user: 'Book a hotel', agent: 'On it.', last: 'agent' } });
     render(<VoiceCallWindow call={c} agentLabel="Anton" />);
-    expect(screen.getByText('· AI voice')).toBeInTheDocument();
-    expect(screen.getByText('Anton is working on it…')).toBeInTheDocument();
-    expect(screen.getByText('On it.')).toBeInTheDocument();
+    expect(screen.getByText('Working on it…')).toBeInTheDocument();
+    expect(screen.queryByText('On it.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Book a hotel')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Mute' }));
     expect(c.toggleMic).toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Hang up' }));
-    expect(c.end).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'End call' })).toHaveClass('send-btn');
   });
 
   it('says why a call ended and closes', async () => {
