@@ -1,0 +1,52 @@
+/* The voice call's card (VoiceCallWindow.jsx). Like the video call's window it
+   never covers the composer: a card at the top right, and on a phone a bar
+   across the top under the top bar. */
+.voice-call {
+  position: fixed;
+  z-index: 60;
+  top: 16px;
+  right: 16px;
+  width: 300px;
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  background: #111;
+  color: #fff;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.voice-call__head { display: flex; align-items: center; gap: 10px; }
+.voice-call__orb {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #71cde9, #276f86);
+  box-shadow: 0 0 0 0 rgb(83 174 202 / 0.6);
+}
+.voice-call__orb.is-talking { animation: voice-call-pulse 1.2s ease-out infinite; }
+@keyframes voice-call-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(83 174 202 / 0.6); }
+  100% { box-shadow: 0 0 0 12px rgb(83 174 202 / 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-call__orb.is-talking { animation: none; box-shadow: 0 0 0 3px #53aeca; }
+}
+.voice-call__title { font-size: 13.5px; font-weight: 600; }
+.voice-call__status { font-size: 12px; color: rgb(255 255 255 / 0.7); }
+.voice-call__captions { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; line-height: 1.4; }
+.voice-call__caption { padding: 4px 8px; border-radius: 8px; background: rgb(255 255 255 / 0.08); }
+.voice-call__caption.is-user { align-self: flex-end; color: rgb(255 255 255 / 0.85); }
+.voice-call__caption.is-old { opacity: 0.65; }
+.voice-call__controls { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 639.98px) {
+  .voice-call {
+    top: calc(env(safe-area-inset-top, 0px) + 52px);
+    left: 0;
+    right: 0;
+    width: auto;
+    border-radius: 0 0 16px 16px;
+  }
+}

@@ -70,6 +70,7 @@ import {
   PanelRightOpen,
   Paperclip,
   Pencil,
+  Phone,
   PhoneOff,
   Play,
   Pin,
@@ -155,6 +156,7 @@ const Ico = {
   video:    ico(Video),
   videoOff: ico(VideoOff),
   hangUp:   ico(PhoneOff),
+  call:     ico(Phone),
   minimize: ico(Minimize2),
   // Up arrow — the composer's send affordance.
   send:     ico(ArrowUp),

@@ -30,3 +30,19 @@ describe('the Video call row', () => {
     expect(screen.queryByRole('button', { name: 'Video call' })).not.toBeInTheDocument();
   });
 });
+
+describe('the Voice call row', () => {
+  it('starts a voice call and closes the menu', async () => {
+    const onStartVoiceCall = vi.fn();
+    renderComposer({ onStartVoiceCall });
+    await userEvent.click(screen.getByRole('button', { name: /add context/i }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Voice call' }));
+    expect(onStartVoiceCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not there when no voice call can start', async () => {
+    renderComposer({ onStartVoiceCall: null });
+    await userEvent.click(screen.getByRole('button', { name: /add context/i }));
+    expect(screen.queryByRole('button', { name: 'Voice call' })).not.toBeInTheDocument();
+  });
+});

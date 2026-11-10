@@ -26,13 +26,13 @@ export function withoutPhoneNumbers(text) {
 // Plenty for two or three spoken sentences; the rest is on screen.
 export const MAX_RESULT_CHARS = 6000;
 
-export function forTheAvatar(answer) {
+export function forTheAvatar(answer, { maxChars = MAX_RESULT_CHARS } = {}) {
   let text = String(answer ?? '')
     // Code and data blocks are for the screen, not for speech.
     .replace(/```[\s\S]*?```/g, '[a block shown in the task]')
     .trim();
   if (!text) return 'Anton finished without a written answer. The task on screen shows what it did.';
   text = withoutPhoneNumbers(text);
-  if (text.length > MAX_RESULT_CHARS) text = `${text.slice(0, MAX_RESULT_CHARS)}… (the rest is in the task on screen)`;
+  if (text.length > maxChars) text = `${text.slice(0, maxChars)}… (the rest is in the task on screen)`;
   return text;
 }

@@ -2904,6 +2904,29 @@ export async function mintFacetimeToken() {
   return String(minted.token);
 }
 
+// ─── Voice calls (prototype) ─────────────────────────────────────────────────
+/* Whether this deployment's MindsHub Inference serves live voice. Any failure
+   reads as no. */
+export async function fetchVoiceStatus() {
+  try {
+    const status = await req('/voice/status', { timeoutMs: 15_000, headers: await hubHeaders() });
+    return { available: !!status?.available };
+  } catch {
+    return { available: false };
+  }
+}
+
+/* The browser's SDP offer in, GPT-Live's answer out ({session: {id},
+   transport: {sdp}}), through the server and MindsHub as the caller. */
+export async function startVoiceSession(sdp) {
+  return req('/voice/session', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    body: JSON.stringify({ sdp }),
+  });
+}
+
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',

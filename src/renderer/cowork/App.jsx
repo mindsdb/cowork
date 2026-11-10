@@ -98,7 +98,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchFacetimeStatus} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchFacetimeStatus, fetchVoiceStatus} from './api';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -146,6 +146,8 @@ import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/brow
 import { useNativeOverlay } from './lib/nativeOverlay';
 import FacetimeWindow from './components/FacetimeWindow';
 import { useFacetimeCall } from './lib/facetime/useFacetimeCall';
+import VoiceCallWindow from './components/VoiceCallWindow';
+import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
 import { Outlet } from 'react-router-dom';
 
@@ -664,6 +666,18 @@ function AppCore() {
   const askFromCallRef = useRef(null);
   const callContextRef = useRef(null);
   const facetime = useFacetimeCall({
+    onAsk: (request) => askFromCallRef.current(request),
+    context: () => callContextRef.current?.() || '',
+  });
+  // The voice-only call (ENG-4138): GPT-Live through MindsHub Inference, with
+  // the same bridge to Anton and the same task tracking as the video call.
+  const [voiceAvailable, setVoiceAvailable] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetchVoiceStatus().then((s) => { if (live) setVoiceAvailable(s.available); });
+    return () => { live = false; };
+  }, []);
+  const voiceCall = useVoiceCall({
     onAsk: (request) => askFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
   });
@@ -4539,7 +4553,15 @@ function AppCore() {
   };
   // From a composer's + menu: in the task on screen, or a new one from the
   // first request. A click, so the browser plays the avatar's voice.
-  const startVideoCall = facetimeAvailable && facetime.phase === 'idle'
+  // One call at a time: each start offers itself only while neither runs.
+  const noCallRunning = facetime.phase === 'idle' && voiceCall.phase === 'idle';
+  const startVoiceCall = voiceAvailable && noCallRunning
+    ? () => {
+      facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
+      void voiceCall.start();
+    }
+    : null;
+  const startVideoCall = facetimeAvailable && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
       void facetime.start();
@@ -6194,6 +6216,7 @@ function AppCore() {
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
             onStartVideoCall={startVideoCall}
+            onStartVoiceCall={startVoiceCall}
             browserSwitch={composerBrowserSwitch}
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
@@ -6269,6 +6292,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
             onStartVideoCall={startVideoCall}
+            onStartVoiceCall={startVoiceCall}
             browserSwitch={browserSwitchShown && currentTask
               ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
               : null}
@@ -6399,6 +6423,7 @@ function AppCore() {
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
             onStartVideoCall={startVideoCall}
+            onStartVoiceCall={startVoiceCall}
             browserSwitch={composerBrowserSwitch}
             onOpenSchedule={(task) => {
               // Same handler ScheduledView uses — routes to the
@@ -6776,6 +6801,7 @@ function AppCore() {
       )}
 
       <FacetimeWindow call={facetime} agentLabel={agentLabel} />
+      <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />
 
       <ConfirmModal
         open={pendingDisconnect != null}

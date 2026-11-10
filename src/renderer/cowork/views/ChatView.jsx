@@ -1830,6 +1830,7 @@ export default function ChatView({
   disabledConnections,
   onUpdateConnectorMute,
   onStartVideoCall = null,
+  onStartVoiceCall = null,
   browserSwitch = null,
   onRemoveAttachment,
   onPinTask,
@@ -3389,6 +3390,7 @@ export default function ChatView({
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
             onStartVideoCall={onStartVideoCall}
+            onStartVoiceCall={onStartVoiceCall}
             browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
             placeholder="Reply…"

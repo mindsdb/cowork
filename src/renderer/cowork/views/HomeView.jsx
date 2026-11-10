@@ -247,6 +247,7 @@ export default function HomeView({
   disabledConnections = [],
   onUpdateConnectorMute,
   onStartVideoCall = null,
+  onStartVoiceCall = null,
   browserSwitch = null,
   onNavigateToConnectors,
   onCreateProject,
@@ -639,6 +640,7 @@ export default function HomeView({
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
               onStartVideoCall={onStartVideoCall}
+              onStartVoiceCall={onStartVoiceCall}
               browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}
               onTypingChange={setIsTyping}
