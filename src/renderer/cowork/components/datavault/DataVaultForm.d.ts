@@ -16,6 +16,8 @@ export interface DataVaultFormProps {
   conversationId?: string;
   userLabel?: string;
   onUserLabelChange?: (label: string) => void;
+  /** Called with the field's name whenever the person edits a field. */
+  onFieldChange?: (name: string) => void;
   hideHeader?: boolean;
 }
 

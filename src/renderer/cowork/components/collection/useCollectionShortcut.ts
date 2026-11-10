@@ -10,11 +10,12 @@
 // pair with conditional rendering (e.g. detail-mode swaps).
 
 import { useEffect } from 'react';
+import type { RefObject } from 'react';
 
-export function useCollectionShortcut(searchRef, enabled = true) {
+export function useCollectionShortcut(searchRef: RefObject<HTMLInputElement | null>, enabled = true) {
   useEffect(() => {
     if (!enabled) return;
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       const input = searchRef?.current;
       // Both workspaces can stay mounted while App hides the inactive one.
       if (!input || input.closest('[hidden], [inert]')) return;
