@@ -794,6 +794,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     try {
       const answer = await call(pending);
       const next = pendingTestFromAnswer(pending.formId, answer);
+      // A new form or test replaced this one while the server answered.
+      if (getPendingTest(conversationId) !== pending) {
+        if (next) cancelConnectorTest(next.kind === 'approval' ? { approvalId: next.id } : { confirmId: next.id }).catch(() => {});
+        return;
+      }
       if (next) {
         setPendingTest(conversationId, next);
         return;
@@ -805,6 +810,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         window.dispatchEvent(new CustomEvent('anton:connections-changed'));
       }
     } catch (err) {
+      if (getPendingTest(conversationId) !== pending) return;
       if (err?.status === 404) {
         clearPendingTest(conversationId);
         patchForm(conversationId, { form_id: spec?.form_id, form_error: 'This test result is no longer waiting. Submit the form again.' });
@@ -871,11 +877,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           active) or a plain "Connect" label. On the SUCCESS screen the
           breadcrumb is dropped — the connection is done, there's nothing
           to go back to — leaving just the close button (ENG-1534). The X
-          sits flush right in every case. */}
+          sits flush right in every case. While a connection test waits
+          it reads "Connect", so no form text sits above Allow or Confirm. */}
       <div className="flex items-stretch border-b border-t-0 border-x-0 border-solid border-line min-h-[42px]">
         {spec._is_success ? (
           <div className="flex-1 min-w-0" />
-        ) : activeMethodSpec ? (
+        ) : activeMethodSpec && !pendingTest ? (
           <button
             type="button"
             onClick={onBackToOptions}

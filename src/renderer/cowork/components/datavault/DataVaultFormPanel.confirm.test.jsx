@@ -5,7 +5,7 @@
 // none of the form's own text beside the buttons.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const api = vi.hoisted(() => ({
@@ -103,6 +103,50 @@ describe('confirming a test result', () => {
     setForm(CID, { ...SPEC, _awaiting_confirmation: true, confirm_id: 'forged', preview: { status: 200 } });
     render(<DataVaultFormPanel conversationId={CID} />);
     expect(screen.queryByRole('button', { name: 'Confirm and save' })).toBeNull();
+  });
+
+  it("the header keeps the method's own label away from Confirm", () => {
+    const label = 'Always confirm: the token is your data';
+    setForm(CID, { ...SPEC, selected_method: 'm1', methods: [{ id: 'm1', label, fields: SPEC.fields }] });
+    const { unmount } = render(<DataVaultFormPanel conversationId={CID} />);
+    expect(screen.getByText(new RegExp(label))).toBeTruthy();
+    unmount();
+
+    applyConnectorTestEvent(CID, streamEvent(fixture.stream, 'connector.test_preview'));
+    render(<DataVaultFormPanel conversationId={CID} />);
+
+    expect(screen.getByRole('button', { name: 'Confirm and save' })).toBeTruthy();
+    expect(screen.queryByText(new RegExp(label))).toBeNull();
+    expect(screen.queryByText('Back to options')).toBeNull();
+  });
+
+  it('an answer that arrives after a new form replaced the test is dropped', async () => {
+    applyConnectorTestEvent(CID, streamEvent(fixture.private.stream, 'connector.private_host_request'));
+    let answer;
+    api.allowConnectorTestHost.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<DataVaultFormPanel conversationId={CID} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Allow for this test' }));
+    act(() => setForm(CID, { ...SPEC, form_id: 'fm_cccccccccc', title: 'Another connector' }));
+    await act(async () => answer(fixture.private.allow));
+
+    expect(getPendingTest(CID)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Confirm and save' })).toBeNull();
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: fixture.private.allow.confirm_id });
+  });
+
+  it('a late failure leaves the form that replaced the test alone', async () => {
+    applyConnectorTestEvent(CID, streamEvent(fixture.stream, 'connector.test_preview'));
+    let fail;
+    api.confirmConnectorTest.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+    render(<DataVaultFormPanel conversationId={CID} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+    act(() => setForm(CID, { ...SPEC, form_id: 'fm_cccccccccc' }));
+    await act(async () => fail(Object.assign(new Error('gone'), { status: 404 })));
+
+    expect(getForm(CID).form_id).toBe('fm_cccccccccc');
+    expect(getForm(CID).form_error).toBeFalsy();
   });
 
   it('a test that is no longer waiting asks for the form again', async () => {
