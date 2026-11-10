@@ -6,6 +6,11 @@ interface AntonTronAPI {
   codeModeAvailable?: boolean;
   /** True on shells whose main process guards the document preview frame. */
   supportsDocumentPreview?: boolean;
+  /** True on shells whose main process hosts the in-app browser. */
+  supportsInAppBrowser?: boolean;
+  browser?: import('../shared/browser-contract').InAppBrowserBridge;
+  /** Main says the local server took the in-app browser's registration. */
+  onBrowserRegistered?: (cb: () => void) => () => void;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;
@@ -28,6 +33,7 @@ interface AntonTronAPI {
   onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
   awaitBootReady: () => Promise<{ ready: boolean }>;
   drainUpdateJournal: () => Promise<import('../shared/update-journal-types').UpdatePhaseEntry[]>;
+  setScheduleKeepAwake?: (active: boolean) => Promise<void>;
   ackUpdateJournal: (ids: string[]) => Promise<void>;
   getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
   getShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
@@ -124,6 +130,8 @@ interface AntonTronAPI {
   logout: () => Promise<void>;
   getKeychainPref: () => Promise<{ enabled: boolean }>;
   setKeychainPref: (enabled: boolean) => Promise<{ ok: boolean }>;
+  getUsageEventsPref?: () => Promise<{ enabled: boolean }>;
+  setUsageEventsPref?: (enabled: boolean) => Promise<{ ok: boolean }>;
   getPathForFile: (file: File) => string;
 }
 

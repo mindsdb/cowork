@@ -149,3 +149,19 @@ describe('ThinkingBlock — folding (ENG-3554)', () => {
     expect(screen.getByRole('button', { expanded: false })).toBeInTheDocument();
   });
 });
+
+describe('ThinkingBlock — finished duration', () => {
+  const tool = { id: 's1', label: 'Running code', badge: 'Script', icon: 'code', status: 'completed', _isScratchpad: true, startedAt: 1000, completedAt: 73000 };
+
+  it('counts up to the end of the turn, past its last step', () => {
+    // The live counter ran while the answer was written after the last step,
+    // so the finished time must not come out shorter than it last read.
+    render(<ThinkingBlock steps={[tool]} isActive={false} startedAt={1000} endedAt={81000} />);
+    expect(screen.getByRole('button')).toHaveTextContent('Worked for 1m 20s');
+  });
+
+  it('ends at the last step when the turn has no end time', () => {
+    render(<ThinkingBlock steps={[tool]} isActive={false} startedAt={1000} />);
+    expect(screen.getByRole('button')).toHaveTextContent('Worked for 1m 12s');
+  });
+});

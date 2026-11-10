@@ -64,6 +64,12 @@ describe('nextScrollAnchor', () => {
       expect(actionFor({ messages: rows('user', 'assistant'), previousAnchor: { ...previousAnchor, taskId: 't0' } })).toBe('end');
     });
 
+    it('treats a new chat taking its server id as the same conversation', () => {
+      const tmp = { ...previousAnchor, taskId: 'tmp-1' };
+      expect(actionFor({ messages: rows('user', 'assistant'), previousAnchor: tmp, renamedFrom: 'tmp-1' })).toBe('follow');
+      expect(actionFor({ messages: rows('user', 'assistant'), previousAnchor: tmp, renamedFrom: 'tmp-2' })).toBe('end');
+    });
+
     it('anchors the message the reader just sent', () => {
       expect(actionFor({ messages: rows('user', 'assistant', 'user'), previousAnchor })).toBe('sent');
       expect(actionFor({ messages: rows('user', 'assistant', 'user', 'activity'), previousAnchor })).toBe('sent');

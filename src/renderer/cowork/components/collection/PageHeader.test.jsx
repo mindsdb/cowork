@@ -20,6 +20,22 @@ describe('collection/PageHeader', () => {
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
   });
 
+  it('trail with a title puts the ancestors above an h1 and the actions beside it', () => {
+    render(
+      <PageHeader
+        crumbs={[{ label: 'Scheduled Tasks', onClick: () => {} }]}
+        title="Daily digest"
+        subtitle="Every day at 9:00 AM"
+        actions={<button>Run now</button>}
+      />,
+    );
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Scheduled Tasks');
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).not.toHaveTextContent('Daily digest');
+    expect(screen.getByRole('heading', { level: 1, name: 'Daily digest' })).toBeInTheDocument();
+    expect(screen.getByText('Every day at 9:00 AM')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run now' })).toBeInTheDocument();
+  });
+
   it('back shape renders a "← label" link that invokes onBack', () => {
     const onBack = vi.fn();
     render(<PageHeader onBack={onBack} backLabel="Skills" current="My skill" />);

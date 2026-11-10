@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeScrollBox, type FakeScrollBox } from '../../../../tests/helpers/scrollBox';
 import type { CodingEvent, CodingSession } from './api';
 import { EventTimeline } from './EventTimeline';
+import { markTaskStarted } from './startedTasks';
 import { indexLatestEvents } from './useCodingSession';
 
 vi.mock('../lib/clipboard', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/clipboard')>()), copyText: vi.fn(async () => true) }));
@@ -45,6 +46,23 @@ describe('the user message', () => {
   });
 });
 
+describe('the attachments sent with a message', () => {
+  it('shows each one by the name it was sent with', () => {
+    const message = event(1, 'user_message', 'Use these', { data: { attachments: [
+      { name: 'notes.txt', kind: 'mention' },
+      { name: 'screen.png', kind: 'local_image' },
+    ] } });
+    render(<EventTimeline {...props([message])} session={session('running')} />);
+    expect(screen.getByText('notes.txt')).toBeInTheDocument();
+    expect(screen.getByText('screen.png')).toBeInTheDocument();
+  });
+
+  it('shows none for a message sent without any', () => {
+    const { container } = render(<EventTimeline {...props([event(1, 'user_message', 'Plain')])} session={session('running')} />);
+    expect(container.querySelector('.user-turn-attachment')).toBeNull();
+  });
+});
+
 describe('following new events', () => {
   let box: FakeScrollBox;
   beforeEach(() => {
@@ -80,6 +98,27 @@ describe('following new events', () => {
     rerender(<EventTimeline {...props(live)} session={session('completed')} />);
     expect(timeline(container).scrollTop).toBe(1400);
     expect((container.querySelector('.chat-scroller__reserve') as HTMLElement).style.height).toBe('');
+  });
+
+  it('anchors the first message of a task started here', () => {
+    markTaskStarted('task-1');
+    const { container, rerender } = render(<EventTimeline {...props([])} session={session('running')} />);
+    rerender(<EventTimeline {...props([event(1, 'user_message', 'Fix the parser')])} session={session('running')} />);
+    expect(timeline(container).scrollTop).toBe(1376);
+    box.height = 2600;
+    rerender(<EventTimeline {...props([event(1, 'user_message', 'Fix the parser'), ...live.slice(1)])} session={session('running')} />);
+    // Held at the turn, not following the answer to the end.
+    expect(timeline(container).scrollTop).toBe(1376);
+  });
+
+  it('opens a running task at its end when it is reopened before its answer starts', () => {
+    const working = [event(1, 'user_message', 'Fix the parser'), event(2, 'command', 'npm test', { phase: 'progress' })];
+    markTaskStarted('task-1');
+    const first = render(<EventTimeline {...props(working)} session={session('running')} />);
+    first.unmount();
+    // Switching away and back remounts the timeline; only the first open anchors.
+    const { container } = render(<EventTimeline {...props(working)} session={session('running')} />);
+    expect(timeline(container).scrollTop).toBe(1400);
   });
 
   it('anchors a send after a long run has dropped every earlier user message', () => {

@@ -44,14 +44,14 @@ const isMessage = (step) => step?.badge === 'Message';
 
 /**
  * Returns, in event order:
- *   { kind: 'steps', key, steps, startedAt }
+ *   { kind: 'steps', key, steps, startedAt, endedAt? }
  *   { kind: 'question', key, step, expired, reopened, lateAnswer }
  *   { kind: 'message', key, step }
  * Always starts and ends with a steps segment, and puts one (possibly empty)
  * between any two boundaries (questions or messages), so callers can always
  * pick the live one.
  */
-export function splitTurnSegments(steps, { startedAt = null, conversationLive = false, reopenable = false, reply = null } = {}) {
+export function splitTurnSegments(steps, { startedAt = null, endedAt = null, conversationLive = false, reopenable = false, reply = null } = {}) {
   const list = Array.isArray(steps) ? steps : [];
   let lastUnansweredId = null;
   let lastQuestion = null;
@@ -95,7 +95,8 @@ export function splitTurnSegments(steps, { startedAt = null, conversationLive = 
       });
     current = { kind: 'steps', key: `seg-${segments.length}`, steps: [], startedAt: step.completedAt ?? null };
   }
-  pushSteps(current);
+  // The last block ends with the turn, so its time covers the answer too.
+  pushSteps({ ...current, endedAt });
   return segments;
 }
 
