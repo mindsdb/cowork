@@ -135,6 +135,39 @@ describe('confirming a test result', () => {
     expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: fixture.private.allow.confirm_id });
   });
 
+  it('an answer that arrives after a new test for the same form is dropped', async () => {
+    applyConnectorTestEvent(CID, streamEvent(fixture.private.stream, 'connector.private_host_request'));
+    let answer;
+    api.allowConnectorTestHost.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<DataVaultFormPanel conversationId={CID} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Allow for this test' }));
+    act(() => { applyConnectorTestEvent(CID, { ...streamEvent(fixture.stream, 'connector.test_preview'), confirm_id: 'cf_new' }); });
+    await act(async () => answer({ ...fixture.private.allow, confirm_id: 'cf_old_next' }));
+
+    expect(getPendingTest(CID).id).toBe('cf_new');
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: 'cf_old_next' });
+  });
+
+  it('a save that completes after the form was replaced still refreshes the connections', async () => {
+    applyConnectorTestEvent(CID, streamEvent(fixture.stream, 'connector.test_preview'));
+    let answer;
+    api.confirmConnectorTest.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    const changed = vi.fn();
+    window.addEventListener('anton:connections-changed', changed);
+    render(<DataVaultFormPanel conversationId={CID} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+    act(() => setForm(CID, { ...SPEC, form_id: 'fm_cccccccccc' }));
+    await act(async () => answer(fixture.confirm));
+    window.removeEventListener('anton:connections-changed', changed);
+
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(analytics.trackDataSourceConnected).toHaveBeenCalledWith('planner');
+    expect(getForm(CID).form_id).toBe('fm_cccccccccc');
+    expect(getForm(CID)._is_success).toBeFalsy();
+  });
+
   it('a late failure leaves the form that replaced the test alone', async () => {
     applyConnectorTestEvent(CID, streamEvent(fixture.stream, 'connector.test_preview'));
     let fail;

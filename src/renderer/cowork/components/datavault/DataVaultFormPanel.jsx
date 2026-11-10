@@ -794,9 +794,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     try {
       const answer = await call(pending);
       const next = pendingTestFromAnswer(pending.formId, answer);
+      if (saved && answer?.saved_slug) {
+        trackDataSourceConnected(spec?.engine || spec?._connector_id || 'custom');
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      }
       // A new form or test replaced this one while the server answered.
       if (getPendingTest(conversationId) !== pending) {
-        if (next) cancelConnectorTest(next.kind === 'approval' ? { approvalId: next.id } : { confirmId: next.id }).catch(() => {});
+        if (next) {
+          cancelConnectorTest(next.kind === 'approval' ? { approvalId: next.id } : { confirmId: next.id })
+            .catch((err) => console.warn('Could not cancel a replaced connection test', err));
+        }
         return;
       }
       if (next) {
@@ -805,10 +812,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
       clearPendingTest(conversationId);
       if (answer?.patch) patchForm(conversationId, answer.patch);
-      if (saved && answer?.saved_slug) {
-        trackDataSourceConnected(spec?.engine || spec?._connector_id || 'custom');
-        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
-      }
     } catch (err) {
       if (getPendingTest(conversationId) !== pending) return;
       if (err?.status === 404) {
