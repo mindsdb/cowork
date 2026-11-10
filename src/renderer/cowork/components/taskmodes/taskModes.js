@@ -83,6 +83,18 @@ export const TASK_MODES = [
         label: 'Build a company blog',
         prompt: 'Build a blog home page with a clean article layout, category filters, and a few placeholder posts.',
       },
+      {
+        label: 'Build a project status page',
+        prompt: 'Build a web page with a status update for a website redesign: five milestones with owners and dates, a progress bar at 60%, and a short risks section.',
+      },
+      {
+        label: 'Build a team offsite invitation page',
+        prompt: 'Build a web page inviting the team to an offsite on Friday 4 December in Lisbon, with the agenda, travel notes and a packing list.',
+      },
+      {
+        label: 'Build a feature announcement page',
+        prompt: "Build a web page announcing a new 'shared calendars' feature, with a headline, three benefits and a short FAQ.",
+      },
     ],
   },
   {

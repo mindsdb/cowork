@@ -12,8 +12,9 @@ beforeEach(() => {
 });
 
 describe('console handoff', () => {
-  // The console links to these ids, from Home and from the Gallery. Renaming a
-  // label changes its id and breaks that link, which opens an empty composer.
+  // The console links to these ids, from Home and from the Gallery's use cases
+  // and features. Renaming a label changes its id and breaks that link, which
+  // opens an empty composer.
   it.each([
     ['games', 'classic-snake-game', 'Classic snake game'],
     ['games', 'celestial-merge-2048', 'Celestial merge 2048'],
@@ -24,6 +25,9 @@ describe('console handoff', () => {
     ['spreadsheet', 'clean-up-my-spreadsheet-and-chart-it', 'Clean up my spreadsheet and chart it'],
     ['spreadsheet', 'compile-a-north-america-ai-conference-calendar', 'Compile a North America AI conference calendar'],
     ['wide-research', 'summarize-a-document-and-draft-my-reply', 'Summarize a document and draft my reply'],
+    ['website', 'build-a-project-status-page', 'Build a project status page'],
+    ['website', 'build-a-team-offsite-invitation-page', 'Build a team offsite invitation page'],
+    ['website', 'build-a-feature-announcement-page', 'Build a feature announcement page'],
   ])('resolves %s/%s, which the console links to', (mode, id, label) => {
     expect(findSample(mode, id)?.sample.label).toBe(label);
   });
