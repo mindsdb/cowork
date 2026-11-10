@@ -3,9 +3,9 @@ import VoiceWaves from './VoiceWaves';
 import './voice-call.css';
 
 // The voice call's card (ENG-4138, prototype): the call's sound waves, who is
-// on it and what they are doing, mute and end. It shows while a call runs, and
-// ending it closes it. `call` is useVoiceCall's. The buttons are the
-// composer's: Mute is its Send, End is its Stop.
+// on it and what they are doing, and mute. The X in the corner ends the call
+// (or closes an ended one's card). `call` is useVoiceCall's. Mute is the
+// composer's Send button.
 //
 // `docked`: in the sidebar, above its footer, where the onboarding steps sit.
 // Otherwise (sidebar collapsed, phone) it floats in that corner.
@@ -31,6 +31,15 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
       aria-label={`Voice call with ${agentLabel}`}
       className={`voice-call${docked ? ' voice-call--docked' : ''}${working ? ' is-working' : ''}`}
     >
+      <button
+        type="button"
+        className="voice-call__x"
+        onClick={ended ? call.dismiss : call.end}
+        aria-label={ended ? 'Close' : 'End call'}
+        title={ended ? 'Close' : 'End call'}
+      >
+        {Ico.close(12)}
+      </button>
       {!ended && <VoiceWaves meters={meters} active={live} working={working} />}
       <div className="voice-call__row">
         <div className="voice-call__who">
@@ -40,9 +49,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
             {status}
           </div>
         </div>
-        {ended ? (
-          <button type="button" className="voice-call__text-btn" onClick={call.dismiss}>Close</button>
-        ) : (
+        {!ended && (
           <div className="voice-call__controls">
             <button
               type="button"
@@ -52,15 +59,6 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
               title={micOn ? 'Mute' : 'Unmute'}
             >
               {micOn ? Ico.mic(16) : Ico.micOff(16)}
-            </button>
-            <button
-              type="button"
-              className="send-btn voice-call__end"
-              onClick={call.end}
-              aria-label="End call"
-              title="End call"
-            >
-              {Ico.hangUp(16)}
             </button>
           </div>
         )}

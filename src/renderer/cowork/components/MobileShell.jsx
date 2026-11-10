@@ -11,6 +11,9 @@ import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 // Views (HomeView, ChatView, ProjectsView, etc.) render unchanged
 // inside `children` — only the chrome around them swaps.
 
+// How many chats the drawer lists under Chat before See all.
+export const RECENT_CHATS = 4;
+
 const SECTIONS = [
   { key: 'projects',  label: 'Projects',       route: 'projects' },
   { key: 'scheduled', label: 'Scheduled Tasks', route: 'scheduled' },
@@ -105,9 +108,14 @@ export default function MobileShell({
   theme = 'dark',
   showThemeToggle = true,
   onToggleTheme,
+  // The voice call icon beside the theme toggle (TopShortcuts' `call`:
+  // {label, onClick, live, disabled}); null hides it.
+  callShortcut = null,
   children,
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // The drawer's Chat row lists the newest chats; See all opens the rest in place.
+  const [allChats, setAllChats] = useState(false);
   const [openSection, setOpenSection] = useState(null);
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
 
@@ -220,6 +228,17 @@ export default function MobileShell({
         <div className="mshell__title" title={title}>{title}</div>
         {/* Top-bar "+" removed — the FAB is now the universal create
             entry, so two affordances would just duplicate each other. */}
+        {callShortcut && (
+          <button
+            type="button"
+            className={`mshell__theme-toggle mshell__call${callShortcut.live ? ' is-live' : ''}`}
+            aria-label={callShortcut.label}
+            aria-disabled={callShortcut.disabled || undefined}
+            onClick={callShortcut.disabled ? undefined : callShortcut.onClick}
+          >
+            {Ico.call(16)}
+          </button>
+        )}
         {showThemeToggle ? (
           <button
             type="button"
@@ -334,6 +353,29 @@ export default function MobileShell({
               </span>
               <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
             </button>
+            {/* The newest chats, under Chat; See all opens every one here. */}
+            {tasksList.length > 0 && (
+              <div className="mshell-recent-chats">
+                {(allChats ? tasksList : tasksList.slice(0, RECENT_CHATS)).map((t) => (
+                  <ListRow
+                    key={t.id}
+                    primary={t.title || 'Untitled task'}
+                    secondary={projectLabelByName(projects, t.projectName) || ''}
+                    onClick={() => handleTaskTap(t.id)}
+                  />
+                ))}
+                {tasksList.length > RECENT_CHATS && (
+                  <button
+                    type="button"
+                    className="mshell-recent-chats__more"
+                    aria-expanded={allChats}
+                    onClick={() => setAllChats((v) => !v)}
+                  >
+                    {allChats ? 'Show fewer' : `See all ${tasksList.length}`}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {SECTIONS.map((section) => {

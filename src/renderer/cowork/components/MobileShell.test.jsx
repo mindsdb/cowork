@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 import MobileShell from './MobileShell';
 
@@ -43,5 +43,26 @@ describe('MobileShell — top-bar theme toggle', () => {
   it('never renders a coding-mode toggle in the mobile chrome', () => {
     render(<MobileShell {...baseProps}>content</MobileShell>);
     expect(screen.queryByRole('button', { name: /coding mode/i })).toBeNull();
+  });
+});
+
+describe('MobileShell — call button and recent chats', () => {
+  it('puts the call button beside the theme toggle', () => {
+    const onClick = vi.fn();
+    render(<MobileShell {...baseProps} callShortcut={{ label: 'Call Anton', onClick }}>content</MobileShell>);
+    screen.getByRole('button', { name: 'Call Anton' }).click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists the 4 newest chats under Chat, and See all opens the rest in place', async () => {
+    const tasks = Array.from({ length: 6 }, (_, i) => ({ id: `t${i}`, title: `Chat ${i}` }));
+    render(<MobileShell {...baseProps} tasks={tasks}>content</MobileShell>);
+    await act(async () => { screen.getByRole('button', { name: /open menu/i }).click(); });
+    const chats = () => [...document.querySelectorAll('.mshell-recent-chats .mshell-row__primary, .mshell-recent-chats [class*=primary]')]
+      .filter((n) => /^Chat \d$/.test(n.textContent));
+    expect(chats().map((n) => n.textContent)).toEqual(['Chat 0', 'Chat 1', 'Chat 2', 'Chat 3']);
+    await act(async () => { screen.getByRole('button', { name: 'See all 6' }).click(); });
+    expect(chats()).toHaveLength(6);
+    expect(screen.getByRole('button', { name: 'Show fewer' })).toHaveAttribute('aria-expanded', 'true');
   });
 });

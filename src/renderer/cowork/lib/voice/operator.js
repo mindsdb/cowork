@@ -55,7 +55,7 @@ export async function runOperator({ request, history, snapshot, actions, operate
 export const isRunning = (task) => (task.messages || []).some((m) => m.role === '_streaming');
 
 /** What the operator is told about the screen: where the person is, projects and recent tasks. */
-export function describeScreen({ route, currentTask, selectedProject, projects, tasks, callTaskId = null, maxTasks = 30 }) {
+export function describeScreen({ route, currentTask, selectedProject, projects, tasks, callTaskId = null, working = null, maxTasks = 30 }) {
   const lines = [];
   if (route === 'task' && currentTask) {
     lines.push(`On screen: the task "${currentTask.title || 'Untitled'}" (id ${currentTask.id}) in project "${currentTask.projectName || 'general'}".`);
@@ -66,6 +66,10 @@ export function describeScreen({ route, currentTask, selectedProject, projects, 
   }
   const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
   if (callTask) lines.push(`The task this call last gave Anton work in: "${callTask.title || 'Untitled'}" (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}.`);
+  if (working) {
+    const where = (tasks || []).find((t) => t.id === working.taskId);
+    lines.push(`Anton is busy right now on the call's request "${working.request}"${where ? ` in "${where.title || 'Untitled'}" (id ${where.id})` : ''}. New work waits for it.`);
+  }
   lines.push(`Projects: ${(projects || []).map((p) => `"${p.name}"`).join(', ') || 'none'}.`);
   const recent = (tasks || []).slice(0, maxTasks);
   if (recent.length) {

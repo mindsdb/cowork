@@ -25,7 +25,8 @@ describe('the voice call card', () => {
     expect(screen.queryByText('Book a hotel')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Mute' }));
     expect(c.toggleMic).toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'End call' })).toHaveClass('send-btn');
+    expect(screen.getByRole('button', { name: 'End call' })).toHaveClass('voice-call__x');
+    expect(screen.queryByRole('button', { name: 'Hang up' })).not.toBeInTheDocument();
   });
 
   it('says why a call ended and closes', async () => {

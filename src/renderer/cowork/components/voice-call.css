@@ -19,10 +19,32 @@
   flex-direction: column;
   gap: 8px;
 }
+.voice-call { --voice-call-x: 22px; }
+/* The X in a circle on the card's corner: ends the call. */
+.voice-call__x {
+  position: absolute;
+  top: calc(var(--voice-call-x) / -2 + 2px);
+  right: calc(var(--voice-call-x) / -2 + 2px);
+  z-index: 1;
+  width: var(--voice-call-x);
+  height: var(--voice-call-x);
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink-3);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.08);
+  cursor: pointer;
+  transition: background var(--dur-hover, 120ms), color var(--dur-hover, 120ms), border-color var(--dur-hover, 120ms);
+}
+.voice-call__x:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
+body[data-skin="8bit"] .voice-call__x { border: 2px solid var(--ink); box-shadow: none; }
 .voice-call--docked {
-  position: static;
+  position: relative;
+  inset: auto;
   width: auto;
-  margin: 0 10px 8px;
+  margin: 6px 14px 8px 10px;
   border-radius: var(--r-lg, 12px);
   box-shadow: none;
 }
@@ -63,4 +85,5 @@ body[data-skin="8bit"] .voice-call__text-btn { border-radius: 0; border-width: 2
     width: auto;
     border-radius: 0 0 16px 16px;
   }
+  .voice-call__x { top: 8px; right: 8px; }
 }

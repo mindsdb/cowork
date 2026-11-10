@@ -230,6 +230,15 @@ export function useVoiceCall({ onAsk, context }) {
     }
   }, [cleanup, send]);
 
+  // Something to tell the person unasked (queued work finished): GPT-Live
+  // says it in its own words when it can.
+  const announce = useCallback((text) => send({
+    type: 'session.instructions.append',
+    event_id: eventId('announce'),
+    delegation_id: null,
+    content: `Tell the user now, in one or two short sentences: ${withoutPhoneNumbers(String(text)).slice(0, MAX_SPOKEN_CHARS)}`,
+  }), [send]);
+
   const toggleMic = useCallback(() => {
     const tracks = call.current?.microphone?.getAudioTracks() || [];
     if (!tracks.length) return;
@@ -247,7 +256,7 @@ export function useVoiceCall({ onAsk, context }) {
 
   return {
     phase, notice, captions, agentSpeaking, working, micOn, meters,
-    start, end, toggleMic,
+    start, end, toggleMic, announce,
     dismiss: () => { setPhase('idle'); setNotice(''); },
   };
 }

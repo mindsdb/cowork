@@ -2678,6 +2678,16 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   transition: background-color var(--dur-hover) ease;
 }
 .mshell__theme-toggle:active { background: var(--surface-2); }
+/* The voice call button beside it: accent while a call runs. */
+.mshell__call.is-live { color: var(--accent); }
+.mshell__call[aria-disabled="true"] { opacity: 0.45; }
+
+/* The drawer's newest chats, under its Chat row, and See all. */
+.mshell-recent-chats { padding: 0 0 6px; }
+.mshell-recent-chats__more {
+  display: block; width: 100%; padding: 8px 16px 10px; border: 0; background: transparent; cursor: pointer;
+  text-align: left; font: inherit; font-size: 13px; color: var(--accent); -webkit-tap-highlight-color: transparent;
+}
 
 /* Hamburger button — three bars that animate into an X when open. */
 .mshell__hamburger {

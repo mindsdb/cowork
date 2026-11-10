@@ -85,6 +85,8 @@ describe('the voice operator', () => {
     ];
     const screen = describeScreen({ route: 'task', currentTask: tasks[0], projects: [{ name: 'general' }, { name: 'Sales' }], tasks, callTaskId: 't1' });
     expect(screen).toContain('The task this call last gave Anton work in: "Q3 sales" (id t1), running now.');
+    expect(describeScreen({ route: 'home', projects: [], tasks, working: { request: 'Research Q3', taskId: 't1' } }))
+      .toContain('Anton is busy right now on the call\'s request "Research Q3" in "Q3 sales" (id t1). New work waits for it.');
     expect(screen).toContain('the task "Q3 sales" (id t1) in project "Sales"');
     expect(screen).toContain('Projects: "general", "Sales".');
     expect(screen).toContain('- id t1: "Q3 sales" in "Sales", running now');

@@ -687,6 +687,7 @@ function AppCore() {
   // browser. Its history lives for one call.
   const operateFromCallRef = useRef(null);
   const callScreenRef = useRef({});
+  const callWorkRef = useRef(new Map());
   const voiceHistoryRef = useRef([]);
   const voiceCall = useVoiceCall({
     onAsk: (request) => operateFromCallRef.current(request),
@@ -4598,15 +4599,59 @@ function AppCore() {
     const wanted = String(name || '').trim().toLowerCase();
     return (callScreenRef.current.projects || []).find((p) => p.name.toLowerCase() === wanted) || null;
   };
+  // Work the call gave Anton that is still running: one at a time, so two
+  // requests never run side by side and two answers never talk over each
+  // other. A request while one runs is queued behind it or, when it should
+  // replace it, the person is asked first (the operator decides, from
+  // ask_anton's refusal).
+  const callBusy = () => [...callWorkRef.current.values()][0] || null;
   const callActions = {
     ask_anton: async ({ request, task_id: taskId, project }) => {
+      const busy = callBusy();
+      if (busy) {
+        const where = tasksRef.current.find((t) => t.id === busy.taskId)?.title;
+        return `Not started: ${agentLabel} is still working on "${busy.request}"${where ? ` in "${where}"` : ''}. `
+          + 'Tell the user that, then either queue this with queue_for_anton, or ask whether to stop that work '
+          + 'and do this now (stop_task, then ask_anton).';
+      }
       const inProject = project ? callProject(project) : null;
       if (project && !inProject) throw new Error(`There is no project called "${project}".`);
       const existing = taskId && taskId !== 'new' ? callTask(taskId) : null;
       if (existing && !(callScreenRef.current.route === 'task' && callScreenRef.current.currentTask?.id === existing.id)) {
         selectTask(existing.id);
       }
-      return askFromCallRef.current(String(request || ''), { taskId: existing?.id, newTask: !existing, project: inProject });
+      const work = { request: String(request || ''), taskId: existing?.id || null };
+      const key = Symbol('call work');
+      callWorkRef.current.set(key, work);
+      try {
+        const answer = askFromCallRef.current(work.request, { taskId: existing?.id, newTask: !existing, project: inProject });
+        work.taskId = existing?.id || facetimeTaskIdRef.current;
+        work.done = answer.catch(() => {});
+        return await answer;
+      } finally {
+        callWorkRef.current.delete(key);
+      }
+    },
+    queue_for_anton: async ({ request, task_id: taskId }) => {
+      const busy = callBusy();
+      const task = taskId && taskId !== 'new' ? callTask(taskId) : (busy?.taskId && callTask(busy.taskId));
+      if (!task) throw new Error('There is no task to queue it in.');
+      const text = String(request || '');
+      // A send into a busy task waits its turn there (handleSendInTask's queue).
+      const sent = await handleSendInTask(text, [], { targetTask: task });
+      if (sent === false) throw new Error(`${agentLabel} couldn't take the request.`);
+      // When the work ahead ends, the next turn here is this one: say its gist then.
+      void (async () => {
+        await busy?.done;
+        const { content, error } = await waitForTurnEnd(task.id).promise;
+        // Nothing goes out once the call has ended (announce sends on its open channel only).
+        voiceCall.announce(error
+          ? `${agentLabel} couldn't finish the queued request "${text}".`
+          : `${agentLabel} finished the queued request "${text}": ${String(content || '').slice(0, 1200)}`);
+      })();
+      return busy
+        ? `Queued in "${task.title}": ${agentLabel} does it right after "${busy.request}". You'll hear when it's done.`
+        : `Sent to "${task.title}".`;
     },
     create_project: async ({ name }) => {
       const known = callProject(name);
@@ -4648,6 +4693,10 @@ function AppCore() {
       const task = callTask(taskId);
       if (!isRunning(task)) return `"${task.title}" isn't running.`;
       await handleStopStream({ taskId: task.id });
+      // The call's own work there ends with it: wait for that, so a request
+      // that follows the stop isn't refused as running alongside it.
+      const stopping = [...callWorkRef.current.values()].filter((w) => w.taskId === task.id).map((w) => w.done);
+      await Promise.race([Promise.all(stopping), new Promise((r) => { setTimeout(r, 4000); })]);
       return `Stopped "${task.title}".`;
     },
     show_browser: ({ task_id: taskId }) => {
@@ -4662,7 +4711,9 @@ function AppCore() {
   operateFromCallRef.current = (request) => runOperator({
     request,
     history: voiceHistoryRef.current,
-    snapshot: () => describeScreen({ ...callScreenRef.current, tasks: tasksRef.current, callTaskId: facetimeTaskIdRef.current }),
+    snapshot: () => describeScreen({
+      ...callScreenRef.current, tasks: tasksRef.current, callTaskId: facetimeTaskIdRef.current, working: callBusy(),
+    }),
     actions: callActions,
   });
   // From a composer's + menu: in the task on screen, or a new one from the
@@ -4673,6 +4724,7 @@ function AppCore() {
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
       voiceHistoryRef.current = [];
+      callWorkRef.current.clear();
       void voiceCall.start();
     }
     : null;
@@ -6089,6 +6141,7 @@ function AppCore() {
         setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
       }
     },
+    callShortcut: voiceCallShortcut,
   };
 
   // Desktop corner button. Each Appearance switch gates only its own control
