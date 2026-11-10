@@ -158,6 +158,18 @@ describe('SharePointImportModal', () => {
     window.removeEventListener(PROJECT_FILES_CHANGED, changed);
   });
 
+  it('shows the project display name but imports into the slug', async () => {
+    const user = userEvent.setup();
+    mocks.importSharePointFiles.mockResolvedValue({ imported: [{ path: 'notes.docx', size: 2048 }], skipped: [] });
+    renderModal({ projectName: 'untitled-project', projectDisplayName: 'Мой проект' });
+
+    expect(screen.getByText('Copies land at the top of Мой проект.')).toBeInTheDocument();
+    await user.click(await screen.findByRole('checkbox', { name: 'Pick notes.docx' }));
+    await user.click(screen.getByRole('button', { name: 'Import into Мой проект' }));
+
+    await waitFor(() => expect(mocks.importSharePointFiles).toHaveBeenCalledWith('untitled-project', expect.anything()));
+  });
+
   it('cannot be closed while the import runs', async () => {
     const user = userEvent.setup();
     const pending = deferred();
