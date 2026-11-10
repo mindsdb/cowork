@@ -293,24 +293,28 @@ describe('project delete authorization failure', () => {
 });
 
 describe('project delete confirmation title', () => {
-  it('names the project by its display name, not the ASCII slug', async () => {
+  // The slug keeps only ASCII words, and a name with none becomes untitled-project.
+  it.each([
+    { slug: 'QA1107', displayName: 'Проект QA1107 тест' },
+    { slug: 'untitled-project', displayName: 'Мой проект' },
+  ])('names the project $displayName by its display name, not the slug $slug', async ({ slug, displayName }) => {
     const user = userEvent.setup();
     const cyrillicProject = {
       ...project,
       id: 'project-4',
-      name: 'QA1107',
-      display_name: 'Проект QA1107 тест',
-      path: '/projects/QA1107',
+      name: slug,
+      display_name: displayName,
+      path: `/projects/${slug}`,
     };
     spies.fetchProjects.mockResolvedValue([{ ...cyrillicProject }]);
     spies.fetchSessions.mockResolvedValue([]);
     render(<App />);
 
     await user.click(await screen.findByRole('button', { name: 'Projects' }));
-    await user.click(await screen.findByRole('button', { name: `Request deletion for ${cyrillicProject.name}` }));
+    await user.click(await screen.findByRole('button', { name: `Request deletion for ${slug}` }));
 
-    expect(await screen.findByText('Delete project "Проект QA1107 тест"?')).toBeInTheDocument();
-    expect(screen.queryByText('Delete project "QA1107"?')).not.toBeInTheDocument();
+    expect(await screen.findByText(`Delete project "${displayName}"?`)).toBeInTheDocument();
+    expect(screen.queryByText(`Delete project "${slug}"?`)).not.toBeInTheDocument();
   });
 
   it('falls back to the slug for projects created before display names existed', async () => {
