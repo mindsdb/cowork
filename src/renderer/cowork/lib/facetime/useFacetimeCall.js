@@ -15,7 +15,7 @@
 // - Live captions of both sides, mute, camera and hang-up.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createNuanceConversation, MediaAccessError } from '@nuancelabs/js-sdk';
+import { ActiveSessionError, createNuanceConversation, MediaAccessError } from '@nuancelabs/js-sdk';
 import { mintFacetimeToken } from '../../api';
 import { forTheAvatar, withoutPhoneNumbers } from './forTheAvatar';
 
@@ -36,6 +36,8 @@ function tail(text) {
 
 /** Why a call couldn't start, in words for the person. */
 export function startFailure(err) {
+  // One call at a time on the plan: an earlier one still holds the place.
+  if (err instanceof ActiveSessionError) return 'Another video call is still running. Try again in a minute.';
   if (err instanceof MediaAccessError) {
     return err.reason === 'permission-denied'
       ? `Allow the ${err.device === 'camera' ? 'camera' : 'microphone'} in your browser to start a video call.`

@@ -14,7 +14,9 @@ vi.mock('@nuancelabs/js-sdk', () => {
       this.device = device;
     }
   }
+  class ActiveSessionError extends Error {}
   return {
+    ActiveSessionError,
     MediaAccessError,
     createNuanceConversation: vi.fn((options) => {
       const handlers = { change: [], event: [], tool: [] };
@@ -42,7 +44,8 @@ vi.mock('@nuancelabs/js-sdk', () => {
 
 vi.mock('../../api', () => ({ mintFacetimeToken: vi.fn(async () => 'st_test') }));
 
-import { useFacetimeCall } from './useFacetimeCall';
+import { ActiveSessionError } from '@nuancelabs/js-sdk';
+import { startFailure, useFacetimeCall } from './useFacetimeCall';
 
 const change = (event) => fake.conversation.handlers.change.forEach((h) => h(event));
 const live = (event) => fake.conversation.handlers.event.forEach((h) => h(event));
@@ -117,5 +120,13 @@ describe('a video call', () => {
     await act(() => result.current.end());
     expect(conversation.disconnect).toHaveBeenCalled();
     expect(result.current.phase).toBe('idle');
+  });
+});
+
+describe('why a call could not start', () => {
+  it('says another call is running in plain words', () => {
+    expect(startFailure(new ActiveSessionError('an active conversation session already exists'))).toBe(
+      'Another video call is still running. Try again in a minute.',
+    );
   });
 });
