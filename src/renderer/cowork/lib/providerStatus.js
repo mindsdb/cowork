@@ -8,6 +8,7 @@
  * @typedef {'wallet_empty'
  *   | 'included_allowance_exhausted'
  *   | 'free_air_daily_spend_fuse_exceeded'
+ *   | 'budget_exceeded'
  *   | 'rate_limited'
  *   | 'policy_unavailable'} ProbeDenialCode
  * @typedef {{ code: ProbeDenialCode, resetAt: string | null }} ProbeDenialReason
@@ -25,7 +26,7 @@
  *   classified and found no MindsHub refusal for. A type with no entry has no
  *   classification: its last result came from a sidecar that predates the
  *   map, or it has no result yet.
- * @typedef {'no_credits' | 'allowance_used' | 'paused' | 'slow_down' | 'billing_unavailable'} ProbeNoticeKind
+ * @typedef {'no_credits' | 'allowance_used' | 'paused' | 'budget_reached' | 'slow_down' | 'billing_unavailable'} ProbeNoticeKind
  * @typedef {{ kind: ProbeNoticeKind, resetAt: string | null }} ProbeNotice
  */
 
@@ -87,6 +88,7 @@ const PROBE_NOTICE_KIND = {
   wallet_empty: 'no_credits',
   included_allowance_exhausted: 'allowance_used',
   free_air_daily_spend_fuse_exceeded: 'paused',
+  budget_exceeded: 'budget_reached',
   rate_limited: 'slow_down',
   policy_unavailable: 'billing_unavailable',
 };
@@ -136,6 +138,7 @@ const PROBE_REASON_ROW_COPY = {
   wallet_empty: 'No credits available. Add funds to use MindsHub.',
   included_allowance_exhausted: 'No free MindsHub Air tokens available, and the balance is empty.',
   free_air_daily_spend_fuse_exceeded: 'Free MindsHub Air is paused right now.',
+  budget_exceeded: "Your organization's budget is used up.",
   rate_limited: PROBE_RATE_LIMITED_SENTENCE,
   policy_unavailable: PROBE_POLICY_UNAVAILABLE_SENTENCE,
 };
