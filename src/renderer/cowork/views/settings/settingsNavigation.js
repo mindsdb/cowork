@@ -23,7 +23,7 @@ const NAV_ITEMS = [
 const WEB_NAV_IDS = new Set(['agent', 'appearance', 'branding', 'channels', 'usage']);
 
 /**
- * `branding` is the org's look (ENG-4020): offered only to an org admin (the
+ * `branding` is the org's look: offered only to an org admin (the
  * org-branding read said `canEdit`), on web or on desktop signed in to the
  * org. Members never see it; their own look is under Appearance.
  */
@@ -33,7 +33,7 @@ export function navItemsForHost(isWeb, codeModeAvailable, codeModeEnabled = fals
       && (PLATFORM_UI || item.id !== 'usage')
       && (branding || item.id !== 'branding'));
   }
-  // Desktop signed in to an org: Branding too, for its admins (ENG-4020).
+  // Desktop signed in to an org: Branding too, for its admins.
   const desktop = NAV_ITEMS.filter((item) => branding || item.id !== 'branding');
   if (!codeModeAvailable) {
     return desktop.filter((item) => item.id !== 'codingAgent' && item.id !== 'computers');

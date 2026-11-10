@@ -10,7 +10,7 @@
  * "Custom" lives in Settings → Appearance (it needs the token recipe editor),
  * so it's intentionally not offered here — this is the quick theme + 8-bit
  * switch. Under a deployment brand's style lock it offers the theme alone,
- * and whatever an org has locked for its members (ENG-4020, `orgLocks`) is
+ * and whatever an org has locked for its members (`orgLocks`) is
  * shown as set by the organization instead of offered.
  */
 

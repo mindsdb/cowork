@@ -11,7 +11,9 @@ vi.mock('../api', () => ({
 
 let authListener = null;
 const brandImages = vi.fn();
+const token = { value: null };
 vi.mock('../../platform/host', () => ({
+  getAccessToken: async () => token.value,
   onMindsHubAuthChanged: (cb) => { authListener = cb; return () => { authListener = null; }; },
   mindshubBrandImages: (...args) => brandImages(...args),
   mindshubOrgIconUris: (...args) => iconUris(...args),
@@ -21,8 +23,13 @@ const iconUris = vi.fn(async () => ({}));
 import { useOrgBranding } from './useOrgBranding';
 import { parseOrgBranding } from '../../lib/orgBranding';
 import { getOrgIcons, setOrgIcons } from '../lib/orgIcons';
-import { cacheOrgBranding, __resetOrgBrandingCacheForTests } from '../lib/orgBrandingCache';
+import { cacheOrgBranding, loadCachedOrgBranding, __resetOrgBrandingCacheForTests } from '../lib/orgBrandingCache';
 import { notifyOrganizationChanged } from '../lib/organizationChanges';
+
+function jwt(sub, orgId, extra = {}) {
+  const enc = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  return `${enc({ alg: 'none' })}.${enc({ sub, activate_organization: { id: orgId, name: orgId }, ...extra })}.sig`;
+}
 
 const LOGO = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/logo?v=1`;
 const answer = (greeting) => ({
@@ -45,6 +52,7 @@ beforeEach(() => {
   iconUris.mockResolvedValue({});
   setOrgIcons({});
   authListener = null;
+  token.value = jwt('user-1', 'org-acme');
 });
 
 describe('useOrgBranding', () => {
@@ -74,7 +82,7 @@ describe('useOrgBranding', () => {
     expect(result.current.branding.appearance.greeting).toBe('Cached');
   });
 
-  it('reads again when Settings opens, an org switch lands, or a sign-in lands, and never on a timer', async () => {
+  it('reads again when Settings opens, an org switch lands, or the account or org changes, and never on a timer', async () => {
     vi.useFakeTimers();
     try {
       fetchOrgBranding.mockResolvedValue(answer('Hi'));
@@ -98,13 +106,51 @@ describe('useOrgBranding', () => {
       await act(async () => { notifyOrganizationChanged('user-1'); });
       expect(fetchOrgBranding).toHaveBeenCalledTimes(3);
 
-      await act(async () => { authListener?.({ authenticated: true }); });
+      // A silent token refresh: same account and org, no read.
+      token.value = jwt('user-1', 'org-acme', { iat: 2 });
+      await act(async () => { await authListener?.({ authenticated: true }); });
+      expect(fetchOrgBranding).toHaveBeenCalledTimes(3);
+      // Signed out, then in as someone else: a read each.
+      token.value = null;
+      await act(async () => { await authListener?.({ authenticated: false }); });
       expect(fetchOrgBranding).toHaveBeenCalledTimes(4);
-      await act(async () => { authListener?.({ authenticated: false }); });
+      token.value = jwt('user-2', 'org-globex');
+      await act(async () => { await authListener?.({ authenticated: true }); });
       expect(fetchOrgBranding).toHaveBeenCalledTimes(5);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("drops the org being left at once on an org switch, and never shows it in the new org", async () => {
+    cacheOrgBranding(parseOrgBranding(answer('Org A')));
+    fetchOrgBranding.mockResolvedValueOnce(answer('Org A'));
+    const { result } = renderHook(() => useOrgBranding({ enabled: true, settingsOpen: false }));
+    await waitFor(() => expect(result.current.branding?.appearance.greeting).toBe('Org A'));
+    fetchOrgBranding.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { notifyOrganizationChanged('user-1'); });
+    expect(result.current.branding).toBeNull();
+    expect(loadCachedOrgBranding()).toBeNull();
+  });
+
+  it("puts the stock app icon back at once on desktop when the org changes", async () => {
+    fetchOrgBranding.mockResolvedValueOnce({ ...answer('Org A'), iconUrl: null });
+    brandImages.mockResolvedValue({ iconUrl: null, logoUrl: null, logoDarkUrl: null });
+    renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
+    await waitFor(() => expect(brandImages).toHaveBeenCalledTimes(1));
+    fetchOrgBranding.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { notifyOrganizationChanged('user-1'); });
+    expect(brandImages).toHaveBeenLastCalledWith(null);
+  });
+
+  it("keeps the last good branding, uncached, when the server couldn't reach auth", async () => {
+    fetchOrgBranding.mockResolvedValueOnce(answer('Branded'));
+    const { result } = renderHook(({ open }) => useOrgBranding({ enabled: true, settingsOpen: open }), { initialProps: { open: false } });
+    await waitFor(() => expect(result.current.branding?.appearance.greeting).toBe('Branded'));
+    fetchOrgBranding.mockResolvedValueOnce({ enabled: true, reachable: false, sidebarTitle: 'MindsHub', canEdit: false, appearance: {} });
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.branding.appearance.greeting).toBe('Branded');
+    expect(loadCachedOrgBranding().appearance.greeting).toBe('Branded');
   });
 
   it("applies and caches an admin's saved answer without another read", async () => {

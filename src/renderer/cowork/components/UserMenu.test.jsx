@@ -286,7 +286,7 @@ describe('UserMenu — organization picker', () => {
     expect(footer).not.toContain("hazem@example.com's organization");
   });
 
-  it("shows each organization's own icon, else its initial (ENG-4020)", () => {
+  it("shows each organization's own icon, else its initial", () => {
     const icon = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/icon?v=1`;
     const globex = { id: 'org-globex', name: 'globex.example', displayName: 'Globex', isPersonal: false, iconUrl: 'https://images.globex.com/icon.png' };
     withOrgs([{ ...ACME, iconUrl: icon }, globex], { ...ACME, iconUrl: icon });

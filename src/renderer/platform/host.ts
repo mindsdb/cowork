@@ -1674,7 +1674,7 @@ export async function mindshubListOrgs(): Promise<MindsOrgList> {
   return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
 }
 
-/** The org's images as data: URIs (ENG-4020), each null when unset or not loadable. */
+/** The org's images as data: URIs, each null when unset or not loadable. */
 export interface DesktopBrandImages {
   iconUrl: string | null;
   logoUrl: string | null;

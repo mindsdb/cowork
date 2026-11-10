@@ -1,5 +1,5 @@
 /**
- * The org's branding (ENG-4020), the first part of Settings → Appearance →
+ * The org's branding, the first part of Settings → Appearance →
  * Branding in hosted MindsHub: the sidebar title, the logo and icon (set in
  * the console), the org's style (the skins with "Design your own", light or
  * dark, the greeting), whether members may choose their own style, and the
@@ -66,6 +66,29 @@ export function appearanceToSave(draft) {
   });
 }
 
+/**
+ * Only the fields the admin changed against the look the form was loaded
+ * with, so the save is a partial update: another admin's change to a field
+ * this admin didn't touch stays.
+ */
+export function changedFields(draft, loaded) {
+  const next = appearanceToSave(draft);
+  const before = appearanceToSave(loaded);
+  return Object.fromEntries(Object.entries(next).filter(([key, value]) => before[key] !== value));
+}
+
+/**
+ * The message for a refused save: the server's own words (it says whether
+ * the admin lacks the permission, has to sign in to MindsHub again, or sent
+ * a value auth refused), else a plain fallback.
+ */
+export function saveErrorMessage(err) {
+  const detail = typeof err?.message === 'string' && err.message && !/^API \//.test(err.message) ? err.message : null;
+  if ((err?.status === 403 || err?.status === 422) && detail) return detail;
+  if (err?.status === 403) return 'Only an organization admin can change the branding.';
+  return "Couldn't save the branding. Try again.";
+}
+
 /** Same look? Compared as what would be saved, so a no-op edit isn't a change. */
 function sameLook(a, b) {
   return JSON.stringify(appearanceToSave(a)) === JSON.stringify(appearanceToSave(b));
@@ -117,18 +140,13 @@ export default function OrgBrandingFields({ branding, onSaved, onDraftChange }) 
     }
     setStatus({ state: 'saving', message: null });
     try {
-      const response = await updateOrgAppearance(appearanceToSave(draft));
+      const response = await updateOrgAppearance(changedFields(draft, draftFrom(saved)));
       const next = onSaved?.(response);
       if (next?.appearance) setDraft(draftFrom(next.appearance));
       setEditing(false);
       setStatus({ state: 'saved', message: null });
     } catch (err) {
-      setStatus({
-        state: 'error',
-        message: err?.status === 403
-          ? 'Only an organization admin can change the branding.'
-          : "Couldn't save the branding. Try again.",
-      });
+      setStatus({ state: 'error', message: saveErrorMessage(err) });
     }
   };
 

@@ -1,4 +1,4 @@
-// Company branding (ENG-4020): the org's look and images, read from
+// Company branding: the org's look and images, read from
 // cowork-server's GET /api/v1/org-branding, and the ONE place that decides
 // what wins when the deployment brand, the org and the member each have a say.
 //
@@ -257,7 +257,7 @@ export function withBrandingDraft(
 const BRAND_DATA_URI = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
 /**
- * Desktop (ENG-4020): the org branding with its image URLs swapped for the
+ * Desktop: the org branding with its image URLs swapped for the
  * data: URIs main returned for them (the desktop page loads no remote
  * images). Only PNG, JPEG or WebP data URIs are kept; anything else, or no
  * answer, leaves that image unset.

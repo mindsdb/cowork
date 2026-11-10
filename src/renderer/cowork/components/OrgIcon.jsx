@@ -1,5 +1,5 @@
 /**
- * An organization's icon (ENG-4020) in the org switcher and account menu:
+ * An organization's icon in the org switcher and account menu:
  * from /hub/org-icons, else the Keycloak org attribute `brand_icon_url`, when
  * it is an https URL on the auth host (or, on desktop, main's data URI);
  * else, and when the image fails to load, a tile with the org's first letter.

@@ -92,7 +92,7 @@ export function applyFavicon(dataUri: string | null | undefined): void {
 }
 
 /**
- * Use the org's icon (ENG-4020) as the tab icon, or with null put the page's
+ * Use the org's icon as the tab icon, or with null put the page's
  * own icon back. Only an https URL on the auth host is used
  * (orgBranding.ts trustedBrandImageUrl); anything else restores the page's own.
  */

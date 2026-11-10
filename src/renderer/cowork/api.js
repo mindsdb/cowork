@@ -1714,7 +1714,7 @@ export async function fetchHubUsage() {
 }
 
 /**
- * The org's branding (ENG-4020): its logo and icon URLs, its look, and whether
+ * The org's branding: its logo and icon URLs, its look, and whether
  * the caller may edit it. The hosted server serves it in org mode; the
  * desktop's local server passes it through to auth with the MindsHub
  * credential, which rides in the same header as the hub calls. Either answers
@@ -1728,7 +1728,7 @@ export async function fetchOrgBranding() {
 }
 
 /**
- * Each organization's icon for the org switcher (ENG-4020): `{ reachable,
+ * Each organization's icon for the org switcher: `{ reachable,
  * orgs: [{ id, iconUrl }] }`, read by the server from auth's org list with
  * the caller's credential. Null when the server has no such route or the read
  * fails, so the menu falls back to the Keycloak attribute and initials.

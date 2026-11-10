@@ -22,7 +22,7 @@ const res = (status, body = {}) => ({
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('org branding on the desktop local server (ENG-4020)', () => {
+describe('org branding on the desktop local server', () => {
   it('reads it with the MindsHub credential, outside org mode', async () => {
     const fetchMock = vi.fn(async () => res(200, { enabled: true }));
     vi.stubGlobal('fetch', fetchMock);

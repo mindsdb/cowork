@@ -443,7 +443,7 @@ interface OrgRef {
    *  from the human display name — used to spot the user's personal org. */
   slug?: string;
   source?: string;
-  /** The org's icon (ENG-4020), from the org attribute `brand_icon_url`. */
+  /** The org's icon, from the org attribute `brand_icon_url`. */
   iconUrl?: string;
 }
 

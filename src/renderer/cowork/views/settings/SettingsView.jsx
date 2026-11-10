@@ -60,7 +60,7 @@ const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'i
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
-// Under an org's locked look (ENG-4020), what a member's own control says.
+// Under an org's locked look, what a member's own control says.
 const SET_BY_ORG = 'Set by your organization.';
 const NO_ORG_LOCKS = { style: false, theme: false, greeting: false, logo: false, favicon: false };
 
@@ -785,7 +785,7 @@ export default function SettingsView({
   onDownloadShellAutoUpdate,
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
-  // Company branding (ENG-4020): the org-branding read (lib/orgBranding.ts),
+  // Company branding: the org-branding read (lib/orgBranding.ts),
   // what to call with an admin's saved answer, and the resolved look, whose
   // `lockedByOrg` turns off the member's own controls the org has set.
   orgBranding = null,
@@ -2253,7 +2253,7 @@ export default function SettingsView({
 
   const renderComputersSection = () => <ComputersSettingsSection />;
 
-  // Settings → Appearance (ENG-4020): Your style, then Display.
+  // Settings → Appearance: Your style, then Display.
   //   Your style — the person's own style, theme and greeting, over the org's
   //     look. In a hosted org it shows only when they may choose (member
   //     choice on, or they are an admin). Outside hosted MindsHub it also
@@ -2649,7 +2649,7 @@ export default function SettingsView({
     </SettingsSectionPanel>
   );
 
-  // Settings → Branding (ENG-4020): the org's look, for org admins only.
+  // Settings → Branding: the org's look, for org admins only.
   const renderBrandingSection = () => (canEditBranding ? (
     <SettingsSectionPanel>
       <SettingsGroup

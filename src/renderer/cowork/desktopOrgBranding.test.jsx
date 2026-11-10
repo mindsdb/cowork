@@ -1,5 +1,5 @@
 /*
- * Desktop org mode end to end in the renderer (ENG-4020): the local server's
+ * Desktop org mode end to end in the renderer: the local server's
  * org-branding answer, main's data-URI images, the resolver, Settings and the
  * window title, wired as App wires them.
  */

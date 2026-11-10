@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
-import { ORG_BRAND_IMAGE_ORIGINS, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
+import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 
 const ARTIFACT_CDN = 'https://cdn.jsdelivr.net';
 
@@ -116,12 +116,12 @@ describe('shell CSP', () => {
   });
 
   /*
-   * Org logos and icons (ENG-4020) come from auth, so the hosted page's
+   * Org logos and icons come from auth, so the hosted page's
    * img-src names exactly the auth hosts on top of the template's, and the
    * template (self-hosted and white-label) names none of them.
    */
   it('lets the platform-UI web page load org brand images from the auth hosts only', () => {
-    expect(directive(platformWebPage, 'img-src')).toEqual([...directive(webTemplate, 'img-src'), ...ORG_BRAND_IMAGE_ORIGINS]);
+    expect(directive(platformWebPage, 'img-src')).toEqual([...directive(webTemplate, 'img-src'), ...orgBrandImageOrigins(undefined)]);
     expect(ourDomains(directive(webTemplate, 'img-src'))).toEqual([]);
   });
 

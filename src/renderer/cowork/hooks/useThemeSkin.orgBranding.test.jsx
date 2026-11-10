@@ -1,5 +1,5 @@
 /*
- * useThemeSkin with an org's branding (ENG-4020). The order itself is tested
+ * useThemeSkin with an org's branding. The order itself is tested
  * in lib/orgBranding.test.ts; this checks the hook applies what it resolves
  * and keeps the member's own choices apart from it.
  */

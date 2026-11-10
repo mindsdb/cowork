@@ -97,6 +97,19 @@ describe('loadBrandImage', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps one entry per org and kind, replacing it when a new upload changes the version', async () => {
+    const v2 = ICON_URL.replace('v=a1', 'v=a2');
+    const fetchImpl = fetchWith({ [ICON_URL]: PNG, [v2]: JPEG });
+    expect(await loadBrandImage(ICON_URL, cacheRoot, fetchImpl)).toMatchObject({ type: 'image/png' });
+    expect(await loadBrandImage(v2, cacheRoot, fetchImpl)).toMatchObject({ type: 'image/jpeg' });
+    expect(fs.readdirSync(cacheRoot).filter((f) => f.endsWith('.img'))).toHaveLength(1);
+    // The new version is what is cached now; the logo is its own entry.
+    expect(await loadBrandImage(v2, cacheRoot, fetchImpl)).toMatchObject({ type: 'image/jpeg' });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await loadBrandImage(LOGO_URL, cacheRoot, fetchWith({ [LOGO_URL]: PNG }));
+    expect(fs.readdirSync(cacheRoot).filter((f) => f.endsWith('.img'))).toHaveLength(2);
+  });
+
   it('refuses SVG, oversized and failed downloads', async () => {
     expect(await loadBrandImage(ICON_URL, cacheRoot, fetchWith({ [ICON_URL]: SVG }))).toBeNull();
     expect(await loadBrandImage(ICON_URL, cacheRoot, fetchWith({ [ICON_URL]: Buffer.concat([PNG, Buffer.alloc(1_000_001)]) }))).toBeNull();

@@ -1,4 +1,4 @@
-// Display settings under an org's locked look (ENG-4020).
+// Display settings under an org's locked look.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import ThemeModal from './ThemeModal';

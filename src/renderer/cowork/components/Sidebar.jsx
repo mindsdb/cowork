@@ -292,10 +292,10 @@ export default function Sidebar({
   // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,
   navLogo = null,
-  // The org's logo (ENG-4020) is a wordmark, not a square icon, so it gets a
+  // The org's logo is a wordmark, not a square icon, so it gets a
   // wider box than a logo uploaded in Settings.
   navLogoWide = false,
-  // The org chose "None (logo only)" (ENG-4020): no title at all, not even
+  // The org chose "None (logo only)": no title at all, not even
   // the product name.
   navTitleHidden = false,
   // Onboarding — "Get to know Cowork" checklist. Each step seeds a new

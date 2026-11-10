@@ -98,7 +98,7 @@ export default function MobileShell({
   onNewProject,          // () — open the "New project" modal (via projects route)
   navTitle = null,       // Settings → Appearance → Sidebar title override
   navLogo = null,        // Settings → Appearance → Sidebar logo override
-  navLogoWide = false,   // the org's wordmark logo (ENG-4020), not a square icon
+  navLogoWide = false,   // the org's wordmark logo, not a square icon
   navTitleHidden = false, // the org chose logo only: no title, not even the product name
   // Top-bar theme toggle, opposite the hamburger — the desktop
   // floating-toggle-row has no room on mobile, and the coding-mode toggle

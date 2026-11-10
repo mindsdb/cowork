@@ -371,14 +371,14 @@ describe('Sidebar — nav title/logo override', () => {
     expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
   });
 
-  it("gives the org's wordmark logo a wider box than a square icon (ENG-4020)", () => {
+  it("gives the org's wordmark logo a wider box than a square icon", () => {
     const { rerender } = render(<Sidebar {...baseProps} navLogo="https://auth.acme.com/logo.png" navLogoWide />);
     expect(document.querySelector('.anton-sidebar__logo')).toHaveClass('anton-sidebar__logo--wide');
     rerender(<Sidebar {...baseProps} navLogo="data:image/png;base64,abc123" />);
     expect(document.querySelector('.anton-sidebar__logo')).not.toHaveClass('anton-sidebar__logo--wide');
   });
 
-  it('shows the logo alone, with no product name, when the org chose None (ENG-4020)', () => {
+  it('shows the logo alone, with no product name, when the org chose None', () => {
     const { rerender } = render(<Sidebar {...baseProps} navLogo="https://auth.acme.com/logo.png" navLogoWide navTitleHidden />);
     expect(document.querySelector('.anton-sidebar__wordmark')).toBeNull();
     expect(document.querySelector('.anton-sidebar__logo')).not.toBeNull();

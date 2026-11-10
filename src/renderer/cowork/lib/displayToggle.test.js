@@ -21,7 +21,7 @@ describe('displayToggleMode', () => {
   });
 });
 
-describe('displayToggleMode under an org that turned member choice off (ENG-4020)', () => {
+describe('displayToggleMode under an org that turned member choice off', () => {
   it('hides the button when the org sets both theme and style', () => {
     expect(displayToggleMode({}, { theme: true, style: true })).toBeNull();
   });

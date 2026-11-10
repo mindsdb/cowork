@@ -211,7 +211,7 @@ export function UserMenu({ user, onOpenSettings }) {
     const label = organizationLabel(org);
     return {
       id: `organization-${org.id}`,
-      // The org's own icon (ENG-4020) where it has one, else its initial.
+      // The org's own icon where it has one, else its initial.
       icon: <OrgIcon iconUrl={iconFor(org)} label={label} />,
       label,
       // Long names truncate in the row, so hover carries the whole one.

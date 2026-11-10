@@ -14,7 +14,7 @@ export function displayToggleMode({ showThemeToggle, show8bitToggle }, orgLocks 
   const themeSwitch = showThemeToggle !== false;
   const styleSwitch = !SKIN_LOCKED && show8bitToggle !== false;
   // An org that turned member choice off and set a field takes its control
-  // away (ENG-4020); with both set there is no button.
+  // away; with both set there is no button.
   const theme = themeSwitch && !orgLocks?.theme;
   const style = styleSwitch && !orgLocks?.style;
   if (theme && style) return 'menu';

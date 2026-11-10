@@ -1,5 +1,5 @@
 /**
- * Each organization's icon for the org switcher and account menu (ENG-4020),
+ * Each organization's icon for the org switcher and account menu,
  * from GET /api/v1/hub/org-icons: `{ reachable, orgs: [{ id, iconUrl }] }`.
  *
  * A tiny module store rather than props: the read happens with the

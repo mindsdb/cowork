@@ -62,7 +62,7 @@ describe('toMindsOrg', () => {
   });
 });
 
-describe('the org icon (ENG-4020)', () => {
+describe('the org icon', () => {
   it('reads brand_icon_url from Keycloak attributes, list or string', () => {
     expect(brandIconFromAttributes({ brand_icon_url: ['https://auth.acme.com/i.png'] })).toBe('https://auth.acme.com/i.png');
     expect(brandIconFromAttributes({ brand_icon_url: ' https://auth.acme.com/i.png ' })).toBe('https://auth.acme.com/i.png');

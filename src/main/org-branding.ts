@@ -1,4 +1,4 @@
-// Company branding on desktop (ENG-4020): the org's logo and icon, down to
+// Company branding on desktop: the org's logo and icon, down to
 // the dock/taskbar icon.
 //
 // The renderer reads the org's branding from its local server's
@@ -73,13 +73,21 @@ export async function loadBrandImage(
 ): Promise<{ bytes: Buffer; type: ImageType } | null> {
   const url = trustedAuthImageUrl(value, authHost);
   if (!url) return null;
-  // The URL names the org and, with `?v=`, the image's content.
+  // One entry per org and kind: the URL's path names both, and its `?v=`
+  // names the content. A new upload replaces the entry rather than adding
+  // one, so the cache stays bounded by the orgs and kinds seen.
   const dir = cacheRoot;
-  const file = path.join(dir, `${crypto.createHash('sha256').update(url).digest('hex').slice(0, 32)}.img`);
+  const slot = new URL(url);
+  slot.search = '';
+  const key = crypto.createHash('sha256').update(slot.toString()).digest('hex').slice(0, 32);
+  const file = path.join(dir, `${key}.img`);
+  const source = path.join(dir, `${key}.src`);
   try {
-    const cached = fs.readFileSync(file);
-    const type = sniffImageType(cached);
-    if (type && cached.length <= MAX_IMAGE_BYTES) return { bytes: cached, type };
+    if (fs.readFileSync(source, 'utf8') === url) {
+      const cached = fs.readFileSync(file);
+      const type = sniffImageType(cached);
+      if (type && cached.length <= MAX_IMAGE_BYTES) return { bytes: cached, type };
+    }
   } catch { /* not cached yet */ }
   try {
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), redirect: 'error' });
@@ -91,6 +99,7 @@ export async function loadBrandImage(
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(file, bytes);
+      fs.writeFileSync(source, url);
     } catch { /* a cache that can't be written just means a fetch next time */ }
     return { bytes, type };
   } catch {

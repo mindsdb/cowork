@@ -1762,7 +1762,7 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   flex-shrink: 0;
 }
 
-/* The org's logo (ENG-4020) is a wordmark: keep the row's height, let the
+/* The org's logo is a wordmark: keep the row's height, let the
    width follow the image up to a cap so a long one can't push the title out. */
 .anton-sidebar__logo--wide {
   width: auto;

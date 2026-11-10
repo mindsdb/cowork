@@ -73,6 +73,20 @@ export function clearCachedOrgBranding() {
   }
 }
 
+/**
+ * Drop this org's cached answer without stopping later writes: an in-place
+ * org switch (desktop) must not paint the org being left on the next cold
+ * start if the new org's read fails.
+ */
+export function forgetCachedOrgBranding() {
+  try {
+    const key = storageKey();
+    if (key !== null) globalThis.localStorage?.removeItem(key);
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
 /** Restore the module-lifetime write guard between tests. */
 export function __resetOrgBrandingCacheForTests() {
   cacheWritesDisabled = false;

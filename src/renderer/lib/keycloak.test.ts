@@ -243,7 +243,7 @@ describe('getAccessToken()', () => {
 });
 
 describe('listWebOrganizations()', () => {
-  it("carries each organization's brand_icon_url attribute as its icon (ENG-4020)", async () => {
+  it("carries each organization's brand_icon_url attribute as its icon", async () => {
     const subject = 'user-1';
     signedIn({ subject, token: accessToken('org-acme'), activeOrganization: { id: 'org-acme', name: 'acme.example' } });
     stubFetchWithCapability(vi.fn(async () => jsonResponse(200, [

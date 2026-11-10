@@ -17,7 +17,7 @@ export interface MindsOrg {
   /** Their own organization, rather than a company they belong to. */
   isPersonal: boolean;
   /**
-   * The org's icon (ENG-4020), from the Keycloak org attribute
+   * The org's icon, from the Keycloak org attribute
    * `brand_icon_url`. Present only when the org has one; the renderer still
    * checks the URL's host before showing it (lib/orgBranding.ts).
    */

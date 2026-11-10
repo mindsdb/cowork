@@ -1,5 +1,4 @@
-// A link that opens Cowork's Settings on a page, scrolled to one part of it
-// (ENG-4020):
+// A link that opens Cowork's Settings on a page, scrolled to one part of it:
 //
 //   /?settings=branding                        the org's branding (admins;
 //                                              anyone else lands on Appearance)

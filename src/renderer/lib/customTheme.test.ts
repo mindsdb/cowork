@@ -89,7 +89,7 @@ describe('customTheme — light/dark background split', () => {
   });
 });
 
-describe('customTheme — one background, readable in both themes (ENG-4020)', () => {
+describe('customTheme — one background, readable in both themes', () => {
   const GRID = ['#ffffff', '#000000', '#808080', '#ff0000', '#0000ff', '#ffff00', '#f5f5f0', '#111111'];
   const ACCENTS = ['#a78bfa', '#ffff00', '#1f9cb0', '#000080'];
   const THEMES = ['light', 'dark'] as const;
@@ -166,7 +166,7 @@ describe('customTheme — one background, readable in both themes (ENG-4020)', (
     }
   });
 
-  describe('separate light and dark backgrounds (ENG-4020)', () => {
+  describe('separate light and dark backgrounds', () => {
     it('uses each theme its own color', () => {
       const recipe = { ...DEFAULT_CUSTOM_THEME, bgLight: '#fafaf0', bgDark: '#101820' };
       expect(deriveCustomColors(recipe, 'light')['--bg']).toBe('#fafaf0');

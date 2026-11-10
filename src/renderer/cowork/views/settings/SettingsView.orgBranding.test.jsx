@@ -1,4 +1,4 @@
-/* Settings → Branding (admins) and Settings → Appearance (Your style, Display), with an org's branding (ENG-4020). */
+/* Settings → Branding (admins) and Settings → Appearance (Your style, Display), with an org's branding. */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -146,9 +146,10 @@ describe('Settings → Branding, its own page for org admins', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
+    // Only what this admin changed, so another admin's change elsewhere stays.
     expect(api.updateOrgAppearance).toHaveBeenCalledWith({
-      sidebar_title_mode: 'custom', sidebar_title: 'Acme Desk', accent: null, background_light: null, background_dark: null, font: null, radius: null, skin: null,
-      default_theme: null, greeting: 'Hello Acme', members_can_choose: false, guidelines: 'Sentence case.',
+      sidebar_title_mode: 'custom', sidebar_title: 'Acme Desk',
+      greeting: 'Hello Acme', members_can_choose: false, guidelines: 'Sentence case.',
     });
     expect(await screen.findByText(/^Saved\./)).toBeInTheDocument();
   });
@@ -185,9 +186,7 @@ describe('Settings → Branding, its own page for org admins', () => {
     await user.click(within(screen.getByRole('group', { name: 'Sidebar title' })).getByRole('button', { name: 'None (logo only)' }));
     expect(screen.getByTestId('sidebar-title-preview')).toHaveTextContent('Sidebar shows: logo only');
     await user.click(screen.getByRole('button', { name: 'Save branding' }));
-    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith(expect.objectContaining({
-      sidebar_title_mode: 'none', sidebar_title: null,
-    })));
+    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith({ sidebar_title_mode: 'none' }));
   });
 
   it('makes a blank custom title a visible error, and sends nothing', async () => {
@@ -202,12 +201,18 @@ describe('Settings → Branding, its own page for org admins', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a sidebar title');
   });
 
-  it('says so when the server refuses a non-admin', async () => {
-    api.updateOrgAppearance.mockRejectedValue(Object.assign(new Error('nope'), { status: 403 }));
+  it.each([
+    ['no detail', 403, 'API /org-branding/appearance returned 403', 'Only an organization admin can change the branding.'],
+    ['auth refusing the permission', 403, 'You do not have permission to manage branding.', 'You do not have permission to manage branding.'],
+    ['the sign-in refusal', 403, 'Sign in to MindsHub to change branding.', 'Sign in to MindsHub to change branding.'],
+    ["auth's field message", 422, 'sidebar_title: too long', 'sidebar_title: too long'],
+    ['a server error', 502, 'Bad gateway', "Couldn't save the branding. Try again."],
+  ])('shows the right message for %s', async (_name, status, message, shown) => {
+    api.updateOrgAppearance.mockRejectedValue(Object.assign(new Error(message), { status }));
     renderSettings({ orgBranding: branding(), hostedMindsHub: true, section: 'branding', onOrgBrandingSaved: vi.fn() });
     fireEvent.change(screen.getByLabelText('Organization greeting'), { target: { value: 'x' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
-    expect(await screen.findByText('Only an organization admin can change the branding.')).toBeInTheDocument();
+    expect(await screen.findByText(shown)).toBeInTheDocument();
   });
 
   it('orders the page: title, logo, theme, style and its custom fields, greeting, member choice, guidelines, Save', () => {
@@ -239,9 +244,7 @@ describe('Settings → Branding, its own page for org admins', () => {
     await user.click(screen.getByRole('checkbox', { name: /Default organization dark background/ }));
     expect(screen.getByLabelText('Organization dark background color')).toHaveValue(stockBackground('dark'));
     await user.click(screen.getByRole('button', { name: 'Save branding' }));
-    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith(expect.objectContaining({
-      background_light: null, background_dark: stockBackground('dark'),
-    })));
+    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith({ background_dark: stockBackground('dark') }));
   });
 
   it("does the same for a member's own Design your own backgrounds", async () => {
@@ -269,9 +272,11 @@ describe('Settings → Branding, its own page for org admins', () => {
     // Ticking Default clears just that one.
     await user.click(screen.getByRole('checkbox', { name: /Default organization dark background/ }));
     await user.click(screen.getByRole('button', { name: 'Save branding' }));
-    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith(expect.objectContaining({
-      skin: 'custom', background_light: stockBackground('light'), background_dark: null,
-    })));
+    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalled());
+    const sent = api.updateOrgAppearance.mock.calls[0][0];
+    expect(sent).toMatchObject({ skin: 'custom', background_light: stockBackground('light') });
+    // Ticked back to Default, as it was loaded: not sent.
+    expect(sent).not.toHaveProperty('background_dark');
   });
 
   it('keeps a saved custom style with Default backgrounds as saved', () => {
@@ -295,9 +300,7 @@ describe('Settings → Branding, its own page for org admins', () => {
     await user.click(screen.getByRole('checkbox', { name: /Default organization dark background/ }));
     fireEvent.change(screen.getByLabelText('Organization dark background color'), { target: { value: '#101820' } });
     await user.click(screen.getByRole('button', { name: 'Save branding' }));
-    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith(expect.objectContaining({
-      skin: 'custom', background_light: '#fafaf0', background_dark: '#101820',
-    })));
+    await waitFor(() => expect(api.updateOrgAppearance).toHaveBeenCalledWith({ background_light: '#fafaf0', background_dark: '#101820' }));
   });
 
   it("links to the console's General settings for the logo and icon", () => {

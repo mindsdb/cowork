@@ -1804,7 +1804,7 @@ function AppCore() {
     sidebarPopout,
   } = useSidebarNav({ isNarrow });
   const orgMode = useOrgMode();
-  // The org's branding (ENG-4020): hosted org mode only. Read at startup, on
+  // The org's branding: hosted org mode only. Read at startup, on
   // an org switch or sign-in, and each time Settings opens; never polled.
   // Hosted MindsHub (any org, personal ones too): the sidebar title, logo and
   // tab icon come from the org, not from per-person settings.

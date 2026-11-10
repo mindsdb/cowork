@@ -4,7 +4,7 @@ import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../../lib
 import { resolveLook } from '../../lib/orgBranding';
 
 // Set once the member picks a style or theme themselves, so the org's default
-// look (ENG-4020) stops applying to them. Without these, the stored value
+// look stops applying to them. Without these, the stored value
 // alone can't tell a pick from the default the app wrote on first run.
 const SKIN_CHOSEN_KEY = 'anton.skinChosen';
 const THEME_CHOSEN_KEY = 'anton.themeChosen';

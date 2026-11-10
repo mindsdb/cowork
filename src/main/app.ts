@@ -1243,7 +1243,7 @@ function setupIPC() {
 
   // Move this install to another organization: switch the session, mint and
   // commit a key there, remember the pick, and retire the key left behind.
-  // The org's logo and icon (ENG-4020): the renderer sends the URLs it got
+  // The org's logo and icon: the renderer sends the URLs it got
   // from org-branding; the renderer's CSP loads no remote images, so main
   // downloads them (auth host only, cached on disk) and returns data: URIs,
   // setting the app icon on the way. null puts the stock icon back.

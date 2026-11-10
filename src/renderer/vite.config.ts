@@ -8,7 +8,7 @@ import { isSpaNavigation } from './web-spa-fallback';
 import { platformUiEnabled } from '../shared/ui-capabilities';
 import { withDeploymentBrand } from '../shared/deployment-brand';
 import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
-import { withOrgBrandImageSources } from '../shared/org-brand-image-origins';
+import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -112,12 +112,18 @@ const deploymentBrand = webEntryTransform('cowork-deployment-brand', withDeploym
 // (shared/deployment-brand.test.ts).
 const draftLinkFrameSources = webEntryTransform('cowork-draft-link-frame-sources', withDraftLinkFrameSources);
 
-// The hosted build also shows an org's logo and icon (ENG-4020), served by
+// The hosted build also shows an org's logo and icon, served by
 // auth, so its page's img-src names the auth hosts
 // (shared/org-brand-image-origins.ts). Same reasoning as the draft hosts:
 // build time, hosted only. It rewrites only img-src, which neither transform
 // above touches.
-const orgBrandImageSources = webEntryTransform('cowork-org-brand-image-sources', withOrgBrandImageSources);
+// Per environment: VITE_BRAND_ENV is the image's build-environment.
+function orgBrandImageSourcesFor(mode: string) {
+  const env = process.env.VITE_BRAND_ENV
+    || loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_BRAND_ENV;
+  const origins = orgBrandImageOrigins(env);
+  return webEntryTransform('cowork-org-brand-image-sources', (html) => withOrgBrandImageSources(html, origins));
+}
 
 // The build's platform switch: on for desktop, and for web only when
 // VITE_PLATFORM_UI is exactly "true" (shared/ui-capabilities.ts).
@@ -139,7 +145,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback, deploymentBrand] : []),
-    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSources] : []),
+    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSourcesFor(mode)] : []),
   ],
   customLogger: logger,
   define: {
