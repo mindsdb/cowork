@@ -21,7 +21,7 @@ import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { Select, Tooltip } from './ui';
 import { MarkdownContent } from './markdown/MarkdownContent';
 import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
-import { downloadBlob } from '../lib/browserDownload';
+import { downloadBlob, downloadUnavailableMessage } from '../lib/browserDownload';
 import { deleteSkillDraft } from '../api';
 import {
   canUseSharedResource,
@@ -40,7 +40,7 @@ import {
 // keep their siblings via Save (which installs the whole bundle); a client zip
 // would mean a new dependency for a rare case.
 function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
-  downloadBlob(new Blob([text ?? ''], { type: mime }), filename);
+  return downloadBlob(new Blob([text ?? ''], { type: mime }), filename);
 }
 
 const SAVED_TEXT = 'Saved to your skills';
@@ -115,8 +115,10 @@ export default function SkillCard({ skill, projectName }) {
   const handleDownload = (e) => {
     e.stopPropagation();
     const filename = `${skill.slug || skill.label || 'skill'}.md`;
-    downloadText(filename, skill.skill_md || skill.instructions || '');
-    setStatus({ kind: 'ok', text: 'Downloaded' });
+    const saved = downloadText(filename, skill.skill_md || skill.instructions || '');
+    setStatus(saved
+      ? { kind: 'ok', text: 'Downloaded' }
+      : { kind: 'error', text: downloadUnavailableMessage('Could not download this skill.') });
   };
 
   const handleSave = async (e) => {

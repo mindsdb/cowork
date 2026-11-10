@@ -121,6 +121,12 @@ remote URL that the sync hook wrote into the page. The page has no access to
 Capacitor plugins on Android and cannot load a sibling file there, so it uses
 neither.
 
+## Downloads
+
+The mobile shell cannot save files yet. Download and export actions explain
+that the user must open Cowork in a browser. Failed previews do not trigger
+automatic downloads in the shell. Browser and desktop downloads are unchanged.
+
 ## Sign-in (MindsHubAuth)
 
 Sign-in uses the same Keycloak PKCE flow as the desktop app, in a real system
@@ -148,7 +154,9 @@ Other rejection codes: `IN_PROGRESS` (a sign-in is already open),
 The scheme `ai.mindshub.cowork` is also registered in `Info.plist`
 (`CFBundleURLTypes`). On Android, if the OS kills the app while the Custom Tab
 is open, the pending call is lost; the callback then arrives as a normal app
-launch (`@capacitor/app`'s `appUrlOpen` / `getLaunchUrl`).
+launch (`@capacitor/app`'s `appUrlOpen` / `getLaunchUrl`). The web app does
+not consume these startup callbacks yet, so this does not complete sign-in:
+the user returns to the sign-in screen and must tap Sign in again.
 
 Local plugins aren't found by `cap sync`, so they are registered by hand:
 `MainViewController.capacitorDidLoad()` on iOS (the scene delegate and
@@ -353,8 +361,9 @@ Staging and production builds use the same bundle id / package, so a staging
 build in TestFlight or Play internal testing is the same app pointed at
 `cowork.staging.mindshub.ai`. Installing one replaces the other. TestFlight's
 "What to Test" note and the Play release name say which environment a build
-is. (The iOS job waits for App Store Connect to finish processing, usually
-5-15 minutes, because that note can only be set after processing.)
+is. The iOS job waits until the build appears in App Store Connect, sets the
+note, and returns without waiting for processing to finish. A successful
+upload does not mean the build is ready to install yet.
 
 ### Cutting a release
 

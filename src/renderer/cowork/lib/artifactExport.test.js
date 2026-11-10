@@ -48,6 +48,7 @@ function exportResult(fields = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.host.isMobileShell = false;
   mocks.downloadAuthenticatedResource.mockResolvedValue(true);
 });
 
@@ -100,4 +101,11 @@ describe('runArtifactExport', () => {
     expect(mocks.downloadAuthenticatedResource).not.toHaveBeenCalled();
     expect(mocks.downloadUrl).not.toHaveBeenCalled();
   });
+});
+
+it('explains unsupported mobile exports before creating a server-side file', async () => {
+  mocks.host.isMobileShell = true;
+  const notice = await runArtifactExport(DRAFT_URL, 'pdf');
+  expect(notice).toMatchObject({ tone: 'error', text: expect.stringContaining('Downloads are not available in the mobile app') });
+  expect(mocks.requestArtifactExport).not.toHaveBeenCalled();
 });

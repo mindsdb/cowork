@@ -1,3 +1,4 @@
+import { downloadUnavailableMessage } from '../../lib/browserDownload';
 // Inline preview modal for artifacts. Renders the artifact's content in a
 // sandboxed iframe (HTML / fullstack) or inline (md / csv / txt). The top
 // bar has three responsive zones:
@@ -997,7 +998,7 @@ export function ArtifactViewer({
   // authenticated draft URL on an org deployment (ENG-2044).
   const onDownload = async () => {
     if (!(await downloadArtifactFile(artifact, { actionPath }))) {
-      setErr(disabledReason || 'This artifact has no downloadable file yet.');
+      setErr(downloadUnavailableMessage(disabledReason || 'This artifact has no downloadable file yet.'));
     }
   };
 

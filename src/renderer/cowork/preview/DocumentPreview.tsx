@@ -29,6 +29,7 @@ import { PREVIEW_PARENT_LIMITS, previewLimits } from './limits';
 import { loadPreviewBundle, type LoadedPreviewBundle } from './runtime/bundle';
 import { readPreviewBytes } from './runtime/readBytes';
 import './documentPreview.css';
+import { MOBILE_DOWNLOAD_NOTE } from '../lib/browserDownload';
 
 export interface DocumentPreviewSource {
   url: string;
@@ -119,7 +120,9 @@ const TRUNCATED_PART: Readonly<Record<DocumentPreviewType, { shown(units: number
 
 export function truncationLine(type: DocumentPreviewType, units: number, downloads: boolean): string {
   const { shown, whole } = TRUNCATED_PART[type];
-  return `${shown(units)} ${downloads ? 'Download' : 'Open'} has the full ${whole}.`;
+  return host.isMobileShell
+    ? `${shown(units)} ${MOBILE_DOWNLOAD_NOTE}`
+    : `${shown(units)} ${downloads ? 'Download' : 'Open'} has the full ${whole}.`;
 }
 
 interface FailureProps {
@@ -136,7 +139,7 @@ interface FailureProps {
 function FailureNote({ failure, downloads, download, openInDefaultApp }: FailureProps) {
   const [downloaded, setDownloaded] = useState<boolean | null>(null);
   const started = useRef(false);
-  const downloadsOnFailure = downloads && host.isWeb;
+  const downloadsOnFailure = downloads && host.isWeb && !host.isMobileShell;
   const save = () => {
     setDownloaded(null);
     download().then(setDownloaded, () => setDownloaded(false));
@@ -153,7 +156,7 @@ function FailureNote({ failure, downloads, download, openInDefaultApp }: Failure
         {downloads && downloaded ? PREVIEW_FAILED_DOWNLOADED_NOTE : PREVIEW_FAILED_NOTE}
       </p>
       <p className="document-preview-note-reason">{previewFailureReason(failure)}</p>
-      {downloads
+      {host.isMobileShell ? <p>{MOBILE_DOWNLOAD_NOTE}</p> : downloads
         ? (!downloadsOnFailure || downloaded === false) && <Button onClick={save}>Download</Button>
         : <Button onClick={openInDefaultApp}>Open</Button>}
     </div>
@@ -184,9 +187,9 @@ function TruncationBar({ previewType, units, downloads, download, openInDefaultA
       {downloads && saveFailed && (
         <span className="document-preview-truncated-error" role="alert">{DOWNLOAD_FAILED_NOTE}</span>
       )}
-      <Button onClick={downloads ? save : openInDefaultApp}>
+      {!host.isMobileShell && <Button onClick={downloads ? save : openInDefaultApp}>
         {downloads ? 'Download' : 'Open'}
-      </Button>
+      </Button>}
     </div>
   );
 }

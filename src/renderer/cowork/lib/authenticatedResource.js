@@ -62,13 +62,13 @@ export async function fetchAuthenticatedBlob(url) {
  * listener (src/main/app.ts) adds the local server's token to the renderer's
  * fetch, while a URL handed to the OS browser carries none and gets a 401.
  *
- * Resolves true once a 2xx body is saved. Any other answer rejects with the
+ * Resolves false in the mobile shell, which cannot save files yet. Otherwise
+ * resolves true once a 2xx body is saved. An HTTP failure rejects with the
  * error `fetchAuthenticatedResponse` raises, which carries the HTTP status.
  */
 export async function downloadAuthenticatedResource(url, filename) {
-  if (!url) return false;
-  downloadBlob(await fetchAuthenticatedBlob(url), filename);
-  return true;
+  if (!url || host.isMobileShell) return false;
+  return downloadBlob(await fetchAuthenticatedBlob(url), filename);
 }
 
 /**
@@ -81,7 +81,7 @@ export async function downloadAuthenticatedResource(url, filename) {
  * gets a 401.
  */
 export async function openAuthenticatedResource(url, { filename } = {}) {
-  if (!url) return false;
+  if (!url || host.isMobileShell) return false;
   if (!host.isWeb) return downloadAuthenticatedResource(url, filename);
 
   const popup = window.open('about:blank', '_blank');
@@ -93,8 +93,7 @@ export async function openAuthenticatedResource(url, { filename } = {}) {
     const blob = await fetchAuthenticatedBlob(url);
     if (!popup || !canOpenBlobInline(blob)) {
       popup?.close();
-      downloadBlob(blob, filename);
-      return true;
+      return downloadBlob(blob, filename);
     }
     const objectUrl = URL.createObjectURL(blob);
     popup.location.href = objectUrl;

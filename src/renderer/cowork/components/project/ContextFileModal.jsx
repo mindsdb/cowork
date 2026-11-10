@@ -48,7 +48,7 @@ import {
   fetchAuthenticatedBlob,
   fetchAuthenticatedResponse,
 } from '../../lib/authenticatedResource';
-import { downloadFilename } from '../../lib/browserDownload';
+import { downloadFilename, MOBILE_DOWNLOAD_NOTE } from '../../lib/browserDownload';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { limitArtifactFrames } from '../artifact/artifactPreviewUtils';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
@@ -146,6 +146,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl, showOpen
   if (savesFile({ projectName, filePath, rawUrl })) {
     const saveUrl = dlUrl || rawUrl;
     if (!saveUrl) return null;
+    if (host.isMobileShell) return null;
     return (
       <button
         type="button"
@@ -195,7 +196,7 @@ function BinaryFilePanel({
   const [downloaded, setDownloaded] = useState(null);
   const started = useRef(false);
   useEffect(() => {
-    if (!downloadOnOpen || started.current) return;
+    if (!downloadOnOpen || host.isMobileShell || started.current) return;
     started.current = true;
     downloadAuthenticatedResource(fileUrl({ projectName, filePath, rawUrl }), downloadFilename(filePath))
       .then(setDownloaded, () => setDownloaded(false));
@@ -206,7 +207,9 @@ function BinaryFilePanel({
       {offersActions && ' Use the actions below to view it.'}
     </>
   );
-  if (downloadOnOpen) {
+  if (host.isMobileShell) {
+    message = MOBILE_DOWNLOAD_NOTE;
+  } else if (downloadOnOpen) {
     if (downloaded === null) message = 'Downloading…';
     else message = downloaded ? downloadedNote : DOWNLOAD_FAILED_NOTE;
   }

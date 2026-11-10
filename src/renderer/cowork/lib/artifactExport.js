@@ -7,6 +7,8 @@
  * come from the server's `exportFormats`, so an older server, which sends
  * none, shows no Export at all.
  */
+import { host } from '../../platform/host';
+import { MOBILE_DOWNLOAD_NOTE } from './browserDownload';
 import { downloadArtifactFile } from './artifactDownload';
 import { requestArtifactExport } from './artifactWorkspaceApi';
 
@@ -102,6 +104,7 @@ export async function saveExportedFile(result) {
  * @returns {Promise<ExportNotice | null>}
  */
 export async function runArtifactExport(draftUrl, format) {
+  if (host.isMobileShell) return { tone: 'error', text: MOBILE_DOWNLOAD_NOTE };
   let result;
   try {
     result = await requestArtifactExport(draftUrl, format);

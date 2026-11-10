@@ -1,3 +1,4 @@
+import { downloadUnavailableMessage } from '../../lib/browserDownload';
 // Artifacts rail card body.
 //
 // Strictly an "artifacts" surface: data source is `GET /v1/artifacts`
@@ -344,7 +345,7 @@ export function WorkingFolderLive({
         onClick: async () => {
           setRowError('');
           setRowNote('');
-          if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
+          if (!(await downloadArtifactFile(a))) setRowError(downloadUnavailableMessage('This artifact has no servable file yet.'));
         },
       },
       canShareLiveApp(a, liveApps) && {
@@ -385,7 +386,7 @@ export function WorkingFolderLive({
       }
       /* Nothing to open and nothing to save: an unshared fullstack app, whose
          draft is only its shell index.html, or a card with no primary file. */
-      setRowError('This artifact has no servable file yet.');
+      setRowError(downloadUnavailableMessage('This artifact has no servable file yet.'));
       return;
     }
     try {
@@ -475,7 +476,7 @@ export function WorkingFolderLive({
       if (await downloadArtifactFile(artifact)) {
         setRowNote(NO_PREVIEW_DOWNLOADED_NOTE);
       } else {
-        setRowError('This artifact has no servable file yet.');
+        setRowError(downloadUnavailableMessage('This artifact has no servable file yet.'));
       }
     } else if (target === 'os') {
       onOpen(artifact.path);
