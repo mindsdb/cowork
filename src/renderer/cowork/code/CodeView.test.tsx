@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => ({
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
   trackBillingOpened: vi.fn(),
-  openCodeExternalUrl: vi.fn(async () => true),
+  openCodeExternalUrl: vi.fn(async (_url: string) => true),
   create: vi.fn(),
 }));
 
