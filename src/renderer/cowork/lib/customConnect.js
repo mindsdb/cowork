@@ -8,7 +8,7 @@
    testable on its own. */
 
 import { toCloudSpec } from './cloudConnectorSpec';
-import { SHAREPOINT_ENGINE } from '../components/sharepoint/SharePointSetupModal';
+import { SHAREPOINT_ENGINE } from './connectorIds';
 
 export const ADDRESS_FIELD = '_api_address';
 
@@ -148,12 +148,13 @@ export function toCustomConnectionRows(connections) {
  * What the "Coming soon to Cloud" dialog offers for a connector cloud doesn't
  * run: connect the member's own custom one, or build one, or nothing.
  * SharePoint has its own form, so it keeps the plain dialog.
- * @param {{connectorId: string, label: string, customMatch: object|null, canBuild: boolean,
+ * @param {{connector: {id: string, label?: string}, customMatch: object|null, canBuild: boolean,
  *   connect: (connector: object) => void, build: (name: string) => void}} args
  * @returns {{label: string, onAccept: () => void} | null}
  */
-export function desktopOnlyOffer({ connectorId, label, customMatch, canBuild, connect, build }) {
-  if (connectorId === SHAREPOINT_ENGINE) return null;
+export function desktopOnlyOffer({ connector, customMatch, canBuild, connect, build }) {
+  if (!connector?.id || connector.id === SHAREPOINT_ENGINE) return null;
+  const label = connector.label || 'This connector';
   if (customMatch) {
     return { label: `Connect your custom ${label}`, onAccept: () => connect(customMatch) };
   }

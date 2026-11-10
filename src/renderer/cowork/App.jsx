@@ -6552,7 +6552,7 @@ function AppCore() {
           setConnectorPickerOpen(false);
           const label = c?.label || 'This connector';
           setComingSoonOffer(desktopOnlyOffer({
-            connectorId: c?.id, label, customMatch, canBuild,
+            connector: c, customMatch, canBuild,
             connect: (connector) => { void handleConnectorPicked(connector); },
             build: (name) => sendFromApp(buildCustomConnectorRequest(name)),
           }));

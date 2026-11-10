@@ -16,7 +16,9 @@ import {
   fetchSavedConnection,
 } from '../../api';
 
-export const SHAREPOINT_ENGINE = 'sharepoint';
+import { SHAREPOINT_ENGINE } from '../../lib/connectorIds';
+
+export { SHAREPOINT_ENGINE };
 
 const BUILT_IN_HELP =
   'An admin registers an app in Microsoft Entra with the Graph application permission Sites.Selected, '

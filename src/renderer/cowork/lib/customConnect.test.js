@@ -154,7 +154,7 @@ describe('the offer for a connector cloud does not run yet', () => {
   it("connects the member's own custom one first", () => {
     const connect = vi.fn();
     const build = vi.fn();
-    const offer = desktopOnlyOffer({ label: 'HasData', customMatch: HASDATA_CUSTOM, canBuild: true, connect, build });
+    const offer = desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: HASDATA_CUSTOM, canBuild: true, connect, build });
 
     expect(offer.label).toBe('Connect your custom HasData');
     offer.onAccept();
@@ -164,7 +164,7 @@ describe('the offer for a connector cloud does not run yet', () => {
 
   it('offers to build one, naming the connector, when there is none', () => {
     const build = vi.fn();
-    const offer = desktopOnlyOffer({ label: 'HasData', customMatch: null, canBuild: true, connect: vi.fn(), build });
+    const offer = desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: null, canBuild: true, connect: vi.fn(), build });
 
     expect(offer.label).toBe('Build a custom connector');
     offer.onAccept();
@@ -173,10 +173,10 @@ describe('the offer for a connector cloud does not run yet', () => {
 
   it('offers nothing for SharePoint, which has its own form', () => {
     const custom = { id: 'sharepoint_custom', label: 'SharePoint', custom: true };
-    expect(desktopOnlyOffer({ connectorId: 'sharepoint', label: 'SharePoint', customMatch: custom, canBuild: true, connect: vi.fn(), build: vi.fn() })).toBeNull();
+    expect(desktopOnlyOffer({ connector: { id: 'sharepoint', label: 'SharePoint' }, customMatch: custom, canBuild: true, connect: vi.fn(), build: vi.fn() })).toBeNull();
   });
 
   it('offers nothing when no custom one exists and none can be built', () => {
-    expect(desktopOnlyOffer({ label: 'HasData', customMatch: null, canBuild: false, connect: vi.fn(), build: vi.fn() })).toBeNull();
+    expect(desktopOnlyOffer({ connector: { id: 'hasdata', label: 'HasData' }, customMatch: null, canBuild: false, connect: vi.fn(), build: vi.fn() })).toBeNull();
   });
 });
