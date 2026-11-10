@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import { useTranslation } from 'react-i18next';
 import { changeLocale, setLanguagePreference } from '../../../lib/i18n';
-import LanguageSection from './LanguageSection';
+import LanguageSection, { LanguageHeaderSelect } from './LanguageSection';
 
 /* The Select primitive opens a Base UI popup; the switch itself is what this
    tests, so pick through the same function the Select calls. */
@@ -38,5 +38,23 @@ describe('LanguageSection', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Configuración');
     expect(screen.getByText('Idioma')).toBeInTheDocument();
+  });
+
+  it('keeps the header picker and the Appearance picker in step', async () => {
+    render(<><LanguageHeaderSelect /><LanguageSection /></>);
+    const pickers = screen.getAllByRole('combobox', { name: 'Language' });
+    expect(pickers).toHaveLength(2);
+
+    await act(async () => { await setLanguagePreference('pt-BR'); });
+
+    for (const picker of screen.getAllByRole('combobox', { name: 'Idioma' })) {
+      expect(picker).toHaveTextContent('Português (Brasil)');
+    }
+  });
+
+  it('hides the header picker outside the translation preview', () => {
+    vi.stubEnv('DEV', false);
+    const { container } = render(<LanguageHeaderSelect />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

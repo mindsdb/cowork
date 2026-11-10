@@ -21,6 +21,10 @@
       "account": "Cuenta"
     }
   },
+  "header": {
+    "signIn": "Iniciar sesión",
+    "signInTooltip": "Inicia sesión con MindsHub para usar los modelos administrados"
+  },
   "autoSave": {
     "saving": "Guardando…",
     "failed": "No se pudo guardar",
@@ -43,9 +47,18 @@
       "optionAriaLabel": "Estilo {name}"
     },
     "skins": {
-      "normal": { "label": "Normal", "title": "Usa el aspecto estándar." },
-      "8bit": { "label": "8-Bit", "title": "Usa el aspecto retro 8-Bit." },
-      "custom": { "label": "Personalizado", "title": "Diseña tu propio aspecto." }
+      "normal": {
+        "label": "Normal",
+        "title": "Usa el aspecto estándar."
+      },
+      "8bit": {
+        "label": "8-Bit",
+        "title": "Usa el aspecto retro 8-Bit."
+      },
+      "custom": {
+        "label": "Personalizado",
+        "title": "Diseña tu propio aspecto."
+      }
     },
     "theme": {
       "title": "Tema",

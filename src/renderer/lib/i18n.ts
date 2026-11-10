@@ -14,6 +14,7 @@
 
 import i18next, { type i18n as I18n } from 'i18next';
 import ICU from 'i18next-icu';
+import { useSyncExternalStore } from 'react';
 import { initReactI18next, useTranslation } from 'react-i18next';
 import {
   PSEUDO_LOCALE,
@@ -168,8 +169,23 @@ export async function changeLocale(locale: AppLocale): Promise<AppLocale> {
 }
 
 /* Save the user's choice and apply it now. */
+/* Every language picker on screen (Settings header, Appearance) reads the
+   stored choice through useLanguagePreference, so changing it in one updates
+   the others, including "Match system", which may not change the locale. */
+const preferenceListeners = new Set<() => void>();
+
+function subscribeLanguagePreference(listener: () => void): () => void {
+  preferenceListeners.add(listener);
+  return () => { preferenceListeners.delete(listener); };
+}
+
+export function useLanguagePreference(): LanguagePreference {
+  return useSyncExternalStore(subscribeLanguagePreference, getLanguagePreference, getLanguagePreference);
+}
+
 export function setLanguagePreference(preference: LanguagePreference): Promise<AppLocale> {
   writeStorage(PREFERENCE_KEY, preference === SYSTEM_PREFERENCE ? null : preference);
+  for (const listener of preferenceListeners) listener();
   return changeLocale(preferredLocale());
 }
 

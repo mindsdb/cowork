@@ -32,6 +32,8 @@ import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
+import { LanguageHeaderSelect } from './views/settings/LanguageSection';
+import { useTranslation } from '../lib/i18n';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
 import CompareView from './views/CompareView';
@@ -598,6 +600,7 @@ function searchRecents(tasks, projects) {
 }
 
 function AppCore() {
+  const { t: tSettings } = useTranslation('settings');
   // Seed from the read-through cache of the last settings fetch, not a literal
   // set of defaults — the server (GET /settings/) is the single source of truth
   // and returns every field's resolved default, so the boot fetch (below) fills
@@ -6587,10 +6590,14 @@ function AppCore() {
           <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
             <ModalHeader
               id="settings-modal-title"
-              title="Settings"
+              title={tSettings('nav.title')}
               onClose={() => setSettingsOpen(false)}
-              right={!ssoConnected && host.isElectron ? (
-                <Tooltip content="Sign in with MindsHub to use managed models">
+              right={(
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {/* Language from any section, not only Appearance (ENG-4149). */}
+                  <LanguageHeaderSelect />
+                  {!ssoConnected && host.isElectron && (
+                <Tooltip content={tSettings('header.signInTooltip')}>
                   <button
                     type="button"
                     onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
@@ -6606,9 +6613,11 @@ function AppCore() {
                     }}
                     onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
-                  >Sign in</button>
+                  >{tSettings('header.signIn')}</button>
                 </Tooltip>
-              ) : undefined}
+                  )}
+                </div>
+              )}
             />
             <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <SettingsView
