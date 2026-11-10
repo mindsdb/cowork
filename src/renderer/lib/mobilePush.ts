@@ -267,6 +267,9 @@ export function createMobilePush(deps: MobilePushDeps): MobilePushController {
   let token: string | null = null;
   /** `${userId}\n${token}` already sent (or in flight) this session. */
   let sentKey: string | null = null;
+  const registrations = new Set<Promise<unknown>>();
+  const registeredTokens = new Set<string>();
+  let signingOut: Promise<void> | null = null;
   let taskStarted = false;
   let offeredThisSession = false;
   let softPrompt: SoftPromptState = { visible: false };
@@ -285,8 +288,16 @@ export function createMobilePush(deps: MobilePushDeps): MobilePushController {
     const key = `${userId}\n${token}`;
     if (sentKey === key) return;
     sentKey = key;
+    const currentToken = token;
+    registeredTokens.add(currentToken);
+    // Track the request before yielding so logout can drain every POST,
+    // including requests for a token that rotated during this session.
+    const registration = Promise.resolve().then(() => deps.api.register({
+      token: currentToken, platform: deps.platform, appVersion: deps.appVersion, environment: null,
+    }));
+    registrations.add(registration);
     try {
-      await deps.api.register({ token, platform: deps.platform, appVersion: deps.appVersion, environment: null });
+      await registration;
     } catch (error) {
       if (sentKey === key) sentKey = null;
       if (isPushUnavailableStatus((error as { status?: unknown })?.status)) {
@@ -295,6 +306,8 @@ export function createMobilePush(deps: MobilePushDeps): MobilePushController {
         return;
       }
       log('could not register this device', error);
+    } finally {
+      registrations.delete(registration);
     }
   };
 
@@ -378,6 +391,9 @@ export function createMobilePush(deps: MobilePushDeps): MobilePushController {
     },
 
     async signedIn(id) {
+      // A new account must not register a token that the old account's
+      // cleanup is still removing. Normally sign-in follows a page reload.
+      if (signingOut) await signingOut;
       const nextUser = typeof id === 'string' && id ? id : null;
       if (!nextUser || nextUser === userId) return;
       userId = nextUser;
@@ -439,22 +455,35 @@ export function createMobilePush(deps: MobilePushDeps): MobilePushController {
       };
     },
 
-    async unregisterOnSignOut() {
+    unregisterOnSignOut() {
+      if (signingOut) return signingOut;
       // Keep the OS registration (no PushNotifications.unregister()): on iOS
       // that turns remote notifications off for the app until the next
       // register, and on Android it deletes the FCM token. Removing the token
       // from this user on the server is what stops their notifications; the
       // next user to sign in on this phone registers the same token as theirs.
-      const current = token;
+      const tokens = new Set(registeredTokens);
+      if (token) tokens.add(token);
+      registeredTokens.clear();
       sentKey = null;
       userId = null;
       setSoftPrompt(false);
-      if (!current || unavailable) return;
-      try {
-        await deps.api.unregister(current);
-      } catch (error) {
-        if (!isPushUnavailableStatus((error as { status?: unknown })?.status)) log('could not unregister this device', error);
-      }
+      signingOut = (async () => {
+        // Deleting first lets a late POST recreate the signed-out user's row.
+        // Clearing userId above prevents registration events from adding work.
+        // The auth adapter still bounds this entire hook to three seconds;
+        // an unavailable server cannot provide a guaranteed remote revocation.
+        await Promise.allSettled([...registrations]);
+        if (unavailable) return;
+        await Promise.all([...tokens].map(async (current) => {
+          try {
+            await deps.api.unregister(current);
+          } catch (error) {
+            if (!isPushUnavailableStatus((error as { status?: unknown })?.status)) log('could not unregister this device', error);
+          }
+        }));
+      })().finally(() => { signingOut = null; });
+      return signingOut;
     },
   };
 }
