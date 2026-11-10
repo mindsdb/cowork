@@ -126,6 +126,9 @@ const TURN_CHECKS_ON = {
   mysql: ' Under "Certificate", choose "Signed by a public authority", or "Signed by my own certificate '
     + 'authority" and paste the server\'s CA certificate, then try again.',
 };
+// The box cannot help a server without a publicly signed certificate, and its form has no CA paste.
+const PG_SCRAM_FALLBACK = ' If the server has no TLS, or its certificate is not signed by a public '
+  + 'authority, ask its administrator to switch this account to SCRAM-SHA-256 logins.';
 // Leads with the CA: an unchecked MySQL connection fails again whenever the server asks for the password.
 const MYSQL_UNVERIFIED_CERTIFICATE = 'The server\'s certificate could not be verified. If the server '
   + 'signs its own certificate or uses a private authority, choose "Signed by my own certificate '
@@ -146,7 +149,8 @@ function hintFor(connection) {
   const mysql = connection?.connector_id === 'mysql';
   const form = mysql ? 'mysql' : 'checkbox';
   if (Object.hasOwn(UNVERIFIED_CAUSES[form], connection?.tls_mode)) {
-    return UNVERIFIED_CAUSES[form][connection.tls_mode] + TURN_CHECKS_ON[form];
+    const fallback = mysql ? '' : PG_SCRAM_FALLBACK;
+    return UNVERIFIED_CAUSES[form][connection.tls_mode] + TURN_CHECKS_ON[form] + fallback;
   }
   if (!mysql) return HINTS.tls_failed;
   return connection?.tls_mode === 'custom_ca' ? MYSQL_CUSTOM_CA_MISMATCH : MYSQL_UNVERIFIED_CERTIFICATE;
