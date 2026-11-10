@@ -47,7 +47,7 @@ import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
-import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser } from '../lib/browserSession';
+import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, latestBrowserSessionIdIn } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { useNativeOverlay } from '../lib/nativeOverlay';
@@ -1831,6 +1831,10 @@ export default function ChatView({
   onUpdateConnectorMute,
   onStartVideoCall = null,
   onStartVoiceCall = null,
+  // A voice call asked to show this task's browser: {taskId, sessionId, at}.
+  browserRequest = null,
+  // A minimized call: {label, onClick} for the top-right icon that shows it.
+  callShortcut = null,
   browserSwitch = null,
   onRemoveAttachment,
   onPinTask,
@@ -2079,11 +2083,18 @@ export default function ChatView({
     if (browserOn && liveBrowserId) setShownBrowserId(liveBrowserId);
   }, [browserOn, liveBrowserId, task.id]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
+  useEffect(() => {
+    if (browserRequest?.taskId === task.id && browserRequest.sessionId) setShownBrowserId(browserRequest.sessionId);
+  }, [browserRequest, task.id]);
   const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
   /* The inline pane holds the right-hand column, where a docked rail would
      go, so the rail and its Expand button step aside. A rail that floats
      opens over the pane instead. */
   const railHidden = browserOpen && !paneFloats && !railFloats;
+  const latestBrowserId = latestBrowserSessionIdIn(visibleMessages, streamingMsg);
+  const showBrowserShortcut = !browserOpen && (host.isWeb || host.supportsInAppBrowser) && viewable(latestBrowserId);
+  // The floating Expand button's spot, when it shows; the icons sit beside it.
+  const expandShown = !pane && !railHidden && !(effectiveRailOpen || railOverlayOpen);
   /* The web browser takes a while to wake, so a task that used it starts it
      when it opens and when the person types. The desktop has nothing to
      start. */
@@ -2347,6 +2358,40 @@ export default function ChatView({
             {Ico.panelExpandLeft(16)}
           </button>
         </Tooltip>)}
+
+        {/* Beside it: show the browser Anton last used in this task, and
+            bring back a minimized call. */}
+        {!pane && (showBrowserShortcut || callShortcut) && (
+          <div
+            className="chat-top-shortcuts absolute top-3.5 z-10 flex items-center gap-1 [-webkit-app-region:no-drag]"
+            style={{ right: expandShown ? 46 : 14 }}
+          >
+            {showBrowserShortcut && (
+              <Tooltip content="Show browser">
+                <button
+                  type="button"
+                  onClick={() => setShownBrowserId(latestBrowserId)}
+                  aria-label="Show browser"
+                  className="w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2"
+                >
+                  {Ico.globe(16)}
+                </button>
+              </Tooltip>
+            )}
+            {callShortcut && (
+              <Tooltip content={callShortcut.label}>
+                <button
+                  type="button"
+                  onClick={callShortcut.onClick}
+                  aria-label={callShortcut.label}
+                  className="chat-call-shortcut w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 hover:bg-surface-2"
+                >
+                  {Ico.call(16)}
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        )}
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating

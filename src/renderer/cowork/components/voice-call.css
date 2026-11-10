@@ -41,7 +41,27 @@
 .voice-call__caption.is-old { opacity: 0.65; }
 .voice-call__controls { display: flex; justify-content: flex-end; gap: 8px; }
 
+/* The task view's top-right icon for a minimized call (ChatView). */
+.chat-call-shortcut { color: #34a853; }
+
+/* Minimized away from a task: just the orb, where the card was. */
+.voice-call-bubble {
+  position: fixed;
+  z-index: 60;
+  top: 16px;
+  right: 16px;
+  padding: 6px;
+  border: 0;
+  border-radius: 50%;
+  background: #111;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  cursor: pointer;
+  display: inline-grid;
+}
+.voice-call-bubble .voice-call__orb { width: 28px; height: 28px; }
+
 @media (max-width: 639.98px) {
+  .voice-call-bubble { top: calc(env(safe-area-inset-top, 0px) + 60px); }
   .voice-call {
     top: calc(env(safe-area-inset-top, 0px) + 52px);
     left: 0;

@@ -4,6 +4,8 @@ import './voice-call.css';
 // The voice call's card (ENG-4138, prototype): who is on the call, what they
 // are doing, live captions of both sides, mute and hang-up. It floats over the
 // app and never covers the composer (voice-call.css). `call` is useVoiceCall's.
+// Minimized, it is gone from the screen: the task view's top-right call icon
+// brings it back, and elsewhere (`bubble`) a small orb at the top right does.
 
 const STATUS = {
   starting: 'Calling…',
@@ -26,10 +28,25 @@ function RoundButton({ label, onClick, danger = false, children }) {
   );
 }
 
-export default function VoiceCallWindow({ call, agentLabel = 'Anton' }) {
+export default function VoiceCallWindow({ call, agentLabel = 'Anton', minimized = false, onMinimize, onRestore, bubble = false }) {
   const { phase, notice, captions, agentSpeaking, working, micOn } = call;
   if (phase === 'idle') return null;
   const live = phase === 'live';
+  // An ended call shows why, minimized or not.
+  if (minimized && phase !== 'ended') {
+    if (!bubble) return null;
+    return (
+      <button
+        type="button"
+        aria-label={`Show the call with ${agentLabel}`}
+        title={`Show the call with ${agentLabel}`}
+        onClick={onRestore}
+        className="voice-call-bubble"
+      >
+        <span className={`voice-call__orb${live && agentSpeaking ? ' is-talking' : ''}`} aria-hidden="true" />
+      </button>
+    );
+  }
 
   let status = STATUS[phase] || '';
   if (live) status = working ? `${agentLabel} is working on it…` : (micOn ? 'Listening' : 'Muted');
@@ -67,6 +84,11 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton' }) {
           </button>
         ) : (
           <>
+            {onMinimize && (
+              <RoundButton label="Minimize" onClick={onMinimize}>
+                {Ico.minimize(16)}
+              </RoundButton>
+            )}
             <RoundButton label={micOn ? 'Mute' : 'Unmute'} onClick={call.toggleMic}>
               {micOn ? Ico.mic(16) : Ico.micOff(16)}
             </RoundButton>

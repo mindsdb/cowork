@@ -125,6 +125,37 @@ describe('ChatView shared browser pane', () => {
     expect(embedBrowser).not.toHaveBeenCalled();
   });
 
+  it('opens from the top-right Show browser icon, which steps aside while the pane is open', async () => {
+    render(<ChatView task={task('p-icon', pastTurn)} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).toBeNull();
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show browser' })); });
+    expect(pane()).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show browser' })).toBeNull();
+  });
+
+  it('opens when a voice call asks to show this task\'s browser, and offers a minimized call back', async () => {
+    const onShowCall = vi.fn();
+    const { rerender } = render(<ChatView task={task('p-call', pastTurn)} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Show the call with Anton' })).toBeNull();
+
+    rerender(
+      <ChatView
+        task={task('p-call', pastTurn)}
+        onSend={vi.fn()}
+        browserOn
+        browserRequest={{ taskId: 'p-call', sessionId: 't-abc', at: 1 }}
+        callShortcut={{ label: 'Show the call with Anton', onClick: onShowCall }}
+      />,
+    );
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show the call with Anton' }));
+    expect(onShowCall).toHaveBeenCalled();
+  });
+
   it('opens for a past Browser step only when the person clicks it', async () => {
     render(<ChatView task={task('p-on', pastTurn)} onSend={vi.fn()} browserOn />);
     await act(async () => {});

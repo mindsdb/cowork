@@ -3278,6 +3278,8 @@ body[data-theme="dark"] .mshell__drawer-title {
      fullscreen form panel. The mobile shell's hamburger drawer
      covers the same surfaces that the expand button used to. */
   .chat-rail-toggle { display: none !important; }
+  /* The browser and call icons beside it take its place. */
+  .chat-top-shortcuts { right: 14px !important; }
 
   /* Make the rail overlay truly fullscreen on mobile so the data-
      vault form fills the viewport instead of being a 320px-wide

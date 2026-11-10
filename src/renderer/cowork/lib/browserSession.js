@@ -103,6 +103,17 @@ export function conversationUsedBrowser(messages, streamingMsg) {
   return [...(messages || []), streamingMsg].some((m) => browserSessionIdIn(m?.steps) !== null);
 }
 
+/* The newest browser session in the conversation, the streaming turn
+   included, or null: what "show the browser" shows. */
+export function latestBrowserSessionIdIn(messages, streamingMsg = null) {
+  const all = [...(messages || []), streamingMsg];
+  for (let i = all.length - 1; i >= 0; i -= 1) {
+    const id = browserSessionIdIn(all[i]?.steps);
+    if (id) return id;
+  }
+  return null;
+}
+
 /* The messages the browser router's viewer page (its viewer.html) posts to
    the pane: ready once its script runs, and closed, with a close code, when
    its connection closes. Each router refusal of the view is a page that posts

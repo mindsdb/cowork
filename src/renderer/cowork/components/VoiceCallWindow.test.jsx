@@ -36,4 +36,23 @@ describe('the voice call card', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(c.dismiss).toHaveBeenCalled();
   });
+
+  it('minimizes: gone in a task, where the top-right icon brings it back, and an orb elsewhere', async () => {
+    const onMinimize = vi.fn();
+    const onRestore = vi.fn();
+    const { rerender } = render(<VoiceCallWindow call={call()} onMinimize={onMinimize} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Minimize' }));
+    expect(onMinimize).toHaveBeenCalled();
+
+    rerender(<VoiceCallWindow call={call()} minimized onRestore={onRestore} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+
+    rerender(<VoiceCallWindow call={call()} minimized bubble onRestore={onRestore} agentLabel="Anton" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Show the call with Anton' }));
+    expect(onRestore).toHaveBeenCalled();
+
+    rerender(<VoiceCallWindow call={call({ phase: 'ended', notice: 'The call ended.' })} minimized />);
+    expect(screen.getByText('The call ended.')).toBeInTheDocument();
+  });
 });

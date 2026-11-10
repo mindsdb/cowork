@@ -148,6 +148,8 @@ import FacetimeWindow from './components/FacetimeWindow';
 import { useFacetimeCall } from './lib/facetime/useFacetimeCall';
 import VoiceCallWindow from './components/VoiceCallWindow';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
+import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
+import { latestBrowserSessionIdIn } from './lib/browserSession';
 import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
 import { Outlet } from 'react-router-dom';
 
@@ -677,10 +679,19 @@ function AppCore() {
     fetchVoiceStatus().then((s) => { if (live) setVoiceAvailable(s.available); });
     return () => { live = false; };
   }, []);
+  // Its requests go through the operator (lib/voice/operator.js), which can
+  // also run the app: projects, moving and stopping tasks, a task's steps, the
+  // browser. Its history lives for one call.
+  const operateFromCallRef = useRef(null);
+  const callScreenRef = useRef({});
+  const voiceHistoryRef = useRef([]);
   const voiceCall = useVoiceCall({
-    onAsk: (request) => askFromCallRef.current(request),
+    onAsk: (request) => operateFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
   });
+  const [voiceCallMinimized, setVoiceCallMinimized] = useState(false);
+  // "Show the browser" from a call: ChatView opens the pane for this task.
+  const [browserRequest, setBrowserRequest] = useState(null);
   // The row ids a conversation holds before a fetch, or undefined (no
   // snapshot, today's merge rule) when it is not held under that id.
   const knownIdsOf = (id) => {
@@ -4522,15 +4533,19 @@ function AppCore() {
   // The video call's ask_cowork: the request goes to Anton as a typed message
   // would, in the call's task (a new one for the first request from Home), and
   // resolves with Anton's answer once the turn ends.
-  askFromCallRef.current = async (request) => {
-    const existing = facetimeTaskIdRef.current
-      && tasksRef.current.find((t) => t.id === facetimeTaskIdRef.current);
+  // The voice call's operator names the task (`taskId`), or asks for a new
+  // one (`newTask`, in `project` when given).
+  askFromCallRef.current = async (request, { taskId = null, newTask = false, project = null } = {}) => {
+    const callTaskId = newTask ? null : (taskId || facetimeTaskIdRef.current);
+    const existing = callTaskId && tasksRef.current.find((t) => t.id === callTaskId);
     const id = existing ? existing.id : allocateConversationId();
     facetimeTaskIdRef.current = id;
     const turn = waitForTurnEnd(id);
     const sent = existing
       ? await handleSendInTask(request, [], { targetTask: existing })
-      : await handleSendFromHome(request, { conversationId: id, attachments: [], disabledConnections: [] });
+      : await handleSendFromHome(request, {
+        conversationId: id, attachments: [], disabledConnections: [], ...(project ? { project } : {}),
+      });
     if (sent === false) {
       turn.cancel();
       throw new Error(`${agentLabel} couldn't take the request.`);
@@ -4551,6 +4566,87 @@ function AppCore() {
     return [`The user is in a task called "${task.title}".`, recent.length ? 'Its latest messages:' : '', ...recent]
       .filter(Boolean).join('\n');
   };
+  // The voice call's operator: each request becomes the app's actions, run
+  // here as the person, through the same handlers their clicks use. The
+  // operator reads the screen each round, so it reads it from this ref, which
+  // every render refreshes.
+  callScreenRef.current = { route, currentTask, selectedProject, projects };
+  const callTask = (id) => {
+    const task = tasksRef.current.find((t) => t.id === id);
+    if (!task) throw new Error(`There is no task with the id ${id}.`);
+    return task;
+  };
+  const callProject = (name) => {
+    const wanted = String(name || '').trim().toLowerCase();
+    return (callScreenRef.current.projects || []).find((p) => p.name.toLowerCase() === wanted) || null;
+  };
+  const callActions = {
+    ask_anton: async ({ request, task_id: taskId, project }) => {
+      const inProject = project ? callProject(project) : null;
+      if (project && !inProject) throw new Error(`There is no project called "${project}".`);
+      const existing = taskId && taskId !== 'new' ? callTask(taskId) : null;
+      if (existing && !(callScreenRef.current.route === 'task' && callScreenRef.current.currentTask?.id === existing.id)) {
+        selectTask(existing.id);
+      }
+      return askFromCallRef.current(String(request || ''), { taskId: existing?.id, newTask: !existing, project: inProject });
+    },
+    create_project: async ({ name }) => {
+      const known = callProject(name);
+      if (known) return `The project "${known.name}" already exists.`;
+      const created = await handleCreateProject({ name: String(name).trim(), _inline: true });
+      return `Created the project "${created?.name || name}".`;
+    },
+    move_task: async ({ task_id: taskId, project }) => {
+      const task = callTask(taskId);
+      const known = callProject(project);
+      try {
+        await moveTask(task, known?.name || String(project).trim(), { isNew: !known });
+      } finally {
+        await refreshAfterMove();
+      }
+      return `Moved "${task.title}" to ${known ? `"${known.name}"` : `a new project, "${project}"`}.`;
+    },
+    open_task: ({ task_id: taskId }) => {
+      const task = callTask(taskId);
+      selectTask(task.id);
+      return `Opened "${task.title}".`;
+    },
+    open_project: ({ project }) => {
+      const known = callProject(project);
+      if (!known) throw new Error(`There is no project called "${project}".`);
+      setSelectedProject(known);
+      setRoute('projects');
+      return `Opened the project "${known.name}".`;
+    },
+    task_steps: async ({ task_id: taskId }) => {
+      let task = callTask(taskId);
+      if (!(task.messages || []).length) {
+        const fresh = await fetchSession(task.id);
+        if (fresh?.messages) task = { ...task, messages: fresh.messages };
+      }
+      return describeSteps(task);
+    },
+    stop_task: async ({ task_id: taskId }) => {
+      const task = callTask(taskId);
+      if (!isRunning(task)) return `"${task.title}" isn't running.`;
+      await handleStopStream({ taskId: task.id });
+      return `Stopped "${task.title}".`;
+    },
+    show_browser: ({ task_id: taskId }) => {
+      const task = callTask(taskId);
+      const sessionId = latestBrowserSessionIdIn(task.messages);
+      if (!sessionId) return `"${task.title}" hasn't used the browser.`;
+      selectTask(task.id);
+      setBrowserRequest({ taskId: task.id, sessionId, at: Date.now() });
+      return `Showing the browser from "${task.title}".`;
+    },
+  };
+  operateFromCallRef.current = (request) => runOperator({
+    request,
+    history: voiceHistoryRef.current,
+    snapshot: () => describeScreen({ ...callScreenRef.current, tasks: tasksRef.current }),
+    actions: callActions,
+  });
   // From a composer's + menu: in the task on screen, or a new one from the
   // first request. A click, so the browser plays the avatar's voice.
   // One call at a time: each start offers itself only while neither runs.
@@ -4558,6 +4654,8 @@ function AppCore() {
   const startVoiceCall = voiceAvailable && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
+      voiceHistoryRef.current = [];
+      setVoiceCallMinimized(false);
       void voiceCall.start();
     }
     : null;
@@ -5667,35 +5765,44 @@ function AppCore() {
     if (task?.id) setMoveModalTask(task);
   };
 
-  const handleConfirmMove = async (destName, { isNew = false, moveEverything = true } = {}) => {
+  const handleConfirmMove = async (destName, options = {}) => {
     const task = moveModalTask;
-    if (!task || !destName) return;
-    let targetName = destName;
-    let targetPath = task.projectPath;
     try {
-      if (isNew) {
-        const created = await createProject(destName);
-        targetName = created?.name || destName;
-        targetPath = created?.path || targetPath;
-        const freshProjects = await fetchProjects();
-        if (Array.isArray(freshProjects)) setProjects(freshProjects);
-      } else {
-        targetPath = projects.find((p) => p.name === targetName)?.path || targetPath;
-      }
-      // Optimistic: show the task under the new project immediately.
-      setTasks((prev) => prev.map((t) =>
-        t.id === task.id
-          ? { ...t, projectName: targetName, projectPath: targetPath }
-          : t
-      ));
-      await moveTaskToProject(task.id, targetName, moveEverything);
+      await moveTask(task, destName, options);
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "ERROR", "move_task_failed", '[move task] failed', e);
     } finally {
       setMoveModalTask(null);
     }
-    // Server is canonical — refresh tasks + projects after the move.
+    await refreshAfterMove();
+  };
+
+  // Throws when the move fails; the caller refreshes either way.
+  const moveTask = async (task, destName, { isNew = false, moveEverything = true } = {}) => {
+    if (!task || !destName) return;
+    let targetName = destName;
+    let targetPath = task.projectPath;
+    if (isNew) {
+      const created = await createProject(destName);
+      targetName = created?.name || destName;
+      targetPath = created?.path || targetPath;
+      const freshProjects = await fetchProjects();
+      if (Array.isArray(freshProjects)) setProjects(freshProjects);
+    } else {
+      targetPath = projects.find((p) => p.name === targetName)?.path || targetPath;
+    }
+    // Optimistic: show the task under the new project immediately.
+    setTasks((prev) => prev.map((t) =>
+      t.id === task.id
+        ? { ...t, projectName: targetName, projectPath: targetPath }
+        : t
+    ));
+    await moveTaskToProject(task.id, targetName, moveEverything);
+  };
+
+  // Server is canonical — refresh tasks + projects after a move.
+  const refreshAfterMove = async () => {
     const fresh = await fetchSessions();
     // Merge, never replace — same reason as handleRenameTask above. Repro for
     // the replace: open chat A, then Move to project on any task; the open
@@ -6293,6 +6400,10 @@ function AppCore() {
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
             onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
+            browserRequest={browserRequest}
+            callShortcut={voiceCall.phase !== 'idle' && voiceCallMinimized
+              ? { label: `Show the call with ${agentLabel}`, onClick: () => setVoiceCallMinimized(false) }
+              : null}
             browserSwitch={browserSwitchShown && currentTask
               ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
               : null}
@@ -6801,7 +6912,14 @@ function AppCore() {
       )}
 
       <FacetimeWindow call={facetime} agentLabel={agentLabel} />
-      <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />
+      <VoiceCallWindow
+        call={voiceCall}
+        agentLabel={agentLabel}
+        minimized={voiceCallMinimized}
+        onMinimize={() => setVoiceCallMinimized(true)}
+        onRestore={() => setVoiceCallMinimized(false)}
+        bubble={route !== 'task'}
+      />
 
       <ConfirmModal
         open={pendingDisconnect != null}
