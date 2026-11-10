@@ -146,7 +146,9 @@ import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/brow
 import { useNativeOverlay } from './lib/nativeOverlay';
 import FacetimeWindow from './components/FacetimeWindow';
 import { useFacetimeCall } from './lib/facetime/useFacetimeCall';
-import VoiceCallWindow, { INVITES as VOICE_INVITES } from './components/VoiceCallWindow';
+import VoiceCallWindow from './components/VoiceCallWindow';
+import TopShortcuts from './components/TopShortcuts';
+import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { latestBrowserSessionIdIn } from './lib/browserSession';
@@ -689,17 +691,9 @@ function AppCore() {
     onAsk: (request) => operateFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
   });
-  // Whether the call card is on screen. Closing it hides it and the call
-  // goes on; the task view's top-right call icon opens it again.
-  const [voiceCallOpen, setVoiceCallOpen] = useState(false);
-  const [voiceInvite, setVoiceInvite] = useState(VOICE_INVITES[0]);
-  const voicePhaseRef = useRef('idle');
-  useEffect(() => {
-    // A call that ended here (hung up) closes its card; one that ended on the
-    // other side shows why until it is dismissed.
-    if (voiceCall.phase === 'idle' && voicePhaseRef.current !== 'idle' && voicePhaseRef.current !== 'ended') setVoiceCallOpen(false);
-    voicePhaseRef.current = voiceCall.phase;
-  }, [voiceCall.phase]);
+  // Show browser from Home or Projects: a blank page floating over the
+  // page, whose search starts a task.
+  const [offTaskBrowserOpen, setOffTaskBrowserOpen] = useState(false);
   // "Show the browser" from a call: ChatView opens the pane for this task.
   const [browserRequest, setBrowserRequest] = useState(null);
   // The row ids a conversation holds before a fetch, or undefined (no
@@ -4665,27 +4659,31 @@ function AppCore() {
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
       voiceHistoryRef.current = [];
-      setVoiceCallOpen(true);
       void voiceCall.start();
     }
     : null;
-  // The task view's top-right call icon opens the call card: the running
-  // call, or an offer to start one. Hidden while a video call runs.
-  const voiceCallShortcut = facetime.phase === 'idle'
-    ? {
-      label: voiceCall.phase === 'idle' ? `Voice call with ${agentLabel}` : `Show the call with ${agentLabel}`,
-      live: voiceCall.phase !== 'idle',
-      onClick: () => {
-        if (voiceCall.phase === 'idle' && !voiceCallOpen) {
-          setVoiceInvite(VOICE_INVITES[Math.floor(Math.random() * VOICE_INVITES.length)]);
-        }
-        setVoiceCallOpen(true);
-      },
-    }
-    : null;
-  let voiceStartBlocked = '';
-  if (!voiceAvailable) voiceStartBlocked = 'Voice calls aren’t available here yet.';
-  else if (!noCallRunning) voiceStartBlocked = 'Another call is running.';
+  // The top-right call icon (TopShortcuts): a click starts a voice call; while
+  // one runs it shows that, and the call's card (in the sidebar) ends it.
+  let voiceCallShortcut = null;
+  if (voiceCall.phase !== 'idle' && voiceCall.phase !== 'ended') {
+    voiceCallShortcut = { label: `On a call with ${agentLabel}`, live: true };
+  } else if (startVoiceCall) {
+    voiceCallShortcut = {
+      label: `Call ${agentLabel}`,
+      onClick: () => { if (voiceCall.phase === 'ended') voiceCall.dismiss(); startVoiceCall(); },
+    };
+  } else {
+    voiceCallShortcut = {
+      label: voiceAvailable ? 'Another call is running' : 'Voice calls aren’t available here yet',
+      disabled: true,
+    };
+  }
+  const offTaskShortcuts = (
+    <TopShortcuts onShowBrowser={() => setOffTaskBrowserOpen(true)} call={voiceCallShortcut} />
+  );
+  // Where the call's card goes: in the sidebar above its footer while the
+  // sidebar is docked open, floating in that corner otherwise.
+  const dockVoiceCall = !isMobile && !sidebarPopout && !sidebarCollapsedEffective;
 
   const startVideoCall = facetimeAvailable && noCallRunning
     ? () => {
@@ -6254,6 +6252,7 @@ function AppCore() {
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
+          callCard={dockVoiceCall ? <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} /> : null}
           onStartChat={(text) => {
             // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
             // drawer. Close it like navigate/onOpenSchedule do, so the new
@@ -6352,6 +6351,7 @@ function AppCore() {
             onUpdateConnectorMute={handleComposerConnectorMute}
             onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
+            topShortcuts={offTaskShortcuts}
             browserSwitch={composerBrowserSwitch}
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
@@ -6561,6 +6561,7 @@ function AppCore() {
             onUpdateConnectorMute={handleComposerConnectorMute}
             onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
+            topShortcuts={offTaskShortcuts}
             browserSwitch={composerBrowserSwitch}
             onOpenSchedule={(task) => {
               // Same handler ScheduledView uses — routes to the
@@ -6938,17 +6939,20 @@ function AppCore() {
       )}
 
       <FacetimeWindow call={facetime} agentLabel={agentLabel} />
-      <VoiceCallWindow
-        call={voiceCall}
-        agentLabel={agentLabel}
-        open={voiceCallOpen}
-        onClose={() => { setVoiceCallOpen(false); if (voiceCall.phase === 'ended') voiceCall.dismiss(); }}
-        onShow={() => setVoiceCallOpen(true)}
-        onStart={startVoiceCall}
-        startBlocked={voiceStartBlocked}
-        invite={voiceInvite}
-        bubble={route !== 'task'}
-      />
+      {!dockVoiceCall && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
+      {offTaskBrowserOpen && route !== 'task' && (
+        <BlankBrowserPanel
+          floating
+          taskKey={route}
+          agentLabel={agentLabel}
+          onSend={(text) => {
+            setOffTaskBrowserOpen(false);
+            const inProject = route === 'projects' && canRunProject(selectedProject) ? selectedProject : null;
+            void handleSendFromHome(text, { attachments: [], disabledConnections: [], ...(inProject ? { project: inProject } : {}) });
+          }}
+          onClose={() => setOffTaskBrowserOpen(false)}
+        />
+      )}
 
       <ConfirmModal
         open={pendingDisconnect != null}

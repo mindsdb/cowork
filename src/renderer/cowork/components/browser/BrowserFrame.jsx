@@ -15,10 +15,11 @@ import './browser-panel.css';
  *   below?: import('react').ReactNode,
  *   stageRef?: import('react').Ref<HTMLDivElement>,
  *   onClose: () => void,
+ *   floating?: boolean,
  *   children?: import('react').ReactNode,
  * }} props
  */
-export function BrowserFrame({ hint, actions = null, below = null, stageRef, onClose, children }) {
+export function BrowserFrame({ hint, actions = null, below = null, stageRef, onClose, floating = false, children }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === 'Escape' && event.target === document.body) onClose();
@@ -29,8 +30,8 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
 
   return (
     <>
-      <button type="button" className="browser-panel-scrim" aria-label="Close browser" onClick={onClose} />
-      <aside className="browser-panel" aria-label="Shared browser">
+      <button type="button" className={`browser-panel-scrim${floating ? ' is-floating' : ''}`} aria-label="Close browser" onClick={onClose} />
+      <aside className={`browser-panel${floating ? ' is-floating' : ''}`} aria-label="Shared browser">
         <header className="browser-panel__header">
           <div className="browser-panel__heading">
             <span className="browser-panel__icon">{Ico.globe(14)}</span>

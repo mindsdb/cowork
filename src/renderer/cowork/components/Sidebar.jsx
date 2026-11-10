@@ -258,6 +258,8 @@ export default function Sidebar({
   onOpenCodingSkills,
   onOpenSearch,
   collapsed = false,
+  // The voice call's card, docked above the footer while a call runs.
+  callCard = null,
   onToggleCollapsed,
   onPinTask,
   onUnpinTask,
@@ -875,6 +877,9 @@ export default function Sidebar({
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
+        {/* A running voice call, docked where the onboarding steps sit. */}
+        {callCard}
+
         {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} />}
 
         {/* One banner for all three update mechanisms, chosen by

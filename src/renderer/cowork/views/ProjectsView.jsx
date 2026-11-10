@@ -264,6 +264,8 @@ function ProjectDetail({
   onUpdateConnectorMute,
   onStartVideoCall = null,
   onStartVoiceCall = null,
+  // The browser and call icons, in the header beside New project.
+  topShortcuts = null,
   browserSwitch = null,
   onNavigateToConnectors,
   // Header kebab + inline rename — lets users rename / reveal / delete
@@ -326,6 +328,10 @@ function ProjectDetail({
   return (
     <div className={`project-detail-root flex-1 min-h-0 grid grid-rows-[1fr] bg-transparent font-body text-ink-2 relative overflow-hidden [transition:grid-template-columns_var(--dur-layout)_var(--ease-out)] ${railOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}>
       <div className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0">
+        {/* The browser and call icons, beside the Expand button (mirrors ChatView). */}
+        {!railOpen && !showMobileContext && topShortcuts && (
+          <div className="absolute top-3.5 z-10" style={{ right: 44 }}>{topShortcuts}</div>
+        )}
         {/* Floating expand-rail button (mirrors ChatView). */}
         {!showMobileContext && (
           <Tooltip content="Expand panel">
@@ -499,6 +505,7 @@ function ProjectDetail({
       {!showMobileContext && (
         <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
+            {topShortcuts}
             <Tooltip content="Collapse panel">
               <button
                 type="button"
@@ -568,6 +575,7 @@ export default function ProjectsView({
   onUpdateConnectorMute,
   onStartVideoCall = null,
   onStartVoiceCall = null,
+  topShortcuts = null,
   browserSwitch = null,
   onNavigateToConnectors,
   // Forwarded to ProjectDetail's rail Scheduled Tasks card —
@@ -801,6 +809,7 @@ export default function ProjectsView({
         onUpdateConnectorMute={onUpdateConnectorMute}
         onStartVideoCall={onStartVideoCall}
         onStartVoiceCall={onStartVoiceCall}
+        topShortcuts={topShortcuts}
         browserSwitch={browserSwitch}
         onOpenSettings={onOpenSettings}
         codingModelDefault={codingModelDefault}
@@ -829,7 +838,12 @@ export default function ProjectsView({
       <PageHeader
         title="Projects"
         subtitle={`Workspaces ${agentLabel} uses to group conversations, memory, and outputs.`}
-        actions={<NewProjectButton onClick={handleNewProject} />}
+        actions={(
+          <div className="flex items-center gap-2">
+            {topShortcuts}
+            <NewProjectButton onClick={handleNewProject} />
+          </div>
+        )}
         // Bake the breathing room into the header itself rather than a
         // sibling spacer. The previous 18px spacer div collapsed in
         // some grid-view layouts (the flex column let it disappear

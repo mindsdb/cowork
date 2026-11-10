@@ -50,6 +50,7 @@ import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, latestBrowserSessionIdIn } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
 import BlankBrowserPanel from '../components/browser/BlankBrowserPanel';
+import TopShortcuts from '../components/TopShortcuts';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { useNativeOverlay } from '../lib/nativeOverlay';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
@@ -1834,8 +1835,8 @@ export default function ChatView({
   onStartVoiceCall = null,
   // A voice call asked to show this task's browser: {taskId, sessionId, at}.
   browserRequest = null,
-  // The top-right call icon: {label, onClick, live}. Starts a voice call, or
-  // shows or minimizes the running one; null hides it.
+  // The top-right call icon (TopShortcuts' `call`): starts a voice call, and
+  // shows one is running; null hides it.
   callShortcut = null,
   browserSwitch = null,
   onRemoveAttachment,
@@ -2375,40 +2376,15 @@ export default function ChatView({
           </button>
         </Tooltip>)}
 
-        {/* Beside it: show the browser Anton last used in this task, and
-            bring back a minimized call. */}
-        {!pane && (showBrowserShortcut || callShortcut) && (
-          <div
-            className="chat-top-shortcuts absolute top-3.5 z-10 flex items-center gap-1 [-webkit-app-region:no-drag]"
-            style={{ right: expandShown ? 46 : 14 }}
-          >
-            {showBrowserShortcut && (
-              <Tooltip content="Show browser">
-                <button
-                  type="button"
-                  onClick={openBrowserFromShortcut}
-                  aria-label="Show browser"
-                  className="w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2"
-                >
-                  {Ico.globe(16)}
-                </button>
-              </Tooltip>
-            )}
-            {callShortcut && (
-              <Tooltip content={callShortcut.label}>
-                <button
-                  type="button"
-                  onClick={callShortcut.onClick}
-                  aria-label={callShortcut.label}
-                  className={`w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 hover:bg-surface-2 ${
-                    callShortcut.live ? 'chat-call-shortcut' : 'text-ink-3 hover:text-ink'
-                  }`}
-                >
-                  {Ico.call(16)}
-                </button>
-              </Tooltip>
-            )}
-          </div>
+        {/* Beside it: the browser and call icons. With the rail open they
+            sit beside its Collapse button instead. */}
+        {!pane && !(effectiveRailOpen || railOverlayOpen) && (
+          <TopShortcuts
+            className="chat-top-shortcuts absolute top-3.5 z-10"
+            style={{ right: expandShown ? 44 : 14 }}
+            onShowBrowser={showBrowserShortcut ? openBrowserFromShortcut : null}
+            call={callShortcut}
+          />
         )}
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
@@ -3528,6 +3504,12 @@ export default function ChatView({
             FLOATING expand button outside is the one hidden via
             .chat-rail-toggle in globals.css. */}
         <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
+          {!pane && (
+            <TopShortcuts
+              onShowBrowser={showBrowserShortcut ? openBrowserFromShortcut : null}
+              call={callShortcut}
+            />
+          )}
           <Tooltip content="Collapse panel">
             <button
               type="button"

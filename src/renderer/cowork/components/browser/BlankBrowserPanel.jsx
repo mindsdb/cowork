@@ -34,9 +34,9 @@ export function browserRequestFor(text) {
 
 /**
  * @param {{ taskKey?: string, agentLabel?: string, browserOn?: boolean,
- *   onSend?: (text: string) => void, onClose: () => void }} props
+ *   onSend?: (text: string) => void, onClose: () => void, floating?: boolean }} props
  */
-export default function BlankBrowserPanel({ taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onClose }) {
+export default function BlankBrowserPanel({ taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onClose, floating = false }) {
   const [text, setText] = useState('');
   const [sent, setSent] = useState(false);
   const line = blankLineFor(taskKey);
@@ -50,7 +50,7 @@ export default function BlankBrowserPanel({ taskKey = '', agentLabel = 'Anton', 
   };
 
   return (
-    <BrowserFrame hint={sent ? `${agentLabel} is opening the browser…` : 'Nothing open yet'} onClose={onClose}>
+    <BrowserFrame hint={sent ? `${agentLabel} is opening the browser…` : 'Nothing open yet'} onClose={onClose} floating={floating}>
       <div className="browser-panel__blank">
         <span className="browser-panel__blank-mark" aria-hidden="true">{Ico.globe(20)}</span>
         <h2 className="browser-panel__blank-title">{line.title}</h2>

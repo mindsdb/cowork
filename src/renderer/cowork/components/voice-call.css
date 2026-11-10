@@ -1,20 +1,31 @@
-/* The voice call's card (VoiceCallWindow.jsx). Like the video call's window it
-   never covers the composer: a card at the top right, and on a phone a bar
-   across the top under the top bar. */
+/* The voice call's card (VoiceCallWindow.jsx). Docked, it sits in the
+   sidebar above its footer, where the onboarding steps sit. Otherwise it
+   floats in that corner, and on a phone it is a bar across the top under the
+   top bar, so it never covers the composer. Its colors are the app's tokens,
+   so it follows light and dark; the 8-bit skin squares it off below. */
 .voice-call {
   position: fixed;
   z-index: 60;
-  top: 16px;
-  right: 16px;
+  left: 16px;
+  bottom: 16px;
   width: 300px;
   padding: 14px 14px 12px;
-  border-radius: 16px;
-  background: #111;
-  color: #fff;
-  box-shadow: 0 18px 48px rgb(0 0 0 / 0.35);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl, 16px);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-3, 0 18px 48px rgb(0 0 0 / 0.25));
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.voice-call--docked {
+  position: static;
+  width: auto;
+  margin: 0 10px 8px;
+  padding: 12px 12px 10px;
+  border-radius: var(--r-lg, 12px);
+  box-shadow: var(--sh-1, none);
 }
 .voice-call__head { display: flex; align-items: center; gap: 10px; }
 .voice-call__orb {
@@ -22,53 +33,52 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #71cde9, #276f86);
-  box-shadow: 0 0 0 0 rgb(83 174 202 / 0.6);
+  background: radial-gradient(circle at 35% 35%, color-mix(in srgb, var(--accent) 45%, #fff), var(--accent));
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
 }
+.voice-call--docked .voice-call__orb { width: 30px; height: 30px; }
 .voice-call__orb.is-talking { animation: voice-call-pulse 1.2s ease-out infinite; }
 @keyframes voice-call-pulse {
-  0% { box-shadow: 0 0 0 0 rgb(83 174 202 / 0.6); }
-  100% { box-shadow: 0 0 0 12px rgb(83 174 202 / 0); }
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  100% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .voice-call__orb.is-talking { animation: none; box-shadow: 0 0 0 3px #53aeca; }
+  .voice-call__orb.is-talking { animation: none; box-shadow: 0 0 0 3px var(--accent); }
 }
-.voice-call__title { font-size: 13.5px; font-weight: 600; }
-.voice-call__status { font-size: 12px; color: rgb(255 255 255 / 0.7); }
+.voice-call__title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.voice-call__sub { font-weight: 400; color: var(--ink-4); }
+.voice-call__status { font-size: 12px; color: var(--ink-3); }
 .voice-call__captions { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; line-height: 1.4; }
-.voice-call__caption { padding: 4px 8px; border-radius: 8px; background: rgb(255 255 255 / 0.08); }
-.voice-call__caption.is-user { align-self: flex-end; color: rgb(255 255 255 / 0.85); }
+.voice-call__caption { padding: 4px 8px; border-radius: var(--r, 8px); background: var(--surface-2); color: var(--ink-2); }
+.voice-call__caption.is-user { align-self: flex-end; color: var(--ink); }
 .voice-call__caption.is-old { opacity: 0.65; }
 .voice-call__controls { display: flex; justify-content: flex-end; gap: 8px; }
-.voice-call__close { flex: 0 0 auto; align-self: flex-start; width: 24px; height: 24px; display: inline-grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: rgb(255 255 255 / 0.6); cursor: pointer; }
-.voice-call__close:hover { color: #fff; background: rgb(255 255 255 / 0.12); }
-.voice-call__start { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: #34a853; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
-.voice-call__start:hover { background: #2d9249; }
-.voice-call__start:disabled { background: rgb(255 255 255 / 0.15); color: rgb(255 255 255 / 0.5); cursor: default; }
+.voice-call__close { flex: 0 0 auto; align-self: flex-start; width: 24px; height: 24px; display: inline-grid; place-items: center; border: 0; border-radius: var(--r-sm, 6px); background: transparent; color: var(--ink-3); cursor: pointer; }
+.voice-call__close:hover { color: var(--ink); background: var(--surface-2); }
+.voice-call__btn { width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface-2); color: var(--ink); cursor: pointer; }
+.voice-call__btn:hover { background: color-mix(in srgb, var(--ink) 10%, var(--surface-2)); }
+.voice-call__btn--danger { border-color: transparent; background: #d93025; color: #fff; }
+.voice-call__btn--danger:hover { background: #b3261e; }
 
-/* The task view's top-right icon for a minimized call (ChatView). */
-.chat-call-shortcut { color: #34a853; }
+/* 8-bit: square corners, a hard pixel shadow, a blocky orb that blinks in
+   steps instead of glowing. */
+body[data-skin="8bit"] .voice-call { border-width: 2px; border-color: var(--ink); border-radius: 0; box-shadow: 4px 4px 0 0 var(--ink); }
+body[data-skin="8bit"] .voice-call--docked { box-shadow: 3px 3px 0 0 var(--ink); }
+body[data-skin="8bit"] .voice-call__orb { border-radius: 0; background: var(--accent); box-shadow: inset -4px -4px 0 0 color-mix(in srgb, var(--ink) 35%, transparent); }
+body[data-skin="8bit"] .voice-call__orb.is-talking { animation: voice-call-blink 0.6s steps(2, jump-none) infinite; }
+@keyframes voice-call-blink { 0% { opacity: 1; } 100% { opacity: 0.35; } }
+body[data-skin="8bit"] .voice-call__caption,
+body[data-skin="8bit"] .voice-call__close { border-radius: 0; }
+body[data-skin="8bit"] .voice-call__btn { border: 2px solid var(--ink); border-radius: 0; box-shadow: 2px 2px 0 0 var(--ink); }
+body[data-skin="8bit"] .voice-call__btn:active { transform: translate(2px, 2px); box-shadow: none; }
 
-/* Minimized away from a task: just the orb, where the card was. */
-.voice-call-bubble {
-  position: fixed;
-  z-index: 60;
-  top: 16px;
-  right: 16px;
-  padding: 6px;
-  border: 0;
-  border-radius: 50%;
-  background: #111;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
-  cursor: pointer;
-  display: inline-grid;
-}
-.voice-call-bubble .voice-call__orb { width: 28px; height: 28px; }
+/* The top-right call icon while a call runs (TopShortcuts). */
+.top-shortcut--live { color: #34a853; }
 
 @media (max-width: 639.98px) {
-  .voice-call-bubble { top: calc(env(safe-area-inset-top, 0px) + 60px); }
   .voice-call {
     top: calc(env(safe-area-inset-top, 0px) + 52px);
+    bottom: auto;
     left: 0;
     right: 0;
     width: auto;

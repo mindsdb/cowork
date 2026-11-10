@@ -248,6 +248,8 @@ export default function HomeView({
   onUpdateConnectorMute,
   onStartVideoCall = null,
   onStartVoiceCall = null,
+  // The browser and call icons, at the top right (TopShortcuts).
+  topShortcuts = null,
   browserSwitch = null,
   onNavigateToConnectors,
   onCreateProject,
@@ -478,8 +480,9 @@ export default function HomeView({
   return (
     <div
       ref={homeRef}
-      className="flex-1 overflow-auto flex flex-col items-center justify-center pt-0 px-10 pb-[60px] bg-transparent"
+      className="relative flex-1 overflow-auto flex flex-col items-center justify-center pt-0 px-10 pb-[60px] bg-transparent"
     >
+      {topShortcuts && <div className="absolute top-3.5 right-3.5 z-10">{topShortcuts}</div>}
       {/* Deliberate exception to the .s-* ladder. This is the home hero, and
           the ladder has no rung between s-h1 (28px) and s-display (44px): 28px
           is dwarfed by the 42px orb, 44px wraps to two lines in the 640px

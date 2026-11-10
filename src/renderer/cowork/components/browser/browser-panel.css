@@ -59,3 +59,12 @@
 .browser-panel__blank-form { margin-top: 8px; width: 100%; display: flex; gap: 6px; }
 .browser-panel__blank-input { flex: 1; min-width: 0; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; outline: none; }
 .browser-panel__blank-input:focus { border-color: var(--ink-3); }
+body[data-skin="8bit"] .browser-panel__blank-mark,
+body[data-skin="8bit"] .browser-panel__blank-input { border: 2px solid var(--ink); border-radius: 0; }
+
+/* Away from a task (Home, Projects), the pane always floats over the page. */
+.browser-panel-scrim.is-floating { position: fixed; z-index: 50; inset: 0; display: block; border: 0; background: rgba(0, 0, 0, .34); backdrop-filter: blur(2px); }
+.browser-panel.is-floating { position: fixed; z-index: 51; top: 9px; right: 9px; bottom: 9px; width: min(92vw, 900px); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--sh-3); overflow: hidden; }
+@media (max-width: 700px) {
+  .browser-panel.is-floating { top: 0; right: 0; bottom: 0; width: 100vw; border-radius: 0; }
+}
