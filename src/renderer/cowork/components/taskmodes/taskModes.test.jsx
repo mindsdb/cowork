@@ -127,6 +127,9 @@ describe('TASK_MODES data', () => {
       'Explain an error and suggest a fix',
       'Review what is on my plate this week',
       'Summarize a document and draft my reply',
+      'Pull key terms out of a contract',
+      'Coach me on a deal from a call transcript',
+      'Turn meeting notes into action items',
     ].sort());
   });
 
