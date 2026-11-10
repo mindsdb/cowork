@@ -16,6 +16,8 @@
 //    flight emitting more text — keeping it out of the streaming
 //    body insulates it from re-renders that would reset its inputs.
 
+import { clearPendingTest } from './connectorTestStore';
+
 const _byConversation = new Map();
 const _listeners = new Map(); // cid → Set<fn>
 
@@ -115,6 +117,9 @@ export function setForm(conversationId, spec) {
   // each render. Skip the notification when nothing actually changed.
   const prev = _byConversation.get(conversationId);
   if (prev && _shallowFormEqual(prev, spec)) return;
+  // A new form never inherits a waiting connection test: its Confirm belongs
+  // to the form the user submitted, not to one the agent emitted since.
+  clearPendingTest(conversationId);
   _byConversation.set(conversationId, spec);
   const subs = _listeners.get(conversationId);
   if (subs) for (const fn of subs) {
@@ -270,6 +275,7 @@ export function patchForm(conversationId, patch) {
 export function clearForm(conversationId) {
   if (!conversationId) return;
   _byConversation.delete(conversationId);
+  clearPendingTest(conversationId);
   // Closing / clearing the form also clears the redacted state
   // snapshot — once the form is gone, there's nothing to inject
   // into chat messages.

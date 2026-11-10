@@ -17,6 +17,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
+import { ConnectorTestPrompt } from './ConnectorTestPrompt';
+import { clearPendingTest, getPendingTest, pendingTestFromAnswer, setPendingTest, subscribePendingTest } from './connectorTestStore';
 import { DataVaultForm } from './DataVaultForm';
 import { providerNameFromSpec } from './methodHero';
 import {
@@ -24,7 +26,7 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { allowConnectorTestHost, cancelConnectorTest, confirmConnectorTest, createDatasourceConnection, editDatasourceConnection, discoverPostHogProjects, saveConnector, fetchDatasources, fetchSubmissionReplaces, startConnectorOAuth, pollConnectorOAuth } from '../../api';
 import { buildDatasourcePayload, describeConnectionState } from '../../lib/datasourceSubmission';
 import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -107,6 +109,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   useEffect(() => {
     setSpec(getForm(conversationId));
     return subscribe(conversationId, (next) => setSpec(next));
+  }, [conversationId]);
+
+  // A custom connector's test waiting on the user. Read from its own store,
+  // never from the spec, so no key the model writes can show these buttons.
+  const [pendingTest, setPendingTestState] = useState(() => getPendingTest(conversationId));
+  const [testBusy, setTestBusy] = useState(false);
+  const [testError, setTestError] = useState('');
+  useEffect(() => {
+    setPendingTestState(getPendingTest(conversationId));
+    return subscribePendingTest(conversationId, (next) => { setPendingTestState(next); setTestError(''); });
   }, [conversationId]);
 
   useEffect(() => {
@@ -764,7 +776,48 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // successful save where there's no useful action left, or while
   // a stuck/abandoned form is sitting there. Clears the form from
   // the conversation's store; the panel unmounts.
+  // Closing while a test waits drops it, and the values the server holds for it.
+  const dropPendingTest = () => {
+    const pending = getPendingTest(conversationId);
+    if (!pending) return;
+    clearPendingTest(conversationId);
+    cancelConnectorTest(pending.kind === 'approval' ? { approvalId: pending.id } : { confirmId: pending.id }).catch(() => {});
+  };
+
+  // Applies the server's answer to a waiting test: the next question, the
+  // preview to confirm, or a patch that ends it.
+  const answerPendingTest = async (call, { saved = false } = {}) => {
+    const pending = getPendingTest(conversationId);
+    if (!pending || testBusy) return;
+    setTestBusy(true);
+    setTestError('');
+    try {
+      const answer = await call(pending);
+      const next = pendingTestFromAnswer(pending.formId, answer);
+      if (next) {
+        setPendingTest(conversationId, next);
+        return;
+      }
+      clearPendingTest(conversationId);
+      if (answer?.patch) patchForm(conversationId, answer.patch);
+      if (saved && answer?.saved_slug) {
+        trackDataSourceConnected(spec?.engine || spec?._connector_id || 'custom');
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      }
+    } catch (err) {
+      if (err?.status === 404) {
+        clearPendingTest(conversationId);
+        patchForm(conversationId, { form_id: spec?.form_id, form_error: 'This test result is no longer waiting. Submit the form again.' });
+      } else {
+        setTestError(err?.message || 'Something went wrong. Try again.');
+      }
+    } finally {
+      setTestBusy(false);
+    }
+  };
+
   const handleClose = () => {
+    dropPendingTest();
     // Host may own dismissal (e.g. returning the user to where they opened
     // the connect flow, ENG-1534); fall back to a plain form-clear.
     if (onClose) { onClose(conversationId); return; }
@@ -865,7 +918,19 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       </div>
 
       <div className="pt-[10px] px-[14px] pb-[14px]">
-        {spec._is_probing ? (
+        {pendingTest ? (
+          <ConnectorTestPrompt
+            pending={pendingTest}
+            busy={testBusy}
+            error={testError}
+            onAllow={() => answerPendingTest((p) => allowConnectorTestHost(p.id))}
+            onConfirm={() => answerPendingTest((p) => confirmConnectorTest(p.id), { saved: true })}
+            onCancel={() => {
+              dropPendingTest();
+              patchForm(conversationId, { form_id: spec.form_id, _awaiting_confirmation: false, _awaiting_private_approval: false, status_text: null });
+            }}
+          />
+        ) : spec._is_probing ? (
           /* Probe running — replace the form with a spinner so the
              popup shows clear progress instead of appearing frozen. */
           <div className="flex flex-col items-center justify-center pt-8 px-5 pb-[36px] gap-3">
