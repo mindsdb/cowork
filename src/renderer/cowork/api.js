@@ -401,10 +401,14 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
     : undefined;
 
+  /* `conv` is cowork-server's ConversationListItem, which both
+     GET /conversations/ and GET /conversations/{id} send in camelCase
+     (CamelResponse), so its two-word fields are read by their camelCase
+     names. */
   return {
     id: conv.id,
     title: conv.title || conv.preview || conv.id || 'Untitled task',
-    subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
+    subtitle: relativeAge(conv.updatedAt || conv.createdAt) || '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
     // 'loading' until a real fetch resolves — every sidebar-listed
@@ -415,10 +419,11 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     // conversation-list caller (fetchSessions) passes 'loading' explicitly.
     messagesStatus,
     projectName: conv.project || null,
-    projectId: conv.project_id || null,
-    projectPath: conv.project_path || null,
+    projectId: conv.projectId || null,
+    projectPath: conv.projectPath || null,
     harness: conv.harness || null,
     model: conv.model || null,
+    reasoningEffort: conv.reasoningEffort || null,
     attachments: [],
     disabledConnections,
     // Kept on this device, like the mutes (lib/taskBrowser).
@@ -430,8 +435,8 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     // conversations created by `_run_schedule`; null for chat-
     // initiated conversations.
     scheduledId: conv.scheduled_id || conv.scheduledId || null,
-    updatedAt: conv.updated_at || conv.updatedAt || null,
-    createdAt: conv.created_at || conv.createdAt || null,
+    updatedAt: conv.updatedAt || null,
+    createdAt: conv.createdAt || null,
   };
 }
 

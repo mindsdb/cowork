@@ -585,9 +585,9 @@ export default function App() {
 
 // Cmd+K's starting list before anything is typed: the five most recently
 // updated tasks and the first three projects, from state App already holds.
-function searchRecents(tasks, projects) {
+export function searchRecents(tasks, projects) {
   const labelFor = (task) => {
-    const project = projects.find((p) => p.name === task.projectId || p.path === task.projectPath);
+    const project = resolveTaskProject(task, projects);
     return project ? projectLabel(project) : undefined;
   };
   return [

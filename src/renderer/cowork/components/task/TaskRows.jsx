@@ -102,7 +102,7 @@ export function TaskRow({
 // Cowork task → row props. `projects` is omitted inside a project, where
 // every row's project is the page's own.
 export function chatTaskRow(task, { projects, onOpenProject } = {}) {
-  const updatedAt = task.updatedAt || task.subtitle || task.created_at;
+  const updatedAt = task.updatedAt || task.subtitle || task.createdAt;
   const age = relativeAge(updatedAt);
   return {
     title: task.title,
