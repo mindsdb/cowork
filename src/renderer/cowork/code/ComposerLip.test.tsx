@@ -48,10 +48,11 @@ function failure(code: string, detail: string, type: CodingEvent['type'] = 'erro
 function renderFailure(code: string, detail: string, task = session()) {
   const onChooseModel = vi.fn();
   const onAddCredits = vi.fn();
+  const onViewBudgets = vi.fn();
   const notice = failureNotice(accountFailure(task, undefined, failure(code, detail)), 'GPT 5.6 Sol');
   if (!notice) throw new Error(`no notice for ${code}`);
-  const view = render(<ComposerLip notice={notice} onChooseModel={onChooseModel} onAddCredits={onAddCredits} onReopen={vi.fn()} onDismiss={vi.fn()} />);
-  return { ...view, onChooseModel, onAddCredits };
+  const view = render(<ComposerLip notice={notice} onChooseModel={onChooseModel} onAddCredits={onAddCredits} onViewBudgets={onViewBudgets} onReopen={vi.fn()} onDismiss={vi.fn()} />);
+  return { ...view, onChooseModel, onAddCredits, onViewBudgets };
 }
 
 
@@ -131,12 +132,16 @@ describe('ComposerLip', () => {
     expect(screen.getByRole('button', { name: 'More options' })).toBeInTheDocument();
   });
 
-  it('names a spent org budget, offers a model change for MindsHub Air, and never credits', () => {
-    const { onChooseModel } = renderFailure('budget_exceeded', 'upstream 402');
+  it('names a spent org budget, opens Budgets, offers a model change for MindsHub Air, and never credits', async () => {
+    const user = userEvent.setup();
+    const { onChooseModel, onViewBudgets } = renderFailure('budget_exceeded', 'upstream 402');
     expect(screen.getByText("Your organization's budget is used up.")).toBeInTheDocument();
     expect(screen.getByText('An owner or admin can raise it in Budgets. Choose MindsHub Air to continue in this task.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View budgets' }));
+    expect(onViewBudgets).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Choose another model' }));
     expect(onChooseModel).toHaveBeenCalledOnce();
   });
 

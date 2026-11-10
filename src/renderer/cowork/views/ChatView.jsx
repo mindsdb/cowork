@@ -67,7 +67,8 @@ import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisible
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
 import { linkFigureSteps } from '../lib/figureSources';
-import { MINDS_BILLING_URL, MINDS_BUDGETS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
@@ -1362,6 +1363,7 @@ export function FreeServingPausedCard({
 export function BudgetExceededCard({
   time, agentLabel, usage, onSwitchToAir, deleting = false,
 }) {
+  const budgetsUrl = useBudgetsUrl();
   if (!PLATFORM_UI) {
     return (
       <ActionCard
@@ -1389,7 +1391,7 @@ export function BudgetExceededCard({
           // The click only, like the other stopped-task cards.
           onClick: () => {
             trackBillingOpened('budget_exceeded');
-            host.openExternal(MINDS_BUDGETS_URL);
+            host.openExternal(budgetsUrl);
           },
           primary: true,
         },

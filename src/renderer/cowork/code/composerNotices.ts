@@ -6,6 +6,8 @@ export interface FailureRecovery {
   title: (modelName: string) => string;
   body: string;
   addCredits?: boolean;
+  // A spent budget: credits do not lift it, so the action opens Budgets instead.
+  viewBudgets?: boolean;
   // A limit on the whole organization does not lift on another model.
   hideModelChoice?: boolean;
   // The turn stopped, but only until a short limit lifts. It reads as a wait,
@@ -55,6 +57,7 @@ export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   budget_exceeded: {
     title: () => "Your organization's budget is used up",
     body: 'An owner or admin can raise it in Budgets. Choose MindsHub Air to continue in this task.',
+    viewBudgets: true,
   },
 };
 
@@ -127,6 +130,7 @@ export interface ComposerNotice {
   detail?: string;
   chooseModel?: boolean;
   addCredits?: boolean;
+  viewBudgets?: boolean;
   billingTrigger?: BillingTrigger;
   /** The remote run stopped but kept its work; Reopen task restores it. */
   reopen?: boolean;
@@ -161,6 +165,7 @@ export function failureNotice(failure: TurnFailure | null, modelName: string): C
     detail: failure.detail,
     chooseModel: !recovery.hideModelChoice,
     addCredits: recovery.addCredits,
+    viewBudgets: recovery.viewBudgets,
     billingTrigger: recovery.billingTrigger,
   };
 }

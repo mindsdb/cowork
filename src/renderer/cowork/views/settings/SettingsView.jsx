@@ -18,7 +18,8 @@ import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL, MINDS_BUDGETS_URL } from '../../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
@@ -133,14 +134,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{`Your organization's budget is used up. ${budgetExceededCopy({ usage })}`} </span>
-          <button
-            type="button"
-            onClick={() => {
-              trackBillingOpened('budget_notice');
-              return host.openExternal(MINDS_BUDGETS_URL);
-            }}
-            className={LINK_BTN}
-          >View budgets →</button>
+          <ViewBudgetsLink>View budgets →</ViewBudgetsLink>
         </div>
         {byok}
       </div>
@@ -169,6 +163,21 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
    names it and gives the way out. A restricted model has no billing way out,
    so its line has no link; a budget-stopped one links to Budgets. Exported
    for the visual fixture. */
+/** The Budgets tab for this session's organization; credits do not lift a budget. */
+function ViewBudgetsLink({ children }) {
+  const budgetsUrl = useBudgetsUrl();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        trackBillingOpened('budget_notice');
+        return host.openExternal(budgetsUrl);
+      }}
+      className={LINK_BTN}
+    >{children}</button>
+  );
+}
+
 export function UnavailableModelHint({ label, restricted, budgetReached = false }) {
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;
@@ -184,14 +193,7 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false 
     return (
       <div className="text-[11.5px] text-ink-3">
         {label} can't run because your organization's budget is used up.{' '}
-        <button
-          type="button"
-          onClick={() => {
-            trackBillingOpened('budget_notice');
-            return host.openExternal(MINDS_BUDGETS_URL);
-          }}
-          className={LINK_BTN}
-        >View budgets</button>
+        <ViewBudgetsLink>View budgets</ViewBudgetsLink>
       </div>
     );
   }
