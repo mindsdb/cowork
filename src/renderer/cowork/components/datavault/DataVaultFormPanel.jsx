@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
 import { ConnectorTestPrompt } from './ConnectorTestPrompt';
-import { clearPendingTest, getPendingTest, pendingTestFromAnswer, setPendingTest, subscribePendingTest } from './connectorTestStore';
+import { clearPendingTest, dropPendingTest, getPendingTest, pendingTestFromAnswer, setPendingTest, setPendingTestCanceller, subscribePendingTest } from './connectorTestStore';
 import { DataVaultForm } from './DataVaultForm';
 import { providerNameFromSpec } from './methodHero';
 import {
@@ -33,6 +33,14 @@ import { PLATFORM_UI } from '../../../lib/deployment';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
 import { submitDataVaultForm } from '../../api';
+
+// Ends a waiting connection test on the server, which otherwise keeps the
+// typed values until its timeout. Registered so every drop path uses it.
+function cancelPendingTestOnServer(pending) {
+  cancelConnectorTest(pending.kind === 'approval' ? { approvalId: pending.id } : { confirmId: pending.id })
+    .catch((err) => console.warn('Could not cancel a connection test', err));
+}
+setPendingTestCanceller(cancelPendingTestOnServer);
 
 const BROWSER_OAUTH_POLL_MS    = 3000;
 const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
@@ -772,18 +780,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
 
   if (!spec) return null;
 
-  // The user can always dismiss the form panel — even after a
-  // successful save where there's no useful action left, or while
-  // a stuck/abandoned form is sitting there. Clears the form from
-  // the conversation's store; the panel unmounts.
-  // Closing while a test waits drops it, and the values the server holds for it.
-  const dropPendingTest = () => {
-    const pending = getPendingTest(conversationId);
-    if (!pending) return;
-    clearPendingTest(conversationId);
-    cancelConnectorTest(pending.kind === 'approval' ? { approvalId: pending.id } : { confirmId: pending.id }).catch(() => {});
-  };
-
   // Applies the server's answer to a waiting test: the next question, the
   // preview to confirm, or a patch that ends it.
   const answerPendingTest = async (call, { saved = false } = {}) => {
@@ -800,10 +796,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
       // A new form or test replaced this one while the server answered.
       if (getPendingTest(conversationId) !== pending) {
-        if (next) {
-          cancelConnectorTest(next.kind === 'approval' ? { approvalId: next.id } : { confirmId: next.id })
-            .catch((err) => console.warn('Could not cancel a replaced connection test', err));
-        }
+        if (next) cancelPendingTestOnServer(next);
         return;
       }
       if (next) {
@@ -825,8 +818,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     }
   };
 
+  // The user can always dismiss the form panel — even after a
+  // successful save where there's no useful action left, or while
+  // a stuck/abandoned form is sitting there. Clears the form from
+  // the conversation's store; the panel unmounts.
   const handleClose = () => {
-    dropPendingTest();
+    dropPendingTest(conversationId);
     // Host may own dismissal (e.g. returning the user to where they opened
     // the connect flow, ENG-1534); fall back to a plain form-clear.
     if (onClose) { onClose(conversationId); return; }
@@ -936,7 +933,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             onAllow={() => answerPendingTest((p) => allowConnectorTestHost(p.id))}
             onConfirm={() => answerPendingTest((p) => confirmConnectorTest(p.id), { saved: true })}
             onCancel={() => {
-              dropPendingTest();
+              dropPendingTest(conversationId);
               patchForm(conversationId, { form_id: spec.form_id, _awaiting_confirmation: false, _awaiting_private_approval: false, status_text: null });
             }}
           />

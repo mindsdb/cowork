@@ -8,7 +8,7 @@ import fixture from '../../__fixtures__/connector_confirm_stream.json';
 import { streamDataVaultSubmission } from '../../api';
 import {
   applyConnectorTestEvent, clearPendingTest, getPendingTest, movePendingTest,
-  pendingTestFromAnswer, pendingTestFromEvent, setPendingTest,
+  pendingTestFromAnswer, pendingTestFromEvent, setPendingTest, setPendingTestCanceller,
 } from './connectorTestStore';
 import { setForm, clearForm, patchForm } from './formStore';
 
@@ -71,6 +71,26 @@ describe('keeping it apart from the form', () => {
     applyConnectorTestEvent(CID, previewEvent);
     clearForm(CID);
     expect(getPendingTest(CID)).toBeNull();
+  });
+
+  it('hands a test dropped by a new form or a dismissed form to the server cancel', () => {
+    const cancelled = [];
+    setPendingTestCanceller((pending) => cancelled.push([pending.kind, pending.id]));
+    try {
+      setForm(CID, { form_id: 'fm_aaaaaaaaaa', title: 'Connect Planner' });
+      applyConnectorTestEvent(CID, previewEvent);
+      setForm(CID, { form_id: 'fm_aaaaaaaaaa', title: 'Connect Planner again' });
+      applyConnectorTestEvent(CID, askEvent);
+      clearForm(CID);
+
+      setPendingTest('tmp-connect-2', pendingTestFromEvent(previewEvent));
+      movePendingTest('tmp-connect-2', CID);
+      clearPendingTest(CID);
+    } finally {
+      setPendingTestCanceller(null);
+    }
+
+    expect(cancelled).toEqual([['confirm', previewEvent.confirm_id], ['approval', askEvent.approval_id]]);
   });
 
   it('moves with the conversation when the server mints its id', () => {

@@ -99,6 +99,19 @@ describe('confirming a test result', () => {
     expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id });
   });
 
+  it('a test dropped outside the panel is cancelled on the server', () => {
+    const preview = streamEvent(fixture.stream, 'connector.test_preview');
+    applyConnectorTestEvent(CID, preview);
+    render(<DataVaultFormPanel conversationId={CID} />);
+    act(() => setForm(CID, { ...SPEC, form_id: 'fm_cccccccccc' }));
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ confirmId: preview.confirm_id });
+
+    const ask = streamEvent(fixture.private.stream, 'connector.private_host_request');
+    act(() => { applyConnectorTestEvent(CID, ask); });
+    act(() => clearForm(CID));
+    expect(api.cancelConnectorTest).toHaveBeenCalledWith({ approvalId: ask.approval_id });
+  });
+
   it('a spec key alone never shows Confirm', () => {
     setForm(CID, { ...SPEC, _awaiting_confirmation: true, confirm_id: 'forged', preview: { status: 200 } });
     render(<DataVaultFormPanel conversationId={CID} />);
@@ -166,6 +179,26 @@ describe('confirming a test result', () => {
     expect(analytics.trackDataSourceConnected).toHaveBeenCalledWith('planner');
     expect(getForm(CID).form_id).toBe('fm_cccccccccc');
     expect(getForm(CID)._is_success).toBeFalsy();
+  });
+
+  it('only a confirm that saved refreshes the connections', async () => {
+    const changed = vi.fn();
+    window.addEventListener('anton:connections-changed', changed);
+    applyConnectorTestEvent(CID, streamEvent(fixture.private.stream, 'connector.private_host_request'));
+    api.allowConnectorTestHost.mockResolvedValue({ ...fixture.private.allow, saved_slug: 'planner-x' });
+    const { unmount } = render(<DataVaultFormPanel conversationId={CID} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Allow for this test' }));
+    await waitFor(() => expect(screen.getByText('Is this your data?')).toBeTruthy());
+    unmount();
+
+    api.confirmConnectorTest.mockResolvedValue({ patch: { form_id: SPEC.form_id, form_error: 'The API answered with no data.' } });
+    render(<DataVaultFormPanel conversationId={CID} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+    await waitFor(() => expect(getForm(CID).form_error).toContain('no data'));
+    window.removeEventListener('anton:connections-changed', changed);
+
+    expect(changed).not.toHaveBeenCalled();
+    expect(analytics.trackDataSourceConnected).not.toHaveBeenCalled();
   });
 
   it('a late failure leaves the form that replaced the test alone', async () => {

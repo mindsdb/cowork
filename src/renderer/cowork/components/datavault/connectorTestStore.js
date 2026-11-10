@@ -5,7 +5,7 @@
 // saved with the conversation, so the agent cannot read it and answer for the
 // user. It lives here in memory only: never in the form spec (which the
 // model writes and patches), never in message content, never in
-// localStorage. A new form for the conversation clears it (formStore.setForm).
+// localStorage. A new form for the conversation drops it (formStore.setForm).
 
 const _byConversation = new Map();
 const _listeners = new Map(); // cid → Set<fn>
@@ -64,6 +64,23 @@ export function clearPendingTest(conversationId) {
   if (!conversationId || !_byConversation.has(conversationId)) return;
   _byConversation.delete(conversationId);
   _notify(conversationId, null);
+}
+
+// The server call that drops a waiting test. The panel registers it, so this
+// store and formStore never load the API module.
+let _cancelOnServer = null;
+
+export function setPendingTestCanceller(fn) {
+  _cancelOnServer = typeof fn === 'function' ? fn : null;
+}
+
+// Drop the conversation's waiting test and tell the server, which otherwise
+// keeps the typed values until its timeout.
+export function dropPendingTest(conversationId) {
+  const pending = getPendingTest(conversationId);
+  if (!pending) return;
+  clearPendingTest(conversationId);
+  if (_cancelOnServer) _cancelOnServer(pending);
 }
 
 // Carry a waiting test over when the conversation's temporary id is replaced
