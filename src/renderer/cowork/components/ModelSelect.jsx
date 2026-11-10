@@ -96,7 +96,8 @@ import { ChevronRight, Check } from 'lucide-react';
 import { Icon } from './ui/Icon';
 import { cn } from '../lib/cn';
 import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { USAGE_ACTIONS, usageActionUrl } from '../lib/usageWarnings';
+import { useHubUsageContext } from '../lib/hubUsageContext';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { trackBillingOpened } from '../lib/analytics';
@@ -166,7 +167,7 @@ const PIN_BOTTOM = '__pinned-bottom__';
  * the stopPropagation, and none can without a `locked` row that is not also
  * disabled, which the builders never produce.
  */
-function creditsAction(t) {
+function creditsAction(t, isBillingOwner) {
   return (
     <Tooltip content={t('picker.addCreditsTooltip')}>
       <button
@@ -184,7 +185,7 @@ function creditsAction(t) {
         onClick={(e) => {
           e.stopPropagation();
           trackBillingOpened('locked_model_row');
-          return host.openExternal(MINDS_BILLING_URL);
+          return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -413,6 +414,7 @@ export function ModelSelect({
   const { t } = useTranslation('models');
   const placeholder = placeholderProp ?? t('picker.placeholder');
   const emptyText = emptyTextProp ?? t('picker.empty');
+  const isBillingOwner = !!useHubUsageContext()?.usage?.isBillingOwner;
   const groups = useMemo(() => {
     // A locked row gets the route to credits attached here, so neither builder
     // has to know how to render one. An explicit `action` from a call site wins
@@ -420,7 +422,7 @@ export function ModelSelect({
     const entries = options.filter(Boolean)
       .map((o) => {
         if (!PLATFORM_UI && o.locked) return { ...o, tag: t('picker.unavailable') };
-        return o.locked && !o.action ? { ...o, action: creditsAction(t) } : o;
+        return o.locked && !o.action ? { ...o, action: creditsAction(t, isBillingOwner) } : o;
       });
     const top = entries.filter((o) => o.pin === 'top');
     const bottom = entries.filter((o) => o.pin === 'bottom');
@@ -431,7 +433,7 @@ export function ModelSelect({
       ...grouped,
       ...(bottom.length ? [{ key: PIN_BOTTOM, name: null, items: bottom }] : []),
     ];
-  }, [options, t]);
+  }, [options, t, isBillingOwner]);
 
   // This component takes over the Combobox's open state ONLY when the effort
   // feature is opted into (`modelEfforts` passed at all) — a footer pick

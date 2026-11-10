@@ -1705,8 +1705,9 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  *
  * The body is OUR copy, never the server's error string — old gateways word
  * these as access problems, which under pay as you go misdescribes an empty
- * wallet (ENG-1304). Top up balance is just a billing link (host.openExternal
- * window.opens on web); Open Settings routes there on both shells.
+ * wallet (ENG-1304). Top up balance opens the console (host.openExternal
+ * window.opens on web): the add-credits dialog for a billing owner on a credit
+ * denial, the billing page otherwise. Open Settings routes there on both shells.
  *
  * A third flavor is current, not legacy: `model_restricted`, an org admin's
  * model rule. The gateway names it on its 403 (`X-MindsHub-Deny-Detail` /
@@ -1717,7 +1718,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
-  deleting = false,
+  isBillingOwner = false, deleting = false,
 }) {
   const { t } = useTranslation('chat');
   // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
@@ -1757,7 +1758,9 @@ export function ModelUnavailableCard({
   // denial that never happened.
   const openBilling = () => {
     trackBillingOpened(denied ? 'model_access_denied' : 'model_disabled');
-    host.openExternal(MINDS_BILLING_URL);
+    // Only a credit denial opens the add-credits dialog: credits cannot turn a
+    // disabled model back on, so that row keeps the plain billing page.
+    host.openExternal(denied ? usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }) : MINDS_BILLING_URL);
   };
   const title = denied
     ? t('chatView.model.needsCreditsTitle', { model: label })
@@ -2871,6 +2874,7 @@ export default function ChatView({
                       code={m.code}
                       failedModel={m.failedModel}
                       modelLabels={modelLabels}
+                      isBillingOwner={isBillingOwner}
                       onSwitchToAir={
                         onSwitchToAirAndResend && deniedResend
                           ? () => onSwitchToAirAndResend(deniedResend.text, deniedResend.attachments)
