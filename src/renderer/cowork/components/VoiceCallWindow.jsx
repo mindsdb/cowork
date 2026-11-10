@@ -29,7 +29,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
     <div
       role="dialog"
       aria-label={`Voice call with ${agentLabel}`}
-      className={`voice-call${docked ? ' voice-call--docked' : ''}${working ? ' is-working' : ''}`}
+      className={`voice-call${docked ? ' voice-call--docked' : ''}${working ? ' is-working' : ''}${ended ? ' is-ended' : ''}`}
     >
       <button
         type="button"
