@@ -14,7 +14,6 @@ function fakeWindow({ fullScreen = false } = {}) {
     isFullScreen: () => fullScreen,
     setFullScreen: vi.fn((flag: boolean) => {
       fullScreen = flag;
-      if (!flag) emitter.emit('leave-full-screen');
     }),
     hide: vi.fn(),
     show: vi.fn(),
@@ -24,7 +23,9 @@ function fakeWindow({ fullScreen = false } = {}) {
     emitter.emit('close', event);
     return event;
   };
-  return { win, close };
+  // Electron finishes leaving full screen asynchronously, after the animation.
+  const finishLeavingFullScreen = () => emitter.emit('leave-full-screen');
+  return { win, close, finishLeavingFullScreen };
 }
 
 describe('shouldHideOnClose', () => {
@@ -73,13 +74,27 @@ describe('installHideOnClose', () => {
   });
 
   it('leaves full screen before hiding', () => {
-    const { win, close } = fakeWindow({ fullScreen: true });
+    const { win, close, finishLeavingFullScreen } = fakeWindow({ fullScreen: true });
     installHideOnClose(win, 'darwin', () => false);
 
     close();
 
     expect(win.setFullScreen).toHaveBeenCalledWith(false);
+    expect(win.hide).not.toHaveBeenCalled();
+    finishLeavingFullScreen();
     expect(win.hide).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays open when reopened before leaving full screen finishes', () => {
+    const { win, close, finishLeavingFullScreen } = fakeWindow({ fullScreen: true });
+    const { reopen } = installHideOnClose(win, 'darwin', () => false);
+
+    close();
+    expect(reopen()).toBe(true);
+    finishLeavingFullScreen();
+
+    expect(win.hide).not.toHaveBeenCalled();
+    expect(reopen()).toBe(false);
   });
 
   it('lets the window close on Windows', () => {

@@ -53,9 +53,13 @@ export function installHideOnClose(
     event.preventDefault();
     hiddenByClose = true;
     // Hiding a full-screen window leaves an empty black Space behind, so
-    // leave full screen first and hide once that has finished.
+    // leave full screen first and hide once that has finished. The exit
+    // animation is asynchronous: a Dock click during it has already reopened
+    // the window, so hide only if it is still meant to be hidden.
     if (win.isFullScreen()) {
-      win.once('leave-full-screen', () => win.hide());
+      win.once('leave-full-screen', () => {
+        if (hiddenByClose) win.hide();
+      });
       win.setFullScreen(false);
     } else {
       win.hide();
