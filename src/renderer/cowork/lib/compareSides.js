@@ -237,7 +237,9 @@ export function sideStatus(turns = [], { busy = false, continued = false } = {})
   if (!last) return { tone: 'muted', label: 'Waiting' };
   if (last.reply === 'running') return { tone: 'working', label: 'Working' };
   if (last.reply === 'done') return { tone: 'done', label: 'Done' };
-  if (isCreditFailure(last)) return { tone: 'failed', label: 'Out of credits' };
+  if (isCreditFailure(last)) {
+    return { tone: 'failed', label: last.failureCode === 'budget_exceeded' ? 'Budget reached' : 'Out of credits' };
+  }
   if (last.reply === 'failed' && last.failureCode === 'rate_limited') return { tone: 'failed', label: 'Rate limited' };
   if (last.reply === 'failed') return { tone: 'failed', label: 'Failed' };
   return { tone: 'muted', label: 'Stopped' };

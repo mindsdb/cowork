@@ -263,8 +263,9 @@ describe('credit failures', () => {
     expect(isCreditFailure(turnsOf([user('p'), reply()])[0])).toBe(false);
   });
 
-  it('read as out of credits, or rate limited, in the side header', () => {
+  it('read as out of credits, budget reached, or rate limited, in the side header', () => {
     expect(sideStatus(turnsOf([user('p'), outOfCredits])).label).toBe('Out of credits');
+    expect(sideStatus(turnsOf([user('p'), { role: 'error', code: 'budget_exceeded' }])).label).toBe('Budget reached');
     expect(sideStatus(turnsOf([user('p'), { role: 'error', code: 'rate_limited' }])).label).toBe('Rate limited');
     expect(sideStatus(turnsOf([user('p'), { role: 'error', code: 'provider_overloaded' }])).label).toBe('Failed');
   });
