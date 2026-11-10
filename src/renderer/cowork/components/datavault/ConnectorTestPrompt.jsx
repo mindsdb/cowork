@@ -47,9 +47,7 @@ function TestPreview({ preview }) {
         {preview.keys?.length > 0 && <Row label="Fields">{preview.keys.join(', ')}</Row>}
         {preview.masked_count > 0 && <Row label="Hidden">{preview.masked_count} value(s)</Row>}
       </div>
-      {preview.over_cap ? (
-        <Alert variant="info">The answer is too large to show. Confirm only if you expected a large answer from this API.</Alert>
-      ) : preview.first_item != null && (
+      {preview.first_item != null && (
         <pre
           data-testid="connector-test-preview-item"
           className="m-0 p-[10px] rounded-card-row text-[12px] leading-[1.5] text-ink-2 whitespace-pre-wrap break-words max-h-[220px] overflow-auto"
