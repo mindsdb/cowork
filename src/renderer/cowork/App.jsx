@@ -81,7 +81,7 @@ import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
-import { deriveUpdateBanner } from '../../shared/update-banner';
+import { deriveUpdateBanner, restartUnderway } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
 import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
@@ -2145,6 +2145,13 @@ function AppCore() {
       ? { version: shellUpdate.version, debInstaller: host.getPlatform() === 'linux' }
       : null,
   });
+  // Close Settings once a restart is underway. Its "Restart now" buttons wait
+  // on requests that resolve only as the window reloads or the app quits, so
+  // without this the modal stays up over the update overlay.
+  const restartInProgress = restartUnderway({ ota: updateStatus, shellAuto: shellAutoUpdate });
+  useEffect(() => {
+    if (restartInProgress) setSettingsOpen(false);
+  }, [restartInProgress]);
   const handleUpdateAction = useCallback((action) => {
     if (action === 'apply-ota') return handleApplyUpdate();
     if (action === 'shell-auto') return handleShellAutoUpdateAction();
