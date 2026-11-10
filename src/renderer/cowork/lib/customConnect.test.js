@@ -171,6 +171,11 @@ describe('the offer for a connector cloud does not run yet', () => {
     expect(build).toHaveBeenCalledWith('HasData');
   });
 
+  it('offers nothing for SharePoint, which has its own form', () => {
+    const custom = { id: 'sharepoint_custom', label: 'SharePoint', custom: true };
+    expect(desktopOnlyOffer({ connectorId: 'sharepoint', label: 'SharePoint', customMatch: custom, canBuild: true, connect: vi.fn(), build: vi.fn() })).toBeNull();
+  });
+
   it('offers nothing when no custom one exists and none can be built', () => {
     expect(desktopOnlyOffer({ label: 'HasData', customMatch: null, canBuild: false, connect: vi.fn(), build: vi.fn() })).toBeNull();
   });

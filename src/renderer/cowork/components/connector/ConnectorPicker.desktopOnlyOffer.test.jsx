@@ -18,7 +18,8 @@ vi.mock('../../../platform/host', () => ({
 import ConnectorPicker from './ConnectorPicker';
 
 const DESKTOP_ONLY_TITLE = 'Connectors available in Cowork Desktop App';
-const HASDATA = { id: 'hasdata', label: 'HasData', category: 'web', cloud_available: false };
+const HASDATA = { id: 'hasdata', label: 'HasData', category: 'web', cloud_available: false, api_key: true };
+const BIGQUERY = { id: 'bigquery', label: 'BigQuery', category: 'database', cloud_available: false, api_key: false };
 const HASDATA_CUSTOM = { id: 'hasdata_custom', label: 'HasData', category: 'web', custom: true };
 const GMAIL = { id: 'gmail', label: 'Gmail', category: 'communication' };
 
@@ -26,7 +27,7 @@ function section(title) {
   return screen.getByText(title, { exact: false }).closest('div').parentElement;
 }
 
-async function pickDesktopOnly(connectors, { canBuild }) {
+async function pickDesktopOnly(connectors, { canBuild, label = 'HasData' }) {
   setOrgMode(true);
   fetchConnectors.mockResolvedValue(connectors);
   fetchCanBuildCustomConnector.mockResolvedValue(canBuild);
@@ -37,7 +38,7 @@ async function pickDesktopOnly(connectors, { canBuild }) {
   );
   await screen.findByText(DESKTOP_ONLY_TITLE, { exact: false });
   if (canBuild) await screen.findAllByText('Build a custom connector');
-  fireEvent.click(within(section(DESKTOP_ONLY_TITLE)).getByText('HasData'));
+  fireEvent.click(within(section(DESKTOP_ONLY_TITLE)).getByText(label));
   return onDesktopOnly;
 }
 
@@ -52,6 +53,12 @@ describe('picking a connector cloud does not run yet', () => {
     const onDesktopOnly = await pickDesktopOnly([GMAIL, HASDATA, HASDATA_CUSTOM], { canBuild: true });
 
     expect(onDesktopOnly).toHaveBeenCalledWith(HASDATA, { customMatch: HASDATA_CUSTOM, canBuild: true });
+  });
+
+  it('offers no build for a connector that takes no API key', async () => {
+    const onDesktopOnly = await pickDesktopOnly([GMAIL, BIGQUERY], { canBuild: true, label: 'BigQuery' });
+
+    expect(onDesktopOnly).toHaveBeenCalledWith(BIGQUERY, { customMatch: null, canBuild: false });
   });
 
   it('passes no match and the build answer when there is no custom one', async () => {
