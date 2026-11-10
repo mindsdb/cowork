@@ -4648,7 +4648,7 @@ function AppCore() {
   operateFromCallRef.current = (request) => runOperator({
     request,
     history: voiceHistoryRef.current,
-    snapshot: () => describeScreen({ ...callScreenRef.current, tasks: tasksRef.current }),
+    snapshot: () => describeScreen({ ...callScreenRef.current, tasks: tasksRef.current, callTaskId: facetimeTaskIdRef.current }),
     actions: callActions,
   });
   // From a composer's + menu: in the task on screen, or a new one from the

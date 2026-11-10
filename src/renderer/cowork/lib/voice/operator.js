@@ -5,7 +5,10 @@
 // sends their results back, and repeats until the model answers in words.
 //
 // `history` is the call's own: it lives for one call, so "move it to Sales"
-// after "start a task about Q3" knows what "it" is.
+// after "start a task about Q3" knows what "it" is. Requests overlap (a "stop
+// it" comes while Anton is still on the last one), so each runs on its own
+// copy and adds its whole exchange to the history when it is done: the model
+// never sees a request land between a tool call and its result.
 
 import { voiceOperate } from '../../api';
 
@@ -22,16 +25,17 @@ function asCall(call) {
  * every round, so it sees what the previous round's actions changed.
  */
 export async function runOperator({ request, history, snapshot, actions, operate = voiceOperate, maxRounds = MAX_ROUNDS }) {
-  history.push({ role: 'user', content: request });
+  const exchange = [{ role: 'user', content: request }];
+  const settle = (said) => {
+    history.push(...exchange, { role: 'assistant', content: said });
+    return said;
+  };
+  console.info('[voice-call] request', request);
   for (let round = 0; round < maxRounds; round += 1) {
-    const turn = await operate(history.slice(-MAX_HISTORY), snapshot());
+    const turn = await operate([...history, ...exchange].slice(-MAX_HISTORY), snapshot());
     const calls = turn?.tool_calls || [];
-    if (!calls.length) {
-      const said = String(turn?.content || '').trim() || 'Done.';
-      history.push({ role: 'assistant', content: said });
-      return said;
-    }
-    history.push({ role: 'assistant', content: turn.content || '', tool_calls: calls.map(asCall) });
+    if (!calls.length) return settle(String(turn?.content || '').trim() || 'Done.');
+    exchange.push({ role: 'assistant', content: turn.content || '', tool_calls: calls.map(asCall) });
     // One at a time: an action can depend on the one before (create, then move).
     for (const call of calls) {
       let result;
@@ -41,16 +45,17 @@ export async function runOperator({ request, history, snapshot, actions, operate
       } catch (err) {
         result = `That failed: ${err?.message || err}`;
       }
-      history.push({ role: 'tool', tool_call_id: call.id, content: String(result ?? 'Done.').slice(0, MAX_RESULT_CHARS) });
+      console.info('[voice-call] action', call.name, call.arguments, '→', result);
+      exchange.push({ role: 'tool', tool_call_id: call.id, content: String(result ?? 'Done.').slice(0, MAX_RESULT_CHARS) });
     }
   }
-  return 'That took more steps than I can take on a call. Have a look at the screen.';
+  return settle('That took more steps than I can take on a call. Have a look at the screen.');
 }
 
 export const isRunning = (task) => (task.messages || []).some((m) => m.role === '_streaming');
 
 /** What the operator is told about the screen: where the person is, projects and recent tasks. */
-export function describeScreen({ route, currentTask, selectedProject, projects, tasks, maxTasks = 30 }) {
+export function describeScreen({ route, currentTask, selectedProject, projects, tasks, callTaskId = null, maxTasks = 30 }) {
   const lines = [];
   if (route === 'task' && currentTask) {
     lines.push(`On screen: the task "${currentTask.title || 'Untitled'}" (id ${currentTask.id}) in project "${currentTask.projectName || 'general'}".`);
@@ -59,6 +64,8 @@ export function describeScreen({ route, currentTask, selectedProject, projects, 
   } else {
     lines.push('On screen: Home. A request for work starts a new task.');
   }
+  const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
+  if (callTask) lines.push(`The task this call last gave Anton work in: "${callTask.title || 'Untitled'}" (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}.`);
   lines.push(`Projects: ${(projects || []).map((p) => `"${p.name}"`).join(', ') || 'none'}.`);
   const recent = (tasks || []).slice(0, maxTasks);
   if (recent.length) {
