@@ -18,8 +18,8 @@ import { useSharePointImport } from './useSharePointImport';
 
 const SITE = 'https://contoso.sharepoint.com/sites/team';
 
-function Launcher({ connections, orgMode = false, onConnectionsChanged }) {
-  const { startSharePointImport, sharePointModals } = useSharePointImport({ connections, orgMode, onConnectionsChanged });
+function Launcher({ connections, projects, orgMode = false, onConnectionsChanged }) {
+  const { startSharePointImport, sharePointModals } = useSharePointImport({ connections, projects, orgMode, onConnectionsChanged });
   return (
     <>
       {startSharePointImport
@@ -69,6 +69,20 @@ describe('useSharePointImport', () => {
     expect(await screen.findByRole('dialog', { name: 'Add files from SharePoint' })).toBeInTheDocument();
     expect(onConnectionsChanged).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(mocks.fetchSavedConnection).toHaveBeenCalledWith('sharepoint', 'corp'));
+  });
+
+  it('names the target project by its display name', async () => {
+    const user = userEvent.setup();
+    render(
+      <Launcher
+        connections={[{ engine: 'sharepoint', name: 'corp' }]}
+        projects={[{ name: 'Sales', display_name: 'Продажи' }]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add from SharePoint' }));
+
+    expect(await screen.findByText('Copies land at the top of Продажи.')).toBeInTheDocument();
   });
 
   it('offers nothing in org mode', () => {

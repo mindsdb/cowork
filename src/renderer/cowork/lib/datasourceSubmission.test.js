@@ -161,6 +161,119 @@ describe('describeConnectionState', () => {
     expect(state.hint).toMatch(/capitals|case/i);
   });
 
+  describe('a TLS refusal, by whether the connection checked the server', () => {
+    const tlsFailed = (tlsMode) => describeConnectionState({ status: 'failed', validation_code: 'tls_failed', tls_mode: tlsMode });
+
+    it.each(['prefer', 'disabled'])('under %s, says the password was held back and points at turning checks on', (mode) => {
+      const { hint } = tlsFailed(mode);
+      expect(hint).toMatch(/password was not sent/);
+      expect(hint).toMatch(/turn on "Only connect if the certificate is signed by a public authority"/);
+      expect(hint).not.toMatch(/turn off/i);
+      expect(hint).not.toMatch(/did not complete an encrypted connection/);
+    });
+
+    it('under encrypted, names the failed handshake as one of two causes, not a refused login as fact', () => {
+      const { hint } = tlsFailed('encrypted');
+      expect(hint).toMatch(/^Either the server did not complete an encrypted connection, or/);
+      expect(hint).toMatch(/password was not sent/);
+      expect(hint).not.toMatch(/^The server asked for the password/);
+    });
+
+    it.each(['system', 'custom_ca', undefined, 'something_new'])('under %s, keeps the certificate advice', (mode) => {
+      const { hint } = tlsFailed(mode);
+      expect(hint).toMatch(/certificate could not be verified/);
+      expect(hint).not.toMatch(/password was not sent/);
+      expect(hint).not.toMatch(/SCRAM/);
+    });
+
+    it('never tells the user the password is right, since the server may ask for a wrong one too', () => {
+      expect(tlsFailed('prefer').hint).not.toMatch(/password (is|was) (correct|right|fine)/i);
+    });
+
+    describe('for MySQL, whose form asks which certificate to trust instead of a yes-or-no box', () => {
+      const mysqlTlsFailed = (tlsMode) => describeConnectionState({
+        status: 'failed', validation_code: 'tls_failed', tls_mode: tlsMode, connector_id: 'mysql',
+      });
+
+      it.each(['prefer', 'disabled', 'encrypted'])('under %s, names the Certificate choices, not the box', (mode) => {
+        const { hint } = mysqlTlsFailed(mode);
+        expect(hint).toMatch(/password was not sent/);
+        expect(hint).toMatch(/Under "Certificate", choose "Signed by a public authority", or "Signed by my own certificate authority"/);
+        expect(hint).not.toMatch(/Only connect if/);
+      });
+
+      it('under custom_ca, points at the pasted authority and the host name, not at choosing what was chosen', () => {
+        const { hint } = mysqlTlsFailed('custom_ca');
+        expect(hint).toMatch(/against the CA certificate you pasted/);
+        expect(hint).toMatch(/host you entered is a name on that certificate/);
+        expect(hint).not.toMatch(/choose "Signed by my own certificate authority"/);
+      });
+
+      it.each(['system', undefined])('under %s, leads with pasting the CA and warns that unchecked can fail again', (mode) => {
+        const { hint } = mysqlTlsFailed(mode);
+        expect(hint).toMatch(/^The server's certificate could not be verified\. If the server signs its own certificate/);
+        expect(hint).toMatch(/paste that authority's certificate/);
+        expect(hint).toMatch(/can then fail whenever the server asks for the password itself/);
+        expect(hint).not.toMatch(/Only connect if|turn off/i);
+      });
+
+      it.each(['prefer', 'disabled', 'encrypted'])('under %s, never tells PostgreSQL the server asked for the password', (mode) => {
+        // PostgreSQL also refuses a login asking for no password, Kerberos, or an unsigned SCRAM exchange.
+        const { hint } = describeConnectionState({
+          status: 'failed', validation_code: 'tls_failed', tls_mode: mode, connector_id: 'postgres',
+        });
+        expect(hint).toMatch(/asked for a kind of login this connection does not allow without checking the server's certificate/);
+        expect(hint).toMatch(/password was not sent/);
+        expect(hint).not.toMatch(/asked for the password itself/);
+      });
+
+      it.each(['prefer', 'disabled', 'encrypted'])('under %s, keeps saying the MySQL server asked for the password, its only refusal', (mode) => {
+        const { hint } = mysqlTlsFailed(mode);
+        expect(hint).toMatch(/asked for the password itself/);
+        expect(hint).not.toMatch(/kind of login/);
+      });
+
+      it.each(['prefer', 'disabled'])('under %s, gives PostgreSQL a way out when the box cannot help', (mode) => {
+        // A server with no TLS, or a self-signed one, fails with the box on too; only SCRAM connects.
+        const { hint } = describeConnectionState({
+          status: 'failed', validation_code: 'tls_failed', tls_mode: mode, connector_id: 'postgres',
+        });
+        expect(hint).toMatch(/If the server has no TLS, or its certificate is not signed by a public authority, ask its administrator to switch this account to SCRAM-SHA-256 logins\.$/);
+      });
+
+      it('under encrypted, offers PostgreSQL no SCRAM, since a server without TLS fails before any login', () => {
+        const { hint } = describeConnectionState({
+          status: 'failed', validation_code: 'tls_failed', tls_mode: 'encrypted', connector_id: 'postgres',
+        });
+        expect(hint).toMatch(/turn on "Only connect if the certificate is signed by a public authority" and try again\.$/);
+        expect(hint).not.toMatch(/SCRAM/);
+      });
+
+      it.each(['prefer', 'disabled', 'encrypted'])('under %s, leaves SCRAM out of MySQL, which has a CA choice', (mode) => {
+        expect(mysqlTlsFailed(mode).hint).not.toMatch(/SCRAM/);
+      });
+
+      it('leaves PostgreSQL on its box', () => {
+        const state = describeConnectionState({
+          status: 'failed', validation_code: 'tls_failed', tls_mode: 'prefer', connector_id: 'postgres',
+        });
+        expect(state.hint).toMatch(/turn on "Only connect if the certificate is signed by a public authority"/);
+        expect(state.hint).not.toMatch(/Under "Certificate"/);
+      });
+    });
+
+    it('leaves a refused password as a refused password, whatever the mode', () => {
+      const state = describeConnectionState({ status: 'failed', validation_code: 'authentication_failed', tls_mode: 'prefer' });
+      expect(state.hint).toBe('The server refused the username or password.');
+    });
+  });
+
+  it('gives no hint for a code that names a built-in object key', () => {
+    for (const code of ['__proto__', 'constructor', 'toString']) {
+      expect(describeConnectionState({ status: 'failed', validation_code: code }).hint).toBe('');
+    }
+  });
+
   it('never claims success for a status it does not recognise', () => {
     expect(describeConnectionState({ status: 'something_new' }).kind).toBe('pending');
     expect(describeConnectionState(null).kind).toBe('pending');

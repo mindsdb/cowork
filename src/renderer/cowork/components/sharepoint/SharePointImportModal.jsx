@@ -37,12 +37,14 @@ function connectionLabel(connection) {
  * @param {object} props
  * @param {boolean} props.open
  * @param {string} props.projectName the project the files land in, at its root
+ * @param {string|null} [props.projectDisplayName] what the person reads for that project; the slug when absent
  * @param {{name: string, user_label?: string|null}[]} props.connections SharePoint connections
  * @param {() => void} props.onClose
  * @param {(result: {imported: object[], skipped: object[]}) => void} [props.onImported]
  */
-export default function SharePointImportModal({ open, projectName, connections, onClose, onImported }) {
+export default function SharePointImportModal({ open, projectName, projectDisplayName, connections, onClose, onImported }) {
   const [busy, setBusy] = useState(false);
+  const label = projectDisplayName || projectName;
   const close = busy ? undefined : onClose;
   return (
     <Modal
@@ -56,12 +58,13 @@ export default function SharePointImportModal({ open, projectName, connections, 
       <ModalHeader
         id="sharepoint-import-title"
         title="Add files from SharePoint"
-        subtitle={`Copies land at the top of ${projectName}.`}
+        subtitle={`Copies land at the top of ${label}.`}
         onClose={close}
       />
       {open && (
         <ImportBody
           projectName={projectName}
+          projectLabel={label}
           connections={connections}
           busy={busy}
           setBusy={setBusy}
@@ -87,7 +90,7 @@ function loadedDescendants(tree, folderId) {
 }
 
 /** The picking view: connection, site and library choices, the tree, and the import itself. */
-function ImportBody({ projectName, connections, busy, setBusy, onClose, onImported }) {
+function ImportBody({ projectName, projectLabel, connections, busy, setBusy, onClose, onImported }) {
   const [connection, setConnection] = useState(connections[0]?.name || null);
   const [sites, setSites] = useState([]);
   const [site, setSite] = useState(null);
@@ -245,7 +248,7 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
       <ModalFooter>
         <Button type="button" variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button type="button" variant="primary" onClick={runImport} disabled={busy || selected.size === 0}>
-          {busy ? 'Importing…' : `Import into ${projectName}`}
+          {busy ? 'Importing…' : `Import into ${projectLabel}`}
         </Button>
       </ModalFooter>
     </>

@@ -81,7 +81,7 @@ import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
-import { deriveUpdateBanner } from '../../shared/update-banner';
+import { deriveUpdateBanner, restartUnderway } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
 import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
@@ -2164,6 +2164,13 @@ function AppCore() {
       ? { version: shellUpdate.version, debInstaller: host.getPlatform() === 'linux' }
       : null,
   });
+  // Close Settings once a restart is underway. Its "Restart now" buttons wait
+  // on requests that resolve only as the window reloads or the app quits, so
+  // without this the modal stays up over the update overlay.
+  const restartInProgress = restartUnderway({ ota: updateStatus, shellAuto: shellAutoUpdate });
+  useEffect(() => {
+    if (restartInProgress) setSettingsOpen(false);
+  }, [restartInProgress]);
   const handleUpdateAction = useCallback((action) => {
     if (action === 'apply-ota') return handleApplyUpdate();
     if (action === 'shell-auto') return handleShellAutoUpdateAction();
@@ -3161,8 +3168,9 @@ function AppCore() {
       // In cloud a connector whose methods carry a `cloud` block is shaped to
       // it: that block replaces the desktop fields and copy whole, and a
       // method without one is not offered, because the relay supports exactly
-      // one method per database connector and refuses the rest. Everything
-      // else, which is every OAuth connector, passes through untouched.
+      // one method per database connector and refuses the rest. OAuth methods
+      // stay beside the cloud form; a connector with no cloud block passes
+      // through untouched.
       const baseSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code
@@ -3225,6 +3233,7 @@ function AppCore() {
 
   const { startSharePointImport, sharePointModals } = useSharePointImport({
     connections: connectors,
+    projects,
     orgMode,
     onConnectionsChanged: () => {
       fetchDatasources()
@@ -6823,7 +6832,7 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteProject != null}
-        title={`Delete project "${pendingDeleteProject?.name}"?`}
+        title={`Delete project "${projectLabel(pendingDeleteProject)}"?`}
         message={
           pendingDeleteProject?.capabilities?.directoryIsExternal
             ? `The project and its conversations will be removed. Your folder ${pendingDeleteProject?.path || ''} stays where it is and your own files in it are not touched, though Cowork's skills/ and .anton/ folders are left behind inside it. This can't be undone.`

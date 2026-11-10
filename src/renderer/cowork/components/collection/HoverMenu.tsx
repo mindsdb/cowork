@@ -35,9 +35,18 @@
 //     ]}
 //   />
 
-import { Menu } from '../ui';
+import Menu from '../ui/Menu';
+import type { MenuItem } from '../ui/Menu';
 
-export function HoverMenu({ open, anchorRect, onClose, items = [], width = 200 }) {
+export interface HoverMenuProps {
+  open: boolean;
+  anchorRect?: DOMRect | null;
+  onClose: () => void;
+  items?: MenuItem[];
+  width?: number;
+}
+
+export function HoverMenu({ open, anchorRect, onClose, items = [], width = 200 }: HoverMenuProps) {
   return (
     <Menu
       open={open}
