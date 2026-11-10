@@ -868,9 +868,9 @@ restricted current model names the admin and has no billing link, and Code
 Mode's new-task check says "An admin restricted this model. Choose another
 model." A server too old to send reasons leaves every disabled row on "Needs
 credits", exactly as before. cowork-server relays any non-empty reason string,
-so `knownModelDisabledReasons` keeps only `model_restricted`, `wallet_empty` and
-`included_allowance_exhausted`: a row with any other reason reads as having
-none, and shows "Needs credits". `mergeRecommendedModels` replaces the reason map
+so `knownModelDisabledReasons` keeps only `model_restricted`, `wallet_empty`,
+`included_allowance_exhausted` and `budget_exceeded`: a row with any other reason
+reads as having none, and shows "Needs credits". `mergeRecommendedModels` replaces the reason map
 whenever it replaces `modelEnabled` and keeps it whenever it keeps that map, so
 a reason never outlives the enabled map it described.
 A row whose reason is `budget_exceeded` (the org's spending budget is used up)

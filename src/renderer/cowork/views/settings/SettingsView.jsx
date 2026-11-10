@@ -157,12 +157,6 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   return null;
 }
 
-/* The line under a role's picker when the CURRENT model cannot run. The
-   stored pin is never rewritten, so a wallet that drains, or an admin rule
-   that lands, leaves the user sitting on a model they can no longer run. This
-   names it and gives the way out. A restricted model has no billing way out,
-   so its line has no link; a budget-stopped one links to Budgets. Exported
-   for the visual fixture. */
 /** The Budgets tab for this session's organization; credits do not lift a budget. */
 function ViewBudgetsLink({ children }) {
   const budgetsUrl = useBudgetsUrl();
@@ -178,6 +172,12 @@ function ViewBudgetsLink({ children }) {
   );
 }
 
+/* The line under a role's picker when the CURRENT model cannot run. The
+   stored pin is never rewritten, so a wallet that drains, or an admin rule
+   that lands, leaves the user sitting on a model they can no longer run. This
+   names it and gives the way out. A restricted model has no billing way out,
+   so its line has no link; a budget-stopped one links to Budgets. Exported
+   for the visual fixture. */
 export function UnavailableModelHint({ label, restricted, budgetReached = false }) {
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;

@@ -294,10 +294,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
   });
 });
 
-/* A row an org admin's model rule blocks is closed off like a locked one, but
-   money cannot open it, so it must not carry the route to credits. Fed the
-   real builder's output: a builder that marked the row `locked` would hand it
-   the button here. */
+/* A budget-stopped row is closed off too, and credits do not lift a budget. */
 describe('ModelSelect: a row the org budget stops offers no credits', () => {
   const OPTIONS = buildModelPickerOptions([
     { id: 'mindshub_air', name: 'MindsHub Air' },
@@ -321,6 +318,10 @@ describe('ModelSelect: a row the org budget stops offers no credits', () => {
   });
 });
 
+/* A row an org admin's model rule blocks is closed off like a locked one, but
+   money cannot open it, so it must not carry the route to credits. Fed the
+   real builder's output: a builder that marked the row `locked` would hand it
+   the button here. */
 describe('ModelSelect: a restricted row offers no credits', () => {
   const OPTIONS = buildModelPickerOptions([
     { id: 'mindshub_air', name: 'MindsHub Air' },
