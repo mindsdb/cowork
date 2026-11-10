@@ -31,6 +31,8 @@ import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
+import LanguageSection from './LanguageSection';
+import { useTranslation } from '../../../lib/i18n';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -696,13 +698,14 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 // ───────────────────────── Nav sidebar ─────────────────────────
 
 function SettingsNav({ section, onSectionChange, serverOnline = true, items = [] }) {
+  const { t } = useTranslation('settings');
   return (
     <nav
       role="navigation"
-      aria-label="Settings sections"
+      aria-label={t('nav.ariaLabel')}
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
-      <div className="section-label pt-0 px-2.5 pb-1.5">Settings</div>
+      <div className="section-label pt-0 px-2.5 pb-1.5">{t('nav.title')}</div>
       {items.map((item, index) => {
         const active = section === item.id;
         // A dead local server cannot accept most settings saves. Keep Backend
@@ -717,7 +720,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
         const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
           <Fragment key={item.id}>
-          {showGroup && <div className="section-label mt-3 first:mt-0 px-2.5 pb-1">{item.group}</div>}
+          {showGroup && <div className="section-label mt-3 first:mt-0 px-2.5 pb-1">{t(`nav.groups.${item.group}`)}</div>}
           <button
             type="button"
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
@@ -734,7 +737,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
                 {icon}
               </span>
             )}
-            <span>{item.label}</span>
+            <span>{t(`nav.items.${item.id}`)}</span>
           </button>
           </Fragment>
         );
@@ -778,6 +781,7 @@ export default function SettingsView({
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+  const { t } = useTranslation('settings');
   const draft = useSettingsDraft(committedSettings);
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
@@ -2138,14 +2142,14 @@ export default function SettingsView({
       transition: `opacity ${AUTO_SAVE_FADE_MS}ms ease`,
     };
     if (status.state === 'saving') {
-      return <span style={fadeStyle} className="text-[11.5px] text-ink-4 ml-2">Saving…</span>;
+      return <span style={fadeStyle} className="text-[11.5px] text-ink-4 ml-2">{t('autoSave.saving')}</span>;
     }
     if (status.state === 'error') {
-      return <span style={fadeStyle} className="text-[11.5px] text-danger ml-2">Couldn't save</span>;
+      return <span style={fadeStyle} className="text-[11.5px] text-danger ml-2">{t('autoSave.failed')}</span>;
     }
     return (
       <span style={fadeStyle} className="text-[11.5px] text-[var(--ok)] ml-2 inline-flex items-center gap-1">
-        {Ico.check(12)} Saved
+        {Ico.check(12)} {t('autoSave.saved')}
       </span>
     );
   }
@@ -2159,7 +2163,7 @@ export default function SettingsView({
   const handleLogoUpload = (file) => {
     if (!file) return;
     if (file.size > MAX_LOGO_BYTES) {
-      setLogoError('Logo must be under 300 KB.');
+      setLogoError(t('appearance.sidebarLogo.tooLarge'));
       return;
     }
     setLogoError(null);
@@ -2178,11 +2182,11 @@ export default function SettingsView({
     faviconReadRef.current = null;
     const mime = file.type || FAVICON_EXTENSION_TYPES[file.name.split('.').pop().toLowerCase()];
     if (!FAVICON_MIME_TYPES.includes(mime)) {
-      setFaviconError('Choose a PNG, ICO, SVG, or WEBP image.');
+      setFaviconError(t('appearance.favicon.wrongType'));
       return;
     }
     if (file.size >= 100 * 1024) {
-      setFaviconError('Browser tab icon must be under 100 KB.');
+      setFaviconError(t('appearance.favicon.tooLarge'));
       return;
     }
     setFaviconError(null);
@@ -2191,18 +2195,18 @@ export default function SettingsView({
     reader.onload = () => {
       if (faviconReadRef.current !== reader) return;
       if (typeof reader.result !== 'string') {
-        setFaviconError("Couldn't read this image. Try another file.");
+        setFaviconError(t('appearance.favicon.unreadable'));
         return;
       }
       autoSaveSetting('favicon', reader.result);
     };
     reader.onerror = () => {
-      if (faviconReadRef.current === reader) setFaviconError("Couldn't read this image. Try another file.");
+      if (faviconReadRef.current === reader) setFaviconError(t('appearance.favicon.unreadable'));
     };
     try {
       reader.readAsDataURL(file.type ? file : file.slice(0, file.size, mime));
     } catch {
-      setFaviconError("Couldn't read this image. Try another file.");
+      setFaviconError(t('appearance.favicon.unreadable'));
     }
   };
 
@@ -2226,68 +2230,73 @@ export default function SettingsView({
     // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
-      <SettingsGroup title="Appearance">
+      <SettingsGroup title={t('appearance.title')}>
+        <LanguageSection />
         {SKIN_LOCKED ? (
-          <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
+          <Section title={t('appearance.style.title')} subtitle={t('appearance.style.lockedSubtitle')}>
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
           </Section>
         ) : (
-          <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+          <Section title={t('appearance.style.title')} subtitle={t('appearance.style.subtitle')}>
             <ToggleGroup
               value={normalizeSkin(skin)}
               onValueChange={(v) => onSkinChange?.(v)}
-              aria-label="Style"
-              options={SKINS.map((s) => ({
-                value: s.id,
-                label: s.icon && Ico[s.icon]
-                  ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
-                  : s.label,
-                'aria-label': `${s.label} style`,
-                title: s.title,
-              }))}
+              aria-label={t('appearance.style.ariaLabel')}
+              options={SKINS.map((s) => {
+                // A deployment brand's own skin keeps its brand name.
+                const label = t(`appearance.skins.${s.id}.label`, { defaultValue: s.label });
+                return {
+                  value: s.id,
+                  label: s.icon && Ico[s.icon]
+                    ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {label}</span>)
+                    : label,
+                  'aria-label': t('appearance.style.optionAriaLabel', { name: label }),
+                  title: t(`appearance.skins.${s.id}.title`, { defaultValue: s.title }),
+                };
+              })}
             />
           </Section>
         )}
-        <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
+        <Section title={t('appearance.theme.title')} subtitle={t('appearance.theme.subtitle')}>
           <ToggleGroup
             value={theme || 'dark'}
             onValueChange={(v) => onThemeChange?.(v)}
-            aria-label="Theme"
+            aria-label={t('appearance.theme.ariaLabel')}
             options={[
               {
                 value: 'light',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} Light</span>),
-                'aria-label': 'Light theme',
-                title: 'Use the light theme.',
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} {t('appearance.theme.light')}</span>),
+                'aria-label': t('appearance.theme.lightAriaLabel'),
+                title: t('appearance.theme.lightHint'),
               },
               {
                 value: 'dark',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} Dark</span>),
-                'aria-label': 'Dark theme',
-                title: 'Use the dark theme.',
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} {t('appearance.theme.dark')}</span>),
+                'aria-label': t('appearance.theme.darkAriaLabel'),
+                title: t('appearance.theme.darkHint'),
               },
             ]}
           />
         </Section>
         {normalizeSkin(skin) === 'custom' && customTheme && (
           <>
-            <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
+            <Section title={t('appearance.accent.title')} subtitle={t('appearance.accent.subtitle')}>
               <input
                 type="color"
                 value={customTheme.accent}
                 onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
-                aria-label="Custom accent color"
+                aria-label={t('appearance.accent.ariaLabel')}
                 className={COLOR_SWATCH_INPUT}
               />
             </Section>
-            <Section title="Background — Light mode" subtitle="Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.">
+            <Section title={t('appearance.background.lightTitle')} subtitle={t('appearance.background.lightSubtitle')}>
               <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={customTheme.bgLight || '#fafafa'}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
                   disabled={customTheme.bgLight === null}
-                  aria-label="Custom background color — Light mode"
+                  aria-label={t('appearance.background.lightAriaLabel')}
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgLight === null ? 0.45 : 1 }}
                 />
@@ -2295,20 +2304,20 @@ export default function SettingsView({
                   <Checkbox
                     checked={customTheme.bgLight === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
-                    aria-label="Default Light background"
+                    aria-label={t('appearance.background.lightDefaultAriaLabel')}
                   />
                   Default
                 </label>
               </div>
             </Section>
-            <Section title="Background — Dark mode" subtitle="Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.">
+            <Section title={t('appearance.background.darkTitle')} subtitle={t('appearance.background.darkSubtitle')}>
               <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={customTheme.bgDark || '#080d18'}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
                   disabled={customTheme.bgDark === null}
-                  aria-label="Custom background color — Dark mode"
+                  aria-label={t('appearance.background.darkAriaLabel')}
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgDark === null ? 0.45 : 1 }}
                 />
@@ -2316,79 +2325,79 @@ export default function SettingsView({
                   <Checkbox
                     checked={customTheme.bgDark === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
-                    aria-label="Default Dark background"
+                    aria-label={t('appearance.background.darkDefaultAriaLabel')}
                   />
                   Default
                 </label>
               </div>
             </Section>
-            <Section title="Corners" subtitle="How sharp the surfaces feel.">
+            <Section title={t('appearance.corners.title')} subtitle={t('appearance.corners.subtitle')}>
               <ToggleGroup
                 value={String(customTheme.radius)}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
-                aria-label="Corner radius"
+                aria-label={t('appearance.corners.ariaLabel')}
                 options={[
-                  { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
-                  { value: '6', label: 'Soft', 'aria-label': 'Soft corners', title: 'Gently rounded.' },
-                  { value: '12', label: 'Round', 'aria-label': 'Round corners', title: 'Fully rounded.' },
+                  { value: '0', label: t('appearance.corners.square'), 'aria-label': t('appearance.corners.squareAriaLabel'), title: t('appearance.corners.squareHint') },
+                  { value: '6', label: t('appearance.corners.soft'), 'aria-label': t('appearance.corners.softAriaLabel'), title: t('appearance.corners.softHint') },
+                  { value: '12', label: t('appearance.corners.round'), 'aria-label': t('appearance.corners.roundAriaLabel'), title: t('appearance.corners.roundHint') },
                 ]}
               />
             </Section>
-            <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
+            <Section title={t('appearance.typeface.title')} subtitle={t('appearance.typeface.subtitle')}>
               <ToggleGroup
                 value={customTheme.font}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
-                aria-label="Custom typeface"
+                aria-label={t('appearance.typeface.ariaLabel')}
                 options={[
-                  { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
-                  { value: 'mono', label: 'Mono', 'aria-label': 'Mono font', title: 'JetBrains Mono everywhere.' },
+                  { value: 'standard', label: t('appearance.typeface.standard'), 'aria-label': t('appearance.typeface.standardAriaLabel'), title: t('appearance.typeface.standardHint') },
+                  { value: 'mono', label: t('appearance.typeface.mono'), 'aria-label': t('appearance.typeface.monoAriaLabel'), title: t('appearance.typeface.monoHint') },
                 ]}
               />
             </Section>
-            <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
+            <Section title={t('appearance.scanlines.title')} subtitle={t('appearance.scanlines.subtitle')}>
               <Switch
                 checked={customTheme.scanlines}
                 onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
-                aria-label="Scanline overlay"
+                aria-label={t('appearance.scanlines.ariaLabel')}
               />
             </Section>
           </>
         )}
-        <Section title="Greeting" subtitle="The line shown when you start a new task.">
+        <Section title={t('appearance.greeting.title')} subtitle={t('appearance.greeting.subtitle')}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.greeting}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
-                title="Shown above the task input when you start a new task."
-                ariaLabel="Greeting text"
+                title={t('appearance.greeting.hint')}
+                ariaLabel={t('appearance.greeting.ariaLabel')}
               />
             </div>
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
-        <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
+        <Section title={t('appearance.sidebarTitle.title')} subtitle={t('appearance.sidebarTitle.subtitle', { product: productName(STOCK_WORDMARK) })}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.navTitle || ''}
                 onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
                 placeholder={productName(STOCK_WORDMARK)}
-                title={`Replaces the ${productName(STOCK_WORDMARK)} wordmark in the nav panel.`}
-                ariaLabel="Sidebar title text"
+                title={t('appearance.sidebarTitle.hint', { product: productName(STOCK_WORDMARK) })}
+                ariaLabel={t('appearance.sidebarTitle.ariaLabel')}
               />
             </div>
             <AutoSaveTag settingKey="navTitle" />
           </div>
         </Section>
-        <Section title="Sidebar title color" subtitle="Pick a color for the sidebar title, or follow the theme's default text color.">
+        <Section title={t('appearance.sidebarTitleColor.title')} subtitle={t('appearance.sidebarTitleColor.subtitle')}>
           <div className="flex items-center gap-3">
             <input
               type="color"
               value={settings.navTitleColor || '#e8e8ec'}
               onChange={(e) => autoSaveSetting('navTitleColor', e.target.value, { debounceMs: 400 })}
               disabled={!settings.navTitleColor}
-              aria-label="Sidebar title color"
+              aria-label={t('appearance.sidebarTitleColor.ariaLabel')}
               className={COLOR_SWATCH_INPUT}
               style={{ opacity: settings.navTitleColor ? 1 : 0.45 }}
             />
@@ -2396,14 +2405,14 @@ export default function SettingsView({
               <Checkbox
                 checked={!settings.navTitleColor}
                 onCheckedChange={(v) => autoSaveSetting('navTitleColor', v ? '' : '#e8e8ec')}
-                aria-label="Follow theme color"
+                aria-label={t('appearance.sidebarTitleColor.followAriaLabel')}
               />
-              Follow theme
+              {t('appearance.sidebarTitleColor.follow')}
             </label>
             <AutoSaveTag settingKey="navTitleColor" />
           </div>
         </Section>
-        <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
+        <Section title={t('appearance.sidebarLogo.title')} subtitle={t('appearance.sidebarLogo.subtitle')}>
           <div className="flex items-center gap-3">
             {settings.navLogo && (
               <img
@@ -2416,7 +2425,7 @@ export default function SettingsView({
               variant="subtle"
               onClick={() => logoInputRef.current?.click()}
             >
-              {settings.navLogo ? 'Change logo' : 'Upload logo'}
+              {settings.navLogo ? t('appearance.sidebarLogo.change') : t('appearance.sidebarLogo.upload')}
             </Button>
             {settings.navLogo && (
               <Button
@@ -2424,7 +2433,7 @@ export default function SettingsView({
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
               >
                 {Ico.trash(14)}
-                Remove
+                {t('appearance.sidebarLogo.remove')}
               </Button>
             )}
             <input
@@ -2441,13 +2450,13 @@ export default function SettingsView({
           )}
         </Section>
         {host.isWeb && (
-          <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
+          <Section title={t('appearance.favicon.title')} subtitle={t('appearance.favicon.subtitle')}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               {settings.favicon && (
-                <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
+                <img src={settings.favicon} alt={t('appearance.favicon.previewAlt')} className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
               )}
               <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
-                {settings.favicon ? 'Change icon' : 'Upload icon'}
+                {settings.favicon ? t('appearance.favicon.change') : t('appearance.favicon.upload')}
               </Button>
               {settings.favicon && (
                 <Button variant="danger" className="whitespace-nowrap" onClick={() => {
@@ -2455,12 +2464,12 @@ export default function SettingsView({
                   faviconReadRef.current = null;
                   autoSaveSetting('favicon', '');
                   setFaviconError(null);
-                }} aria-label="Remove browser tab icon">
-                  {Ico.trash(14)} Remove
+                }} aria-label={t('appearance.favicon.removeAriaLabel')}>
+                  {Ico.trash(14)} {t('appearance.favicon.remove')}
                 </Button>
               )}
               <input ref={faviconInputRef} type="file" accept={`${FAVICON_MIME_TYPES.join(',')},.ico`}
-                aria-label="Browser tab icon file" className="hidden"
+                aria-label={t('appearance.favicon.fileAriaLabel')} className="hidden"
                 onChange={(e) => { handleFaviconUpload(e.target.files?.[0]); e.target.value = ''; }} />
               <AutoSaveTag settingKey="favicon" />
             </div>
@@ -2472,55 +2481,55 @@ export default function SettingsView({
             no figure sources to mark either. The renderer ships OTA and
             leads the installed server. */}
         {'showFigureSources' in settings && (
-          <Section title="Show where figures came from" subtitle="Underline each figure in an answer with the step it came from, and mark figures no step returned.">
+          <Section title={t('appearance.figureSources.title')} subtitle={t('appearance.figureSources.subtitle')}>
             <div className="flex items-center">
               <Switch
                 checked={settings.showFigureSources !== false}
                 onCheckedChange={(v) => autoSaveSetting('showFigureSources', v)}
-                aria-label="Show where figures came from"
+                aria-label={t('appearance.figureSources.title')}
               />
               <AutoSaveTag settingKey="showFigureSources" />
             </div>
           </Section>
         )}
         <div className="settings-hide-mobile">
-          <Section title="Animated background" subtitle="Animated dot-grid behind the app instead of a flat surface.">
+          <Section title={t('appearance.animatedBackground.title')} subtitle={t('appearance.animatedBackground.subtitle')}>
             <div className="flex items-center">
               <Switch
                 checked={settings.showDots === true}
                 onCheckedChange={(v) => autoSaveSetting('showDots', v)}
-                aria-label="Animated background"
+                aria-label={t('appearance.animatedBackground.title')}
               />
               <AutoSaveTag settingKey="showDots" />
             </div>
           </Section>
-          <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
+          <Section title={t('appearance.counters.title')} subtitle={t('appearance.counters.subtitle')}>
             <div className="flex items-center">
               <Switch
                 checked={settings.showCounters === true}
                 onCheckedChange={(v) => autoSaveSetting('showCounters', v)}
-                aria-label="Nav-panel counters"
+                aria-label={t('appearance.counters.ariaLabel')}
               />
               <AutoSaveTag settingKey="showCounters" />
             </div>
           </Section>
-          <Section title="Theme toggle button" subtitle="Light/dark control on the display button in the window corner.">
+          <Section title={t('appearance.themeToggle.title')} subtitle={t('appearance.themeToggle.subtitle')}>
             <div className="flex items-center">
               <Switch
                 checked={settings.showThemeToggle !== false}
                 onCheckedChange={(v) => autoSaveSetting('showThemeToggle', v)}
-                aria-label="Theme toggle button"
+                aria-label={t('appearance.themeToggle.title')}
               />
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
           {!SKIN_LOCKED && (
-            <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
+            <Section title={t('appearance.styleToggle.title')} subtitle={t('appearance.styleToggle.subtitle')}>
               <div className="flex items-center">
                 <Switch
                   checked={settings.show8bitToggle !== false}
                   onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
-                  aria-label="8-bit style toggle button"
+                  aria-label={t('appearance.styleToggle.title')}
                 />
                 <AutoSaveTag settingKey="show8bitToggle" />
               </div>
@@ -2647,7 +2656,7 @@ export default function SettingsView({
               {renderers[section]?.()}
             </div>
           ) : (
-            <nav className="settings-list" role="navigation" aria-label="Settings sections">
+            <nav className="settings-list" role="navigation" aria-label={t('nav.ariaLabel')}>
               {visibleNav.map((item, index, items) => {
                 // Match the desktop nav: Backend can recover a dead local
                 // server, while Coding agent owns a device-local opt-in and
@@ -2660,7 +2669,7 @@ export default function SettingsView({
                 return (
                   <Fragment key={item.id}>
                   {(index === 0 || items[index - 1]?.group !== item.group) && (
-                    <div className="section-label pt-4 px-1 pb-1.5">{item.group}</div>
+                    <div className="section-label pt-4 px-1 pb-1.5">{t(`nav.groups.${item.group}`)}</div>
                   )}
                   <div className="mshell-accordion">
                     <button
@@ -2676,7 +2685,7 @@ export default function SettingsView({
                           {icon}
                         </span>
                       )}
-                      <span className="mshell-accordion__label">{item.label}</span>
+                      <span className="mshell-accordion__label">{t(`nav.items.${item.id}`)}</span>
                       <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
                     </button>
                   </div>

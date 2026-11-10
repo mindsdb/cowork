@@ -1,0 +1,169 @@
+{
+  "nav": {
+    "title": "Settings",
+    "ariaLabel": "Settings sections",
+    "groups": {
+      "General": "General",
+      "Code": "Code",
+      "App": "App",
+      "System": "System"
+    },
+    "items": {
+      "agent": "Agent",
+      "codingAgent": "Coding agent",
+      "computers": "Computers",
+      "appearance": "Appearance",
+      "desktop": "Desktop",
+      "channels": "Channels",
+      "updates": "Updates",
+      "backend": "Backend",
+      "usage": "Usage",
+      "account": "Account"
+    }
+  },
+  "autoSave": {
+    "saving": "Saving…",
+    "failed": "Couldn't save",
+    "saved": "Saved",
+    "savedAutomatically": "Changes are saved automatically."
+  },
+  "language": {
+    "title": "Language",
+    "subtitle": "The language for menus, buttons and messages. Replies follow the language you write in.",
+    "ariaLabel": "Language",
+    "matchSystem": "Match system ({language})"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "style": {
+      "title": "Style",
+      "lockedSubtitle": "Set by this deployment. Light and dark stay your choice.",
+      "subtitle": "Normal, 8-Bit, or design your own with Custom. Combines with light and dark.",
+      "ariaLabel": "Style",
+      "optionAriaLabel": "{name} style"
+    },
+    "skins": {
+      "normal": { "label": "Normal", "title": "Use the standard look." },
+      "8bit": { "label": "8-Bit", "title": "Use the retro 8-Bit look." },
+      "custom": { "label": "Custom", "title": "Design your own look." }
+    },
+    "theme": {
+      "title": "Theme",
+      "subtitle": "Light or dark — also drives the animated background.",
+      "ariaLabel": "Theme",
+      "light": "Light",
+      "lightAriaLabel": "Light theme",
+      "lightHint": "Use the light theme.",
+      "dark": "Dark",
+      "darkAriaLabel": "Dark theme",
+      "darkHint": "Use the dark theme."
+    },
+    "accent": {
+      "title": "Accent color",
+      "subtitle": "Buttons, highlights, focus — the brand color of your theme.",
+      "ariaLabel": "Custom accent color"
+    },
+    "background": {
+      "default": "Default",
+      "lightTitle": "Background — Light mode",
+      "lightSubtitle": "Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.",
+      "lightAriaLabel": "Custom background color — Light mode",
+      "lightDefaultAriaLabel": "Default Light background",
+      "darkTitle": "Background — Dark mode",
+      "darkSubtitle": "Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.",
+      "darkAriaLabel": "Custom background color — Dark mode",
+      "darkDefaultAriaLabel": "Default Dark background"
+    },
+    "corners": {
+      "title": "Corners",
+      "subtitle": "How sharp the surfaces feel.",
+      "ariaLabel": "Corner radius",
+      "square": "Square",
+      "squareAriaLabel": "Square corners",
+      "squareHint": "Sharp pixel corners.",
+      "soft": "Soft",
+      "softAriaLabel": "Soft corners",
+      "softHint": "Gently rounded.",
+      "round": "Round",
+      "roundAriaLabel": "Round corners",
+      "roundHint": "Fully rounded."
+    },
+    "typeface": {
+      "title": "Typeface",
+      "subtitle": "Standard UI font, or mono everywhere for the terminal feel.",
+      "ariaLabel": "Custom typeface",
+      "standard": "Standard",
+      "standardAriaLabel": "Standard font",
+      "standardHint": "Inter for UI text.",
+      "mono": "Mono",
+      "monoAriaLabel": "Mono font",
+      "monoHint": "JetBrains Mono everywhere."
+    },
+    "scanlines": {
+      "title": "Scanlines",
+      "subtitle": "A faint CRT scanline overlay across the app.",
+      "ariaLabel": "Scanline overlay"
+    },
+    "greeting": {
+      "title": "Greeting",
+      "subtitle": "The line shown when you start a new task.",
+      "hint": "Shown above the task input when you start a new task.",
+      "ariaLabel": "Greeting text"
+    },
+    "sidebarTitle": {
+      "title": "Sidebar title",
+      "subtitle": "Shown at the top of the left-hand nav panel. Leave blank for the default, {product}.",
+      "hint": "Replaces the {product} wordmark in the nav panel.",
+      "ariaLabel": "Sidebar title text"
+    },
+    "sidebarTitleColor": {
+      "title": "Sidebar title color",
+      "subtitle": "Pick a color for the sidebar title, or follow the theme's default text color.",
+      "ariaLabel": "Sidebar title color",
+      "follow": "Follow theme",
+      "followAriaLabel": "Follow theme color"
+    },
+    "sidebarLogo": {
+      "title": "Sidebar logo",
+      "subtitle": "An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.",
+      "change": "Change logo",
+      "upload": "Upload logo",
+      "remove": "Remove",
+      "tooLarge": "Logo must be under 300 KB."
+    },
+    "favicon": {
+      "title": "Browser tab icon",
+      "subtitle": "PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.",
+      "previewAlt": "Browser tab icon preview",
+      "change": "Change icon",
+      "upload": "Upload icon",
+      "remove": "Remove",
+      "removeAriaLabel": "Remove browser tab icon",
+      "fileAriaLabel": "Browser tab icon file",
+      "wrongType": "Choose a PNG, ICO, SVG, or WEBP image.",
+      "tooLarge": "Browser tab icon must be under 100 KB.",
+      "unreadable": "Couldn't read this image. Try another file."
+    },
+    "figureSources": {
+      "title": "Show where figures came from",
+      "subtitle": "Underline each figure in an answer with the step it came from, and mark figures no step returned."
+    },
+    "animatedBackground": {
+      "title": "Animated background",
+      "subtitle": "Animated dot-grid behind the app instead of a flat surface."
+    },
+    "counters": {
+      "title": "Show nav-panel counters",
+      "subtitle": "Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.",
+      "ariaLabel": "Nav-panel counters"
+    },
+    "themeToggle": {
+      "title": "Theme toggle button",
+      "subtitle": "Light/dark control on the display button in the window corner."
+    },
+    "styleToggle": {
+      "title": "8-bit style toggle button",
+      "subtitle": "Normal/8-Bit style control on the same button. With both on, the button opens Display settings."
+    }
+  }
+}

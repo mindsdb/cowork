@@ -12,6 +12,7 @@ import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStre
 import { isAntonConfigError } from './lib/antonErrors';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
+import { currentServerLocale } from '../lib/i18n';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
@@ -70,7 +71,12 @@ function _untilAborted(promise, signal) {
 // COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
 // (src/main/app.ts). That token never reaches the renderer and is NOT the
 // Keycloak token, so nothing is attached here.
+//
+// Both: every request carries the UI language as Accept-Language (en, es or
+// pt-BR — never the browser's own list), so cowork-server can tell Anton
+// which language to fall back to (ENG-4149). A caller's own header wins.
 export async function authFetch(url, options = {}) {
+  options = withAcceptLanguage(options);
   if (host.isWeb) {
     const token = await _untilAborted(host.getAccessToken(), options.signal);
     if (token) {
@@ -89,6 +95,24 @@ export async function authFetch(url, options = {}) {
     throw new Error('The active organization changed; reload required');
   }
   return response;
+}
+
+function hasHeader(headers, name) {
+  if (!headers) return false;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) return headers.has(name);
+  const wanted = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === wanted);
+}
+
+export function withAcceptLanguage(options = {}) {
+  if (hasHeader(options.headers, 'Accept-Language')) return options;
+  const locale = currentServerLocale();
+  if (typeof Headers !== 'undefined' && options.headers instanceof Headers) {
+    const headers = new Headers(options.headers);
+    headers.set('Accept-Language', locale);
+    return { ...options, headers };
+  }
+  return { ...options, headers: { ...(options.headers || {}), 'Accept-Language': locale } };
 }
 
 /* Opt-in bound for a plain JSON request, so a dead server (a proxy holding

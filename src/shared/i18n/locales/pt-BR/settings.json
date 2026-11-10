@@ -1,0 +1,169 @@
+{
+  "nav": {
+    "title": "Configurações",
+    "ariaLabel": "Seções de configurações",
+    "groups": {
+      "General": "Geral",
+      "Code": "Código",
+      "App": "App",
+      "System": "Sistema"
+    },
+    "items": {
+      "agent": "Agente",
+      "codingAgent": "Agente de código",
+      "computers": "Computadores",
+      "appearance": "Aparência",
+      "desktop": "Desktop",
+      "channels": "Canais",
+      "updates": "Atualizações",
+      "backend": "Backend",
+      "usage": "Uso",
+      "account": "Conta"
+    }
+  },
+  "autoSave": {
+    "saving": "Salvando…",
+    "failed": "Não foi possível salvar",
+    "saved": "Salvo",
+    "savedAutomatically": "As alterações são salvas automaticamente."
+  },
+  "language": {
+    "title": "Idioma",
+    "subtitle": "O idioma dos menus, botões e mensagens. As respostas seguem o idioma em que você escreve.",
+    "ariaLabel": "Idioma",
+    "matchSystem": "Igual ao sistema ({language})"
+  },
+  "appearance": {
+    "title": "Aparência",
+    "style": {
+      "title": "Estilo",
+      "lockedSubtitle": "Definido por esta implantação. Claro e escuro continuam sendo escolha sua.",
+      "subtitle": "Normal, 8-Bit ou crie o seu com Personalizado. Combina com claro e escuro.",
+      "ariaLabel": "Estilo",
+      "optionAriaLabel": "Estilo {name}"
+    },
+    "skins": {
+      "normal": { "label": "Normal", "title": "Use a aparência padrão." },
+      "8bit": { "label": "8-Bit", "title": "Use a aparência retrô 8-Bit." },
+      "custom": { "label": "Personalizado", "title": "Crie sua própria aparência." }
+    },
+    "theme": {
+      "title": "Tema",
+      "subtitle": "Claro ou escuro; também muda o fundo animado.",
+      "ariaLabel": "Tema",
+      "light": "Claro",
+      "lightAriaLabel": "Tema claro",
+      "lightHint": "Use o tema claro.",
+      "dark": "Escuro",
+      "darkAriaLabel": "Tema escuro",
+      "darkHint": "Use o tema escuro."
+    },
+    "accent": {
+      "title": "Cor de destaque",
+      "subtitle": "Botões, realces, foco: a cor da marca do seu tema.",
+      "ariaLabel": "Cor de destaque personalizada"
+    },
+    "background": {
+      "default": "Padrão",
+      "lightTitle": "Fundo — Modo claro",
+      "lightSubtitle": "Escolha uma cor base para o modo claro (as superfícies e os tons do texto derivam dela) ou use o padrão.",
+      "lightAriaLabel": "Cor de fundo personalizada — Modo claro",
+      "lightDefaultAriaLabel": "Fundo claro padrão",
+      "darkTitle": "Fundo — Modo escuro",
+      "darkSubtitle": "Escolha uma cor base para o modo escuro (as superfícies e os tons do texto derivam dela) ou use o padrão.",
+      "darkAriaLabel": "Cor de fundo personalizada — Modo escuro",
+      "darkDefaultAriaLabel": "Fundo escuro padrão"
+    },
+    "corners": {
+      "title": "Cantos",
+      "subtitle": "O quanto as superfícies parecem marcadas.",
+      "ariaLabel": "Raio dos cantos",
+      "square": "Retos",
+      "squareAriaLabel": "Cantos retos",
+      "squareHint": "Cantos de pixel marcados.",
+      "soft": "Suaves",
+      "softAriaLabel": "Cantos suaves",
+      "softHint": "Levemente arredondados.",
+      "round": "Redondos",
+      "roundAriaLabel": "Cantos redondos",
+      "roundHint": "Totalmente arredondados."
+    },
+    "typeface": {
+      "title": "Tipografia",
+      "subtitle": "A fonte padrão da interface, ou monoespaçada em tudo para um visual de terminal.",
+      "ariaLabel": "Tipografia personalizada",
+      "standard": "Padrão",
+      "standardAriaLabel": "Fonte padrão",
+      "standardHint": "Inter para o texto da interface.",
+      "mono": "Mono",
+      "monoAriaLabel": "Fonte monoespaçada",
+      "monoHint": "JetBrains Mono em tudo."
+    },
+    "scanlines": {
+      "title": "Linhas de varredura",
+      "subtitle": "Uma leve camada de linhas de varredura estilo CRT sobre todo o app.",
+      "ariaLabel": "Camada de linhas de varredura"
+    },
+    "greeting": {
+      "title": "Saudação",
+      "subtitle": "A frase exibida quando você começa uma nova tarefa.",
+      "hint": "Exibida acima do campo da tarefa quando você começa uma nova tarefa.",
+      "ariaLabel": "Texto da saudação"
+    },
+    "sidebarTitle": {
+      "title": "Título da barra lateral",
+      "subtitle": "Exibido no topo do painel de navegação à esquerda. Deixe em branco para usar o padrão, {product}.",
+      "hint": "Substitui o logotipo de {product} no painel de navegação.",
+      "ariaLabel": "Texto do título da barra lateral"
+    },
+    "sidebarTitleColor": {
+      "title": "Cor do título da barra lateral",
+      "subtitle": "Escolha uma cor para o título da barra lateral ou use a cor de texto padrão do tema.",
+      "ariaLabel": "Cor do título da barra lateral",
+      "follow": "Seguir o tema",
+      "followAriaLabel": "Seguir a cor do tema"
+    },
+    "sidebarLogo": {
+      "title": "Logo da barra lateral",
+      "subtitle": "Um ícone ao lado do título da barra lateral. PNG, JPG ou SVG, com menos de 300 KB.",
+      "change": "Trocar logo",
+      "upload": "Enviar logo",
+      "remove": "Remover",
+      "tooLarge": "O logo deve ter menos de 300 KB."
+    },
+    "favicon": {
+      "title": "Ícone da aba do navegador",
+      "subtitle": "PNG, ICO, SVG ou WEBP, com menos de 100 KB. Uma imagem quadrada de pelo menos 32 × 32 pixels funciona melhor.",
+      "previewAlt": "Prévia do ícone da aba do navegador",
+      "change": "Trocar ícone",
+      "upload": "Enviar ícone",
+      "remove": "Remover",
+      "removeAriaLabel": "Remover o ícone da aba do navegador",
+      "fileAriaLabel": "Arquivo do ícone da aba do navegador",
+      "wrongType": "Escolha uma imagem PNG, ICO, SVG ou WEBP.",
+      "tooLarge": "O ícone da aba deve ter menos de 100 KB.",
+      "unreadable": "Não foi possível ler esta imagem. Tente outro arquivo."
+    },
+    "figureSources": {
+      "title": "Mostrar de onde vêm os números",
+      "subtitle": "Sublinha cada número de uma resposta com a etapa de onde ele veio e marca os números que nenhuma etapa retornou."
+    },
+    "animatedBackground": {
+      "title": "Fundo animado",
+      "subtitle": "Uma grade de pontos animada atrás do app em vez de uma superfície lisa."
+    },
+    "counters": {
+      "title": "Mostrar contadores no painel de navegação",
+      "subtitle": "Contadores em Projetos / Agendadas / Artefatos / Apps conectados, e o tempo decorrido em cada linha de Recentes.",
+      "ariaLabel": "Contadores do painel de navegação"
+    },
+    "themeToggle": {
+      "title": "Botão de alternar tema",
+      "subtitle": "Controle de claro/escuro no botão de exibição no canto da janela."
+    },
+    "styleToggle": {
+      "title": "Botão de alternar estilo 8-bit",
+      "subtitle": "Controle de estilo Normal/8-Bit no mesmo botão. Com os dois ativados, o botão abre as configurações de exibição."
+    }
+  }
+}

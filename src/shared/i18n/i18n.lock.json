@@ -1,0 +1,1222 @@
+{
+  "settings:appearance.accent.ariaLabel": {
+    "es": {
+      "from": "7f703ce86044",
+      "text": "c7a1dfdffd12"
+    },
+    "pt-BR": {
+      "from": "7f703ce86044",
+      "text": "bdb122da1255"
+    }
+  },
+  "settings:appearance.accent.subtitle": {
+    "es": {
+      "from": "de7a6d2e4352",
+      "text": "4f3045382df7"
+    },
+    "pt-BR": {
+      "from": "de7a6d2e4352",
+      "text": "1f91e090cc0a"
+    }
+  },
+  "settings:appearance.accent.title": {
+    "es": {
+      "from": "baeefbad50a3",
+      "text": "c86ed6cd55c3"
+    },
+    "pt-BR": {
+      "from": "baeefbad50a3",
+      "text": "555148c1db65"
+    }
+  },
+  "settings:appearance.animatedBackground.subtitle": {
+    "es": {
+      "from": "1ae95d741ab6",
+      "text": "4d24581ead8f"
+    },
+    "pt-BR": {
+      "from": "1ae95d741ab6",
+      "text": "390098c7c998"
+    }
+  },
+  "settings:appearance.animatedBackground.title": {
+    "es": {
+      "from": "901cd717e33f",
+      "text": "84e35d11eab2"
+    },
+    "pt-BR": {
+      "from": "901cd717e33f",
+      "text": "018218124492"
+    }
+  },
+  "settings:appearance.background.darkAriaLabel": {
+    "es": {
+      "from": "ad6b447cde99",
+      "text": "40398bd24907"
+    },
+    "pt-BR": {
+      "from": "ad6b447cde99",
+      "text": "5701dde1a0b6"
+    }
+  },
+  "settings:appearance.background.darkDefaultAriaLabel": {
+    "es": {
+      "from": "7c11b5acdde7",
+      "text": "6dddfdd54c79"
+    },
+    "pt-BR": {
+      "from": "7c11b5acdde7",
+      "text": "3180f610da5d"
+    }
+  },
+  "settings:appearance.background.darkSubtitle": {
+    "es": {
+      "from": "dfdd18d21109",
+      "text": "2019473be0fa"
+    },
+    "pt-BR": {
+      "from": "dfdd18d21109",
+      "text": "3114c26bcbf9"
+    }
+  },
+  "settings:appearance.background.darkTitle": {
+    "es": {
+      "from": "b06351331591",
+      "text": "2ba069ea99b2"
+    },
+    "pt-BR": {
+      "from": "b06351331591",
+      "text": "14c1857db5ef"
+    }
+  },
+  "settings:appearance.background.default": {
+    "es": {
+      "from": "21b111cbfe6e",
+      "text": "13bd6e86a139"
+    },
+    "pt-BR": {
+      "from": "21b111cbfe6e",
+      "text": "0758c00e6ea0"
+    }
+  },
+  "settings:appearance.background.lightAriaLabel": {
+    "es": {
+      "from": "aebf9bd9340e",
+      "text": "b98b3ebbf34a"
+    },
+    "pt-BR": {
+      "from": "aebf9bd9340e",
+      "text": "7bcad58469b5"
+    }
+  },
+  "settings:appearance.background.lightDefaultAriaLabel": {
+    "es": {
+      "from": "3090cc93e2b2",
+      "text": "6860b7b8b123"
+    },
+    "pt-BR": {
+      "from": "3090cc93e2b2",
+      "text": "410a123b09f9"
+    }
+  },
+  "settings:appearance.background.lightSubtitle": {
+    "es": {
+      "from": "7ac748c7c000",
+      "text": "9e389f60af74"
+    },
+    "pt-BR": {
+      "from": "7ac748c7c000",
+      "text": "61809082a79d"
+    }
+  },
+  "settings:appearance.background.lightTitle": {
+    "es": {
+      "from": "55a5c61bfbc3",
+      "text": "fa21b5dbfe50"
+    },
+    "pt-BR": {
+      "from": "55a5c61bfbc3",
+      "text": "61c6d96f5ef1"
+    }
+  },
+  "settings:appearance.corners.ariaLabel": {
+    "es": {
+      "from": "76a6d9f3d7a7",
+      "text": "e49c5056ace3"
+    },
+    "pt-BR": {
+      "from": "76a6d9f3d7a7",
+      "text": "723ffc05d774"
+    }
+  },
+  "settings:appearance.corners.round": {
+    "es": {
+      "from": "cd9558acfc38",
+      "text": "1b4161b7d6e3"
+    },
+    "pt-BR": {
+      "from": "cd9558acfc38",
+      "text": "58794de3ae8e"
+    }
+  },
+  "settings:appearance.corners.roundAriaLabel": {
+    "es": {
+      "from": "5d164616c206",
+      "text": "b11c24db12dc"
+    },
+    "pt-BR": {
+      "from": "5d164616c206",
+      "text": "e3722359b488"
+    }
+  },
+  "settings:appearance.corners.roundHint": {
+    "es": {
+      "from": "2ce611f2e81e",
+      "text": "2c431853250b"
+    },
+    "pt-BR": {
+      "from": "2ce611f2e81e",
+      "text": "def80bfd68a2"
+    }
+  },
+  "settings:appearance.corners.soft": {
+    "es": {
+      "from": "5964d4672956",
+      "text": "8451032b427c"
+    },
+    "pt-BR": {
+      "from": "5964d4672956",
+      "text": "8451032b427c"
+    }
+  },
+  "settings:appearance.corners.softAriaLabel": {
+    "es": {
+      "from": "7cf45b8d8eab",
+      "text": "4d569045ff89"
+    },
+    "pt-BR": {
+      "from": "7cf45b8d8eab",
+      "text": "70d0158e5528"
+    }
+  },
+  "settings:appearance.corners.softHint": {
+    "es": {
+      "from": "8e1915279a6a",
+      "text": "a5a429394b8a"
+    },
+    "pt-BR": {
+      "from": "8e1915279a6a",
+      "text": "33f7a0eb4c2d"
+    }
+  },
+  "settings:appearance.corners.square": {
+    "es": {
+      "from": "c11092bc0861",
+      "text": "f0ad8f3f1054"
+    },
+    "pt-BR": {
+      "from": "c11092bc0861",
+      "text": "c6843ccc25d6"
+    }
+  },
+  "settings:appearance.corners.squareAriaLabel": {
+    "es": {
+      "from": "2e0c1ebd24ac",
+      "text": "f332b617fcc7"
+    },
+    "pt-BR": {
+      "from": "2e0c1ebd24ac",
+      "text": "23bd40e359eb"
+    }
+  },
+  "settings:appearance.corners.squareHint": {
+    "es": {
+      "from": "864fcfc28768",
+      "text": "0ec4c8d19ba3"
+    },
+    "pt-BR": {
+      "from": "864fcfc28768",
+      "text": "8ab684afabad"
+    }
+  },
+  "settings:appearance.corners.subtitle": {
+    "es": {
+      "from": "08b82b8239bc",
+      "text": "57c2f2a6ba0c"
+    },
+    "pt-BR": {
+      "from": "08b82b8239bc",
+      "text": "6c94ca73beef"
+    }
+  },
+  "settings:appearance.corners.title": {
+    "es": {
+      "from": "1d3cc47e20fd",
+      "text": "c8e3e5b1fd27"
+    },
+    "pt-BR": {
+      "from": "1d3cc47e20fd",
+      "text": "a68795a78895"
+    }
+  },
+  "settings:appearance.counters.ariaLabel": {
+    "es": {
+      "from": "c79973be625f",
+      "text": "1863f7891bce"
+    },
+    "pt-BR": {
+      "from": "c79973be625f",
+      "text": "e62ba359b95d"
+    }
+  },
+  "settings:appearance.counters.subtitle": {
+    "es": {
+      "from": "5bf9c13c439d",
+      "text": "ba8bbfe5d4dd"
+    },
+    "pt-BR": {
+      "from": "5bf9c13c439d",
+      "text": "96e61087259f"
+    }
+  },
+  "settings:appearance.counters.title": {
+    "es": {
+      "from": "c2b8ff846289",
+      "text": "4d0b653db913"
+    },
+    "pt-BR": {
+      "from": "c2b8ff846289",
+      "text": "d3821eb9e62d"
+    }
+  },
+  "settings:appearance.favicon.change": {
+    "es": {
+      "from": "87f2c4e6223c",
+      "text": "2a941c842bb6"
+    },
+    "pt-BR": {
+      "from": "87f2c4e6223c",
+      "text": "551ac74ac658"
+    }
+  },
+  "settings:appearance.favicon.fileAriaLabel": {
+    "es": {
+      "from": "2b6fecb374c3",
+      "text": "a59163e841fe"
+    },
+    "pt-BR": {
+      "from": "2b6fecb374c3",
+      "text": "1bf5d8ab1a1e"
+    }
+  },
+  "settings:appearance.favicon.previewAlt": {
+    "es": {
+      "from": "62399445a2a5",
+      "text": "718d863f82f9"
+    },
+    "pt-BR": {
+      "from": "62399445a2a5",
+      "text": "a80d6402284f"
+    }
+  },
+  "settings:appearance.favicon.remove": {
+    "es": {
+      "from": "c3812fc4acb8",
+      "text": "f039f4a8c975"
+    },
+    "pt-BR": {
+      "from": "c3812fc4acb8",
+      "text": "a3037dc71a43"
+    }
+  },
+  "settings:appearance.favicon.removeAriaLabel": {
+    "es": {
+      "from": "0f80e5949f72",
+      "text": "834a61ab9262"
+    },
+    "pt-BR": {
+      "from": "0f80e5949f72",
+      "text": "78a530c133b5"
+    }
+  },
+  "settings:appearance.favicon.subtitle": {
+    "es": {
+      "from": "7b4bd2e2ba0e",
+      "text": "6b079e7445cf"
+    },
+    "pt-BR": {
+      "from": "7b4bd2e2ba0e",
+      "text": "454ce1c8c175"
+    }
+  },
+  "settings:appearance.favicon.title": {
+    "es": {
+      "from": "2ee6c42b1f12",
+      "text": "44bd7c183ad9"
+    },
+    "pt-BR": {
+      "from": "2ee6c42b1f12",
+      "text": "4242981d9d7d"
+    }
+  },
+  "settings:appearance.favicon.tooLarge": {
+    "es": {
+      "from": "5b300a851124",
+      "text": "03e364868f40"
+    },
+    "pt-BR": {
+      "from": "5b300a851124",
+      "text": "d022153f8334"
+    }
+  },
+  "settings:appearance.favicon.unreadable": {
+    "es": {
+      "from": "0f3ed1bb42b7",
+      "text": "3b2168ed8589"
+    },
+    "pt-BR": {
+      "from": "0f3ed1bb42b7",
+      "text": "a89af29b1b07"
+    }
+  },
+  "settings:appearance.favicon.upload": {
+    "es": {
+      "from": "09f2555affe7",
+      "text": "261b15082487"
+    },
+    "pt-BR": {
+      "from": "09f2555affe7",
+      "text": "fc66f8adb7ca"
+    }
+  },
+  "settings:appearance.favicon.wrongType": {
+    "es": {
+      "from": "6e06abb3e1e9",
+      "text": "28bb292eaabf"
+    },
+    "pt-BR": {
+      "from": "6e06abb3e1e9",
+      "text": "e0d13f5fd788"
+    }
+  },
+  "settings:appearance.figureSources.subtitle": {
+    "es": {
+      "from": "5d7d8e9a012e",
+      "text": "23706da1316f"
+    },
+    "pt-BR": {
+      "from": "5d7d8e9a012e",
+      "text": "607a24886644"
+    }
+  },
+  "settings:appearance.figureSources.title": {
+    "es": {
+      "from": "0162745bc927",
+      "text": "782930798375"
+    },
+    "pt-BR": {
+      "from": "0162745bc927",
+      "text": "6161804607a3"
+    }
+  },
+  "settings:appearance.greeting.ariaLabel": {
+    "es": {
+      "from": "1dc62a724d5c",
+      "text": "6330a91af4a4"
+    },
+    "pt-BR": {
+      "from": "1dc62a724d5c",
+      "text": "06d75d23e830"
+    }
+  },
+  "settings:appearance.greeting.hint": {
+    "es": {
+      "from": "edc4e0e88890",
+      "text": "3945b184afe0"
+    },
+    "pt-BR": {
+      "from": "edc4e0e88890",
+      "text": "fecdffcf2a3f"
+    }
+  },
+  "settings:appearance.greeting.subtitle": {
+    "es": {
+      "from": "435dac14e9f6",
+      "text": "5ce61f916786"
+    },
+    "pt-BR": {
+      "from": "435dac14e9f6",
+      "text": "374c6884b004"
+    }
+  },
+  "settings:appearance.greeting.title": {
+    "es": {
+      "from": "2f35055d7f7e",
+      "text": "c31fbf9ac918"
+    },
+    "pt-BR": {
+      "from": "2f35055d7f7e",
+      "text": "58a904a78f99"
+    }
+  },
+  "settings:appearance.scanlines.ariaLabel": {
+    "es": {
+      "from": "4bac60987c55",
+      "text": "928e4c6b8fc5"
+    },
+    "pt-BR": {
+      "from": "4bac60987c55",
+      "text": "d8ec0afc7844"
+    }
+  },
+  "settings:appearance.scanlines.subtitle": {
+    "es": {
+      "from": "3e9dde7d122c",
+      "text": "0be317013894"
+    },
+    "pt-BR": {
+      "from": "3e9dde7d122c",
+      "text": "7c2ca13b8fc0"
+    }
+  },
+  "settings:appearance.scanlines.title": {
+    "es": {
+      "from": "483f2ab96566",
+      "text": "3483d4b7bc12"
+    },
+    "pt-BR": {
+      "from": "483f2ab96566",
+      "text": "8a7754af9a61"
+    }
+  },
+  "settings:appearance.sidebarLogo.change": {
+    "es": {
+      "from": "a1ab83f61e7a",
+      "text": "116fb12e3621"
+    },
+    "pt-BR": {
+      "from": "a1ab83f61e7a",
+      "text": "6118dce39ad3"
+    }
+  },
+  "settings:appearance.sidebarLogo.remove": {
+    "es": {
+      "from": "c3812fc4acb8",
+      "text": "f039f4a8c975"
+    },
+    "pt-BR": {
+      "from": "c3812fc4acb8",
+      "text": "a3037dc71a43"
+    }
+  },
+  "settings:appearance.sidebarLogo.subtitle": {
+    "es": {
+      "from": "653a1e4138e2",
+      "text": "73e355916c8e"
+    },
+    "pt-BR": {
+      "from": "653a1e4138e2",
+      "text": "6252c4124c2e"
+    }
+  },
+  "settings:appearance.sidebarLogo.title": {
+    "es": {
+      "from": "448dce526544",
+      "text": "bfce64b707fd"
+    },
+    "pt-BR": {
+      "from": "448dce526544",
+      "text": "167905d55e97"
+    }
+  },
+  "settings:appearance.sidebarLogo.tooLarge": {
+    "es": {
+      "from": "4131347b40df",
+      "text": "9cdf97007910"
+    },
+    "pt-BR": {
+      "from": "4131347b40df",
+      "text": "6f17d9cebd78"
+    }
+  },
+  "settings:appearance.sidebarLogo.upload": {
+    "es": {
+      "from": "c33300828178",
+      "text": "3d91f3036860"
+    },
+    "pt-BR": {
+      "from": "c33300828178",
+      "text": "a745cd04c8a2"
+    }
+  },
+  "settings:appearance.sidebarTitle.ariaLabel": {
+    "es": {
+      "from": "f3f2300d1b9b",
+      "text": "6dd8fed4ba19"
+    },
+    "pt-BR": {
+      "from": "f3f2300d1b9b",
+      "text": "6b0c8d39e909"
+    }
+  },
+  "settings:appearance.sidebarTitle.hint": {
+    "es": {
+      "from": "7a455037274d",
+      "text": "274bbcbb3c61"
+    },
+    "pt-BR": {
+      "from": "7a455037274d",
+      "text": "ea1588cd6778"
+    }
+  },
+  "settings:appearance.sidebarTitle.subtitle": {
+    "es": {
+      "from": "cd7984d4fdbb",
+      "text": "aeb686b0a940"
+    },
+    "pt-BR": {
+      "from": "cd7984d4fdbb",
+      "text": "ada62258eaf5"
+    }
+  },
+  "settings:appearance.sidebarTitle.title": {
+    "es": {
+      "from": "bd967b807489",
+      "text": "25e13fd347ad"
+    },
+    "pt-BR": {
+      "from": "bd967b807489",
+      "text": "b87994864673"
+    }
+  },
+  "settings:appearance.sidebarTitleColor.ariaLabel": {
+    "es": {
+      "from": "6a17f95bb666",
+      "text": "3558324ead26"
+    },
+    "pt-BR": {
+      "from": "6a17f95bb666",
+      "text": "15ee0009e77f"
+    }
+  },
+  "settings:appearance.sidebarTitleColor.follow": {
+    "es": {
+      "from": "3556efafb9ce",
+      "text": "1b4cbc22d5d5"
+    },
+    "pt-BR": {
+      "from": "3556efafb9ce",
+      "text": "b776593ffd4c"
+    }
+  },
+  "settings:appearance.sidebarTitleColor.followAriaLabel": {
+    "es": {
+      "from": "a4a5a64d4acb",
+      "text": "eb9ba0efd45c"
+    },
+    "pt-BR": {
+      "from": "a4a5a64d4acb",
+      "text": "4f6639ea50e3"
+    }
+  },
+  "settings:appearance.sidebarTitleColor.subtitle": {
+    "es": {
+      "from": "097af5b635a3",
+      "text": "098ef6d066ed"
+    },
+    "pt-BR": {
+      "from": "097af5b635a3",
+      "text": "f13fdad5ac98"
+    }
+  },
+  "settings:appearance.sidebarTitleColor.title": {
+    "es": {
+      "from": "6a17f95bb666",
+      "text": "3558324ead26"
+    },
+    "pt-BR": {
+      "from": "6a17f95bb666",
+      "text": "15ee0009e77f"
+    }
+  },
+  "settings:appearance.skins.8bit.label": {
+    "es": {
+      "from": "4edbb60a3d60",
+      "text": "4edbb60a3d60"
+    },
+    "pt-BR": {
+      "from": "4edbb60a3d60",
+      "text": "4edbb60a3d60"
+    }
+  },
+  "settings:appearance.skins.8bit.title": {
+    "es": {
+      "from": "6068080b638e",
+      "text": "cb5bdcd0f9e6"
+    },
+    "pt-BR": {
+      "from": "6068080b638e",
+      "text": "0b855061b9bf"
+    }
+  },
+  "settings:appearance.skins.custom.label": {
+    "es": {
+      "from": "494ca78f7374",
+      "text": "4290938ed5e6"
+    },
+    "pt-BR": {
+      "from": "494ca78f7374",
+      "text": "4290938ed5e6"
+    }
+  },
+  "settings:appearance.skins.custom.title": {
+    "es": {
+      "from": "1a4657c34b24",
+      "text": "75e82f7b0efa"
+    },
+    "pt-BR": {
+      "from": "1a4657c34b24",
+      "text": "fb6695a31d36"
+    }
+  },
+  "settings:appearance.skins.normal.label": {
+    "es": {
+      "from": "a7248eeb45eb",
+      "text": "a7248eeb45eb"
+    },
+    "pt-BR": {
+      "from": "a7248eeb45eb",
+      "text": "a7248eeb45eb"
+    }
+  },
+  "settings:appearance.skins.normal.title": {
+    "es": {
+      "from": "f975592b146c",
+      "text": "e02e6a79bbfe"
+    },
+    "pt-BR": {
+      "from": "f975592b146c",
+      "text": "bc05353d3e0d"
+    }
+  },
+  "settings:appearance.style.ariaLabel": {
+    "es": {
+      "from": "7e744141b40e",
+      "text": "ebf8ff724ba1"
+    },
+    "pt-BR": {
+      "from": "7e744141b40e",
+      "text": "ebf8ff724ba1"
+    }
+  },
+  "settings:appearance.style.lockedSubtitle": {
+    "es": {
+      "from": "d92f7a94b58a",
+      "text": "e5f7da4ff240"
+    },
+    "pt-BR": {
+      "from": "d92f7a94b58a",
+      "text": "72f150e3849d"
+    }
+  },
+  "settings:appearance.style.optionAriaLabel": {
+    "es": {
+      "from": "cacbf3d6435a",
+      "text": "e7b59cfa3f14"
+    },
+    "pt-BR": {
+      "from": "cacbf3d6435a",
+      "text": "e7b59cfa3f14"
+    }
+  },
+  "settings:appearance.style.subtitle": {
+    "es": {
+      "from": "45f631701a7d",
+      "text": "b47aaa2f9772"
+    },
+    "pt-BR": {
+      "from": "45f631701a7d",
+      "text": "db292e7775bb"
+    }
+  },
+  "settings:appearance.style.title": {
+    "es": {
+      "from": "7e744141b40e",
+      "text": "ebf8ff724ba1"
+    },
+    "pt-BR": {
+      "from": "7e744141b40e",
+      "text": "ebf8ff724ba1"
+    }
+  },
+  "settings:appearance.styleToggle.subtitle": {
+    "es": {
+      "from": "efd03ca0b7f6",
+      "text": "482986c6019c"
+    },
+    "pt-BR": {
+      "from": "efd03ca0b7f6",
+      "text": "9d932364a2b3"
+    }
+  },
+  "settings:appearance.styleToggle.title": {
+    "es": {
+      "from": "b78eb5df4de3",
+      "text": "70f762385a22"
+    },
+    "pt-BR": {
+      "from": "b78eb5df4de3",
+      "text": "b8d1cde93b37"
+    }
+  },
+  "settings:appearance.theme.ariaLabel": {
+    "es": {
+      "from": "efb52e7172b7",
+      "text": "d5df3708bc68"
+    },
+    "pt-BR": {
+      "from": "efb52e7172b7",
+      "text": "d5df3708bc68"
+    }
+  },
+  "settings:appearance.theme.dark": {
+    "es": {
+      "from": "60acc53f13a5",
+      "text": "1b1c27c397ae"
+    },
+    "pt-BR": {
+      "from": "60acc53f13a5",
+      "text": "fde8bb83362a"
+    }
+  },
+  "settings:appearance.theme.darkAriaLabel": {
+    "es": {
+      "from": "3f11a5cc643a",
+      "text": "b095d9ede1b6"
+    },
+    "pt-BR": {
+      "from": "3f11a5cc643a",
+      "text": "0f1c67eb81a0"
+    }
+  },
+  "settings:appearance.theme.darkHint": {
+    "es": {
+      "from": "f4700d873838",
+      "text": "6459a9bc1850"
+    },
+    "pt-BR": {
+      "from": "f4700d873838",
+      "text": "42b96d967a10"
+    }
+  },
+  "settings:appearance.theme.light": {
+    "es": {
+      "from": "dbcd5e7bb7a0",
+      "text": "2f3e8dcc2464"
+    },
+    "pt-BR": {
+      "from": "dbcd5e7bb7a0",
+      "text": "2f3e8dcc2464"
+    }
+  },
+  "settings:appearance.theme.lightAriaLabel": {
+    "es": {
+      "from": "3669a1b2770f",
+      "text": "64b58754485a"
+    },
+    "pt-BR": {
+      "from": "3669a1b2770f",
+      "text": "64b58754485a"
+    }
+  },
+  "settings:appearance.theme.lightHint": {
+    "es": {
+      "from": "fce24c816e45",
+      "text": "77e97f5d4271"
+    },
+    "pt-BR": {
+      "from": "fce24c816e45",
+      "text": "dc0203220428"
+    }
+  },
+  "settings:appearance.theme.subtitle": {
+    "es": {
+      "from": "4c5f9616df0b",
+      "text": "597e96cfe2ef"
+    },
+    "pt-BR": {
+      "from": "4c5f9616df0b",
+      "text": "724a74183a8d"
+    }
+  },
+  "settings:appearance.theme.title": {
+    "es": {
+      "from": "efb52e7172b7",
+      "text": "d5df3708bc68"
+    },
+    "pt-BR": {
+      "from": "efb52e7172b7",
+      "text": "d5df3708bc68"
+    }
+  },
+  "settings:appearance.themeToggle.subtitle": {
+    "es": {
+      "from": "a9a3766c4ef2",
+      "text": "c95388cc00d9"
+    },
+    "pt-BR": {
+      "from": "a9a3766c4ef2",
+      "text": "3cffa72c4b8f"
+    }
+  },
+  "settings:appearance.themeToggle.title": {
+    "es": {
+      "from": "b962090c4e06",
+      "text": "ddef846e4f0a"
+    },
+    "pt-BR": {
+      "from": "b962090c4e06",
+      "text": "4b52100681ff"
+    }
+  },
+  "settings:appearance.title": {
+    "es": {
+      "from": "3907fa7f8072",
+      "text": "e3e9cbaccaec"
+    },
+    "pt-BR": {
+      "from": "3907fa7f8072",
+      "text": "04f9f0a78dbe"
+    }
+  },
+  "settings:appearance.typeface.ariaLabel": {
+    "es": {
+      "from": "ace33cc830e6",
+      "text": "6f218da6b297"
+    },
+    "pt-BR": {
+      "from": "ace33cc830e6",
+      "text": "70da3fab116d"
+    }
+  },
+  "settings:appearance.typeface.mono": {
+    "es": {
+      "from": "6f00156cec07",
+      "text": "6f00156cec07"
+    },
+    "pt-BR": {
+      "from": "6f00156cec07",
+      "text": "6f00156cec07"
+    }
+  },
+  "settings:appearance.typeface.monoAriaLabel": {
+    "es": {
+      "from": "3fea28778221",
+      "text": "8ff6c2665dee"
+    },
+    "pt-BR": {
+      "from": "3fea28778221",
+      "text": "33276dac5736"
+    }
+  },
+  "settings:appearance.typeface.monoHint": {
+    "es": {
+      "from": "74969f49ef37",
+      "text": "49f7096b2bfb"
+    },
+    "pt-BR": {
+      "from": "74969f49ef37",
+      "text": "5d4322c12dfb"
+    }
+  },
+  "settings:appearance.typeface.standard": {
+    "es": {
+      "from": "ef6691545d2c",
+      "text": "51db4780cd4e"
+    },
+    "pt-BR": {
+      "from": "ef6691545d2c",
+      "text": "0758c00e6ea0"
+    }
+  },
+  "settings:appearance.typeface.standardAriaLabel": {
+    "es": {
+      "from": "7baad56cccea",
+      "text": "08f2787252f3"
+    },
+    "pt-BR": {
+      "from": "7baad56cccea",
+      "text": "afbe74ed7ac6"
+    }
+  },
+  "settings:appearance.typeface.standardHint": {
+    "es": {
+      "from": "101cdf4e0ed4",
+      "text": "c73a6be7cfc1"
+    },
+    "pt-BR": {
+      "from": "101cdf4e0ed4",
+      "text": "e8a2522c2785"
+    }
+  },
+  "settings:appearance.typeface.subtitle": {
+    "es": {
+      "from": "527d0b78edd3",
+      "text": "6902ca174d8d"
+    },
+    "pt-BR": {
+      "from": "527d0b78edd3",
+      "text": "18715826dd8c"
+    }
+  },
+  "settings:appearance.typeface.title": {
+    "es": {
+      "from": "3a8c10765dd5",
+      "text": "a33d8a9fe43e"
+    },
+    "pt-BR": {
+      "from": "3a8c10765dd5",
+      "text": "e7dbffe402a3"
+    }
+  },
+  "settings:autoSave.failed": {
+    "es": {
+      "from": "d89c56c70c54",
+      "text": "1634cfd2df7f"
+    },
+    "pt-BR": {
+      "from": "d89c56c70c54",
+      "text": "472b4fc2915d"
+    }
+  },
+  "settings:autoSave.saved": {
+    "es": {
+      "from": "b5c120b316c2",
+      "text": "3a660ff5fb7c"
+    },
+    "pt-BR": {
+      "from": "b5c120b316c2",
+      "text": "db14b511e33a"
+    }
+  },
+  "settings:autoSave.savedAutomatically": {
+    "es": {
+      "from": "98f075b83fa1",
+      "text": "7928c5398a7a"
+    },
+    "pt-BR": {
+      "from": "98f075b83fa1",
+      "text": "db2fa3c5a4a8"
+    }
+  },
+  "settings:autoSave.saving": {
+    "es": {
+      "from": "23e39291d613",
+      "text": "3c8dc4dc7a83"
+    },
+    "pt-BR": {
+      "from": "23e39291d613",
+      "text": "52d95692274b"
+    }
+  },
+  "settings:language.ariaLabel": {
+    "es": {
+      "from": "a4fe65264ef7",
+      "text": "7ae9d418353b"
+    },
+    "pt-BR": {
+      "from": "a4fe65264ef7",
+      "text": "7ae9d418353b"
+    }
+  },
+  "settings:language.matchSystem": {
+    "es": {
+      "from": "2ccdfbe8f89d",
+      "text": "95a887c6bd3e"
+    },
+    "pt-BR": {
+      "from": "2ccdfbe8f89d",
+      "text": "fa09bb230458"
+    }
+  },
+  "settings:language.subtitle": {
+    "es": {
+      "from": "582772177695",
+      "text": "489ab3a38593"
+    },
+    "pt-BR": {
+      "from": "582772177695",
+      "text": "7e9806ba2bf4"
+    }
+  },
+  "settings:language.title": {
+    "es": {
+      "from": "a4fe65264ef7",
+      "text": "7ae9d418353b"
+    },
+    "pt-BR": {
+      "from": "a4fe65264ef7",
+      "text": "7ae9d418353b"
+    }
+  },
+  "settings:nav.ariaLabel": {
+    "es": {
+      "from": "e26d51d36781",
+      "text": "c2e2b8239ac8"
+    },
+    "pt-BR": {
+      "from": "e26d51d36781",
+      "text": "a8f7045ebaa6"
+    }
+  },
+  "settings:nav.groups.App": {
+    "es": {
+      "from": "0d04bfeb7d64",
+      "text": "0d04bfeb7d64"
+    },
+    "pt-BR": {
+      "from": "0d04bfeb7d64",
+      "text": "0d04bfeb7d64"
+    }
+  },
+  "settings:nav.groups.Code": {
+    "es": {
+      "from": "340f463033e0",
+      "text": "f58b85570398"
+    },
+    "pt-BR": {
+      "from": "340f463033e0",
+      "text": "f58b85570398"
+    }
+  },
+  "settings:nav.groups.General": {
+    "es": {
+      "from": "c910d474dcd7",
+      "text": "c910d474dcd7"
+    },
+    "pt-BR": {
+      "from": "c910d474dcd7",
+      "text": "2130a3b5e09e"
+    }
+  },
+  "settings:nav.groups.System": {
+    "es": {
+      "from": "6725e7bbcd28",
+      "text": "f150afd3c599"
+    },
+    "pt-BR": {
+      "from": "6725e7bbcd28",
+      "text": "f150afd3c599"
+    }
+  },
+  "settings:nav.items.account": {
+    "es": {
+      "from": "7e1b0d5641f2",
+      "text": "e436ddcd06e8"
+    },
+    "pt-BR": {
+      "from": "7e1b0d5641f2",
+      "text": "5a4cc65d866b"
+    }
+  },
+  "settings:nav.items.agent": {
+    "es": {
+      "from": "11b39c93777e",
+      "text": "1e068f0819ee"
+    },
+    "pt-BR": {
+      "from": "11b39c93777e",
+      "text": "1e068f0819ee"
+    }
+  },
+  "settings:nav.items.appearance": {
+    "es": {
+      "from": "3907fa7f8072",
+      "text": "e3e9cbaccaec"
+    },
+    "pt-BR": {
+      "from": "3907fa7f8072",
+      "text": "04f9f0a78dbe"
+    }
+  },
+  "settings:nav.items.backend": {
+    "es": {
+      "from": "2fb4019a35e4",
+      "text": "2fb4019a35e4"
+    },
+    "pt-BR": {
+      "from": "2fb4019a35e4",
+      "text": "2fb4019a35e4"
+    }
+  },
+  "settings:nav.items.channels": {
+    "es": {
+      "from": "4c8906cf76f5",
+      "text": "ee827d40c1b4"
+    },
+    "pt-BR": {
+      "from": "4c8906cf76f5",
+      "text": "dacf0de78182"
+    }
+  },
+  "settings:nav.items.codingAgent": {
+    "es": {
+      "from": "fcaf9f020317",
+      "text": "fee0fca2fc36"
+    },
+    "pt-BR": {
+      "from": "fcaf9f020317",
+      "text": "fee0fca2fc36"
+    }
+  },
+  "settings:nav.items.computers": {
+    "es": {
+      "from": "680cb3c6fca7",
+      "text": "00c1b54d17ff"
+    },
+    "pt-BR": {
+      "from": "680cb3c6fca7",
+      "text": "613212790e8d"
+    }
+  },
+  "settings:nav.items.desktop": {
+    "es": {
+      "from": "9bd88f2485ac",
+      "text": "557fb1764834"
+    },
+    "pt-BR": {
+      "from": "9bd88f2485ac",
+      "text": "9bd88f2485ac"
+    }
+  },
+  "settings:nav.items.updates": {
+    "es": {
+      "from": "22e2bada8f1c",
+      "text": "f165314f21f8"
+    },
+    "pt-BR": {
+      "from": "22e2bada8f1c",
+      "text": "a1f09a31ad36"
+    }
+  },
+  "settings:nav.items.usage": {
+    "es": {
+      "from": "8d59829c1e15",
+      "text": "da8920821e23"
+    },
+    "pt-BR": {
+      "from": "8d59829c1e15",
+      "text": "da8920821e23"
+    }
+  },
+  "settings:nav.title": {
+    "es": {
+      "from": "74a883a037bc",
+      "text": "bb507137e363"
+    },
+    "pt-BR": {
+      "from": "74a883a037bc",
+      "text": "76b0fb6ad189"
+    }
+  }
+}

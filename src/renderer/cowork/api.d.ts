@@ -9,6 +9,7 @@ export const BASE: string;
  * injects the loopback token in main). Use for any direct call to the server.
  */
 export function authFetch(url: string, options?: RequestInit): Promise<Response>;
+export function withAcceptLanguage<T extends RequestInit>(options?: T): T;
 
 /** Per-provider recommended (planning, coding) model id pair. */
 export interface RecommendedModels {

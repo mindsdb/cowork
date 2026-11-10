@@ -1,0 +1,169 @@
+{
+  "nav": {
+    "title": "Configuración",
+    "ariaLabel": "Secciones de configuración",
+    "groups": {
+      "General": "General",
+      "Code": "Código",
+      "App": "App",
+      "System": "Sistema"
+    },
+    "items": {
+      "agent": "Agente",
+      "codingAgent": "Agente de código",
+      "computers": "Computadoras",
+      "appearance": "Apariencia",
+      "desktop": "Escritorio",
+      "channels": "Canales",
+      "updates": "Actualizaciones",
+      "backend": "Backend",
+      "usage": "Uso",
+      "account": "Cuenta"
+    }
+  },
+  "autoSave": {
+    "saving": "Guardando…",
+    "failed": "No se pudo guardar",
+    "saved": "Guardado",
+    "savedAutomatically": "Los cambios se guardan automáticamente."
+  },
+  "language": {
+    "title": "Idioma",
+    "subtitle": "El idioma de los menús, botones y mensajes. Las respuestas siguen el idioma en que escribes.",
+    "ariaLabel": "Idioma",
+    "matchSystem": "Igual que el sistema ({language})"
+  },
+  "appearance": {
+    "title": "Apariencia",
+    "style": {
+      "title": "Estilo",
+      "lockedSubtitle": "Lo define esta implementación. Claro y oscuro siguen siendo tu elección.",
+      "subtitle": "Normal, 8-Bit o diseña el tuyo con Personalizado. Se combina con claro y oscuro.",
+      "ariaLabel": "Estilo",
+      "optionAriaLabel": "Estilo {name}"
+    },
+    "skins": {
+      "normal": { "label": "Normal", "title": "Usa el aspecto estándar." },
+      "8bit": { "label": "8-Bit", "title": "Usa el aspecto retro 8-Bit." },
+      "custom": { "label": "Personalizado", "title": "Diseña tu propio aspecto." }
+    },
+    "theme": {
+      "title": "Tema",
+      "subtitle": "Claro u oscuro; también cambia el fondo animado.",
+      "ariaLabel": "Tema",
+      "light": "Claro",
+      "lightAriaLabel": "Tema claro",
+      "lightHint": "Usa el tema claro.",
+      "dark": "Oscuro",
+      "darkAriaLabel": "Tema oscuro",
+      "darkHint": "Usa el tema oscuro."
+    },
+    "accent": {
+      "title": "Color de acento",
+      "subtitle": "Botones, resaltados, foco: el color de marca de tu tema.",
+      "ariaLabel": "Color de acento personalizado"
+    },
+    "background": {
+      "default": "Predeterminado",
+      "lightTitle": "Fondo — Modo claro",
+      "lightSubtitle": "Elige un color base para el modo claro (las superficies y los tonos del texto se derivan de él) o usa el predeterminado.",
+      "lightAriaLabel": "Color de fondo personalizado — Modo claro",
+      "lightDefaultAriaLabel": "Fondo claro predeterminado",
+      "darkTitle": "Fondo — Modo oscuro",
+      "darkSubtitle": "Elige un color base para el modo oscuro (las superficies y los tonos del texto se derivan de él) o usa el predeterminado.",
+      "darkAriaLabel": "Color de fondo personalizado — Modo oscuro",
+      "darkDefaultAriaLabel": "Fondo oscuro predeterminado"
+    },
+    "corners": {
+      "title": "Esquinas",
+      "subtitle": "Qué tan marcadas se ven las superficies.",
+      "ariaLabel": "Radio de las esquinas",
+      "square": "Rectas",
+      "squareAriaLabel": "Esquinas rectas",
+      "squareHint": "Esquinas de píxel marcadas.",
+      "soft": "Suaves",
+      "softAriaLabel": "Esquinas suaves",
+      "softHint": "Ligeramente redondeadas.",
+      "round": "Redondas",
+      "roundAriaLabel": "Esquinas redondas",
+      "roundHint": "Totalmente redondeadas."
+    },
+    "typeface": {
+      "title": "Tipografía",
+      "subtitle": "La fuente estándar de la interfaz, o monoespaciada en todo para un estilo de terminal.",
+      "ariaLabel": "Tipografía personalizada",
+      "standard": "Estándar",
+      "standardAriaLabel": "Fuente estándar",
+      "standardHint": "Inter para el texto de la interfaz.",
+      "mono": "Mono",
+      "monoAriaLabel": "Fuente monoespaciada",
+      "monoHint": "JetBrains Mono en todo."
+    },
+    "scanlines": {
+      "title": "Líneas de escaneo",
+      "subtitle": "Una leve capa de líneas de escaneo tipo CRT sobre toda la app.",
+      "ariaLabel": "Capa de líneas de escaneo"
+    },
+    "greeting": {
+      "title": "Saludo",
+      "subtitle": "La frase que aparece al empezar una tarea nueva.",
+      "hint": "Aparece sobre el campo de la tarea cuando empiezas una tarea nueva.",
+      "ariaLabel": "Texto del saludo"
+    },
+    "sidebarTitle": {
+      "title": "Título de la barra lateral",
+      "subtitle": "Aparece arriba del panel de navegación izquierdo. Déjalo vacío para usar el predeterminado, {product}.",
+      "hint": "Reemplaza el logotipo de {product} en el panel de navegación.",
+      "ariaLabel": "Texto del título de la barra lateral"
+    },
+    "sidebarTitleColor": {
+      "title": "Color del título de la barra lateral",
+      "subtitle": "Elige un color para el título de la barra lateral o usa el color de texto predeterminado del tema.",
+      "ariaLabel": "Color del título de la barra lateral",
+      "follow": "Seguir el tema",
+      "followAriaLabel": "Seguir el color del tema"
+    },
+    "sidebarLogo": {
+      "title": "Logo de la barra lateral",
+      "subtitle": "Un ícono junto al título de la barra lateral. PNG, JPG o SVG, de menos de 300 KB.",
+      "change": "Cambiar logo",
+      "upload": "Subir logo",
+      "remove": "Quitar",
+      "tooLarge": "El logo debe pesar menos de 300 KB."
+    },
+    "favicon": {
+      "title": "Ícono de la pestaña del navegador",
+      "subtitle": "PNG, ICO, SVG o WEBP, de menos de 100 KB. Funciona mejor una imagen cuadrada de al menos 32 × 32 píxeles.",
+      "previewAlt": "Vista previa del ícono de la pestaña",
+      "change": "Cambiar ícono",
+      "upload": "Subir ícono",
+      "remove": "Quitar",
+      "removeAriaLabel": "Quitar el ícono de la pestaña del navegador",
+      "fileAriaLabel": "Archivo del ícono de la pestaña del navegador",
+      "wrongType": "Elige una imagen PNG, ICO, SVG o WEBP.",
+      "tooLarge": "El ícono de la pestaña debe pesar menos de 100 KB.",
+      "unreadable": "No se pudo leer esta imagen. Prueba con otro archivo."
+    },
+    "figureSources": {
+      "title": "Mostrar de dónde salen las cifras",
+      "subtitle": "Subraya cada cifra de una respuesta con el paso del que salió y marca las cifras que ningún paso devolvió."
+    },
+    "animatedBackground": {
+      "title": "Fondo animado",
+      "subtitle": "Una cuadrícula de puntos animada detrás de la app en lugar de una superficie plana."
+    },
+    "counters": {
+      "title": "Mostrar contadores en el panel de navegación",
+      "subtitle": "Contadores en Proyectos / Programadas / Artefactos / Apps conectadas, y el tiempo transcurrido en cada fila de Recientes.",
+      "ariaLabel": "Contadores del panel de navegación"
+    },
+    "themeToggle": {
+      "title": "Botón para cambiar el tema",
+      "subtitle": "Control de claro/oscuro en el botón de visualización de la esquina de la ventana."
+    },
+    "styleToggle": {
+      "title": "Botón para cambiar al estilo 8-bit",
+      "subtitle": "Control de estilo Normal/8-Bit en el mismo botón. Con ambos activados, el botón abre la configuración de visualización."
+    }
+  }
+}

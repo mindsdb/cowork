@@ -54,6 +54,7 @@ import { loadSkin, seedBrandDefaults } from './lib/skins';
 import { DEPLOYMENT_BRAND } from './lib/deploymentBrand';
 import { applyBrandIcons } from './lib/navBranding';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
+import { whenI18nReady } from './lib/i18n';
 
 (() => {
   applyBrandIcons(DEPLOYMENT_BRAND);
@@ -95,25 +96,28 @@ function bindOrganizationCacheTokens(tokens: { token?: string }) {
 
 const root = document.getElementById('root')!;
 
-createRoot(root).render(
-  <StrictMode>
-    {legacyTenant || codeFixture ? (
-      // Access is gated upstream; render directly without a Keycloak login.
-      <App />
-    ) : (
-      // LoadingComponent holds the mount until keycloak.init() resolves. Without
-      // it the provider renders App immediately, App's boot effect probes
-      // /api/v1/health before `authenticated` is set, getAccessToken() returns
-      // null so no Bearer is attached, the auth ingress 401s the probe, and
-      // resolveBootTarget lands a signed-in user on the auth screen.
-      <ReactKeycloakProvider
-        authClient={keycloak}
-        initOptions={initOptions}
-        LoadingComponent={<WelcomeLoading />}
-        onTokens={bindOrganizationCacheTokens}
-      >
+// Load the user's language before the first paint (bounded, never rejects).
+void whenI18nReady().then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      {legacyTenant || codeFixture ? (
+        // Access is gated upstream; render directly without a Keycloak login.
         <App />
-      </ReactKeycloakProvider>
-    )}
-  </StrictMode>
-);
+      ) : (
+        // LoadingComponent holds the mount until keycloak.init() resolves. Without
+        // it the provider renders App immediately, App's boot effect probes
+        // /api/v1/health before `authenticated` is set, getAccessToken() returns
+        // null so no Bearer is attached, the auth ingress 401s the probe, and
+        // resolveBootTarget lands a signed-in user on the auth screen.
+        <ReactKeycloakProvider
+          authClient={keycloak}
+          initOptions={initOptions}
+          LoadingComponent={<WelcomeLoading />}
+          onTokens={bindOrganizationCacheTokens}
+        >
+          <App />
+        </ReactKeycloakProvider>
+      )}
+    </StrictMode>
+  );
+});
