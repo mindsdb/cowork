@@ -16,7 +16,7 @@
 //    flight emitting more text — keeping it out of the streaming
 //    body insulates it from re-renders that would reset its inputs.
 
-import { dropPendingTest } from './connectorTestStore';
+import { dropPendingTest, movePendingTest } from './connectorTestStore';
 
 const _byConversation = new Map();
 const _listeners = new Map(); // cid → Set<fn>
@@ -288,6 +288,24 @@ export function clearForm(conversationId) {
   if (subs) for (const fn of subs) {
     try { fn(null); } catch {}
   }
+}
+
+// Carry a conversation's form, its input snapshot, picked method and waiting
+// connection test over when the server mints the conversation's id. The test
+// moves after the new form is set and before the old one is cleared, since
+// both setForm and clearForm drop a waiting test.
+export function moveForm(fromId, toId) {
+  if (!fromId || !toId || fromId === toId) return;
+  const form = getForm(fromId);
+  if (form) {
+    const state = getFormState(fromId);
+    const method = getSelectedMethod(fromId);
+    setForm(toId, form);
+    if (state) setFormState(toId, state);
+    if (method) setSelectedMethod(toId, method);
+  }
+  movePendingTest(fromId, toId);
+  if (form) clearForm(fromId);
 }
 
 export function getForm(conversationId) {

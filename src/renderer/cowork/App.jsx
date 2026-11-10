@@ -47,8 +47,8 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
-import { applyConnectorTestEvent, movePendingTest } from './components/datavault/connectorTestStore';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
+import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
 import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
@@ -4316,15 +4316,7 @@ function AppCore() {
       // Migrate the form store so a success-state panel (e.g. the
       // OAuth success screen set just before onContinue was called)
       // survives the ID change and stays visible under the new task id.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4664,16 +4656,7 @@ function AppCore() {
       // data-vault-form-patch blocks (keyed to the new id) both
       // find the form. Without this the panel loses its spec and
       // the success patch falls through to a bare setForm.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
-      movePendingTest(previousId, sid);
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {

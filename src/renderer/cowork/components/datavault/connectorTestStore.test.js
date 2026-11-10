@@ -10,7 +10,7 @@ import {
   applyConnectorTestEvent, clearPendingTest, getPendingTest, movePendingTest,
   pendingTestFromAnswer, pendingTestFromEvent, setPendingTest, setPendingTestCanceller,
 } from './connectorTestStore';
-import { setForm, clearForm, patchForm } from './formStore';
+import { setForm, clearForm, getForm, getSelectedMethod, moveForm, patchForm, setSelectedMethod } from './formStore';
 
 const CID = 'conv-connector-test';
 const events = (stream) => stream.map(([type, data]) => ({ type, ...data, type: data.type || type }));
@@ -91,6 +91,26 @@ describe('keeping it apart from the form', () => {
     }
 
     expect(cancelled).toEqual([['confirm', previewEvent.confirm_id], ['approval', askEvent.approval_id]]);
+  });
+
+  it('moves with its form when the server mints the conversation id, without a cancel', () => {
+    const cancelled = [];
+    setPendingTestCanceller((pending) => cancelled.push(pending.id));
+    try {
+      setForm('tmp-connect-3', { form_id: 'fm_aaaaaaaaaa', title: 'Connect Planner' });
+      setSelectedMethod('tmp-connect-3', 'm1');
+      applyConnectorTestEvent('tmp-connect-3', previewEvent);
+      moveForm('tmp-connect-3', CID);
+    } finally {
+      setPendingTestCanceller(null);
+    }
+
+    expect(cancelled).toEqual([]);
+    expect(getPendingTest(CID)?.id).toBe(previewEvent.confirm_id);
+    expect(getForm(CID)?.form_id).toBe('fm_aaaaaaaaaa');
+    expect(getSelectedMethod(CID)).toBe('m1');
+    expect(getForm('tmp-connect-3')).toBeNull();
+    expect(getPendingTest('tmp-connect-3')).toBeNull();
   });
 
   it('moves with the conversation when the server mints its id', () => {
