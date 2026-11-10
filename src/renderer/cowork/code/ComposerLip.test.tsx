@@ -136,7 +136,7 @@ describe('ComposerLip', () => {
     const user = userEvent.setup();
     const { onChooseModel, onViewBudgets } = renderFailure('budget_exceeded', 'upstream 402');
     expect(screen.getByText("Your organization's budget is used up.")).toBeInTheDocument();
-    expect(screen.getByText('An owner or admin can raise it in Budgets. Choose MindsHub Air to continue in this task.')).toBeInTheDocument();
+    expect(screen.getByText('An owner or admin can raise it in Budgets, or choose an available model to continue in this task.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'View budgets' }));
     expect(onViewBudgets).toHaveBeenCalledOnce();

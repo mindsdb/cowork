@@ -278,6 +278,14 @@ describe('credit failures', () => {
     expect(unjudgeableReason(b, b, { a: 'Kimi', b: 'Qwen' })).toMatch(/^Both models ran out/);
   });
 
+  it('keep a budget-stopped turn out of the verdict, without calling it credits', () => {
+    const a = turnsOf([user('p'), reply()]);
+    const b = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded' }]);
+    expect(judgeableTurn(a, b)).toBeNull();
+    expect(unjudgeableReason(a, b, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Sonnet hit your organization's budget before finishing, so this turn can't be judged.");
+  });
+
   it('do not hide an earlier turn behind a later judgeable one', () => {
     const a = turnsOf([user('p'), outOfCredits, user('q'), reply()]);
     const b = turnsOf([user('p'), reply(), user('q'), reply()]);

@@ -411,7 +411,7 @@ describe('NewTaskPanel', () => {
 
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
 
-    expect(await screen.findByText("Your organization's budget is used up. Choose MindsHub Air or ask an owner or admin to raise it.")).toBeInTheDocument();
+    expect(await screen.findByText("Your organization's budget is used up. Choose an available model or ask an owner or admin to raise it.")).toBeInTheDocument();
     expect(screen.queryByText('Add credits or choose an available model.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
