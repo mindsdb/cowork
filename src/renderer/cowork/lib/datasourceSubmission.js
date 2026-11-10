@@ -149,7 +149,8 @@ function hintFor(connection) {
   const mysql = connection?.connector_id === 'mysql';
   const form = mysql ? 'mysql' : 'checkbox';
   if (Object.hasOwn(UNVERIFIED_CAUSES[form], connection?.tls_mode)) {
-    const fallback = mysql ? '' : PG_SCRAM_FALLBACK;
+    // `encrypted` needs TLS, so a server without it fails before any login and SCRAM cannot help.
+    const fallback = mysql || connection.tls_mode === 'encrypted' ? '' : PG_SCRAM_FALLBACK;
     return UNVERIFIED_CAUSES[form][connection.tls_mode] + TURN_CHECKS_ON[form] + fallback;
   }
   if (!mysql) return HINTS.tls_failed;

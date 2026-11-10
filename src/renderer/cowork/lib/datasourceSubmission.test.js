@@ -183,6 +183,7 @@ describe('describeConnectionState', () => {
       const { hint } = tlsFailed(mode);
       expect(hint).toMatch(/certificate could not be verified/);
       expect(hint).not.toMatch(/password was not sent/);
+      expect(hint).not.toMatch(/SCRAM/);
     });
 
     it('never tells the user the password is right, since the server may ask for a wrong one too', () => {
@@ -232,12 +233,20 @@ describe('describeConnectionState', () => {
         expect(hint).not.toMatch(/kind of login/);
       });
 
-      it.each(['prefer', 'disabled', 'encrypted'])('under %s, gives PostgreSQL a way out when the box cannot help', (mode) => {
+      it.each(['prefer', 'disabled'])('under %s, gives PostgreSQL a way out when the box cannot help', (mode) => {
         // A server with no TLS, or a self-signed one, fails with the box on too; only SCRAM connects.
         const { hint } = describeConnectionState({
           status: 'failed', validation_code: 'tls_failed', tls_mode: mode, connector_id: 'postgres',
         });
         expect(hint).toMatch(/If the server has no TLS, or its certificate is not signed by a public authority, ask its administrator to switch this account to SCRAM-SHA-256 logins\.$/);
+      });
+
+      it('under encrypted, offers PostgreSQL no SCRAM, since a server without TLS fails before any login', () => {
+        const { hint } = describeConnectionState({
+          status: 'failed', validation_code: 'tls_failed', tls_mode: 'encrypted', connector_id: 'postgres',
+        });
+        expect(hint).toMatch(/turn on "Only connect if the certificate is signed by a public authority" and try again\.$/);
+        expect(hint).not.toMatch(/SCRAM/);
       });
 
       it.each(['prefer', 'disabled', 'encrypted'])('under %s, leaves SCRAM out of MySQL, which has a CA choice', (mode) => {
