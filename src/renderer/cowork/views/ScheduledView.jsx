@@ -19,9 +19,11 @@ import {
   ListGroup, useCollectionShortcut,
 } from '../components/collection';
 import { Alert, Button } from '../components/ui';
+import { useToastManager } from '../components/ui/Toast';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
+import { lastRunFailed, scheduleState } from '../components/schedule/ScheduleStatusBadge';
 import { host } from '../../platform/host';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
@@ -57,7 +59,8 @@ export default function ScheduledView({
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState(null);
-  const [error, setError] = useState('');
+  const toastManager = useToastManager();
+  const showError = (title) => toastManager.add({ type: 'danger', title });
   // Rows by default: a schedule is something you manage (status, next run,
   // run now), not a place you work in. Phones get rows too.
   // Delete confirmation is a standalone ConfirmModal (not part of the edit
@@ -105,32 +108,42 @@ export default function ScheduledView({
     return [...filtered].sort(cmp);
   }, [scheduled, search, sort, projects]);
 
+  const attentionCount = useMemo(() => visible.filter(needsAttention).length, [visible]);
+
   function openCreate() {
     setEditing(null);
-    setError('');
     setModalOpen(true);
   }
 
   function openEdit(task) {
     setEditing(task);
-    setError('');
     setModalOpen(true);
   }
 
-  async function handleSubmit(payload, id) {
-    if (id) await onUpdate(id, payload);
-    else await onCreate(payload);
+  async function handleSubmit(payload, id, { runOnce = false } = {}) {
+    if (id) {
+      await onUpdate(id, payload);
+      return;
+    }
+    const created = await onCreate(payload);
+    if (!runOnce || !created?.id) return;
+    // The task exists now, so a failed trial run must not fail the save: the
+    // form would stay open, and saving again would create a second task.
+    try {
+      await onRunNow(created.id, { trial: true });
+    } catch (err) {
+      showError(`Saved “${payload.title}”, but its trial run didn’t start: ${err?.message || 'try Run now.'}`);
+    }
   }
 
   async function confirmDelete() {
     if (!deletingTask) return;
     setDeleteBusy(true);
-    setError('');
     try {
       await onDelete(deletingTask.id);
       setDeletingTask(null);
     } catch (err) {
-      setError(err?.message || 'Could not delete schedule.');
+      showError(err?.message || 'Could not delete schedule.');
     } finally {
       setDeleteBusy(false);
     }
@@ -138,9 +151,8 @@ export default function ScheduledView({
 
   async function runAction(id, action) {
     setBusyId(id);
-    setError('');
     try { await action(id); }
-    catch (err) { setError(err?.message || 'Schedule action failed.'); }
+    catch (err) { showError(err?.message || 'Schedule action failed.'); }
     finally { setBusyId(null); }
   }
 
@@ -208,10 +220,6 @@ export default function ScheduledView({
         </Alert>
       )}
 
-      {error && (
-        <Alert variant="danger" className="mx-8 mb-3">{error}</Alert>
-      )}
-
       {/* Body — empty state or list. */}
       <CollectionState
         total={scheduled.length}
@@ -226,24 +234,31 @@ export default function ScheduledView({
           className: 'mx-8 mb-8',
         }}
       >
-        <ListGroup className="mx-8 mb-8">
-          {visible.map((task) => (
-            <ScheduleRow
-              key={task.id}
-              task={task}
-              projects={projects}
-              busy={busyId === task.id}
-              onOpen={() => onOpenSchedule?.(task)}
-              onRunNow={() => runAction(task.id, onRunNow)}
-              onStopRun={() => runAction(task.id, onStopRun)}
-              onPause={() => runAction(task.id, onPause)}
-              onResume={() => runAction(task.id, onResume)}
-              onEdit={() => openEdit(task)}
-              onDelete={() => setDeletingTask(task)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </ListGroup>
+        {/* What needs you sits on top: auto-paused, missed, or a failed last
+            run. The rest follow in the chosen order. */}
+        {[
+          ['attention', 'Needs attention', visible.filter(needsAttention)],
+          ['rest', attentionCount ? 'Everything else' : null, visible.filter((t) => !needsAttention(t))],
+        ].filter(([, , rows]) => rows.length > 0).map(([key, title, rows]) => (
+          <ListGroup key={key} className="mx-8 mb-8" title={title ? <h2>{title}</h2> : undefined} meta={title ? rows.length : undefined}>
+            {rows.map((task) => (
+              <ScheduleRow
+                key={task.id}
+                task={task}
+                projects={projects}
+                busy={busyId === task.id}
+                onOpen={() => onOpenSchedule?.(task)}
+                onRunNow={() => runAction(task.id, onRunNow)}
+                onStopRun={() => runAction(task.id, onStopRun)}
+                onPause={() => runAction(task.id, onPause)}
+                onResume={() => runAction(task.id, onResume)}
+                onEdit={() => openEdit(task)}
+                onDelete={() => setDeletingTask(task)}
+                onOpenProject={onOpenProject}
+              />
+            ))}
+          </ListGroup>
+        ))}
       </CollectionState>
 
       <ScheduleTaskModal
@@ -274,3 +289,12 @@ export default function ScheduledView({
   );
 }
 
+
+// A task that needs the user: paused by failures, a missed one-off, or a last
+// run that failed.
+export function needsAttention(task) {
+  if (task.running) return false;
+  const state = scheduleState(task);
+  return state === 'auto_paused' || state === 'missed'
+    || (state === 'active' && lastRunFailed(task));
+}

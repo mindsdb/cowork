@@ -346,7 +346,7 @@ function _hydrateAssistantEvents(messages) {
     out.push({
       ...rest,
       ...(state.steps?.length > 0
-        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
+        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null, endedAt: rest.endedAt || state.endedAt || null }
         : {}),
       ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
@@ -3434,8 +3434,11 @@ export async function resumeSchedule(id) {
   return req(`/schedules/${encodeURIComponent(id)}/resume`, { method: 'POST' });
 }
 
-export async function runScheduleNow(id) {
-  return req(`/schedules/${encodeURIComponent(id)}/run-now`, { method: 'POST' });
+// `trial` runs it once without touching its schedule: the run neither uses
+// up a one-off nor makes the server skip the next slot as just run.
+export async function runScheduleNow(id, { trial = false } = {}) {
+  const query = trial ? '?trial=true' : '';
+  return req(`/schedules/${encodeURIComponent(id)}/run-now${query}`, { method: 'POST' });
 }
 
 export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}) {
