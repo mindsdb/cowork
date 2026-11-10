@@ -86,7 +86,7 @@ jobs:
       # Capacitor 8 needs Xcode 26+. Same selection as mobile-smoke.yml.
       - name: Select Xcode
         run: |
-          xcode="$(printf '%s\n' /Applications/Xcode_*.app | grep -viE 'beta|rc' | sort -V | tail -1)"
+          xcode="$(printf '%s\n' /Applications/Xcode_*.app | grep -viE 'beta|rc|release_candidate' | sort -V | tail -1)"
           echo "Selecting $xcode"
           sudo xcode-select -s "$xcode/Contents/Developer"
           xcodebuild -version

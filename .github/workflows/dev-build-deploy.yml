@@ -105,7 +105,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          files="$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')"
+          files="$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')"
           if grep -qE '^(mobile/|\.github/workflows/mobile-smoke\.yml$)' <<< "$files"; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else

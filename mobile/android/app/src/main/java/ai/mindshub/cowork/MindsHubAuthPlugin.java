@@ -46,9 +46,8 @@ public class MindsHubAuthPlugin extends Plugin {
         String url = call.getString("url");
         String callbackScheme = call.getString("callbackScheme");
         Uri uri = url == null ? null : Uri.parse(url);
-        String scheme = uri == null ? null : uri.getScheme();
-        if (scheme == null || !(scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"))) {
-            call.reject("authenticate needs an http(s) `url`", "INVALID_ARGUMENT");
+        if (!isSignInUri(uri)) {
+            call.reject("authenticate needs an https MindsHub `url`", "INVALID_ARGUMENT");
             return;
         }
         if (callbackScheme == null || callbackScheme.isEmpty()) {
@@ -72,6 +71,18 @@ public class MindsHubAuthPlugin extends Plugin {
                 finishWithError("No browser is available to sign in", "FAILED");
             }
         });
+    }
+
+    /**
+     * Only MindsHub's own sign-in pages, over https. The page asks for this tab, and a page can be
+     * made to ask, so the tab must never open on a host that is not ours.
+     */
+    static boolean isSignInUri(Uri uri) {
+        if (uri == null || !"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+            return false;
+        }
+        String host = uri.getHost().toLowerCase(java.util.Locale.ROOT);
+        return host.equals("mindshub.ai") || host.endsWith(".mindshub.ai");
     }
 
     @Override
