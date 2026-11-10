@@ -163,6 +163,7 @@ export const IPC = {
   BROWSER_HIDE: 'browser:hide',
   BROWSER_SET_BOUNDS: 'browser:set-bounds',
   BROWSER_NAVIGATE: 'browser:navigate',
+  BROWSER_OPEN: 'browser:open',
   BROWSER_ACTIVATE_TAB: 'browser:activate-tab',
   BROWSER_TAKE_OVER: 'browser:take-over',
   BROWSER_HAND_BACK: 'browser:hand-back',

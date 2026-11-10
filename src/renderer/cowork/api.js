@@ -2939,6 +2939,17 @@ export async function voiceOperate(messages, snapshot) {
   });
 }
 
+/* The person typed an address in a task's browser pane: the server opens the
+   task's own session at it, as them, with no agent. Web only; the desktop
+   opens its own browser (host.inAppBrowser.open). Resolves {session_id}. */
+export async function openBrowserAt(conversationId, url) {
+  return req('/browse/open', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_id: conversationId, url }),
+  });
+}
+
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',

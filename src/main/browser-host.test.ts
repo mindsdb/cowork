@@ -461,6 +461,7 @@ describe('the pane IPC', () => {
     [IPC.BROWSER_HIDE, []],
     [IPC.BROWSER_SET_BOUNDS, [{ x: 0, y: 0, width: 10, height: 10 }]],
     [IPC.BROWSER_NAVIGATE, ['t-a', 'back']],
+    [IPC.BROWSER_OPEN, ['t-a', 'https://example.com']],
     [IPC.BROWSER_ACTIVATE_TAB, ['t-a', 't1']],
     [IPC.BROWSER_TAKE_OVER, ['t-a']],
     [IPC.BROWSER_HAND_BACK, ['t-a']],

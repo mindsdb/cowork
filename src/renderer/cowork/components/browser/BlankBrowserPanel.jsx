@@ -2,16 +2,18 @@ import { useState } from 'react';
 import Ico from '../Icons';
 import Button from '../ui/Button';
 import { BrowserFrame } from './BrowserFrame';
+import { typedUrl } from '../../lib/browserSession';
 
-/* The browser pane before the agent has opened a page in the task: the same
-   frame, a blank page with a line asking where to go, and a box that sends it
-   to the agent, who opens the browser and does it. The real pane takes over as
-   soon as the turn's Browser step arrives (ChatView). */
+/* The browser pane before a page is open in the task: an address bar, and a
+   blank page with a line asking where to go. An address typed in either opens
+   at once, in the task's own browser, with no agent (`onOpenUrl`); anything
+   else goes to the agent as a search (`onSend`). The real pane takes over as
+   soon as the browser opens. */
 
 export const BLANK_LINES = [
-  { title: 'Blank page. Big plans?', subtitle: 'Tell me what to look up and I’ll take it from here.' },
+  { title: 'Blank page. Big plans?', subtitle: 'Type an address, or tell me what to look up.' },
   { title: 'The whole internet, and nowhere to be.', subtitle: 'Point me somewhere worth the trip.' },
-  { title: 'Fresh tab energy.', subtitle: 'What are we searching for today?' },
+  { title: 'Fresh tab energy.', subtitle: 'Where are we headed?' },
   { title: 'Quiet in here. Suspiciously quiet.', subtitle: 'Give me a site or a search and I’ll get going.' },
 ];
 
@@ -22,56 +24,91 @@ export function blankLineFor(key = '') {
   return BLANK_LINES[hash % BLANK_LINES.length];
 }
 
-const LOOKS_LIKE_LINK = /^(https?:\/\/)?[\w-]+(\.[\w-]+)+(\/\S*)?$/i;
-
-/** What the agent is asked for what the person typed: open a link, or search. */
+/** What the agent is asked for a search the person typed. */
 export function browserRequestFor(text) {
-  const wanted = text.trim();
-  return LOOKS_LIKE_LINK.test(wanted)
-    ? `Open ${wanted} in the browser.`
-    : `Search the web in the browser for: ${wanted}`;
+  return `Search the web in the browser for: ${text.trim()}`;
 }
 
 /**
  * @param {{ taskKey?: string, agentLabel?: string, browserOn?: boolean,
- *   onSend?: (text: string) => void, onClose: () => void, floating?: boolean }} props
+ *   onSend?: (text: string) => void, onOpenUrl?: (url: string) => Promise<void>,
+ *   onClose: () => void, floating?: boolean, extraActions?: import('react').ReactNode }} props
  */
-export default function BlankBrowserPanel({ taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onClose, floating = false }) {
-  const [text, setText] = useState('');
-  const [sent, setSent] = useState(false);
+export default function BlankBrowserPanel({
+  taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onOpenUrl, onClose, floating = false, extraActions = null,
+}) {
+  const [address, setAddress] = useState('');
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
   const line = blankLineFor(taskKey);
-  const canSend = browserOn && !!onSend;
+  const usable = browserOn && (onSend || onOpenUrl);
 
-  const submit = (event) => {
-    event.preventDefault();
-    if (!canSend || !text.trim()) return;
-    onSend(browserRequestFor(text));
-    setSent(true);
+  const go = async (text) => {
+    const wanted = text.trim();
+    if (!usable || !wanted || busy) return;
+    setError('');
+    const url = typedUrl(wanted);
+    if (url && onOpenUrl) {
+      setBusy(`Opening ${url}…`);
+      try {
+        await onOpenUrl(url);
+      } catch (err) {
+        setError(err?.message || 'Couldn’t open that page.');
+        setBusy('');
+      }
+      return;
+    }
+    if (!onSend) return;
+    onSend(browserRequestFor(wanted));
+    setBusy(`${agentLabel} is opening the browser…`);
   };
 
+  const addressBar = (
+    <form
+      className="browser-panel__address"
+      onSubmit={(e) => { e.preventDefault(); void go(address); }}
+    >
+      <span className="browser-panel__address-icon" aria-hidden="true">{Ico.globe(14)}</span>
+      <input
+        type="text"
+        className="browser-panel__address-input"
+        placeholder="Type a URL or search"
+        aria-label="Address"
+        value={address}
+        disabled={!usable || !!busy}
+        onChange={(e) => setAddress(e.target.value)}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+      />
+    </form>
+  );
+
   return (
-    <BrowserFrame hint={sent ? `${agentLabel} is opening the browser…` : 'Nothing open yet'} onClose={onClose} floating={floating}>
+    <BrowserFrame hint={busy || 'Nothing open yet'} below={addressBar} onClose={onClose} floating={floating} extraActions={extraActions}>
       <div className="browser-panel__blank">
         <span className="browser-panel__blank-mark" aria-hidden="true">{Ico.globe(20)}</span>
         <h2 className="browser-panel__blank-title">{line.title}</h2>
         <p className="browser-panel__blank-subtitle">
           {browserOn ? line.subtitle : `The browser is off for this task. Turn it on from the + menu and ${agentLabel} can browse.`}
         </p>
-        <form className="browser-panel__blank-form" onSubmit={submit}>
+        <form className="browser-panel__blank-form" onSubmit={(e) => { e.preventDefault(); void go(search); }}>
           <input
             type="text"
             className="browser-panel__blank-input"
             placeholder="Search, or paste a link"
             aria-label="What to look up"
-            value={text}
-            disabled={!canSend || sent}
-            onChange={(e) => setText(e.target.value)}
+            value={search}
+            disabled={!usable || !!busy}
+            onChange={(e) => setSearch(e.target.value)}
             autoFocus
           />
-          <Button type="submit" size="sm" variant="primary" disabled={!canSend || sent || !text.trim()}>
-            {sent ? 'On it…' : 'Go'}
+          <Button type="submit" size="sm" variant="primary" disabled={!usable || !!busy || !search.trim()}>
+            {busy ? 'On it…' : 'Go'}
           </Button>
         </form>
+        {error && <p className="browser-panel__blank-error" role="alert">{error}</p>}
       </div>
     </BrowserFrame>
   );

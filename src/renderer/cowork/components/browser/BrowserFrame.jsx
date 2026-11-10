@@ -16,10 +16,11 @@ import './browser-panel.css';
  *   stageRef?: import('react').Ref<HTMLDivElement>,
  *   onClose: () => void,
  *   floating?: boolean,
+ *   extraActions?: import('react').ReactNode,
  *   children?: import('react').ReactNode,
  * }} props
  */
-export function BrowserFrame({ hint, actions = null, below = null, stageRef, onClose, floating = false, children }) {
+export function BrowserFrame({ hint, actions = null, below = null, stageRef, onClose, floating = false, extraActions = null, children }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === 'Escape' && event.target === document.body) onClose();
@@ -42,6 +43,8 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
           </div>
           <div className="browser-panel__actions">
             {actions}
+            {/* The app's own icons beside the X: the call icon (TopShortcuts). */}
+            {extraActions}
             <Button icon size="sm" variant="subtle" aria-label="Close browser" onClick={onClose}>{Ico.close(14)}</Button>
           </div>
         </header>

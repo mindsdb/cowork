@@ -610,6 +610,10 @@ export interface InAppBrowserBridge {
       task still shown. Bounds big enough show it there again. Main answers
       whether it draws. */
   setBounds(bounds: StageBounds): Promise<PaneDrawAnswer>;
+  /** The person opens an address in a task's browser, typed in the pane: a
+      new session at it, or the session's active tab goes there. No agent is
+      involved. */
+  open(sessionId: string, url: string): Promise<void>;
   back(sessionId: string): Promise<void>;
   forward(sessionId: string): Promise<void>;
   reload(sessionId: string): Promise<void>;

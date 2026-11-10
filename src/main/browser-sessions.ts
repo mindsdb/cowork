@@ -617,6 +617,22 @@ export class BrowserSessions {
     await (where === 'back' ? view.back() : where === 'forward' ? view.forward() : view.reload());
   }
 
+  /** The person typed an address in the pane: the task's session opens at it,
+      or its active tab goes there. Refused like the agent's for a destination
+      the request filter would cancel. */
+  async personOpen(id: string, url: string): Promise<void> {
+    refuseDestination(url);
+    this.requireAvailable();
+    const existing = this.sessions.get(id);
+    if (!existing) {
+      this.create(id, url);
+      return;
+    }
+    existing.lastUsed = this.now();
+    existing.lastPersonInputAt = this.now();
+    await this.active(existing).view.load(url);
+  }
+
   personActivateTab(id: string, tabId: string): void {
     const session = this.person(id);
     if (session && session.tabs.some((t) => t.id === tabId)) this.activate(session, tabId);

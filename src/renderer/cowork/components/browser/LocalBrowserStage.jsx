@@ -137,7 +137,7 @@ export function downloadLine(download) {
   }
 }
 
-export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
+export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null }) {
   const browser = host.inAppBrowser;
   const stageRef = useRef(null);
   /** @type {[BrowserViewState | null, (s: BrowserViewState | null) => void]} */
@@ -315,7 +315,7 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) 
   );
 
   return (
-    <BrowserFrame hint={hint} actions={actions} below={below} stageRef={stageRef} onClose={onClose}>
+    <BrowserFrame hint={hint} actions={actions} below={below} stageRef={stageRef} onClose={onClose} floating={floating} extraActions={extraActions}>
       {closed ? (
         <EmptyState
           size="sm"

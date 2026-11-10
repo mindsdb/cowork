@@ -195,3 +195,34 @@ export function browserViewerTheme(style, theme) {
   }
   return { type: 'browser-theme', scheme: theme === 'dark' ? 'dark' : 'light', vars };
 }
+
+/* An address the person typed in the browser pane, as the browser takes it:
+   http or https with a host, https:// added when they typed none. null for
+   anything else (a search, or a scheme such as javascript:). Same rule as the
+   server's person_url. */
+export function typedUrl(raw) {
+  const text = String(raw || '').trim();
+  if (!text || text.length > 4096 || /\s/.test(text)) return null;
+  let address = text;
+  if (!text.includes('://')) {
+    if (/^[A-Za-z][A-Za-z0-9+.-]*:(?!\d)/.test(text)) return null;
+    // A bare word ("tacos") is a search; an address has a dot, a port or is localhost.
+    if (!/^(localhost|[^/?#]+\.[^/?#]+|[^/?#]+:\d+)([/?#]|$)/i.test(text)) return null;
+    address = `https://${text}`;
+  }
+  try {
+    const url = new URL(address);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname ? address : null;
+  } catch {
+    return null;
+  }
+}
+
+/* The desktop browser's session for a task: anton's own name for it
+   (cowork-server's task_session with no person, "t-" and 24 hex of
+   sha256(":" + conversation id)), so the person and the agent share tabs. */
+export async function desktopTaskSession(conversationId) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`:${conversationId}`));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `t-${hex.slice(0, 24)}`;
+}

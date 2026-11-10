@@ -84,7 +84,8 @@ export function webPaneNote(agentLabel) {
 }
 
 /**
- * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
+ * @param {{ sessionId: string, agentLabel?: string, onClose: () => void,
+ *   floating?: boolean, extraActions?: import('react').ReactNode }} props
  */
 export function BrowserPanel(props) {
   return host.supportsInAppBrowser ? <LocalBrowserStage {...props} /> : <WebBrowserStage {...props} />;
@@ -93,7 +94,7 @@ export function BrowserPanel(props) {
 /**
  * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
  */
-function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
+function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null }) {
   const [viewUrl, setViewUrl] = useState(null);
   const [error, setError] = useState(/** @type {PaneStop | null} */ (null));
   const [hidden, setHidden] = useState(tabHidden);
@@ -242,6 +243,8 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
       below={<p className="browser-panel__note">{webPaneNote(agentLabel)}</p>}
       actions={<Button icon size="sm" variant="subtle" aria-label="Reload browser view" onClick={retry}>{Ico.reload(14)}</Button>}
       onClose={onClose}
+      floating={floating}
+      extraActions={extraActions}
     >
       {viewUrl && !error && (
         <iframe

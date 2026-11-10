@@ -89,7 +89,7 @@ import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
-         allocateConversationId, uploadAttachments,
+         allocateConversationId, uploadAttachments, openBrowserAt,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit,
          runScheduleNow, fetchScheduleRuns, fetchDatasources, MOCK_DATA,
@@ -149,9 +149,10 @@ import { useFacetimeCall } from './lib/facetime/useFacetimeCall';
 import VoiceCallWindow from './components/VoiceCallWindow';
 import TopShortcuts from './components/TopShortcuts';
 import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
+import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
-import { latestBrowserSessionIdIn } from './lib/browserSession';
+import { desktopTaskSession, latestBrowserSessionIdIn } from './lib/browserSession';
 import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
 import { Outlet } from 'react-router-dom';
 
@@ -694,6 +695,10 @@ function AppCore() {
   // Show browser from Home or Projects: a blank page floating over the
   // page, whose search starts a task.
   const [offTaskBrowserOpen, setOffTaskBrowserOpen] = useState(false);
+  // An address typed there opens at once, with no agent, in a browser session
+  // of its own (no task yet): {sessionId} once it is open.
+  const [offTaskBrowser, setOffTaskBrowser] = useState(null);
+  const offTaskBrowserIdRef = useRef(null);
   // "Show the browser" from a call: ChatView opens the pane for this task.
   const [browserRequest, setBrowserRequest] = useState(null);
   // The row ids a conversation holds before a fetch, or undefined (no
@@ -6940,11 +6945,33 @@ function AppCore() {
 
       <FacetimeWindow call={facetime} agentLabel={agentLabel} />
       {!dockVoiceCall && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
-      {offTaskBrowserOpen && route !== 'task' && (
+      {offTaskBrowserOpen && route !== 'task' && (offTaskBrowser ? (
+        <BrowserPanel
+          floating
+          sessionId={offTaskBrowser.sessionId}
+          agentLabel={agentLabel}
+          extraActions={<TopShortcuts call={voiceCallShortcut} />}
+          onClose={() => { setOffTaskBrowserOpen(false); setOffTaskBrowser(null); }}
+        />
+      ) : (
         <BlankBrowserPanel
           floating
           taskKey={route}
           agentLabel={agentLabel}
+          extraActions={<TopShortcuts call={voiceCallShortcut} />}
+          onOpenUrl={async (url) => {
+            // A session of its own, kept while the app runs, so the next
+            // address goes to the same tabs.
+            offTaskBrowserIdRef.current ||= allocateConversationId();
+            let sessionId;
+            if (host.isWeb) {
+              sessionId = (await openBrowserAt(offTaskBrowserIdRef.current, url))?.session_id;
+            } else {
+              sessionId = await desktopTaskSession(offTaskBrowserIdRef.current);
+              await host.inAppBrowser.open(sessionId, url);
+            }
+            if (sessionId) setOffTaskBrowser({ sessionId });
+          }}
           onSend={(text) => {
             setOffTaskBrowserOpen(false);
             const inProject = route === 'projects' && canRunProject(selectedProject) ? selectedProject : null;
@@ -6952,7 +6979,7 @@ function AppCore() {
           }}
           onClose={() => setOffTaskBrowserOpen(false)}
         />
-      )}
+      ))}
 
       <ConfirmModal
         open={pendingDisconnect != null}

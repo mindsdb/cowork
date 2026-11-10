@@ -39,7 +39,7 @@ import ChatCardShell, { cardActions } from '../components/ChatCardShell';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser } from '../api';
+import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provisionBrowser, openBrowserAt } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
@@ -47,7 +47,7 @@ import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
-import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, latestBrowserSessionIdIn } from '../lib/browserSession';
+import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, desktopTaskSession, latestBrowserSessionIdIn } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
 import BlankBrowserPanel from '../components/browser/BlankBrowserPanel';
 import TopShortcuts from '../components/TopShortcuts';
@@ -2106,6 +2106,21 @@ export default function ChatView({
   // Always there where a browser can show: the browser Anton last used here,
   // or the blank page.
   const showBrowserShortcut = !browserPaneOpen && (host.isWeb || host.supportsInAppBrowser);
+  // An address typed in the blank page opens in the task's own browser, with
+  // no agent: through the server on the web, the app's own browser on the
+  // desktop. The real pane then shows it.
+  const openUrlInTask = async (url) => {
+    let sessionId;
+    if (host.isWeb) {
+      sessionId = (await openBrowserAt(task.id, url))?.session_id;
+    } else {
+      sessionId = await desktopTaskSession(task.id);
+      await host.inAppBrowser.open(sessionId, url);
+    }
+    if (sessionId) setShownBrowserId(sessionId);
+  };
+  // The call icon beside the browser's X, while the browser takes the column.
+  const browserCallIcon = callShortcut ? <TopShortcuts call={callShortcut} /> : null;
   const openBrowserFromShortcut = () => {
     if (viewable(latestBrowserId)) setShownBrowserId(latestBrowserId);
     else setBlankBrowser(true);
@@ -3456,6 +3471,7 @@ export default function ChatView({
           sessionId={shownBrowserId}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
           onClose={() => setShownBrowserId(null)}
+          extraActions={browserCallIcon}
         />
       )}
       {blankBrowserOpen && (
@@ -3464,6 +3480,8 @@ export default function ChatView({
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
           browserOn={!!browserOn}
           onSend={onSend ? (text) => onSend(text) : undefined}
+          onOpenUrl={openUrlInTask}
+          extraActions={browserCallIcon}
           onClose={() => setBlankBrowser(false)}
         />
       )}
