@@ -25,6 +25,7 @@ import {
   applyAppIcon,
   loadBrandImage,
   loadDesktopBrandImages,
+  loadOrgIconDataUris,
   sniffImageType,
 } from './org-branding';
 
@@ -149,5 +150,20 @@ describe('loadDesktopBrandImages', () => {
     release();
     expect(await first).toBeNull();
     expect(electron.setDockIcon).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'stock:/assets/icon.png' }));
+  });
+});
+
+describe('loadOrgIconDataUris', () => {
+  it('turns each trusted org icon into a data URI and leaves out the rest, without touching the app icon', async () => {
+    const other = `${AUTH}/v1/organizations/org-beta/branding/icon?v=1`;
+    const fetchImpl = fetchWith({ [ICON_URL]: PNG, [other]: SVG });
+    const result = await loadOrgIconDataUris(
+      { 'org-acme': ICON_URL, 'org-beta': other, 'org-gamma': '/v1/organizations/org-gamma/branding/icon', 'org-x': 'https://images.globex.com/i.png' },
+      { cacheRoot, fetchImpl },
+    );
+    expect(Object.keys(result)).toEqual(['org-acme']);
+    expect(result['org-acme']).toMatch(/^data:image\/png;base64,/);
+    expect(electron.setDockIcon).not.toHaveBeenCalled();
+    expect(await loadOrgIconDataUris(null, { cacheRoot, fetchImpl })).toEqual({});
   });
 });

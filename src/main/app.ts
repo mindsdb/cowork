@@ -72,7 +72,7 @@ import {
 import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { usageEventsOn, writeUsageEventsPref } from './analytics-env';
 import { checkChannelConsistency } from './channels';
-import { loadDesktopBrandImages } from './org-branding';
+import { loadDesktopBrandImages, loadOrgIconDataUris } from './org-branding';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
@@ -1250,6 +1250,12 @@ function setupIPC() {
   ipcMain.handle(IPC.MINDSHUB_BRAND_IMAGES, (_e, urls: unknown) => loadDesktopBrandImages(
     urls && typeof urls === 'object' ? urls as Record<string, unknown> : null,
     { stockIconPath: getIconPath(), cacheRoot: path.join(coworkHome(), 'org-branding') },
+  ));
+
+  // Each org's switcher icon, the same way: URLs in, data: URIs out.
+  ipcMain.handle(IPC.MINDSHUB_ORG_ICON_URIS, (_e, urls: unknown) => loadOrgIconDataUris(
+    urls,
+    { cacheRoot: path.join(coworkHome(), 'org-branding') },
   ));
 
   ipcMain.handle(IPC.MINDSHUB_SWITCH_ORG, (_e, organizationId: string) =>

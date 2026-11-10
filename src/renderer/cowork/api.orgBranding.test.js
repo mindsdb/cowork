@@ -10,7 +10,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
   },
 }));
 
-import { fetchOrgBranding, updateOrgAppearance } from './api';
+import { fetchHubOrgIcons, fetchOrgBranding, updateOrgAppearance } from './api';
 
 const res = (status, body = {}) => ({
   ok: status < 400,
@@ -41,5 +41,16 @@ describe('org branding on the desktop local server (ENG-4020)', () => {
     expect(init.method).toBe('PUT');
     expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer mindshub-token');
     expect(JSON.parse(init.body)).toEqual({ greeting: 'Hi' });
+  });
+
+  it('reads the org switcher icons with the MindsHub credential, and answers null on failure', async () => {
+    const fetchMock = vi.fn(async () => res(200, { reachable: true, orgs: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await fetchHubOrgIcons()).toEqual({ reachable: true, orgs: [] });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/api\/v1\/hub\/org-icons$/);
+    expect(init.headers['X-MindsHub-Authorization']).toBe('Bearer mindshub-token');
+    vi.stubGlobal('fetch', vi.fn(async () => res(404, { detail: 'Not Found' })));
+    expect(await fetchHubOrgIcons()).toBeNull();
   });
 });

@@ -3,17 +3,24 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { AUTH_IMAGE_HOST } from '../../lib/orgBranding';
 
 const fetchOrgBranding = vi.fn();
-vi.mock('../api', () => ({ fetchOrgBranding: (...args) => fetchOrgBranding(...args) }));
+const fetchHubOrgIcons = vi.fn(async () => null);
+vi.mock('../api', () => ({
+  fetchOrgBranding: (...args) => fetchOrgBranding(...args),
+  fetchHubOrgIcons: (...args) => fetchHubOrgIcons(...args),
+}));
 
 let authListener = null;
 const brandImages = vi.fn();
 vi.mock('../../platform/host', () => ({
   onMindsHubAuthChanged: (cb) => { authListener = cb; return () => { authListener = null; }; },
   mindshubBrandImages: (...args) => brandImages(...args),
+  mindshubOrgIconUris: (...args) => iconUris(...args),
 }));
+const iconUris = vi.fn(async () => ({}));
 
 import { useOrgBranding } from './useOrgBranding';
 import { parseOrgBranding } from '../../lib/orgBranding';
+import { getOrgIcons, setOrgIcons } from '../lib/orgIcons';
 import { cacheOrgBranding, __resetOrgBrandingCacheForTests } from '../lib/orgBrandingCache';
 import { notifyOrganizationChanged } from '../lib/organizationChanges';
 
@@ -32,6 +39,11 @@ beforeEach(() => {
   __resetOrgBrandingCacheForTests();
   fetchOrgBranding.mockReset();
   brandImages.mockReset();
+  fetchHubOrgIcons.mockReset();
+  fetchHubOrgIcons.mockResolvedValue(null);
+  iconUris.mockReset();
+  iconUris.mockResolvedValue({});
+  setOrgIcons({});
   authListener = null;
 });
 
@@ -180,6 +192,41 @@ describe('useOrgBranding', () => {
       act(() => { result.current.apply({ ...answerWithImages, appearance: { greeting: 'Saved', membersCanChoose: true } }); });
       expect(result.current.branding).toMatchObject({ logoUrl: PNG, iconUrl: PNG });
       expect(result.current.branding.appearance.greeting).toBe('Saved');
+    });
+  });
+
+  describe('org switcher icons', () => {
+    const remoteIcon = (id) => `https://${AUTH_IMAGE_HOST}/v1/organizations/${id}/branding/icon?v=1`;
+
+    it('reads them with the branding, at the same moments, and keeps only trusted URLs', async () => {
+      fetchOrgBranding.mockResolvedValue(answer('Hi'));
+      fetchHubOrgIcons.mockResolvedValue({ reachable: true, orgs: [
+        { id: 'org-acme', iconUrl: remoteIcon('org-acme') },
+        { id: 'org-globex', iconUrl: '/v1/organizations/org-globex/branding/icon' },
+      ] });
+      const { rerender } = renderHook(({ open }) => useOrgBranding({ enabled: true, settingsOpen: open }), { initialProps: { open: false } });
+      await waitFor(() => expect(getOrgIcons()).toEqual({ 'org-acme': remoteIcon('org-acme') }));
+      expect(fetchHubOrgIcons).toHaveBeenCalledTimes(1);
+      rerender({ open: true });
+      await waitFor(() => expect(fetchHubOrgIcons).toHaveBeenCalledTimes(2));
+    });
+
+    it('keeps what it shows when the read fails', async () => {
+      setOrgIcons({ 'org-acme': remoteIcon('org-acme') });
+      fetchOrgBranding.mockResolvedValue(answer('Hi'));
+      fetchHubOrgIcons.mockResolvedValue(null);
+      renderHook(() => useOrgBranding({ enabled: true, settingsOpen: false }));
+      await waitFor(() => expect(fetchHubOrgIcons).toHaveBeenCalled());
+      expect(getOrgIcons()).toEqual({ 'org-acme': remoteIcon('org-acme') });
+    });
+
+    it('turns them into data URIs through main on desktop', async () => {
+      fetchOrgBranding.mockResolvedValue({ enabled: false });
+      fetchHubOrgIcons.mockResolvedValue({ reachable: true, orgs: [{ id: 'org-acme', iconUrl: remoteIcon('org-acme') }] });
+      iconUris.mockResolvedValue({ 'org-acme': 'data:image/png;base64,AA==' });
+      renderHook(() => useOrgBranding({ enabled: false, desktop: true, settingsOpen: false }));
+      await waitFor(() => expect(getOrgIcons()).toEqual({ 'org-acme': 'data:image/png;base64,AA==' }));
+      expect(iconUris).toHaveBeenCalledWith({ 'org-acme': remoteIcon('org-acme') });
     });
   });
 });

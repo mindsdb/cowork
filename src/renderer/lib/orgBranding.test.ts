@@ -123,6 +123,11 @@ describe('parseOrgBranding', () => {
     });
   });
 
+  it('never takes a root-relative image URL', () => {
+    const parsed = parseOrgBranding({ enabled: true, iconUrl: '/v1/organizations/org-1/branding/icon', logoUrl: '//evil.globex.com/l.png' }, AUTH);
+    expect(parsed).toMatchObject({ iconUrl: null, logoUrl: null });
+  });
+
   it('drops images from other hosts and keeps the rest', () => {
     const parsed = parseOrgBranding({ enabled: true, iconUrl: 'https://evil.globex.com/i.png', logoUrl: LOGO }, AUTH);
     expect(parsed.iconUrl).toBeNull();

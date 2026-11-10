@@ -1,8 +1,8 @@
 /**
  * An organization's icon (ENG-4020) in the org switcher and account menu:
- * the image from the org attribute `brand_icon_url` when it is an https URL
- * on the auth host, else (and when the image fails to load) a tile with the
- * org's first letter.
+ * from /hub/org-icons, else the Keycloak org attribute `brand_icon_url`, when
+ * it is an https URL on the auth host (or, on desktop, main's data URI);
+ * else, and when the image fails to load, a tile with the org's first letter.
  */
 import { useState } from 'react';
 import { trustedBrandImageUrl } from '../../lib/orgBranding';
@@ -12,8 +12,20 @@ export function orgInitial(label) {
   return first ? first.toLocaleUpperCase() : '?';
 }
 
+const BRAND_DATA_URI = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+
+/**
+ * The icon to show, or null: an https URL on the auth host, or (desktop,
+ * after main downloaded it) a PNG, JPEG or WebP data URI. A root-relative or
+ * any other URL is never rendered.
+ */
+export function trustedOrgIcon(iconUrl) {
+  if (typeof iconUrl === 'string' && BRAND_DATA_URI.test(iconUrl)) return iconUrl;
+  return trustedBrandImageUrl(iconUrl);
+}
+
 export function OrgIcon({ iconUrl, label, size = 16, fallback = true }) {
-  const src = trustedBrandImageUrl(iconUrl);
+  const src = trustedOrgIcon(iconUrl);
   const [failedSrc, setFailedSrc] = useState(null);
   const box = { width: size, height: size };
   if (src && failedSrc !== src) {

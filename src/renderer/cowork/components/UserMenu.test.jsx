@@ -34,6 +34,7 @@ import UserMenu from './UserMenu';
 import { PERSONAL_ORG_LABEL as PERSONAL_LABEL } from '../../../shared/minds-orgs';
 import ToastProvider from './ui/Toast';
 import { AUTH_IMAGE_HOST } from '../../lib/orgBranding';
+import { setOrgIcons } from '../lib/orgIcons';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { readLastOrgId } from '../lib/orgLanding';
 import {
@@ -300,6 +301,27 @@ describe('UserMenu — organization picker', () => {
     const globexRow = screen.getByRole('menuitem', { name: /Globex/ });
     expect(globexRow.querySelector('img')).toBeNull();
     expect(globexRow.querySelector('[data-testid="org-icon-initial"]')).toHaveTextContent('G');
+  });
+
+  it('takes each org\'s icon from /hub/org-icons first, then the Keycloak attribute, then the initial', () => {
+    const fromEndpoint = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-acme/branding/icon?v=2`;
+    const fromAttribute = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-beta/branding/icon?v=1`;
+    const beta = { id: 'org-beta', name: 'beta.example', displayName: 'Beta', isPersonal: false, iconUrl: fromAttribute };
+    const gamma = { id: 'org-gamma', name: 'gamma.example', displayName: 'Gamma', isPersonal: false };
+    setOrgIcons({ 'org-acme': fromEndpoint, 'org-gamma': '/v1/organizations/org-gamma/branding/icon' });
+    try {
+      withOrgs([{ ...ACME, iconUrl: 'https://images.globex.com/old.png' }, beta, gamma], ACME);
+      renderMenu(<UserMenu user={user} />);
+      openMenu();
+      expect(screen.getByRole('menuitem', { name: /acme\.example/ }).querySelector('img')).toHaveAttribute('src', fromEndpoint);
+      expect(screen.getByRole('menuitem', { name: /Beta/ }).querySelector('img')).toHaveAttribute('src', fromAttribute);
+      // A root-relative URL is never rendered.
+      const gammaRow = screen.getByRole('menuitem', { name: /Gamma/ });
+      expect(gammaRow.querySelector('img')).toBeNull();
+      expect(gammaRow.querySelector('[data-testid="org-icon-initial"]')).toHaveTextContent('G');
+    } finally {
+      setOrgIcons({});
+    }
   });
 
   it('falls back to the initial when the icon fails to load', () => {

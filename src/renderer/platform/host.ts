@@ -1698,6 +1698,16 @@ export async function mindshubBrandImages(
   }
 }
 
+/** Desktop only: org id → icon URL in, org id → data: URI out (main downloads them). */
+export async function mindshubOrgIconUris(urls: Record<string, string>): Promise<Record<string, string>> {
+  if (!isElectron || typeof bridge.mindshubOrgIconUris !== 'function') return {};
+  try {
+    return (await bridge.mindshubOrgIconUris(urls)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
   if (isElectron) {
     if (typeof bridge.mindshubSwitchOrg === 'function') {

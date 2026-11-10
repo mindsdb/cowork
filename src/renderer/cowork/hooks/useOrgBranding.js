@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchOrgBranding } from '../api';
-import { mindshubBrandImages, onMindsHubAuthChanged } from '../../platform/host';
+import { fetchHubOrgIcons, fetchOrgBranding } from '../api';
+import { mindshubBrandImages, mindshubOrgIconUris, onMindsHubAuthChanged } from '../../platform/host';
+import { dataUriIcons, parseOrgIcons, setOrgIcons } from '../lib/orgIcons';
 import { parseOrgBranding, withDesktopImages, withoutImages } from '../../lib/orgBranding';
 import { cacheOrgBranding, loadCachedOrgBranding } from '../lib/orgBrandingCache';
 import { subscribeOrganizationChanges } from '../lib/organizationChanges';
@@ -54,10 +55,24 @@ export function useOrgBranding({ enabled, desktop = false, settingsOpen }) {
     return withDesktopImages(parsed, images);
   }, [desktop]);
 
+  // Each org's icon for the switcher, read with the branding. A failed read
+  // keeps what the menu shows; it falls back to the Keycloak attribute anyway.
+  const refreshOrgIcons = useCallback(async () => {
+    try {
+      const raw = await fetchHubOrgIcons();
+      if (!raw) return;
+      const urls = parseOrgIcons(raw);
+      setOrgIcons(desktop ? dataUriIcons(await mindshubOrgIconUris(urls)) : urls);
+    } catch {
+      /* keep what is showing */
+    }
+  }, [desktop]);
+
   const refresh = useCallback(async () => {
     if (!active) return;
     generation.current += 1;
     const mine = generation.current;
+    refreshOrgIcons();
     try {
       const parsed = parseOrgBranding(await fetchOrgBranding());
       if (generation.current !== mine) return;
@@ -68,7 +83,7 @@ export function useOrgBranding({ enabled, desktop = false, settingsOpen }) {
     } catch {
       /* keep what is showing */
     }
-  }, [active, withImages]);
+  }, [active, withImages, refreshOrgIcons]);
 
   /**
    * Apply an answer the caller already has (an admin's save), with no read.

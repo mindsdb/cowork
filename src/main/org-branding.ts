@@ -140,6 +140,24 @@ export async function loadDesktopBrandImages(urls: BrandImageUrls | null, deps: 
   return { iconUrl: dataUri(icon), logoUrl: dataUri(logo), logoDarkUrl: dataUri(logoDark) };
 }
 
+/**
+ * Each organization's icon for the org switcher, as data: URIs (org id →
+ * URI), from the URLs the renderer got from /hub/org-icons. Same download
+ * rules and cache as the org's own images; no app-icon change. An icon that
+ * can't be loaded is left out.
+ */
+export async function loadOrgIconDataUris(
+  urls: unknown,
+  deps: Pick<BrandImageDeps, 'cacheRoot' | 'fetchImpl'>,
+): Promise<Record<string, string>> {
+  if (!urls || typeof urls !== 'object' || Array.isArray(urls)) return {};
+  const entries = Object.entries(urls as Record<string, unknown>).slice(0, 100);
+  const loaded = await Promise.all(entries.map(async ([id, url]) => [
+    id, dataUri(await loadBrandImage(url, deps.cacheRoot, deps.fetchImpl ?? fetch)),
+  ] as const));
+  return Object.fromEntries(loaded.filter((entry): entry is [string, string] => entry[1] !== null));
+}
+
 /** Test hook: forget overtaken calls. */
 export function __resetOrgBrandingForTests(): void {
   generation = 0;

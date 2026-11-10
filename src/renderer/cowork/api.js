@@ -1728,6 +1728,21 @@ export async function fetchOrgBranding() {
 }
 
 /**
+ * Each organization's icon for the org switcher (ENG-4020): `{ reachable,
+ * orgs: [{ id, iconUrl }] }`, read by the server from auth's org list with
+ * the caller's credential. Null when the server has no such route or the read
+ * fails, so the menu falls back to the Keycloak attribute and initials.
+ */
+export async function fetchHubOrgIcons() {
+  try {
+    const data = await req('/hub/org-icons', { headers: await hubHeaders() });
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Save the org's look (admins only; the server answers 403 otherwise). Takes
  * the snake_case body (lib/orgBranding.ts appearancePayload) and resolves to
  * the same body as fetchOrgBranding.
