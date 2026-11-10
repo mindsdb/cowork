@@ -43,6 +43,8 @@
 	<string>Take photos or videos to attach to your Cowork tasks.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record audio when taking a video to attach to your Cowork tasks.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save images from your Cowork tasks to your photo library.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

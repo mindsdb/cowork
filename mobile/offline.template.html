@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
     <meta name="color-scheme" content="light dark" />
     <title>MindsHub Cowork</title>
-    <script src="env.js"></script>
     <style>
       :root {
         --bg: #F6F8F9;
@@ -62,9 +61,10 @@
       <button id="retry" type="button">Try again</button>
     </main>
     <script>
-      // env.js (written on every cap sync) names the deployment this build
-      // loads; staging is the fallback, matching capacitor.config.ts.
-      var REMOTE_URL = window.COWORK_REMOTE_URL || 'https://cowork.staging.mindshub.ai';
+      // The deployment this build loads. scripts/cap-copy-before.mjs writes
+      // the URL in here on every cap sync: this page cannot load a sibling
+      // file, because with server.url set Android serves only the page itself.
+      var REMOTE_URL = '__COWORK_REMOTE_URL__';
       var button = document.getElementById('retry');
       function retry() {
         button.disabled = true;

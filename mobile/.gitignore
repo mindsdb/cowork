@@ -1,6 +1,6 @@
 node_modules/
 # Generated on every cap copy/sync by scripts/cap-copy-before.mjs.
-www/env.js
+www/offline.html
 # fastlane / bundler (Releasing, README.md). Gemfile.lock is committed.
 /.bundle/
 /vendor/bundle/
