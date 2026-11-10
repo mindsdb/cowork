@@ -4,13 +4,31 @@ import './voice-call.css';
 // The voice call's card (ENG-4138, prototype): who is on the call, what they
 // are doing, live captions of both sides, mute and hang-up. It floats over the
 // app and never covers the composer (voice-call.css). `call` is useVoiceCall's.
-// Minimized, it is gone from the screen: the task view's top-right call icon
-// brings it back, and elsewhere (`bubble`) a small orb at the top right does.
+// The task view's top-right call icon opens it (`open`). With no call yet it
+// offers one (`onStart`). Closing it only hides it: the call goes on, the icon
+// brings it back, and away from a task (`bubble`) a small orb at the top
+// right does.
+
+// What the card says before a call, one per opening.
+export const INVITES = [
+  'Line’s open. Say the word.',
+  'Ready when you are. Talk me through it.',
+  'Hands busy? Just say it.',
+  'Skip the typing. I’m all ears.',
+];
 
 const STATUS = {
   starting: 'Calling…',
   ending: 'Hanging up…',
 };
+
+function CloseButton({ onClick, label }) {
+  return (
+    <button type="button" aria-label={label} title={label} onClick={onClick} className="voice-call__close">
+      {Ico.close(14)}
+    </button>
+  );
+}
 
 function RoundButton({ label, onClick, danger = false, children }) {
   return (
@@ -28,19 +46,47 @@ function RoundButton({ label, onClick, danger = false, children }) {
   );
 }
 
-export default function VoiceCallWindow({ call, agentLabel = 'Anton', minimized = false, onMinimize, onRestore, bubble = false }) {
+export default function VoiceCallWindow({
+  call, agentLabel = 'Anton', open = false, onClose, onShow, onStart = null, startBlocked = '', bubble = false, invite = INVITES[0],
+}) {
   const { phase, notice, captions, agentSpeaking, working, micOn } = call;
-  if (phase === 'idle') return null;
   const live = phase === 'live';
-  // An ended call shows why, minimized or not.
-  if (minimized && phase !== 'ended') {
+
+  if (phase === 'idle') {
+    if (!open) return null;
+    return (
+      <div role="dialog" aria-label={`Voice call with ${agentLabel}`} className="voice-call">
+        <div className="voice-call__head">
+          <span className="voice-call__orb" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <div className="voice-call__title">{agentLabel} <span className="text-white/50 font-normal">· AI voice</span></div>
+            <div className="voice-call__status">{startBlocked || invite}</div>
+          </div>
+          <CloseButton onClick={onClose} label="Close" />
+        </div>
+        <div className="voice-call__controls">
+          <button
+            type="button"
+            onClick={onStart || undefined}
+            disabled={!onStart}
+            className="voice-call__start"
+          >
+            {Ico.call(14)} Start call
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Hidden, the call goes on. An ended call shows why, hidden or not.
+  if (!open && phase !== 'ended') {
     if (!bubble) return null;
     return (
       <button
         type="button"
         aria-label={`Show the call with ${agentLabel}`}
         title={`Show the call with ${agentLabel}`}
-        onClick={onRestore}
+        onClick={onShow}
         className="voice-call-bubble"
       >
         <span className={`voice-call__orb${live && agentSpeaking ? ' is-talking' : ''}`} aria-hidden="true" />
@@ -60,6 +106,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', minimized 
           <div className="voice-call__title">{agentLabel} <span className="text-white/50 font-normal">· AI voice</span></div>
           <div className="voice-call__status" aria-live="polite">{status}</div>
         </div>
+        {phase !== 'ended' && onClose && <CloseButton onClick={onClose} label="Hide (the call goes on)" />}
       </div>
 
       {live && (captions.user || captions.agent) && (
@@ -77,18 +124,13 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', minimized 
         {phase === 'ended' ? (
           <button
             type="button"
-            onClick={call.dismiss}
+            onClick={onClose || call.dismiss}
             className="text-sm px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 border-0 text-white cursor-pointer"
           >
             Close
           </button>
         ) : (
           <>
-            {onMinimize && (
-              <RoundButton label="Minimize" onClick={onMinimize}>
-                {Ico.minimize(16)}
-              </RoundButton>
-            )}
             <RoundButton label={micOn ? 'Mute' : 'Unmute'} onClick={call.toggleMic}>
               {micOn ? Ico.mic(16) : Ico.micOff(16)}
             </RoundButton>

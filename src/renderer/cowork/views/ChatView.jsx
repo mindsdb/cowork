@@ -49,6 +49,7 @@ import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, latestBrowserSessionIdIn } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
+import BlankBrowserPanel from '../components/browser/BlankBrowserPanel';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { useNativeOverlay } from '../lib/nativeOverlay';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
@@ -2088,18 +2089,26 @@ export default function ChatView({
     if (browserRequest?.taskId === task.id && browserRequest.sessionId) setShownBrowserId(browserRequest.sessionId);
   }, [browserRequest, task.id]);
   const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
+  /* The top-right Show browser icon, in a task with no browser to show yet:
+     a blank page that asks where to go. The real pane takes its place as
+     soon as the turn's Browser step arrives. */
+  const [blankBrowser, setBlankBrowser] = useState(false);
+  useEffect(() => { setBlankBrowser(false); }, [task.id]);
+  useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
+  const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
+  const browserPaneOpen = browserOpen || blankBrowserOpen;
   /* The inline pane holds the right-hand column, where a docked rail would
      go, so the rail and its Expand button step aside. A rail that floats
      opens over the pane instead. */
-  const railHidden = browserOpen && !paneFloats && !railFloats;
+  const railHidden = browserPaneOpen && !paneFloats && !railFloats;
   const latestBrowserId = latestBrowserSessionIdIn(visibleMessages, streamingMsg);
-  // Always there where a browser can show; it opens the one Anton last used
-  // here, and says why not when there is none.
-  const showBrowserShortcut = !browserOpen && (host.isWeb || host.supportsInAppBrowser);
-  const browserShortcutReady = viewable(latestBrowserId);
-  let browserShortcutLabel = 'Show browser';
-  if (!latestBrowserId) browserShortcutLabel = `${agentLabel || 'Anton'} hasn't used the browser in this task`;
-  else if (!browserShortcutReady) browserShortcutLabel = 'The browser is off for this task';
+  // Always there where a browser can show: the browser Anton last used here,
+  // or the blank page.
+  const showBrowserShortcut = !browserPaneOpen && (host.isWeb || host.supportsInAppBrowser);
+  const openBrowserFromShortcut = () => {
+    if (viewable(latestBrowserId)) setShownBrowserId(latestBrowserId);
+    else setBlankBrowser(true);
+  };
   // The floating Expand button's spot, when it shows; the icons sit beside it.
   const expandShown = !pane && !railHidden && !(effectiveRailOpen || railOverlayOpen);
   /* The web browser takes a while to wake, so a task that used it starts it
@@ -2321,7 +2330,7 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserPaneOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -2374,15 +2383,12 @@ export default function ChatView({
             style={{ right: expandShown ? 46 : 14 }}
           >
             {showBrowserShortcut && (
-              <Tooltip content={browserShortcutLabel}>
+              <Tooltip content="Show browser">
                 <button
                   type="button"
-                  onClick={() => { if (browserShortcutReady) setShownBrowserId(latestBrowserId); }}
+                  onClick={openBrowserFromShortcut}
                   aria-label="Show browser"
-                  aria-disabled={!browserShortcutReady}
-                  className={`w-7 h-7 rounded-md inline-grid place-items-center bg-transparent border-0 ${
-                    browserShortcutReady ? 'cursor-pointer text-ink-3 hover:text-ink hover:bg-surface-2' : 'cursor-default text-ink-3 opacity-50'
-                  }`}
+                  className="w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2"
                 >
                   {Ico.globe(16)}
                 </button>
@@ -3474,6 +3480,15 @@ export default function ChatView({
           sessionId={shownBrowserId}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
           onClose={() => setShownBrowserId(null)}
+        />
+      )}
+      {blankBrowserOpen && (
+        <BlankBrowserPanel
+          taskKey={task.id}
+          agentLabel={harnessLabel(task?.harness) || 'Anton'}
+          browserOn={!!browserOn}
+          onSend={onSend ? (text) => onSend(text) : undefined}
+          onClose={() => setBlankBrowser(false)}
         />
       )}
 

@@ -19,7 +19,7 @@ describe('the voice call card', () => {
 
   it('says it is an AI voice, shows what Anton is doing and the captions, and hangs up', async () => {
     const c = call({ working: true, captions: { user: 'Book a hotel', agent: 'On it.', last: 'agent' } });
-    render(<VoiceCallWindow call={c} agentLabel="Anton" />);
+    render(<VoiceCallWindow call={c} agentLabel="Anton" open />);
     expect(screen.getByText('· AI voice')).toBeInTheDocument();
     expect(screen.getByText('Anton is working on it…')).toBeInTheDocument();
     expect(screen.getByText('On it.')).toBeInTheDocument();
@@ -37,22 +37,37 @@ describe('the voice call card', () => {
     expect(c.dismiss).toHaveBeenCalled();
   });
 
-  it('minimizes: gone in a task, where the top-right icon brings it back, and an orb elsewhere', async () => {
-    const onMinimize = vi.fn();
-    const onRestore = vi.fn();
-    const { rerender } = render(<VoiceCallWindow call={call()} onMinimize={onMinimize} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Minimize' }));
-    expect(onMinimize).toHaveBeenCalled();
+  it('opens with no call to offer one, or says why it cannot start', async () => {
+    const onStart = vi.fn();
+    const onClose = vi.fn();
+    const { rerender } = render(<VoiceCallWindow call={call({ phase: 'idle' })} open onStart={onStart} onClose={onClose} invite="Line’s open. Say the word." />);
+    expect(screen.getByText('Line’s open. Say the word.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Start call' }));
+    expect(onStart).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
 
-    rerender(<VoiceCallWindow call={call()} minimized onRestore={onRestore} />);
+    rerender(<VoiceCallWindow call={call({ phase: 'idle' })} open startBlocked="Another call is running." />);
+    expect(screen.getByText('Another call is running.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start call' })).toBeDisabled();
+  });
+
+  it('hides while the call goes on: gone in a task, an orb elsewhere, and an ended call still says why', async () => {
+    const onClose = vi.fn();
+    const onShow = vi.fn();
+    const { rerender } = render(<VoiceCallWindow call={call()} open onClose={onClose} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Hide (the call goes on)' }));
+    expect(onClose).toHaveBeenCalled();
+
+    rerender(<VoiceCallWindow call={call()} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
 
-    rerender(<VoiceCallWindow call={call()} minimized bubble onRestore={onRestore} agentLabel="Anton" />);
+    rerender(<VoiceCallWindow call={call()} bubble onShow={onShow} agentLabel="Anton" />);
     await userEvent.click(screen.getByRole('button', { name: 'Show the call with Anton' }));
-    expect(onRestore).toHaveBeenCalled();
+    expect(onShow).toHaveBeenCalled();
 
-    rerender(<VoiceCallWindow call={call({ phase: 'ended', notice: 'The call ended.' })} minimized />);
+    rerender(<VoiceCallWindow call={call({ phase: 'ended', notice: 'The call ended.' })} />);
     expect(screen.getByText('The call ended.')).toBeInTheDocument();
   });
 });

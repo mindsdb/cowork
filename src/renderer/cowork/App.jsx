@@ -146,7 +146,7 @@ import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/brow
 import { useNativeOverlay } from './lib/nativeOverlay';
 import FacetimeWindow from './components/FacetimeWindow';
 import { useFacetimeCall } from './lib/facetime/useFacetimeCall';
-import VoiceCallWindow from './components/VoiceCallWindow';
+import VoiceCallWindow, { INVITES as VOICE_INVITES } from './components/VoiceCallWindow';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { latestBrowserSessionIdIn } from './lib/browserSession';
@@ -689,7 +689,17 @@ function AppCore() {
     onAsk: (request) => operateFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
   });
-  const [voiceCallMinimized, setVoiceCallMinimized] = useState(false);
+  // Whether the call card is on screen. Closing it hides it and the call
+  // goes on; the task view's top-right call icon opens it again.
+  const [voiceCallOpen, setVoiceCallOpen] = useState(false);
+  const [voiceInvite, setVoiceInvite] = useState(VOICE_INVITES[0]);
+  const voicePhaseRef = useRef('idle');
+  useEffect(() => {
+    // A call that ended here (hung up) closes its card; one that ended on the
+    // other side shows why until it is dismissed.
+    if (voiceCall.phase === 'idle' && voicePhaseRef.current !== 'idle' && voicePhaseRef.current !== 'ended') setVoiceCallOpen(false);
+    voicePhaseRef.current = voiceCall.phase;
+  }, [voiceCall.phase]);
   // "Show the browser" from a call: ChatView opens the pane for this task.
   const [browserRequest, setBrowserRequest] = useState(null);
   // The row ids a conversation holds before a fetch, or undefined (no
@@ -4655,21 +4665,28 @@ function AppCore() {
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
       voiceHistoryRef.current = [];
-      setVoiceCallMinimized(false);
+      setVoiceCallOpen(true);
       void voiceCall.start();
     }
     : null;
-  // The task view's top-right call icon: start a voice call, or show or
-  // minimize the running one. Hidden while a video call runs or where voice
-  // isn't served.
-  let voiceCallShortcut = null;
-  if (voiceCall.phase !== 'idle') {
-    voiceCallShortcut = voiceCallMinimized
-      ? { label: `Show the call with ${agentLabel}`, onClick: () => setVoiceCallMinimized(false), live: true }
-      : { label: 'Minimize the call', onClick: () => setVoiceCallMinimized(true), live: true };
-  } else if (startVoiceCall) {
-    voiceCallShortcut = { label: `Voice call with ${agentLabel}`, onClick: startVoiceCall, live: false };
-  }
+  // The task view's top-right call icon opens the call card: the running
+  // call, or an offer to start one. Hidden while a video call runs.
+  const voiceCallShortcut = facetime.phase === 'idle'
+    ? {
+      label: voiceCall.phase === 'idle' ? `Voice call with ${agentLabel}` : `Show the call with ${agentLabel}`,
+      live: voiceCall.phase !== 'idle',
+      onClick: () => {
+        if (voiceCall.phase === 'idle' && !voiceCallOpen) {
+          setVoiceInvite(VOICE_INVITES[Math.floor(Math.random() * VOICE_INVITES.length)]);
+        }
+        setVoiceCallOpen(true);
+      },
+    }
+    : null;
+  let voiceStartBlocked = '';
+  if (!voiceAvailable) voiceStartBlocked = 'Voice calls aren’t available here yet.';
+  else if (!noCallRunning) voiceStartBlocked = 'Another call is running.';
+
   const startVideoCall = facetimeAvailable && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
@@ -6924,9 +6941,12 @@ function AppCore() {
       <VoiceCallWindow
         call={voiceCall}
         agentLabel={agentLabel}
-        minimized={voiceCallMinimized}
-        onMinimize={() => setVoiceCallMinimized(true)}
-        onRestore={() => setVoiceCallMinimized(false)}
+        open={voiceCallOpen}
+        onClose={() => { setVoiceCallOpen(false); if (voiceCall.phase === 'ended') voiceCall.dismiss(); }}
+        onShow={() => setVoiceCallOpen(true)}
+        onStart={startVoiceCall}
+        startBlocked={voiceStartBlocked}
+        invite={voiceInvite}
         bubble={route !== 'task'}
       />
 

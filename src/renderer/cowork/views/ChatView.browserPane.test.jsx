@@ -135,12 +135,19 @@ describe('ChatView shared browser pane', () => {
     expect(screen.queryByRole('button', { name: 'Show browser' })).toBeNull();
   });
 
-  it('keeps the Show browser icon in a task without a browser, and it opens nothing', async () => {
-    render(<ChatView task={task('p-none', [{ id: 'u1', role: 'user', content: 'Hi' }])} onSend={vi.fn()} browserOn />);
+  it('opens a blank page from the Show browser icon in a task without a browser, which sends a search to Anton', async () => {
+    const onSend = vi.fn();
+    render(<ChatView task={task('p-none', [{ id: 'u1', role: 'user', content: 'Hi' }])} onSend={onSend} browserOn />);
     await act(async () => {});
-    const icon = screen.getByRole('button', { name: 'Show browser' });
-    expect(icon).toHaveAttribute('aria-disabled', 'true');
-    await act(async () => { fireEvent.click(icon); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show browser' })); });
+
+    expect(pane()).not.toBeNull();
+    expect(embedBrowser).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'What to look up' }), { target: { value: 'flights to Lisbon' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Go' })); });
+    expect(onSend).toHaveBeenCalledWith('Search the web in the browser for: flights to Lisbon');
+
+    await act(async () => { fireEvent.click(within(pane()).getByRole('button', { name: 'Close browser' })); });
     expect(pane()).toBeNull();
   });
 

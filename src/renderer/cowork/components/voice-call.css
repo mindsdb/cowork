@@ -40,6 +40,11 @@
 .voice-call__caption.is-user { align-self: flex-end; color: rgb(255 255 255 / 0.85); }
 .voice-call__caption.is-old { opacity: 0.65; }
 .voice-call__controls { display: flex; justify-content: flex-end; gap: 8px; }
+.voice-call__close { flex: 0 0 auto; align-self: flex-start; width: 24px; height: 24px; display: inline-grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: rgb(255 255 255 / 0.6); cursor: pointer; }
+.voice-call__close:hover { color: #fff; background: rgb(255 255 255 / 0.12); }
+.voice-call__start { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: #34a853; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.voice-call__start:hover { background: #2d9249; }
+.voice-call__start:disabled { background: rgb(255 255 255 / 0.15); color: rgb(255 255 255 / 0.5); cursor: default; }
 
 /* The task view's top-right icon for a minimized call (ChatView). */
 .chat-call-shortcut { color: #34a853; }
