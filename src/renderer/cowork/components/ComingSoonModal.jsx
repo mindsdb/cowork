@@ -16,7 +16,9 @@ import { PLATFORM_UI } from '../../lib/deployment';
 // for attribution.
 const DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-web';
 
-export default function ComingSoonModal({ feature, onClose }) {
+// `offer`, when set, replaces the download with a way to connect the API now:
+// { label, onAccept }, worded by the caller.
+export default function ComingSoonModal({ feature, onClose, offer = null }) {
   return (
     <Modal
       open={feature != null}
@@ -33,7 +35,9 @@ export default function ComingSoonModal({ feature, onClose }) {
         <p className="s-body">
           {feature ? `${feature} isn’t` : 'This feature isn’t'}{' '}
           {PLATFORM_UI
-            ? 'available on Cloud just yet. In the meantime, you can use it in the desktop app.'
+            ? (offer
+              ? 'available on Cloud just yet. You can connect it now as a custom connector.'
+              : 'available on Cloud just yet. In the meantime, you can use it in the desktop app.')
             : 'available in this deployment.'}
         </p>
       </ModalBody>
@@ -45,15 +49,27 @@ export default function ComingSoonModal({ feature, onClose }) {
             </Button>
           )}
         >
-          <Button
-            variant="primary"
-            onClick={() => {
-              host.openExternal(DOWNLOAD_URL);
-              onClose();
-            }}
-          >
-            Download the app
-          </Button>
+          {offer ? (
+            <Button
+              variant="primary"
+              onClick={() => {
+                onClose();
+                offer.onAccept();
+              }}
+            >
+              {offer.label}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => {
+                host.openExternal(DOWNLOAD_URL);
+                onClose();
+              }}
+            >
+              Download the app
+            </Button>
+          )}
         </ModalFooter>
       ) : (
         <ModalFooter>

@@ -248,6 +248,14 @@ function BuildCustomTile({ onBuildCustom }) {
 
 // Substring match across the metadata a user sees: label, description,
 // category and aliases. `q` is already lowercased.
+// The member's own template for a connector cloud doesn't offer: Anton gives it
+// the built-in's id plus `_custom` (cowork-server's custom_id_for).
+export function customMatchFor(connectors, connector) {
+  if (!connector?.id) return null;
+  const id = `${connector.id}_custom`;
+  return (connectors || []).find((c) => c?.custom && c.id === id) || null;
+}
+
 function matchesSearch(connector, q) {
   if (!q) return true;
   const hay = [
@@ -556,7 +564,10 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
             title={DESKTOP_ONLY_TITLE}
             count={desktopOnly.length}
             connectors={desktopOnly}
-            onPick={onDesktopOnly}
+            onPick={(connector) => onDesktopOnly?.(connector, {
+              customMatch: customMatchFor(connectors, connector),
+              canBuild: canBuildCustom,
+            })}
           />}
         </ModalBody>
     </Modal>

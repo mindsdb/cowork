@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-import { connectSpecFor, mayConnectThroughChat } from './lib/customConnect';
+import { connectSpecFor, desktopOnlyOffer, mayConnectThroughChat } from './lib/customConnect';
 import { toDatasourceRows } from './lib/datasourceConnectionRows';
 import { buildCustomConnectorRequest } from './lib/customConnectorRequest';
 import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
@@ -1778,6 +1778,8 @@ function AppCore() {
   } = useThemeSkin();
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
+  // The custom route the "Coming soon" dialog offers for a connector cloud doesn't run.
+  const [comingSoonOffer, setComingSoonOffer] = useState(null);
   const orgMode = useOrgMode();
   // One list for the composer's per-conversation toggles: the OAuth
   // connections and the cloud database ones, each keyed by (engine, name),
@@ -3027,7 +3029,10 @@ function AppCore() {
     // Microsoft first, so it opens its own form instead of a connect chat.
     if (connector.id === SHAREPOINT_ENGINE) {
       // The SharePoint routes are refused in org mode; offer the desktop app.
-      if (orgMode) setComingSoonFeature(connector.label || 'SharePoint');
+      if (orgMode) {
+        setComingSoonOffer(null);
+        setComingSoonFeature(connector.label || 'SharePoint');
+      }
       else setSharePointSetupOpen(true);
       return;
     }
@@ -6543,9 +6548,15 @@ function AppCore() {
         // Cloud: the directory also lists connectors only the desktop app can
         // run. Picking one closes the directory and offers the download rather
         // than opening a connect form that couldn't work here.
-        onDesktopOnly={(c) => {
+        onDesktopOnly={(c, { customMatch = null, canBuild = false } = {}) => {
           setConnectorPickerOpen(false);
-          setComingSoonFeature(c?.label || 'This connector');
+          const label = c?.label || 'This connector';
+          setComingSoonOffer(desktopOnlyOffer({
+            label, customMatch, canBuild,
+            connect: (connector) => { void handleConnectorPicked(connector); },
+            build: (name) => sendFromApp(buildCustomConnectorRequest(name)),
+          }));
+          setComingSoonFeature(label);
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
@@ -6564,7 +6575,8 @@ function AppCore() {
 
       <ComingSoonModal
         feature={comingSoonFeature}
-        onClose={() => setComingSoonFeature(null)}
+        offer={comingSoonOffer}
+        onClose={() => { setComingSoonFeature(null); setComingSoonOffer(null); }}
       />
 
       {!host.isWeb && (

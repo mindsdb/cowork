@@ -13,7 +13,7 @@ export const ADDRESS_FIELD = '_api_address';
 
 const ADDRESS_HELP = "The address your provider's documentation gives for its API, such as api.example.com.";
 const TEMPLATE_NOTE = 'Anton wrote the field names and help below. Check them against your provider before entering a key.';
-const NO_CHECK_NOTE = 'This connector has no connection check, so it cannot be connected. Ask Anton to build it again.';
+const NO_CHECK_NOTE = 'This connector has no connection check, so it cannot be connected. If the API takes a key, ask Anton to build it again; if it takes none, Anton can use it without a connector.';
 
 const MARKER = '__custom_connection__';
 
@@ -141,4 +141,21 @@ export function toCustomConnectionRows(connections) {
       templateMissing: c.template_missing === true,
       updatedAt: c.updated_at || c.created_at || null,
     }));
+}
+
+/**
+ * What the "Coming soon to Cloud" dialog offers for a connector cloud doesn't
+ * run: connect the member's own custom one, or build one, or nothing.
+ * @param {{label: string, customMatch: object|null, canBuild: boolean,
+ *   connect: (connector: object) => void, build: (name: string) => void}} args
+ * @returns {{label: string, onAccept: () => void} | null}
+ */
+export function desktopOnlyOffer({ label, customMatch, canBuild, connect, build }) {
+  if (customMatch) {
+    return { label: `Connect your custom ${label}`, onAccept: () => connect(customMatch) };
+  }
+  if (canBuild) {
+    return { label: 'Build a custom connector', onAccept: () => build(label) };
+  }
+  return null;
 }
