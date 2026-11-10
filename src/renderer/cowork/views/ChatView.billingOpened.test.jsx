@@ -30,7 +30,7 @@ const analyticsMock = vi.hoisted(() => ({
 vi.mock('../lib/analytics', () => analyticsMock);
 
 import ChatView, { ModelUnavailableCard } from './ChatView';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_BUDGETS_URL } from '../../lib/mindsUrls';
 import { HubUsageContext } from '../lib/hubUsageContext';
 
 const taskWith = (messages) => ({
@@ -92,6 +92,17 @@ describe('billing_opened trigger per call site', () => {
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('free_serving_paused');
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('budget_exceeded: View budgets records its own trigger and opens the Budgets tab', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWith(failedTurn('budget_exceeded', "Your organization's spending budget is used up."))} />);
+
+    await user.click(screen.getByRole('button', { name: 'View budgets' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_exceeded');
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BUDGETS_URL);
   });
 
   it('free_serving_paused: a billing owner lands on the add-funds form, like the other stopped-task cards', async () => {

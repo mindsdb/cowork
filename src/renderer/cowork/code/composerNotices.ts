@@ -51,6 +51,11 @@ export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
     addCredits: true,
     billingTrigger: 'free_serving_paused',
   },
+  // Org-wide and credits do not lift it, but MindsHub Air may still run free.
+  budget_exceeded: {
+    title: () => "Your organization's budget is used up",
+    body: 'An owner or admin can raise it in Budgets. Choose MindsHub Air to continue in this task.',
+  },
 };
 
 

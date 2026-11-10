@@ -131,6 +131,15 @@ describe('ComposerLip', () => {
     expect(screen.getByRole('button', { name: 'More options' })).toBeInTheDocument();
   });
 
+  it('names a spent org budget, offers a model change for MindsHub Air, and never credits', () => {
+    const { onChooseModel } = renderFailure('budget_exceeded', 'upstream 402');
+    expect(screen.getByText("Your organization's budget is used up.")).toBeInTheDocument();
+    expect(screen.getByText('An owner or admin can raise it in Budgets. Choose MindsHub Air to continue in this task.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
+  });
+
   it('shows nothing for a limit once new work has started or while the task reopens', () => {
     const credits = failure('insufficient_credits', '402');
     expect(accountFailure(session({ status: 'running', run_status: 'running' }), undefined, credits)).toBeNull();

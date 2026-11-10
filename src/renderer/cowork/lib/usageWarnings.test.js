@@ -14,6 +14,7 @@ import {
   isBalanceEmpty,
   allowanceStopCopy,
   freeServingPausedCopy,
+  budgetExceededCopy,
   NO_FREE_GRANT_SENTENCE,
   FREE_TOKENS_LOW_FRACTION,
   USAGE_ACTIONS,
@@ -645,6 +646,29 @@ describe('freeServingPausedCopy', () => {
     expect(freeServingPausedCopy(null)).toBe(
       "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
     );
+  });
+});
+
+describe('budgetExceededCopy', () => {
+  const RAISE = "Paid models can't run until an owner or admin raises it in Budgets.";
+
+  it('names Air only while its free allowance has room', () => {
+    expect(budgetExceededCopy({ usage: usage() })).toBe(`${RAISE} MindsHub Air still works while its free allowance lasts.`);
+  });
+
+  it.each([
+    ['a spent allowance', usage({ freeTokens: at(0) })],
+    ['an org with no free grant', usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } })],
+    ['unreachable hub usage', { reachable: false }],
+    ['no hub usage at all', null],
+  ])('says only who raises it with %s', (_label, u) => {
+    expect(budgetExceededCopy({ usage: u })).toBe(RAISE);
+  });
+
+  it('never asks for credits or funds', () => {
+    for (const copy of [budgetExceededCopy({ usage: usage() }), budgetExceededCopy()]) {
+      expect(copy).not.toMatch(/credit|fund/i);
+    }
   });
 });
 
