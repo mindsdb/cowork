@@ -2928,6 +2928,8 @@ function AppCore() {
           selected_method: '__edit_current__',
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -2945,6 +2947,8 @@ function AppCore() {
           fields: syntheticFields,
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -3155,6 +3159,8 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        // Saved before connection tests: the form shows the rebuild text, not fields.
+        _needs_rebuild: !!full.needs_rebuild,
         /* Reconnecting a shared connection carries its name so the submit
            (DataVaultFormPanel reads spec._existing_name) updates that entry in
            place instead of saving a second one under a fresh random slug. */

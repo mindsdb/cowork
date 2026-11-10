@@ -146,3 +146,26 @@ describe('allowing a private address', () => {
     expect(api.cancelConnectorTest).toHaveBeenCalledWith({ approvalId: ask.approval_id });
   });
 });
+
+describe('the form around the test', () => {
+  it('submits the form with its test request, as the agent wrote it', async () => {
+    const testRequest = { data: { method: 'GET', url: 'https://api.example.com/rows', headers: { Authorization: 'Bearer {{client_secret}}' } } };
+    setForm(CID, { form_id: 'fm_bbbbbbbbbb', engine: 'planner', fields: [], test_request: testRequest });
+    const onSubmit = vi.fn();
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={onSubmit} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /submit/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].formSpec.test_request).toEqual(testRequest);
+  });
+
+  it('a connector saved before connection tests shows the rebuild text instead of its fields', () => {
+    setForm(CID, { ...SPEC, _needs_rebuild: true });
+    render(<DataVaultFormPanel conversationId={CID} />);
+
+    expect(screen.getByText(/saved before connection tests existed/)).toBeTruthy();
+    expect(screen.queryByLabelText(/Client secret/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull();
+  });
+});
