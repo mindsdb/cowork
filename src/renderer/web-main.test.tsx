@@ -368,7 +368,7 @@ describe('web-main inside the mobile app (ENG-4023)', () => {
     expect(r.provider).toBe(false);
     expect(r.shellRoot?.shell).toEqual({ platform: 'ios', version: '1.0.0' });
     // No login on load: the app's sign-in screen opens the sheet on a tap.
-    expect(r.shellRoot?.initOptions).toStrictEqual({ pkceMethod: 'S256', checkLoginIframe: false, adapter: expect.anything() });
+    expect(r.shellRoot?.initOptions).toStrictEqual({ onLoad: undefined, pkceMethod: 'S256', checkLoginIframe: false, adapter: expect.anything() });
     expect(r.identityRequired).toBe(true);
     expect(document.documentElement.dataset.shell).toBe('ios');
     expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content'))

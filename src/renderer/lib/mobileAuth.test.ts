@@ -288,7 +288,6 @@ describe('keycloakInitOptions', () => {
   it('in the app, uses the adapter and never logs in on load', () => {
     const { adapter } = setup();
     const options = keycloakInitOptions('https://cowork.mindshub.ai/', adapter);
-    expect(options).toStrictEqual({ pkceMethod: 'S256', checkLoginIframe: false, adapter });
-    expect(options).not.toHaveProperty('onLoad');
+    expect(options).toStrictEqual({ onLoad: undefined, pkceMethod: 'S256', checkLoginIframe: false, adapter });
   });
 });

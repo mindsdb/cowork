@@ -101,7 +101,8 @@ jobs:
           aapt="$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -1)"
           badging="$("$aapt" dump badging "$apk")"
           echo "$badging" | grep '^package:'
-          echo "$badging" | grep -q "^package: name='ai.mindshub.cowork' versionCode='1' versionName='1.0.0'"
+          expected_version="$(node -p "require('../package.json').version")"
+          echo "$badging" | grep '^package:' | grep -Fq "name='ai.mindshub.cowork' versionCode='1' versionName='$expected_version'"
       # Exercises the release signingConfig build-android.yml relies on, with a
       # throwaway key, so a break there shows up on the PR rather than on the
       # first tag. Nothing is uploaded.

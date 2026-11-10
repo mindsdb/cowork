@@ -255,5 +255,7 @@ export function keycloakInitOptions(redirectUri: string, mobileAdapter: Keycloak
   if (!mobileAdapter) {
     return { onLoad: 'login-required' as const, pkceMethod: 'S256' as const, checkLoginIframe: false, redirectUri };
   }
-  return { pkceMethod: 'S256' as const, checkLoginIframe: false, adapter: mobileAdapter };
+  // ReactKeycloakProvider merges in onLoad: 'check-sso'. Explicit undefined
+  // overrides that default; merely omitting it opens the native sheet on mount.
+  return { onLoad: undefined, pkceMethod: 'S256' as const, checkLoginIframe: false, adapter: mobileAdapter };
 }
