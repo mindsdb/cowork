@@ -28,6 +28,12 @@ describe('console handoff', () => {
     ['website', 'build-a-project-status-page', 'Build a project status page'],
     ['website', 'build-a-team-offsite-invitation-page', 'Build a team offsite invitation page'],
     ['website', 'build-a-feature-announcement-page', 'Build a feature announcement page'],
+    ['wide-research', 'research-a-prospect-and-draft-outreach', 'Research a prospect and draft outreach'],
+    ['spreadsheet', 'pull-key-terms-out-of-a-contract', 'Pull key terms out of a contract'],
+    ['wide-research', 'coach-me-on-a-deal-from-a-call-transcript', 'Coach me on a deal from a call transcript'],
+    ['wide-research', 'turn-meeting-notes-into-action-items', 'Turn meeting notes into action items'],
+    ['visualization', 'build-a-project-rollout-timeline', 'Build a project rollout timeline'],
+    ['visualization', 'map-a-process-as-a-diagram', 'Map a process as a diagram'],
   ])('resolves %s/%s, which the console links to', (mode, id, label) => {
     expect(findSample(mode, id)?.sample.label).toBe(label);
   });
