@@ -3206,6 +3206,7 @@ function AppCore() {
 
   const { startSharePointImport, sharePointModals } = useSharePointImport({
     connections: connectors,
+    projects,
     orgMode,
     onConnectionsChanged: () => {
       fetchDatasources()
