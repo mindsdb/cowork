@@ -68,12 +68,18 @@ export function useFacetimeCall({ onAsk, context }) {
   onAskRef.current = onAsk;
   contextRef.current = context;
 
+  // The SDK throws on `avatar` and `user` until connect() has joined the
+  // room, and the window attaches as soon as it mounts: nothing to attach yet.
   const attach = useCallback(() => {
     const conversation = conversationRef.current;
     if (!conversation) return;
-    if (avatarVideoRef.current) conversation.avatar.videoTrack?.attach(avatarVideoRef.current);
-    if (avatarAudioRef.current) conversation.avatar.audioTrack?.attach(avatarAudioRef.current);
-    if (selfVideoRef.current && conversation.user.videoTrack) conversation.user.videoTrack.attach(selfVideoRef.current);
+    try {
+      if (avatarVideoRef.current) conversation.avatar.videoTrack?.attach(avatarVideoRef.current);
+      if (avatarAudioRef.current) conversation.avatar.audioTrack?.attach(avatarAudioRef.current);
+      if (selfVideoRef.current && conversation.user.videoTrack) conversation.user.videoTrack.attach(selfVideoRef.current);
+    } catch {
+      // Not connected yet; tracks-changed attaches them once it is.
+    }
   }, []);
 
   const start = useCallback(async ({ camera = true } = {}) => {
@@ -204,17 +210,25 @@ export function useFacetimeCall({ onAsk, context }) {
   const toggleMic = useCallback(async () => {
     const conversation = conversationRef.current;
     if (!conversation) return;
-    if (conversation.user.isMuted) await conversation.user.unmuteAudio();
-    else await conversation.user.muteAudio();
-    setMicOn(!conversation.user.isMuted);
+    try {
+      if (conversation.user.isMuted) await conversation.user.unmuteAudio();
+      else await conversation.user.muteAudio();
+      setMicOn(!conversation.user.isMuted);
+    } catch {
+      // Not connected yet.
+    }
   }, []);
 
   const toggleCamera = useCallback(async () => {
     const conversation = conversationRef.current;
     if (!conversation) return;
-    if (conversation.user.isVideoEnabled) await conversation.user.disableVideo();
-    else await conversation.user.enableVideo();
-    setCameraOn(conversation.user.isVideoEnabled);
+    try {
+      if (conversation.user.isVideoEnabled) await conversation.user.disableVideo();
+      else await conversation.user.enableVideo();
+      setCameraOn(conversation.user.isVideoEnabled);
+    } catch {
+      // Not connected yet.
+    }
     attach();
   }, [attach]);
 

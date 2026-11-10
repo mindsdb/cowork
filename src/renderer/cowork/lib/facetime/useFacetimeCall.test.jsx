@@ -91,6 +91,19 @@ describe('a video call', () => {
     ]);
   });
 
+  it('attaching and the buttons are safe before the room is joined, where the SDK throws', async () => {
+    const { result } = renderHook(() => useFacetimeCall({ onAsk: vi.fn(), context: () => '' }));
+    await act(() => result.current.start());
+    const notConnected = () => { throw new Error('Not connected — call connect() first'); };
+    Object.defineProperty(fake.conversation, 'avatar', { get: notConnected });
+    Object.defineProperty(fake.conversation, 'user', { get: notConnected });
+    result.current.avatarVideoRef.current = document.createElement('video');
+
+    expect(() => result.current.attach()).not.toThrow();
+    await act(() => result.current.toggleMic());
+    await act(() => result.current.toggleCamera());
+  });
+
   it('shows why a call ended, and hanging up disconnects', async () => {
     const { result } = renderHook(() => useFacetimeCall({ onAsk: vi.fn(), context: () => '' }));
     await act(() => result.current.start());
