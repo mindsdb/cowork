@@ -19,6 +19,10 @@
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost, mindsApiRoot } from '../../../shared/minds-endpoint';
 import { isModelLocked, knownModelDisabledReasons, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.settingsTransform.${key}`, { ns: 'projects', ...vars });
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -373,23 +377,21 @@ export function showJevSwitch(routing, codingProviderType) {
  */
 export function routerRoleSubtitle(gate, { rowProviderType = '', providerTypeLabels = {} } = {}) {
   if (!gate || typeof gate !== 'object') {
-    return 'Used for fast respond-or-delegate gating on each turn, and history summarization.';
+    return tr('routerSubtitle.legacy');
   }
   if (!gate.model) {
     return gate.followsRouterPick
-      ? 'Used for history summarization. The respond-or-delegate gate ahead of each chat turn is off until a model is picked here.'
-      : 'Used for history summarization. The respond-or-delegate gate ahead of each chat turn is off: no model is available for it.';
+      ? tr('routerSubtitle.gateOffUntilPicked')
+      : tr('routerSubtitle.gateOffNoModel');
   }
   if (gate.followsRouterPick) {
-    return 'Used for history summarization and for the respond-or-delegate gate ahead of each chat turn, '
-      + 'which has a strict latency budget: pick your fastest model here, not your smartest.';
+    return tr('routerSubtitle.followsPick');
   }
   // Name the provider only when it is not the one this row shows — the server
   // may have resolved the role elsewhere (a stored provider with no key).
-  const where = gate.provider && gate.provider !== rowProviderType
-    ? ` (${providerTypeLabels[gate.provider] || gate.provider})`
-    : '';
-  return `Used for history summarization. The respond-or-delegate gate ahead of each chat turn runs on ${gate.model}${where}, not on this pick.`;
+  return gate.provider && gate.provider !== rowProviderType
+    ? tr('routerSubtitle.gateRunsOnWithProvider', { model: gate.model, provider: providerTypeLabels[gate.provider] || gate.provider })
+    : tr('routerSubtitle.gateRunsOn', { model: gate.model });
 }
 
 // ─── Model picker select-value resolution ───────────────────────────
@@ -552,7 +554,7 @@ export function buildModelOptions(
       // `label` for the same reason. lib/modelPickerOptions builds both the same
       // way, so the pickers agree.
       ...unavailableModelFields(modelEnabled, modelDisabledReasons, m),
-      ...(latest.has(m) ? { note: 'latest' } : {}),
+      ...(latest.has(m) ? { note: tr('latestNote') } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.
       ...(modelProviders[m] ? { provider: modelProviders[m] } : {}),
@@ -567,7 +569,7 @@ export function buildModelOptions(
       // like two identical, already-selected entries (ENG-739 review).
       ? [{
           value: '__stale__',
-          label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
+          label: tr('staleModel', { model: labelFor(curModel.replace(/^latest:/, '')) }),
           disabled: true,
           // `pin` keeps the special entries out of ModelSelect's provider
           // groups: 'top'/'bottom' render unheaded above/below the groups.
@@ -580,7 +582,7 @@ export function buildModelOptions(
     // rather than in the label, because a label suffix ate the width and
     // truncated to "…Add credits to unl.".
     ...ordered.map(modelOption),
-    ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
+    ...(allowOther ? [{ value: '__custom__', label: tr('otherModel'), pin: 'bottom' }] : []),
   ];
 }
 

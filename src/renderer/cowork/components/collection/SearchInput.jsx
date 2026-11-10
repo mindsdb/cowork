@@ -5,15 +5,19 @@
 
 import Ico from '../Icons';
 import { Input, Kbd } from '../ui';
+import { useTranslation } from '../../../lib/i18n';
 
 export function SearchInput({
   value,
   onChange,
   inputRef,
-  placeholder = 'Search',
-  ariaLabel = placeholder,
+  placeholder: placeholderProp,
+  ariaLabel: ariaLabelProp,
   shortcut = '⌘K',
 }) {
+  const { t } = useTranslation('library');
+  const placeholder = placeholderProp ?? t('collection.search');
+  const ariaLabel = ariaLabelProp ?? placeholder;
   return (
     <Input
       ref={inputRef}

@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { cn } from '../../lib/cn';
 import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
+import { useTranslation } from '../../../lib/i18n';
 
 // The one page-header for every main view. Two shapes so depth and placement
 // read the same everywhere:
@@ -32,10 +33,12 @@ export function PageHeader({
   // title shape
   title, subtitle, eyebrow, subtitleBottom,
   // trail shape
-  crumbs, current, onBack, backLabel = 'Back',
+  crumbs, current, onBack, backLabel: backLabelProp,
   // both
   actions,
 }) {
+  const { t } = useTranslation('library');
+  const backLabel = backLabelProp ?? t('collection.back');
   const isTrail = (crumbs && crumbs.length > 0) || onBack || current != null;
 
   if (isTrail) {
@@ -64,7 +67,7 @@ export function PageHeader({
       return (
         <header className="flex flex-col gap-1.5 shrink-0 min-w-0 pb-5 pt-[max(14px,var(--titlebar-safe-top,0px))]">
           {/* The crumb's own inline padding lines its text up with the title. */}
-          <nav aria-label="Breadcrumb" className="flex min-w-0 pl-[26px] pr-8">{trail}</nav>
+          <nav aria-label={t('collection.breadcrumb')} className="flex min-w-0 pl-[26px] pr-8">{trail}</nav>
           <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 min-w-0 px-8">
             <div className="min-w-0 flex-[1_1_18rem] flex flex-col gap-1">
               <h1 className="s-h1 m-0 text-ink [overflow-wrap:anywhere]">{title}</h1>

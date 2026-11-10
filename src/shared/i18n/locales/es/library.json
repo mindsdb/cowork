@@ -1,0 +1,641 @@
+{
+  "collection": {
+    "filter": {
+      "label": "Filtrar",
+      "activeAriaLabel": "Filtrar, {count} activos",
+      "activeFilters": "Filtros activos",
+      "removeAriaLabel": "Quitar filtro {label}",
+      "clear": "Borrar"
+    },
+    "search": "Buscar",
+    "loading": "Cargando",
+    "noResultsFor": "No hay resultados para “{query}”",
+    "noResults": "No hay resultados",
+    "clearSearch": "Borrar búsqueda",
+    "view": {
+      "grid": "Cuadrícula",
+      "list": "Lista",
+      "ariaLabel": "Vista"
+    },
+    "back": "Atrás",
+    "breadcrumb": "Ruta de navegación",
+    "sort": "Ordenar"
+  },
+  "attribution": {
+    "createdBy": "Creado por {name}",
+    "lastModifiedBy": "Última modificación por {name}"
+  },
+  "share": {
+    "shared": "Compartido",
+    "share": "Compartir",
+    "whoCanUseSkill": "Quién puede usar esta habilidad",
+    "changeFailed": "No se pudo cambiar quién puede usar esta habilidad.",
+    "shareNamed": "Compartir {name}",
+    "dismiss": "Cerrar",
+    "audienceLocked": "Solo su propietario o un administrador puede cambiar quién puede usarla.",
+    "updating": "Actualizando…",
+    "update": "Actualizar"
+  },
+  "recipients": {
+    "directoryFailed": {
+      "unreachable": "No se pudo cargar el directorio de tu organización",
+      "refused": "MindsHub se negó a listar a las personas de tu organización"
+    },
+    "teamsFailed": {
+      "unreachable": "No se pudieron cargar tus equipos. Inténtalo más tarde.",
+      "refused": "MindsHub se negó a listar tus equipos."
+    },
+    "namesFailed": {
+      "unreachable": "No se pudieron cargar algunos nombres.",
+      "refused": "MindsHub se negó a dar el nombre de algunas personas."
+    },
+    "retry": "Reintentar",
+    "label": {
+      "emails": "Agregar personas por correo",
+      "external": "Agregar equipos, personas o correos",
+      "org": "Agregar equipos o personas"
+    },
+    "placeholder": {
+      "emails": "Agregar personas por correo…",
+      "external": "Agregar equipos, personas o correos…",
+      "org": "Agregar equipos o personas…"
+    },
+    "team": "Equipo",
+    "teams": "Equipos",
+    "invite": "Invitar a {email}",
+    "add": "Agregar {email}",
+    "outside": " (fuera de {org})",
+    "peopleIn": "Personas en {org}",
+    "noOneElse": "Todavía no hay nadie más en {org}. ",
+    "invitePeople": "Invitar personas ↗",
+    "everyoneInOrgAdded": "Ya se agregó a todas las personas de {org}.",
+    "thatsYou": "Eres tú",
+    "onlyPeopleIn": "Solo personas de {org}",
+    "noMatches": "Sin coincidencias",
+    "everyoneAdded": "Ya agregaste a todos los que puedes agregar.",
+    "truncated": "Se muestran las primeras {count} personas.",
+    "suggestions": "Sugerencias",
+    "notAdded": "No se agregaron: {list}",
+    "ariaLabel": "Destinatarios",
+    "checking": "Verificando…",
+    "unknownTeam": "Equipo desconocido",
+    "personNotLoaded": "No se pudo cargar el nombre",
+    "loading": "Cargando…",
+    "remove": "Quitar a {name}",
+    "removePerson": "Quitar persona",
+    "outsideOrg": "Fuera de {org}",
+    "removeTooltip": "Quitar",
+    "more": "+{count} más",
+    "sharedWith": "Compartido con",
+    "whoCanUseIt": "Quién puede usarla",
+    "reason": {
+      "notEmail": "no es un correo",
+      "self": "eres tú",
+      "notInOrg": "no está en {org}",
+      "uncheckedUnreachable": "no se pudo comprobar quién está en {org}, vuelve a intentarlo",
+      "uncheckedRefused": "MindsHub se negó a comprobar quién está en {org}",
+      "uncheckedThrottled": "MindsHub está limitando las solicitudes, vuelve a intentarlo en un minuto"
+    }
+  },
+  "skillCard": {
+    "noContent": "_Sin contenido._",
+    "skill": "Habilidad",
+    "downloaded": "Descargada",
+    "savedShared": "Guardada y compartida con todos",
+    "savedToSkills": "Guardada en tus habilidades",
+    "noPermission": "No tienes permiso para reemplazar esta habilidad compartida.",
+    "verifyFailed": "No se pudo verificar el permiso para reemplazar esta habilidad compartida. Inténtalo de nuevo.",
+    "sharingKept": "Se guardó sobre la habilidad existente. Quién puede usarla no cambió: configúralo en la página de la habilidad.",
+    "saveFailed": "No se pudo guardar la habilidad.",
+    "saved": "Guardada",
+    "draft": "Borrador · sin guardar",
+    "download": "Descargar habilidad",
+    "saving": "Guardando…",
+    "readOnly": "Solo lectura",
+    "save": "Guardar habilidad"
+  },
+  "skillDetail": {
+    "you": "Tú",
+    "unknown": "Desconocido",
+    "audienceAriaLabel": "Compartido con: {names}. Mostrar a todos",
+    "allProjects": "Todos los proyectos",
+    "disabledForEveryone": "Desactivada para todos",
+    "disabled": "Desactivada",
+    "actions": "Acciones de la habilidad",
+    "details": "Detalles",
+    "project": "Proyecto",
+    "everyone": "Todos",
+    "builtIn": "Integrada",
+    "owner": "Propietario",
+    "updated": "Actualizada",
+    "instructions": "Instrucciones",
+    "noInstructions": "Esta habilidad todavía no tiene instrucciones.",
+    "addInstructions": "Agregar instrucciones"
+  },
+  "skillModal": {
+    "noEditPermission": "No tienes permiso para editar esta habilidad compartida.",
+    "unknownError": "error desconocido",
+    "shareUpdateFailed": "Se guardó la habilidad, pero no se pudo actualizar cómo se comparte: {reason}.",
+    "shareCreateFailed": "Se creó la habilidad, pero no se pudo compartir: {reason}. Puedes compartirla desde el menú de la habilidad.",
+    "editTitle": "Editar habilidad",
+    "addTitle": "Agregar una habilidad",
+    "subtitle": "Escribe un nombre, una descripción e instrucciones para la habilidad.",
+    "ownSharedChangeNote": "Está compartida, así que tus cambios llegan a todos con quienes se comparte en su próxima respuesta.",
+    "label": "Etiqueta",
+    "description": "Descripción",
+    "descriptionPlaceholder": "Genera informes semanales de estado a partir del trabajo reciente. Úsala cuando pidan novedades o resúmenes de avance.",
+    "instructionsPlaceholder": "Resume mi trabajo reciente en tres secciones: logros, bloqueos y próximos pasos. Mantén un tono profesional pero no rígido...",
+    "settings": "Configuración de la habilidad",
+    "ownerOnlyHint": "Solo el propietario puede cambiar quién puede usarla",
+    "cancel": "Cancelar",
+    "retrySharing": "Reintentar compartir",
+    "save": "Guardar",
+    "create": "Crear"
+  },
+  "skills": {
+    "sharing": {
+      "updated": "Se actualizó quién puede usar {name}.",
+      "alwaysOnDetail": "Forma parte de cada tarea y solo su propietario puede cambiarla.",
+      "readOnlyOrgNote": "Puedes usarla, pero no cambiarla."
+    },
+    "sharedSkillNote": "Esta habilidad está compartida contigo y no se puede cambiar aquí.",
+    "lockedHint": {
+      "sharedWithYou": "Compartida contigo",
+      "adminOrCreator": "Administrador o creador"
+    },
+    "readOnly": {
+      "builtin": "Las habilidades integradas son de solo lectura.",
+      "other": "Solo lectura: solo el creador o un administrador de la organización puede cambiar esta habilidad."
+    },
+    "switch": {
+      "on": "Activar: Anton puede usar esta habilidad",
+      "off": "Desactivar: Anton no usará esta habilidad",
+      "onForMe": "Activar para mí: Anton puede usar esta habilidad en tus tareas",
+      "offForMe": "Desactivar para mí: Anton no usará esta habilidad en tus tareas",
+      "disabledForEveryoneHint": "Un editor la desactivó para todos",
+      "noPermission": "No tienes permiso para activar o desactivar esta habilidad.",
+      "ownSharedHint": "{label}. Activarla o desactivarla la cambia para todos con quienes se comparte."
+    },
+    "updatedAge": "Actualizada {age}",
+    "sharedBy": "Compartida por {email}",
+    "sharedByPrefix": "Compartida por {email}. ",
+    "upload": {
+      "failed": "No se pudo subir la habilidad.",
+      "title": "Subir archivos de habilidad",
+      "subtitle": "Sube un archivo .md o .skill para importar una habilidad.",
+      "sizeKb": "{size} KB",
+      "dropHint": "Arrastra y suelta o haz clic para subir",
+      "requirements": "Requisitos del archivo",
+      "requirementMd": "El archivo .md o .skill debe contener el nombre y la descripción de la habilidad en formato YAML",
+      "requirementZip": "El archivo .zip debe incluir un archivo SKILL.md",
+      "uploading": "Subiendo…",
+      "upload": "Subir"
+    },
+    "create": {
+      "write": "Escribir instrucciones",
+      "cowork": "Crear con {product}",
+      "coworkPrefill": "Creemos una habilidad juntos con tu habilidad /skill-creator. Primero pregúntame qué debe hacer la habilidad.",
+      "upload": "Subir una habilidad",
+      "button": "Crear habilidad"
+    },
+    "sort": {
+      "name": "Nombre",
+      "recent": "Recientes"
+    },
+    "toast": {
+      "createdShared": "Se creó y compartió {name}.",
+      "savedUpdatedSharing": "Se guardó {name} y se actualizó quién puede usarla.",
+      "savedSharedEveryone": "Se guardó {name} y se compartió con todos.",
+      "savedStoppedSharing": "Se guardó {name} y se dejó de compartir.",
+      "saved": "Se guardó {name}.",
+      "removed": "Se quitó {name}.",
+      "removeFailed": "No se pudo quitar la habilidad.",
+      "sharedEveryone": "Se compartió {name} con todos.",
+      "stoppedSharing": "Se dejó de compartir {name}.",
+      "updateFailed": "No se pudo actualizar la habilidad.",
+      "onForEveryone": "Se activó {name} para todos.",
+      "offForEveryone": "Se desactivó {name} para todos."
+    },
+    "menu": {
+      "disableEveryone": "Desactivar para todos",
+      "enableEveryone": "Activar para todos",
+      "tryInChat": "Probar en el chat",
+      "edit": "Editar",
+      "noEditPermission": "No tienes permiso para editar esta habilidad.",
+      "uninstall": "Desinstalar",
+      "noUninstallPermission": "No tienes permiso para desinstalar esta habilidad."
+    },
+    "sharedAriaLabel": "Compartida: {name}",
+    "moreActionsFor": "Más acciones para {name}",
+    "moreActions": "Más acciones",
+    "title": "Habilidades",
+    "editNamed": "Editar {name}",
+    "subtitle": "Amplía las capacidades de {product} con habilidades para tareas específicas",
+    "searchPlaceholder": "Buscar habilidades",
+    "countFiltered": "{shown} de {total} habilidades",
+    "count": "{count, plural, one {# habilidad} other {# habilidades}}",
+    "sharingSettings": "la configuración de uso compartido",
+    "empty": {
+      "title": "Todavía no hay habilidades guardadas",
+      "description": "Escribe una habilidad, sube un SKILL.md o pídele a {product} que cree una.",
+      "action": "Escribe tu primera habilidad"
+    },
+    "remove": {
+      "title": "¿Quitar la habilidad \"{name}\"?",
+      "ownSharedNote": "Está compartida, así que todos con quienes se comparte también la pierden."
+    },
+    "disableEveryone": {
+      "title": "¿Desactivar {name} para todos con quienes se comparte?",
+      "message": "Anton no la usará en las tareas de nadie hasta que un editor la vuelva a activar."
+    }
+  },
+  "connections": {
+    "connect": "Conectar",
+    "sortEngine": "Motor",
+    "countFiltered": "{shown} de {total} conexiones",
+    "count": "{count, plural, one {# conexión} other {# conexiones}}",
+    "drive": {
+      "noAccountEmail": "No hay un correo de cuenta registrado para esta conexión: intenta reconectarla.",
+      "pickerFailed": "No se pudo abrir el selector de Drive.",
+      "title": "Archivos de Drive",
+      "intro": "Esta conexión solo puede leer los archivos que creó. Selecciona archivos abajo (varios a la vez o unidades compartidas completas) para darle acceso a ellos también.",
+      "waiting": "Se abrió en tu navegador: elige tus archivos ahí y luego regresa. Confirmar el acceso puede tardar unos segundos después de que vuelvas.",
+      "select": "Seleccionar archivos de Google Drive",
+      "failed": "Google no otorgó acceso a {count, plural, one {este archivo} other {estos archivos}}. Intenta {count, plural, one {elegirlo} other {elegirlos}} de nuevo:",
+      "noFiles": "No se seleccionaron archivos.",
+      "granted": "Se otorgó acceso a {count, plural, one {# archivo} other {# archivos}}:"
+    },
+    "reconnectRequired": "Se requiere reconexión",
+    "expired": {
+      "own": "El acceso a esta conexión venció o fue revocado. Reconéctala para restaurar el acceso o desconéctala desde su tarjeta.",
+      "shared": "El acceso a esta conexión venció o fue revocado. Quien la compartió contigo puede reconectarla.",
+      "operator": "El acceso a esta conexión venció o fue revocado. Tu operador puede reconectarla."
+    },
+    "sharedNote": "Esta conexión está compartida contigo y no se puede cambiar aquí.",
+    "operatorNote": "Tu operador proporciona esta conexión y no se puede cambiar aquí.",
+    "lastUpdated": "Última actualización",
+    "connected": "Conectada",
+    "credentials": "Credenciales",
+    "secretSaved": "•••••••• guardado",
+    "sharepoint": {
+      "title": "Clave y sitios",
+      "intro": "Cambia la clave de la app o los sitios que esta conexión puede leer. {product} verifica la clave con Microsoft antes de guardar.",
+      "edit": "Editar clave y sitios"
+    },
+    "toolAccess": {
+      "title": "Acceso a herramientas",
+      "intro": "Lo que Anton puede hacer con las herramientas de esta conexión. Cambiarlo no requiere reconectar.",
+      "write": "Lectura y escritura",
+      "none": "Sin acceso a herramientas"
+    },
+    "close": "Cerrar",
+    "reconnectConfirm": {
+      "title": "¿Reconectar {name}?",
+      "sharepoint": "Actualizarás su clave y sus sitios. Se mantiene igual hasta que la nueva clave se verifique y se guarde.",
+      "shared": "Está compartida, así que conecta la misma cuenta para actualizarla para todos con quienes se comparte.",
+      "own": "Se quitará la conexión existente y volverás a conectarla desde cero."
+    },
+    "reconnect": "Reconectar",
+    "theAgent": "el agente",
+    "title": "Conectar apps y datos",
+    "subtitle": "Conecta {agent} con las herramientas que ya usas y automatiza el trabajo ahí.",
+    "searchPlaceholder": "Buscar conexiones",
+    "empty": {
+      "title": "Todavía no hay apps conectadas",
+      "description": "Los conectores definen cómo {agent} trabaja contigo. Conecta las apps y bases de datos que ya usas y {agent} automatizará el trabajo ahí.",
+      "action": "Conecta tu primera app"
+    },
+    "disconnectFailed": "No se pudo desconectar",
+    "ok": "Aceptar"
+  },
+  "utilities": {
+    "title": "Utilidad"
+  },
+  "memory": {
+    "title": "Memorias",
+    "subtitle": "Perfil, reglas y lecciones que el agente puede reutilizar entre tareas.",
+    "scope": {
+      "global": "Global",
+      "deployment": "Implementación",
+      "projectMemory": "Memoria del proyecto",
+      "project": "Proyecto · {name}"
+    },
+    "readOnly": {
+      "deployment": "Solo lectura. Tu operador define estas reglas para todos y cada respuesta las sigue.",
+      "ownAuto": "Solo tuya. {product} la guarda por su cuenta mientras trabajas, así que no se puede editar. Puedes eliminarla.",
+      "ownAutoEditTitle": "{product} guarda esta memoria por su cuenta, así que no se puede editar.",
+      "shared": "Solo lectura. Solo el autor de la memoria o un administrador de la organización puede cambiarla."
+    },
+    "noEditPermission": "No tienes permiso para editar esta memoria compartida.",
+    "noDeletePermission": "No tienes permiso para eliminar esta memoria compartida.",
+    "noCategory": "No se seleccionó ninguna categoría de memoria.",
+    "pickProject": "Elige un proyecto para esta memoria.",
+    "saved": "Se guardó la memoria {name}.",
+    "saveFailed": "No se pudo guardar la memoria.",
+    "delete": {
+      "title": "¿Eliminar la memoria \"{name}\"?",
+      "message": "Esto borra el contenido guardado.",
+      "confirm": "Eliminar"
+    },
+    "deleted": "Se eliminó la memoria {name}.",
+    "deleteFailed": "No se pudo eliminar la memoria.",
+    "resetDone": "Se restableció tu memoria. No queda nada aprendido.",
+    "resetFailed": "No se pudo restablecer tu memoria.",
+    "reset": {
+      "title": "¿Restablecer tu memoria?",
+      "message": "Esto elimina todo lo que {product} aprendió para ti: tu perfil, reglas y lecciones, en todos tus proyectos. Tu próxima pregunta empezará sin nada aprendido. Las reglas de la implementación se mantienen. No se puede deshacer.",
+      "confirm": "Restablecer mi memoria",
+      "busy": "Restableciendo…"
+    },
+    "empty": "No se encontraron entradas de memoria.",
+    "selectHint": "Selecciona una entrada de memoria para verla.",
+    "active": "· activo"
+  },
+  "publish": {
+    "title": "Compartir",
+    "subtitle": "Artefactos HTML que el agente puede compartir con credenciales de Minds.",
+    "sharing": "Compartiendo…",
+    "sharedUrl": "Compartido: {url}",
+    "shared": "Compartido.",
+    "failed": "No se pudo compartir.",
+    "copied": "Se copió la URL al portapapeles.",
+    "copyFailed": "No se pudo copiar: selecciona la URL de arriba para copiarla manualmente.",
+    "notReady": "Configura una clave de API de Minds en Configuración antes de compartir.",
+    "copyUrl": "Copiar URL",
+    "open": "Abrir",
+    "empty": "No se encontraron artefactos HTML en las carpetas de salida.",
+    "history": "Historial de compartidos"
+  },
+  "connectionCard": {
+    "disconnectTitle": "¿Desconectar {engine}/{name}?",
+    "disconnectShared": "Está compartida, así que todos con quienes se comparte también la pierden. Una nueva conexión no puede usar su nombre hasta que tu operador deje de compartirla.",
+    "customTitle": "{title} (conector personalizado)",
+    "repairHint": ". Guardada por una versión anterior. Desconéctala y vuelve a conectarla.",
+    "reconnectNeeded": "Requiere reconexión",
+    "managed": "Administrada",
+    "removeDatasource": "Se quitará {name} y se eliminarán sus credenciales guardadas. Las conversaciones que la usan perderán el acceso.",
+    "disconnect": "Desconectar",
+    "custom": "Personalizado",
+    "legacy": "Guardada por una versión anterior. Desconéctala y vuelve a conectarla.",
+    "activateLabel": "{action, select, view {Ver} reconnect {Reconectar} other {Administrar}} {title}: {subtitle}{hint}",
+    "removing": "Quitando…"
+  },
+  "datasource": {
+    "failed": "Eso no funcionó.",
+    "ariaLabel": "Conexión {name}",
+    "pending": "Verificando la conexión. Tus credenciales se guardan cifradas; esto se actualiza cuando termine la verificación.",
+    "couldNotConnect": "No se pudo conectar",
+    "lastCheckFailed": "La última verificación no tuvo éxito.",
+    "host": "Host",
+    "port": "Puerto",
+    "database": "Base de datos",
+    "schema": "Esquema",
+    "username": "Usuario",
+    "certificateTrust": "Confianza del certificado",
+    "trust": {
+      "prefer": {
+        "label": "Cifrada cuando el servidor lo ofrece",
+        "note": "La conexión se cifra cuando el servidor lo admite, y el servidor no se identifica, así que las credenciales podrían llegar a quien responda en esa dirección."
+      },
+      "system": {
+        "label": "Autoridades de certificación públicas",
+        "note": "La conexión está cifrada y se verifican el certificado y el nombre de host del servidor."
+      },
+      "custom_ca": {
+        "label": "Un certificado de CA que proporcionaste",
+        "note": "La conexión está cifrada y se verifica con la autoridad de certificación que proporcionaste."
+      },
+      "encrypted": {
+        "label": "Cifrada, certificado sin verificar",
+        "note": "La conexión está cifrada, pero el servidor no se identifica, así que las credenciales podrían llegar a quien responda en esa dirección."
+      },
+      "disabled": {
+        "label": "Sin cifrado",
+        "note": "La conexión no está cifrada: las credenciales, las consultas y las filas que devuelven viajan en texto plano y cualquiera en el camino puede leerlas."
+      }
+    },
+    "passwordNote": "El servidor guarda la contraseña cifrada y nunca se vuelve a mostrar. Las consultas se ejecutan en solo lectura.",
+    "working": "Procesando…",
+    "tryAgain": "Reintentar",
+    "removeTitle": "¿Quitar {name}?",
+    "removeMessage": "Se eliminan las credenciales guardadas y las conversaciones que usan esta conexión pierden el acceso. Puedes volver a agregarla más tarde."
+  },
+  "connectorPicker": {
+    "category": {
+      "crm": "CRM",
+      "sales-engagement": "Interacción de ventas",
+      "enrichment": "Enriquecimiento de leads",
+      "marketing": "Automatización de marketing",
+      "analytics": "Analítica de producto y web",
+      "ads": "Publicidad",
+      "support": "Soporte y mesa de ayuda",
+      "customer-success": "Éxito del cliente",
+      "revenue-intel": "Inteligencia de ingresos",
+      "communication": "Comunicación",
+      "productivity": "Productividad y gestión de proyectos",
+      "scheduling": "Agendamiento",
+      "forms": "Formularios",
+      "documents": "Documentos y firma electrónica",
+      "billing": "Facturación y pagos",
+      "accounting": "Contabilidad",
+      "hr": "RR. HH. y gestión de personas",
+      "files": "Archivos",
+      "mobility": "Movilidad y entregas",
+      "logistics": "Logística y envíos",
+      "ai": "API de IA",
+      "web-search": "Búsqueda web",
+      "maps": "Mapas y geocodificación",
+      "public-data": "API de datos públicos",
+      "engineering": "Ingeniería y DevOps",
+      "observability": "Observabilidad y monitoreo",
+      "database": "Bases de datos",
+      "vector-db": "Bases de datos vectoriales",
+      "data": "Infraestructura de datos",
+      "cloud": "Proveedores de nube",
+      "other": "Otros"
+    },
+    "buildCustom": "Crear un conector personalizado",
+    "buildCustomDescription": "Conecta un sistema que no está en la lista. Anton lo configura contigo.",
+    "loadFailed": "No se pudieron cargar los conectores",
+    "title": "Directorio de conectores",
+    "searchPlaceholder": "Buscar conectores: gmail, postgres, slack…",
+    "searchAriaLabel": "Buscar conectores",
+    "filterBy": "Filtrar por",
+    "allCategories": "Todas las categorías",
+    "sortBy": "Ordenar por",
+    "byCategory": "Por categoría",
+    "byName": "Nombre (A–Z)",
+    "cloudNote": {
+      "before": "Pronto habrá más conectores aquí. El resto ya funciona en la",
+      "link": "app de escritorio de Cowork",
+      "after": "."
+    },
+    "loading": "Cargando conectores…",
+    "noMatchQuery": "Ningún conector coincide con “{query}”",
+    "buildDescription": "Anton puede crear uno contigo: pregunta cómo se accede al sistema y luego configura y prueba la conexión.",
+    "buildFor": "Crear un conector personalizado para “{query}”",
+    "noMatchInCategory": {
+      "before": "Ningún conector de esta categoría coincide con ",
+      "after": "."
+    },
+    "noMatch": {
+      "before": "Ningún conector coincide con ",
+      "after": "."
+    },
+    "noneAvailable": "Todavía no hay conectores disponibles.",
+    "cloudAvailable": "Disponibles aquí (MindsHub Cloud)",
+    "available": "Conectores disponibles",
+    "featured": "Destacados",
+    "desktopOnly": "Conectores disponibles en la app de escritorio de Cowork"
+  },
+  "sharepoint": {
+    "folderListFailed": "No se pudo listar esta carpeta.",
+    "setup": {
+      "editTitle": "Editar conexión de SharePoint",
+      "connectTitle": "Conectar SharePoint",
+      "subtitle": "{product} verifica la clave con Microsoft antes de guardarla.",
+      "loadFailed": "No se pudo cargar la conexión guardada.",
+      "saveFailed": "No se pudo guardar SharePoint.",
+      "help": "Un administrador registra una app en Microsoft Entra con el permiso de aplicación de Graph Sites.Selected, otorga el consentimiento de administrador, crea un secreto de cliente y le da a la app acceso de lectura a cada sitio de esta lista.",
+      "steps": "Pasos de configuración",
+      "name": "Nombre de la conexión",
+      "nameHelp": "Letras y dígitos, unidos por un solo - o _.",
+      "labelHelp": "Una etiqueta guardada se puede cambiar aquí, pero no quitar.",
+      "tenantId": "ID de directorio (inquilino)",
+      "clientId": "ID de aplicación (cliente)",
+      "clientSecret": "Secreto de cliente",
+      "secretSaved": "Guardado. Déjalo vacío para conservarlo.",
+      "sites": "Direcciones de sitios",
+      "sitesHelp": "Una por línea, como https://contoso.sharepoint.com/sites/team.",
+      "howTo": "Cómo hacerlo · SharePoint"
+    },
+    "import": {
+      "title": "Agregar archivos de SharePoint",
+      "subtitle": "Las copias quedan en la raíz de {project}.",
+      "noSites": "Esta conexión no tiene sitios. Edítala en Personalizar para agregar uno.",
+      "connectionLoadFailed": "No se pudo cargar esta conexión.",
+      "noLibraries": "Este sitio no tiene bibliotecas de documentos.",
+      "librariesFailed": "No se pudieron listar las bibliotecas de este sitio.",
+      "failed": "La importación falló.",
+      "connection": "Conexión",
+      "site": "Sitio",
+      "library": "Biblioteca",
+      "treeAriaLabel": "Archivos y carpetas de SharePoint",
+      "picked": "{count} de {max} seleccionados. Los archivos dentro de una carpeta seleccionada también cuentan para el límite de {max} archivos.",
+      "importing": "Importando…",
+      "importInto": "Importar a {project}",
+      "collapse": "Contraer {name}",
+      "expand": "Expandir {name}",
+      "pick": "Seleccionar {name}",
+      "emptyFolder": "Esta carpeta está vacía.",
+      "loadMore": "Cargar más",
+      "imported": "Se {count, plural, one {importó # archivo} other {importaron # archivos}}.",
+      "skipped": "Se {count, plural, one {omitió # elemento} other {omitieron # elementos}}:",
+      "done": "Listo"
+    }
+  },
+  "dataVault": {
+    "howTo": "Cómo hacerlo",
+    "formCrashed": "El panel del formulario falló:",
+    "theProvider": "el proveedor",
+    "hero": {
+      "authorize": "Autorizar con {provider}",
+      "helper": "Abre la autorización de {provider} en tu navegador: un clic para conectar."
+    },
+    "howToLink": "¿Cómo hacerlo?",
+    "pending": {
+      "title": "Verificando la conexión",
+      "subtitle": "Tus credenciales se guardan cifradas.",
+      "note": "Esto puede tardar un momento. El resultado aparece en Conectar apps y datos, donde puedes reintentar si la verificación no tiene éxito."
+    },
+    "viewConnections": "Ver conexiones",
+    "driveNote": "Esta conexión puede acceder a los archivos que creó y a los que elijas tú: usa \"Agregar archivos de Google Drive\" en el menú + de un chat o \"Seleccionar archivos de Google Drive\" en la configuración de esta conexión.",
+    "viewConnectors": "Ver conectores →",
+    "required": "{field} es obligatorio.",
+    "labelPlaceholder": "p. ej., prod-db",
+    "unskip": "no omitir",
+    "skip": "omitir",
+    "skipped": "Omitido: el agente lo resolverá.",
+    "submit": "Enviar",
+    "saveChanges": "Guardar cambios",
+    "howToTitle": "Cómo hacerlo · {name}",
+    "recommended": "Recomendado",
+    "otherOptions": "Ver otras opciones para conectar {provider}",
+    "pickMethod": "Elige cómo quieres conectarte:",
+    "backToOptions": "Volver a las opciones",
+    "saved": {
+      "now": "Se guardó en la bóveda de datos. {product} ya puede usar esta conexión en las tareas.",
+      "can": "Se guardó en la bóveda de datos. {product} puede usar esta conexión en las tareas.",
+      "agent": "Se guardó en la bóveda de datos. El agente puede usar esta conexión en las tareas."
+    },
+    "providerConnected": "{provider} conectado",
+    "oauth": {
+      "waiting": "Esperando el inicio de sesión en {provider}…",
+      "noConfig": "No hay configuración de OAuth para \"{engine}\".",
+      "startFailedServer": "No se pudo iniciar sesión en {provider}. ¿El servidor está en ejecución?",
+      "startFailed": "No se pudo iniciar sesión en {provider}.",
+      "failed": "Falló el flujo de OAuth.",
+      "signInFailed": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+      "missingClientId": "Falta el ID de cliente de OAuth: completa el campo Client ID de abajo.",
+      "incompleteMeta": "Los metadatos de OAuth están incompletos en la especificación del conector (auth_url / token_url / scopes).",
+      "noBrowserDesktop": "Este conector no se puede autorizar en el navegador (no tiene ID de conector). Usa la app de escritorio.",
+      "noBrowser": "Este conector no se puede autorizar en esta interfaz web.",
+      "startFlowFailed": "No se pudo iniciar el flujo de OAuth.",
+      "expired": "El inicio de sesión venció antes de completarse. Inténtalo de nuevo.",
+      "timeout": "Se agotó el tiempo de espera para completar el inicio de sesión de OAuth."
+    },
+    "posthog": {
+      "project": "Proyecto {id}",
+      "none": "No hay proyectos de PostHog disponibles para esta clave de API personal. Ingresa un ID de proyecto manualmente o revisa el acceso de la clave.",
+      "choose": "Elige el proyecto de PostHog que quieres conectar.",
+      "label": "Proyecto de PostHog",
+      "help": "Elige el proyecto de PostHog que quieres conectar o escribe su ID numérico directamente en el campo Project ID.",
+      "findFailed": "No se encontraron proyectos de PostHog."
+    },
+    "saveFailed": "No se pudo guardar la conexión.",
+    "datasource": {
+      "retryNote": "Reintentar vuelve a abrir el formulario. Tendrás que ingresar la contraseña otra vez.",
+      "ready": "{name} está lista para usarse en este espacio de trabajo."
+    },
+    "staleVersion": "Esta conexión cambió desde que la abriste. Ciérrala y vuelve a abrirla para editar la versión actual.",
+    "submitFailed": "No se pudo enviar el formulario",
+    "closeForm": "Cerrar formulario",
+    "testing": "Probando la conexión…",
+    "connectionFailed": "Falló la conexión",
+    "dismissStatus": "Descartar estado",
+    "replace": {
+      "title": "Esta conexión ya existe",
+      "message": "Ya existe una conexión de {provider} con estos datos. Reemplázala con esta o cancela para dejarla como está.",
+      "messageLabeled": "Ya existe una conexión de {provider} con estos datos (“{label}”). Reemplázala con esta o cancela para dejarla como está.",
+      "confirm": "Reemplazar"
+    }
+  },
+  "legacyConnect": {
+    "shapeChecked": "Se verificó el formato de las credenciales.",
+    "missingFields": "Faltan campos obligatorios: {fields}",
+    "fieldsPresent": "Los campos obligatorios están completos. Guarda esta conexión para que esté disponible en las tareas del agente.",
+    "validateFailed": "No se pudieron validar las credenciales de la fuente de datos.",
+    "saved": "Se guardó {name} en la bóveda de datos.",
+    "saveFailed": "No se pudo guardar la conexión de la fuente de datos.",
+    "remove": {
+      "title": "¿Quitar la fuente de datos?",
+      "message": "Se quitará {name}."
+    },
+    "removed": "Se quitó {name}.",
+    "removeFailed": "No se pudo quitar la conexión de la fuente de datos.",
+    "savedConnections": "Conexiones guardadas",
+    "ready": "Lista para las herramientas de fuentes de datos",
+    "savedInVault": "Guardada en la bóveda de datos",
+    "empty": "No se encontraron conexiones en la bóveda de datos.",
+    "authMethod": "Método de autenticación",
+    "nameLabel": "Nombre de la conexión (opcional)",
+    "namePlaceholder": "nombre de la conexión (opcional)",
+    "required": "Obligatorios: {fields}",
+    "none": "ninguno",
+    "noFields": "Este motor no expone campos de credenciales editables en el registro instalado.",
+    "checking": "Verificando",
+    "checkFields": "Verificar campos",
+    "saving": "Guardando",
+    "saveConnection": "Guardar conexión"
+  }
+}

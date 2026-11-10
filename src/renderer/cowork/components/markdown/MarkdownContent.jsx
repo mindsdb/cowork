@@ -29,6 +29,7 @@ import { host } from '../../../platform/host';
 import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './markdownLinks';
 import { useSkillNames } from '../../lib/skillsStore';
 import { carryFigure, hasFigureMarks, locateFigure, placeFigures } from '../../lib/figureSources';
+import i18n from '../../../lib/i18n';
 
 // Shared walk for the text-splitting remark plugins below: every `text` node
 // is replaced by the nodes `splitText(value, node)` returns (kept as-is when it
@@ -186,8 +187,6 @@ function FigureSourceMark({ index, children }) {
   return <FigureMark figure={figure} onOpenStep={onOpenStep} onViewFile={onViewFile}>{children}</FigureMark>;
 }
 
-const _ARTIFACT_LOCAL_LINK_TITLE =
-  'This file is in the Live Artifacts panel — open or download it there';
 
 // Rewrite a link targeting a local file path (or fabricated sandbox:/file: URL)
 // into an inert <span> — link text kept, tooltip pointing at the Live Artifacts
@@ -203,7 +202,7 @@ function remarkArtifactLocalLinks({ web = false } = {}) {
       hProperties: {
         ...((node.data && node.data.hProperties) || {}),
         className: ['artifact-local-link'],
-        title: _ARTIFACT_LOCAL_LINK_TITLE,
+        title: i18n.t('markdown.artifactLocalLinkTitle', { ns: 'chat' }),
       },
     };
   };
@@ -767,10 +766,10 @@ export const MarkdownContent = memo(function MarkdownContent({
       const finish = () => {
         const label = btn.querySelector('.anton-code-block-copy-label');
         btn.classList.add('is-copied');
-        if (label) label.textContent = 'Copied';
+        if (label) label.textContent = i18n.t('markdown.copied', { ns: 'chat' });
         clearTimeout(btn._copyTimer);
         btn._copyTimer = setTimeout(() => {
-          if (label) label.textContent = 'Copy';
+          if (label) label.textContent = i18n.t('markdown.copy', { ns: 'chat' });
           btn.classList.remove('is-copied');
         }, 1200);
       };
@@ -892,7 +891,7 @@ export const MarkdownContent = memo(function MarkdownContent({
       // Identification) in spirit.
       if (!isSafeExternalHref(href)) {
         return (
-          <span title="Link blocked: unsupported URL scheme">
+          <span title={i18n.t('markdown.linkBlocked', { ns: 'chat' })}>
             {props.children}
           </span>
         );
@@ -922,7 +921,7 @@ export const MarkdownContent = memo(function MarkdownContent({
           }}
         >
           {props.children}
-          <span className="sr-only"> (opens in new window)</span>
+          <span className="sr-only">{i18n.t('markdown.opensInNewWindow', { ns: 'chat' })}</span>
         </a>
       );
     },

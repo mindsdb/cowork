@@ -15,6 +15,14 @@
 // even after a failed retry check clears the target. shellAuto and shellManual
 // are mutually exclusive at the source, but the ordering is safe if they overlap.
 
+import { sourceTranslator, type Translate } from './i18n/translate';
+import appSource from './i18n/locales/en/app.json';
+
+/* The banner copy lives in the `app` catalog under `updateBanner`. The
+   renderer passes its `app` translator; without one the copy is English. */
+const english: Translate = sourceTranslator(appSource);
+const withVersion = (version: string | undefined) => ({ version: version ?? '', hasVersion: version ? 'yes' : 'no' });
+
 /** Shell auto-updater phases that can own a banner. Passive phases
  *  (disabled/idle/checking/complete) surface nothing, leaving the slot for an
  *  OTA or manual banner. `failed` is conditional — see shellAutoOwnsBanner. */
@@ -110,17 +118,17 @@ export interface UpdateBanner {
   debInstaller?: boolean;
 }
 
-function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>): UpdateBanner {
+function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>, t: Translate): UpdateBanner {
   const phase = shellAuto.phase;
   const version = shellAuto.version;
   switch (phase) {
     case 'downloading': {
       const pct = shellAuto.progress?.percent;
-      const title = pct != null ? `Downloading update (${Math.round(pct)}%)` : 'Downloading update…';
+      const title = pct != null ? t('updateBanner.downloadingPercent', { percent: Math.round(pct) }) : t('updateBanner.downloading');
       return { kind: 'shell-auto', tone: 'progress', title, actionLabel: null, action: null, disabled: true, dismissible: false, version };
     }
     case 'installing':
-      return { kind: 'shell-auto', tone: 'progress', title: 'Installing update…', actionLabel: null, action: null, disabled: true, dismissible: false, version };
+      return { kind: 'shell-auto', tone: 'progress', title: t('updateBanner.installing'), actionLabel: null, action: null, disabled: true, dismissible: false, version };
     case 'ready-to-install':
       // An install that never left the process (the sidecar stop or the
       // installer failed) re-arms with its reason on the snapshot. Say so,
@@ -128,49 +136,47 @@ function shellAutoBanner(shellAuto: NonNullable<UpdateBannerInput['shellAuto']>)
       // explanation (ENG-3291).
       if (shellAuto.errorCode) {
         return {
-          kind: 'shell-auto', tone: 'error', title: 'Last restart attempt failed', actionLabel: 'Try again', action: 'shell-auto', disabled: false, dismissible: false, version,
-          hint: abortedInstallHint(shellAuto.errorMessage),
+          kind: 'shell-auto', tone: 'error', title: t('updateBanner.restartFailed'), actionLabel: t('updateBanner.tryAgain'), action: 'shell-auto', disabled: false, dismissible: false, version,
+          hint: abortedInstallHint(shellAuto.errorMessage, t),
         };
       }
       // Only auto mode enables `autoInstallOnAppQuit`; in manual mode the pill
       // is the only way to install.
       return {
-        kind: 'shell-auto', tone: 'ready', title: 'Update ready', actionLabel: 'Restart now', action: 'shell-auto', disabled: false, dismissible: false, version,
-        hint: shellAuto.mode === 'auto'
-          ? `The new version${version ? ` (${version})` : ''} is downloaded. Restart now to use it, or it installs on its own the next time you quit the app.`
-          : undefined,
+        kind: 'shell-auto', tone: 'ready', title: t('updateBanner.ready'), actionLabel: t('updateBanner.restartNow'), action: 'shell-auto', disabled: false, dismissible: false, version,
+        hint: shellAuto.mode === 'auto' ? t('updateBanner.readyAutoHint', withVersion(version)) : undefined,
       };
     case 'failed':
       // Recoverable → retry via the auto-updater; terminal → manual installer
       // link. The single `shell-auto` handler routes both.
-      return { kind: 'shell-auto', tone: 'error', title: 'App update failed', actionLabel: shellAuto.recoverable ? 'Retry' : 'Download', action: 'shell-auto', disabled: false, dismissible: false, version };
+      return { kind: 'shell-auto', tone: 'error', title: t('updateBanner.appUpdateFailed'), actionLabel: shellAuto.recoverable ? t('updateBanner.retry') : t('updateBanner.download'), action: 'shell-auto', disabled: false, dismissible: false, version };
     case 'available':
     default:
-      return { kind: 'shell-auto', tone: 'ready', title: 'New app version available', actionLabel: 'Download', action: 'shell-auto', disabled: false, dismissible: false, version };
+      return { kind: 'shell-auto', tone: 'ready', title: t('updateBanner.appVersionAvailable'), actionLabel: t('updateBanner.download'), action: 'shell-auto', disabled: false, dismissible: false, version };
   }
 }
 
 /** Why the last restart did not finish, for the banner hint and the Settings
  *  card. Shared so the two surfaces cannot drift. */
-export function abortedInstallHint(message?: string): string {
+export function abortedInstallHint(message?: string, t: Translate = english): string {
   const reason = message?.trim();
-  return `${reason ? `Last restart attempt failed: ${reason}.` : 'The last restart attempt failed.'} The update is still downloaded. Try again to restart.`;
+  return reason ? t('updateBanner.abortedHintReason', { reason }) : t('updateBanner.abortedHint');
 }
 
 /** The install step for a Debian package. Shared so the sidebar hint and the
  *  Settings card cannot drift. Narrowed by version because the alias URL saves
  *  under a versioned Content-Disposition name, so an unbounded glob would hand
  *  apt every release still sitting in the download directory. */
-export function debInstallStep(version?: string): string {
-  return `run sudo apt install ./mindshub-cowork-${version ?? ''}*.deb from the directory you downloaded it to`;
+export function debInstallStep(version?: string, t: Translate = english): string {
+  return t('updateBanner.debInstallStep', { command: `sudo apt install ./mindshub-cowork-${version ?? ''}*.deb` });
 }
 
 /** The one banner to show, or null when nothing is pending. Shell-first: a
  *  pending shell update (auto or manual) always owns the slot over OTA. */
-export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | null {
+export function deriveUpdateBanner(input: UpdateBannerInput, t: Translate = english): UpdateBanner | null {
   const shellAuto = input.shellAuto;
   if (shellAuto && shellAutoOwnsBanner(shellAuto)) {
-    return shellAutoBanner(shellAuto);
+    return shellAutoBanner(shellAuto, t);
   }
 
   const shellManual = input.shellManual;
@@ -178,8 +184,8 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
     return {
       kind: 'shell-manual',
       tone: 'ready',
-      title: `New version available${shellManual.version ? ` (${shellManual.version})` : ''}`,
-      actionLabel: 'Download',
+      title: t('updateBanner.newVersion', withVersion(shellManual.version)),
+      actionLabel: t('updateBanner.download'),
       action: 'download-installer',
       disabled: false,
       dismissible: true,
@@ -194,21 +200,21 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
     return {
       kind: 'ota-ready',
       tone: 'ready',
-      title: `Update ready${otaVersion ? ` (${otaVersion})` : ''}`,
-      actionLabel: 'Restart',
+      title: t('updateBanner.readyVersion', withVersion(otaVersion)),
+      actionLabel: t('updateBanner.restart'),
       action: 'apply-ota',
       disabled: false,
       dismissible: false,
       version: otaVersion,
-      hint: `Reloads the app to finish updating${otaVersion ? ` to ${otaVersion}` : ''}. It also applies on its own the next time you open the app.`,
+      hint: t('updateBanner.otaHint', withVersion(otaVersion)),
     };
   }
   if (otaPhase === 'error') {
     return {
       kind: 'ota-error',
       tone: 'error',
-      title: `Update failed${otaVersion ? ` (${otaVersion})` : ''}`,
-      actionLabel: 'Try again',
+      title: t('updateBanner.otaFailed', withVersion(otaVersion)),
+      actionLabel: t('updateBanner.tryAgain'),
       action: 'apply-ota',
       disabled: false,
       dismissible: false,
@@ -220,7 +226,7 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
   // check that cleared the target, or a check-only outage). It never outranks
   // OTA/manual above, but is shown here so Retry/Download survives.
   if (shellAuto?.phase === 'failed' && !isSilentCheckFailure(shellAuto)) {
-    return shellAutoBanner(shellAuto);
+    return shellAutoBanner(shellAuto, t);
   }
 
   return null;

@@ -1,0 +1,641 @@
+{
+  "collection": {
+    "filter": {
+      "label": "Filter",
+      "activeAriaLabel": "Filter, {count} active",
+      "activeFilters": "Active filters",
+      "removeAriaLabel": "Remove {label} filter",
+      "clear": "Clear"
+    },
+    "search": "Search",
+    "loading": "Loading",
+    "noResultsFor": "No results for “{query}”",
+    "noResults": "No results",
+    "clearSearch": "Clear search",
+    "view": {
+      "grid": "Grid",
+      "list": "List",
+      "ariaLabel": "View"
+    },
+    "back": "Back",
+    "breadcrumb": "Breadcrumb",
+    "sort": "Sort"
+  },
+  "attribution": {
+    "createdBy": "Created by {name}",
+    "lastModifiedBy": "Last modified by {name}"
+  },
+  "share": {
+    "shared": "Shared",
+    "share": "Share",
+    "whoCanUseSkill": "Who can use this skill",
+    "changeFailed": "Couldn't change who can use this skill.",
+    "shareNamed": "Share {name}",
+    "dismiss": "Dismiss",
+    "audienceLocked": "Only its owner or an admin can change who can use it.",
+    "updating": "Updating…",
+    "update": "Update"
+  },
+  "recipients": {
+    "directoryFailed": {
+      "unreachable": "Couldn't load your organization's directory",
+      "refused": "MindsHub refused to list your organization's people"
+    },
+    "teamsFailed": {
+      "unreachable": "Couldn't load your teams. Try again later.",
+      "refused": "MindsHub refused to list your teams."
+    },
+    "namesFailed": {
+      "unreachable": "Couldn't load some names.",
+      "refused": "MindsHub refused to name some people."
+    },
+    "retry": "Retry",
+    "label": {
+      "emails": "Add people by email",
+      "external": "Add teams, people or emails",
+      "org": "Add teams or people"
+    },
+    "placeholder": {
+      "emails": "Add people by email…",
+      "external": "Add teams, people or emails…",
+      "org": "Add teams or people…"
+    },
+    "team": "Team",
+    "teams": "Teams",
+    "invite": "Invite {email}",
+    "add": "Add {email}",
+    "outside": " (outside {org})",
+    "peopleIn": "People in {org}",
+    "noOneElse": "No one else is in {org} yet. ",
+    "invitePeople": "Invite people ↗",
+    "everyoneInOrgAdded": "Everyone in {org} is already added.",
+    "thatsYou": "That's you",
+    "onlyPeopleIn": "Only people in {org}",
+    "noMatches": "No matches",
+    "everyoneAdded": "Everyone you can add is already added.",
+    "truncated": "Showing the first {count} people.",
+    "suggestions": "Suggestions",
+    "notAdded": "Not added: {list}",
+    "ariaLabel": "Recipients",
+    "checking": "Checking…",
+    "unknownTeam": "Unknown team",
+    "personNotLoaded": "Couldn't load name",
+    "loading": "Loading…",
+    "remove": "Remove {name}",
+    "removePerson": "Remove person",
+    "outsideOrg": "Outside {org}",
+    "removeTooltip": "Remove",
+    "more": "+{count} more",
+    "sharedWith": "Shared with",
+    "whoCanUseIt": "Who can use it",
+    "reason": {
+      "notEmail": "not an email",
+      "self": "that's you",
+      "notInOrg": "not in {org}",
+      "uncheckedUnreachable": "couldn't check who is in {org}, try again",
+      "uncheckedRefused": "MindsHub refused to check who is in {org}",
+      "uncheckedThrottled": "MindsHub is limiting requests, try again in a minute"
+    }
+  },
+  "skillCard": {
+    "noContent": "_No content._",
+    "skill": "Skill",
+    "downloaded": "Downloaded",
+    "savedShared": "Saved and shared with everyone",
+    "savedToSkills": "Saved to your skills",
+    "noPermission": "You do not have permission to replace this shared skill.",
+    "verifyFailed": "Could not verify permission to replace this shared skill. Try again.",
+    "sharingKept": "Saved over the existing skill. Who can use it didn't change: set it on the skill's page.",
+    "saveFailed": "Could not save skill.",
+    "saved": "Saved",
+    "draft": "Draft · not saved",
+    "download": "Download skill",
+    "saving": "Saving…",
+    "readOnly": "Read only",
+    "save": "Save skill"
+  },
+  "skillDetail": {
+    "you": "You",
+    "unknown": "Unknown",
+    "audienceAriaLabel": "Shared with: {names}. Show everyone",
+    "allProjects": "All projects",
+    "disabledForEveryone": "Disabled for everyone",
+    "disabled": "Disabled",
+    "actions": "Skill actions",
+    "details": "Details",
+    "project": "Project",
+    "everyone": "Everyone",
+    "builtIn": "Built-in",
+    "owner": "Owner",
+    "updated": "Updated",
+    "instructions": "Instructions",
+    "noInstructions": "This skill has no instructions yet.",
+    "addInstructions": "Add instructions"
+  },
+  "skillModal": {
+    "noEditPermission": "You do not have permission to edit this shared skill.",
+    "unknownError": "unknown error",
+    "shareUpdateFailed": "Skill saved, but sharing couldn't be updated: {reason}.",
+    "shareCreateFailed": "Skill created, but it couldn't be shared: {reason}. You can share it from the skill's menu.",
+    "editTitle": "Edit Skill",
+    "addTitle": "Add a Skill",
+    "subtitle": "Write a name, description, and instructions for the skill.",
+    "ownSharedChangeNote": "It's shared, so your changes reach everyone it's shared with at their next answer.",
+    "label": "Label",
+    "description": "Description",
+    "descriptionPlaceholder": "Generate weekly status reports from recent work. Use when asked for updates or progress summaries.",
+    "instructionsPlaceholder": "Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff...",
+    "settings": "Skill settings",
+    "ownerOnlyHint": "Only the owner can change who can use it",
+    "cancel": "Cancel",
+    "retrySharing": "Retry sharing",
+    "save": "Save",
+    "create": "Create"
+  },
+  "skills": {
+    "sharing": {
+      "updated": "Updated who can use {name}.",
+      "alwaysOnDetail": "It's part of every task, and only its owner can change it.",
+      "readOnlyOrgNote": "You can use it but can't change it."
+    },
+    "sharedSkillNote": "This skill is shared with you and can't be changed here.",
+    "lockedHint": {
+      "sharedWithYou": "Shared with you",
+      "adminOrCreator": "Admin or creator"
+    },
+    "readOnly": {
+      "builtin": "Built-in skills are read only.",
+      "other": "Read only — only the creator or an organization admin can change this skill."
+    },
+    "switch": {
+      "on": "Turn on: Anton can use this skill",
+      "off": "Turn off: Anton won't use this skill",
+      "onForMe": "Turn on for me: Anton can use this skill in your tasks",
+      "offForMe": "Turn off for me: Anton won't use this skill in your tasks",
+      "disabledForEveryoneHint": "Disabled for everyone by an editor",
+      "noPermission": "You do not have permission to enable or disable this skill.",
+      "ownSharedHint": "{label}. Turning it on or off changes it for everyone it's shared with."
+    },
+    "updatedAge": "Updated {age}",
+    "sharedBy": "Shared by {email}",
+    "sharedByPrefix": "Shared by {email}. ",
+    "upload": {
+      "failed": "Could not upload skill.",
+      "title": "Upload Skill Files",
+      "subtitle": "Upload a .md or .skill file to import a skill.",
+      "sizeKb": "{size} KB",
+      "dropHint": "Drag and drop or click to upload",
+      "requirements": "File requirements",
+      "requirementMd": ".md or .skill file must contain skill name and description formatted in YAML",
+      "requirementZip": ".zip file must include a SKILL.md file",
+      "uploading": "Uploading…",
+      "upload": "Upload"
+    },
+    "create": {
+      "write": "Write Skill Instructions",
+      "cowork": "Create With {product}",
+      "coworkPrefill": "Let's create a skill together using your /skill-creator skill. First ask me what the skill should do.",
+      "upload": "Upload a skill",
+      "button": "Create skill"
+    },
+    "sort": {
+      "name": "Name",
+      "recent": "Recent"
+    },
+    "toast": {
+      "createdShared": "Created and shared {name}.",
+      "savedUpdatedSharing": "Saved {name} and updated who can use it.",
+      "savedSharedEveryone": "Saved and shared {name} with everyone.",
+      "savedStoppedSharing": "Saved {name} and stopped sharing it.",
+      "saved": "Saved {name}.",
+      "removed": "Removed {name}.",
+      "removeFailed": "Could not remove skill.",
+      "sharedEveryone": "Shared {name} with everyone.",
+      "stoppedSharing": "Stopped sharing {name}.",
+      "updateFailed": "Could not update skill.",
+      "onForEveryone": "Turned {name} on for everyone.",
+      "offForEveryone": "Turned {name} off for everyone."
+    },
+    "menu": {
+      "disableEveryone": "Disable for everyone",
+      "enableEveryone": "Enable for everyone",
+      "tryInChat": "Try in chat",
+      "edit": "Edit",
+      "noEditPermission": "You do not have permission to edit this skill.",
+      "uninstall": "Uninstall",
+      "noUninstallPermission": "You do not have permission to uninstall this skill."
+    },
+    "sharedAriaLabel": "Shared: {name}",
+    "moreActionsFor": "More actions for {name}",
+    "moreActions": "More actions",
+    "title": "Skills",
+    "editNamed": "Edit {name}",
+    "subtitle": "Extend {product}'s capabilities with task-specific skills",
+    "searchPlaceholder": "Search skills",
+    "countFiltered": "{shown} of {total} skills",
+    "count": "{count, plural, one {# skill} other {# skills}}",
+    "sharingSettings": "sharing settings",
+    "empty": {
+      "title": "No saved skills yet",
+      "description": "Write a skill, upload a SKILL.md, or ask {product} to make one.",
+      "action": "Write your first skill"
+    },
+    "remove": {
+      "title": "Remove skill \"{name}\"?",
+      "ownSharedNote": "It's shared, so everyone it's shared with loses it too."
+    },
+    "disableEveryone": {
+      "title": "Turn off {name} for everyone it's shared with?",
+      "message": "Anton won't use it in anyone's tasks until an editor turns it back on."
+    }
+  },
+  "connections": {
+    "connect": "Connect",
+    "sortEngine": "Engine",
+    "countFiltered": "{shown} of {total} connections",
+    "count": "{count, plural, one {# connection} other {# connections}}",
+    "drive": {
+      "noAccountEmail": "No account email on file for this connection — try reconnecting.",
+      "pickerFailed": "Could not open the Drive picker.",
+      "title": "Drive files",
+      "intro": "This connection can only read files it created itself. Select any files below — including several at once, or whole Shared Drives — to grant access to them too.",
+      "waiting": "Opened in your browser — pick your files there, then come back. Confirming access can take a few seconds after you return.",
+      "select": "Select files from Google Drive",
+      "failed": "Google didn't actually grant access to {count, plural, one {this file} other {these files}} — try picking {count, plural, one {it} other {them}} again:",
+      "noFiles": "No files selected.",
+      "granted": "Granted access to {count, plural, one {# file} other {# files}}:"
+    },
+    "reconnectRequired": "Reconnection required",
+    "expired": {
+      "own": "Access for this connection has expired or was revoked. Reconnect to restore access, or disconnect it from its card.",
+      "shared": "Access for this connection has expired or was revoked. Whoever shared it with you can reconnect it.",
+      "operator": "Access for this connection has expired or was revoked. Your operator can reconnect it."
+    },
+    "sharedNote": "This connection is shared with you and can't be changed here.",
+    "operatorNote": "Your operator provides this connection, and it can't be changed here.",
+    "lastUpdated": "Last updated",
+    "connected": "Connected",
+    "credentials": "Credentials",
+    "secretSaved": "•••••••• saved",
+    "sharepoint": {
+      "title": "Key and sites",
+      "intro": "Change the app key or the sites this connection may read. {product} checks the key with Microsoft before saving.",
+      "edit": "Edit key and sites"
+    },
+    "toolAccess": {
+      "title": "Tool access",
+      "intro": "What Anton can do with this connection's tools. Changing this doesn't require reconnecting.",
+      "write": "Read and write",
+      "none": "No tool access"
+    },
+    "close": "Close",
+    "reconnectConfirm": {
+      "title": "Reconnect {name}?",
+      "sharepoint": "You'll update its key and sites. It stays as it is until the new key is checked and saved.",
+      "shared": "It's shared, so connect the same account to update it in place for everyone it's shared with.",
+      "own": "The existing connection will be removed and you'll connect it again from scratch."
+    },
+    "reconnect": "Reconnect",
+    "theAgent": "the agent",
+    "title": "Connect Apps and Data",
+    "subtitle": "Connect {agent} to the tools you already use, and automate work there.",
+    "searchPlaceholder": "Search connections",
+    "empty": {
+      "title": "No apps connected yet",
+      "description": "Connectors shape how {agent} works with you. Hook up the apps and databases you already use, and {agent} will automate work there.",
+      "action": "Connect your first app"
+    },
+    "disconnectFailed": "Could not disconnect",
+    "ok": "OK"
+  },
+  "utilities": {
+    "title": "Utility"
+  },
+  "memory": {
+    "title": "Memories",
+    "subtitle": "Profile, rules, and lessons the agent can reuse across tasks.",
+    "scope": {
+      "global": "Global",
+      "deployment": "Deployment",
+      "projectMemory": "Project memory",
+      "project": "Project · {name}"
+    },
+    "readOnly": {
+      "deployment": "Read only. Your operator sets these rules for everyone, and every answer follows them.",
+      "ownAuto": "Yours alone. {product} saves this on its own as you work, so it can't be edited. You can delete it.",
+      "ownAutoEditTitle": "{product} saves this memory on its own, so it can't be edited.",
+      "shared": "Read only. Only the memory author or an organization admin can change it."
+    },
+    "noEditPermission": "You do not have permission to edit this shared memory.",
+    "noDeletePermission": "You do not have permission to delete this shared memory.",
+    "noCategory": "No memory category selected.",
+    "pickProject": "Pick a project for this memory.",
+    "saved": "Saved {name} memory.",
+    "saveFailed": "Could not save memory.",
+    "delete": {
+      "title": "Delete \"{name}\" memory?",
+      "message": "This clears the saved content.",
+      "confirm": "Delete"
+    },
+    "deleted": "Deleted {name} memory.",
+    "deleteFailed": "Could not delete memory.",
+    "resetDone": "Your memory is reset. Nothing learned is left.",
+    "resetFailed": "Could not reset your memory.",
+    "reset": {
+      "title": "Reset your memory?",
+      "message": "This deletes everything {product} has learned for you: your profile, rules and lessons, in every project of yours. Your next question starts with nothing learned. The deployment's rules stay. This can't be undone.",
+      "confirm": "Reset my memory",
+      "busy": "Resetting…"
+    },
+    "empty": "No memory entries found.",
+    "selectHint": "Select a memory entry to inspect it.",
+    "active": "· active"
+  },
+  "publish": {
+    "title": "Share",
+    "subtitle": "HTML artifacts the agent can share with Minds credentials.",
+    "sharing": "Sharing…",
+    "sharedUrl": "Shared: {url}",
+    "shared": "Shared.",
+    "failed": "Sharing failed.",
+    "copied": "Copied URL to clipboard.",
+    "copyFailed": "Couldn't copy — select the URL above to copy it manually.",
+    "notReady": "Configure a Minds API key in Settings before sharing.",
+    "copyUrl": "Copy URL",
+    "open": "Open",
+    "empty": "No HTML artifacts found in output folders.",
+    "history": "Share history"
+  },
+  "connectionCard": {
+    "disconnectTitle": "Disconnect {engine}/{name}?",
+    "disconnectShared": "It's shared, so everyone it's shared with loses it too. A new connection can't use its name until your operator stops sharing it.",
+    "customTitle": "{title} (custom connector)",
+    "repairHint": ". Saved by an older version. Disconnect it and connect again.",
+    "reconnectNeeded": "Reconnect needed",
+    "managed": "Managed",
+    "removeDatasource": "{name} will be removed and its stored credentials deleted. Conversations that use it lose access.",
+    "disconnect": "Disconnect",
+    "custom": "Custom",
+    "legacy": "Saved by an older version. Disconnect it and connect again.",
+    "activateLabel": "{action, select, view {View} reconnect {Reconnect} other {Manage}} {title}: {subtitle}{hint}",
+    "removing": "Removing…"
+  },
+  "datasource": {
+    "failed": "That did not work.",
+    "ariaLabel": "{name} connection",
+    "pending": "Checking the connection. Your credentials are stored encrypted; this updates when the check finishes.",
+    "couldNotConnect": "Could not connect",
+    "lastCheckFailed": "The last check did not succeed.",
+    "host": "Host",
+    "port": "Port",
+    "database": "Database",
+    "schema": "Schema",
+    "username": "Username",
+    "certificateTrust": "Certificate trust",
+    "trust": {
+      "prefer": {
+        "label": "Encrypted when the server offers it",
+        "note": "The connection is encrypted when the server supports it, and the server is not identified, so the credentials could reach whoever answered for that address."
+      },
+      "system": {
+        "label": "Public certificate authorities",
+        "note": "The connection is encrypted and the server's certificate and hostname are checked."
+      },
+      "custom_ca": {
+        "label": "A CA certificate you provided",
+        "note": "The connection is encrypted and checked against the certificate authority you provided."
+      },
+      "encrypted": {
+        "label": "Encrypted, certificate not checked",
+        "note": "The connection is encrypted, but the server is not identified, so the credentials could reach whoever answered for that address."
+      },
+      "disabled": {
+        "label": "No encryption",
+        "note": "The connection is not encrypted: the credentials, the queries and the rows they return travel in clear text and can be read by anyone on the path."
+      }
+    },
+    "passwordNote": "The password is held encrypted by the server and is never shown again. Queries run read only.",
+    "working": "Working…",
+    "tryAgain": "Try again",
+    "removeTitle": "Remove {name}?",
+    "removeMessage": "The stored credentials are deleted and conversations that use this connection lose access. You can add it again later."
+  },
+  "connectorPicker": {
+    "category": {
+      "crm": "CRM",
+      "sales-engagement": "Sales Engagement",
+      "enrichment": "Lead Enrichment",
+      "marketing": "Marketing Automation",
+      "analytics": "Product & Web Analytics",
+      "ads": "Advertising",
+      "support": "Support & Helpdesk",
+      "customer-success": "Customer Success",
+      "revenue-intel": "Revenue Intelligence",
+      "communication": "Communication",
+      "productivity": "Productivity & Project Management",
+      "scheduling": "Scheduling",
+      "forms": "Forms",
+      "documents": "Documents & E-Signature",
+      "billing": "Billing & Payments",
+      "accounting": "Accounting",
+      "hr": "HR & People Ops",
+      "files": "Files",
+      "mobility": "Mobility & Delivery",
+      "logistics": "Logistics & Shipping",
+      "ai": "AI APIs",
+      "web-search": "Web Search",
+      "maps": "Maps & Geocoding",
+      "public-data": "Public Data APIs",
+      "engineering": "Engineering & DevOps",
+      "observability": "Observability & Monitoring",
+      "database": "Databases",
+      "vector-db": "Vector Databases",
+      "data": "Data Infrastructure",
+      "cloud": "Cloud Providers",
+      "other": "Other"
+    },
+    "buildCustom": "Build a custom connector",
+    "buildCustomDescription": "Connect a system that isn't listed. Anton sets it up with you.",
+    "loadFailed": "Failed to load connectors",
+    "title": "Connectors Directory",
+    "searchPlaceholder": "Search connectors — gmail, postgres, slack…",
+    "searchAriaLabel": "Search connectors",
+    "filterBy": "Filter by",
+    "allCategories": "All categories",
+    "sortBy": "Sort by",
+    "byCategory": "By category",
+    "byName": "Name (A–Z)",
+    "cloudNote": {
+      "before": "More connectors are on the way here. The rest of them work today in the",
+      "link": "Cowork Desktop App",
+      "after": "."
+    },
+    "loading": "Loading connectors…",
+    "noMatchQuery": "No connectors match “{query}”",
+    "buildDescription": "Anton can build one with you: it asks how the system is reached, then sets up and tests the connection.",
+    "buildFor": "Build a custom connector for “{query}”",
+    "noMatchInCategory": {
+      "before": "No connectors in this category match ",
+      "after": "."
+    },
+    "noMatch": {
+      "before": "No connectors match ",
+      "after": "."
+    },
+    "noneAvailable": "No connectors available yet.",
+    "cloudAvailable": "Available here (MindsHub Cloud)",
+    "available": "Available connectors",
+    "featured": "Featured",
+    "desktopOnly": "Connectors available in Cowork Desktop App"
+  },
+  "sharepoint": {
+    "folderListFailed": "This folder could not be listed.",
+    "setup": {
+      "editTitle": "Edit SharePoint connection",
+      "connectTitle": "Connect SharePoint",
+      "subtitle": "{product} checks the key with Microsoft before saving it.",
+      "loadFailed": "The saved connection could not be loaded.",
+      "saveFailed": "SharePoint could not be saved.",
+      "help": "An admin registers an app in Microsoft Entra with the Graph application permission Sites.Selected, grants admin consent, creates a client secret, and gives the app read access to each site listed here.",
+      "steps": "Setup steps",
+      "name": "Connection name",
+      "nameHelp": "Letters and digits, joined by single - or _.",
+      "labelHelp": "A saved label can be changed here but not removed.",
+      "tenantId": "Directory (tenant) ID",
+      "clientId": "Application (client) ID",
+      "clientSecret": "Client secret",
+      "secretSaved": "Saved. Leave empty to keep it.",
+      "sites": "Site addresses",
+      "sitesHelp": "One per line, such as https://contoso.sharepoint.com/sites/team.",
+      "howTo": "How to · SharePoint"
+    },
+    "import": {
+      "title": "Add files from SharePoint",
+      "subtitle": "Copies land at the top of {project}.",
+      "noSites": "This connection names no sites. Edit it in Customize to add one.",
+      "connectionLoadFailed": "This connection could not be loaded.",
+      "noLibraries": "This site has no document libraries.",
+      "librariesFailed": "This site's libraries could not be listed.",
+      "failed": "The import failed.",
+      "connection": "Connection",
+      "site": "Site",
+      "library": "Library",
+      "treeAriaLabel": "SharePoint files and folders",
+      "picked": "{count} of {max} picked. Files inside a picked folder count toward the {max}-file limit too.",
+      "importing": "Importing…",
+      "importInto": "Import into {project}",
+      "collapse": "Collapse {name}",
+      "expand": "Expand {name}",
+      "pick": "Pick {name}",
+      "emptyFolder": "This folder is empty.",
+      "loadMore": "Load more",
+      "imported": "Imported {count, plural, one {# file} other {# files}}.",
+      "skipped": "Skipped {count, plural, one {# item} other {# items}}:",
+      "done": "Done"
+    }
+  },
+  "dataVault": {
+    "howTo": "How to",
+    "formCrashed": "Form panel crashed:",
+    "theProvider": "the provider",
+    "hero": {
+      "authorize": "Authorize with {provider}",
+      "helper": "Opens {provider} authorization in your browser — one click to wire."
+    },
+    "howToLink": "How to?",
+    "pending": {
+      "title": "Checking the connection",
+      "subtitle": "Your credentials are stored encrypted.",
+      "note": "This can take a moment. The result shows up on Connect Apps and Data, where you can retry it if the check does not succeed."
+    },
+    "viewConnections": "View connections",
+    "driveNote": "This connection can access files it created, plus any you pick yourself — use \"Add files from Google Drive\" in a chat's + menu, or \"Select files from Google Drive\" in this connection's settings.",
+    "viewConnectors": "View connectors →",
+    "required": "{field} is required.",
+    "labelPlaceholder": "e.g. prod-db",
+    "unskip": "unskip",
+    "skip": "skip",
+    "skipped": "Skipped — the agent will figure this one out.",
+    "submit": "Submit",
+    "saveChanges": "Save changes",
+    "howToTitle": "How to · {name}",
+    "recommended": "Recommended",
+    "otherOptions": "See other options to connect {provider}",
+    "pickMethod": "Pick how you want to connect:",
+    "backToOptions": "Back to options",
+    "saved": {
+      "now": "Saved to the data vault. {product} can now use this connection in tasks.",
+      "can": "Saved to the data vault. {product} can use this connection in tasks.",
+      "agent": "Saved to the data vault. The agent can use this connection in tasks."
+    },
+    "providerConnected": "{provider} connected",
+    "oauth": {
+      "waiting": "Waiting for {provider} sign-in…",
+      "noConfig": "No OAuth configuration for \"{engine}\".",
+      "startFailedServer": "Could not start {provider} sign-in. Is the server running?",
+      "startFailed": "Could not start {provider} sign-in.",
+      "failed": "OAuth flow failed.",
+      "signInFailed": "Sign-in failed. Please try again.",
+      "missingClientId": "Missing OAuth client ID — fill the Client ID field below.",
+      "incompleteMeta": "OAuth metadata is incomplete in the connector spec (auth_url / token_url / scopes).",
+      "noBrowserDesktop": "This connector cannot be authorized in the browser (no connector id). Use the desktop app.",
+      "noBrowser": "This connector cannot be authorized in this web UI.",
+      "startFlowFailed": "Could not start the OAuth flow.",
+      "expired": "The sign-in expired before it completed. Try again.",
+      "timeout": "Timed out waiting for the OAuth sign-in to complete."
+    },
+    "posthog": {
+      "project": "Project {id}",
+      "none": "No PostHog projects are available to this personal API key. Enter a project ID manually or check the key access.",
+      "choose": "Choose the PostHog project to connect.",
+      "label": "PostHog project",
+      "help": "Choose the PostHog project to connect, or type its numeric ID directly in the Project ID field.",
+      "findFailed": "Could not find PostHog projects."
+    },
+    "saveFailed": "Could not save the connection.",
+    "datasource": {
+      "retryNote": "Try again reopens the form. The password has to be entered once more.",
+      "ready": "{name} is ready to use in this workspace."
+    },
+    "staleVersion": "This connection changed since you opened it. Close this and open it again to edit the current version.",
+    "submitFailed": "Could not submit form",
+    "closeForm": "Close form",
+    "testing": "Testing connection…",
+    "connectionFailed": "Connection failed",
+    "dismissStatus": "Dismiss status",
+    "replace": {
+      "title": "This connection already exists",
+      "message": "A {provider} connection with these details already exists. Replace it with this one, or cancel to keep it as it is.",
+      "messageLabeled": "A {provider} connection with these details already exists (“{label}”). Replace it with this one, or cancel to keep it as it is.",
+      "confirm": "Replace"
+    }
+  },
+  "legacyConnect": {
+    "shapeChecked": "Credential shape checked.",
+    "missingFields": "Missing required fields: {fields}",
+    "fieldsPresent": "Required fields are present. Save this connection to make it available to agent tasks.",
+    "validateFailed": "Could not validate datasource credentials.",
+    "saved": "Saved {name} to the data vault.",
+    "saveFailed": "Could not save datasource connection.",
+    "remove": {
+      "title": "Remove datasource?",
+      "message": "{name} will be removed."
+    },
+    "removed": "Removed {name}.",
+    "removeFailed": "Could not remove datasource connection.",
+    "savedConnections": "Saved connections",
+    "ready": "Ready for datasource tools",
+    "savedInVault": "Saved in data vault",
+    "empty": "No data vault connections found.",
+    "authMethod": "Authentication method",
+    "nameLabel": "Connection name (optional)",
+    "namePlaceholder": "connection name (optional)",
+    "required": "Required: {fields}",
+    "none": "none",
+    "noFields": "This engine does not expose editable credential fields in the installed registry.",
+    "checking": "Checking",
+    "checkFields": "Check fields",
+    "saving": "Saving",
+    "saveConnection": "Save connection"
+  }
+}

@@ -8,8 +8,11 @@ import { useMemo } from 'react';
 import { ArrowUpDown } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import Select from '../ui/Select';
+import { useTranslation } from '../../../lib/i18n';
 
-export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
+export function SortPill({ value, onChange, options = [], label: labelProp }) {
+  const { t } = useTranslation('library');
+  const label = labelProp ?? t('collection.sort');
   const items = useMemo(() => options.map((o) => ({ value: o.id, label: o.label })), [options]);
   // An unknown value reads as the first option, as it always has.
   const selected = options.some((o) => o.id === value) ? value : options[0]?.id;

@@ -1,10 +1,11 @@
 import type { CodingEvent, CodingSession } from './api';
 import { isActiveStatus } from './presentation';
+import i18n from '../../lib/i18n';
 
 
 export interface FailureRecovery {
   title: (modelName: string) => string;
-  body: string;
+  body: () => string;
   addCredits?: boolean;
   // A limit on the whole organization does not lift on another model.
   hideModelChoice?: boolean;
@@ -20,34 +21,34 @@ export type BillingTrigger = 'token_limit' | 'included_allowance_exhausted' | 'f
 
 export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   insufficient_credits: {
-    title: (modelName) => `${modelName} needs credits`,
-    body: 'Add credits or choose another model, then continue in this task.',
+    title: (modelName) => i18n.t('composerNotices.insufficientCredits.title', { ns: 'code', model: modelName }),
+    body: () => i18n.t('composerNotices.insufficientCredits.body', { ns: 'code' }),
     addCredits: true,
     billingTrigger: 'token_limit',
   },
   model_authentication_failed: {
-    title: () => 'Your sign-in does not match this server',
-    body: 'Sign in again, or switch back to the environment you signed into, then continue in this task.',
+    title: () => i18n.t('composerNotices.authFailed.title', { ns: 'code' }),
+    body: () => i18n.t('composerNotices.authFailed.body', { ns: 'code' }),
   },
   model_unavailable: {
-    title: (modelName) => `${modelName} is not available`,
-    body: 'Choose another model, then continue in this task.',
+    title: (modelName) => i18n.t('composerNotices.modelUnavailable.title', { ns: 'code', model: modelName }),
+    body: () => i18n.t('composerNotices.modelUnavailable.body', { ns: 'code' }),
   },
   rate_limited: {
-    title: () => 'MindsHub is receiving requests too quickly',
-    body: 'This turn stopped. Wait a moment, then continue in this task.',
+    title: () => i18n.t('composerNotices.rateLimited.title', { ns: 'code' }),
+    body: () => i18n.t('composerNotices.rateLimited.body', { ns: 'code' }),
     hideModelChoice: true,
     temporary: true,
   },
   included_allowance_exhausted: {
-    title: () => 'Your included allowance is used up',
-    body: 'Add credits to continue now, or wait for the allowance to refill, then continue in this task.',
+    title: () => i18n.t('composerNotices.allowanceExhausted.title', { ns: 'code' }),
+    body: () => i18n.t('composerNotices.allowanceExhausted.body', { ns: 'code' }),
     addCredits: true,
     billingTrigger: 'included_allowance_exhausted',
   },
   free_air_daily_spend_fuse_exceeded: {
-    title: () => 'Free MindsHub Air is paused',
-    body: 'It resumes when the daily budget resets. Add credits or choose another model to continue now.',
+    title: () => i18n.t('composerNotices.freeAirPaused.title', { ns: 'code' }),
+    body: () => i18n.t('composerNotices.freeAirPaused.body', { ns: 'code' }),
     addCredits: true,
     billingTrigger: 'free_serving_paused',
   },
@@ -151,8 +152,8 @@ export function failureNotice(failure: TurnFailure | null, modelName: string): C
     key: `failure:${failure.code}`,
     tone: recovery.temporary ? 'warning' : 'danger',
     icon: recovery.temporary ? 'clock' : 'warning',
-    title: sentenceCase(recovery.title(modelName || 'This model')),
-    body: recovery.body,
+    title: sentenceCase(recovery.title(modelName || i18n.t('composerNotices.thisModel', { ns: 'code' }))),
+    body: recovery.body(),
     detail: failure.detail,
     chooseModel: !recovery.hideModelChoice,
     addCredits: recovery.addCredits,
@@ -178,23 +179,23 @@ export function recoveryNotice(
       key: 'recovery:not-started',
       tone: 'danger',
       icon: 'warning',
-      title: 'Task did not start',
-      body: 'Its workspace could not be prepared, so the agent never ran. Start a new task once the problem is fixed.',
+      title: i18n.t('composerNotices.notStarted.title', { ns: 'code' }),
+      body: i18n.t('composerNotices.notStarted.body', { ns: 'code' }),
       detail: failureDetail(session, failureEvent(latestSession, latestError)),
     };
   }
   if (accountFailure(session, latestSession, latestError, recovering)) return null;
   if (recovering || session.run_status === 'recovering') {
-    return { key: 'recovery:reopening', tone: 'neutral', icon: 'refresh', title: 'Reopening task', body: 'Reconnecting to the task files…', reopen: true, reopening: true };
+    return { key: 'recovery:reopening', tone: 'neutral', icon: 'refresh', title: i18n.t('composerNotices.reopening.title', { ns: 'code' }), body: i18n.t('composerNotices.reopening.body', { ns: 'code' }), reopen: true, reopening: true };
   }
   return {
     key: 'recovery:paused',
     tone: 'warning',
     icon: 'refresh',
-    title: 'Task paused',
+    title: i18n.t('composerNotices.paused.title', { ns: 'code' }),
     body: session.computer_status === 'offline'
-      ? 'The task computer disconnected. Your conversation is safe; reopen it there or choose another compatible computer.'
-      : 'The turn stopped before it completed. Reopening restores the working copy; send a message to continue the interrupted work.',
+      ? i18n.t('composerNotices.paused.offlineBody', { ns: 'code' })
+      : i18n.t('composerNotices.paused.interruptedBody', { ns: 'code' }),
     detail: failureDetail(session, failureEvent(latestSession, latestError)),
     reopen: true,
   };
@@ -226,8 +227,8 @@ export function releaseNotice(session: ReleaseState): ComposerNotice | null {
       key: `release-error:${session.workspace_restore_error}`,
       tone: 'danger',
       icon: 'warning',
-      title: 'Could not reopen this task’s workspace',
-      body: `${session.workspace_restore_error}. The task’s work is still saved; try again once that is fixed.`,
+      title: i18n.t('composerNotices.restoreError.title', { ns: 'code' }),
+      body: i18n.t('composerNotices.restoreError.body', { ns: 'code', error: session.workspace_restore_error }),
       dismissible: false,
     };
   }
@@ -237,7 +238,7 @@ export function releaseNotice(session: ReleaseState): ComposerNotice | null {
       tone: 'warning',
       icon: 'warning',
       title: '',
-      body: 'This task’s workspace was put away to save disk. It is rebuilt with all its changes when you continue or review it.',
+      body: i18n.t('composerNotices.released.body', { ns: 'code' }),
       dismissible: true,
     };
   }
@@ -247,7 +248,7 @@ export function releaseNotice(session: ReleaseState): ComposerNotice | null {
       tone: 'warning',
       icon: 'warning',
       title: '',
-      body: `${session.workspace_kept_reason}, so it still uses disk.`,
+      body: i18n.t('composerNotices.kept.body', { ns: 'code', reason: session.workspace_kept_reason }),
       dismissible: true,
     };
   }

@@ -1,0 +1,408 @@
+{
+  "common": {
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "keep": "Conservar",
+    "remove": "Quitar",
+    "time": {
+      "justNow": "justo ahora",
+      "minutesShort": "{count} min",
+      "hoursShort": "{count} h",
+      "daysShort": "{count} d"
+    },
+    "opensInBrowser": "Se abre en tu navegador"
+  },
+  "ui": {
+    "actionBar": {
+      "moreActions": "Más acciones"
+    },
+    "toast": {
+      "dismiss": "Descartar"
+    },
+    "modal": {
+      "close": "Cerrar"
+    },
+    "select": {
+      "placeholder": "Seleccionar…",
+      "selected": "Seleccionado: {label}"
+    },
+    "combobox": {
+      "placeholder": "Seleccionar",
+      "search": "Buscar",
+      "empty": "Sin resultados"
+    },
+    "field": {
+      "optional": "(opcional)"
+    }
+  },
+  "rail": {
+    "context": {
+      "title": "Contexto",
+      "memoryDescriptions": {
+        "lessons": "Lo que el agente aprendió trabajando aquí",
+        "rules": "Instrucciones permanentes que sigue el agente",
+        "profile": "Quién eres y cómo te gusta trabajar"
+      },
+      "attachmentFallbackName": "Adjunto",
+      "attachmentFallbackLower": "adjunto",
+      "fileFallbackName": "archivo",
+      "taskUploadActionsAriaLabel": "Acciones del archivo de la tarea",
+      "instructions": "Instrucciones",
+      "deleteFile": "Eliminar archivo",
+      "deleteFileAriaLabel": "Eliminar {name}",
+      "openNamedInDrive": "Abrir \"{name}\" en Google Drive",
+      "untitled": "sin título",
+      "openInDrive": "Abrir en Google Drive",
+      "removeFromProjectFiles": "Quitar de los archivos del proyecto",
+      "removeFromProjectFilesAriaLabel": "Quitar {name} de los archivos del proyecto",
+      "loadAttachmentsFailed": "No se pudieron cargar los adjuntos",
+      "uploadFailed": "No se pudo subir.",
+      "emptyMemories": "El agente aprende mientras trabajas: los recuerdos aparecerán aquí.",
+      "dropToAdd": "Suelta archivos para agregarlos al proyecto",
+      "projectFiles": "Archivos del proyecto",
+      "addToProject": "Agregar archivos a este proyecto",
+      "uploading": "Subiendo…",
+      "attachFiles": "Adjuntar archivos",
+      "connecting": "Conectando…",
+      "attachDriveFiles": "Adjuntar archivos de Google Drive",
+      "addDriveFilesFailed": "No se pudieron agregar los archivos de Google Drive.",
+      "addFromSharePoint": "Agregar archivos de SharePoint",
+      "emptyProjectFiles": "Agrega archivos para darle contexto al agente.",
+      "truncated": "Esta carpeta tiene más archivos de los que la lista puede mostrar, así que faltan algunos.",
+      "taskUploads": "Archivos de la tarea",
+      "attachToTask": "Adjuntar archivos a esta tarea",
+      "loadingAttachments": "Cargando adjuntos…",
+      "emptyTaskUploads": "Aún no hay archivos adjuntos: haz clic para agregar.",
+      "open": "Abrir",
+      "moveToProjectFiles": "Mover a los archivos del proyecto",
+      "moveFailed": "No se pudo mover el archivo.",
+      "projectMemory": "Memoria del proyecto",
+      "globalMemory": "Memoria global",
+      "projectMemorySubtitle": "Proyecto · {name}",
+      "globalScope": "Global",
+      "emptyMemory": "(memoria vacía)",
+      "memoryPlaceholder": "Contenido de la memoria: ¿qué debe recordar el agente?",
+      "deleteFileTitle": "¿Eliminar \"{name}\"?",
+      "deleteFileMessage": "El archivo se quitará de la carpeta de trabajo del proyecto. Esto no se puede deshacer.",
+      "deleteFileFailed": "No se pudo eliminar el archivo.",
+      "removeDriveFileTitle": "¿Quitar \"{name}\" de los archivos del proyecto?",
+      "removeDriveFileMessage": "Cowork ya no tendrá acceso a este archivo. El archivo en Google Drive no se modifica.",
+      "removeFileFailed": "No se pudo quitar el archivo.",
+      "deleteAttachmentMessage": "El archivo se quitará de los archivos de esta tarea. Los próximos turnos no lo verán. Esto no se puede deshacer.",
+      "deleteAttachmentFailed": "No se pudo eliminar el adjunto."
+    },
+    "progress": {
+      "title": "Progreso"
+    },
+    "card": {
+      "collapse": "Contraer",
+      "expand": "Expandir"
+    },
+    "showMore": {
+      "less": "Mostrar menos",
+      "more": "+ {count} más"
+    },
+    "scheduled": {
+      "title": "Tareas programadas",
+      "empty": "Aún no hay nada programado aquí."
+    },
+    "artifacts": {
+      "title": "Artefactos",
+      "noServableFile": "Este artefacto aún no tiene un archivo disponible.",
+      "openFailed": "No se pudo abrir el archivo.",
+      "preview": "Vista previa",
+      "openInOs": "Abrir en el sistema",
+      "openInNewTab": "Abrir en una pestaña nueva",
+      "download": "Descargar",
+      "deleteFailed": "No se pudo eliminar.",
+      "empty": "Aún no hay artefactos: el agente guardará aquí tableros, informes y conjuntos de datos a medida que los produzca.",
+      "otherInProject": "Otros artefactos de este proyecto",
+      "published": "publicado",
+      "actionsAriaLabel": "Acciones del artefacto",
+      "deleteTitle": "¿Eliminar \"{name}\"?",
+      "deleteFallbackName": "artefacto",
+      "deleteMessage": "El artefacto se eliminará de forma permanente y, si se está compartiendo, primero se dejará de compartir. Esto no se puede deshacer."
+    },
+    "shared": {
+      "loadFailed": "No se pudieron cargar las apps que puedes duplicar.",
+      "duplicateFailed": "No se pudo duplicar esta app.",
+      "duplicate": "Duplicar",
+      "duplicating": "Duplicando…",
+      "duplicated": "Duplicada",
+      "haveCopyAriaLabel": "Tienes una copia de {name}",
+      "haveCopyTitle": "Ya tienes una copia. Elimínala para volver a duplicar la app.",
+      "duplicateAriaLabel": "Duplicar {name}",
+      "duplicatedToast": "Duplicada en este proyecto."
+    }
+  },
+  "confirm": {
+    "title": "¿Estás seguro?",
+    "confirm": "Confirmar"
+  },
+  "taskMenu": {
+    "schedule": "Programar",
+    "turnIntoSkill": "Convertir en habilidad",
+    "moveToProject": "Mover a un proyecto…",
+    "pin": "Fijar",
+    "unpin": "Desfijar",
+    "rename": "Renombrar",
+    "ariaLabel": "Acciones de la tarea"
+  },
+  "themeModal": {
+    "title": "Configuración de pantalla",
+    "subtitle": "Tema y estilo: se aplican al instante",
+    "subtitleThemeOnly": "Tema: se aplica al instante",
+    "theme": "Tema",
+    "light": "Claro",
+    "dark": "Oscuro",
+    "style": "Estilo",
+    "skins": {
+      "normal": "Normal",
+      "8bit": "8-Bit"
+    }
+  },
+  "comingSoon": {
+    "cloudTitle": "Próximamente en Cloud",
+    "unavailableTitle": "Función no disponible",
+    "cloudBodyNamed": "{feature} aún no está disponible en Cloud. Mientras tanto, puedes usarlo en la app de escritorio.",
+    "cloudBody": "Esta función aún no está disponible en Cloud. Mientras tanto, puedes usarla en la app de escritorio.",
+    "unavailableBodyNamed": "{feature} no está disponible en esta implementación.",
+    "unavailableBody": "Esta función no está disponible en esta implementación.",
+    "notNow": "Ahora no",
+    "download": "Descargar la app"
+  },
+  "loadStatus": {
+    "retry": "Reintentar",
+    "failed": "No se pudo cargar: {what}.",
+    "loading": "Cargando {what}…"
+  },
+  "upToDate": "Actualizado",
+  "usageBar": {
+    "hideAllowance": "Ocultar asignación",
+    "hide": "Ocultar"
+  },
+  "diagnostics": {
+    "copy": "Copiar diagnóstico",
+    "copied": "Copiado",
+    "copyFailed": "No se pudo copiar"
+  },
+  "appShell": {
+    "openSidebar": "Abrir barra lateral"
+  },
+  "workspace": {
+    "label": "Espacio de trabajo",
+    "archived": "Ese espacio de trabajo se archivó. Elige otro.",
+    "switchFailed": "No pudimos cambiar de espacio de trabajo. Vuelve a intentarlo.",
+    "manage": "Administrar espacios de trabajo",
+    "triggerAriaLabel": "Espacio de trabajo: {name}"
+  },
+  "workspaceMode": {
+    "code": "Código"
+  },
+  "search": {
+    "label": "Buscar en {product}",
+    "ariaLabel": "Buscar",
+    "types": {
+      "task": "Tareas",
+      "project": "Proyectos",
+      "artifact": "Artefactos",
+      "attachment": "Adjuntos",
+      "schedule": "Programaciones",
+      "pin": "Fijados"
+    },
+    "recentTasks": "Tareas recientes",
+    "failed": "La búsqueda falló.",
+    "searching": "Buscando...",
+    "noResults": "No se encontraron resultados en {product}.",
+    "hint": "Puedes buscar tareas, proyectos, artefactos, adjuntos, programaciones y fijados.",
+    "toNavigate": "para navegar",
+    "toOpen": "para abrir",
+    "toClose": "para cerrar"
+  },
+  "recents": {
+    "untitled": "Sin título",
+    "deleteTask": "Eliminar esta tarea",
+    "searchPlaceholder": "Buscar tareas recientes…",
+    "searchAriaLabel": "Buscar tareas recientes",
+    "count": "{shown} de {total}",
+    "noMatch": "Ninguna tarea coincide.",
+    "empty": "Aún no hay tareas recientes.",
+    "noProject": "(sin proyecto)"
+  },
+  "serverHelp": {
+    "online": {
+      "title": "El backend de {agent} está en ejecución",
+      "subtitle": "Activo en el puerto {port}. El servidor local de Python responde a /health."
+    },
+    "starting": {
+      "title": "El backend de {agent} se está iniciando…",
+      "subtitle": "Iniciando el servidor local de Python. Suele tardar unos segundos; esta ventana mostrará el resultado automáticamente."
+    },
+    "stopping": {
+      "title": "El backend de {agent} se está deteniendo…",
+      "subtitle": "Esperando a que el servidor local de Python termine."
+    },
+    "stopped": {
+      "title": "El backend de {agent} está detenido",
+      "subtitle": "Detuviste el servidor local de Python. Haz clic en \"Iniciar backend\" abajo para volver a levantarlo."
+    },
+    "failed": {
+      "title": "El backend de {agent} no está en ejecución",
+      "subtitle": "El servidor local de Python no se inició. Abajo están el error más reciente y el final del registro del proceso."
+    },
+    "port": "Puerto",
+    "exitCode": "Código de salida",
+    "lastAttempt": "Último intento",
+    "noError": "No se capturó ningún error de inicio específico. Revisa el final del registro abajo: el proceso de Python pudo terminar después de iniciarse correctamente.",
+    "recentLog": "Registro reciente",
+    "noLog": "(aún no se capturó ningún registro)",
+    "actions": {
+      "start": "Iniciar backend",
+      "starting": "Iniciando…",
+      "restart": "Reiniciar backend",
+      "restarting": "Reiniciando…",
+      "stop": "Detener backend",
+      "stopping": "Deteniendo…"
+    }
+  },
+  "userMenu": {
+    "switchOrgFailed": "No pudimos cambiar de organización. Vuelve a intentarlo.",
+    "changingOrg": "Cambiando de organización",
+    "organization": "Organización",
+    "account": "Cuenta",
+    "settings": "Configuración",
+    "billing": "Facturación y uso",
+    "members": "Miembros",
+    "help": "Ayuda y comentarios",
+    "manageOrg": "Administrar organización",
+    "logout": "Cerrar sesión",
+    "signingOut": "Cerrando sesión…"
+  },
+  "sidebar": {
+    "soon": "Pronto",
+    "renameTask": "Renombrar tarea",
+    "runs": "{count, plural, one {# ejecución} other {# ejecuciones}}",
+    "agentWorking": "{agent} está trabajando en esta tarea",
+    "active": "Activa",
+    "taskMenu": "Menú de la tarea",
+    "scheduledTask": "Tarea programada",
+    "expand": "Expandir barra lateral",
+    "collapse": "Contraer barra lateral",
+    "newTask": "Nueva tarea",
+    "newCodeTask": "Nueva tarea de código",
+    "nav": {
+      "projects": "Proyectos",
+      "scheduled": "Tareas programadas",
+      "artifacts": "Artefactos en vivo",
+      "connectedApps": "Apps y datos conectados",
+      "connectApps": "Conectar apps y datos",
+      "allTasks": "Todas las tareas",
+      "connectors": "Conectores",
+      "skills": "Habilidades",
+      "memories": "Memorias",
+      "skillsLibrary": "Biblioteca de habilidades",
+      "compare": "Comparar modelos"
+    },
+    "agent": "Agente",
+    "pinned": "Fijadas",
+    "viewAllTasks": "Ver todas las tareas",
+    "viewAll": "Ver todo →",
+    "loadingTasks": "Cargando tareas",
+    "loadFailed": "No se pudieron cargar tus tareas.",
+    "noTasks": "Aún no hay tareas",
+    "showMore": "Mostrar más",
+    "update": {
+      "manualTooltip": "Hay una nueva versión de {product} disponible: descarga el instalador, cierra la app y {step}",
+      "manualTooltipVersion": "Hay una nueva versión de {product} disponible ({version}): descarga el instalador, cierra la app y {step}",
+      "openToUpdate": "ábrela para actualizar",
+      "dismiss": "Descartar aviso de actualización"
+    },
+    "status": {
+      "details": "Estado del backend: haz clic para ver detalles",
+      "backend": "backend ·",
+      "starting": "iniciando",
+      "stopping": "deteniéndose",
+      "offline": "sin conexión"
+    },
+    "settings": "Configuración",
+    "openSettings": "Abrir configuración"
+  },
+  "mobile": {
+    "tasks": "Tareas",
+    "titles": {
+      "newTaskIn": "Nueva tarea · {project}",
+      "conversation": "Conversación",
+      "scheduled": "Programadas",
+      "connect": "Conectar"
+    },
+    "closeMenu": "Cerrar menú",
+    "openMenu": "Abrir menú",
+    "switchToLight": "Cambiar a modo claro",
+    "switchToDark": "Cambiar a modo oscuro",
+    "inProject": "en {project}",
+    "newProject": "Nuevo proyecto",
+    "closeCreateMenu": "Cerrar menú de creación",
+    "createNew": "Crear nuevo",
+    "chat": "Chat",
+    "chatSubtitle": "Inicia o continúa una conversación",
+    "noProjects": "Aún no hay proyectos.",
+    "tapToStart": "Toca para empezar a chatear",
+    "taskCount": "{count, plural, one {# tarea} other {# tareas}}",
+    "noScheduled": "No hay tareas programadas.",
+    "schedule": "Programación",
+    "noArtifacts": "No hay artefactos en vivo.",
+    "viewAllArtifacts": "Ver todos los artefactos",
+    "total": "{count} en total",
+    "noTasks": "Aún no hay tareas.",
+    "untitledTask": "Tarea sin título",
+    "seeAllTasks": "Ver todas las tareas"
+  },
+  "dispatch": {
+    "qrAriaLabel": "Código de vinculación decorativo",
+    "defaultAgent": "el agente",
+    "title": "Dispatch",
+    "heading": "Vincula la app móvil de {product}",
+    "body": "Usa la app móvil para hablar con {agent} mientras trabaja desde tu computadora. Escanea el código para descargarla en tu teléfono.",
+    "signedIn": "Ya inicié sesión en mi teléfono",
+    "comingSoon": "Próximamente",
+    "later": "Configurar más tarde"
+  },
+  "tasks": {
+    "sort": {
+      "recent": "Recientes",
+      "name": "Nombre (A–Z)",
+      "project": "Proyecto"
+    },
+    "allProjects": "Todos los proyectos",
+    "subtitle": "Todas las conversaciones de todos los proyectos. Ordena, filtra y entra directo.",
+    "searchPlaceholder": "Buscar tareas",
+    "countFiltered": "{shown} de {total} tareas",
+    "noMatch": "Ninguna tarea coincide con estos filtros.",
+    "clearFilters": "Borrar filtros",
+    "emptyDescription": "Inicia una conversación desde la pantalla de inicio: todos los chats aparecen aquí."
+  },
+  "home": {
+    "greetingFallback": "Vamos a tachar algo de tu lista",
+    "active": "Activas",
+    "clearActive": "Borrar activas",
+    "connectProvider": {
+      "title": "Conecta un proveedor para empezar a chatear",
+      "operatorTitle": "Se requiere configurar un proveedor",
+      "body": "Empieza con MindsHub y obtén una asignación gratuita en MindsHub Air; luego paga según lo que uses. O agrega tu propia clave de API (Anthropic, OpenAI o cualquier endpoint compatible con OpenAI) en Configuración.",
+      "operatorBody": "Pide a tu operador que configure el proveedor de modelos antes de iniciar una tarea.",
+      "startFree": "Empezar gratis"
+    },
+    "handoffHint": "Edita este prompt y envíalo cuando estés listo."
+  },
+  "logout": {
+    "title": "¿Cerrar sesión en {product}?",
+    "messageWebMindsHub": "Esto cierra tu sesión en Cowork. Tendrás que volver a iniciar sesión con MindsHub para seguir usándolo.",
+    "messageWeb": "Esto cierra tu sesión en {product}. Tendrás que volver a iniciar sesión para seguir usándolo.",
+    "messageDesktop": "Esto cierra tu sesión de MindsHub y quita las claves de API de proveedores de IA guardadas en Cowork para esta cuenta, en cada organización antes de su próximo uso. Los proyectos, archivos, apps conectadas y conexiones de datos, incluidas sus contraseñas guardadas, se quedan aquí. Tendrás que volver a iniciar sesión para seguir usando Cowork.",
+    "paneSubtitle": "Cierra tu sesión de MindsHub y quita las claves de API de proveedores de IA guardadas en Cowork para esta cuenta. Una organización que no esté abierta se limpia antes de su próximo uso. Los proyectos, archivos, apps conectadas y conexiones de datos, incluidas sus contraseñas guardadas, se quedan en este dispositivo.",
+    "tooltip": "Cerrar sesión y quitar las claves de API guardadas",
+    "confirm": "Cerrar sesión",
+    "failed": "No se pudo terminar de cerrar sesión. Vuelve a intentarlo.",
+    "waitNote": "Todavía estamos cerrando tu sesión. Puedes cerrar esto: termina por sí solo."
+  }
+}

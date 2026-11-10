@@ -57,6 +57,7 @@ import { useRecipientTokens } from '../hooks/useRecipientTokens';
 import { LOAD_STATUS } from '../lib/sharingContract';
 import { useAccountUser } from '../hooks/useAccountUser';
 import { RecipientRow, RecipientTile, recipientItems } from './RecipientRows';
+import i18n, { formatList, useTranslation } from '../../lib/i18n';
 
 const SEPARATORS = /[\s,;]+/;
 // The dropdown's tallest, and the least room below the input before it opens
@@ -71,29 +72,25 @@ const SKELETON_TILE = 'inline-grid shrink-0 place-items-center w-[28px] h-[28px]
 /* What the field says when a MindsHub read got no answer, by why
    (mindsHubFailureText): an outage, a refusal, and a throttle, which reads
    MINDSHUB_THROTTLED. Retry shows unless MindsHub refused. */
-const DIRECTORY_FAILED = Object.freeze({
-  unreachable: "Couldn't load your organization's directory",
-  refused: "MindsHub refused to list your organization's people",
+const failedText = (group) => ({
+  unreachable: i18n.t(`recipients.${group}.unreachable`, { ns: 'library' }),
+  refused: i18n.t(`recipients.${group}.refused`, { ns: 'library' }),
 });
-const TEAMS_FAILED = Object.freeze({
-  unreachable: "Couldn't load your teams. Try again later.",
-  refused: 'MindsHub refused to list your teams.',
-});
-const NAMES_FAILED = Object.freeze({
-  unreachable: "Couldn't load some names.",
-  refused: 'MindsHub refused to name some people.',
-});
+const DIRECTORY_FAILED = () => failedText('directoryFailed');
+const TEAMS_FAILED = () => failedText('teamsFailed');
+const NAMES_FAILED = () => failedText('namesFailed');
 
 /* A Retry link inside the field's notes. `keepFocus` keeps the input focused
    when it sits in the dropdown. */
 function RetryLink({ onClick, keepFocus = false }) {
+  const { t } = useTranslation('library');
   return (
     <button
       type="button"
       onMouseDown={keepFocus ? (e) => e.preventDefault() : undefined}
       onClick={onClick}
       className="shrink-0 bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
-    >Retry</button>
+    >{t('recipients.retry')}</button>
   );
 }
 
@@ -167,6 +164,7 @@ export function RecipientField({
   label,
   autoFocus = false,
 }) {
+  const { t } = useTranslation('library');
   const teamIds = value?.teamIds || EMPTY_VALUE.teamIds;
   const userIds = value?.userIds || EMPTY_VALUE.userIds;
   const emails = value?.emails || EMPTY_VALUE.emails;
@@ -398,11 +396,11 @@ export function RecipientField({
   };
 
   const fieldLabel = label || (emailsOnly
-    ? 'Add people by email'
-    : (allowExternal ? 'Add teams, people or emails' : 'Add teams or people'));
+    ? t('recipients.label.emails')
+    : (allowExternal ? t('recipients.label.external') : t('recipients.label.org')));
   const placeholder = emailsOnly
-    ? 'Add people by email…'
-    : (allowExternal ? 'Add teams, people or emails…' : 'Add teams or people…');
+    ? t('recipients.placeholder.emails')
+    : (allowExternal ? t('recipients.placeholder.external') : t('recipients.placeholder.org'));
   const summary = recipientSummary({ teamIds, userIds, emails }, { orgName, emailsOnly, allowExternal });
 
   // ── The dropdown ──
@@ -426,7 +424,7 @@ export function RecipientField({
           <RecipientTile item={{ kind: 'team' }} />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-[13px] font-medium leading-[18px] text-ink" title={option.team.display_name}>{option.team.display_name}</span>
-            <span className="truncate text-[11.5px] leading-[16px] text-ink-3">Team</span>
+            <span className="truncate text-[11.5px] leading-[16px] text-ink-3">{t('recipients.team')}</span>
           </span>
         </li>
       );
@@ -449,8 +447,8 @@ export function RecipientField({
       <li key={option.key} {...rowProps}>
         <RecipientTile item={{ kind: outside ? 'outside' : 'email' }} />
         <span className="min-w-0 flex-1 truncate text-[13px] text-ink" title={option.email}>
-          {outside ? `Invite ${option.email}` : `Add ${option.email}`}
-          {outside && <span className="text-ink-3">{` (outside ${org})`}</span>}
+          {outside ? t('recipients.invite', { email: option.email }) : t('recipients.add', { email: option.email })}
+          {outside && <span className="text-ink-3">{t('recipients.outside', { org })}</span>}
         </span>
       </li>
     );
@@ -460,8 +458,8 @@ export function RecipientField({
   options.forEach((option, i) => {
     const prev = options[i - 1];
     if (!prev || prev.kind !== option.kind) {
-      if (option.kind === 'team') listChildren.push(groupHeader('h-team', 'Teams'));
-      if (option.kind === 'person') listChildren.push(groupHeader('h-person', `People in ${org}`));
+      if (option.kind === 'team') listChildren.push(groupHeader('h-team', t('recipients.teams')));
+      if (option.kind === 'person') listChildren.push(groupHeader('h-person', t('recipients.peopleIn', { org })));
     }
     listChildren.push(optionRow(option, i));
   });
@@ -470,26 +468,26 @@ export function RecipientField({
     groupHeader(`${key}-h`, title),
     ...widths.map((w, i) => <SkeletonRow key={`${key}-${i}`} width={w} />),
   ];
-  if (teamsLoading && !query) listChildren.unshift(...skeletons('st', 'Teams', ['38%']));
-  if (directoryLoading) listChildren.push(...skeletons('sp', `People in ${org}`, ['42%', '30%', '36%']));
+  if (teamsLoading && !query) listChildren.unshift(...skeletons('st', t('recipients.teams'), ['38%']));
+  if (directoryLoading) listChildren.push(...skeletons('sp', t('recipients.peopleIn', { org }), ['42%', '30%', '36%']));
   // The directory answered but offers nobody: say so under its title rather
   // than drop the group, which reads as "people aren't supported here".
   const peopleEmpty = !emailsOnly && !query && directoryReady && peopleOptions.length === 0;
   if (peopleEmpty) {
-    listChildren.push(groupHeader('h-person-empty', `People in ${org}`));
+    listChildren.push(groupHeader('h-person-empty', t('recipients.peopleIn', { org })));
     listChildren.push(
       <li key="person-empty" role="presentation" className="px-2 py-1.5 font-body text-xs text-ink-3">
         {directoryPeople.length === 0 ? (
           <>
-            {`No one else is in ${org} yet. `}
+            {t('recipients.noOneElse', { org })}
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { openExternal(MINDS_MEMBERS_URL); }}
               className="bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
-            >Invite people ↗</button>
+            >{t('recipients.invitePeople')}</button>
           </>
-        ) : `Everyone in ${org} is already added.`}
+        ) : t('recipients.everyoneInOrgAdded', { org })}
       </li>,
     );
   }
@@ -498,20 +496,20 @@ export function RecipientField({
   if (!emailsOnly && directory.status === LOAD_STATUS.ERROR) {
     footer = (
       <div role="alert" className="flex items-center justify-between gap-3 py-2 px-2 font-body text-xs text-ink-3">
-        <span className="min-w-0">{mindsHubFailureText(directory.failure, DIRECTORY_FAILED)}</span>
+        <span className="min-w-0">{mindsHubFailureText(directory.failure, DIRECTORY_FAILED())}</span>
         {mindsHubRetryHelps(directory.failure) && <RetryLink onClick={directory.retry} keepFocus />}
       </div>
     );
   }
   const teamsUnreachable = !emailsOnly && teamsState.status === LOAD_STATUS.READY && !teamsState.reachable;
-  const statusLine = typedIsOwn ? "That's you"
-    : showOrgOnlyHint ? `Only people in ${org}`
-    : nothingFound ? 'No matches'
+  const statusLine = typedIsOwn ? t('recipients.thatsYou')
+    : showOrgOnlyHint ? t('recipients.onlyPeopleIn', { org })
+    : nothingFound ? t('recipients.noMatches')
       : (!query && !peopleEmpty && !directoryLoading && !teamsLoading && options.length === 0 && directory.status !== LOAD_STATUS.ERROR && !teamsUnreachable)
-        ? 'Everyone you can add is already added.'
+        ? t('recipients.everyoneAdded')
         : null;
   const truncatedNote = !emailsOnly && directoryReady && directory.truncated
-    ? `Showing the first ${directory.people.length} people.`
+    ? t('recipients.truncated', { count: directory.people.length })
     : null;
 
   const menu = menuOpen && (
@@ -534,12 +532,12 @@ export function RecipientField({
     >
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {listChildren.length > 0 && (
-          <ul id={listId} role="listbox" aria-label="Suggestions" className="m-0 flex list-none flex-col p-0">
+          <ul id={listId} role="listbox" aria-label={t('recipients.suggestions')} className="m-0 flex list-none flex-col p-0">
             {listChildren}
           </ul>
         )}
         {teamsUnreachable && !query && (
-          <div role="status" className="py-2 px-2 font-body text-xs text-ink-3">{mindsHubFailureText(teamsState.failure, TEAMS_FAILED)}</div>
+          <div role="status" className="py-2 px-2 font-body text-xs text-ink-3">{mindsHubFailureText(teamsState.failure, TEAMS_FAILED())}</div>
         )}
         {statusLine && (
           <div role="status" className="py-2 px-2 font-body text-xs text-ink-3">{statusLine}</div>
@@ -603,12 +601,12 @@ export function RecipientField({
 
       {notAdded.length > 0 && (
         <span className="mt-[6px] font-body text-xs text-danger" role="alert">
-          {`Not added: ${notAdded.map((n) => `${n.raw} (${n.reason})`).join(', ')}`}
+          {t('recipients.notAdded', { list: formatList(notAdded.map((n) => `${n.raw} (${n.reason})`)) })}
         </span>
       )}
       {known.failure && (
         <span className="mt-[6px] font-body text-xs text-ink-3" role="status">
-          {mindsHubFailureText(known.failure, NAMES_FAILED)}
+          {mindsHubFailureText(known.failure, NAMES_FAILED())}
           {mindsHubRetryHelps(known.failure) && (
             <>
               {' '}
@@ -620,13 +618,13 @@ export function RecipientField({
       {rows.length > 0 && (
         <ul
           ref={listRef}
-          aria-label="Recipients"
+          aria-label={t('recipients.ariaLabel')}
           className="m-0 mt-2 flex min-w-0 max-h-[206px] list-none flex-col overflow-y-auto rounded-card-row border border-solid border-line bg-surface py-[2px] px-0"
         >
           {rows.map((item) => <RecipientRow key={item.key} item={item} onRemove={() => removeItem(item)} />)}
         </ul>
       )}
-      <span className="mt-[6px] font-body text-xs text-ink-3" data-testid="recipient-summary" aria-live="polite">{held ? 'Checking…' : summary}</span>
+      <span className="mt-[6px] font-body text-xs text-ink-3" data-testid="recipient-summary" aria-live="polite">{held ? t('recipients.checking') : summary}</span>
     </div>
   );
 }

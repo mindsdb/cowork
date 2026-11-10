@@ -11,6 +11,11 @@
 // matches nothing lands in the "Other" bucket rather than a wrong group, and an
 // option carrying an explicit `maker` key skips the inference entirely.
 
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.modelCatalog.${key}`, { ns: 'projects', ...vars });
+
 // Declaration order = group display order in the picker (mirrors the
 // design: MindsHub first, then the frontier labs, Other last).
 const MAKERS = [
@@ -45,10 +50,19 @@ export const MODEL_ROUTER_LABEL = 'Model Router';
 // The same row under an operator's picker (lib/modelPicker), which has no
 // account Settings to route by: the question runs on the operator's models.
 export const OPERATOR_DEFAULT_LABEL = 'Operator default';
+/** MODEL_ROUTER_LABEL in the viewer's language. */
+export function modelRouterLabel() {
+  return tr('modelRouter.label');
+}
+/** OPERATOR_DEFAULT_LABEL in the viewer's language. */
+export function operatorDefaultLabel() {
+  return tr('operatorDefault');
+}
+/* `name` and `desc` are read when shown, so they follow the language. */
 export const MODEL_ROUTER = {
   id: MODEL_ROUTER_ID,
-  name: MODEL_ROUTER_LABEL,
-  desc: "Routes to this account's configured model automatically",
+  get name() { return modelRouterLabel(); },
+  get desc() { return tr('modelRouter.desc'); },
 };
 
 // ─── Picker sections ────────────────────────────────────────────────
@@ -255,6 +269,11 @@ export const MODEL_RESTRICTED_REASON = 'model_restricted';
 /* The row tooltip for a restricted model. */
 export const RESTRICTED_MODEL_TITLE = 'An admin in your organization restricted this model.';
 
+/** RESTRICTED_MODEL_TITLE in the viewer's language. */
+export function restrictedModelTitle() {
+  return tr('restricted.title');
+}
+
 /* Every `disabled_reason` the renderer recognizes on a MindsHub model row: an
    admin's model rule, the empty wallet, and the spent allowance. */
 const KNOWN_MODEL_DISABLED_REASONS = new Set([
@@ -321,9 +340,9 @@ export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
 export function unavailableModelFields(modelEnabled, modelDisabledReasons, id) {
   if (!isModelLocked(modelEnabled, id)) return {};
   if (isModelRestricted(modelEnabled, modelDisabledReasons, id)) {
-    return { disabled: true, restricted: true, tag: 'Restricted', title: RESTRICTED_MODEL_TITLE };
+    return { disabled: true, restricted: true, tag: tr('restricted.tag'), title: restrictedModelTitle() };
   }
-  return { disabled: true, locked: true, tag: 'Needs credits' };
+  return { disabled: true, locked: true, tag: tr('needsCredits') };
 }
 
 /** True when `id` is a frozen version of some other alias. */

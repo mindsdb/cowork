@@ -43,7 +43,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
 import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
-import { organizationLabel } from '../../../shared/minds-orgs';
+import { organizationLabel, orgDisplayName } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened } from '../lib/analytics';
 import { openExternal } from '../../platform/host';
@@ -54,22 +54,23 @@ import {
   MINDS_SUPPORT_URL,
   consoleUrlFor,
 } from '../../lib/mindsUrls';
+import { sharedTranslator, useTranslation } from '../../lib/i18n';
 
 const icon = (I) => <Icon of={I} size={14} />;
 
 // Right-aligned ↗ on items that leave the app for the OS browser.
 const EXTERNAL_HINT = <Icon of={ArrowUpRight} size={12} />;
-const OPENS_IN_BROWSER = 'Opens in your browser';
 
 // `beforeOpen` runs just before the jump out, for the one destination that is
 // measured (ENG-1533). Per-item rather than inside this helper: Members and
 // Help & Feedback are not billing, and stamping them with a billing event to
 // save a parameter is how an event stops meaning its name.
-const externalItem = (Ico, label, url, beforeOpen) => ({
+// `t` comes from the caller's render so the tooltip follows the language.
+const externalItem = (t, Ico, label, url, beforeOpen) => ({
   icon: icon(Ico),
   label,
   hint: EXTERNAL_HINT,
-  title: OPENS_IN_BROWSER,
+  title: t('common.opensInBrowser'),
   onClick: () => {
     beforeOpen?.();
     openExternal(url);
@@ -103,6 +104,7 @@ function Avatar({ user }) {
 }
 
 export function UserMenu({ user, onOpenSettings }) {
+  const { t } = useTranslation('shell');
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef(null);
@@ -123,7 +125,7 @@ export function UserMenu({ user, onOpenSettings }) {
   // `Personal` whether or not the listing has landed. Reading `displayName`
   // directly here is what made the row paint `Personal` and then swap to auth's
   // long `<email>'s organization` (ENG-2109).
-  const activeOrgName = PLATFORM_UI ? organizationLabel(activeOrg) || user.org || null : null;
+  const activeOrgName = PLATFORM_UI ? organizationLabel(activeOrg, sharedTranslator('app')) || orgDisplayName(user.org, sharedTranslator('app')) : null;
   /* Console links say which organization and account they were opened for
      (ENG-3274), so the browser lands on this organization's page rather than
      whatever its own session has active. The listing's id is the one the
@@ -173,7 +175,7 @@ export function UserMenu({ user, onOpenSettings }) {
       return;
     }
     toastManager.add({
-      title: result?.error || 'We could not change organization. Please try again.',
+      title: result?.error || t('userMenu.switchOrgFailed'),
       type: 'danger',
     });
   };
@@ -187,7 +189,7 @@ export function UserMenu({ user, onOpenSettings }) {
   // answer will appear. Labelled for screen readers, which the check is not:
   // the check reads from the row it sits on, where this reports a state.
   const pendingRowHint = (
-    <span role="status" aria-label="Changing organization">
+    <span role="status" aria-label={t('userMenu.changingOrg')}>
       <Spinner className="text-ink-3" />
     </span>
   );
@@ -202,7 +204,7 @@ export function UserMenu({ user, onOpenSettings }) {
   const listedOrgRows = orgs.map((org) => {
     const isActive = org.id === activeOrg?.id;
     const isPending = org.id === pendingOrgId;
-    const label = organizationLabel(org);
+    const label = organizationLabel(org, sharedTranslator('app'));
     return {
       id: `organization-${org.id}`,
       label,
@@ -239,7 +241,7 @@ export function UserMenu({ user, onOpenSettings }) {
 
   const organizationRows = listedOrgRows.length ? listedOrgRows : claimOnlyOrgRow;
   const orgRows = PLATFORM_UI && organizationRows.length ? [
-    { id: 'organization-group', heading: sectionHeading('Organization') },
+    { id: 'organization-group', heading: sectionHeading(t('userMenu.organization')) },
     ...organizationRows,
     { divider: true },
   ] : [];
@@ -263,24 +265,24 @@ export function UserMenu({ user, onOpenSettings }) {
     },
     identity && { divider: true },
     ...orgRows,
-    { id: 'account-group', heading: sectionHeading('Account') },
-    { icon: icon(Settings), label: 'Settings', onClick: onOpenSettings },
+    { id: 'account-group', heading: sectionHeading(t('userMenu.account')) },
+    { icon: icon(Settings), label: t('userMenu.settings'), onClick: onOpenSettings },
     // `nav`, not a paywall trigger (ENG-1533): nothing blocked this user, they
     // went looking. It has to be recorded — it is a real route to the billing
     // page, and a capped user who dismisses the card and uses the menu instead
     // is otherwise invisible — but any upgrade-intent analysis must exclude it.
-    PLATFORM_UI && externalItem(CreditCard, 'Billing & Usage', consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
-    PLATFORM_UI && externalItem(UsersRound, 'Members', consoleLink(MINDS_MEMBERS_URL)),
-    PLATFORM_UI && externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
+    PLATFORM_UI && externalItem(t, CreditCard, t('userMenu.billing'), consoleLink(MINDS_BILLING_URL), () => trackBillingOpened('nav')),
+    PLATFORM_UI && externalItem(t, UsersRound, t('userMenu.members'), consoleLink(MINDS_MEMBERS_URL)),
+    PLATFORM_UI && externalItem(t, CircleHelp, t('userMenu.help'), MINDS_SUPPORT_URL),
     // Creating or leaving an organization is a full console flow, so the menu
     // deep-links out rather than growing a second one that would open a
     // browser anyway. Shown whenever there is an organization to manage.
-    ...(activeOrgName ? [externalItem(Building2, 'Manage organization', consoleLink(MINDS_GENERAL_URL))] : []),
+    ...(activeOrgName ? [externalItem(t, Building2, t('userMenu.manageOrg'), consoleLink(MINDS_GENERAL_URL))] : []),
     // Logout on both shells: Electron clears the refresh token + stored keys via
     // the bridge; web ends the Keycloak browser session (host.logout()). Both
     // funnel through useLogout() and the ConfirmModal below.
     { divider: true },
-    { icon: icon(LogOut), label: 'Logout', danger: true, onClick: () => setLogoutConfirmOpen(true) },
+    { icon: icon(LogOut), label: t('userMenu.logout'), danger: true, onClick: () => setLogoutConfirmOpen(true) },
   ];
 
   const trigger = (
@@ -326,21 +328,21 @@ export function UserMenu({ user, onOpenSettings }) {
         side="top"
         align="start"
         width={230}
-        ariaLabel="Account"
+        ariaLabel={t('userMenu.account')}
       />
       <ConfirmModal
         open={logoutConfirmOpen}
         title={LOGOUT_CONFIRM_COPY.title}
         message={LOGOUT_CONFIRM_COPY.message}
         confirmLabel={LOGOUT_CONFIRM_COPY.confirmLabel}
-        cancelLabel="Cancel"
+        cancelLabel={t('common.cancel')}
         destructive
         busy={loggingOut}
         // Same as the settings Account section: dismissable while the
         // platform finishes.
         dismissableWhileBusy
         note={waitNote}
-        busyLabel="Signing out…"
+        busyLabel={t('userMenu.signingOut')}
         onConfirm={logout}
         onClose={() => setLogoutConfirmOpen(false)}
       />

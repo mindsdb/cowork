@@ -4,6 +4,11 @@
 // plus a little view context, which keeps it directly unit-testable without
 // rendering SettingsView.
 
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.providerStatus.${key}`, { ns: 'projects', ...vars });
+
 /**
  * @typedef {'wallet_empty'
  *   | 'included_allowance_exhausted'
@@ -129,15 +134,25 @@ export const PROBE_RATE_LIMITED_SENTENCE = 'Too many requests too quickly. Wait 
    LLM Providers row and the role-row notice (MindsProbeNotice) both show it. */
 export const PROBE_POLICY_UNAVAILABLE_SENTENCE = 'Billing is temporarily unavailable. Try again in a moment.';
 
+/** PROBE_RATE_LIMITED_SENTENCE in the viewer's language. */
+export function probeRateLimitedSentence() {
+  return tr('probe.rateLimited');
+}
+
+/** PROBE_POLICY_UNAVAILABLE_SENTENCE in the viewer's language. */
+export function probePolicyUnavailableSentence() {
+  return tr('probe.policyUnavailable');
+}
+
 /* The LLM Providers row's one-line error for a refused MindsHub probe, keyed
    by the gateway reason. Shorter than the role-row notice, and it never names
    a refill time: the row has no room to be wrong about one. */
 const PROBE_REASON_ROW_COPY = {
-  wallet_empty: 'No credits available. Add funds to use MindsHub.',
-  included_allowance_exhausted: 'No free MindsHub Air tokens available, and the balance is empty.',
-  free_air_daily_spend_fuse_exceeded: 'Free MindsHub Air is paused right now.',
-  rate_limited: PROBE_RATE_LIMITED_SENTENCE,
-  policy_unavailable: PROBE_POLICY_UNAVAILABLE_SENTENCE,
+  wallet_empty: () => tr('row.walletEmpty'),
+  included_allowance_exhausted: () => tr('row.allowanceExhausted'),
+  free_air_daily_spend_fuse_exceeded: () => tr('row.freeAirPaused'),
+  rate_limited: probeRateLimitedSentence,
+  policy_unavailable: probePolicyUnavailableSentence,
 };
 
 /* Map a raw provider status-detail string to a short, human-readable
@@ -147,28 +162,28 @@ const PROBE_REASON_ROW_COPY = {
    the velocity limit share "HTTP 429" or "HTTP 402", and only the reason says
    which one fired. */
 export function friendlyProviderError(detail, reason = null) {
-  if (reason && PROBE_REASON_ROW_COPY[reason.code]) return PROBE_REASON_ROW_COPY[reason.code];
+  if (reason && Object.hasOwn(PROBE_REASON_ROW_COPY, reason.code)) return PROBE_REASON_ROW_COPY[reason.code]();
   if (!detail) return '';
-  if (detail === 'missing API key') return 'Add an API key on the right.';
-  if (detail === 'missing base URL') return 'Add a base URL on the right.';
+  if (detail === 'missing API key') return tr('missingApiKey');
+  if (detail === 'missing base URL') return tr('missingBaseUrl');
   const m = detail.match(/HTTP (\d{3})/);
   if (m) {
     const code = parseInt(m[1], 10);
-    if (code === 401) return 'Unauthorized — the API key was rejected.';
-    if (code === 403) return 'Forbidden — the API key does not have access.';
-    if (code === 404) return 'Endpoint not found — check the base URL.';
-    if (code === 429) return 'Rate limited — try again in a moment.';
-    if (code >= 500) return `Provider is currently unreachable (HTTP ${code}).`;
-    return `Provider rejected the request (HTTP ${code}).`;
+    if (code === 401) return tr('http.unauthorized');
+    if (code === 403) return tr('http.forbidden');
+    if (code === 404) return tr('http.notFound');
+    if (code === 429) return tr('http.rateLimited');
+    if (code >= 500) return tr('http.unreachable', { code: String(code) });
+    return tr('http.rejected', { code: String(code) });
   }
   if (detail.startsWith('ConnectError') || detail.startsWith('ConnectTimeout')) {
-    return 'Could not reach the provider — network or DNS problem.';
+    return tr('connectError');
   }
   if (detail.startsWith('ReadTimeout') || detail.startsWith('TimeoutException')) {
-    return 'Provider did not respond in time.';
+    return tr('timeout');
   }
   if (detail.startsWith('SSLError') || detail.includes('certificate')) {
-    return 'TLS / certificate problem reaching the provider.';
+    return tr('tls');
   }
   return detail;
 }

@@ -9,6 +9,7 @@ import { getTerminalShellPreference, setTerminalShellPreference } from '../../co
 import { buildModelPickerOptions, withModelPickerFallback } from '../../lib/modelPickerOptions';
 import { displayModelLabel, recommendedModelOptions } from '../../lib/settingsTransform';
 import { Section, SettingsGroup, SettingsSectionPanel } from './settingsLayout';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 export default function CodingAgentSettingsSection({
   settings,
@@ -18,6 +19,7 @@ export default function CodingAgentSettingsSection({
   enabled,
   onEnabledChange,
 }) {
+  const { t } = useTranslation('settingsTools');
   const [engines, setEngines] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -56,7 +58,7 @@ export default function CodingAgentSettingsSection({
         setEngines(nextEngines);
       })
       .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : 'Could not load coding agent options.');
+        if (active) setError(reason instanceof Error ? reason.message : i18n.t('settingsTools:codingAgent.loadFailed'));
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -80,7 +82,7 @@ export default function CodingAgentSettingsSection({
       .catch(() => {
         if (!active) return;
         setShells([]);
-        setShellError('Shell options could not be loaded. New tabs will use Automatic.');
+        setShellError(i18n.t('settingsTools:codingAgent.shellLoadFailed'));
       })
       .finally(() => { if (active) setShellLoading(false); });
     return () => { active = false; };
@@ -90,22 +92,22 @@ export default function CodingAgentSettingsSection({
     value: engine.id,
     label: engine.label,
     disabled: !engine.available,
-    title: engine.available ? undefined : engine.reason || 'Unavailable',
+    title: engine.available ? undefined : engine.reason || t('codingAgent.unavailable'),
   }));
   if (!available) return null;
 
   const accessControl = (
-    <SettingsGroup title="Code Mode">
+    <SettingsGroup title={t('codingAgent.codeModeTitle')}>
       <Section
-        title="Enable Code Mode"
+        title={t('codingAgent.enableCodeMode')}
         subtitle={enabled
-          ? 'Code is available on this computer.'
-          : 'Build, test, and review code with an agent on this computer.'}
+          ? t('codingAgent.enabledSubtitle')
+          : t('codingAgent.disabledSubtitle')}
       >
         <Switch
           checked={enabled}
           onCheckedChange={onEnabledChange}
-          aria-label="Enable Code Mode"
+          aria-label={t('codingAgent.enableCodeMode')}
         />
       </Section>
     </SettingsGroup>
@@ -122,18 +124,18 @@ export default function CodingAgentSettingsSection({
   return (
     <SettingsSectionPanel footer={footer}>
       {accessControl}
-      <SettingsGroup title="Coding agent">
-        <Section title="Agent" subtitle="The default coding agent for new projects and tasks. You can change it when starting a task.">
+      <SettingsGroup title={t('codingAgent.groupTitle')}>
+        <Section title={t('codingAgent.agentTitle')} subtitle={t('codingAgent.agentSubtitle')}>
           <Select
             value={engineId}
             onValueChange={(value) => setSetting('codingAgentEngine', value)}
             options={engineOptions}
             disabled={loading || !engineOptions.some((engine) => !engine.disabled)}
             loading={loading}
-            ariaLabel="Coding agent engine"
+            ariaLabel={t('codingAgent.engineAriaLabel')}
           />
         </Section>
-        <Section title="Model" subtitle="The default model for new coding tasks. You can change it before a task starts.">
+        <Section title={t('codingAgent.modelTitle')} subtitle={t('codingAgent.modelSubtitle')}>
           <ModelSelect
             value={modelId}
             onValueChange={(value) => setSetting('codingAgentModel', value)}
@@ -141,19 +143,19 @@ export default function CodingAgentSettingsSection({
             variant="field"
             disabled={modelOptions.length === 0}
             loading={loading}
-            ariaLabel="Coding agent model"
+            ariaLabel={t('codingAgent.modelAriaLabel')}
           />
         </Section>
         {error && (
-          <Section title="Connection status">
+          <Section title={t('codingAgent.connectionStatus')}>
             <div className="text-[12px] text-danger">{error}</div>
           </Section>
         )}
       </SettingsGroup>
-      <SettingsGroup title="Terminal">
+      <SettingsGroup title={t('codingAgent.terminalTitle')}>
         <Section
-          title="Default shell"
-          subtitle="Used for new terminal tabs on this device. Running terminals are unchanged."
+          title={t('codingAgent.defaultShell')}
+          subtitle={t('codingAgent.defaultShellSubtitle')}
         >
           <Select
             value={shellPreference}
@@ -164,8 +166,8 @@ export default function CodingAgentSettingsSection({
             options={shells.map((shell) => ({ value: shell.id, label: shell.label }))}
             disabled={shellLoading || shells.length === 0}
             loading={shellLoading}
-            menuLabel="Terminal shell"
-            ariaLabel="Default terminal shell"
+            menuLabel={t('codingAgent.shellMenuLabel')}
+            ariaLabel={t('codingAgent.shellAriaLabel')}
           />
           {shellError && <div className="mt-2 text-[12px] text-danger">{shellError}</div>}
         </Section>

@@ -178,5 +178,203 @@
       "title": "Botão de alternar estilo 8-bit",
       "subtitle": "Controle de estilo Normal/8-Bit no mesmo botão. Com os dois ativados, o botão abre as configurações de exibição."
     }
+  },
+  "mobile": {
+    "back": "Voltar às configurações",
+    "close": "Fechar configurações"
+  },
+  "footer": {
+    "hint": {
+      "missingNames": "Cada provedor personalizado precisa de um nome",
+      "saving": "Salvando…",
+      "noChanges": "Nenhuma alteração não salva",
+      "save": "Salve as alterações.",
+      "retest": "Teste de novo os provedores que falharam.",
+      "saveAndTest": "Salve as alterações e teste os provedores de novo."
+    },
+    "status": {
+      "testing": "Testando a configuração…",
+      "saving": "Salvando as configurações…",
+      "testPassed": "Teste aprovado: provedor, modelo e credenciais estão corretos.",
+      "saved": "Configurações salvas.",
+      "testProblem": "O teste encontrou um problema.",
+      "configProblem": "A configuração tem um problema.",
+      "applyOnSave": "As alterações valem ao salvar."
+    },
+    "button": {
+      "saving": "Salvando…",
+      "save": "Salvar",
+      "saved": "Salvo"
+    },
+    "errors": {
+      "saveFailed": "Não foi possível salvar as configurações.",
+      "verifyFailed": "Configurações salvas, mas a verificação falhou: {error}",
+      "checkFailed": "Não foi possível verificar a configuração.",
+      "validateFailed": "Não foi possível validar as configurações."
+    }
+  },
+  "fields": {
+    "clearTooltip": "Limpar (vale ao salvar)",
+    "clearAriaLabel": "Limpar valor"
+  },
+  "apiKey": {
+    "ariaLabel": "Chave de API",
+    "namedAriaLabel": "Chave de API de {name}",
+    "revealFirst": "Mostre a chave antes de copiá-la",
+    "copied": "Copiada",
+    "copyFailed": "Não foi possível copiar: selecione a chave e copie manualmente",
+    "copy": "Copiar para a área de transferência",
+    "copiedAriaLabel": "Copiada para a área de transferência",
+    "copyAriaLabel": "Copiar a chave para a área de transferência",
+    "hide": "Ocultar chave",
+    "revealing": "Mostrando…",
+    "reveal": "Mostrar chave",
+    "clearTooltip": "Limpar esta chave (vale ao salvar)",
+    "clearAriaLabel": "Limpar chave"
+  },
+  "budget": {
+    "fieldTitle": "{label} ({min}–{max}, padrão {fallback}{unit, select, million { milhões de tokens} other {}})",
+    "millionTokens": "milhões de tokens",
+    "safetyLimit": "limite de segurança",
+    "noLimitHint": "sem limite: valem só os limites de etapas e de continuações automáticas",
+    "default": "padrão {value}",
+    "or": "— ou —"
+  },
+  "probe": {
+    "byok": "Ou adicione seu próprio provedor e chave de API abaixo.",
+    "noCredits": "Nenhum crédito disponível.",
+    "topUp": "Recarregar saldo →",
+    "addFunds": "Adicionar fundos →",
+    "slowDown": "{sentence} Não é um problema de créditos."
+  },
+  "providers": {
+    "title": "Provedores de LLM",
+    "unavailable": "O provedor configurado não está disponível. Tente de novo ou fale com seu administrador.",
+    "status": {
+      "connected": "conectado",
+      "unableToConnect": "não foi possível conectar",
+      "testing": "testando…",
+      "notTested": "não testado"
+    },
+    "statusTitle": {
+      "signedIn": "Conectado pelo login do MindsHub.",
+      "passed": "O último teste foi aprovado",
+      "passedDetail": "O último teste foi aprovado ({detail})",
+      "failed": "O último teste falhou",
+      "failedDetail": "O último teste falhou: {detail}",
+      "testing": "Testando…",
+      "notTested": "Ainda não testado: salve as configurações e execute um teste para verificar.",
+      "notTestedNoTests": "A conexão com o provedor não foi testada."
+    },
+    "desc": {
+      "mindsCloud": "Todos os modelos de ponta em um só lugar: Claude, GPT, Gemini e mais.",
+      "anthropic": "Use os modelos Claude com sua chave de API da Anthropic.",
+      "openai": "Use os modelos GPT com sua chave de API da OpenAI.",
+      "gemini": "Use os modelos Gemini pelo endpoint compatível com OpenAI do Google.",
+      "openaiCompatible": "Qualquer servidor compatível com OpenAI (Ollama, vLLM, Together, Groq etc.)."
+    },
+    "customHeading": "Provedor personalizado compatível com OpenAI",
+    "customName": {
+      "label": "Nome do provedor personalizado",
+      "hint": "Nome exibido deste provedor personalizado; aparece nas listas de modelos abaixo.",
+      "required": "Nome obrigatório"
+    },
+    "baseUrl": "URL base",
+    "getKey": "Obtenha sua chave de API em {link}",
+    "openInBrowser": "Abra {url} no seu navegador.",
+    "noAccount": "Não tem uma conta?",
+    "signUp": "Cadastre-se →",
+    "signUpTooltip": "Abra a página de cadastro do MindsHub no seu navegador.",
+    "remove": "Remover este provedor",
+    "editKey": "Editar chave de API",
+    "allConfigured": "Todos os tipos de provedor já estão configurados",
+    "addAnother": "Adicionar outro provedor",
+    "add": "Adicionar provedor",
+    "choose": "Escolha um provedor:",
+    "hidePicker": "Oculte o seletor de provedores.",
+    "closePicker": "Fechar o seletor de provedores"
+  },
+  "agent": {
+    "modelRouter": "Roteador de modelos",
+    "roles": {
+      "planning": "Modelo de planejamento",
+      "router": "Modelo de roteamento e resumo",
+      "coding": "Modelo de código",
+      "planningSubtitle": "Usado para raciocinar, orquestrar e responder.",
+      "codingSubtitle": "Usado para gerar código no scratchpad."
+    },
+    "providerLabel": "Provedor:",
+    "modelLabel": "Modelo:",
+    "providerHint": "Escolha qual provedor atende a função de {role, select, planning {planejamento} coding {código} router {roteamento} other {{role}}}.",
+    "modelHint": "Escolha o modelo de {role, select, planning {planejamento} coding {código} router {roteamento} other {{role}}}. Escolha Outro… para digitar um id de modelo personalizado.",
+    "customModelPlaceholder": "Digite um id de modelo",
+    "customModelHint": "Id de modelo livre enviado como está ao provedor.",
+    "modelIdHint": "Id de modelo enviado como está a este provedor.",
+    "checking": "Verificando a conexão com {provider}…",
+    "notConfigured": "{provider} não está configurado: adicione as credenciais em Provedores de LLM, acima, ou escolha outro provedor.",
+    "unknownNotConfigured": "Este provedor não está configurado. Adicione-o em Provedores de LLM, acima.",
+    "failed": "{provider} falhou no último teste: verifique-o em Provedores de LLM, acima, ou escolha outro provedor.",
+    "modelUnavailable": "{model} não está disponível. Escolha outro modelo ou fale com seu administrador.",
+    "modelRestricted": "Um administrador da sua organização restringiu {model}. Escolha outro modelo.",
+    "modelNeedsCredits": "{model} precisa de créditos. {link} para usá-lo.",
+    "topUpBalance": "Recarregue seu saldo"
+  },
+  "memory": {
+    "title": "Memória",
+    "mode": {
+      "title": "Modo de memória",
+      "subtitle": "Como {agent} atualiza a memória de longo prazo.",
+      "ariaLabel": "Modo de memória",
+      "autopilot": "Automático",
+      "autopilotHint": "{agent} atualiza a memória de longo prazo automaticamente.",
+      "copilot": "Copiloto",
+      "copilotHint": "{agent} sugere atualizações de memória para você confirmar.",
+      "off": "Desativado",
+      "offHint": "Desativa as atualizações da memória de longo prazo."
+    },
+    "episodic": {
+      "title": "Memória episódica",
+      "subtitle": "Salva o histórico de conversas para consultas futuras."
+    },
+    "dashboards": {
+      "title": "Dashboards proativos",
+      "subtitle": "Gera relatórios HTML automaticamente a partir da saída do scratchpad."
+    },
+    "actFirst": {
+      "title": "Agir primeiro, perguntar depois",
+      "subtitle": "Age com padrões razoáveis e explica as suposições no caminho, em vez de parar para perguntar."
+    }
+  },
+  "advanced": {
+    "title": "Configurações avançadas",
+    "limits": {
+      "title": "Limitar quanto uma tarefa pode fazer",
+      "subtitleOn": "{agent} para ou pergunta antes de continuar ao atingir as etapas, continuações automáticas e tokens definidos abaixo.",
+      "subtitleOff": "Desativado: uma tarefa roda até terminar, até um limite de segurança alto em que {agent} pergunta antes de continuar. Ative para definir seus próprios limites."
+    },
+    "maxSteps": {
+      "title": "Máximo de etapas por tarefa",
+      "subtitle": "Quantas ações (executar código, ler arquivos, pesquisar) {agent} pode realizar em uma solicitação antes de pausar para falar com você. Aumente para que tarefas grandes terminem de uma vez; diminua para controlar mais o tempo e o custo."
+    },
+    "maxContinuations": {
+      "title": "Máximo de continuações automáticas",
+      "subtitle": "Quando {agent} para, mas o trabalho parece incompleto, o Cowork o envia de volta para terminar; isto limita quantas vezes. Aumente para mais minúcia sem intervenção; use 0 para parar após a primeira tentativa (você ainda recebe um resumo do que falta)."
+    },
+    "maxTokens": {
+      "title": "Máximo de tokens por tarefa",
+      "subtitle": "O máximo de tokens que {agent} pode gastar em uma solicitação antes de pausar para falar com você, para que uma tarefa travada não consuma boa parte da sua cota gratuita ou do seu saldo sem terminar. Aumente se você costuma passar trabalhos grandes; diminua para limitar o custo de cada solicitação.",
+      "noLimit": "Sem limite"
+    },
+    "jev": {
+      "title": "Respostas rápidas com Jev",
+      "subtitle": "Jev, o modelo de decisão do MindsHub, lê cada mensagem e a conversa recente para decidir se o modelo escolhido pode respondê-la diretamente, e verifica se {agent} terminou o trabalho. Desative para que {agent} processe cada mensagem."
+    }
+  },
+  "desktop": {
+    "title": "Desktop",
+    "keepAwake": {
+      "title": "Manter ativo para tarefas agendadas",
+      "subtitle": "Enquanto estiver na tomada, impede que este computador entre em repouso quando uma tarefa agendada está em execução ou prestes a começar. Não consegue despertar um computador que já está em repouso nem impedir o repouso ao fechar a tampa."
+    }
   }
 }

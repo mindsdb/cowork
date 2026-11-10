@@ -11,6 +11,7 @@ import Ico from '../Icons';
 import { Alert, Button } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { describeConnectionState } from '../../lib/datasourceSubmission';
+import { useTranslation } from '../../../lib/i18n';
 
 function Row({ label, value }) {
   if (!value && value !== 0) return null;
@@ -26,26 +27,11 @@ function Row({ label, value }) {
 // to check what a connection actually does. Showing every mode that is not a
 // custom CA as the public trust store would tell the owner of an unverified
 // connection the opposite of the truth.
-const TRUST_LABELS = {
-  prefer: 'Encrypted when the server offers it',
-  system: 'Public certificate authorities',
-  custom_ca: 'A CA certificate you provided',
-  encrypted: 'Encrypted, certificate not checked',
-  disabled: 'No encryption',
-};
-
-const TRUST_NOTES = {
-  prefer: 'The connection is encrypted when the server supports it, and the server is not identified, so '
-    + 'the credentials could reach whoever answered for that address.',
-  system: 'The connection is encrypted and the server\'s certificate and hostname are checked.',
-  custom_ca: 'The connection is encrypted and checked against the certificate authority you provided.',
-  encrypted: 'The connection is encrypted, but the server is not identified, so the credentials could reach '
-    + 'whoever answered for that address.',
-  disabled: 'The connection is not encrypted: the credentials, the queries and the rows they return travel '
-    + 'in clear text and can be read by anyone on the path.',
-};
+// Catalog keys under datasource.trust.<mode>.label / .note.
+const TRUST_MODES = new Set(['prefer', 'system', 'custom_ca', 'encrypted', 'disabled']);
 
 export default function DatasourceDetailPanel({ connection, onClose, onRetry, onRemove, onEdit }) {
+  const { t } = useTranslation('library');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -67,7 +53,7 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
     try {
       await action();
     } catch (e) {
-      setError(e?.message || 'That did not work.');
+      setError(e?.message || t('datasource.failed'));
     } finally {
       setBusy(false);
     }
@@ -80,7 +66,7 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
       await onRemove?.(connection);
       setConfirming(false);
     } catch (e) {
-      setRemoveError(e?.message || 'That did not work.');
+      setRemoveError(e?.message || t('datasource.failed'));
     } finally {
       setBusy(false);
     }
@@ -90,7 +76,7 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
     <>
       <div
         role="dialog"
-        aria-label={`${connection.name} connection`}
+        aria-label={t('datasource.ariaLabel', { name: connection.name })}
         className="fixed inset-y-0 right-0 z-30 w-[min(420px,92vw)] bg-surface border-l border-line shadow-xl flex flex-col"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-line">
@@ -98,34 +84,34 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
             <div className="s-h3 truncate">{connection.name}</div>
             <div className="text-[12px] text-ink-4">{connection.engine}</div>
           </div>
-          <Button variant="subtle" onClick={onClose} aria-label="Close">{Ico.close(14)}</Button>
+          <Button variant="subtle" onClick={onClose} aria-label={t('connections.close')}>{Ico.close(14)}</Button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {pending && (
             <Alert variant="info">
-              Checking the connection. Your credentials are stored encrypted; this updates when the check finishes.
+              {t('datasource.pending')}
             </Alert>
           )}
           {failed && (
-            <Alert variant="danger" title="Could not connect">
-              {failedState.hint || connection.validationError || 'The last check did not succeed.'}
+            <Alert variant="danger" title={t('datasource.couldNotConnect')}>
+              {failedState.hint || connection.validationError || t('datasource.lastCheckFailed')}
             </Alert>
           )}
           {error && <Alert variant="danger">{error}</Alert>}
 
           <div className="mt-3">
-            <Row label="Host" value={connection.hostMasked} />
-            <Row label="Port" value={connection.port} />
-            <Row label="Database" value={connection.database} />
-            <Row label="Schema" value={connection.dbSchema} />
-            <Row label="Username" value={connection.username} />
-            <Row label="Certificate trust" value={TRUST_LABELS[connection.tlsMode] || connection.tlsMode || '—'} />
+            <Row label={t('datasource.host')} value={connection.hostMasked} />
+            <Row label={t('datasource.port')} value={connection.port} />
+            <Row label={t('datasource.database')} value={connection.database} />
+            <Row label={t('datasource.schema')} value={connection.dbSchema} />
+            <Row label={t('datasource.username')} value={connection.username} />
+            <Row label={t('datasource.certificateTrust')} value={(TRUST_MODES.has(connection.tlsMode) ? t(`datasource.trust.${connection.tlsMode}.label`) : null) || connection.tlsMode || '—'} />
           </div>
 
           <p className="mt-4 text-[12px] text-ink-4 leading-[1.6]">
-            The password is held encrypted by the server and is never shown again. Queries run read only.
-            {' '}{TRUST_NOTES[connection.tlsMode] || TRUST_NOTES.prefer}
+            {t('datasource.passwordNote')}
+            {' '}{t(`datasource.trust.${TRUST_MODES.has(connection.tlsMode) ? connection.tlsMode : 'prefer'}.note`)}
           </p>
         </div>
 
@@ -134,25 +120,25 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
         <div className="flex justify-start gap-2 px-5 py-4 border-t border-line">
           {failed && (
             <Button variant="default" disabled={busy} onClick={() => run(() => onRetry?.(connection))}>
-              {busy ? 'Working…' : 'Try again'}
+              {busy ? t('datasource.working') : t('datasource.tryAgain')}
             </Button>
           )}
-          <Button variant="default" disabled={busy} onClick={() => onEdit?.(connection)}>Edit</Button>
+          <Button variant="default" disabled={busy} onClick={() => onEdit?.(connection)}>{t('skills.menu.edit')}</Button>
           <Button
             variant="danger"
             disabled={busy}
             onClick={() => { setRemoveError(''); setConfirming(true); }}
           >
-            Remove
+            {t('recipients.removeTooltip')}
           </Button>
         </div>
       </div>
       <ConfirmModal
         open={confirming}
-        title={`Remove ${connection.name}?`}
-        message="The stored credentials are deleted and conversations that use this connection lose access. You can add it again later."
-        confirmLabel="Remove"
-        busyLabel="Removing…"
+        title={t('datasource.removeTitle', { name: connection.name })}
+        message={t('datasource.removeMessage')}
+        confirmLabel={t('recipients.removeTooltip')}
+        busyLabel={t('connectionCard.removing')}
         destructive
         busy={busy}
         error={removeError}

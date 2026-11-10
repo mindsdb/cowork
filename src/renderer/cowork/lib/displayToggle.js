@@ -1,4 +1,5 @@
 import { DEFAULT_SKIN, SKIN_LOCKED, skinLabel } from '../../lib/skins';
+import i18n from '../../lib/i18n';
 
 /*
  * What the corner display button does, from the two Appearance switches
@@ -25,5 +26,5 @@ export function nextToggledSkin(skin) {
 
 // The direct toggle's label, naming the style it switches to.
 export function styleToggleLabel(skin) {
-  return `Switch to ${skinLabel(nextToggledSkin(skin))} style`;
+  return i18n.t('messages.displayToggle.switchStyle', { ns: 'projects', style: skinLabel(nextToggledSkin(skin)) });
 }

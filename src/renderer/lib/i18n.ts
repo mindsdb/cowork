@@ -217,3 +217,16 @@ export function currentLocale(): AppLocale {
 }
 
 export default i18n;
+
+/* A translator for copy built in src/shared (see shared/i18n/translate.ts),
+   bound to the namespace the shared function documents. It reads the current
+   language on every call. */
+export function sharedTranslator(ns: string): (key: string, vars?: Record<string, unknown>) => string {
+  return (key, vars) => i18n.t(key, { ns, ...vars });
+}
+
+/* A list of names or addresses in the current language: "a, b, c" in
+   English, "a, b y c" in Spanish. */
+export function formatList(items: readonly string[]): string {
+  return new Intl.ListFormat(currentLocale(), { type: 'unit', style: 'short' }).format(items);
+}
