@@ -6754,7 +6754,7 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteProject != null}
-        title={`Delete project "${pendingDeleteProject?.name}"?`}
+        title={`Delete project "${projectLabel(pendingDeleteProject)}"?`}
         message={
           pendingDeleteProject?.capabilities?.directoryIsExternal
             ? `The project and its conversations will be removed. Your folder ${pendingDeleteProject?.path || ''} stays where it is and your own files in it are not touched, though Cowork's skills/ and .anton/ folders are left behind inside it. This can't be undone.`

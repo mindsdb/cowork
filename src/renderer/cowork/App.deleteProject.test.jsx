@@ -291,3 +291,35 @@ describe('project delete authorization failure', () => {
     });
   });
 });
+
+describe('project delete confirmation title', () => {
+  it('names the project by its display name, not the ASCII slug', async () => {
+    const user = userEvent.setup();
+    const cyrillicProject = {
+      ...project,
+      id: 'project-4',
+      name: 'QA1107',
+      display_name: 'Проект QA1107 тест',
+      path: '/projects/QA1107',
+    };
+    spies.fetchProjects.mockResolvedValue([{ ...cyrillicProject }]);
+    spies.fetchSessions.mockResolvedValue([]);
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: `Request deletion for ${cyrillicProject.name}` }));
+
+    expect(await screen.findByText('Delete project "Проект QA1107 тест"?')).toBeInTheDocument();
+    expect(screen.queryByText('Delete project "QA1107"?')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the slug for projects created before display names existed', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: `Request deletion for ${project.name}` }));
+
+    expect(await screen.findByText(`Delete project "${project.name}"?`)).toBeInTheDocument();
+  });
+});
