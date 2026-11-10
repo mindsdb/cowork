@@ -27,9 +27,8 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
     @objc func authenticate(_ call: CAPPluginCall) {
         guard let urlString = call.getString("url"),
               let url = URL(string: urlString),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http" else {
-            call.reject("authenticate needs an http(s) `url`", "INVALID_ARGUMENT")
+              MindsHubAuthPlugin.isSignInURL(url) else {
+            call.reject("authenticate needs an https MindsHub `url`", "INVALID_ARGUMENT")
             return
         }
         guard let callbackScheme = call.getString("callbackScheme"), !callbackScheme.isEmpty else {
@@ -68,6 +67,16 @@ public class MindsHubAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
                 call.reject("Could not start the sign-in session", "FAILED")
             }
         }
+    }
+
+    /// Only MindsHub's own sign-in pages, over https. The page asks for this
+    /// sheet, and a page can be made to ask (script in an embedded frame), so
+    /// the sheet must never open on a host that is not ours.
+    static func isSignInURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else {
+            return false
+        }
+        return host == "mindshub.ai" || host.hasSuffix(".mindshub.ai")
     }
 
     public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {

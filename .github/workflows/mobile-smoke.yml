@@ -37,7 +37,7 @@ jobs:
       # rather than whatever the image happens to default to.
       - name: Select Xcode
         run: |
-          xcode="$(printf '%s\n' /Applications/Xcode_*.app | grep -viE 'beta|rc' | sort -V | tail -1)"
+          xcode="$(printf '%s\n' /Applications/Xcode_*.app | grep -viE 'beta|rc|release_candidate' | sort -V | tail -1)"
           echo "Selecting $xcode"
           sudo xcode-select -s "$xcode/Contents/Developer"
           xcodebuild -version

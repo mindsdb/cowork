@@ -15,7 +15,7 @@ vitest, electron-builder) reads it.
 |---|---|
 | `capacitor.config.ts` | App id, remote URL, user agent, plugin config |
 | `env.ts` | `COWORK_ENV` to URL table |
-| `scripts/cap-copy-before.mjs` | `capacitor:copy:before` hook: writes `www/env.js` and `ios/App/Version.xcconfig` |
+| `scripts/cap-copy-before.mjs` | `capacitor:copy:before` hook: writes `www/offline.html` (from `offline.template.html`) and `ios/App/Version.xcconfig` |
 | `www/` | `webDir`: a placeholder `index.html` and the bundled `offline.html` |
 | `assets/` | Icon and splash sources for `@capacitor/assets` |
 | `ios/App/App.xcodeproj` | Xcode project, scheme `App`, Swift Package Manager (no CocoaPods, no workspace) |
@@ -82,7 +82,7 @@ COWORK_ENV=staging npx cap sync   # https://cowork.staging.mindshub.ai (default)
 ```
 
 Anything else fails the sync. The value is baked into the native projects'
-`capacitor.config.json` and `www/env.js`, so re-sync after switching.
+`capacitor.config.json` and `www/offline.html`, so re-sync after switching.
 
 ### Versioning
 
@@ -117,8 +117,9 @@ npx @capacitor/assets generate --ios --android \
 load (no network, DNS, TLS, or an HTTP error on the main document on Android),
 Capacitor loads that bundled page instead of leaving a blank webview. Its
 **Try again** button, and the browser's `online` event, navigate back to the
-remote URL from `www/env.js`. The page has no access to Capacitor plugins on
-Android, so it uses none.
+remote URL that the sync hook wrote into the page. The page has no access to
+Capacitor plugins on Android and cannot load a sibling file there, so it uses
+neither.
 
 ## Sign-in (MindsHubAuth)
 
@@ -141,7 +142,7 @@ browser so Google sign-in and saved passwords work:
 4. The web app's keycloak-js shell adapter exchanges the code for tokens.
 
 Other rejection codes: `IN_PROGRESS` (a sign-in is already open),
-`INVALID_ARGUMENT` (missing or non-http(s) `url`, missing `callbackScheme`),
+`INVALID_ARGUMENT` (missing `url`, or one that is not https on a `mindshub.ai` host, missing `callbackScheme`),
 `FAILED`.
 
 The scheme `ai.mindshub.cowork` is also registered in `Info.plist`
