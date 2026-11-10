@@ -45,6 +45,8 @@ jobs:
         with:
           command: npm ci
           working-directory: mobile
+      - name: Check release labels without uploading
+        run: ruby fastlane/test/release_test.rb
       - name: Typecheck capacitor.config.ts
         run: npm run typecheck
       - name: Sync iOS

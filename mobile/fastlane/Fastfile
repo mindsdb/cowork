@@ -21,7 +21,10 @@ def require_env(*names)
 end
 
 def cowork_env
-  ENV.fetch("COWORK_ENV", "staging")
+  value = ENV.fetch("COWORK_ENV", "").strip.downcase
+  return "staging" if value.empty? || value == "staging"
+  return "prod" if value == "prod" || value == "production"
+  UI.user_error!("COWORK_ENV must be staging or prod, got #{value.inspect}")
 end
 
 def marketing_version
@@ -44,6 +47,7 @@ platform :ios do
   # the profile itself).
   desc "Build a signed App Store .ipa and upload it to TestFlight"
   lane :beta do
+    cowork_env # Validate before building or uploading.
     require_env("ASC_API_KEY_ID", "ASC_API_ISSUER_ID", "ASC_API_KEY_P8_B64",
                 "IOS_PROFILE_APP_NAME", "IOS_TEAM_ID")
     profile = ENV["IOS_PROFILE_APP_NAME"]
@@ -93,12 +97,12 @@ platform :ios do
     )
 
     # Staging and production builds share the bundle id, so "What to Test"
-    # is the only place a tester sees which backend a build talks to. Pilot can
-    # only set it once App Store Connect has processed the build, so this waits
-    # (typically 5-15 minutes) instead of skip_waiting_for_build_processing.
+    # is the only place a tester sees which backend a build talks to. With a
+    # changelog, pilot waits until the build appears and labels it immediately,
+    # without waiting for full processing (which may time out after upload).
     upload_to_testflight(
       changelog: "MindsHub Cowork #{marketing_version} (#{build_number}), #{env_label}.",
-      skip_waiting_for_build_processing: false,
+      skip_waiting_for_build_processing: true,
       wait_processing_timeout_duration: 2700,
       distribute_external: false
     )
@@ -112,6 +116,7 @@ platform :android do
   # command line, which fastlane echoes) and PLAY_SERVICE_ACCOUNT_JSON_B64.
   desc "Build a signed release .aab and upload it to Play internal testing"
   lane :internal do
+    cowork_env # Validate before building or uploading.
     require_env("ANDROID_KEYSTORE_PATH", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS",
                 "ANDROID_KEY_PASSWORD", "PLAY_SERVICE_ACCOUNT_JSON_B64")
 
