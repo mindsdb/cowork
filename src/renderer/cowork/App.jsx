@@ -4659,6 +4659,17 @@ function AppCore() {
       void voiceCall.start();
     }
     : null;
+  // The task view's top-right call icon: start a voice call, or show or
+  // minimize the running one. Hidden while a video call runs or where voice
+  // isn't served.
+  let voiceCallShortcut = null;
+  if (voiceCall.phase !== 'idle') {
+    voiceCallShortcut = voiceCallMinimized
+      ? { label: `Show the call with ${agentLabel}`, onClick: () => setVoiceCallMinimized(false), live: true }
+      : { label: 'Minimize the call', onClick: () => setVoiceCallMinimized(true), live: true };
+  } else if (startVoiceCall) {
+    voiceCallShortcut = { label: `Voice call with ${agentLabel}`, onClick: startVoiceCall, live: false };
+  }
   const startVideoCall = facetimeAvailable && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
@@ -6401,9 +6412,7 @@ function AppCore() {
             onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
             browserRequest={browserRequest}
-            callShortcut={voiceCall.phase !== 'idle' && voiceCallMinimized
-              ? { label: `Show the call with ${agentLabel}`, onClick: () => setVoiceCallMinimized(false) }
-              : null}
+            callShortcut={voiceCallShortcut}
             browserSwitch={browserSwitchShown && currentTask
               ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
               : null}

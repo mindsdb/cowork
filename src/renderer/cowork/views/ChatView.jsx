@@ -1833,7 +1833,8 @@ export default function ChatView({
   onStartVoiceCall = null,
   // A voice call asked to show this task's browser: {taskId, sessionId, at}.
   browserRequest = null,
-  // A minimized call: {label, onClick} for the top-right icon that shows it.
+  // The top-right call icon: {label, onClick, live}. Starts a voice call, or
+  // shows or minimizes the running one; null hides it.
   callShortcut = null,
   browserSwitch = null,
   onRemoveAttachment,
@@ -2092,7 +2093,13 @@ export default function ChatView({
      opens over the pane instead. */
   const railHidden = browserOpen && !paneFloats && !railFloats;
   const latestBrowserId = latestBrowserSessionIdIn(visibleMessages, streamingMsg);
-  const showBrowserShortcut = !browserOpen && (host.isWeb || host.supportsInAppBrowser) && viewable(latestBrowserId);
+  // Always there where a browser can show; it opens the one Anton last used
+  // here, and says why not when there is none.
+  const showBrowserShortcut = !browserOpen && (host.isWeb || host.supportsInAppBrowser);
+  const browserShortcutReady = viewable(latestBrowserId);
+  let browserShortcutLabel = 'Show browser';
+  if (!latestBrowserId) browserShortcutLabel = `${agentLabel || 'Anton'} hasn't used the browser in this task`;
+  else if (!browserShortcutReady) browserShortcutLabel = 'The browser is off for this task';
   // The floating Expand button's spot, when it shows; the icons sit beside it.
   const expandShown = !pane && !railHidden && !(effectiveRailOpen || railOverlayOpen);
   /* The web browser takes a while to wake, so a task that used it starts it
@@ -2367,12 +2374,15 @@ export default function ChatView({
             style={{ right: expandShown ? 46 : 14 }}
           >
             {showBrowserShortcut && (
-              <Tooltip content="Show browser">
+              <Tooltip content={browserShortcutLabel}>
                 <button
                   type="button"
-                  onClick={() => setShownBrowserId(latestBrowserId)}
+                  onClick={() => { if (browserShortcutReady) setShownBrowserId(latestBrowserId); }}
                   aria-label="Show browser"
-                  className="w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2"
+                  aria-disabled={!browserShortcutReady}
+                  className={`w-7 h-7 rounded-md inline-grid place-items-center bg-transparent border-0 ${
+                    browserShortcutReady ? 'cursor-pointer text-ink-3 hover:text-ink hover:bg-surface-2' : 'cursor-default text-ink-3 opacity-50'
+                  }`}
                 >
                   {Ico.globe(16)}
                 </button>
@@ -2384,7 +2394,9 @@ export default function ChatView({
                   type="button"
                   onClick={callShortcut.onClick}
                   aria-label={callShortcut.label}
-                  className="chat-call-shortcut w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 hover:bg-surface-2"
+                  className={`w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 hover:bg-surface-2 ${
+                    callShortcut.live ? 'chat-call-shortcut' : 'text-ink-3 hover:text-ink'
+                  }`}
                 >
                   {Ico.call(16)}
                 </button>

@@ -135,11 +135,21 @@ describe('ChatView shared browser pane', () => {
     expect(screen.queryByRole('button', { name: 'Show browser' })).toBeNull();
   });
 
+  it('keeps the Show browser icon in a task without a browser, and it opens nothing', async () => {
+    render(<ChatView task={task('p-none', [{ id: 'u1', role: 'user', content: 'Hi' }])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    const icon = screen.getByRole('button', { name: 'Show browser' });
+    expect(icon).toHaveAttribute('aria-disabled', 'true');
+    await act(async () => { fireEvent.click(icon); });
+    expect(pane()).toBeNull();
+  });
+
   it('opens when a voice call asks to show this task\'s browser, and offers a minimized call back', async () => {
     const onShowCall = vi.fn();
     const { rerender } = render(<ChatView task={task('p-call', pastTurn)} onSend={vi.fn()} browserOn />);
     await act(async () => {});
     expect(screen.queryByRole('button', { name: 'Show the call with Anton' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Show browser' })).toBeInTheDocument();
 
     rerender(
       <ChatView
@@ -147,7 +157,7 @@ describe('ChatView shared browser pane', () => {
         onSend={vi.fn()}
         browserOn
         browserRequest={{ taskId: 'p-call', sessionId: 't-abc', at: 1 }}
-        callShortcut={{ label: 'Show the call with Anton', onClick: onShowCall }}
+        callShortcut={{ label: 'Show the call with Anton', onClick: onShowCall, live: true }}
       />,
     );
     await act(async () => {});
