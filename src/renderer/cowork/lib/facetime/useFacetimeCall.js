@@ -30,6 +30,13 @@ const ENDINGS = {
   'connection-lost': 'The connection was lost.',
 };
 
+// An end without a sentence of Nuance's: its own words for why, while this is
+// a prototype.
+function endedBecause(event) {
+  const why = [event.endReason || event.reason, event.error?.message].filter(Boolean).join(': ');
+  return why ? `The call ended (${why}).` : 'The call ended.';
+}
+
 function tail(text) {
   return text.length > CAPTION_CHARS ? `…${text.slice(-CAPTION_CHARS)}` : text;
 }
@@ -124,6 +131,9 @@ export function useFacetimeCall({ onAsk, context }) {
     };
 
     conversation.onChange((event) => {
+      // Prototype: each step of the call, so a failed start can be read.
+      console.info('[video-call]', event.type, event.type === 'session-ended'
+        ? { reason: event.reason, endReason: event.endReason, error: event.error?.message } : (event.state || ''));
       switch (event.type) {
         case 'avatar-preparing':
           setPhase('preparing');
@@ -145,7 +155,7 @@ export function useFacetimeCall({ onAsk, context }) {
           setSecondsLeft(event.secondsRemaining);
           break;
         case 'session-ended':
-          setNotice(event.message || ENDINGS[event.reason] || '');
+          setNotice(event.message || ENDINGS[event.reason] || endedBecause(event));
           setPhase('ended');
           setWorking(false);
           conversationRef.current = null;
@@ -155,6 +165,7 @@ export function useFacetimeCall({ onAsk, context }) {
     });
 
     conversation.onInterfaceEvent((event) => {
+      if (!String(event.type).includes('transcript')) console.info('[video-call] live', event.type, event.error || event.reason || '');
       if (event.type === 'session.started') {
         started = true;
         void greet();
@@ -191,6 +202,7 @@ export function useFacetimeCall({ onAsk, context }) {
       await conversation.connect();
       attach();
     } catch (err) {
+      console.warn('[video-call] start failed', err);
       conversationRef.current = null;
       setNotice(startFailure(err));
       setPhase('ended');

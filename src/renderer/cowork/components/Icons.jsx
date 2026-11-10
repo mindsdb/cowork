@@ -59,6 +59,7 @@ import {
   MessagesSquare,
   Mic,
   MicOff,
+  Minimize2,
   Monitor,
   Moon,
   Palette,
@@ -154,6 +155,7 @@ const Ico = {
   video:    ico(Video),
   videoOff: ico(VideoOff),
   hangUp:   ico(PhoneOff),
+  minimize: ico(Minimize2),
   // Up arrow — the composer's send affordance.
   send:     ico(ArrowUp),
   attach:   ico(Paperclip),

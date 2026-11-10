@@ -34,6 +34,32 @@ describe('the video call window', () => {
     expect(c.end).toHaveBeenCalled();
   });
 
+  it('minimizes to a bubble that opens the call again', async () => {
+    const c = call({ captions: { user: '', avatar: 'Let me look into that.', last: 'avatar' } });
+    render(<FacetimeWindow call={c} agentLabel="Anton" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Minimize' }));
+    expect(screen.getByRole('dialog')).toHaveClass('is-min');
+    await userEvent.click(screen.getByRole('button', { name: 'Show the video call with Anton' }));
+    expect(screen.getByRole('dialog')).not.toHaveClass('is-min');
+    expect(c.end).not.toHaveBeenCalled();
+  });
+
+  it('keeps a dragged spot on a wide screen, and lays itself out by CSS otherwise', () => {
+    localStorage.setItem('cowork.videoCallSpot', JSON.stringify({ left: 200, top: 120 }));
+    window.innerWidth = 1400;
+    window.innerHeight = 900;
+    window.dispatchEvent(new Event('resize'));
+    const { unmount } = render(<FacetimeWindow call={call()} />);
+    expect(screen.getByRole('dialog')).toHaveStyle({ left: '200px', top: '120px' });
+    unmount();
+
+    window.innerWidth = 500;
+    window.dispatchEvent(new Event('resize'));
+    render(<FacetimeWindow call={call()} />);
+    expect(screen.getByRole('dialog').getAttribute('style')).toBeNull();
+    localStorage.clear();
+  });
+
   it('says why a call ended and closes', async () => {
     const c = call({ phase: 'ended', notice: 'The call reached its time limit.' });
     render(<FacetimeWindow call={c} />);
