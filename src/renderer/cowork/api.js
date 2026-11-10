@@ -2884,6 +2884,26 @@ export function browserClientHints() {
  *
  * @returns {Promise<BrowseStatus>}
  */
+// ─── Video calls (prototype) ─────────────────────────────────────────────────
+/* Whether this deployment offers a video call with Anton: the server holds a
+   Nuance key. Any failure reads as no. */
+export async function fetchFacetimeStatus() {
+  try {
+    const status = await req('/facetime/status', { timeoutMs: 10_000 });
+    return { available: !!status?.available };
+  } catch {
+    return { available: false };
+  }
+}
+
+/* A session token for one call, minted by the server with its key; the call
+   must start with it within 60 seconds. A refusal carries the server's
+   sentence for the person as its message. */
+export async function mintFacetimeToken() {
+  const minted = await req('/facetime/token', { method: 'POST', timeoutMs: 40_000 });
+  return String(minted.token);
+}
+
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',

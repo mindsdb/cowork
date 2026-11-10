@@ -98,7 +98,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchFacetimeStatus} from './api';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -144,6 +144,9 @@ import { normalizeComposerDisabledConnections, toggleConnectionMute } from './li
 import { rememberTaskBrowser } from './lib/taskBrowser';
 import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
 import { useNativeOverlay } from './lib/nativeOverlay';
+import FacetimeWindow from './components/FacetimeWindow';
+import { useFacetimeCall } from './lib/facetime/useFacetimeCall';
+import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -648,6 +651,22 @@ function AppCore() {
   // requests whose results the `local.length > 0` guard then discards.
   const warmedRef = useRef(false);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  // A video call with Anton (prototype): offered when the server holds a
+  // Nuance key. The call hands each request to Anton through askFromCallRef,
+  // set below once the send paths exist, in the task facetimeTaskIdRef names.
+  const [facetimeAvailable, setFacetimeAvailable] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetchFacetimeStatus().then((s) => { if (live) setFacetimeAvailable(s.available); });
+    return () => { live = false; };
+  }, []);
+  const facetimeTaskIdRef = useRef(null);
+  const askFromCallRef = useRef(null);
+  const callContextRef = useRef(null);
+  const facetime = useFacetimeCall({
+    onAsk: (request) => askFromCallRef.current(request),
+    context: () => callContextRef.current?.() || '',
+  });
   // The row ids a conversation holds before a fetch, or undefined (no
   // snapshot, today's merge rule) when it is not held under that id.
   const knownIdsOf = (id) => {
@@ -3954,6 +3973,7 @@ function AppCore() {
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
         }
+        reportTurnEnd([finalId, resolvedId, taskId], { content: finalContent || '', finalId });
         reloadArtifacts();
         // This turn held the shared stream slot; drain anything queued
         // against any task while it ran (ENG-1378).
@@ -3965,6 +3985,7 @@ function AppCore() {
         releaseStream(resolvedId || taskId, sessionCtrl);
         if (superseded) return;
         releaseLiveSteps([resolvedId, taskId]);
+        reportTurnEnd([resolvedId, taskId], { error: event?.code === 'cancelled' ? 'The task was stopped.' : message });
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         void (async () => {
@@ -4444,6 +4465,7 @@ function AppCore() {
           persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
+        reportTurnEnd([resolvedId, id], { content: finalContent || '', finalId: resolvedId });
         reloadArtifacts();
         // Drain the next queued message now that the single stream slot is
         // free. Sweeps every task's queue (preferring this task for FIFO
@@ -4460,6 +4482,7 @@ function AppCore() {
         // Same as onDone: a later visit must hydrate from the server.
         clearOptimisticConversation(resolvedId);
         releaseLiveSteps([resolvedId, id]);
+        reportTurnEnd([resolvedId, id], { error: event?.code === 'cancelled' ? 'The task was stopped.' : message });
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         void (async () => {
@@ -4482,6 +4505,47 @@ function AppCore() {
   // task's queue, not just the finishing one. `preferredTaskId` (the
   // finishing task) is tried first so its own follow-ups keep FIFO order.
   // `skipTaskIds` lists tasks a failed send already tried in this chain.
+  // The video call's ask_cowork: the request goes to Anton as a typed message
+  // would, in the call's task (a new one for the first request from Home), and
+  // resolves with Anton's answer once the turn ends.
+  askFromCallRef.current = async (request) => {
+    const existing = facetimeTaskIdRef.current
+      && tasksRef.current.find((t) => t.id === facetimeTaskIdRef.current);
+    const id = existing ? existing.id : allocateConversationId();
+    facetimeTaskIdRef.current = id;
+    const turn = waitForTurnEnd(id);
+    const sent = existing
+      ? await handleSendInTask(request, [], { targetTask: existing })
+      : await handleSendFromHome(request, { conversationId: id, attachments: [], disabledConnections: [] });
+    if (sent === false) {
+      turn.cancel();
+      throw new Error(`${agentLabel} couldn't take the request.`);
+    }
+    const { content, error, finalId } = await turn.promise;
+    facetimeTaskIdRef.current = finalId || id;
+    if (error) throw new Error(String(error));
+    return content;
+  };
+  // What the call's avatar is told about the task at the start, as background.
+  callContextRef.current = () => {
+    const task = facetimeTaskIdRef.current && tasksRef.current.find((t) => t.id === facetimeTaskIdRef.current);
+    if (!task) return '';
+    const recent = (task.messages || [])
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+      .slice(-4)
+      .map((m) => `${m.role === 'user' ? 'The user' : agentLabel}: ${m.content.trim().slice(0, 350)}`);
+    return [`The user is in a task called "${task.title}".`, recent.length ? 'Its latest messages:' : '', ...recent]
+      .filter(Boolean).join('\n');
+  };
+  // From a composer's + menu: in the task on screen, or a new one from the
+  // first request. A click, so the browser plays the avatar's voice.
+  const startVideoCall = facetimeAvailable && facetime.phase === 'idle'
+    ? () => {
+      facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
+      void facetime.start();
+    }
+    : null;
+
   const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
     // Slot re-reserved (a new turn already started) — that turn's own
     // onDone/onError will drain next. Prevents launching two parallel turns.
@@ -6129,6 +6193,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            onStartVideoCall={startVideoCall}
             browserSwitch={composerBrowserSwitch}
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
@@ -6203,6 +6268,7 @@ function AppCore() {
             disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
+            onStartVideoCall={startVideoCall}
             browserSwitch={browserSwitchShown && currentTask
               ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
               : null}
@@ -6332,6 +6398,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            onStartVideoCall={startVideoCall}
             browserSwitch={composerBrowserSwitch}
             onOpenSchedule={(task) => {
               // Same handler ScheduledView uses — routes to the
@@ -6707,6 +6774,8 @@ function AppCore() {
         onStop={handleServerStop}
       />
       )}
+
+      <FacetimeWindow call={facetime} agentLabel={agentLabel} />
 
       <ConfirmModal
         open={pendingDisconnect != null}

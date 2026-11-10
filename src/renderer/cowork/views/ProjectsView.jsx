@@ -262,6 +262,7 @@ function ProjectDetail({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
+  onStartVideoCall = null,
   browserSwitch = null,
   onNavigateToConnectors,
   // Header kebab + inline rename — lets users rename / reveal / delete
@@ -453,6 +454,7 @@ function ProjectDetail({
                 onRemoveAttachment={onRemoveAttachment}
                 disabledConnections={disabledConnections}
                 onUpdateConnectorMute={onUpdateConnectorMute}
+                onStartVideoCall={onStartVideoCall}
                 browserSwitch={browserSwitch}
                 metaReadOnly
                 modelReadOnly={false}
@@ -562,6 +564,7 @@ export default function ProjectsView({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
+  onStartVideoCall = null,
   browserSwitch = null,
   onNavigateToConnectors,
   // Forwarded to ProjectDetail's rail Scheduled Tasks card —
@@ -793,6 +796,7 @@ export default function ProjectsView({
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}
+        onStartVideoCall={onStartVideoCall}
         browserSwitch={browserSwitch}
         onOpenSettings={onOpenSettings}
         codingModelDefault={codingModelDefault}

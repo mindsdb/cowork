@@ -246,6 +246,7 @@ export default function HomeView({
   onAddGoogleDriveFiles,
   disabledConnections = [],
   onUpdateConnectorMute,
+  onStartVideoCall = null,
   browserSwitch = null,
   onNavigateToConnectors,
   onCreateProject,
@@ -637,6 +638,7 @@ export default function HomeView({
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
+              onStartVideoCall={onStartVideoCall}
               browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}
               onTypingChange={setIsTyping}

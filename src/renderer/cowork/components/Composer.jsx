@@ -147,6 +147,8 @@ export default function Composer({
   conversationId = null,
   disabledConnections = [],
   onUpdateConnectorMute,
+  /** Starts a video call with the agent (prototype); null hides it from the + menu. */
+  onStartVideoCall = null,
   /**
    * The shared browser for this task or the next one, shown as a Browser
    * switch in the + menu. Null hides it.
@@ -1298,6 +1300,17 @@ export default function Composer({
                         <span className="toggle-thumb" />
                       </button>
                     </div>
+                  )}
+                  {onStartVideoCall && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        onStartVideoCall();
+                      }}
+                    >
+                      {Ico.video(14)} Video call
+                    </button>
                   )}
                   <button
                     className="menu-item"
