@@ -118523,6 +118523,40 @@
       "text": "1f0eb99b7ed0"
     }
   },
+  "projects:scheduleDetail.runStatus.stoppedAtLimit": {
+    "de": {
+      "from": "272dba4e3914",
+      "text": "c1c55a5181db"
+    },
+    "es": {
+      "from": "272dba4e3914",
+      "text": "96fd9881b8e0"
+    },
+    "fr": {
+      "from": "272dba4e3914",
+      "text": "f48b72f4c418"
+    },
+    "it": {
+      "from": "272dba4e3914",
+      "text": "d49d0ddedcea"
+    },
+    "ja": {
+      "from": "272dba4e3914",
+      "text": "0587461e7678"
+    },
+    "ko": {
+      "from": "272dba4e3914",
+      "text": "3fe3fbb485e5"
+    },
+    "pt-BR": {
+      "from": "272dba4e3914",
+      "text": "8a499dfad181"
+    },
+    "zh-CN": {
+      "from": "272dba4e3914",
+      "text": "d3ce0ecc248f"
+    }
+  },
   "projects:scheduleDetail.runStatus.success": {
     "de": {
       "from": "6d9a6f97a5fd",
@@ -119543,6 +119577,74 @@
       "text": "0eb242b326b7"
     }
   },
+  "projects:scheduleRunAlert.limitNote": {
+    "de": {
+      "from": "43e2def831c0",
+      "text": "ab41b740de70"
+    },
+    "es": {
+      "from": "43e2def831c0",
+      "text": "bddeddde1320"
+    },
+    "fr": {
+      "from": "43e2def831c0",
+      "text": "bd39c055d5d8"
+    },
+    "it": {
+      "from": "43e2def831c0",
+      "text": "ec601f9b25ff"
+    },
+    "ja": {
+      "from": "43e2def831c0",
+      "text": "3c6ed16e7bf5"
+    },
+    "ko": {
+      "from": "43e2def831c0",
+      "text": "2671480cf6b9"
+    },
+    "pt-BR": {
+      "from": "43e2def831c0",
+      "text": "65434c00ccf2"
+    },
+    "zh-CN": {
+      "from": "43e2def831c0",
+      "text": "7d500081d756"
+    }
+  },
+  "projects:scheduleRunAlert.limitTitle": {
+    "de": {
+      "from": "d253d46c571c",
+      "text": "e6eb7b1163af"
+    },
+    "es": {
+      "from": "d253d46c571c",
+      "text": "7276232f0f7d"
+    },
+    "fr": {
+      "from": "d253d46c571c",
+      "text": "fbb7c1275fd3"
+    },
+    "it": {
+      "from": "d253d46c571c",
+      "text": "41d01db82447"
+    },
+    "ja": {
+      "from": "d253d46c571c",
+      "text": "bd2579e5c163"
+    },
+    "ko": {
+      "from": "d253d46c571c",
+      "text": "ff8a412b756d"
+    },
+    "pt-BR": {
+      "from": "d253d46c571c",
+      "text": "99c315365d0b"
+    },
+    "zh-CN": {
+      "from": "d253d46c571c",
+      "text": "524863bffdf8"
+    }
+  },
   "projects:scheduleRunAlert.missedNote": {
     "de": {
       "from": "29ace0ee6947",
@@ -119575,6 +119677,40 @@
     "zh-CN": {
       "from": "29ace0ee6947",
       "text": "9a779b85348e"
+    }
+  },
+  "projects:scheduleRunAlert.openSettings": {
+    "de": {
+      "from": "3f940108cb1e",
+      "text": "b05424fb55b1"
+    },
+    "es": {
+      "from": "3f940108cb1e",
+      "text": "eabd4e6b133a"
+    },
+    "fr": {
+      "from": "3f940108cb1e",
+      "text": "ace54a85899e"
+    },
+    "it": {
+      "from": "3f940108cb1e",
+      "text": "547c2db6770f"
+    },
+    "ja": {
+      "from": "3f940108cb1e",
+      "text": "4be7d659bc7e"
+    },
+    "ko": {
+      "from": "3f940108cb1e",
+      "text": "3a6b16eab508"
+    },
+    "pt-BR": {
+      "from": "3f940108cb1e",
+      "text": "2df74278e51a"
+    },
+    "zh-CN": {
+      "from": "3f940108cb1e",
+      "text": "37aa6ad6a36d"
     }
   },
   "projects:scheduleRunAlert.partialNote": {
@@ -120085,6 +120221,40 @@
     "zh-CN": {
       "from": "f4ccae29e1bb",
       "text": "1f0eb99b7ed0"
+    }
+  },
+  "projects:scheduleStatus.stoppedAtLimit": {
+    "de": {
+      "from": "272dba4e3914",
+      "text": "c1c55a5181db"
+    },
+    "es": {
+      "from": "272dba4e3914",
+      "text": "96fd9881b8e0"
+    },
+    "fr": {
+      "from": "272dba4e3914",
+      "text": "f48b72f4c418"
+    },
+    "it": {
+      "from": "272dba4e3914",
+      "text": "d49d0ddedcea"
+    },
+    "ja": {
+      "from": "272dba4e3914",
+      "text": "0587461e7678"
+    },
+    "ko": {
+      "from": "272dba4e3914",
+      "text": "3fe3fbb485e5"
+    },
+    "pt-BR": {
+      "from": "272dba4e3914",
+      "text": "8a499dfad181"
+    },
+    "zh-CN": {
+      "from": "272dba4e3914",
+      "text": "d3ce0ecc248f"
     }
   },
   "projects:scheduleTaskModal.accountDefault": {

@@ -6540,6 +6540,7 @@ function AppCore() {
             onRunNow={handleRunScheduleNow}
             onReviewedAutoPause={markAutoPauseReviewed}
             onStopRun={handleStopScheduleRun}
+            onOpenSettings={openSettings}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the

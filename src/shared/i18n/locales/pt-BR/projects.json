@@ -543,6 +543,7 @@
     "missed": "Perdida",
     "lastFailed": "Última falhou",
     "lastRunFailed": "Última execução falhou",
+    "stoppedAtLimit": "Parada em um limite",
     "done": "Concluída",
     "active": "Ativa"
   },
@@ -572,11 +573,14 @@
     "autoPausedNote": "Retomar reativa o agendamento e pode recuperar uma execução pendente. Executar agora a executa uma vez, agora.",
     "partialTitle": "A última execução parou no meio",
     "partialNote": "Algumas das ações podem ter sido concluídas. Revise a execução antes de executá-la novamente.",
+    "limitTitle": "A última execução parou em um limite",
+    "limitNote": "Parte do trabalho pode ter sido concluída. Revise a execução antes de executá-la novamente.",
     "failedTitle": "A última execução falhou",
     "resume": "Retomar",
     "runNow": "Executar agora",
     "reviewRun": "Revisar execução",
-    "runAgain": "Executar novamente"
+    "runAgain": "Executar novamente",
+    "openSettings": "Abrir Configurações"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -652,7 +656,8 @@
       "running": "Em execução",
       "success": "Concluída",
       "failed": "Falhou",
-      "cancelled": "Parada"
+      "cancelled": "Parada",
+      "stoppedAtLimit": "Parada em um limite"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Em execução agora",

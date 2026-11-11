@@ -1,6 +1,7 @@
 // `<ScheduleRunAlert>` — what a schedule's detail page says about how its
 // last run went, when there is something to act on: a pause with a run still
-// finishing, a missed one-off, an auto-pause, or a run that failed. Each says
+// finishing, a missed one-off, an auto-pause, a run that stopped at a limit,
+// or a run that failed. Each says
 // what is known about whether the run did anything, and offers the run's
 // output (Review run) before anything that runs again.
 //
@@ -10,7 +11,7 @@
 import { Alert, Button } from '../ui';
 import i18n, { useTranslation } from '../../../lib/i18n';
 import { missedOnceTitle } from '../../lib/scheduleCopy';
-import { lastRunFailed, scheduleState } from './ScheduleStatusBadge';
+import { lastRunFailed, lastRunStoppedAtLimit, scheduleState } from './ScheduleStatusBadge';
 
 // Outcomes after which some of the run's actions may have happened.
 const MAY_HAVE_ACTED = new Set(['failed_during_execution', 'interrupted', 'uncertain']);
@@ -51,6 +52,16 @@ export function runAlert(task) {
     };
   }
   if (task.running || !lastRunFailed(task)) return null;
+  if (lastRunStoppedAtLimit(task)) {
+    // The reason names the limit; Settings is where it is raised.
+    return {
+      kind: 'limit',
+      variant: 'warning',
+      title: msg('limitTitle'),
+      reason,
+      note: msg('limitNote'),
+    };
+  }
   if (MAY_HAVE_ACTED.has(run?.outcome)) {
     return {
       kind: 'partial',
@@ -68,7 +79,7 @@ export function runAlert(task) {
   };
 }
 
-export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onReviewRun }) {
+export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onReviewRun, onOpenSettings }) {
   const { t } = useTranslation('projects');
   const alert = runAlert(task);
   if (!alert) return null;
@@ -85,9 +96,12 @@ export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onRev
       <Button key="run" size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy}>{t('scheduleRunAlert.runNow')}</Button>
     ),
     conversationId && (
-      <Button key="review" size="sm" variant={alert.kind === 'partial' || alert.kind === 'failed' ? 'default' : 'subtle'} onClick={() => onReviewRun?.(conversationId)}>{t('scheduleRunAlert.reviewRun')}</Button>
+      <Button key="review" size="sm" variant={alert.kind === 'partial' || alert.kind === 'limit' || alert.kind === 'failed' ? 'default' : 'subtle'} onClick={() => onReviewRun?.(conversationId)}>{t('scheduleRunAlert.reviewRun')}</Button>
     ),
-    alert.kind === 'partial' && (
+    alert.kind === 'limit' && onOpenSettings && (
+      <Button key="settings" size="sm" variant="subtle" onClick={() => onOpenSettings('agent')}>{t('scheduleRunAlert.openSettings')}</Button>
+    ),
+    (alert.kind === 'partial' || alert.kind === 'limit') && (
       <Button key="again" size="sm" variant="subtle" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>{t('scheduleRunAlert.runAgain')}</Button>
     ),
   ].filter(Boolean);

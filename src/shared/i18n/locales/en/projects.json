@@ -543,6 +543,7 @@
     "missed": "Missed",
     "lastFailed": "Last failed",
     "lastRunFailed": "Last run failed",
+    "stoppedAtLimit": "Stopped at a limit",
     "done": "Done",
     "active": "Active"
   },
@@ -572,11 +573,14 @@
     "autoPausedNote": "Resume turns the schedule back on and may catch up a pending run. Run now runs it once, now.",
     "partialTitle": "The last run stopped partway",
     "partialNote": "Some of its actions may have completed. Review the run before running it again.",
+    "limitTitle": "The last run stopped at a limit",
+    "limitNote": "Some of its work may be done. Review the run before running it again.",
     "failedTitle": "The last run failed",
     "resume": "Resume",
     "runNow": "Run now",
     "reviewRun": "Review run",
-    "runAgain": "Run again"
+    "runAgain": "Run again",
+    "openSettings": "Open Settings"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -652,7 +656,8 @@
       "running": "Running",
       "success": "Succeeded",
       "failed": "Failed",
-      "cancelled": "Stopped"
+      "cancelled": "Stopped",
+      "stoppedAtLimit": "Stopped at a limit"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Running now",

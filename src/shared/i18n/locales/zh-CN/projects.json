@@ -543,6 +543,7 @@
     "missed": "已错过",
     "lastFailed": "上次失败",
     "lastRunFailed": "上次运行失败",
+    "stoppedAtLimit": "达到上限后停止",
     "done": "已完成",
     "active": "已启用"
   },
@@ -572,11 +573,14 @@
     "autoPausedNote": "“恢复”会重新启用定时，并可能补上一次待运行的任务。“立即运行”会马上运行一次。",
     "partialTitle": "上次运行中途停止",
     "partialNote": "部分操作可能已经完成。再次运行前，请先查看本次运行。",
+    "limitTitle": "上次运行达到上限后停止",
+    "limitNote": "部分工作可能已经完成。再次运行前，请先查看本次运行。",
     "failedTitle": "上次运行失败",
     "resume": "恢复",
     "runNow": "立即运行",
     "reviewRun": "查看运行",
-    "runAgain": "再次运行"
+    "runAgain": "再次运行",
+    "openSettings": "打开设置"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -652,7 +656,8 @@
       "running": "运行中",
       "success": "成功",
       "failed": "失败",
-      "cancelled": "已停止"
+      "cancelled": "已停止",
+      "stoppedAtLimit": "达到上限后停止"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "正在运行",

@@ -271,6 +271,28 @@ describe('ScheduleDetailView — how the last run went', () => {
     },
   );
 
+  it('says a run stopped at a limit, with its reason, and opens Settings to raise it', async () => {
+    const lastRun = failed('stopped_at_limit', { error: 'Run reached its step limit and stopped before it finished.' });
+    const { props, user } = setup({ task: { ...TASK, state: 'active', lastRun }, onOpenSettings: vi.fn() });
+    const box = (await screen.findByText('The last run stopped at a limit')).closest('[role="alert"]');
+    expect(within(box).getByText('Run reached its step limit and stopped before it finished.')).toBeInTheDocument();
+    await user.click(within(box).getByRole('button', { name: 'Open Settings' }));
+    expect(props.onOpenSettings).toHaveBeenCalledWith('agent');
+    await user.click(within(box).getByRole('button', { name: 'Review run' }));
+    expect(props.onOpenRunSession).toHaveBeenCalledWith('conv-9');
+    await user.click(within(box).getByRole('button', { name: 'Run again' }));
+    expect(props.onRunNow).toHaveBeenCalledWith('s1');
+  });
+
+  it('labels a run that stopped at a limit in the run list', async () => {
+    vi.mocked(fetchScheduleRuns).mockResolvedValue({
+      runs: [{ id: 'run-4', status: 'failed', outcome: 'stopped_at_limit', startedAt: '2026-10-02T09:00:00Z', error: 'Run reached its step limit.' }],
+    });
+    setup();
+    expect(await screen.findByText('Stopped at a limit')).toBeInTheDocument();
+    expect(screen.queryByText('Failed')).not.toBeInTheDocument();
+  });
+
   it('offers no Run again while a run is still going', async () => {
     setup({ task: { ...TASK, state: 'active', running: true, lastRun: failed('interrupted') } });
     await screen.findAllByRole('button', { name: /^Open the (failed )?run from/ });

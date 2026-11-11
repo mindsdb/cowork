@@ -543,6 +543,7 @@
     "missed": "누락됨",
     "lastFailed": "최근 실패",
     "lastRunFailed": "최근 실행 실패",
+    "stoppedAtLimit": "한도에서 중지됨",
     "done": "완료",
     "active": "활성"
   },
@@ -572,11 +573,14 @@
     "autoPausedNote": "‘재개’를 누르면 일정이 다시 켜지고 대기 중인 실행을 따라잡을 수 있습니다. ‘지금 실행’을 누르면 지금 한 번 실행됩니다.",
     "partialTitle": "최근 실행이 도중에 중지되었습니다",
     "partialNote": "일부 작업은 완료되었을 수 있습니다. 다시 실행하기 전에 실행 내역을 검토하세요.",
+    "limitTitle": "최근 실행이 한도에 도달해 중지되었습니다",
+    "limitNote": "작업 일부는 완료되었을 수 있습니다. 다시 실행하기 전에 실행 내역을 검토하세요.",
     "failedTitle": "최근 실행에 실패했습니다",
     "resume": "재개",
     "runNow": "지금 실행",
     "reviewRun": "실행 검토",
-    "runAgain": "다시 실행"
+    "runAgain": "다시 실행",
+    "openSettings": "설정 열기"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -652,7 +656,8 @@
       "running": "실행 중",
       "success": "성공",
       "failed": "실패",
-      "cancelled": "중지됨"
+      "cancelled": "중지됨",
+      "stoppedAtLimit": "한도에서 중지됨"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "지금 실행 중",
