@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 const embedBrowser = vi.fn();
 vi.mock('../../api', () => ({ embedBrowser: (...args) => embedBrowser(...args) }));
 
-import { BrowserPanel, STARTING_TIMEOUT_MS, webPaneNote } from './BrowserPanel';
+import { BrowserPanel, STARTING_TIMEOUT_MS, isBlankPage, webPaneNote } from './BrowserPanel';
 import { QUICK_CLOSE_MS } from '../../lib/browserSession';
 import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 
@@ -87,6 +87,25 @@ describe('BrowserPanel', () => {
       messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'human', reason: 'sign in to Kayak' });
       messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'agent' });
       expect(onControl.mock.calls).toEqual([['human', 'sign in to Kayak'], ['agent', '']]);
+    });
+
+    it('covers a blank tab with the start page, and gets out of the way once a page opens', async () => {
+      const onSend = vi.fn();
+      const onOpenUrl = vi.fn(async () => {});
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Anton" onClose={() => {}} taskKey="t" onSend={onSend} onOpenUrl={onOpenUrl} />);
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'about:blank' });
+      await flush();
+      const field = screen.getByLabelText('What to look up');
+      fireEvent.change(field, { target: { value: 'flights to Lisbon' } });
+      fireEvent.submit(field.closest('form'));
+      expect(onSend).toHaveBeenCalledWith('Search the web in the browser for: flights to Lisbon');
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://www.kayak.com/' });
+      await flush();
+      expect(screen.queryByLabelText('What to look up')).toBeNull();
+      expect(isBlankPage('chrome://newtab/')).toBe(true);
+      expect(isBlankPage('https://example.com/')).toBe(false);
     });
 
     it("frames the link in the router's own embed answer", async () => {

@@ -2200,11 +2200,19 @@ export default function ChatView({
     const meta = document.querySelector('meta[name="viewport"]');
     const viewportBefore = meta?.getAttribute('content') || null;
     meta?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
-    const keepTop = () => { window.setTimeout(() => window.scrollTo(0, 0), 0); };
+    // The phone's keyboard, while the composer under the browser has focus:
+    // the composer rides above it (--phone-keyboard, globals.css).
+    const keepTop = () => {
+      window.setTimeout(() => window.scrollTo(0, 0), 0);
+      const vv = window.visualViewport;
+      const keyboard = vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+      root.style.setProperty('--phone-keyboard', `${keyboard}px`);
+    };
     window.addEventListener('focusin', keepTop);
     window.visualViewport?.addEventListener('resize', keepTop);
     return () => {
       root.classList.remove('phone-browser-open');
+      root.style.removeProperty('--phone-keyboard');
       if (meta && viewportBefore !== null) meta.setAttribute('content', viewportBefore);
       window.removeEventListener('focusin', keepTop);
       window.visualViewport?.removeEventListener('resize', keepTop);
@@ -2252,6 +2260,9 @@ export default function ChatView({
           extraActions={browserCallIcon}
           dock={browserDock}
           onControl={onBrowserControl}
+          taskKey={task.id}
+          onSend={onSend ? (text) => onSend(text) : undefined}
+          onOpenUrl={openUrlInTask}
         />
       )}
       {blankBrowserOpen && (
@@ -2280,18 +2291,29 @@ export default function ChatView({
   const nowDoing = isStreaming
     ? (liveSteps[liveSteps.length - 1]?.label || 'Working on it…')
     : 'Done. Minimize to see the answer.';
+  const callLive = Boolean(phoneCall && phoneCall.phase !== 'idle' && phoneCall.phase !== 'ended');
   const phoneDock = browserDock && (phoneCallCard || browserPaneOpen) ? (
     <div className="chat-phone-dock">
       {!phoneBrowserExpanded && phoneCallCard}
       {browserNode}
-      {/* Under the expanded browser, in place of the composer: the call's
-          orb, and what Anton needs from the person or else what he's doing. */}
+      {/* Under the expanded browser: the call's orb (or a button to start
+          one) beside what Anton needs from the person or else what he's
+          doing, and the composer under them (globals.css). */}
       {phoneBrowserExpanded && (
-        <div className={`phone-browser-strip${needsUser ? ' is-asking' : ''}`} role="status" aria-live="polite">
-          {phoneCall && phoneCall.phase !== 'idle' && (
+        <div className={`phone-browser-strip${needsUser ? ' is-asking' : ''}`}>
+          {callLive ? (
             <VoiceOrb call={phoneCall} onClick={() => setBrowserMinimized(true)} />
-          )}
-          <div className="phone-browser-strip__text">
+          ) : onStartVoiceCall ? (
+            <button
+              type="button"
+              className="phone-browser-strip__talk"
+              aria-label={`Talk to ${harnessLabel(task?.harness) || 'Anton'}`}
+              onClick={() => onStartVoiceCall()}
+            >
+              {Ico.mic(16)}
+            </button>
+          ) : null}
+          <div className="phone-browser-strip__text" role="status" aria-live="polite">
             <p>{needsUser || nowDoing}</p>
             {needsUser && <Button size="sm" onClick={() => setBrowserMinimized(true)}>Minimize</Button>}
           </div>

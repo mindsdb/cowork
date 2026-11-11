@@ -9,6 +9,7 @@ import { VIEWER_CLOSED, VIEWER_READY, afterViewerClose, browserViewerTheme, view
 import { host } from '../../../platform/host';
 import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 import { BrowserFrame } from './BrowserFrame';
+import { BlankStartOver } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
 
 /* The person's browser beside the chat. The agent drives it through its
@@ -80,6 +81,11 @@ function postTheme(frame) {
    lines are Settings' own, so the two surfaces can't drift. The pane can't
    tell who holds the browser (the viewer posts only that it is ready or
    closed), so the sign-in line always shows. */
+/** A tab with nothing in it yet, which the start page covers. */
+export function isBlankPage(url) {
+  return url === 'about:blank' || url === 'chrome://newtab/' || url === 'chrome://new-tab-page/';
+}
+
 export function webPaneNote(agentLabel) {
   return `What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site. ${agentLabel}'s page reads and screenshots go to the model provider that serves your turn. ${WEB_JEV_LINE} ${WEB_SIGN_INS}`;
 }
@@ -95,7 +101,10 @@ export function BrowserPanel(props) {
 /**
  * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
  */
-function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null }) {
+function WebBrowserStage({
+  sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
+  taskKey = '', onSend, onOpenUrl,
+}) {
   const onControlRef = useRef(onControl);
   onControlRef.current = onControl;
   const [viewUrl, setViewUrl] = useState(null);
@@ -104,6 +113,8 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = 
   const [generation, setGeneration] = useState(0);
   const [viewerReady, setViewerReady] = useState(false);
   const [slow, setSlow] = useState(false);
+  // The page the viewer shows, as it reports it: a blank tab gets the start page.
+  const [pageUrl, setPageUrl] = useState('');
   /* Bumped when the starting clock starts over on a request from the
      person, the tab or the network, so the clock restarts even while the
      pane is still waiting. */
@@ -195,6 +206,10 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = 
         return;
       }
       // Who holds the browser: 'human' when Anton handed it to the person.
+      if (type === 'browser-viewer-url') {
+        setPageUrl(String(event.data?.url || '').slice(0, 2048));
+        return;
+      }
       if (type === 'browser-viewer-control') {
         onControlRef.current?.(event.data?.holder === 'human' ? 'human' : 'agent', String(event.data?.reason || '').slice(0, 300));
         return;
@@ -233,6 +248,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = 
   useEffect(() => {
     readyRef.current = false;
     setViewerReady(false);
+    setPageUrl('');
   }, [frameKey]);
 
   /* The starting clock runs while the pane waits. A new link that a close
@@ -268,6 +284,9 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = 
           sandbox="allow-forms allow-scripts"
           referrerPolicy="no-referrer"
         />
+      )}
+      {viewUrl && !error && viewerReady && isBlankPage(pageUrl) && (onSend || onOpenUrl) && (
+        <BlankStartOver taskKey={taskKey} agentLabel={agentLabel} onSend={onSend} onOpenUrl={onOpenUrl} />
       )}
       {error ? (
         <EmptyState

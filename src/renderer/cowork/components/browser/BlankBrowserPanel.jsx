@@ -29,21 +29,12 @@ export function browserRequestFor(text) {
   return `Search the web in the browser for: ${text.trim()}`;
 }
 
-/**
- * @param {{ taskKey?: string, agentLabel?: string, browserOn?: boolean,
- *   onSend?: (text: string) => void, onOpenUrl?: (url: string) => Promise<void>,
- *   onClose: () => void, floating?: boolean, extraActions?: import('react').ReactNode }} props
- */
-export default function BlankBrowserPanel({
-  taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onOpenUrl, onClose, floating = false, extraActions = null, dock = null,
-}) {
-  const [address, setAddress] = useState('');
-  const [search, setSearch] = useState('');
+/** Sends what the person typed: an address opens at once (`onOpenUrl`),
+    anything else goes to the agent as a search (`onSend`). */
+function useBlankGo({ agentLabel, browserOn, onSend, onOpenUrl }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const line = blankLineFor(taskKey);
   const usable = browserOn && (onSend || onOpenUrl);
-
   const go = async (text) => {
     const wanted = text.trim();
     if (!usable || !wanted || busy) return;
@@ -63,6 +54,67 @@ export default function BlankBrowserPanel({
     onSend(browserRequestFor(wanted));
     setBusy(`${agentLabel} is opening the browser…`);
   };
+  return { busy, error, usable, go };
+}
+
+/** The start page's middle: a line, and a field for a search or a link. */
+function BlankStart({ taskKey, agentLabel, browserOn, state, autoFocus = true }) {
+  const [search, setSearch] = useState('');
+  const line = blankLineFor(taskKey);
+  const { busy, error, usable, go } = state;
+  return (
+    <div className="browser-panel__blank">
+      <span className="browser-panel__blank-mark" aria-hidden="true">{Ico.globe(20)}</span>
+      <h2 className="browser-panel__blank-title">{line.title}</h2>
+      <p className="browser-panel__blank-subtitle">
+        {browserOn ? line.subtitle : `The browser is off for this task. Turn it on from the + menu and ${agentLabel} can browse.`}
+      </p>
+      <form className="browser-panel__blank-form" onSubmit={(e) => { e.preventDefault(); void go(search); }}>
+        <input
+          type="text"
+          className="browser-panel__blank-input"
+          placeholder="Search, or paste a link"
+          aria-label="What to look up"
+          value={search}
+          disabled={!usable || !!busy}
+          onChange={(e) => setSearch(e.target.value)}
+          autoFocus={autoFocus}
+        />
+        <Button type="submit" size="sm" variant="primary" disabled={!usable || !!busy || !search.trim()}>
+          {busy ? 'On it…' : 'Go'}
+        </Button>
+      </form>
+      {error && <p className="browser-panel__blank-error" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * The start page over a live browser whose tab is blank: the same line and
+ * field as the blank pane, so a fresh browser never shows an empty white page.
+ * @param {{ taskKey?: string, agentLabel?: string, onSend?: (text: string) => void,
+ *   onOpenUrl?: (url: string) => Promise<void> }} props
+ */
+export function BlankStartOver({ taskKey = '', agentLabel = 'Anton', onSend, onOpenUrl }) {
+  const state = useBlankGo({ agentLabel, browserOn: true, onSend, onOpenUrl });
+  return (
+    <div className="browser-panel__blank-over">
+      <BlankStart taskKey={taskKey} agentLabel={agentLabel} browserOn state={state} autoFocus={false} />
+    </div>
+  );
+}
+
+/**
+ * @param {{ taskKey?: string, agentLabel?: string, browserOn?: boolean,
+ *   onSend?: (text: string) => void, onOpenUrl?: (url: string) => Promise<void>,
+ *   onClose: () => void, floating?: boolean, extraActions?: import('react').ReactNode }} props
+ */
+export default function BlankBrowserPanel({
+  taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onOpenUrl, onClose, floating = false, extraActions = null, dock = null,
+}) {
+  const [address, setAddress] = useState('');
+  const state = useBlankGo({ agentLabel, browserOn, onSend, onOpenUrl });
+  const { busy, usable, go } = state;
 
   const addressBar = (
     <form
@@ -87,29 +139,7 @@ export default function BlankBrowserPanel({
 
   return (
     <BrowserFrame hint={busy || 'Nothing open yet'} below={addressBar} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock}>
-      <div className="browser-panel__blank">
-        <span className="browser-panel__blank-mark" aria-hidden="true">{Ico.globe(20)}</span>
-        <h2 className="browser-panel__blank-title">{line.title}</h2>
-        <p className="browser-panel__blank-subtitle">
-          {browserOn ? line.subtitle : `The browser is off for this task. Turn it on from the + menu and ${agentLabel} can browse.`}
-        </p>
-        <form className="browser-panel__blank-form" onSubmit={(e) => { e.preventDefault(); void go(search); }}>
-          <input
-            type="text"
-            className="browser-panel__blank-input"
-            placeholder="Search, or paste a link"
-            aria-label="What to look up"
-            value={search}
-            disabled={!usable || !!busy}
-            onChange={(e) => setSearch(e.target.value)}
-            autoFocus
-          />
-          <Button type="submit" size="sm" variant="primary" disabled={!usable || !!busy || !search.trim()}>
-            {busy ? 'On it…' : 'Go'}
-          </Button>
-        </form>
-        {error && <p className="browser-panel__blank-error" role="alert">{error}</p>}
-      </div>
+      <BlankStart taskKey={taskKey} agentLabel={agentLabel} browserOn={browserOn} state={state} />
     </BrowserFrame>
   );
 }

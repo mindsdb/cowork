@@ -82,6 +82,9 @@ body[data-skin="8bit"] .browser-panel__blank-input { border: 2px solid var(--ink
 .browser-panel__address:focus-within { border-color: var(--ink-3); background: var(--surface); }
 .browser-panel__address-icon { display: inline-flex; color: var(--ink-4); }
 .browser-panel__address-input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; }
+/* The start page over a live browser's blank tab, under the viewer's own
+   address row (so the address and Minimize stay in reach). */
+.browser-panel__blank-over { position: absolute; z-index: 1; inset: 49px 0 0; display: flex; padding: 24px 0; overflow: auto; background: var(--bg); }
 .browser-panel__blank-error { margin: 0; color: var(--danger); font-size: 12px; }
 body[data-skin="8bit"] .browser-panel__address { border: 2px solid var(--ink); border-radius: 0; }
 
@@ -112,10 +115,10 @@ body[data-skin="8bit"] .browser-panel__minus { border-radius: 0; height: 2px; }
 body[data-skin="8bit"] .browser-panel.is-docked { border-bottom: 2px solid var(--ink); }
 @media (prefers-reduced-motion: reduce) { .browser-panel.is-docked { transition: none; } }
 
-/* Phones, expanded: the browser covers the top 80% of the screen, from the
+/* Phones, expanded: the browser covers the top three quarters of the screen, from the
    very top, with only the page's address row and a floating Minimize. */
 .browser-panel.is-docked:not(.is-collapsed) {
-  position: fixed; z-index: 70; top: 0; left: 0; right: 0; height: 80dvh;
+  position: fixed; z-index: 70; top: 0; left: 0; right: 0; height: var(--phone-browser-h, 76dvh);
   padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid var(--line);
   box-shadow: 0 10px 30px rgba(0, 0, 0, .28); transition: none;
 }
@@ -128,4 +131,3 @@ body[data-skin="8bit"] .browser-panel.is-docked { border-bottom: 2px solid var(-
 }
 .browser-panel__dock-min:active { background: var(--surface-2); }
 body[data-skin="8bit"] .browser-panel__dock-min { border: 2px solid var(--ink); border-radius: 0; }
-.browser-panel.is-docked .browser-panel__blank-form { display: none; }
