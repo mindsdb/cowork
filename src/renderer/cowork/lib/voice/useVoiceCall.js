@@ -15,6 +15,12 @@
 //   the session ends and its usage is final.
 // - `meters` holds an AnalyserNode for each voice ({agent, user}), for the
 //   card's sound waves. Listening only: the audio element plays the voice.
+// - A session's voice is fixed when it starts, so `switchVoice` hangs up at
+//   once and starts again in the new voice, which says a short line; a switch
+//   while one is still starting drops that one. `preview` is the same with no
+//   microphone, and hangs up after its line.
+// - `signOff` (the card's Mute) has Anton say a short goodbye, then folds the
+//   card away (`closing`) and hangs up.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startVoiceSession } from '../../api';
@@ -27,6 +33,22 @@ export const MAX_SPOKEN_CHARS = 1500;
 // Transcript deltas can land just after the delegation that they explain.
 const TRANSCRIPT_SETTLE_MS = 700;
 const CLOSE_WAIT_MS = 8000;
+// A goodbye or a preview line: how long to wait for it to start, the quiet
+// that means it's over (the audio trails the transcript), and the most it
+// may take.
+const LINE_START_MS = 5000;
+const LINE_QUIET_MS = 1500;
+const LINE_MAX_MS = 12000;
+// The card's fold (voice-call.css .is-closing).
+export const FOLD_MS = 360;
+
+const OPENINGS = {
+  task: 'Open casually in a few words, like "Hey, let me see what we got in this task", then say in one or two short sentences what this task is about and ask what they want to do next.',
+  fresh: 'Greet the user in one short sentence and ask what they would like to work on.',
+  switch: 'The user just switched you to a new voice. Say one short, playful line in it, like "How\'s this voice?", and nothing else.',
+  preview: 'The user is trying out your voice. Say one short, friendly line so they can hear it, like "Hi, this is how I sound", and nothing else.',
+  signOff: 'The user muted you to end the call. Say one short goodbye in your own words, a variation of "Got it, just click the call button whenever you need me next." Say nothing else.',
+};
 
 function tail(text) {
   return text.length > CAPTION_CHARS ? `…${text.slice(-CAPTION_CHARS)}` : text;
@@ -53,11 +75,17 @@ export function useVoiceCall({ onAsk, context }) {
   const [agentSpeaking, setAgentSpeaking] = useState(false);
   const [working, setWorking] = useState(false);
   const [micOn, setMicOn] = useState(true);
+  const [closing, setClosing] = useState(false);
+  const [voice, setVoice] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const call = useRef(null); // { peer, channel, microphone, audio, listening }
   const meters = useRef({ agent: null, user: null });
   const heard = useRef({ pending: '', lastTurn: '' });
   const speakingTimer = useRef(null);
+  // When Anton last said something, and the session's opening.
+  const spoke = useRef(0);
+  const opening = useRef('call');
   const onAskRef = useRef(onAsk);
   const contextRef = useRef(context);
   onAskRef.current = onAsk;
@@ -108,16 +136,12 @@ export function useVoiceCall({ onAsk, context }) {
     switch (event.type) {
       case 'session.started': {
         setPhase('live');
-        const about = withoutPhoneNumbers(contextRef.current?.() || '').slice(0, 1800);
+        const kind = opening.current;
+        const about = kind === 'preview' ? '' : withoutPhoneNumbers(contextRef.current?.() || '').slice(0, 1800);
         if (about) send({ type: 'session.thinking.append', event_id: eventId('context'), delegation_id: null, content: about });
-        send({
-          type: 'session.instructions.append',
-          event_id: eventId('greet'),
-          delegation_id: null,
-          content: about
-            ? 'Greet the user in one short sentence, say you know what this task is about, and ask what they want to do next.'
-            : 'Greet the user in one short sentence and ask what they would like to work on.',
-        });
+        const line = kind === 'call' ? (about ? OPENINGS.task : OPENINGS.fresh) : OPENINGS[kind];
+        send({ type: 'session.instructions.append', event_id: eventId('greet'), delegation_id: null, content: line });
+        if (kind === 'preview') void afterLine().then(() => foldAndEnd());
         break;
       }
       case 'session.input_transcript.delta': {
@@ -130,6 +154,7 @@ export function useVoiceCall({ onAsk, context }) {
         const delta = String(event.delta || '');
         setCaptions((c) => ({ ...c, agent: tail(c.last === 'agent' ? c.agent + delta : delta.trimStart()), last: 'agent' }));
         setAgentSpeaking(true);
+        spoke.current = Date.now();
         clearTimeout(speakingTimer.current);
         speakingTimer.current = setTimeout(() => setAgentSpeaking(false), 1200);
         break;
@@ -142,6 +167,7 @@ export function useVoiceCall({ onAsk, context }) {
         // Hung up here: just close. Ended on the other side: say so.
         setPhase((p) => (p === 'ending' ? 'idle' : 'ended'));
         setWorking(false);
+        setClosing(false);
         cleanup();
         break;
       case 'error':
@@ -151,21 +177,52 @@ export function useVoiceCall({ onAsk, context }) {
     }
   }, [cleanup, handleDelegation, send]);
 
-  const start = useCallback(async () => {
+  // Resolves once Anton has said the line just asked for (or it never came).
+  const afterLine = useCallback(() => new Promise((resolve) => {
+    const asked = Date.now();
+    spoke.current = 0;
+    const tick = () => {
+      const now = Date.now();
+      const started = spoke.current > 0;
+      if (!call.current || now - asked > LINE_MAX_MS
+        || (!started && now - asked > LINE_START_MS)
+        || (started && now - spoke.current > LINE_QUIET_MS)) { resolve(); return; }
+      setTimeout(tick, 150);
+    };
+    setTimeout(tick, 150);
+  }), []);
+
+  const startRef = useRef(null);
+  const endRef = useRef(null);
+  // Folds the card, then hangs up.
+  const foldAndEnd = useCallback(async () => {
+    if (!call.current) return;
+    setClosing(true);
+    await new Promise((r) => { setTimeout(r, FOLD_MS); });
+    await endRef.current?.();
+  }, []);
+
+  const start = useCallback(async ({ voice: asked = null, kind = 'call' } = {}) => {
     if (call.current) return;
+    opening.current = kind;
     setPhase('starting');
     setNotice('');
+    setClosing(false);
+    setVoice(asked);
+    setPreviewing(kind === 'preview');
     setCaptions({ user: '', agent: '', last: null });
     setWorking(false);
-    setMicOn(true);
+    setMicOn(kind !== 'preview');
     heard.current = { pending: '', lastTurn: '' };
+    let mine = null;
     try {
       const peer = new RTCPeerConnection();
       const audio = new Audio();
       audio.autoplay = true;
       // Started by the click that started the call, so the browser lets it run.
       const listening = typeof AudioContext === 'function' ? new AudioContext() : null;
-      call.current = { peer, audio, listening };
+      mine = { peer, audio, listening };
+      call.current = mine;
       const meter = (stream) => {
         if (!listening) return null;
         try {
@@ -184,13 +241,19 @@ export function useVoiceCall({ onAsk, context }) {
         audio.play().catch(() => {});
         meters.current = { ...meters.current, agent: meter(voice) };
       });
-      const microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
-      call.current.microphone = microphone;
-      meters.current = { ...meters.current, user: meter(microphone) };
-      microphone.getAudioTracks().forEach((t) => peer.addTrack(t, microphone));
+      if (kind === 'preview') {
+        // Only listening: no microphone to ask for.
+        peer.addTransceiver('audio', { direction: 'recvonly' });
+      } else {
+        const microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (call.current !== mine) { microphone.getTracks().forEach((t) => t.stop()); return; }
+        mine.microphone = microphone;
+        meters.current = { ...meters.current, user: meter(microphone) };
+        microphone.getAudioTracks().forEach((t) => peer.addTrack(t, microphone));
+      }
       // The event channel exists before the offer, so it is negotiated with it.
       const channel = peer.createDataChannel(CHANNEL);
-      call.current.channel = channel;
+      mine.channel = channel;
       channel.addEventListener('message', ({ data }) => {
         try { onEvent(JSON.parse(data)); } catch { /* not an event */ }
       });
@@ -208,10 +271,12 @@ export function useVoiceCall({ onAsk, context }) {
           setTimeout(resolve, 5000);
         });
       }
-      const created = await startVoiceSession(peer.localDescription.sdp);
-      if (!call.current) return; // hung up while it started
+      if (call.current !== mine) return; // hung up, or switched, while it started
+      const created = await startVoiceSession(peer.localDescription.sdp, asked);
+      if (call.current !== mine) return;
       await peer.setRemoteDescription({ type: 'answer', sdp: created.transport.sdp });
     } catch (err) {
+      if (mine && call.current !== mine) return;
       cleanup();
       setNotice(voiceStartFailure(err));
       setPhase('ended');
@@ -229,6 +294,33 @@ export function useVoiceCall({ onAsk, context }) {
       setPhase('idle');
     }
   }, [cleanup, send]);
+  startRef.current = start;
+  endRef.current = end;
+
+  // Hangs up at once and starts again in `voice`, which says a short line
+  // (`kind` 'switch' on a call, 'preview' with no call).
+  const restart = useCallback((asked, kind) => {
+    if (call.current) {
+      send({ type: 'session.close' });
+      cleanup();
+    }
+    setPhase('idle');
+    void startRef.current?.({ voice: asked, kind });
+  }, [cleanup, send]);
+  const switchVoice = useCallback((asked) => restart(asked, opening.current === 'preview' || !call.current ? 'preview' : 'switch'), [restart]);
+  const preview = useCallback((asked) => restart(asked, 'preview'), [restart]);
+
+  // The card's Mute: the microphone goes off, Anton says goodbye, the card
+  // folds away and the call ends.
+  const signOff = useCallback(async () => {
+    if (!call.current || closing) return;
+    call.current.microphone?.getAudioTracks().forEach((t) => { t.enabled = false; });
+    setMicOn(false);
+    if (send({ type: 'session.instructions.append', event_id: eventId('bye'), delegation_id: null, content: OPENINGS.signOff })) {
+      await afterLine();
+    }
+    await foldAndEnd();
+  }, [afterLine, closing, foldAndEnd, send]);
 
   // Something to tell the person unasked (queued work finished): GPT-Live
   // says it in its own words when it can.
@@ -255,8 +347,8 @@ export function useVoiceCall({ onAsk, context }) {
   }, [cleanup, send]);
 
   return {
-    phase, notice, captions, agentSpeaking, working, micOn, meters,
-    start, end, toggleMic, announce,
+    phase, notice, captions, agentSpeaking, working, micOn, meters, closing, voice, previewing,
+    start, end, toggleMic, announce, switchVoice, preview, signOff,
     dismiss: () => { setPhase('idle'); setNotice(''); },
   };
 }

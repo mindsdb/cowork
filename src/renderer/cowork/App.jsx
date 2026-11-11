@@ -153,6 +153,7 @@ import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { desktopTaskSession, latestBrowserSessionIdIn } from './lib/browserSession';
+import { getVoicePrefs, subscribeVoicePrefs, useVoicePrefs } from './lib/voice/voicePrefs';
 import { autoApprovePositionClick, isPositionClickCard } from './lib/browserApproval';
 import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
 import { Outlet } from 'react-router-dom';
@@ -695,6 +696,22 @@ function AppCore() {
     onAsk: (request) => operateFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
   });
+  // Settings > Voice (lib/voice/voicePrefs.js): off hides every call button
+  // and ends a call; a new voice moves a call to it at once, or, with no
+  // call, says a short line in it.
+  const voicePrefs = useVoicePrefs();
+  const voicePrefsSeenRef = useRef(null);
+  voicePrefsSeenRef.current = { voiceCall, voiceAvailable, videoCallIdle: facetime.phase === 'idle' };
+  useEffect(() => subscribeVoicePrefs((prefs, { voiceChanged }) => {
+    const { voiceCall: calling, voiceAvailable: canCall, videoCallIdle } = voicePrefsSeenRef.current;
+    if (!prefs.enabled) {
+      if (calling.phase !== 'idle') void calling.end();
+      return;
+    }
+    if (!voiceChanged || !canCall || !videoCallIdle) return;
+    if (calling.phase === 'idle' || calling.phase === 'ended' || calling.previewing) calling.preview(prefs.voice);
+    else calling.switchVoice(prefs.voice);
+  }), []);
   // Show browser from Home or Projects: a blank page floating over the
   // page, whose search starts a task.
   const [offTaskBrowserOpen, setOffTaskBrowserOpen] = useState(false);
@@ -4739,18 +4756,20 @@ function AppCore() {
   // first request. A click, so the browser plays the avatar's voice.
   // One call at a time: each start offers itself only while neither runs.
   const noCallRunning = facetime.phase === 'idle' && voiceCall.phase === 'idle';
-  const startVoiceCall = voiceAvailable && noCallRunning
+  const startVoiceCall = voiceAvailable && voicePrefs.enabled && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
       voiceHistoryRef.current = [];
       callWorkRef.current.clear();
-      void voiceCall.start();
+      void voiceCall.start({ voice: getVoicePrefs().voice });
     }
     : null;
   // The top-right call icon (TopShortcuts): a click starts a voice call; while
   // one runs it shows that, and the call's card (in the sidebar) ends it.
   let voiceCallShortcut = null;
-  if (voiceCall.phase !== 'idle' && voiceCall.phase !== 'ended') {
+  if (!voicePrefs.enabled) {
+    voiceCallShortcut = null;
+  } else if (voiceCall.phase !== 'idle' && voiceCall.phase !== 'ended') {
     voiceCallShortcut = { label: `On a call with ${agentLabel}`, live: true };
   } else if (startVoiceCall) {
     voiceCallShortcut = {

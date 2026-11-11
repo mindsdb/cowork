@@ -2918,12 +2918,12 @@ export async function fetchVoiceStatus() {
 
 /* The browser's SDP offer in, GPT-Live's answer out ({session: {id},
    transport: {sdp}}), through the server and MindsHub as the caller. */
-export async function startVoiceSession(sdp) {
+export async function startVoiceSession(sdp, voice) {
   return req('/voice/session', {
     method: 'POST',
     timeoutMs: 40_000,
     headers: await hubHeaders(),
-    body: JSON.stringify({ sdp }),
+    body: JSON.stringify(voice ? { sdp, voice } : { sdp }),
   });
 }
 

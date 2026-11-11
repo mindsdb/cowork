@@ -60,6 +60,23 @@ body[data-skin="8bit"] .voice-call__x { border: 2px solid var(--ink); box-shadow
 .voice-call__row { display: flex; align-items: center; gap: 10px; }
 .voice-call__who { min-width: 0; flex: 1; }
 .voice-call__title { font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: 0.01em; }
+.voice-call__name { display: flex; align-items: center; gap: 2px; }
+.voice-call__voice { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer; transition: color .15s ease, background .15s ease; }
+.voice-call__voice:hover, .voice-call__voice[aria-expanded="true"] { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.voice-call__voice svg { transition: transform .2s ease; }
+.voice-call__voice[aria-expanded="true"] svg { transform: rotate(180deg); }
+body[data-skin="8bit"] .voice-call__voice { border-radius: 0; }
+
+/* Mute signs off: once Anton has said goodbye the card folds away. */
+.voice-call.is-closing { animation: voice-call-fold 360ms cubic-bezier(.4, 0, .2, 1) forwards; pointer-events: none; overflow: hidden; }
+@keyframes voice-call-fold {
+  0% { opacity: 1; transform: translateY(0) scale(1); max-height: 240px; }
+  60% { opacity: 0; transform: translateY(6px) scale(.97); }
+  100% { opacity: 0; transform: translateY(8px) scale(.96); max-height: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-call.is-closing { animation-duration: 1ms; }
+}
 .voice-call__status { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-3); }
 .voice-call__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: voice-call-dot 2.4s ease-in-out infinite; }
 @keyframes voice-call-dot { 50% { opacity: 0.35; } }

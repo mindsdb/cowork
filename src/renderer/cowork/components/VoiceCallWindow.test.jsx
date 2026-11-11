@@ -6,7 +6,7 @@ import VoiceCallWindow from './VoiceCallWindow';
 function call(over = {}) {
   return {
     phase: 'live', notice: '', captions: { user: '', agent: '', last: null }, agentSpeaking: false,
-    working: false, micOn: true, start: vi.fn(), end: vi.fn(), toggleMic: vi.fn(), dismiss: vi.fn(),
+    working: false, micOn: true, start: vi.fn(), end: vi.fn(), toggleMic: vi.fn(), signOff: vi.fn(), dismiss: vi.fn(),
     ...over,
   };
 }
@@ -23,8 +23,8 @@ describe('the voice call card', () => {
     expect(screen.getByText('Working on it…')).toBeInTheDocument();
     expect(screen.queryByText('On it.')).not.toBeInTheDocument();
     expect(screen.queryByText('Book a hotel')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Mute' }));
-    expect(c.toggleMic).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Mute and end the call' }));
+    expect(c.signOff).toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'End call' })).toHaveClass('voice-call__x');
     expect(screen.queryByRole('button', { name: 'Hang up' })).not.toBeInTheDocument();
   });
@@ -45,5 +45,20 @@ describe('the voice call card', () => {
 
     rerender(<VoiceCallWindow call={c} docked />);
     expect(screen.getByRole('dialog')).toHaveClass('voice-call--docked');
+  });
+});
+
+describe('the voice call card, signing off and voices', () => {
+  it('folds away while it signs off', () => {
+    render(<VoiceCallWindow call={call({ micOn: false, closing: true })} />);
+    expect(screen.getByRole('dialog')).toHaveClass('is-closing');
+    expect(screen.getByText('Talk soon')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mute and end the call' })).toBeDisabled();
+  });
+
+  it('names the voice by the chevron, and says which one a preview tries', () => {
+    render(<VoiceCallWindow call={call({ previewing: true, micOn: false })} />);
+    expect(screen.getByRole('button', { name: /^Voice: / })).toBeInTheDocument();
+    expect(screen.getByText(/^Trying /)).toBeInTheDocument();
   });
 });

@@ -73,7 +73,7 @@ describe('a voice call', () => {
     const { result } = await started({ onAsk: vi.fn(), context: () => 'The user is in a task called "Q3 sales".' });
 
     expect(peer.label).toBe('oai-events');
-    expect(startVoiceSession).toHaveBeenCalledWith('offer-sdp');
+    expect(startVoiceSession).toHaveBeenCalledWith('offer-sdp', null);
     expect(peer.remote).toEqual({ type: 'answer', sdp: 'answer-sdp' });
     expect(result.current.phase).toBe('starting');
 
@@ -83,6 +83,58 @@ describe('a voice call', () => {
     const [context, greet] = peer.channel.sent;
     expect(context).toMatchObject({ type: 'session.thinking.append', delegation_id: null, content: 'The user is in a task called "Q3 sales".' });
     expect(greet).toMatchObject({ type: 'session.instructions.append', delegation_id: null });
+    expect(greet.content).toMatch(/let me see what we got in this task/);
+  });
+
+  it('starts in the voice asked for, and a switch hangs up at once and starts again in the new one', async () => {
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
+    await act(() => hook.result.current.start({ voice: 'willow' }));
+    expect(startVoiceSession).toHaveBeenLastCalledWith('offer-sdp', 'willow');
+    const first = peer;
+    act(() => first.channel.emit({ type: 'session.started' }));
+
+    await act(async () => { hook.result.current.switchVoice('cedar'); await vi.advanceTimersByTimeAsync(0); });
+    expect(first.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+    expect(first.closed).toBe(true);
+    expect(peer).not.toBe(first);
+    expect(startVoiceSession).toHaveBeenLastCalledWith('offer-sdp', 'cedar');
+
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    expect(peer.channel.sent.at(-1).content).toMatch(/new voice/);
+    expect(hook.result.current.voice).toBe('cedar');
+  });
+
+  it('signs off: the microphone goes off, Anton says goodbye, the card folds and the call ends', async () => {
+    const { result } = await started({ onAsk: vi.fn(), context: () => '' });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+
+    let done;
+    act(() => { done = result.current.signOff(); });
+    expect(track.enabled).toBe(false);
+    expect(peer.channel.sent.at(-1).content).toMatch(/whenever you need me next/);
+    act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: 'Got it, ping me anytime.' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1800); });
+    expect(result.current.closing).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); await done; });
+    expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+  });
+
+  it('previews a voice with no microphone, and hangs up after its line', async () => {
+    peer = null;
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => 'ignored' }));
+    peer = null;
+    const addTransceiver = vi.fn();
+    globalThis.RTCPeerConnection = class extends FakePeer { addTransceiver(...a) { addTransceiver(...a); } };
+    await act(async () => { hook.result.current.preview('vesper'); await vi.advanceTimersByTimeAsync(0); });
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(addTransceiver).toHaveBeenCalledWith('audio', { direction: 'recvonly' });
+    expect(hook.result.current.previewing).toBe(true);
+
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    expect(peer.channel.sent.map((e) => e.type)).toEqual(['session.instructions.append']);
+    act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: 'Hi, this is how I sound.' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2400); });
+    expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
   });
 
   it('hands what the person said to Anton and returns the answer, without phone numbers', async () => {

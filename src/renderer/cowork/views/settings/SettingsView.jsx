@@ -29,6 +29,7 @@ import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import BrowserSettingsSection from './BrowserSettingsSection';
+import VoiceSettingsSection from './VoiceSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
@@ -1960,6 +1961,8 @@ export default function SettingsView({
         </SettingsGroup>
 
         <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
+
+        <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />
 
         {/* Not on hosted web yet: its turns run in a pod that doesn't receive
             these limits until the web time limit and the PR that sends them

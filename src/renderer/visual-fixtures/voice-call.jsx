@@ -29,13 +29,14 @@ function fakeVoice({ seed = 1, loud = 1 } = {}) {
 
 const base = {
   notice: '', captions: { user: '', agent: '', last: null }, agentSpeaking: false,
-  working: false, micOn: true, start() {}, end() {}, toggleMic() {}, dismiss() {},
+  working: false, micOn: true, start() {}, end() {}, toggleMic() {}, signOff() {}, dismiss() {},
 };
 const CASES = [
   { label: 'Anton talking', call: { ...base, phase: 'live', meters: { current: { agent: fakeVoice({ seed: 1 }), user: null } } } },
   { label: 'The person talking', call: { ...base, phase: 'live', meters: { current: { agent: null, user: fakeVoice({ seed: 4, loud: 0.9 }) } } } },
   { label: 'Anton working on it', call: { ...base, phase: 'live', working: true, meters: { current: { agent: null, user: null } } } },
-  { label: 'Muted', call: { ...base, phase: 'live', micOn: false, meters: { current: { agent: null, user: null } } } },
+  { label: 'Signing off (Mute)', call: { ...base, phase: 'live', micOn: false, meters: { current: { agent: fakeVoice({ seed: 2 }), user: null } } } },
+  { label: 'Trying a voice', call: { ...base, phase: 'live', micOn: false, previewing: true, meters: { current: { agent: fakeVoice({ seed: 3 }), user: null } } } },
   { label: 'Connecting', call: { ...base, phase: 'starting', meters: { current: { agent: null, user: null } } } },
   { label: 'Ended from the other side', call: { ...base, phase: 'ended', notice: 'The call ended (timeout).' } },
 ];
