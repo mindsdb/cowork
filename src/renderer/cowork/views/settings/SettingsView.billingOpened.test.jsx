@@ -114,9 +114,12 @@ describe('SettingsView — no-credits notice route (ENG-1533)', () => {
     render(asBillingOwner(<Harness initialSettings={noCredits()} />));
 
     await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
-    await user.click(screen.getAllByRole('button', { name: /Top up balance/ })[0]);
+    // Every instance, so a second notice wired the old way cannot hide behind the first.
+    const buttons = screen.getAllByRole('button', { name: /Top up balance/ });
+    for (const button of buttons) await user.click(button);
 
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledTimes(buttons.length);
+    expect(hostMock.host.openExternal.mock.calls.every(([url]) => url === MINDS_ADD_FUNDS_URL)).toBe(true);
   });
 });
 
@@ -153,9 +156,12 @@ describe('SettingsView — locked-model hint route (ENG-1533)', () => {
     await waitFor(() =>
       expect(screen.getAllByRole('button', { name: 'Top up your balance' }).length).toBeGreaterThan(0),
     );
-    await user.click(screen.getAllByRole('button', { name: 'Top up your balance' })[0]);
+    // Every instance: one hint renders per role picker whose current model is locked.
+    const buttons = screen.getAllByRole('button', { name: 'Top up your balance' });
+    for (const button of buttons) await user.click(button);
 
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledTimes(buttons.length);
+    expect(hostMock.host.openExternal.mock.calls.every(([url]) => url === MINDS_ADD_FUNDS_URL)).toBe(true);
   });
 
   it('shows no hint, and records nothing, when the model is payable', async () => {

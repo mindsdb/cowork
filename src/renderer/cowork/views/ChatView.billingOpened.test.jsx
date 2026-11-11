@@ -187,6 +187,19 @@ describe('billing_opened trigger per call site', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
   });
 
+  it('model_access_denied: a member gets the billing page, not a dialog they cannot submit', async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: false }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('model_access_denied', 'Payment required.'))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
   it('model_disabled: even a billing owner gets the plain billing page, since credits cannot re-enable it', async () => {
     const user = userEvent.setup();
     render(
