@@ -44,3 +44,16 @@ describe('quit flushes', () => {
     await expect(q.runQuitFlushes(1_000)).resolves.toBe(true);
   });
 });
+
+describe('quit holds', () => {
+  it('holds every registered writer and resumes each one', async () => {
+    const q = await load();
+    const events: string[] = [];
+    q.registerQuitHold(() => { events.push('hold:a'); return () => events.push('resume:a'); });
+    q.registerQuitHold(() => { events.push('hold:b'); return () => events.push('resume:b'); });
+    const resume = q.holdQuitWriters();
+    expect(events).toEqual(['hold:a', 'hold:b']);
+    resume();
+    expect(events).toEqual(['hold:a', 'hold:b', 'resume:a', 'resume:b']);
+  });
+});

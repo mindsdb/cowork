@@ -47,6 +47,7 @@ import {
   refreshTokensOnly,
   scheduleRefreshRetry,
 } from './minds-auth';
+import { holdQuitWriters } from './quit-flush';
 import {
   beginMindsResumeCredentialGate,
   isMindsResumeCredentialGateActive,
@@ -778,5 +779,48 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(fn).toHaveBeenCalledTimes(1);
     expect(r1).toEqual({ status: 'ok', token: 'at' });
     expect(r2).toEqual(r1);
+  });
+
+  it('holds the scheduled refresh for a quit and re-arms it at the same due time', async () => {
+    const fn = mockFetchOnce(async () => jsonResponse(503, {}));
+    scheduleRefreshRetry();
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    const resume = holdQuitWriters();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fn).not.toHaveBeenCalled();
+
+    resume();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not arm a timer for a refresh that lands while held', async () => {
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => { release = r; });
+    const fn = mockFetchOnce(async () => { await gate; return jsonResponse(200, { access_token: 'at', expires_in: 300 }); });
+    const pending = refreshTokensOnly();
+
+    const resume = holdQuitWriters();
+    release(null);
+    await expect(pending).resolves.toEqual({ status: 'ok', token: 'at' });
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // The due time passed while held, so the refresh runs at once.
+    resume();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-arm a refresh cancelled while held', async () => {
+    const fn = mockFetchOnce(async () => jsonResponse(503, {}));
+    scheduleRefreshRetry();
+    const resume = holdQuitWriters();
+    cancelScheduledRefresh();
+
+    resume();
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(fn).not.toHaveBeenCalled();
   });
 });

@@ -3,13 +3,27 @@
 // modules that own the writes.
 
 type QuitFlush = () => Promise<void>;
+/** Stops a source of new writes and returns the function that restarts it. */
+type QuitHold = () => () => void;
 
 export const QUIT_FLUSH_CEILING_MS = 2_000;
 
 const flushes: QuitFlush[] = [];
+const holds: QuitHold[] = [];
 
 export function registerQuitFlush(flush: QuitFlush): void {
   flushes.push(flush);
+}
+
+export function registerQuitHold(hold: QuitHold): void {
+  holds.push(hold);
+}
+
+/** Stops every registered write source, so nothing new is queued after the
+ *  flush. The returned function restarts them for an exit that did not happen. */
+export function holdQuitWriters(): () => void {
+  const resumes = holds.map((hold) => hold());
+  return () => { for (const resume of resumes) resume(); };
 }
 
 /** True when every registered flush settled within `timeoutMs`, false at the

@@ -125,13 +125,18 @@ import {
   installShellAutoUpdate,
   requestShellInstall,
 } from './shell-auto-update-runtime';
-import { registerQuitFlush } from './quit-flush';
+import { registerQuitFlush, registerQuitHold } from './quit-flush';
 
 // Stands in for the token store's pending writes. Silent unless a test turns
 // it on, so the other order assertions stay as they are.
 const flushProbe = { active: false };
 registerQuitFlush(async () => {
   if (flushProbe.active) order.events.push('flush');
+});
+// Stands in for the scheduled token refresh.
+registerQuitHold(() => {
+  if (flushProbe.active) order.events.push('hold');
+  return () => { if (flushProbe.active) order.events.push('resume'); };
 });
 
 beforeEach(() => {
@@ -168,7 +173,15 @@ describe('installShellAutoUpdate', () => {
     // rotated refresh token still queued for disk would be lost.
     flushProbe.active = true;
     expect(await installShellAutoUpdate()).toBe(true);
-    expect(order.events).toEqual(['begin-install', 'stop:begin', 'stop:done', 'flush', 'quitAndInstall']);
+    expect(order.events).toEqual(['begin-install', 'stop:begin', 'stop:done', 'hold', 'flush', 'quitAndInstall']);
+  });
+
+  it('releases held writers when the installer does not quit the app', async () => {
+    // A refresh held across the flush must run again in the app that stays open.
+    flushProbe.active = true;
+    launchOutcome.next = Promise.resolve(false);
+    expect(await installShellAutoUpdate()).toBe(false);
+    expect(order.events).toEqual(['begin-install', 'stop:begin', 'stop:done', 'hold', 'flush', 'quitAndInstall', 'abort', 'resume', 'start']);
   });
 
   it('does nothing when no update is ready', async () => {

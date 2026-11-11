@@ -11,6 +11,7 @@ import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
 import { beginMindsResumeCredentialGate, settleMindsResumeCredentialGate } from './minds-resume-gate';
 import { retryOnTransientLock } from './fs-retry';
+import { registerQuitHold } from './quit-flush';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
 import { describeFetchError } from './fetch-error';
 import {
@@ -1579,6 +1580,11 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
 }
 
 let _refreshTimer: NodeJS.Timeout | null = null;
+// A refresh that lands after the quit flush rotates the refresh token in
+// memory only. An update install holds the timer across its flush and the
+// installer launch, and releases it when the install does not quit the app.
+let _refreshDueAt: number | null = null;
+let _refreshHolds = 0;
 
 // The normal refresh runs with a 60-second expiry buffer, and the wake barrier
 // gives a held turn only MINDS_RESUME_READY_TIMEOUT_MS. Retry fast enough to
@@ -1632,6 +1638,7 @@ export function scheduleRefreshRetry(): void {
 export function cancelScheduledRefresh(): void {
   if (_refreshTimer) clearTimeout(_refreshTimer);
   _refreshTimer = null;
+  _refreshDueAt = null;
   _refreshRetryAttempt = 0;
   _credentialHandoffCancellationEpoch += 1;
   cancelCredentialHandoffRetry();
@@ -1639,12 +1646,36 @@ export function cancelScheduledRefresh(): void {
 
 function scheduleRefreshIn(delayMs: number): void {
   if (_refreshTimer) clearTimeout(_refreshTimer);
+  _refreshTimer = null;
+  _refreshDueAt = Date.now() + delayMs;
+  // While held, only the due time is kept; releasing the hold arms it.
+  if (_refreshHolds > 0) return;
   // refreshTokensOnly re-arms the timer itself on every outcome that
   // warrants one (ok → next expiry window, transient → retry delay), so
   // the chain never dies after a single failure — the pre-ENG-761 timer
   // ran silentRefresh once and never retried.
-  _refreshTimer = setTimeout(() => { void refreshTokensOnly(); }, delayMs);
+  _refreshTimer = setTimeout(() => {
+    _refreshTimer = null;
+    _refreshDueAt = null;
+    void refreshTokensOnly();
+  }, delayMs);
 }
+
+function holdScheduledRefresh(): () => void {
+  _refreshHolds += 1;
+  if (_refreshTimer) clearTimeout(_refreshTimer);
+  _refreshTimer = null;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    _refreshHolds -= 1;
+    if (_refreshHolds === 0 && _refreshDueAt !== null) {
+      scheduleRefreshIn(Math.max(_refreshDueAt - Date.now(), 0));
+    }
+  };
+}
+registerQuitHold(holdScheduledRefresh);
 
 function scheduleRefreshAt(expiresAt: number): void {
   // Only reached after a successful exchange, so the outage is over.
