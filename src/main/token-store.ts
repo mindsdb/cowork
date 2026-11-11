@@ -21,7 +21,6 @@ import { accountDataRoot, coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 import { retryOnTransientLock } from './fs-retry';
 import { registerQuitFlush } from './quit-flush';
-import { deleteSafeStorageKeychainEntry } from './keychain-service';
 
 // Persistence for the Keycloak refresh token.
 //
@@ -36,12 +35,11 @@ import { deleteSafeStorageKeychainEntry } from './keychain-service';
 //
 // macOS: safeStorage keeps its key in the Keychain item "<app name> Safe
 // Storage". Its ACL trusts the app's designated requirement (bundle id plus
-// Team ID), so signed updates read it without a prompt. Installs from before
-// the bundle id changed hold an item trusting the old id; it is removed once,
-// before first use (LEGACY_ENTRY_REMOVED_FLAG). A Keychain refusal is recorded
-// in KEYCHAIN_UNAVAILABLE_MARKER and keeps the install on the fallback file, so
-// a user who clicked Deny is not asked again on every launch. Deleting the
-// marker file brings the Keychain back.
+// Team ID), so signed updates read it without a prompt. An install whose item
+// predates the bundle id change sees one prompt. A Keychain refusal, including
+// a Deny, is recorded in KEYCHAIN_UNAVAILABLE_MARKER and keeps the install on
+// the fallback file, so the user is not asked again on every launch. Deleting
+// the marker file brings the Keychain back.
 
 const SECURE_FILE = path.join(app.getPath('userData'), 'mindshub-refresh.bin');
 const FALLBACK_FILE = path.join(coworkHome(), 'refresh-token.dat');
@@ -53,10 +51,6 @@ const FALLBACK_TMP = `${FALLBACK_FILE}.tmp`;
 const WRITE_RETRY = { attempts: 4, baseDelayMs: 60 };
 const IS_MAC = process.platform === 'darwin';
 const KEYCHAIN_UNAVAILABLE_MARKER = path.join(app.getPath('userData'), 'keychain-unavailable');
-const LEGACY_ENTRY_REMOVED_FLAG = path.join(app.getPath('userData'), 'keychain-legacy-entry-removed');
-// Skipping the removal costs only a retry next launch; a hung Keychain call
-// would otherwise keep the window from ever opening.
-const LEGACY_REMOVAL_TIMEOUT_MS = 5_000;
 
 type StoreKind = 'secure' | 'fallback';
 
@@ -150,7 +144,7 @@ function deleteTokenFiles(): void {
 // ── safeStorage ─────────────────────────────────────────────────────
 
 async function secureStoreAvailable(): Promise<boolean> {
-  if (fallbackPinned()) return false;
+  if (keychainRefused()) return false;
   let available: boolean;
   try {
     available = await safeStorage.isAsyncEncryptionAvailable();
@@ -162,10 +156,6 @@ async function secureStoreAvailable(): Promise<boolean> {
   }
   if (!available) recordKeychainRefusal('availability_false', null);
   return available;
-}
-
-function fallbackPinned(): boolean {
-  return _fallbackOnly || keychainRefused();
 }
 
 function keychainRefused(): boolean {
@@ -191,52 +181,6 @@ function recordKeychainRefusal(reason: 'availability_false' | 'encrypt_failed', 
   }
 }
 
-async function removeLegacyKeychainEntry(): Promise<void> {
-  if (!IS_MAC || fs.existsSync(LEGACY_ENTRY_REMOVED_FLAG)) return;
-  try {
-    if (!keychainRefused()) await attemptLegacyKeychainRemoval();
-  } finally {
-    // Without the flag the next launch repeats the removal and would delete a
-    // secure file written now together with its key. The refusal marker may be
-    // deleted mid-session, so a refused install stays on the fallback too.
-    if (!fs.existsSync(LEGACY_ENTRY_REMOVED_FLAG)) _fallbackOnly = true;
-  }
-}
-
-async function attemptLegacyKeychainRemoval(): Promise<void> {
-  const name = app.getName();
-  let removed: boolean | 'timeout';
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    removed = await Promise.race([
-      deleteSafeStorageKeychainEntry(`${name} Safe Storage`, name),
-      new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), LEGACY_REMOVAL_TIMEOUT_MS); }),
-    ]);
-  } catch (e) {
-    diagnostic("main.token-store", "WARNING", "token_store_legacy_keychain_entry_not_removed", '[token-store] could not remove the legacy Keychain item; retrying next launch', e);
-    return;
-  } finally {
-    clearTimeout(timer);
-  }
-  if (removed === 'timeout') {
-    diagnostic("main.token-store", "WARNING", "token_store_legacy_keychain_removal_timed_out", '[token-store] legacy Keychain removal did not answer; retrying next launch');
-    return;
-  }
-  if (removed) {
-    diagnostic("main.token-store", "INFO", "token_store_legacy_keychain_entry_removed", '[token-store] removed the legacy Keychain item');
-  } else {
-    diagnostic("main.token-store", "INFO", "token_store_legacy_keychain_entry_not_found", '[token-store] no legacy Keychain item to remove');
-  }
-  // Encrypted under the key just removed, or under one this app cannot read.
-  removeStaleStore(SECURE_FILE);
-  try {
-    fs.mkdirSync(path.dirname(LEGACY_ENTRY_REMOVED_FLAG), { recursive: true });
-    fs.writeFileSync(LEGACY_ENTRY_REMOVED_FLAG, '');
-  } catch (e) {
-    diagnostic("main.token-store", "WARNING", "token_store_legacy_keychain_flag_not_written", '[token-store] could not record the legacy Keychain removal; retrying next launch', e);
-  }
-}
-
 // ── State ───────────────────────────────────────────────────────────
 
 let _accessToken: string | null = null;
@@ -246,9 +190,6 @@ let _refreshToken: string | null = null;
 let _initialized = false;
 let _initPromise: Promise<void> | null = null;
 let _warnedReadBeforeInit = false;
-// Set on macOS while the legacy removal has not recorded its flag; see
-// removeLegacyKeychainEntry.
-let _fallbackOnly = false;
 let _warnedPinnedFallback = false;
 // Bumped by every saveTokens that carries a refresh token and by clearTokens.
 // A queued write or a startup load that finds it changed is stale and drops out.
@@ -281,7 +222,6 @@ async function loadAtStartup(): Promise<void> {
   const generation = _persistGeneration;
   removeStaleStore(SECURE_TMP);
   removeStaleStore(FALLBACK_TMP);
-  await removeLegacyKeychainEntry();
 
   const secureTime = mtimeMs(SECURE_FILE);
   const fallbackTime = mtimeMs(FALLBACK_FILE);
@@ -368,12 +308,12 @@ async function persist(token: string, generation: number): Promise<void> {
   if (_lastPersisted?.token === token && _lastPersisted.kind === kind) return;
 
   const outcome = available ? await trySecureWrite(token, generation) : 'skipped';
-  if (outcome === 'written') return;
+  if (outcome === 'done') return;
   if (outcome === 'skipped') warnFallbackWrite();
   await writeStore('fallback', token, encryptToken(token), generation);
 }
 
-async function trySecureWrite(token: string, generation: number): Promise<'written' | 'write_failed' | 'skipped'> {
+async function trySecureWrite(token: string, generation: number): Promise<'done' | 'write_failed' | 'skipped'> {
   let encrypted: Buffer;
   try {
     encrypted = await safeStorage.encryptStringAsync(token);
@@ -384,7 +324,7 @@ async function trySecureWrite(token: string, generation: number): Promise<'writt
   }
   try {
     await writeStore('secure', token, encrypted, generation);
-    return 'written';
+    return 'done';
   } catch (e) {
     diagnostic("main.token-store", "WARNING", "token_store_secure_file_write_failed", '[token-store] could not write the secure token file', e);
     return 'write_failed';
@@ -392,9 +332,9 @@ async function trySecureWrite(token: string, generation: number): Promise<'writt
 }
 
 function warnFallbackWrite(): void {
-  // A marker or a failed legacy removal pins the fallback for good; saying
-  // so on every token rotation adds nothing.
-  const pinned = fallbackPinned();
+  // A refusal marker pins the fallback for good; saying so on every token
+  // rotation adds nothing.
+  const pinned = keychainRefused();
   if (pinned && _warnedPinnedFallback) return;
   _warnedPinnedFallback ||= pinned;
   diagnostic("main.token-store", "WARNING", "token_store_safestorage_unavailable_using_encrypted_file_fallback", '[token-store] safeStorage unavailable — using encrypted-file fallback');

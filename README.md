@@ -82,7 +82,7 @@ A channel's state is not all under one folder. It spreads across several locatio
 | **Data home** — `~/.cowork-<kind>` / `~/.cowork` | SQLite `cowork.db`, `.env`, `state.json`, `.master_key`, and the `projects/` `files/` `skills/` `data-vault/` trees ([full layout](https://github.com/mindsdb/cowork-server#data-layer)) | `COWORK_HOME` |
 | **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv). Beside the `tools/` folder, never inside it: `.cowork-release-contracts/`, the release installer's rollback snapshots ([`install_release_server.py`](scripts/install_release_server.py)). uv reads every folder in `tools/` as a tool, and `uv tool list` fails on one it can't name | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
 | **Server logs** — `~/.cowork-<kind>/logs/` / `~/Library/Logs/anton` | `cowork-server.log` | Non-prod redirects to the data home |
-| **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs); the MindsHub refresh token (`mindshub-refresh.bin`, encrypted with safeStorage on every platform); on macOS the `keychain-unavailable` marker and the `keychain-legacy-entry-removed` flag | `app.setName` per kind |
+| **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs); the MindsHub refresh token (`mindshub-refresh.bin`, encrypted with safeStorage on every platform); on macOS the `keychain-unavailable` marker | `app.setName` per kind |
 | **MindsHub refresh token** — userData `mindshub-refresh.bin`; fallback `~/.cowork-<kind>/refresh-token.dat` / `~/.cowork/refresh-token.dat` only while safeStorage is unavailable | The Keycloak refresh token. On macOS a refused Keychain prompt writes userData `keychain-unavailable` and keeps that install on the fallback file without asking again; delete the marker to use the Keychain again | userData (secure file) / `COWORK_HOME` (fallback) — see [`token-store.ts`](src/main/token-store.ts) |
 | **OTA UI cache** — non-prod: `~/.cowork-<kind>/ui-cache` / prod: userData `ui-cache/` | Hot-swapped renderer bundle | `COWORK_HOME` (non-prod) / userData (prod) — see [`ui-updater.ts`](src/main/ui-updater.ts) |
 | **Shell-update downloads** — `~/Library/Caches/anton-updater-{prod,stable}` | electron-updater's pending shell installer (**prod + stable only**; other kinds have no shell auto-update) | Per-channel cache dir name, in the OS cache root — not userData |
@@ -199,7 +199,7 @@ anton-reset() {
   # Per-user runtime state — all build kinds (prod uses ~/.cowork and the
   # 'anton' userData dir; dev/preview/stable use suffixed homes and their own
   # userData dirs). The userData dirs hold the refresh token and the Keychain
-  # markers; the homes hold the fallback refresh-token.dat, if any, and the
+  # marker; the homes hold the fallback refresh-token.dat, if any, and the
   # non-prod ui-cache; the 'anton' userData dir holds prod's ui-cache.
   rm -rf "$HOME/Library/Application Support/anton" \
          "$HOME/Library/Application Support/MindsHub Cowork (Dev)" \

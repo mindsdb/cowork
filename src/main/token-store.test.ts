@@ -22,7 +22,6 @@ const h = vi.hoisted(() => {
     encrypted: [] as string[],
     decrypted: [] as Buffer[],
     events: [] as string[],
-    deleteEntry: vi.fn(async (_service: string, _account: string): Promise<boolean> => false),
   };
 });
 
@@ -94,10 +93,6 @@ vi.mock('../shared/diagnostics', async (importActual) => {
   };
 });
 
-vi.mock('./keychain-service', () => ({
-  deleteSafeStorageKeychainEntry: (service: string, account: string) => h.deleteEntry(service, account),
-}));
-
 // accountDataRoot too: recordActiveOrganization resolves the account root
 // through it, and a mock missing it fails every test in this file, not just the
 // organization ones. This fixture's account owns the default root.
@@ -128,7 +123,6 @@ const SECURE = () => path.join(h.userData, 'mindshub-refresh.bin');
 const FALLBACK = () => path.join(h.home, 'refresh-token.dat');
 const present = () => ({ secure: fs.existsSync(SECURE()), fallback: fs.existsSync(FALLBACK()) });
 const MARKER = () => path.join(h.userData, 'keychain-unavailable');
-const FLAG = () => path.join(h.userData, 'keychain-legacy-entry-removed');
 
 // The fallback file's format: AES-256-CBC, IV first, key derived from userData.
 function fallbackKey(): Buffer {
@@ -188,8 +182,6 @@ beforeEach(() => {
   h.encrypted.length = 0;
   h.decrypted.length = 0;
   h.events.length = 0;
-  h.deleteEntry.mockReset();
-  h.deleteEntry.mockImplementation(async () => { h.calls.push('delete'); return false; });
 });
 
 afterEach(() => {
@@ -589,32 +581,7 @@ describe('token-store write ordering', () => {
 });
 
 describe('token-store on macOS', () => {
-  // Most cases are not about the legacy Keychain item; the flag keeps its
-  // removal out of their way.
-  const skipLegacyRemoval = () => fs.writeFileSync(FLAG(), '');
-
-  it('removes the legacy Keychain item once, before the first safeStorage call', async () => {
-    h.deleteEntry.mockImplementation(async () => { h.calls.push('delete'); return true; });
-    writeFallback('mac-token');
-    let store = await bootStore('darwin');
-    expect(h.deleteEntry).toHaveBeenCalledWith('TestApp Safe Storage', 'TestApp');
-    expect(fs.existsSync(FLAG())).toBe(true);
-    expect(logged('token_store_legacy_keychain_entry_removed')).toBe(true);
-    // The startup load reached safeStorage, and only after the removal.
-    expect(h.calls.indexOf('available')).toBeGreaterThan(-1);
-    expect(h.calls.indexOf('delete')).toBeGreaterThan(-1);
-    expect(h.calls.indexOf('delete')).toBeLessThan(h.calls.indexOf('available'));
-
-    await store.flushTokenStore();
-    expect(readSecure()).toBe('mac-token');
-
-    store = await bootStore('darwin');
-    expect(h.deleteEntry).toHaveBeenCalledTimes(1);
-    expect(store.getRefreshToken()).toBe('mac-token');
-  });
-
   it('does not pin the install to the fallback file when the availability check throws', async () => {
-    skipLegacyRemoval();
     h.available.value = 'throw';
     let store = await bootStore('darwin');
     store.saveTokens('at', 3600, 'thrown-token');
@@ -628,13 +595,7 @@ describe('token-store on macOS', () => {
     expect(readSecure()).toBe('thrown-token');
   });
 
-  it('reports a missing legacy item as not found and still writes the flag', async () => {
-    const store = await bootStore('darwin');
-    expect(logged('token_store_legacy_keychain_entry_not_found')).toBe(true);
-    expect(fs.existsSync(FLAG())).toBe(true);
-  });
-
-  it('migrates the fallback file and drops the older secure file from before the new scheme', async () => {
+  it('migrates the newer fallback file over an older secure file', async () => {
     writeSecure('relic', 1_000);
     writeFallback('current', 2_000);
     const store = await bootStore('darwin');
@@ -643,7 +604,6 @@ describe('token-store on macOS', () => {
     await store.flushTokenStore();
     expect(readSecure()).toBe('current');
     expect(fs.existsSync(FALLBACK())).toBe(false);
-    expect(fs.existsSync(FLAG())).toBe(true);
   });
 
   it('migrates a fallback-only token into the Keychain-backed file', async () => {
@@ -653,32 +613,9 @@ describe('token-store on macOS', () => {
     await store.flushTokenStore();
     expect(readSecure()).toBe('mac-current');
     expect(fs.existsSync(FALLBACK())).toBe(false);
-    expect(fs.existsSync(FLAG())).toBe(true);
-  });
-
-  it('stops waiting for a removal that never answers and stays on the fallback file', async () => {
-    vi.useFakeTimers();
-    try {
-      h.deleteEntry.mockImplementation(() => new Promise<boolean>(() => undefined));
-      writeFallback('mac-current');
-      const store = await loadStore('darwin');
-      const init = store.initTokenStore();
-      await vi.advanceTimersByTimeAsync(5_000);
-      await init;
-      expect(logged('token_store_legacy_keychain_removal_timed_out')).toBe(true);
-      expect(fs.existsSync(FLAG())).toBe(false);
-      expect(store.getRefreshToken()).toBe('mac-current');
-      store.saveTokens('at', 3600, 'rotated');
-      await store.flushTokenStore();
-      expect(readFallback()).toBe('rotated');
-      expect(fs.existsSync(SECURE())).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it('warns about a pinned fallback once per process, not on every rotation', async () => {
-    skipLegacyRemoval();
     fs.writeFileSync(MARKER(), '{}');
     const store = await bootStore('darwin');
     store.saveTokens('at-1', 3600, 'rt-1');
@@ -689,91 +626,20 @@ describe('token-store on macOS', () => {
     expect(h.events.filter((e) => e === 'token_store_safestorage_unavailable_using_encrypted_file_fallback')).toHaveLength(1);
   });
 
-  it('drops a secure file from before the new scheme even without a fallback file', async () => {
-    writeSecure('relic');
-    const store = await bootStore('darwin');
-    expect(fs.existsSync(SECURE())).toBe(false);
-    expect(store.getRefreshToken()).toBeNull();
-  });
-
-  it('skips the removal once the flag exists', async () => {
-    skipLegacyRemoval();
-    const store = await bootStore('darwin');
-    expect(h.deleteEntry).not.toHaveBeenCalled();
-  });
-
-  it('skips the removal when the Keychain was refused', async () => {
+  it('a marker deleted while the app runs lets the next write use the Keychain', async () => {
     fs.writeFileSync(MARKER(), '{}');
     const store = await bootStore('darwin');
-    expect(h.deleteEntry).not.toHaveBeenCalled();
-  });
-
-  it('keeps writing the fallback file when the marker is deleted while the app runs', async () => {
-    fs.writeFileSync(MARKER(), '{}');
-    const store = await bootStore('darwin');
+    store.saveTokens('at', 3600, 'A');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('A');
     fs.rmSync(MARKER());
-    store.saveTokens('at', 3600, 'after-marker');
+    store.saveTokens('at', 3600, 'B');
     await store.flushTokenStore();
-    expect(readFallback()).toBe('after-marker');
-    expect(fs.existsSync(SECURE())).toBe(false);
-    expect(h.deleteEntry).not.toHaveBeenCalled();
-  });
-
-  it('never removes anything on Linux', async () => {
-    writeSecure('linux-token');
-    const store = await bootStore('linux');
-    expect(h.deleteEntry).not.toHaveBeenCalled();
-    expect(fs.existsSync(FLAG())).toBe(false);
-    expect(store.getRefreshToken()).toBe('linux-token');
-  });
-
-  it('carries on, stays on the fallback file and retries next launch when the removal fails', async () => {
-    h.deleteEntry.mockRejectedValue(new Error('keychain error'));
-    writeFallback('mac-current');
-    const store = await bootStore('darwin');
-    expect(logged('token_store_legacy_keychain_entry_not_removed')).toBe(true);
-    expect(fs.existsSync(FLAG())).toBe(false);
-    expect(store.getRefreshToken()).toBe('mac-current');
-    // A secure file written now would be deleted, key and all, by the retry.
-    store.saveTokens('at', 3600, 'rotated');
-    await store.flushTokenStore();
-    expect(readFallback()).toBe('rotated');
-    expect(fs.existsSync(SECURE())).toBe(false);
-  });
-
-  it('leaves the old secure file alone when the removal fails', async () => {
-    h.deleteEntry.mockRejectedValue(new Error('keychain error'));
-    writeSecure('relic');
-    const store = await bootStore('darwin');
-    expect(fs.existsSync(SECURE())).toBe(true);
-  });
-
-  it('stays on the fallback file for the session when the flag cannot be written', async () => {
-    h.failWriteTo.value = FLAG();
-    const store = await bootStore('darwin');
-    expect(logged('token_store_legacy_keychain_flag_not_written')).toBe(true);
-    store.saveTokens('at', 3600, 'session-token');
-    await store.flushTokenStore();
-    expect(readFallback()).toBe('session-token');
-    expect(fs.existsSync(SECURE())).toBe(false);
-    expect(fs.existsSync(MARKER())).toBe(false);
-  });
-
-  it('holds a save made during the removal until the removal finished', async () => {
-    const gate = deferred();
-    h.deleteEntry.mockImplementation(async () => { h.calls.push('delete'); await gate.promise; return true; });
-    const store = await loadStore('darwin');
-    const init = store.initTokenStore();
-    await vi.waitFor(() => expect(h.deleteEntry).toHaveBeenCalled());
-    store.saveTokens('at', 3600, 'fresh');
-    gate.resolve();
-    await init;
-    await store.flushTokenStore();
-    expect(readSecure()).toBe('fresh');
+    expect(readSecure()).toBe('B');
+    expect(fs.existsSync(FALLBACK())).toBe(false);
   });
 
   it('records a Keychain refusal and stops asking', async () => {
-    skipLegacyRemoval();
     h.available.value = false;
     let store = await bootStore('darwin');
     store.saveTokens('at', 3600, 'refused-token');
@@ -792,7 +658,6 @@ describe('token-store on macOS', () => {
   });
 
   it('records an encryption failure the same way', async () => {
-    skipLegacyRemoval();
     h.encryptFails.value = true;
     const store = await bootStore('darwin');
     store.saveTokens('at', 3600, 'rt');
@@ -810,7 +675,6 @@ describe('token-store on macOS', () => {
   });
 
   it('does not treat an undecryptable file as a Keychain refusal', async () => {
-    skipLegacyRemoval();
     fs.writeFileSync(SECURE(), 'garbage');
     const store = await bootStore('darwin');
     expect(store.getRefreshToken()).toBeNull();
@@ -819,7 +683,6 @@ describe('token-store on macOS', () => {
   });
 
   it('recovers from the fallback file without a marker when the secure file cannot be decrypted', async () => {
-    skipLegacyRemoval();
     fs.writeFileSync(SECURE(), 'garbage');
     setMtime(SECURE(), 2_000);
     writeFallback('backup', 1_000);
@@ -831,7 +694,6 @@ describe('token-store on macOS', () => {
   });
 
   it('prefers a newer secure file over a fallback file left behind', async () => {
-    skipLegacyRemoval();
     writeSecure('fresh', 2_000);
     writeFallback('stale', 1_000);
     const store = await bootStore('darwin');

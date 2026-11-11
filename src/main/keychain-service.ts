@@ -83,15 +83,6 @@ export async function deleteRefreshToken(engine: string, accountEmail: string): 
   await deletePassword(SERVICE_NAME, accountKey(engine, accountEmail));
 }
 
-// The Keychain item Electron's safeStorage keeps its key in, named by the app,
-// not by SERVICE_NAME. Resolves true when an item was removed and false when
-// there was none. No file fallback: keytar never wrote this item, so a failure
-// goes to the caller.
-export async function deleteSafeStorageKeychainEntry(service: string, account: string): Promise<boolean> {
-  const keytar = await getKeytar();
-  return keytar.deletePassword(service, account);
-}
-
 // ENG-1241: the 15 static OAuth client id/secret values that used to ship in
 // a world-readable server-credentials.json inside the app bundle now live
 // here too, alongside per-connector refresh tokens — same service, disjoint
