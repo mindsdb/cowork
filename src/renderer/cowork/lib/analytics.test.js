@@ -1735,3 +1735,58 @@ describe('onboarding and start events', () => {
     expect(vias).toEqual(['checklist', 'composer']);
   });
 });
+
+describe('Compare Models events', () => {
+  const cost = { cost_a_usd: 0.02, cost_b_usd: 0.5, cost_total_usd: 0.52, cost_partial: false, tokens_a: 110, tokens_b: 900, cheaper_side: 'a' };
+
+  it('compare_view_opened fires once per launch', async () => {
+    const fetchMock = mockFetch();
+    const { trackCompareViewOpened, trackComparisonFollowUpSent } = await importAnalytics();
+    trackCompareViewOpened();
+    trackCompareViewOpened();
+    trackComparisonFollowUpSent('cmp-1', 'both', 1);
+    await sentEvent(fetchMock, 'comparison_follow_up_sent');
+    const opened = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).event).filter((e) => e === 'compare_view_opened');
+    expect(opened).toHaveLength(1);
+  });
+
+  it('comparison_started names the models and the start, never the prompt or title', async () => {
+    const fetchMock = mockFetch();
+    const { trackComparisonStarted } = await importAnalytics();
+    trackComparisonStarted(
+      { id: 'cmp-1', title: 'A secret prompt', sourceProjectId: 'p-1', sides: [{ model: 'kimi', reasoningEffort: null }, { model: 'qwen', reasoningEffort: 'xhigh' }] },
+      { fileCount: 2, exampleId: 'website' },
+    );
+    const { properties } = await sentEvent(fetchMock, 'comparison_started');
+    expect(properties).toMatchObject({
+      comparison_id: 'cmp-1', model_a: 'kimi', model_b: 'qwen', effort_b: 'xhigh', from_project: true, file_count: 2, example_id: 'website',
+    });
+    expect(properties.effort_a).toBeUndefined();
+    expect(JSON.stringify(properties)).not.toContain('secret');
+  });
+
+  it.each([
+    ['the cheaper side wins', 'a', true],
+    ['the dearer side wins', 'b', false],
+    ['a tie', 'tie', undefined],
+  ])('comparison_verdict_recorded carries both costs, and whether the cheaper side won, for %s', async (_case, winner, cheaperWon) => {
+    const fetchMock = mockFetch();
+    const { trackComparisonVerdictRecorded } = await importAnalytics();
+    trackComparisonVerdictRecorded('cmp-1', { turnIndex: 0, winner, models: { a: 'kimi', b: 'qwen' }, changed: true, cost });
+    const { properties } = await sentEvent(fetchMock, 'comparison_verdict_recorded');
+    expect(properties).toMatchObject({ comparison_id: 'cmp-1', turn_index: 0, winner, changed: true, ...cost });
+    expect(properties.cheaper_won).toBe(cheaperWon);
+    expect(properties.winner_model).toBe(winner === 'a' ? 'kimi' : winner === 'b' ? 'qwen' : undefined);
+  });
+
+  it('comparison_continued says which side, whether it was the winner and the cheaper one', async () => {
+    const fetchMock = mockFetch();
+    const { trackComparisonContinued } = await importAnalytics();
+    trackComparisonContinued('cmp-1', { side: 'a', models: { a: 'kimi', b: 'qwen' }, turns: 3, carriedAll: true, verdict: 'b', cost });
+    const { properties } = await sentEvent(fetchMock, 'comparison_continued');
+    expect(properties).toMatchObject({
+      comparison_id: 'cmp-1', side: 'a', model: 'kimi', other_model: 'qwen', turns: 3, carried_all: true,
+      chose_winner: false, chose_cheaper: true, ...cost,
+    });
+  });
+});

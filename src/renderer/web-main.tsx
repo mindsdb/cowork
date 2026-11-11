@@ -48,6 +48,7 @@ import {
 } from './cowork/lib/organizationCacheIdentity';
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
+import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin, seedBrandDefaults } from './lib/skins';
@@ -73,6 +74,8 @@ import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 // Before the redirect below drops the query string: a console link's
 // ?from=console&mode=…&sample=… has to outlive the Keycloak round trip.
 captureConsoleHandoff();
+// Same for a link into Settings (?settings=appearance&section=branding).
+captureSettingsDeepLink();
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;

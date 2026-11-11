@@ -3,14 +3,14 @@ import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
+import { isModelLocked, isModelRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, PROBE_POLICY_UNAVAILABLE_SENTENCE, PROBE_RATE_LIMITED_SENTENCE } from '../../lib/providerStatus';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy } from '../../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../../lib/usageWarnings';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
@@ -18,7 +18,9 @@ import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
+import { stockBackground } from '../../../lib/stockThemeTokens';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
@@ -28,6 +30,8 @@ import AccountSection from './AccountSection';
 import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
+import OrgBrandingFields from './OrgBrandingFields';
+import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
@@ -57,6 +61,16 @@ const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'i
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
+// Under an org's locked look, what a member's own control says.
+const SET_BY_ORG = 'Set by your organization.';
+const NO_ORG_LOCKS = { style: false, theme: false, greeting: false, logo: false, favicon: false };
+
+// Where a deep link (?settings=appearance&section=…) lands on Appearance.
+export const APPEARANCE_ANCHORS = {
+  style: 'settings-appearance-style',
+  display: 'settings-appearance-display',
+};
+
 const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
 
 /* The notice under each Settings > Agent role row after the MindsHub health
@@ -126,6 +140,18 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       </div>
     );
   }
+  if (notice.kind === 'budget_reached') {
+    // Credits do not lift a budget, so the link goes to Budgets, not funds.
+    return (
+      <div className="text-[12px] leading-[1.6] grid gap-px">
+        <div>
+          <span className="text-danger">{`Your organization's budget is used up. ${budgetExceededCopy({ usage })}`} </span>
+          <ViewBudgetsLink>View budgets →</ViewBudgetsLink>
+        </div>
+        {byok}
+      </div>
+    );
+  }
   if (notice.kind === 'slow_down') {
     return (
       <div className="text-[12px] leading-[1.6] text-ink-3">
@@ -143,12 +169,28 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   return null;
 }
 
+/** The Budgets tab for this session's organization; credits do not lift a budget. */
+function ViewBudgetsLink({ children }) {
+  const budgetsUrl = useBudgetsUrl();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        trackBillingOpened('budget_notice');
+        return host.openExternal(budgetsUrl);
+      }}
+      className={LINK_BTN}
+    >{children}</button>
+  );
+}
+
 /* The line under a role's picker when the CURRENT model cannot run. The
    stored pin is never rewritten, so a wallet that drains, or an admin rule
    that lands, leaves the user sitting on a model they can no longer run. This
    names it and gives the way out. A restricted model has no billing way out,
-   so its line has no link. Exported for the visual fixture. */
-export function UnavailableModelHint({ label, restricted }) {
+   so its line has no link; a budget-stopped one links to Budgets. Exported
+   for the visual fixture. */
+export function UnavailableModelHint({ label, restricted, budgetReached = false }) {
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;
   }
@@ -156,6 +198,14 @@ export function UnavailableModelHint({ label, restricted }) {
     return (
       <div className="text-[11.5px] text-ink-3">
         {label} is restricted by an admin in your organization. Choose another model.
+      </div>
+    );
+  }
+  if (budgetReached) {
+    return (
+      <div className="text-[11.5px] text-ink-3">
+        {label} can't run because your organization's budget is used up.{' '}
+        <ViewBudgetsLink>View budgets</ViewBudgetsLink>
       </div>
     );
   }
@@ -187,7 +237,10 @@ export function UnavailableModelHint({ label, restricted }) {
 //     factory default (clearing a saved 500 to retype must not save 50).
 // Escape-dismiss skips blur entirely; clampBudgets() in save() is the
 // backstop that keeps rejectable values out of every PUT.
-function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel }) {
+// `lockedValue`: while the limits switch is off the field is read-only and
+// shows the safety limit in force instead of the user's saved value, which is
+// left untouched for when the switch goes back on.
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel, lockedValue = null }) {
   const { min, max, fallback } = spec;
   const hintId = useId();
   // "No limit" writes the TOP of the range, which already was the off switch —
@@ -196,12 +249,13 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // a server-side validator and no special case in the clamp.
   //
   // The hint below says "only the step and auto-continue caps apply" rather
-  // than promising infinity, and that wording is load-bearing: at ~306 calls
-  // (the server's default 50 rounds x 6 passes) 50M is reached at ~163k per
-  // call, which a long conversation can carry. Never observed — largest turn in
-  // 30 days was 8.26M — but not impossible.
+  // than promising infinity, and that wording is load-bearing: at ~2,750 calls
+  // (the server's default 250 rounds x 11 passes) 50M is reached at ~18k per
+  // call, which almost any conversation carries. Never observed — largest turn
+  // in 30 days was 34.4M — but not impossible.
+  const locked = lockedValue != null;
   const showUnlimited = unlimitedLabel != null && spec.max != null;
-  const isUnlimited = showUnlimited && isBudgetUnlimited(value, spec);
+  const isUnlimited = showUnlimited && isBudgetUnlimited(locked ? lockedValue : value, spec);
   // The number to put back when the switch goes off. A ref, not state: it must
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
@@ -228,12 +282,14 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
             inputMode="decimal"
             min={toDisplay(min)}
             max={toDisplay(max)}
-            disabled={isUnlimited}
+            disabled={locked || isUnlimited}
             // Show the number they'd return to, not the max: a disabled field
             // reading 50000000 invites someone to "fix" it back down by hand.
-            value={isUnlimited
-              ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
-              : toDisplay(value ?? String(fallback))}
+            value={locked
+              ? toDisplay(lockedValue)
+              : isUnlimited
+                ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
+                : toDisplay(value ?? String(fallback))}
             onChange={(e) => setSetting(settingKey, toNatural(e.target.value))}
             onBlur={(e) => {
               if (value == null) return; // untouched — don't materialize the key
@@ -249,7 +305,9 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">million tokens</span>}
         </div>
         <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
-          {isUnlimited ? (
+          {locked ? (
+            <span className="whitespace-nowrap">safety limit</span>
+          ) : isUnlimited ? (
             <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
           ) : (
             <>
@@ -265,6 +323,7 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <Checkbox
               checked={isUnlimited}
+              disabled={locked}
               onCheckedChange={(on) => setSetting(
                 settingKey,
                 on
@@ -281,7 +340,7 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   );
 }
 
-function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
+function TextInput({ value, onChange, placeholder, title, ariaLabel, disabled }) {
   return (
     <Input
       value={value ?? ''}
@@ -289,6 +348,7 @@ function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
       placeholder={placeholder}
       title={title}
       aria-label={ariaLabel}
+      disabled={disabled}
     />
   );
 }
@@ -486,7 +546,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             <span
               role="status"
               aria-live="polite"
-              className={`absolute bottom-[calc(100%+6px)] left-1/2 py-[3px] px-2 text-[10.5px] font-semibold tracking-[0.04em] uppercase bg-[rgba(20,28,28,0.92)] border border-solid rounded-md whitespace-nowrap pointer-events-none shadow-sh-2 z-[5] ${copyState === 'failed'
+              className={`absolute bottom-[calc(100%+6px)] left-1/2 py-[3px] px-2 text-[10.5px] font-semibold tracking-[0.04em] uppercase bg-surface-3 border border-solid rounded-md whitespace-nowrap pointer-events-none shadow-sh-2 z-[5] ${copyState === 'failed'
                 ? 'text-danger border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
                 : 'text-accent border-[color-mix(in_srgb,var(--accent)_45%,transparent)]'}`}
               style={{
@@ -568,7 +628,7 @@ function SetBadge({ hasValue, active }) {
       size="xs"
       className={`ml-2 align-middle uppercase tracking-[0.04em] ${active ? 'set-badge-pulse' : ''}`}
       icon={<span aria-hidden className={`w-1.5 h-1.5 rounded-full bg-current ${active
-        ? 'shadow-[0_0_8px_currentColor,0_0_14px_rgba(124,196,182,0.6)]'
+        ? 'shadow-[0_0_8px_currentColor,0_0_14px_color-mix(in_srgb,var(--sage-500)_60%,transparent)]'
         : 'shadow-[0_0_4px_color-mix(in_srgb,var(--sage-500)_45%,transparent)]'}`} />}
       style={{
         // When active, the box-shadow comes from the set-badge-pulse
@@ -762,6 +822,21 @@ export default function SettingsView({
   onDownloadShellAutoUpdate,
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
+  // Company branding: the org-branding read (lib/orgBranding.ts),
+  // what to call with an admin's saved answer, and the resolved look, whose
+  // `lockedByOrg` turns off the member's own controls the org has set.
+  orgBranding = null,
+  onOrgBrandingSaved,
+  // An admin's unsaved Branding edits, for the live preview (null = none).
+  onOrgBrandingDraft,
+  look = null,
+  // Web with the platform UI in org mode, personal orgs included: there is no
+  // per-person sidebar title, logo or tab icon to set.
+  hostedMindsHub = false,
+  // A deep link's part of Appearance to scroll to ('branding' | 'display'),
+  // and what to call once it has.
+  appearanceAnchor = null,
+  onAppearanceAnchorShown,
 }) {
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -772,11 +847,17 @@ export default function SettingsView({
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
+  const canEditBranding = Boolean(orgBranding?.enabled && orgBranding?.canEdit);
   const visibleNav = navItemsForHost(
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
+    { branding: canEditBranding },
   );
+  // Branding is for org admins; anyone else sent there (a deep link, a
+  // stale section) lands on Appearance, where their own look is.
+  const shownSection = section === 'branding' && !canEditBranding ? 'appearance' : section;
+  const orgLocks = look?.lockedByOrg ?? NO_ORG_LOCKS;
   const orgMode = useOrgMode();
   const providerTestsAvailable = providerTestsEnabled(host.isWeb);
   // The `/hub/usage/` view App polls: the probe notice reads it for the
@@ -868,6 +949,15 @@ export default function SettingsView({
   const hasBudgetSettings = settings != null
     && 'maxToolRounds' in settings
     && 'maxContinuations' in settings;
+  // The limits switch, probed the same way. A server without it applies the
+  // budgets on every turn, so they stay editable there.
+  const hasLimitsSwitch = settings != null && 'limitsEnabled' in settings;
+  const limitsOn = !hasLimitsSwitch || settings.limitsEnabled === true;
+  // What a budget field shows while the switch is off: the safety limit the
+  // server serves, or the factory default from a server that doesn't.
+  const safetyLimit = (key) => (limitsOn
+    ? null
+    : settings.budgetDefaults?.[key] ?? String(BUDGET_FIELDS[key].fallback));
   // Async provider tests merge their status into the latest displayed values.
   // The draft overlay keeps edits made during those requests intact.
   const settingsRef = useRef(settings);
@@ -910,6 +1000,9 @@ export default function SettingsView({
   // recover. See effectiveRoleModel / effectiveRoleProvider.
   const roleProviderType = (role) => canonicalProviderForRole(role);
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
+  // effectiveRoleProvider already falls back to MindsHub, as the server does.
+  const budgetRowsShown = hasBudgetSettings && !(host.isWeb && PLATFORM_UI);
+  const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -1852,6 +1945,7 @@ export default function SettingsView({
                                 <UnavailableModelHint
                                   label={displayModelLabel(curModel, settings.modelLabels || {})}
                                   restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                                  budgetReached={isModelBudgetReached(modelEnabled, settings.modelDisabledReasons, curModel)}
                                 />
                               )}
                             </>);
@@ -1889,7 +1983,10 @@ export default function SettingsView({
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
-                    {RoleRow({ role: 'router', label: 'Routing and summarization model' })}
+                    {/* Hidden once the server routes with a decision model:
+                        see showRouterRoleRow for when it stays. */}
+                    {showRouterRoleRow(settings.routing, settings.gate)
+                      && RoleRow({ role: 'router', label: 'Routing and summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
                   </>
                 );
@@ -1934,17 +2031,40 @@ export default function SettingsView({
           </Section>
         </SettingsGroup>
 
-        {hasBudgetSettings && (
+        <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
+
+        {/* Not on hosted web yet: its turns run in a pod that doesn't receive
+            these limits until the web time limit and the PR that sends them
+            ship, so the switch and values here would not be what a hosted web
+            turn runs under. Self-hosted web runs turns in its own server, where
+            they apply. The Jev switch has no such limit, so it keeps the group. */}
+        {(budgetRowsShown || jevSwitchShown) && (
           <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
+            {budgetRowsShown && <>
+            {hasLimitsSwitch && (
+              <Section
+                title="Limit how much a task can do"
+                subtitle={limitsOn
+                  ? `${agentLabel || 'Anton'} stops or asks before going further at the steps, auto-continues and tokens you set below.`
+                  : `Off: a task runs until it's done, up to a high safety limit where ${agentLabel || 'Anton'} asks before going further. Turn on to set your own limits.`}
+              >
+                <Switch
+                  checked={limitsOn}
+                  onCheckedChange={(v) => setSetting('limitsEnabled', v)}
+                  aria-label="Limit how much a task can do"
+                />
+              </Section>
+            )}
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
             >
               <BudgetNumberField
                 settingKey="maxToolRounds"
+                lockedValue={safetyLimit('maxToolRounds')}
                 value={settings.maxToolRounds}
                 savedValue={lastSavedSettings?.maxToolRounds}
-                spec={BUDGET_FIELDS.maxToolRounds}
+                spec={budgetSpec('maxToolRounds', settings.budgetDefaults)}
                 label="Max steps per task"
                 setSetting={setSetting}
               />
@@ -1955,9 +2075,10 @@ export default function SettingsView({
             >
               <BudgetNumberField
                 settingKey="maxContinuations"
+                lockedValue={safetyLimit('maxContinuations')}
                 value={settings.maxContinuations}
                 savedValue={lastSavedSettings?.maxContinuations}
-                spec={BUDGET_FIELDS.maxContinuations}
+                spec={budgetSpec('maxContinuations', settings.budgetDefaults)}
                 label="Max auto-continues"
                 setSetting={setSetting}
               />
@@ -1974,12 +2095,29 @@ export default function SettingsView({
               >
                 <BudgetNumberField
                   settingKey="maxTurnTokens"
+                  lockedValue={safetyLimit('maxTurnTokens')}
                   value={settings.maxTurnTokens}
                   savedValue={lastSavedSettings?.maxTurnTokens}
-                  spec={BUDGET_FIELDS.maxTurnTokens}
+                  spec={budgetSpec('maxTurnTokens', settings.budgetDefaults)}
                   label="Max tokens per task"
                   setSetting={setSetting}
                   unlimitedLabel="No limit"
+                />
+              </Section>
+            )}
+            </>}
+            {/* An org-level setting, like the budgets: who may change it is
+                the server's call. Its own condition, so a server without the
+                budget rows still shows it. */}
+            {jevSwitchShown && (
+              <Section
+                title="Fast answers with Jev"
+                subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}.`}
+              >
+                <Switch
+                  checked={settings.jevDecisionsEnabled ?? true}
+                  onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
+                  aria-label="Fast answers with Jev"
                 />
               </Section>
             )}
@@ -2153,23 +2291,75 @@ export default function SettingsView({
 
   const renderComputersSection = () => <ComputersSettingsSection />;
 
+  // Settings → Appearance: Your style, then Display.
+  //   Your style — the person's own style, theme and greeting, over the org's
+  //     look. In a hosted org it shows only when they may choose (member
+  //     choice on, or they are an admin). Outside hosted MindsHub it also
+  //     holds their sidebar title, color, logo and tab icon; hosted MindsHub
+  //     has none of those, since the org's are the ones shown.
+  //   Display — personal display preferences, for everyone.
+  // The org's own branding is its own page, Settings → Branding, for admins.
+  //
+  // No Save footer: every control here auto-saves itself (see
+  // autoSaveSetting/AutoSaveTag). `autoSaved` surfaces a quiet "saves
+  // automatically" note on mobile.
+  const org = orgBranding?.enabled ? orgBranding : null;
+  // With member choice off, nobody (admins included) has personal style
+  // controls: the section says so, and points admins to Branding.
+  // With member choice off, only the fields the org set are locked: each shows
+  // a note instead of its controls, and the rest stay the member's to choose.
+  // When every field is the org's, one message replaces them all.
+  const personalStyleOff = Boolean(org && !org.appearance.membersCanChoose
+    && (orgLocks.style || SKIN_LOCKED) && orgLocks.theme && orgLocks.greeting);
+  // A field the org set shows nothing; one line under the open controls says why.
+  const orgSetsNote = () => null;
+  const someLockedByOrg = Boolean(org && !org.appearance.membersCanChoose
+    && (orgLocks.style || orgLocks.theme || orgLocks.greeting));
+  const changeInBranding = org?.canEdit && onSectionChange ? (
+    <>
+      {' '}
+      <button type="button" className={LINK_BTN} onClick={() => onSectionChange('branding')}>
+        Change in Branding →
+      </button>
+    </>
+  ) : null;
+  // A deep link's part of Appearance, scrolled to once the page is showing.
+  const appearanceShowing = shownSection === 'appearance';
+  useEffect(() => {
+    const id = appearanceAnchor && APPEARANCE_ANCHORS[appearanceAnchor];
+    if (!id || !appearanceShowing) return;
+    const target = document.getElementById(id);
+    if (target) {
+      target.scrollIntoView?.({ block: 'start' });
+      onAppearanceAnchorShown?.();
+    }
+  }, [appearanceAnchor, appearanceShowing, onAppearanceAnchorShown]);
   const renderAppearanceSection = () => (
-    // No Save footer here — every control on this page auto-saves itself
-    // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
-    // be dead weight that always reads "Saved" and never does anything.
-    // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
-    // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
-      <SettingsGroup title="Appearance">
+      <div id={APPEARANCE_ANCHORS.style} className="scroll-mt-2">
+        <SettingsGroup
+          title={org ? 'Your style' : 'Style'}
+          description={org && !personalStyleOff ? 'These override your organization\'s look, just for you.' : null}
+        >
+        {personalStyleOff ? (
+          <div className="py-3 text-sm text-ink-2" data-testid="personal-style-off">
+            Personal style settings are off. Everyone sees your organization's look.
+            {changeInBranding}
+          </div>
+        ) : (
+        <>
+        {orgLocks.style ? orgSetsNote() : (
+        <>
         {SKIN_LOCKED ? (
           <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
           </Section>
         ) : (
-          <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+          <Section title="Style" subtitle={orgLocks.style ? SET_BY_ORG : 'Normal, 8-Bit, or design your own with Custom. Combines with light and dark.'}>
             <ToggleGroup
               value={normalizeSkin(skin)}
               onValueChange={(v) => onSkinChange?.(v)}
+              disabled={orgLocks.style}
               aria-label="Style"
               options={SKINS.map((s) => ({
                 value: s.id,
@@ -2182,10 +2372,14 @@ export default function SettingsView({
             />
           </Section>
         )}
-        <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
+        </>
+        )}
+        {orgLocks.theme ? orgSetsNote() : (
+        <Section title="Theme" subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
           <ToggleGroup
             value={theme || 'dark'}
             onValueChange={(v) => onThemeChange?.(v)}
+            disabled={orgLocks.theme}
             aria-label="Theme"
             options={[
               {
@@ -2203,24 +2397,26 @@ export default function SettingsView({
             ]}
           />
         </Section>
-        {normalizeSkin(skin) === 'custom' && customTheme && (
+        )}
+        {!orgLocks.style && normalizeSkin(skin) === 'custom' && customTheme && (
           <>
             <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
               <input
                 type="color"
                 value={customTheme.accent}
                 onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
+                disabled={orgLocks.style}
                 aria-label="Custom accent color"
                 className={COLOR_SWATCH_INPUT}
               />
             </Section>
-            <Section title="Background — Light mode" subtitle="Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.">
+            <Section title="Light background" subtitle="Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or Light's stock look applies.">
               <div className="flex items-center gap-3">
                 <input
                   type="color"
-                  value={customTheme.bgLight || '#fafafa'}
+                  value={customTheme.bgLight || stockBackground('light')}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
-                  disabled={customTheme.bgLight === null}
+                  disabled={orgLocks.style || customTheme.bgLight === null}
                   aria-label="Custom background color — Light mode"
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgLight === null ? 0.45 : 1 }}
@@ -2228,20 +2424,21 @@ export default function SettingsView({
                 <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgLight === null}
-                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : stockBackground('light') })}
+                    disabled={orgLocks.style}
                     aria-label="Default Light background"
                   />
                   Default
                 </label>
               </div>
             </Section>
-            <Section title="Background — Dark mode" subtitle="Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.">
+            <Section title="Dark background" subtitle="Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or Dark's stock look applies.">
               <div className="flex items-center gap-3">
                 <input
                   type="color"
-                  value={customTheme.bgDark || '#080d18'}
+                  value={customTheme.bgDark || stockBackground('dark')}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
-                  disabled={customTheme.bgDark === null}
+                  disabled={orgLocks.style || customTheme.bgDark === null}
                   aria-label="Custom background color — Dark mode"
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgDark === null ? 0.45 : 1 }}
@@ -2249,7 +2446,8 @@ export default function SettingsView({
                 <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgDark === null}
-                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : stockBackground('dark') })}
+                    disabled={orgLocks.style}
                     aria-label="Default Dark background"
                   />
                   Default
@@ -2260,6 +2458,7 @@ export default function SettingsView({
               <ToggleGroup
                 value={String(customTheme.radius)}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
+                disabled={orgLocks.style}
                 aria-label="Corner radius"
                 options={[
                   { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
@@ -2272,6 +2471,7 @@ export default function SettingsView({
               <ToggleGroup
                 value={customTheme.font}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
+                disabled={orgLocks.style}
                 aria-label="Custom typeface"
                 options={[
                   { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
@@ -2283,17 +2483,20 @@ export default function SettingsView({
               <Switch
                 checked={customTheme.scanlines}
                 onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
+                disabled={orgLocks.style}
                 aria-label="Scanline overlay"
               />
             </Section>
           </>
         )}
-        <Section title="Greeting" subtitle="The line shown when you start a new task.">
+        {orgLocks.greeting ? orgSetsNote() : (
+        <Section title="Greeting" subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
-                value={settings.greeting}
+                value={orgLocks.greeting ? look.greeting : settings.greeting}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
+                disabled={orgLocks.greeting}
                 title="Shown above the task input when you start a new task."
                 ariaLabel="Greeting text"
               />
@@ -2301,6 +2504,16 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
+        )}
+          {someLockedByOrg && (
+            <div className="py-3 text-sm text-ink-2" data-testid="org-sets-rest">
+              Other style settings are set by your organization's branding.
+              {changeInBranding}
+            </div>
+          )}
+          {/* Hosted MindsHub has no per-person sidebar title, logo or tab icon. */}
+          {!hostedMindsHub && (
+            <>
         <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
@@ -2401,6 +2614,14 @@ export default function SettingsView({
             {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
           </Section>
         )}
+            </>
+          )}
+        </>
+        )}
+        </SettingsGroup>
+      </div>
+      <div id={APPEARANCE_ANCHORS.display} className="scroll-mt-2">
+        <SettingsGroup title="Display" description="Personal display preferences. Only you see them.">
         {/* Gated on its own key. A server older than this setting does not
             serve the key and rejects a write to it with a 400, and it sends
             no figure sources to mark either. The renderer ships OTA and
@@ -2461,6 +2682,40 @@ export default function SettingsView({
             </Section>
           )}
         </div>
+        </SettingsGroup>
+      </div>
+    </SettingsSectionPanel>
+  );
+
+  // Settings → Branding: the org's look, for org admins only.
+  const renderBrandingSection = () => (canEditBranding ? (
+    <SettingsSectionPanel>
+      <SettingsGroup
+        title="Branding"
+        description="Your organization's look, for everyone in it. Members see it the next time they open the app or Settings."
+      >
+        <OrgBrandingFields branding={orgBranding} onSaved={onOrgBrandingSaved} onDraftChange={onOrgBrandingDraft} />
+      </SettingsGroup>
+    </SettingsSectionPanel>
+  ) : null);
+  const renderDesktopSection = () => (
+    // How the app behaves on this computer. Desktop only (settingsNavigation
+    // leaves it out on web). Every control here saves itself.
+    <SettingsSectionPanel autoSaved>
+      <SettingsGroup title="Desktop">
+        <Section
+          title="Stay awake for scheduled tasks"
+          subtitle="While plugged in, keeps this computer from sleeping when a scheduled task is running or about to run. It can't wake a computer that's already asleep or stop it sleeping when you close the lid."
+        >
+          <div className="flex items-center">
+            <Switch
+              checked={settings.scheduleKeepAwake !== false}
+              onCheckedChange={(v) => autoSaveSetting('scheduleKeepAwake', v)}
+              aria-label="Stay awake for scheduled tasks"
+            />
+            <AutoSaveTag settingKey="scheduleKeepAwake" />
+          </div>
+        </Section>
       </SettingsGroup>
     </SettingsSectionPanel>
   );
@@ -2529,13 +2784,14 @@ export default function SettingsView({
       codingAgent: renderCodingAgentSection,
       computers: renderComputersSection,
       appearance: renderAppearanceSection,
+      branding: renderBrandingSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
       usage: renderUsageSection,
       account: renderAccountSection,
     };
-    const activeItem = visibleNav.find((i) => i.id === section) || null;
+    const activeItem = visibleNav.find((i) => i.id === shownSection) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2556,7 +2812,7 @@ export default function SettingsView({
         <div className="settings-mobile__body scroll-clean">
           {inDetail ? (
             <div className="settings-detail">
-              {renderers[section]?.()}
+              {renderers[shownSection]?.()}
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
@@ -2606,8 +2862,8 @@ export default function SettingsView({
   // sets the section directly, so a deep link (or a stale persisted section)
   // could still render one this host doesn't offer. Resolve through the visible
   // set and fall back to its first entry (Agent).
-  const effectiveSection = visibleNav.some((i) => i.id === section)
-    ? section
+  const effectiveSection = visibleNav.some((i) => i.id === shownSection)
+    ? shownSection
     : visibleNav[0]?.id;
 
   return (
@@ -2618,6 +2874,8 @@ export default function SettingsView({
       {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
       {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'branding' && renderBrandingSection()}
+      {effectiveSection === 'desktop' && renderDesktopSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}

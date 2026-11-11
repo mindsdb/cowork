@@ -390,6 +390,32 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
+  it('says the org budget stops a project default model, and never mentions credits', async () => {
+    const user = userEvent.setup();
+    const budgetProject = { ...project, default_model: 'fable' };
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={{ ...modelMeta, modelDisabledReasons: { fable: 'budget_exceeded' } }}
+        projects={[budgetProject]}
+        selectedProjectId={budgetProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
+
+    expect(await screen.findByText("Your organization's budget is used up. Choose an available model or ask an owner or admin to raise it.")).toBeInTheDocument();
+    expect(screen.queryByText('Add credits or choose an available model.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+  });
+
   it('says an admin restricted a project default model, and never mentions credits', async () => {
     const user = userEvent.setup();
     const restrictedProject = { ...project, default_model: 'fable' };

@@ -25,4 +25,10 @@ export const DESKTOP_WIDE = 1280;
 export const PHONE_MAX_CSS = PHONE_MAX - 0.02; // 639.98
 export const TABLET_MAX_CSS = TABLET_MAX - 0.02; // 899.98
 
+/* The shared browser's pane takes a grid column beside the chat from this
+   width up, and floats over it below. components/browser/browser-panel.css
+   switches at BROWSER_PANE_INLINE_MIN_CSS. */
+export const BROWSER_PANE_INLINE_MIN = 1160;
+export const BROWSER_PANE_INLINE_MIN_CSS = BROWSER_PANE_INLINE_MIN - 0.02; // 1159.98
+
 export const BREAKPOINTS = { PHONE_MAX, TABLET_MAX, DESKTOP_WIDE };

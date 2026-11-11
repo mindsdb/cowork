@@ -25,6 +25,8 @@ const DASH = '—';
  * @param {string} args.antonVersion  From /health.
  * @param {boolean} [args.shellTooOld] The shell is outside the supported
  *   window; its row says so.
+ * @param {number|null} [args.osCappedMacosMajor] The macOS major the shell is
+ *   stuck on because the newest app needs a later macOS; its row says so.
  * @param {string} [args.backendPlaceholder] What the Server and Agent rows
  *   show while no version has answered. Defaults to an em dash.
  * @returns {[string, string][]} Rows in display order. `Build` appears only
@@ -33,7 +35,7 @@ const DASH = '—';
  */
 export function versionRows({
   versionInfo, bakedVersion, serverVersion, antonVersion,
-  shellTooOld = false, backendPlaceholder = DASH,
+  shellTooOld = false, osCappedMacosMajor = null, backendPlaceholder = DASH,
 }) {
   const info = versionInfo || {};
   const baked = bakedVersion || '';
@@ -51,7 +53,9 @@ export function versionRows({
   const buildLabel = BUILD_KIND_LABELS[info.buildKind];
 
   return [
-    ['App shell', shellTooOld ? `${shellVer} (too old)` : (shellVer || DASH)],
+    ['App shell', shellTooOld
+      ? `${shellVer} (too old)`
+      : osCappedMacosMajor ? `${shellVer} (no updates on macOS ${osCappedMacosMajor})` : (shellVer || DASH)],
     ...(buildLabel ? [['Build', buildLabel]] : []),
     ['UI', uiVer ? `${uiVer} (${uiSource})` : DASH],
     ['Server', serverVersion || backendPlaceholder],

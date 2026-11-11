@@ -29,8 +29,12 @@ const analyticsMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
+// Signed out by default; one test signs in to check View budgets names the org.
+const accountUser = vi.hoisted(() => vi.fn(() => null));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountUser() }));
+
 import ChatView, { ModelUnavailableCard } from './ChatView';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_BUDGETS_URL } from '../../lib/mindsUrls';
 import { HubUsageContext } from '../lib/hubUsageContext';
 
 const taskWith = (messages) => ({
@@ -49,6 +53,7 @@ beforeEach(() => {
   analyticsMock.trackBillingOpened.mockClear();
   analyticsMock.trackKeyProvisioningRefused.mockClear();
   hostMock.host.openExternal.mockClear();
+  accountUser.mockReset().mockReturnValue(null);
   hostMock.host.mindshubFinalize.mockReset().mockResolvedValue({ ok: true });
   // Reset rather than clear: one test below overrides the resolved value, and
   // without this both that value and the call count leak into every test after
@@ -92,6 +97,30 @@ describe('billing_opened trigger per call site', () => {
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('free_serving_paused');
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('budget_exceeded: View budgets records its own trigger and opens the Budgets tab', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWith(failedTurn('budget_exceeded', "Your organization's spending budget is used up."))} />);
+
+    await user.click(screen.getByRole('button', { name: 'View budgets' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_exceeded');
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BUDGETS_URL);
+  });
+
+  it("budget_exceeded: signed in, View budgets opens the task organization's Budgets tab", async () => {
+    const user = userEvent.setup();
+    accountUser.mockReturnValue({ orgId: 'org-123', sub: 'user-9' });
+    render(<ChatView task={taskWith(failedTurn('budget_exceeded', "Your organization's spending budget is used up."))} />);
+
+    await user.click(screen.getByRole('button', { name: 'View budgets' }));
+
+    const opened = new URL(hostMock.host.openExternal.mock.calls[0][0]);
+    expect(opened.searchParams.get('tab')).toBe('budgets');
+    expect(opened.searchParams.get('organization')).toBe('org-123');
+    expect(opened.searchParams.get('subject')).toBe('user-9');
   });
 
   it('free_serving_paused: a billing owner lands on the add-funds form, like the other stopped-task cards', async () => {

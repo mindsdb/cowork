@@ -32,7 +32,7 @@ import { diagnostic } from '../shared/diagnostics';
 import { BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
-import { getServerPort, isServerRunning, isServerStarting } from './server-process';
+import { getServerPort, isServerRunning } from './server-process';
 import { authHeader } from './server-auth';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
 import { settleMindsResumeCredentialGate } from './minds-resume-gate';
@@ -130,9 +130,11 @@ export function pushMindsCredential(value: string | null, options?: MindsCredent
  * "the sidecar refused", which are different failures: only the second is worth
  * warning about or retrying on a timer. Boot refreshes tokens before it starts
  * a sidecar, and `setServerStartedHook` pushes as soon as one comes up.
+ * A start in progress counts as no sidecar yet: until its owner check passes,
+ * whatever answers the port may not be ours.
  */
 export function isMindsCredentialSidecarReachable(): boolean {
-  return isServerRunning() || isServerStarting();
+  return isServerRunning();
 }
 
 async function pushMindsCredentialNow(
@@ -143,7 +145,7 @@ async function pushMindsCredentialNow(
   // successful retry must notify, even when it arrives on a refresh tick.
   // This state is owned by the PUT queue, not by rotating JWT values.
   if (invalidateCatalog) _catalogInvalidationPending = true;
-  if (!isServerRunning() && !isServerStarting()) return false;
+  if (!isServerRunning()) return false;
   const port = getServerPort();
   if (!port) return false;
   try {
