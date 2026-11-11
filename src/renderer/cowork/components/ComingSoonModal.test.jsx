@@ -42,4 +42,19 @@ describe('ComingSoonModal', () => {
     expect(openExternal).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('offers the custom route in place of the download when given one', () => {
+    const onClose = vi.fn();
+    const onAccept = vi.fn();
+    render(<ComingSoonModal feature="HasData" onClose={onClose}
+      offer={{ label: 'Connect your custom HasData', onAccept }} />);
+
+    expect(screen.queryByText('Download the app')).toBeNull();
+    expect(screen.getByText(/connect it now as a custom connector/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Connect your custom HasData'));
+
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(openExternal).not.toHaveBeenCalled();
+  });
 });

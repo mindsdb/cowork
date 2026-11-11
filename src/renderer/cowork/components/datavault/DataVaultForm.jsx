@@ -328,12 +328,12 @@ export function DataVaultForm({
   // Secret fields (password type or `secret: true`) are flagged but
   // never carry their value.
   //
-  // Not for a cloud datasource form. App.jsx appends this snapshot to the
-  // text of the next message the user sends, so a filled database form would
-  // put its host, database and username into the conversation and the model.
-  // That form is dedicated entry, kept out of chat.
+  // Not for a cloud datasource or custom connect form. App.jsx appends this
+  // snapshot to the text of the next message the user sends, so a filled form
+  // would put its values into the conversation and the model. Those forms are
+  // dedicated entry, kept out of chat.
   useEffect(() => {
-    if (!conversationId || !spec || spec._cloud_datasource) return;
+    if (!conversationId || !spec || spec._cloud_datasource || spec._custom_connect) return;
     const fieldSnapshot = {};
     for (const f of fields || []) {
       if (skipped?.has?.(f.name)) continue;

@@ -14,16 +14,19 @@ import { Alert, Button, Select } from '../components/ui';
 import {
   CONNECTIONS_VAULT_KEEP,
   deleteDatasource,
+  deleteCustomConnection,
   deleteDatasourceConnection,
   fetchConnector,
   fetchDatasources,
   fetchSavedConnection,
+  listCustomConnections,
   listDatasourceConnections,
   patchConnectionAccessMode,
   retryDatasourceValidation,
 } from '../api';
 import { useOrgMode } from '../../lib/orgMode';
 import { isDatasourceRow, toDatasourceRows } from '../lib/datasourceConnectionRows';
+import { isCustomConnectionRow, toCustomConnectionRows } from '../lib/customConnect';
 import { usePendingDatasourceRefresh } from '../hooks/usePendingDatasourceRefresh';
 import DatasourceDetailPanel from '../components/connector/DatasourceDetailPanel';
 import { host } from '../../platform/host';
@@ -519,6 +522,8 @@ export default function CustomizeView({
   // OAuth one and every refresh of it replaces the whole thing, so merging
   // these into it would drop them the next time an OAuth sync ran.
   const [datasources, setDatasources] = useState([]);
+  // A member's custom API connections, cloud only, kept apart for the same reason.
+  const [customConnections, setCustomConnections] = useState([]);
   const orgMode = useOrgMode();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
@@ -560,11 +565,24 @@ export default function CustomizeView({
       })))
       .catch(() => {});
   };
-  useEffect(() => { refreshDatasources.current(); }, [orgMode]);
+  const refreshCustomConnections = useRef(() => {});
+  refreshCustomConnections.current = () => {
+    if (!orgMode) return Promise.resolve();
+    return listCustomConnections()
+      .then((rows) => setCustomConnections(toCustomConnectionRows(rows)))
+      .catch(() => {});
+  };
+  useEffect(() => {
+    refreshDatasources.current();
+    refreshCustomConnections.current();
+  }, [orgMode]);
   // Connecting, editing or removing a database happens in the chat panel too,
   // and this page can be open while it does.
   useEffect(() => {
-    const onChanged = () => { refreshDatasources.current(); };
+    const onChanged = () => {
+      refreshDatasources.current();
+      refreshCustomConnections.current();
+    };
     window.addEventListener('anton:connections-changed', onChanged);
     return () => window.removeEventListener('anton:connections-changed', onChanged);
   }, []);
@@ -678,6 +696,13 @@ export default function CustomizeView({
         await removeDatasourceConnection(connection);
         return true;
       }
+      // A custom API connection is stored in auth, behind its own relay.
+      if (isCustomConnectionRow(connection)) {
+        await deleteCustomConnection(connection.connectionId);
+        await refreshCustomConnections.current();
+        window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+        return true;
+      }
       // For builtin OAuth connections in Electron, keychain:revoke stops the
       // refresh loop, removes the keychain entry, and deletes the vault record.
       if (host.isElectron) {
@@ -712,12 +737,18 @@ export default function CustomizeView({
     return true;
   };
 
+  // A custom API connection has no details to manage: delete it and connect again.
+  const modifyHandler = (connection) => {
+    if (isCustomConnectionRow(connection)) return undefined;
+    return isDatasourceRow(connection) ? setSelectedDatasource : setSelectedConn;
+  };
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     // One grid: the OAuth connections this page has always shown, plus the
     // cloud database ones. They are separate state (see above) and joined only
     // for display, search and sort.
-    const all = [...(list || []), ...datasources];
+    const all = [...(list || []), ...datasources, ...customConnections];
     let out = all.map((connection) => ({ connection, identity: connectionIdentity(connection) }));
     if (q) {
       out = out.filter(({ connection, identity }) =>
@@ -739,9 +770,9 @@ export default function CustomizeView({
       }
     });
     return out.map(({ connection }) => connection);
-  }, [list, datasources, search, sort]);
+  }, [list, datasources, customConnections, search, sort]);
 
-  const total = list.length + datasources.length;
+  const total = list.length + datasources.length + customConnections.length;
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -788,13 +819,13 @@ export default function CustomizeView({
         {effectiveView === 'grid' ? (
           <CardGrid className="px-8 pb-[60px]">
             {visible.map((c) => (
-              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn} />
+              <ConnectionCard key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={modifyHandler(c)} />
             ))}
           </CardGrid>
         ) : (
           <ListGroup className="mx-8 mb-[60px]">
             {visible.map((c) => (
-              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={isDatasourceRow(c) ? setSelectedDatasource : setSelectedConn} />
+              <ConnectionRow key={`${c.engine}-${c.name}`} connection={c} onDelete={handleDelete} onModify={modifyHandler(c)} />
             ))}
           </ListGroup>
         )}

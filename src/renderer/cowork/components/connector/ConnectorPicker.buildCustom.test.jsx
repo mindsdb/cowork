@@ -1,5 +1,5 @@
 // Building a connector from the directory, offered only where the server says
-// one would be kept, and never in org mode.
+// one would be kept, org mode included.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -114,8 +114,20 @@ describe('ConnectorPicker build a custom connector', () => {
     expect(within(tile).getByText('AP')).toBeTruthy();
   });
 
-  it('shows neither entry point in org mode', async () => {
+  it('offers both entry points in org mode when the server says a member may build', async () => {
     setOrgMode(true);
+    const onBuildCustom = await openWith([GMAIL]);
+
+    expect(fetchCanBuildCustomConnector).toHaveBeenCalled();
+    expect(await screen.findByText('Build a custom connector')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'acme' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Build a custom connector for “acme”' }));
+    expect(onBuildCustom).toHaveBeenCalledWith('acme');
+  });
+
+  it('shows neither entry point in org mode when the server says no', async () => {
+    setOrgMode(true);
+    fetchCanBuildCustomConnector.mockResolvedValue(false);
     await openWith([GMAIL]);
 
     expect(screen.queryByText('Build a custom connector')).toBeNull();

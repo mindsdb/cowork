@@ -811,6 +811,35 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps: [...state.steps, step] };
   }
 
+  // Inline connector template card. A cloud turn built the template for an API
+  // connector; the server checked it again and stored nothing. The member saves
+  // it from the card. Deduped by connector id within a turn so a replay can't
+  // double a card.
+  if (type === 'response.connector_drafted') {
+    const c = (event.connector && typeof event.connector === 'object') ? event.connector : null;
+    const key = typeof c?.connector_id === 'string' ? c.connector_id : '';
+    if (!key) return state;
+    if (state.steps.some((s) => s.badge === 'Connector' && s._connectorKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `connector-${key}`,
+      label: typeof c.label === 'string' ? c.label : key,
+      badge: 'Connector',
+      icon: 'link',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: c,
+      output: null,
+      result: null,
+      _connectorKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
   // Inline ask_user card. The harness pauses mid-turn to ask the user a
   // multiple-choice question; the payload is self-contained so the card
   // renders from this event alone, including on replay. Deduped by
