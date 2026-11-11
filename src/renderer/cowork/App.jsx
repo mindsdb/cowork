@@ -47,7 +47,8 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
+import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
 import { applyFavicon, applyNavTitleColor, applyOrgFavicon } from '../lib/navBranding';
@@ -2977,6 +2978,8 @@ function AppCore() {
           selected_method: '__edit_current__',
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -2994,6 +2997,8 @@ function AppCore() {
           fields: syntheticFields,
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -3217,6 +3222,8 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        // Saved before connection tests: the form shows the rebuild text, not fields.
+        _needs_rebuild: !!full.needs_rebuild,
         /* Reconnecting a shared connection carries its name so the submit
            (DataVaultFormPanel reads spec._existing_name) updates that entry in
            place instead of saving a second one under a fresh random slug. */
@@ -4385,15 +4392,7 @@ function AppCore() {
       // Migrate the form store so a success-state panel (e.g. the
       // OAuth success screen set just before onContinue was called)
       // survives the ID change and stays visible under the new task id.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4733,15 +4732,7 @@ function AppCore() {
       // data-vault-form-patch blocks (keyed to the new id) both
       // find the form. Without this the panel loses its spec and
       // the success patch falls through to a bare setForm.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4796,6 +4787,9 @@ function AppCore() {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A custom connector's test waiting on the user: its id goes to the
+        // panel's own store, never into the stream state or the message.
+        if (applyConnectorTestEvent(resolvedId || id, ev)) return;
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);

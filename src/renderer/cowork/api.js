@@ -2740,6 +2740,25 @@ export function streamDataVaultSubmission({
   return ctrl;
 }
 
+// Answers to a custom connector's waiting connection test. Each id is single
+// use; a 404 means the test is no longer waiting and the form must be sent again.
+export function allowConnectorTestHost(approvalId) {
+  return req('/connectors/submissions/allow-private', {
+    method: 'POST', body: JSON.stringify({ approval_id: approvalId }),
+  });
+}
+
+export function confirmConnectorTest(confirmId) {
+  return req('/connectors/submissions/confirm', {
+    method: 'POST', body: JSON.stringify({ confirm_id: confirmId }),
+  });
+}
+
+export function cancelConnectorTest({ approvalId, confirmId } = {}) {
+  const body = approvalId ? { approval_id: approvalId } : { confirm_id: confirmId };
+  return req('/connectors/submissions/cancel', { method: 'POST', body: JSON.stringify(body) });
+}
+
 // Backwards-compatible non-streaming wrapper — kept so callers that
 // just need to stage values without streaming back can still do so.
 // (Currently unused by the form panel; might disappear in a cleanup.)
