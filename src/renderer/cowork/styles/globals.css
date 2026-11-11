@@ -2697,6 +2697,11 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   background: transparent; cursor: pointer; text-align: left; font: inherit; font-size: 13.5px; color: var(--ink-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-tap-highlight-color: transparent;
 }
+/* Alternating, barely there backgrounds, so each recent reads as its own row. */
+.mshell-recent-chats { display: grid; gap: 2px; }
+.mshell-recent-chat:nth-child(odd) { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
+.mshell-recent-chat:nth-child(even) { background: color-mix(in srgb, var(--ink) 1%, transparent); }
+body[data-skin="8bit"] .mshell-recent-chat { border-radius: 0; }
 .mshell-recent-chat:active, .mshell-recent-chat.is-active { background: var(--surface-2); color: var(--ink); }
 body[data-skin="8bit"] .mshell-recent-chats { border-left-width: 2px; }
 
