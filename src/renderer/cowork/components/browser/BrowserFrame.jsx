@@ -11,7 +11,9 @@ import './browser-panel.css';
    `dock` (phones, in a task): the pane sits at the top of the chat, no taller
    than half the screen, with no scrim. Its header button minimizes it to the
    header alone instead of closing it, and the minimized header expands it
-   again: `dock` is {collapsed, onToggle}. */
+   again: `dock` is {collapsed, onToggle}. Expanded, it covers the top of
+   the screen (browser-panel.css) with no header of its own: the page's own
+   address row, and a Minimize button floating at its right end. */
 
 /**
  * @param {{
@@ -44,6 +46,12 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
         className={`browser-panel${floating && !dock ? ' is-floating' : ''}${dock ? ' is-docked' : ''}${collapsed ? ' is-collapsed' : ''}`}
         aria-label="Shared browser"
       >
+        {dock && !collapsed && (
+          <button type="button" className="browser-panel__dock-min" aria-label="Minimize browser" onClick={dock.onToggle}>
+            <span className="browser-panel__minus" aria-hidden="true" />
+          </button>
+        )}
+        {(!dock || collapsed) && (
         <header
           className="browser-panel__header"
           onClick={collapsed ? dock.onToggle : undefined}
@@ -78,6 +86,7 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
             )}
           </div>
         </header>
+        )}
         {/* Kept mounted while minimized, so the page keeps running. */}
         <div className="browser-panel__body" hidden={collapsed}>
           {below}

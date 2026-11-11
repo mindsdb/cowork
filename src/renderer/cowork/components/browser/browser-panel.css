@@ -111,3 +111,21 @@ body[data-skin="8bit"] .browser-panel__address { border: 2px solid var(--ink); b
 body[data-skin="8bit"] .browser-panel__minus { border-radius: 0; height: 2px; }
 body[data-skin="8bit"] .browser-panel.is-docked { border-bottom: 2px solid var(--ink); }
 @media (prefers-reduced-motion: reduce) { .browser-panel.is-docked { transition: none; } }
+
+/* Phones, expanded: the browser covers the top 80% of the screen, from the
+   very top, with only the page's address row and a floating Minimize. */
+.browser-panel.is-docked:not(.is-collapsed) {
+  position: fixed; z-index: 70; top: 0; left: 0; right: 0; height: 80dvh;
+  padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid var(--line);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .28); transition: none;
+}
+.browser-panel.is-docked .browser-panel__note { display: none; }
+.browser-panel.is-docked:not(.is-collapsed) .browser-panel__address { margin: 6px 52px 6px 8px; height: 36px; }
+.browser-panel__dock-min {
+  position: absolute; z-index: 2; top: calc(env(safe-area-inset-top, 0px) + 6px); right: 8px;
+  display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0;
+  border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.browser-panel__dock-min:active { background: var(--surface-2); }
+body[data-skin="8bit"] .browser-panel__dock-min { border: 2px solid var(--ink); border-radius: 0; }
+.browser-panel.is-docked .browser-panel__blank-form { display: none; }

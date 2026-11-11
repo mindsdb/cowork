@@ -51,6 +51,9 @@ import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, desktopTask
 import { BrowserPanel } from '../components/browser/BrowserPanel';
 import BlankBrowserPanel from '../components/browser/BlankBrowserPanel';
 import TopShortcuts from '../components/TopShortcuts';
+import VoiceOrb from '../components/VoiceOrb';
+import { isPositionClickCard } from '../lib/browserApproval';
+import Button from '../components/ui/Button';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { useNativeOverlay } from '../lib/nativeOverlay';
 import { nextScrollAnchor } from '../lib/scrollAnchor';
@@ -1889,6 +1892,9 @@ export default function ChatView({
   callShortcut = null,
   // On a phone: the voice call's card, shown at the top of the chat.
   phoneCallCard = null,
+  // On a phone: the voice call itself (useVoiceCall's), for the speaking orb
+  // shown in place of the card while the browser is expanded.
+  phoneCall = null,
   // Bumped by the phone top bar's browser icon: open this task's browser.
   openBrowserSignal = 0,
   browserSwitch = null,
@@ -2166,6 +2172,37 @@ export default function ChatView({
   const browserDock = isMobile && !pane
     ? { collapsed: browserMinimized, onToggle: () => setBrowserMinimized((m) => !m) }
     : null;
+  // Anton handed the browser to the person (the viewer says so): it opens,
+  // and the strip under it says what to do.
+  const [browserHandoff, setBrowserHandoff] = useState(null);
+  useEffect(() => { setBrowserHandoff(null); }, [task.id, shownBrowserId]);
+  const onBrowserControl = (holder, reason) => {
+    if (holder === 'human') {
+      setBrowserHandoff(reason || 'Anton needs you in the browser');
+      setBrowserMinimized(false);
+    } else {
+      setBrowserHandoff(null);
+    }
+  };
+  const askingUser = (streamingMsg?.steps || []).some(
+    (s) => s.badge === 'AskUser' && !s.data?.answer && !isPositionClickCard(s.data),
+  );
+  const phoneBrowserExpanded = Boolean(browserDock) && browserPaneOpen && !browserMinimized;
+  // While it is expanded the page under it stays put: no scroll, so typing in
+  // the address row can't move the screen.
+  useEffect(() => {
+    if (!phoneBrowserExpanded) return undefined;
+    const root = document.documentElement;
+    root.classList.add('phone-browser-open');
+    const keepTop = () => { window.setTimeout(() => window.scrollTo(0, 0), 0); };
+    window.addEventListener('focusin', keepTop);
+    window.visualViewport?.addEventListener('resize', keepTop);
+    return () => {
+      root.classList.remove('phone-browser-open');
+      window.removeEventListener('focusin', keepTop);
+      window.visualViewport?.removeEventListener('resize', keepTop);
+    };
+  }, [phoneBrowserExpanded]);
   /* The inline pane holds the right-hand column, where a docked rail would
      go, so the rail and its Expand button step aside. A rail that floats
      opens over the pane instead. */
@@ -2207,6 +2244,7 @@ export default function ChatView({
           onClose={() => setShownBrowserId(null)}
           extraActions={browserCallIcon}
           dock={browserDock}
+          onControl={onBrowserControl}
         />
       )}
       {blankBrowserOpen && (
@@ -2223,11 +2261,26 @@ export default function ChatView({
       )}
     </>
   );
-  // A phone's task: the call's card, then the browser, then the chat.
+  // A phone's task: the call's card, then the browser, then the chat. With
+  // the browser expanded over the top 80%, the card gives way to a small orb
+  // at its bottom edge, and the strip under it speaks only when Anton needs
+  // the person.
+  const needsUser = browserHandoff
+    ? `Your turn: ${browserHandoff}. Tap Done in the browser when you're finished, then minimize to continue.`
+    : askingUser ? `${harnessLabel(task?.harness) || 'Anton'} has a question for you. Minimize to answer it.` : '';
   const phoneDock = browserDock && (phoneCallCard || browserPaneOpen) ? (
     <div className="chat-phone-dock">
-      {phoneCallCard}
+      {!phoneBrowserExpanded && phoneCallCard}
       {browserNode}
+      {phoneBrowserExpanded && phoneCall && phoneCall.phase !== 'idle' && (
+        <VoiceOrb call={phoneCall} onClick={() => setBrowserMinimized(true)} />
+      )}
+      {phoneBrowserExpanded && needsUser && (
+        <div className="phone-browser-ask" role="status">
+          <p>{needsUser}</p>
+          <Button size="sm" onClick={() => setBrowserMinimized(true)}>Minimize</Button>
+        </div>
+      )}
     </div>
   ) : null;
   // The floating Expand button's spot, when it shows; the icons sit beside it.

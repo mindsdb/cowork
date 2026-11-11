@@ -78,6 +78,17 @@ describe('BrowserPanel', () => {
       expect(note).toContain(WEB_SIGN_INS);
     });
 
+    it('passes on who holds the browser, from its own viewer only', async () => {
+      const onControl = vi.fn();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} onControl={onControl} />);
+      await flush();
+      messageFrom({}, { type: 'browser-viewer-control', holder: 'human', reason: 'stranger' });
+      expect(onControl).not.toHaveBeenCalled();
+      messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'human', reason: 'sign in to Kayak' });
+      messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'agent' });
+      expect(onControl.mock.calls).toEqual([['human', 'sign in to Kayak'], ['agent', '']]);
+    });
+
     it("frames the link in the router's own embed answer", async () => {
       // cowork-server's fixture, on this page's origin: the pane reads the
       // fields the router sends, ticket_expires_at and lease_expires_at.

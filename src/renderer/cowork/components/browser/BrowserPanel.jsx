@@ -95,7 +95,9 @@ export function BrowserPanel(props) {
 /**
  * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
  */
-function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null }) {
+function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null }) {
+  const onControlRef = useRef(onControl);
+  onControlRef.current = onControl;
   const [viewUrl, setViewUrl] = useState(null);
   const [error, setError] = useState(/** @type {PaneStop | null} */ (null));
   const [hidden, setHidden] = useState(tabHidden);
@@ -190,6 +192,11 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = 
         setViewerReady(true);
         setSlow(false);
         postTheme(frameRef.current);
+        return;
+      }
+      // Who holds the browser: 'human' when Anton handed it to the person.
+      if (type === 'browser-viewer-control') {
+        onControlRef.current?.(event.data?.holder === 'human' ? 'human' : 'agent', String(event.data?.reason || '').slice(0, 300));
         return;
       }
       if (type !== VIEWER_CLOSED) return;

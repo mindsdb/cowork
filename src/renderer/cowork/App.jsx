@@ -6624,6 +6624,7 @@ function AppCore() {
             openBrowserSignal={taskBrowserSignal}
             callShortcut={voiceCallShortcut}
             phoneCallCard={callInTaskOnPhone ? <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} /> : null}
+            phoneCall={callInTaskOnPhone ? voiceCall : null}
             browserSwitch={browserSwitchShown && currentTask
               ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
               : null}

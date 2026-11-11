@@ -30,3 +30,14 @@ describe('BrowserFrame docked on a phone', () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe('BrowserFrame expanded on a phone', () => {
+  it('has no header of its own, only a floating Minimize', async () => {
+    const onToggle = vi.fn();
+    const { container } = render(<BrowserFrame hint="kayak.com" onClose={vi.fn()} dock={{ collapsed: false, onToggle }}><iframe title="page" /></BrowserFrame>);
+    expect(container.querySelector('.browser-panel__header')).toBeNull();
+    expect(screen.queryByText('Browser')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Minimize browser' }));
+    expect(onToggle).toHaveBeenCalled();
+  });
+});

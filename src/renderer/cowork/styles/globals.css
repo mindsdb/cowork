@@ -4267,3 +4267,15 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 }
 .chat-phone-dock > .voice-call .voice-waves { height: 30px; }
 .chat-phone-dock > .voice-call .voice-call__x { top: -6px; right: -6px; }
+
+/* Phone, browser expanded: the page under it doesn't scroll or move, and the
+   strip under the browser says what Anton needs from the person. */
+html.phone-browser-open, html.phone-browser-open body { overflow: hidden; overscroll-behavior: none; }
+.phone-browser-ask {
+  position: fixed; z-index: 71; left: 0; right: 0; bottom: 0; height: 20dvh;
+  display: flex; flex-direction: column; justify-content: center; gap: 10px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface); border-top: 1px solid var(--line);
+}
+.phone-browser-ask p { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.4; }
+.phone-browser-ask .btn, .phone-browser-ask button { align-self: flex-start; }
