@@ -132,7 +132,7 @@ describe('StatsPanel content', () => {
   it('says tracking is off and still shows what was collected', () => {
     renderPanel({ data: { ...DATA, tracking: false } });
 
-    expect(screen.getByText('Tracking is off. New views are not recorded.')).toBeInTheDocument();
+    expect(screen.getByText('Tracking is off. Turn it on to start counting views.')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Track views' })).not.toBeChecked();
     expect(within(metric('Total views')).getByText('152')).toBeInTheDocument();
   });

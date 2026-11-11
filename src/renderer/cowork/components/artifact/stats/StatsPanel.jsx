@@ -138,7 +138,7 @@ function StatsContent({ data, trackingBusy, accessMode, accessLoaded, onToggleTr
         </div>
         {!tracking && (
           <span className="text-[12px] leading-[16px] text-ink-3">
-            Tracking is off. New views are not recorded.
+            Tracking is off. Turn it on to start counting views.
           </span>
         )}
       </div>
