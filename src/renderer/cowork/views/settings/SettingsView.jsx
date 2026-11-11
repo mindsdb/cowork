@@ -32,7 +32,6 @@ import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
-import LanguageSection from './LanguageSection';
 import i18n, { useTranslation } from '../../../lib/i18n';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
@@ -2289,7 +2288,6 @@ export default function SettingsView({
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
       <SettingsGroup title={t('appearance.title')}>
-        <LanguageSection />
         {SKIN_LOCKED ? (
           <Section title={t('appearance.style.title')} subtitle={t('appearance.style.lockedSubtitle')}>
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>

@@ -155,17 +155,27 @@ function applyDocumentLanguage(locale: string): void {
 }
 i18n.on('languageChanged', applyDocumentLanguage);
 
+/* Each switch takes a ticket; only the newest one may apply. A catalog load
+   is async, so without this a slow earlier switch (a cold chunk, or the boot
+   switch after whenI18nReady gave up waiting) could land after a newer one
+   and leave the app in a language the pickers no longer show. */
+let latestSwitch = 0;
+
 /* Switch the running app to `locale`. A catalog that fails to load leaves
-   the app in English rather than half-switched. */
+   the app in English rather than half-switched. Resolves to the locale the
+   app is in once this call is done, which is a newer call's when one
+   overtook it. */
 export async function changeLocale(locale: AppLocale): Promise<AppLocale> {
+  const ticket = ++latestSwitch;
+  let target: AppLocale = locale;
   try {
     await loadLocale(locale);
-    await i18n.changeLanguage(locale);
-    return locale;
   } catch {
-    await i18n.changeLanguage(SOURCE_LOCALE);
-    return SOURCE_LOCALE;
+    target = SOURCE_LOCALE;
   }
+  if (ticket !== latestSwitch) return currentLocale();
+  await i18n.changeLanguage(target);
+  return target;
 }
 
 /* Save the user's choice and apply it now. */
@@ -204,9 +214,11 @@ export function whenI18nReady(): Promise<void> {
   return Promise.race([changeLocale(locale).then(() => undefined), timeout]);
 }
 
-/* The locale to tell the server (Accept-Language), so Anton knows the
-   user's language. Always one of SUPPORTED_LOCALES. */
-export function currentServerLocale(): SupportedLocale {
+/* The locale to tell the server (X-Cowork-UI-Locale), so Anton knows the
+   user's language: one of SUPPORTED_LOCALES, or null while the language
+   picker is off, so the server sees no setting until the feature ships. */
+export function currentServerLocale(): SupportedLocale | null {
+  if (!languagePickerEnabled()) return null;
   const lng = i18n.resolvedLanguage ?? i18n.language;
   return serverLocale(isLanguagePreference(lng, { allowPseudo: true }) && lng !== SYSTEM_PREFERENCE ? lng : SOURCE_LOCALE);
 }

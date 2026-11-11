@@ -33,7 +33,6 @@
   },
   "language": {
     "title": "言語",
-    "subtitle": "メニュー、ボタン、メッセージに使用する言語です。返信は、あなたが入力した言語で行われます。",
     "ariaLabel": "言語",
     "matchSystem": "システムに合わせる（{language}）"
   },

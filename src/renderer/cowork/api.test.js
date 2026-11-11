@@ -66,7 +66,7 @@ describe('authFetch organization boundary', () => {
 
     expect(fetch).toHaveBeenCalledWith('/api/v1/projects', {
       headers: {
-        'Accept-Language': 'en',
+        'X-Cowork-UI-Locale': 'en',
         Authorization: expect.stringMatching(/^Bearer /),
         'X-Cowork-Expected-Organization-Id': ORGANIZATION_A,
       },

@@ -33,7 +33,6 @@
   },
   "language": {
     "title": "Lingua",
-    "subtitle": "La lingua di menu, pulsanti e messaggi. Le risposte seguono la lingua in cui scrivi.",
     "ariaLabel": "Lingua",
     "matchSystem": "Come il sistema ({language})"
   },

@@ -140,6 +140,11 @@ export function checkCatalogs(catalogs, lock = {}) {
         issues.push({ kind: 'unlocked', locale, key, detail: 'not in i18n.lock.json; run npm run check:i18n -- --write-lock after translating' });
       } else if (entry.from !== hash(source[key])) {
         issues.push({ kind: 'stale', locale, key, detail: `English is now ${JSON.stringify(source[key])}; translation is ${JSON.stringify(translation)}` });
+      } else if (entry.text !== hash(translation)) {
+        // Edited by hand without a lock write. Left alone, the next lock write
+        // for any other key would re-stamp it from whatever English is then,
+        // so a later English change could go unnoticed.
+        issues.push({ kind: 'unlocked', locale, key, detail: 'translation changed since i18n.lock.json was written; run npm run check:i18n -- --write-lock' });
       }
     }
     for (const key of Object.keys(messages)) {

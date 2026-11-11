@@ -33,7 +33,6 @@
   },
   "language": {
     "title": "언어",
-    "subtitle": "메뉴, 버튼, 메시지에 사용할 언어입니다. 답변은 사용자가 입력한 언어로 작성됩니다.",
     "ariaLabel": "언어",
     "matchSystem": "시스템 설정 따르기({language})"
   },

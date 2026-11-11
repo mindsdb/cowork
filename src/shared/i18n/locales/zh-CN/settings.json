@@ -33,7 +33,6 @@
   },
   "language": {
     "title": "语言",
-    "subtitle": "菜单、按钮和消息使用的语言。回复会使用你输入时所用的语言。",
     "ariaLabel": "语言",
     "matchSystem": "跟随系统（{language}）"
   },

@@ -34,7 +34,7 @@ function DeleteButton({ count }) {
 - Each other locale is a separate chunk, loaded the first time someone picks it. In Electron the chunk is a local file (bundled, or the OTA UI cache); on the web cowork-server serves it as a static asset. Catalogs live with the UI, not in the server, because an OTA UI routinely runs ahead of the server — each UI version carries the text for its own keys.
 - The entry points (`main.tsx`, `web-main.tsx`) wait for the user's language before the first render (bounded at 1.5 s, falls back to English), so there is no English flash.
 - Settings → Appearance → Language switches in place with `i18n.changeLanguage()`: nothing reloads. The choice is stored on the device (`localStorage: cowork.language`); "Match system" follows the OS language.
-- Every server request carries `Accept-Language` with the active locale (`withAcceptLanguage` in `cowork/api.js`), which cowork-server hands to Anton so it replies in the user's language.
+- While the language picker is on, every server request carries `X-Cowork-UI-Locale` with the active locale (`withUiLocale` in `cowork/api.js`), which cowork-server hands to Anton so it replies in the user's language. Not `Accept-Language`: browsers send that on their own, so it can't tell an app setting from an OS default.
 
 ### Preview gate
 

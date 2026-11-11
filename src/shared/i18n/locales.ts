@@ -89,7 +89,7 @@ export function resolveLocale(
   return SOURCE_LOCALE;
 }
 
-/* What the server is told (Accept-Language). The pseudo-locale is English
+/* What the server is told (X-Cowork-UI-Locale). The pseudo-locale is English
    to everything outside the UI. */
 export function serverLocale(locale: AppLocale): SupportedLocale {
   return locale === PSEUDO_LOCALE ? SOURCE_LOCALE : locale;

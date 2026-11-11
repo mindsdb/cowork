@@ -72,6 +72,13 @@ test('retranslating clears the staleness on the next lock write', () => {
   assert.deepEqual(checkCatalogs(retranslated, updateLock(retranslated, lock)).issues, []);
 });
 
+test('a translation edited without a lock write fails until the lock is written', () => {
+  const lock = locked({ en: { 'a:x': 'Delete task' }, es: { 'a:x': 'Eliminar tarea' } });
+  const edited = { en: { 'a:x': 'Delete task' }, es: { 'a:x': 'Borrar tarea' } };
+  assert.deepEqual(kinds(checkCatalogs(edited, lock).issues), ['unlocked es a:x']);
+  assert.deepEqual(checkCatalogs(edited, updateLock(edited, lock)).issues, []);
+});
+
 test('--accept re-stamps a translation that is still right', () => {
   const lock = locked({ en: { 'a:x': 'Colour' }, es: { 'a:x': 'Color' } });
   const after = { en: { 'a:x': 'Color' }, es: { 'a:x': 'Color' } };

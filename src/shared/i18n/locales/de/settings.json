@@ -33,7 +33,6 @@
   },
   "language": {
     "title": "Sprache",
-    "subtitle": "Die Sprache für Menüs, Schaltflächen und Meldungen. Antworten folgen der Sprache, in der Sie schreiben.",
     "ariaLabel": "Sprache",
     "matchSystem": "Wie im System ({language})"
   },

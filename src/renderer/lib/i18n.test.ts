@@ -44,6 +44,17 @@ describe('i18n runtime', () => {
     expect(currentServerLocale()).toBe('pt-BR');
   });
 
+  it('lets the newest switch win when an older catalog load finishes last', async () => {
+    // A cold Spanish chunk, then English picked before it arrives: the late
+    // Spanish load must not switch the app back.
+    const spanish = changeLocale('es');
+    const english = changeLocale('en');
+    expect(await english).toBe('en');
+    expect(await spanish).toBe('en');
+    expect(i18n.language).toBe('en');
+    expect(currentServerLocale()).toBe('en');
+  });
+
   it('pseudo-localizes English for en-XA, but tells the server en', async () => {
     await changeLocale('en-XA');
     expect(i18n.t('settings:nav.title')).toMatch(/^\[Şḗŧŧīƞɠş ~+\]$/);

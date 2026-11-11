@@ -126751,40 +126751,6 @@
       "text": "79f6abbacf52"
     }
   },
-  "settings:language.subtitle": {
-    "de": {
-      "from": "582772177695",
-      "text": "da3323a3d3e0"
-    },
-    "es": {
-      "from": "582772177695",
-      "text": "489ab3a38593"
-    },
-    "fr": {
-      "from": "582772177695",
-      "text": "1c0abe8bab8d"
-    },
-    "it": {
-      "from": "582772177695",
-      "text": "d9b664cb50a4"
-    },
-    "ja": {
-      "from": "582772177695",
-      "text": "e52b9938f568"
-    },
-    "ko": {
-      "from": "582772177695",
-      "text": "18a4ca620342"
-    },
-    "pt-BR": {
-      "from": "582772177695",
-      "text": "7e9806ba2bf4"
-    },
-    "zh-CN": {
-      "from": "582772177695",
-      "text": "d198b9a79d9b"
-    }
-  },
   "settings:language.title": {
     "de": {
       "from": "a4fe65264ef7",

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import { useTranslation } from 'react-i18next';
 import { changeLocale, setLanguagePreference } from '../../../lib/i18n';
-import LanguageSection, { LanguageHeaderSelect } from './LanguageSection';
+import { LanguageHeaderSelect } from './LanguageSection';
 
 /* The Select primitive opens a Base UI popup; the switch itself is what this
    tests, so pick through the same function the Select calls. */
@@ -17,39 +17,20 @@ afterEach(async () => {
   await changeLocale('en');
 });
 
-describe('LanguageSection', () => {
-  it('is hidden outside the translation preview', () => {
-    vi.stubEnv('DEV', false);
-    const { container } = render(<LanguageSection />);
-    expect(container).toBeEmptyDOMElement();
-  });
-
+describe('LanguageHeaderSelect', () => {
   it('offers Match system and each language by its own name', () => {
-    render(<LanguageSection />);
-    expect(screen.getByText('Language')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Language' })).toHaveTextContent(/Match system \(English\)/);
+    render(<LanguageHeaderSelect />);
+        expect(screen.getByRole('combobox', { name: 'Language' })).toHaveTextContent(/Match system \(English\)/);
   });
 
   it('re-renders the app in the chosen language with no reload', async () => {
-    render(<><SettingsTitle /><LanguageSection /></>);
+    render(<><SettingsTitle /><LanguageHeaderSelect /></>);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Settings');
 
     await act(async () => { await setLanguagePreference('es'); });
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Configuración');
-    expect(screen.getByText('Idioma')).toBeInTheDocument();
-  });
-
-  it('keeps the header picker and the Appearance picker in step', async () => {
-    render(<><LanguageHeaderSelect /><LanguageSection /></>);
-    const pickers = screen.getAllByRole('combobox', { name: 'Language' });
-    expect(pickers).toHaveLength(2);
-
-    await act(async () => { await setLanguagePreference('pt-BR'); });
-
-    for (const picker of screen.getAllByRole('combobox', { name: 'Idioma' })) {
-      expect(picker).toHaveTextContent('Português (Brasil)');
-    }
+    expect(screen.getByRole('combobox', { name: 'Idioma' })).toHaveTextContent('Español');
   });
 
   it('hides the header picker outside the translation preview', () => {
@@ -59,7 +40,7 @@ describe('LanguageSection', () => {
   });
 
   it('switches to Japanese, with the picker named in Japanese', async () => {
-    render(<><SettingsTitle /><LanguageSection /></>);
+    render(<><SettingsTitle /><LanguageHeaderSelect /></>);
     await act(async () => { await setLanguagePreference('ja'); });
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('設定');
     expect(screen.getByRole('combobox', { name: '言語' })).toHaveTextContent('日本語');
@@ -73,7 +54,7 @@ describe('LanguageSection', () => {
     ['it', 'Impostazioni', 'Lingua', 'Italiano'],
     ['zh-CN', '设置', '语言', '简体中文'],
   ])('switches to %s', async (locale, settings, language, nativeName) => {
-    render(<><SettingsTitle /><LanguageSection /></>);
+    render(<><SettingsTitle /><LanguageHeaderSelect /></>);
     await act(async () => { await setLanguagePreference(locale); });
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(settings);
     expect(screen.getByRole('combobox', { name: language })).toHaveTextContent(nativeName);

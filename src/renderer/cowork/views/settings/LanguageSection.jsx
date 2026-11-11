@@ -1,5 +1,4 @@
 import { Select } from '../../components/ui';
-import { Section } from './settingsLayout';
 import {
   languagePickerEnabled,
   setLanguagePreference,
@@ -15,13 +14,12 @@ import {
   resolveLocale,
 } from '../../../../shared/i18n/locales';
 
-/* The language pickers (ENG-4149): one in the Settings header, one under
-   Appearance. The choice is stored on this device and applies at once: the
-   app re-renders in the new language with no reload. Both read the same
-   stored preference, so they never disagree. Hidden until the translation
-   rollout opens them up (see languagePickerEnabled). Each language is listed
-   by its own name, so a person who can't read the current UI language can
-   still find theirs. */
+/* The language picker (ENG-4149), in the Settings modal's header so it is
+   reachable from every section. The choice is stored on this device and
+   applies at once: the app re-renders in the new language with no reload.
+   Hidden until the translation rollout opens it up (see
+   languagePickerEnabled). Each language is listed by its own name, so a
+   person who can't read the current UI language can still find theirs. */
 function useLanguagePicker() {
   const { t } = useTranslation('settings');
   const preference = useLanguagePreference();
@@ -42,19 +40,7 @@ function useLanguagePicker() {
   };
 }
 
-/* Settings → Appearance → Language. */
-export default function LanguageSection() {
-  const { t, preference, options, choose } = useLanguagePicker();
-  if (!languagePickerEnabled()) return null;
-  return (
-    <Section title={t('language.title')} subtitle={t('language.subtitle')}>
-      <Select value={preference} options={options} ariaLabel={t('language.ariaLabel')} onValueChange={choose} />
-    </Section>
-  );
-}
-
-/* The compact picker in the Settings modal's header: "Language: Español ⌄",
-   reachable from every section without hunting for Appearance. */
+/* "Language: Español ⌄" */
 export function LanguageHeaderSelect() {
   const { t, preference, options, choose } = useLanguagePicker();
   if (!languagePickerEnabled()) return null;
