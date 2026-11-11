@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Section, SettingsGroup } from './settingsLayout';
+import { setBrowserPrefs, useBrowserPrefs } from '../../lib/browserPrefs';
 import { Switch } from '../../components/ui/Switch';
 import Button from '../../components/ui/Button';
 import { signOutOfBrowserSites } from '../../api';
@@ -76,7 +77,12 @@ export function usageEventsHelp(agentLabel) {
   return `${agentLabel} sends MindsDB anonymous usage events, with an installation id, the browser's included, never page text or addresses. Off stops them from the next time you restart the app.`;
 }
 
+export function approveStepsHelp(agentLabel) {
+  return `On: ${agentLabel} waits for your OK before a step that commits something, like a purchase, a message or a form. Off: ${agentLabel} goes ahead.`;
+}
+
 export default function BrowserSettingsSection({ settings, setSetting, agentLabel = 'Anton', signedInToMindsHub = false }) {
+  const browserPrefs = useBrowserPrefs();
   // The last BrowseStatus answer (api.js), or null before the first one.
   const [status, setStatus] = useState(null);
   // Whether the last status read failed. It shows only while no answer came.
@@ -184,6 +190,13 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
       <SettingsGroup title="Shared browser">
         <Section title="Use the shared browser" subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
           {browserSwitch}
+        </Section>
+        <Section title="Approve browser steps" subtitle={approveStepsHelp(agentLabel)}>
+          <Switch
+            checked={browserPrefs.askToApprove}
+            onCheckedChange={(on) => setBrowserPrefs({ askToApprove: on })}
+            aria-label="Approve browser steps"
+          />
         </Section>
         <Section title="Sign-ins" subtitle={inApp ? DESKTOP_SIGN_INS : WEB_SIGN_INS} />
         {signOutRow}

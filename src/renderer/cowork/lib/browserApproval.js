@@ -14,6 +14,7 @@
 
 import { diagnostic } from '../../../shared/diagnostics';
 import { approveBrowserStep, declineBrowserStep } from '../api';
+import { getBrowserPrefs } from './browserPrefs';
 
 export const BROWSER_APPROVE_VALUE = 'approve';
 
@@ -117,6 +118,31 @@ export function isPositionClickCard(data) {
   return (data?.options || []).some(
     (o) => o?.value === BROWSER_APPROVE_VALUE && o?.detail === POSITION_APPROVE_DETAIL,
   );
+}
+
+/**
+ * Whether a question asks to approve a held browser step: a commit-hold card
+ * (its id has the hold's prefix) with an Approve option.
+ *
+ * @param {{ question_id?: string, options?: Array<{ value?: string }> } | null | undefined} data
+ * @returns {boolean}
+ */
+export function isBrowserStepCard(data) {
+  return isBrowserApprovalCard(data?.question_id)
+    && (data?.options || []).some((o) => o?.value === BROWSER_APPROVE_VALUE);
+}
+
+/**
+ * Whether the app approves this card for the person and keeps it out of
+ * sight: clicks by position always; any held browser step unless the person
+ * asked to approve steps themselves (Settings > Shared browser).
+ *
+ * @param {Parameters<typeof isBrowserStepCard>[0]} data
+ * @param {{ askToApprove?: boolean }} [prefs]
+ * @returns {boolean}
+ */
+export function isAutoApprovedCard(data, prefs = getBrowserPrefs()) {
+  return isPositionClickCard(data) || (!prefs.askToApprove && isBrowserStepCard(data));
 }
 
 /**

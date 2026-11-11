@@ -3,6 +3,8 @@ import approveFixture from '../__fixtures__/browser-router/approve.json';
 import {
   autoApprovePositionClick,
   isPositionClickCard,
+  isAutoApprovedCard,
+  isBrowserStepCard,
   POSITION_APPROVE_DETAIL,
   approvalRefusalText,
   browserApprovalIds,
@@ -145,5 +147,21 @@ describe('position clicks, refused answers', () => {
       expect(await autoApprovePositionClick({ conversationIds: ['c1'], questionId: 'ask:q', isWeb: false, submit: vi.fn(async () => ({ status })) })).toBe(false);
     }
     expect(await autoApprovePositionClick({ conversationIds: ['c1'], questionId: 'ask:q', isWeb: false, submit: vi.fn(async () => ({ status: 'not_found' })) })).toBe(false);
+  });
+});
+
+describe('which cards the app approves for the person', () => {
+  const hold = (options) => ({ question_id: 'browser:approve:t-abc:pa-1', options });
+  const approve = [{ value: 'approve', label: 'Approve' }, { value: 'cancel', label: 'Cancel' }];
+  it('approves held browser steps unless the person approves steps', () => {
+    expect(isBrowserStepCard(hold(approve))).toBe(true);
+    expect(isAutoApprovedCard(hold(approve), { askToApprove: false })).toBe(true);
+    expect(isAutoApprovedCard(hold(approve), { askToApprove: true })).toBe(false);
+  });
+  it('always approves clicks by position, and never another question', () => {
+    const position = { question_id: 'q1', options: [{ value: 'approve', detail: POSITION_APPROVE_DETAIL }] };
+    expect(isAutoApprovedCard(position, { askToApprove: true })).toBe(true);
+    expect(isAutoApprovedCard({ question_id: 'q2', options: approve }, { askToApprove: false })).toBe(false);
+    expect(isAutoApprovedCard(hold([{ value: 'cancel' }]), { askToApprove: false })).toBe(false);
   });
 });

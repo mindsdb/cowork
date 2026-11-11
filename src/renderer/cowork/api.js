@@ -2961,12 +2961,21 @@ export async function fetchVoiceStatus() {
 
 /* The browser's SDP offer in, GPT-Live's answer out ({session: {id},
    transport: {sdp}}), through the server and MindsHub as the caller. */
+function localTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}
+
 export async function startVoiceSession(sdp, voice) {
   return req('/voice/session', {
     method: 'POST',
     timeoutMs: 40_000,
     headers: await hubHeaders(),
-    body: JSON.stringify(voice ? { sdp, voice } : { sdp }),
+    // The person's time zone, so the call knows their date and time.
+    body: JSON.stringify({ sdp, ...(voice ? { voice } : {}), ...(localTimeZone() ? { timezone: localTimeZone() } : {}) }),
   });
 }
 

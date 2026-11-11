@@ -39,7 +39,7 @@
 // A tool's message to the user (a `Message` step) is a boundary too: it renders
 // as an agent message between the work before and after it.
 
-import { isPositionClickCard } from './browserApproval';
+import { isAutoApprovedCard } from './browserApproval';
 
 const isQuestion = (step) => step?.badge === 'AskUser';
 const isMessage = (step) => step?.badge === 'Message';
@@ -80,7 +80,7 @@ export function splitTurnSegments(steps, { startedAt = null, endedAt = null, con
   let current = { kind: 'steps', key: 'seg-0', steps: [], startedAt };
   for (const step of list) {
     // An answered position card was the app's own approval: nothing to show.
-    if (isQuestion(step) && step.data?.answer && isPositionClickCard(step.data)) continue;
+    if (isQuestion(step) && step.data?.answer && isAutoApprovedCard(step.data)) continue;
     if (!isQuestion(step) && !isMessage(step)) {
       current.steps.push(step);
       continue;

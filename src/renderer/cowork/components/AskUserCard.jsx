@@ -6,11 +6,12 @@ import {
   browserApprovalIds,
   declineBrowserApproval,
   isBrowserApprovalCard,
-  isPositionClickCard,
+  isAutoApprovedCard,
   POSITION_AUTO_APPROVE_MS,
   recordBrowserApproval,
 } from '../lib/browserApproval';
 import { host } from '../../platform/host';
+import { useBrowserPrefs } from '../lib/browserPrefs';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 import ChatCardShell from './ChatCardShell';
 import { cn } from '../lib/cn';
@@ -53,9 +54,11 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
 
   const settled = !reopened && (Boolean(answer) || expired || gone);
 
-  /* A position card is approved by the app (App.jsx approvePositionClicks):
+  /* A position card, and a held browser step while the person doesn't
+     approve steps, is approved by the app (App.jsx approvePositionClicks):
      it stays hidden, and shows only if that approval hasn't landed in time. */
-  const positionCard = !reopened && isPositionClickCard(q);
+  const browserPrefs = useBrowserPrefs();
+  const positionCard = !reopened && isAutoApprovedCard(q, browserPrefs);
   const [positionLate, setPositionLate] = useState(false);
   useEffect(() => {
     if (!positionCard || settled) return undefined;

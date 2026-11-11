@@ -20,6 +20,7 @@ vi.mock('../../platform/host', async (importOriginal) => {
 });
 
 import AskUserCard from './AskUserCard';
+import { resetBrowserPrefsForTests, setBrowserPrefs } from '../lib/browserPrefs';
 
 const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
@@ -49,6 +50,9 @@ const HOLD = `browser:approve:t-abc:${PENDING}`;
 const APPROVED = { pending_id: PENDING, approved: true, expires_at: 1999999300 };
 
 beforeEach(() => {
+  // These cards show only to a person who approves browser steps.
+  resetBrowserPrefsForTests();
+  setBrowserPrefs({ askToApprove: true });
   submitAnswer.mockReset();
   submitAnswer.mockResolvedValue({ status: 'accepted' });
   approveBrowserStep.mockReset();
@@ -195,5 +199,14 @@ describe('any other answer on a commit-hold card', () => {
     fireEvent.click(screen.getByRole('button', { name: /Approve/ }));
     await flush();
     expect(approveBrowserStep).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('a commit-hold card while the person does not approve steps (the default)', () => {
+  it('is kept out of sight while the app approves it', () => {
+    window.localStorage.removeItem('cowork.browserSteps');
+    resetBrowserPrefsForTests();
+    const { container } = render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

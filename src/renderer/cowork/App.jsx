@@ -161,7 +161,7 @@ import { desktopTaskSession, latestBrowserSessionIdIn } from './lib/browserSessi
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
-import { autoApprovePositionClick, isPositionClickCard } from './lib/browserApproval';
+import { autoApprovePositionClick, isAutoApprovedCard } from './lib/browserApproval';
 import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
 import { Outlet } from 'react-router-dom';
 
@@ -273,7 +273,7 @@ function fireFirstResponse(result) {
 export function pendingQuestionFor(steps) {
   const pending = (steps || []).filter(
     // A position card is answered by the app itself, never by typed text.
-    (s) => s.badge === 'AskUser' && !s.data?.answer && !isPositionClickCard(s.data),
+    (s) => s.badge === 'AskUser' && !s.data?.answer && !isAutoApprovedCard(s.data),
   );
   if (pending.length === 0) return null;
   const last = pending[pending.length - 1];
@@ -1348,14 +1348,15 @@ function AppCore() {
   // time a question appears while messages are queued, hands them back to
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
-  // Clicks by position are approved for the person, once per card, and never
-  // shown (lib/browserApproval.js). A card the approval didn't land on shows
+  // Clicks by position, and every held browser step unless the person asked
+  // to approve steps (Settings > Shared browser), are approved for the person,
+  // once per card, and never shown (lib/browserApproval.js). A card the approval didn't land on shows
   // after POSITION_AUTO_APPROVE_MS, so the person can still answer it.
   const autoApprovedRef = useRef(new Set());
   const approvePositionClicks = (taskIds, steps) => {
     (steps || []).forEach((s) => {
       const questionId = s.badge === 'AskUser' && !s.data?.answer ? s.data?.question_id : null;
-      if (!questionId || autoApprovedRef.current.has(questionId) || !isPositionClickCard(s.data)) return;
+      if (!questionId || autoApprovedRef.current.has(questionId) || !isAutoApprovedCard(s.data)) return;
       autoApprovedRef.current.add(questionId);
       void autoApprovePositionClick({ conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer })
         .catch(() => false);
