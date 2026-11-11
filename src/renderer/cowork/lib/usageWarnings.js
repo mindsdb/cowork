@@ -63,6 +63,23 @@ export function balanceDismissStep(usd) {
   return dismissStep(usd, BALANCE_DISMISS_STEPS_USD);
 }
 
+/* Below this balance the wallet is worth a word to someone who did not pick a
+   paid model, that is the router or Air running on the wallet once the free
+   allowance is used up (ENG-4188). Above it they just keep working: the
+   allowance running out changes nothing they need to act on, and saying so
+   every five hours trains them to ignore the bar. An explicit paid pick still
+   hears from auth's own low line ($20), since every turn it sends is billed. */
+export const AIR_ON_BALANCE_WARN_USD = 5;
+
+/** Whether the wallet comfortably carries MindsHub Air once the allowance is
+ *  gone: AIR_ON_BALANCE_WARN_USD or more, or an auto top up that is working
+ *  and will refill it. Nothing to tell such an account (ENG-4188). */
+export function balanceCarriesAir(balance, autoTopUp) {
+  if (!balance || isBalanceEmpty(balance)) return false;
+  if (autoTopUp?.enabled && autoTopUp.status === 'ok') return true;
+  return Number(balance.usd) >= AIR_ON_BALANCE_WARN_USD;
+}
+
 /** How far down the allowance has stepped, from the fraction still left: 40%
  *  is 0 (not low at all), 18% is 1, 9% is 2, 4% is 3. Step 0 is reachable from
  *  inside the band: `low` takes the edge (`<=`) while a step is strictly below
@@ -352,7 +369,9 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     };
   }
 
-  if (balanceLow && paidInUse) {
+  // Only an explicit paid pick hears about the balance from auth's $20 line;
+  // the router and Air wait until it is actually short (ENG-4188).
+  if (balanceLow && paidInUse && (isPaidModel || !balanceCarriesAir(balance, auto))) {
     const title = 'Balance running low';
     // Closing the bar hides this step only; the next step down asks again.
     const dismissKey = `balance_low:${balanceDismissStep(balance.usd)}`;
@@ -393,6 +412,9 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.setUpAutoTopUp],
     };
   }
+
+  // A healthy wallet just carries Air until the refill: no bar (ENG-4188).
+  if (freeInUse && f.out && balanceCarriesAir(balance, auto)) return null;
 
   if (freeInUse && f.out) {
     const left = usd ? ` (${usd} left)` : '';
@@ -469,7 +491,8 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   const before = freeState(prev.freeTokens);
   const after = freeState(next.freeTokens);
   const spendsFree = !isExplicitPaidModel(pickedModelId(modelIn));
-  if (!before.out && after.out && spendsFree) {
+  // A task on a healthy wallet keeps going on it; that is not news (ENG-4188).
+  if (!before.out && after.out && spendsFree && !balanceCarriesAir(next.balance, next.autoTopUp)) {
     out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
   }
   // A long task can cross the low band and empty it without the composer bar
