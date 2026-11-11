@@ -8,7 +8,8 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // dev / web are same-origin (proxied), so getApiOrigin() returns the page
 // origin. Routing through host keeps the port in one place.
 
-import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
+import { iterateSSE } from './lib/responseStreamAdapter';
+import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
 import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
@@ -366,10 +367,7 @@ function _hydrateAssistantEvents(messages) {
       out.push(m);
       continue;
     }
-    let state = initialStreamState();
-    for (const ev of m.events) {
-      try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
-    }
+    const state = reduceServerEvents(m.events, null);
     const { events: _drop, ...rest } = m;
     // The turn's response id, so an add-on saved against it can find it.
     if (state.responseId) rest._responseId = state.responseId;
@@ -383,6 +381,12 @@ function _hydrateAssistantEvents(messages) {
       ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
       ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
+      // The answer the live turn showed, not the saved text that joins every
+      // round: earlier rounds' narration is already in the steps as Notes.
+      // Every conversation open and every refetch after a turn ends comes
+      // through here, so without it a finished answer gained its narration
+      // back the moment the chat refetched it (ENG-4194).
+      ...(replayedAnswer(state, rest.content) || {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);

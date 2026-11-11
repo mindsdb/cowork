@@ -289,6 +289,25 @@ export function reduceServerEvents(events, fallbackStartedAt) {
   };
 }
 
+/**
+ * The answer a finished turn showed live, to put in place of its saved
+ * content: `{ content, figureSources }`, or null to keep the saved content.
+ *
+ * The saved content joins every round's text, so a turn that narrated before
+ * its tool calls ("I'll pull the prices…") would otherwise show that
+ * narration at the top of its answer as well as in its Notes (ENG-3554,
+ * ENG-4194). Only when the replay produced an answer: an older event log
+ * without the text keeps the saved content. Every path that replays saved
+ * events (a conversation's first page, a refetch after a turn ends, an older
+ * page) must apply it, or the same turn reads differently depending on how it
+ * was loaded.
+ */
+export function replayedAnswer(reduced, content) {
+  if (!reduced || (reduced.status !== 'done' && reduced.status !== 'error')) return null;
+  if (typeof content !== 'string' || !reduced.answer?.trim() || reduced.answer === content) return null;
+  return { content: reduced.answer, figureSources: reduced.answerFigureSources };
+}
+
 export function failedEventMeta(events) {
   if (!Array.isArray(events)) return null;
   const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
@@ -346,13 +365,7 @@ export function hydrateMessagesFromServerEvents(messages) {
     }
     const turnComplete = reduced.status === 'done' || reduced.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
-    // A finished turn shows the same answer it showed live. Only when the
-    // replay produced one: an older event log without the text keeps the
-    // saved content.
-    const liveAnswer = turnComplete && typeof rest.content === 'string' && reduced.answer.trim()
-      && reduced.answer !== rest.content
-      ? { content: reduced.answer, figureSources: reduced.answerFigureSources }
-      : null;
+    const liveAnswer = replayedAnswer(reduced, rest.content);
     out.push({
       ...rest,
       ...(reduced.responseId ? { _responseId: reduced.responseId } : {}),
