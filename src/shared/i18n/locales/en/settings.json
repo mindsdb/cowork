@@ -13,6 +13,7 @@
       "codingAgent": "Coding agent",
       "computers": "Computers",
       "appearance": "Appearance",
+      "branding": "Branding",
       "desktop": "Desktop",
       "channels": "Channels",
       "updates": "Updates",
@@ -77,12 +78,12 @@
     },
     "background": {
       "default": "Default",
-      "lightTitle": "Background — Light mode",
-      "lightSubtitle": "Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.",
+      "lightTitle": "Light background",
+      "lightSubtitle": "Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or Light's stock look applies.",
       "lightAriaLabel": "Custom background color — Light mode",
       "lightDefaultAriaLabel": "Default Light background",
-      "darkTitle": "Background — Dark mode",
-      "darkSubtitle": "Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.",
+      "darkTitle": "Dark background",
+      "darkSubtitle": "Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or Dark's stock look applies.",
       "darkAriaLabel": "Custom background color — Dark mode",
       "darkDefaultAriaLabel": "Default Dark background"
     },
@@ -176,6 +177,18 @@
     "styleToggle": {
       "title": "8-bit style toggle button",
       "subtitle": "Normal/8-Bit style control on the same button. With both on, the button opens Display settings."
+    },
+    "setByOrg": "Set by your organization.",
+    "yourStyle": {
+      "title": "Your style",
+      "description": "These override your organization's look, just for you.",
+      "off": "Personal style settings are off. Everyone sees your organization's look.",
+      "orgSetsRest": "Other style settings are set by your organization's branding.",
+      "changeInBranding": "Change in Branding →"
+    },
+    "display": {
+      "title": "Display",
+      "description": "Personal display preferences. Only you see them."
     }
   },
   "mobile": {
@@ -378,6 +391,108 @@
     "keepAwake": {
       "title": "Stay awake for scheduled tasks",
       "subtitle": "While plugged in, keeps this computer from sleeping when a scheduled task is running or about to run. It can't wake a computer that's already asleep or stop it sleeping when you close the lid."
+    }
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "Your organization's look, for everyone in it. Members see it the next time they open the app or Settings.",
+    "adminOnly": "Set by your organization admin.",
+    "saveError": {
+      "forbidden": "Only an organization admin can change the branding.",
+      "generic": "Couldn't save the branding. Try again."
+    },
+    "sidebarTitle": {
+      "title": "Sidebar title",
+      "subtitle": "Shown at the top of the sidebar for everyone in your organization. Company name follows renames in the console; a custom title stays as typed; None shows the logo only.",
+      "ariaLabel": "Sidebar title",
+      "company": "Company name",
+      "companyHint": "Follows the company name, including renames.",
+      "custom": "Custom",
+      "customHint": "A title you type, kept through renames.",
+      "none": "None",
+      "noneAriaLabel": "None (logo only)",
+      "noneHint": "No title: the logo alone.",
+      "customAriaLabel": "Custom sidebar title",
+      "required": "Enter a sidebar title, or choose Company name or None.",
+      "preview": "Sidebar shows:",
+      "logoOnly": "logo only",
+      "noTitle": "(no title)"
+    },
+    "logo": {
+      "title": "Logo and icon",
+      "subtitle": "The logo is the sidebar logo and the icon is the browser tab icon, for everyone in your organization. They are set in the console.",
+      "iconAlt": "Organization icon",
+      "logoAlt": "Organization logo",
+      "logoDarkAlt": "Organization logo for dark backgrounds",
+      "noneSet": "None set.",
+      "opensInBrowser": "Opens in your browser",
+      "editInConsole": "Edit in console"
+    },
+    "theme": {
+      "title": "Organization theme",
+      "subtitle": "Light or dark for everyone, or leave it to each member.",
+      "ariaLabel": "Organization theme",
+      "notSet": "Not set",
+      "notSetAriaLabel": "No organization theme",
+      "lightAriaLabel": "Light organization theme",
+      "darkAriaLabel": "Dark organization theme"
+    },
+    "style": {
+      "title": "Organization style",
+      "deploymentLocked": "Set by this deployment, for every organization on it.",
+      "subtitle": "The look everyone in your organization starts from. Custom lets you pick the color, background, corners and typeface.",
+      "ariaLabel": "Organization style",
+      "notSet": "Not set",
+      "notSetAriaLabel": "No organization style",
+      "notSetHint": "Members keep the app's standard look.",
+      "optionAriaLabel": "{name} organization style"
+    },
+    "accent": {
+      "subtitle": "Buttons, highlights and focus rings.",
+      "ariaLabel": "Organization accent color"
+    },
+    "background": {
+      "lightSubtitle": "Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or the stock light look applies.",
+      "lightAriaLabel": "Organization light background color",
+      "lightDefaultAriaLabel": "Default organization light background",
+      "darkSubtitle": "Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or the stock dark look applies.",
+      "darkAriaLabel": "Organization dark background color",
+      "darkDefaultAriaLabel": "Default organization dark background"
+    },
+    "corners": {
+      "ariaLabel": "Organization corner radius",
+      "squareAriaLabel": "Square organization corners",
+      "softAriaLabel": "Soft organization corners",
+      "roundAriaLabel": "Round organization corners"
+    },
+    "typeface": {
+      "subtitle": "Standard UI font, or mono everywhere.",
+      "ariaLabel": "Organization typeface",
+      "standardAriaLabel": "Standard organization font",
+      "monoAriaLabel": "Mono organization font"
+    },
+    "greeting": {
+      "title": "Organization greeting",
+      "subtitle": "The line members see when they start a new task. Leave blank for the standard one.",
+      "ariaLabel": "Organization greeting"
+    },
+    "membersChoose": {
+      "title": "Let members choose their own style",
+      "subtitle": "On: the organization style is where members start, and they can change it under Your style. Off: everyone sees the organization style."
+    },
+    "guidelines": {
+      "title": "Brand guidelines for Anton",
+      "subtitle": "How Anton should use your brand in decks, documents, apps and charts: voice, words to use or avoid, where the logo goes. Anton also gets your colors, typeface and logo from above.",
+      "placeholder": "Markdown. For example:\n- Headlines in sentence case\n- Put the logo top left on title slides"
+    },
+    "footer": {
+      "ariaLabel": "Unsaved branding changes",
+      "saving": "Saving…",
+      "unsaved": "Unsaved branding changes. You see them now; everyone else sees them once you save.",
+      "cancel": "Cancel",
+      "save": "Save branding",
+      "saved": "Saved. Members see it the next time they open the app or Settings.",
+      "clean": "No unsaved branding changes"
     }
   }
 }

@@ -120,7 +120,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
               <div className="text-[13px] font-[650] text-ink mb-0.5 flex items-center gap-1.5">
                 {label}
                 {soon && (
-                  <span className="text-[9.5px] font-semibold tracking-[0.05em] uppercase py-px px-[5px] rounded-[99px] bg-[rgba(127,127,127,0.1)] border border-solid border-[rgba(127,127,127,0.2)] text-ink-3">{t('account.signIn.comingSoon')}</span>
+                  <span className="text-[9.5px] font-semibold tracking-[0.05em] uppercase py-px px-[5px] rounded-[99px] bg-surface-2 border border-solid border-line text-ink-3">{t('account.signIn.comingSoon')}</span>
                 )}
               </div>
               <div className="text-[12px] text-ink-3 leading-[1.5]">{desc}</div>

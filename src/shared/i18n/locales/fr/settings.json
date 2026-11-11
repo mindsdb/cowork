@@ -13,6 +13,7 @@
       "codingAgent": "Agent de code",
       "computers": "Ordinateurs",
       "appearance": "Apparence",
+      "branding": "Image de marque",
       "desktop": "Bureau",
       "channels": "Canaux",
       "updates": "Mises à jour",
@@ -77,12 +78,12 @@
     },
     "background": {
       "default": "Par défaut",
-      "lightTitle": "Arrière-plan — mode clair",
-      "lightSubtitle": "Choisissez une couleur de base pour le mode clair — les surfaces et les nuances de texte en découlent — ou utilisez celle par défaut.",
+      "lightTitle": "Arrière-plan clair",
+      "lightSubtitle": "Utilisé avec le thème clair. Une couleur sombre choisie devient une version claire de sa teinte ; le texte s’ajuste pour rester lisible. Avec Par défaut, l’arrière-plan sombre lui donne sa teinte, sinon l’apparence d’origine du thème Clair s’applique.",
       "lightAriaLabel": "Couleur d’arrière-plan personnalisée — mode clair",
       "lightDefaultAriaLabel": "Arrière-plan clair par défaut",
-      "darkTitle": "Arrière-plan — mode sombre",
-      "darkSubtitle": "Choisissez une couleur de base pour le mode sombre — les surfaces et les nuances de texte en découlent — ou utilisez celle par défaut.",
+      "darkTitle": "Arrière-plan sombre",
+      "darkSubtitle": "Utilisé avec le thème sombre. Une couleur claire choisie devient une version sombre de sa teinte ; le texte s’ajuste pour rester lisible. Avec Par défaut, l’arrière-plan clair lui donne sa teinte, sinon l’apparence d’origine du thème Sombre s’applique.",
       "darkAriaLabel": "Couleur d’arrière-plan personnalisée — mode sombre",
       "darkDefaultAriaLabel": "Arrière-plan sombre par défaut"
     },
@@ -176,6 +177,18 @@
     "styleToggle": {
       "title": "Bouton de style 8-Bit",
       "subtitle": "Commande de style Normal/8-Bit sur le même bouton. Si les deux sont activées, le bouton ouvre les paramètres d’affichage."
+    },
+    "setByOrg": "Défini par votre organisation.",
+    "yourStyle": {
+      "title": "Votre style",
+      "description": "Ces réglages remplacent l’apparence de votre organisation, uniquement pour vous.",
+      "off": "Les réglages de style personnels sont désactivés. Tout le monde voit l’apparence de votre organisation.",
+      "orgSetsRest": "Les autres réglages de style sont définis par l’image de marque de votre organisation.",
+      "changeInBranding": "Modifier dans Image de marque →"
+    },
+    "display": {
+      "title": "Affichage",
+      "description": "Préférences d’affichage personnelles. Elles ne sont visibles que par vous."
     }
   },
   "mobile": {
@@ -378,6 +391,108 @@
     "keepAwake": {
       "title": "Rester éveillé pour les tâches planifiées",
       "subtitle": "Lorsque l’ordinateur est branché, l’empêche de se mettre en veille pendant qu’une tâche planifiée s’exécute ou est sur le point de démarrer. Ne peut pas réveiller un ordinateur déjà en veille, ni l’empêcher de se mettre en veille quand vous fermez le capot."
+    }
+  },
+  "branding": {
+    "title": "Image de marque",
+    "description": "L’apparence de votre organisation, pour tous ses membres. Ils la verront la prochaine fois qu’ils ouvriront l’application ou les Paramètres.",
+    "adminOnly": "Défini par l’administrateur de votre organisation.",
+    "saveError": {
+      "forbidden": "Seul un administrateur de l’organisation peut modifier l’image de marque.",
+      "generic": "Impossible d’enregistrer l’image de marque. Réessayez."
+    },
+    "sidebarTitle": {
+      "title": "Titre de la barre latérale",
+      "subtitle": "Affiché en haut de la barre latérale pour tous les membres de votre organisation. Nom de l’entreprise suit les changements de nom faits dans la console ; un titre personnalisé reste tel que saisi ; Aucun n’affiche que le logo.",
+      "ariaLabel": "Titre de la barre latérale",
+      "company": "Nom de l’entreprise",
+      "companyHint": "Suit le nom de l’entreprise, y compris après un changement de nom.",
+      "custom": "Personnalisé",
+      "customHint": "Un titre que vous saisissez, conservé en cas de changement de nom.",
+      "none": "Aucun",
+      "noneAriaLabel": "Aucun (logo seul)",
+      "noneHint": "Pas de titre : le logo seul.",
+      "customAriaLabel": "Titre personnalisé de la barre latérale",
+      "required": "Saisissez un titre pour la barre latérale, ou choisissez Nom de l’entreprise ou Aucun.",
+      "preview": "La barre latérale affiche :",
+      "logoOnly": "logo seul",
+      "noTitle": "(aucun titre)"
+    },
+    "logo": {
+      "title": "Logo et icône",
+      "subtitle": "Le logo est celui de la barre latérale et l’icône celle de l’onglet du navigateur, pour tous les membres de votre organisation. Ils se définissent dans la console.",
+      "iconAlt": "Icône de l’organisation",
+      "logoAlt": "Logo de l’organisation",
+      "logoDarkAlt": "Logo de l’organisation pour les arrière-plans sombres",
+      "noneSet": "Aucun défini.",
+      "opensInBrowser": "S’ouvre dans votre navigateur",
+      "editInConsole": "Modifier dans la console"
+    },
+    "theme": {
+      "title": "Thème de l’organisation",
+      "subtitle": "Clair ou sombre pour tous, ou laissez chaque membre choisir.",
+      "ariaLabel": "Thème de l’organisation",
+      "notSet": "Non défini",
+      "notSetAriaLabel": "Aucun thème d’organisation",
+      "lightAriaLabel": "Thème clair de l’organisation",
+      "darkAriaLabel": "Thème sombre de l’organisation"
+    },
+    "style": {
+      "title": "Style de l’organisation",
+      "deploymentLocked": "Défini par ce déploiement, pour toutes ses organisations.",
+      "subtitle": "L’apparence de départ de tous les membres de votre organisation. Personnalisé vous permet de choisir la couleur, l’arrière-plan, les coins et la police.",
+      "ariaLabel": "Style de l’organisation",
+      "notSet": "Non défini",
+      "notSetAriaLabel": "Aucun style d’organisation",
+      "notSetHint": "Les membres conservent l’apparence standard de l’application.",
+      "optionAriaLabel": "Style d’organisation {name}"
+    },
+    "accent": {
+      "subtitle": "Boutons, surbrillances et contours de focus.",
+      "ariaLabel": "Couleur d’accentuation de l’organisation"
+    },
+    "background": {
+      "lightSubtitle": "Utilisé avec le thème clair. Une couleur sombre choisie devient une version claire de sa teinte ; le texte s’ajuste pour rester lisible. Avec Par défaut, l’arrière-plan sombre lui donne sa teinte, sinon l’apparence claire d’origine s’applique.",
+      "lightAriaLabel": "Couleur d’arrière-plan clair de l’organisation",
+      "lightDefaultAriaLabel": "Arrière-plan clair par défaut de l’organisation",
+      "darkSubtitle": "Utilisé avec le thème sombre. Une couleur claire choisie devient une version sombre de sa teinte ; le texte s’ajuste pour rester lisible. Avec Par défaut, l’arrière-plan clair lui donne sa teinte, sinon l’apparence sombre d’origine s’applique.",
+      "darkAriaLabel": "Couleur d’arrière-plan sombre de l’organisation",
+      "darkDefaultAriaLabel": "Arrière-plan sombre par défaut de l’organisation"
+    },
+    "corners": {
+      "ariaLabel": "Rayon des coins de l’organisation",
+      "squareAriaLabel": "Coins carrés de l’organisation",
+      "softAriaLabel": "Coins adoucis de l’organisation",
+      "roundAriaLabel": "Coins ronds de l’organisation"
+    },
+    "typeface": {
+      "subtitle": "Police standard de l’interface, ou chasse fixe partout.",
+      "ariaLabel": "Police de l’organisation",
+      "standardAriaLabel": "Police standard de l’organisation",
+      "monoAriaLabel": "Police à chasse fixe de l’organisation"
+    },
+    "greeting": {
+      "title": "Message d’accueil de l’organisation",
+      "subtitle": "La phrase que voient les membres lorsqu’ils commencent une nouvelle tâche. Laissez vide pour utiliser celle par défaut.",
+      "ariaLabel": "Message d’accueil de l’organisation"
+    },
+    "membersChoose": {
+      "title": "Laisser les membres choisir leur style",
+      "subtitle": "Activé : le style de l’organisation sert de point de départ, et les membres peuvent le modifier dans Votre style. Désactivé : tout le monde voit le style de l’organisation."
+    },
+    "guidelines": {
+      "title": "Consignes de marque pour Anton",
+      "subtitle": "Comment Anton doit utiliser votre marque dans les présentations, documents, applications et graphiques : ton, mots à employer ou à éviter, emplacement du logo. Anton reçoit aussi vos couleurs, votre police et votre logo définis ci-dessus.",
+      "placeholder": "Markdown. Par exemple :\n- Titres avec une majuscule initiale uniquement\n- Placer le logo en haut à gauche sur les diapositives de titre"
+    },
+    "footer": {
+      "ariaLabel": "Modifications de l’image de marque non enregistrées",
+      "saving": "Enregistrement…",
+      "unsaved": "Modifications de l’image de marque non enregistrées. Vous les voyez déjà ; les autres les verront une fois que vous aurez enregistré.",
+      "cancel": "Annuler",
+      "save": "Enregistrer l’image de marque",
+      "saved": "Enregistrée. Les membres la verront la prochaine fois qu’ils ouvriront l’application ou les Paramètres.",
+      "clean": "Aucune modification non enregistrée de l’image de marque"
     }
   }
 }

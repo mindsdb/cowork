@@ -159,6 +159,11 @@
     "skins": {
       "normal": "标准",
       "8bit": "8-Bit"
+    },
+    "setByOrg": {
+      "themeAndStyle": "主题和样式由你的组织设定。",
+      "theme": "主题由你的组织设定。",
+      "style": "样式由你的组织设定。"
     }
   },
   "comingSoon": {

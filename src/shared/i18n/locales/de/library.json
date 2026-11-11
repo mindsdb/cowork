@@ -609,7 +609,34 @@
       "messageLabeled": "Eine {provider}-Verbindung mit diesen Angaben existiert bereits („{label}“). Ersetzen Sie sie durch diese oder brechen Sie ab, um sie unverändert zu lassen.",
       "confirm": "Ersetzen"
     },
-    "labelRequired": "Bezeichnung ist erforderlich."
+    "labelRequired": "Bezeichnung ist erforderlich.",
+    "needsRebuild": {
+      "body": "Dieser Connector wurde gespeichert, bevor es Verbindungstests gab. Bitten Sie den Agenten, ihn neu zu erstellen.",
+      "close": "Schließen"
+    },
+    "connectionTest": {
+      "notWaiting": "Dieses Testergebnis wartet nicht mehr. Senden Sie das Formular erneut.",
+      "failed": "Etwas ist schiefgelaufen. Versuchen Sie es erneut.",
+      "privateTitle": "Private Adresse zulassen?",
+      "privateBody": "{product} möchte {request} an {target} senden. Dieses Ziel befindet sich {where} ({addresses}). Für diesen Test zulassen?",
+      "thisComputer": "auf diesem Computer",
+      "privateNetwork": "in Ihrem privaten Netzwerk",
+      "previewTitle": "Sind das Ihre Daten?",
+      "previewBody": "{product} hat die Verbindung getestet. Prüfen Sie die Antwort, bevor sie gespeichert wird. Von Ihnen eingegebene Werte werden als *** ausgeblendet.",
+      "tokenFrom": "Token von",
+      "dataFrom": "Daten von",
+      "answer": "Antwort",
+      "answerValue": "HTTP {status}, {size, plural, one {# Byte} other {# Byte}}",
+      "items": "Elemente",
+      "fields": "Felder",
+      "hidden": "Ausgeblendet",
+      "hiddenValue": "{count, plural, one {# Wert} other {# Werte}}",
+      "dontAllow": "Nicht zulassen",
+      "cancel": "Abbrechen",
+      "working": "Wird ausgeführt…",
+      "allow": "Für diesen Test zulassen",
+      "confirm": "Bestätigen und speichern"
+    }
   },
   "legacyConnect": {
     "shapeChecked": "Format der Anmeldedaten geprüft.",

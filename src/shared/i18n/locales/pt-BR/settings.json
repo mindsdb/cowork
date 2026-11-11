@@ -13,6 +13,7 @@
       "codingAgent": "Agente de código",
       "computers": "Computadores",
       "appearance": "Aparência",
+      "branding": "Marca",
       "desktop": "Desktop",
       "channels": "Canais",
       "updates": "Atualizações",
@@ -77,12 +78,12 @@
     },
     "background": {
       "default": "Padrão",
-      "lightTitle": "Fundo — Modo claro",
-      "lightSubtitle": "Escolha uma cor base para o modo claro (as superfícies e os tons do texto derivam dela) ou use o padrão.",
+      "lightTitle": "Fundo claro",
+      "lightSubtitle": "Usado no tema claro. Uma cor escura vira um tom claro do mesmo matiz; o texto se ajusta para continuar legível. Com Padrão, o fundo escuro dá o tom ou vale a aparência padrão do tema claro.",
       "lightAriaLabel": "Cor de fundo personalizada — Modo claro",
       "lightDefaultAriaLabel": "Fundo claro padrão",
-      "darkTitle": "Fundo — Modo escuro",
-      "darkSubtitle": "Escolha uma cor base para o modo escuro (as superfícies e os tons do texto derivam dela) ou use o padrão.",
+      "darkTitle": "Fundo escuro",
+      "darkSubtitle": "Usado no tema escuro. Uma cor clara vira um tom escuro do mesmo matiz; o texto se ajusta para continuar legível. Com Padrão, o fundo claro dá o tom ou vale a aparência padrão do tema escuro.",
       "darkAriaLabel": "Cor de fundo personalizada — Modo escuro",
       "darkDefaultAriaLabel": "Fundo escuro padrão"
     },
@@ -176,6 +177,18 @@
     "styleToggle": {
       "title": "Botão de alternar estilo 8-bit",
       "subtitle": "Controle de estilo Normal/8-Bit no mesmo botão. Com os dois ativados, o botão abre as configurações de exibição."
+    },
+    "setByOrg": "Definido pela sua organização.",
+    "yourStyle": {
+      "title": "Seu estilo",
+      "description": "Substituem a aparência da sua organização, só para você.",
+      "off": "As configurações de estilo pessoal estão desativadas. Todos veem a aparência da sua organização.",
+      "orgSetsRest": "As demais configurações de estilo são definidas pela marca da sua organização.",
+      "changeInBranding": "Alterar em Marca →"
+    },
+    "display": {
+      "title": "Exibição",
+      "description": "Preferências de exibição pessoais. Só você as vê."
     }
   },
   "mobile": {
@@ -378,6 +391,108 @@
     "keepAwake": {
       "title": "Manter ativo para tarefas agendadas",
       "subtitle": "Enquanto estiver na tomada, impede que este computador entre em repouso quando uma tarefa agendada está em execução ou prestes a começar. Não consegue despertar um computador que já está em repouso nem impedir o repouso ao fechar a tampa."
+    }
+  },
+  "branding": {
+    "title": "Marca",
+    "description": "A aparência da sua organização, para todos que fazem parte dela. Os membros a veem na próxima vez que abrirem o app ou as Configurações.",
+    "adminOnly": "Definido pelo administrador da sua organização.",
+    "saveError": {
+      "forbidden": "Só um administrador da organização pode alterar a marca.",
+      "generic": "Não foi possível salvar a marca. Tente novamente."
+    },
+    "sidebarTitle": {
+      "title": "Título da barra lateral",
+      "subtitle": "Exibido no topo da barra lateral para todos na sua organização. Nome da empresa acompanha as mudanças de nome no console; um título personalizado fica como você digitou; Nenhum mostra só o logo.",
+      "ariaLabel": "Título da barra lateral",
+      "company": "Nome da empresa",
+      "companyHint": "Acompanha o nome da empresa, inclusive quando muda.",
+      "custom": "Personalizado",
+      "customHint": "Um título que você digita e que se mantém mesmo se o nome mudar.",
+      "none": "Nenhum",
+      "noneAriaLabel": "Nenhum (só o logo)",
+      "noneHint": "Sem título: só o logo.",
+      "customAriaLabel": "Título personalizado da barra lateral",
+      "required": "Digite um título para a barra lateral ou escolha Nome da empresa ou Nenhum.",
+      "preview": "A barra lateral mostra:",
+      "logoOnly": "só o logo",
+      "noTitle": "(sem título)"
+    },
+    "logo": {
+      "title": "Logo e ícone",
+      "subtitle": "O logo é o da barra lateral e o ícone é o da aba do navegador, para todos na sua organização. Eles são definidos no console.",
+      "iconAlt": "Ícone da organização",
+      "logoAlt": "Logo da organização",
+      "logoDarkAlt": "Logo da organização para fundos escuros",
+      "noneSet": "Nenhum definido.",
+      "opensInBrowser": "Abre no seu navegador",
+      "editInConsole": "Editar no console"
+    },
+    "theme": {
+      "title": "Tema da organização",
+      "subtitle": "Claro ou escuro para todos, ou deixe cada membro escolher.",
+      "ariaLabel": "Tema da organização",
+      "notSet": "Não definido",
+      "notSetAriaLabel": "Sem tema da organização",
+      "lightAriaLabel": "Tema claro da organização",
+      "darkAriaLabel": "Tema escuro da organização"
+    },
+    "style": {
+      "title": "Estilo da organização",
+      "deploymentLocked": "Definido por esta implantação, para todas as organizações nela.",
+      "subtitle": "A aparência de onde todos na sua organização partem. Com Personalizado, você escolhe a cor, o fundo, os cantos e a tipografia.",
+      "ariaLabel": "Estilo da organização",
+      "notSet": "Não definido",
+      "notSetAriaLabel": "Sem estilo da organização",
+      "notSetHint": "Os membros mantêm a aparência padrão do app.",
+      "optionAriaLabel": "Estilo {name} da organização"
+    },
+    "accent": {
+      "subtitle": "Botões, realces e anéis de foco.",
+      "ariaLabel": "Cor de destaque da organização"
+    },
+    "background": {
+      "lightSubtitle": "Usado no tema claro. Uma cor escura vira um tom claro do mesmo matiz; o texto se ajusta para continuar legível. Com Padrão, o fundo escuro dá o tom ou vale a aparência clara padrão.",
+      "lightAriaLabel": "Cor de fundo claro da organização",
+      "lightDefaultAriaLabel": "Fundo claro padrão da organização",
+      "darkSubtitle": "Usado no tema escuro. Uma cor clara vira um tom escuro do mesmo matiz; o texto se ajusta para continuar legível. Com Padrão, o fundo claro dá o tom ou vale a aparência escura padrão.",
+      "darkAriaLabel": "Cor de fundo escuro da organização",
+      "darkDefaultAriaLabel": "Fundo escuro padrão da organização"
+    },
+    "corners": {
+      "ariaLabel": "Raio dos cantos da organização",
+      "squareAriaLabel": "Cantos retos da organização",
+      "softAriaLabel": "Cantos suaves da organização",
+      "roundAriaLabel": "Cantos redondos da organização"
+    },
+    "typeface": {
+      "subtitle": "A fonte padrão da interface, ou monoespaçada em tudo.",
+      "ariaLabel": "Tipografia da organização",
+      "standardAriaLabel": "Fonte padrão da organização",
+      "monoAriaLabel": "Fonte monoespaçada da organização"
+    },
+    "greeting": {
+      "title": "Saudação da organização",
+      "subtitle": "A frase que os membros veem ao começar uma nova tarefa. Deixe em branco para usar a padrão.",
+      "ariaLabel": "Saudação da organização"
+    },
+    "membersChoose": {
+      "title": "Permitir que os membros escolham o próprio estilo",
+      "subtitle": "Ativado: o estilo da organização é o ponto de partida, e os membros podem alterá-lo em Seu estilo. Desativado: todos veem o estilo da organização."
+    },
+    "guidelines": {
+      "title": "Diretrizes de marca para o Anton",
+      "subtitle": "Como o Anton deve usar sua marca em apresentações, documentos, apps e gráficos: o tom de voz, as palavras a usar ou evitar, onde fica o logo. O Anton também recebe suas cores, tipografia e logo das configurações acima.",
+      "placeholder": "Markdown. Por exemplo:\n- Títulos só com a primeira letra maiúscula\n- Coloque o logo no canto superior esquerdo nos slides de título"
+    },
+    "footer": {
+      "ariaLabel": "Alterações de marca não salvas",
+      "saving": "Salvando…",
+      "unsaved": "Alterações de marca não salvas. Você já as vê; os demais as verão quando você salvar.",
+      "cancel": "Cancelar",
+      "save": "Salvar marca",
+      "saved": "Salvo. Os membros verão na próxima vez que abrirem o app ou as Configurações.",
+      "clean": "Nenhuma alteração de marca não salva"
     }
   }
 }

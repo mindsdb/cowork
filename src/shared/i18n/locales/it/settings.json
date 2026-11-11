@@ -13,6 +13,7 @@
       "codingAgent": "Agente di codice",
       "computers": "Computer",
       "appearance": "Aspetto",
+      "branding": "Branding",
       "desktop": "Desktop",
       "channels": "Canali",
       "updates": "Aggiornamenti",
@@ -77,12 +78,12 @@
     },
     "background": {
       "default": "Predefinito",
-      "lightTitle": "Sfondo — Modalità chiara",
-      "lightSubtitle": "Scegli un colore di base per la modalità chiara (superfici e tonalità del testo ne derivano) oppure usa quello predefinito.",
+      "lightTitle": "Sfondo chiaro",
+      "lightSubtitle": "Usato nel tema chiaro. Un colore scuro diventa una tinta chiara della stessa tonalità; il testo si adatta per restare leggibile. Con Predefinito, lo tinge lo sfondo scuro, altrimenti si applica l’aspetto standard del tema chiaro.",
       "lightAriaLabel": "Colore di sfondo personalizzato — Modalità chiara",
       "lightDefaultAriaLabel": "Sfondo chiaro predefinito",
-      "darkTitle": "Sfondo — Modalità scura",
-      "darkSubtitle": "Scegli un colore di base per la modalità scura (superfici e tonalità del testo ne derivano) oppure usa quello predefinito.",
+      "darkTitle": "Sfondo scuro",
+      "darkSubtitle": "Usato nel tema scuro. Un colore chiaro diventa una sfumatura scura della stessa tonalità; il testo si adatta per restare leggibile. Con Predefinito, lo tinge lo sfondo chiaro, altrimenti si applica l’aspetto standard del tema scuro.",
       "darkAriaLabel": "Colore di sfondo personalizzato — Modalità scura",
       "darkDefaultAriaLabel": "Sfondo scuro predefinito"
     },
@@ -176,6 +177,18 @@
     "styleToggle": {
       "title": "Pulsante per lo stile 8-Bit",
       "subtitle": "Passa dallo stile Normale a 8-Bit con lo stesso pulsante. Se sono attivi entrambi, il pulsante apre le impostazioni di visualizzazione."
+    },
+    "setByOrg": "Impostato dalla tua organizzazione.",
+    "yourStyle": {
+      "title": "Il tuo stile",
+      "description": "Queste impostazioni sostituiscono l’aspetto della tua organizzazione, solo per te.",
+      "off": "Le impostazioni di stile personali sono disattivate. Tutti vedono l’aspetto della tua organizzazione.",
+      "orgSetsRest": "Le altre impostazioni di stile sono definite dal branding della tua organizzazione.",
+      "changeInBranding": "Modifica in Branding →"
+    },
+    "display": {
+      "title": "Visualizzazione",
+      "description": "Preferenze di visualizzazione personali. Le vedi solo tu."
     }
   },
   "mobile": {
@@ -378,6 +391,108 @@
     "keepAwake": {
       "title": "Resta attivo per le attività pianificate",
       "subtitle": "Quando è collegato all’alimentazione, impedisce a questo computer di andare in stop mentre un’attività pianificata è in esecuzione o sta per partire. Non può riattivare un computer già in stop né impedirne lo stop quando chiudi il coperchio."
+    }
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "L’aspetto della tua organizzazione, per tutti i suoi membri. I membri lo vedranno la prossima volta che aprono l’app o le Impostazioni.",
+    "adminOnly": "Impostato dall’amministratore della tua organizzazione.",
+    "saveError": {
+      "forbidden": "Solo un amministratore dell’organizzazione può modificare il branding.",
+      "generic": "Impossibile salvare il branding. Riprova."
+    },
+    "sidebarTitle": {
+      "title": "Titolo della barra laterale",
+      "subtitle": "Appare in cima alla barra laterale per tutti nella tua organizzazione. Nome dell’azienda segue le ridenominazioni nella console; un titolo personalizzato resta come lo hai digitato; Nessuno mostra solo il logo.",
+      "ariaLabel": "Titolo della barra laterale",
+      "company": "Nome dell’azienda",
+      "companyHint": "Segue il nome dell’azienda, anche se viene rinominata.",
+      "custom": "Personalizzato",
+      "customHint": "Un titolo che digiti tu, mantenuto anche dopo le ridenominazioni.",
+      "none": "Nessuno",
+      "noneAriaLabel": "Nessuno (solo logo)",
+      "noneHint": "Nessun titolo: solo il logo.",
+      "customAriaLabel": "Titolo personalizzato della barra laterale",
+      "required": "Inserisci un titolo per la barra laterale oppure scegli Nome dell’azienda o Nessuno.",
+      "preview": "La barra laterale mostra:",
+      "logoOnly": "solo il logo",
+      "noTitle": "(nessun titolo)"
+    },
+    "logo": {
+      "title": "Logo e icona",
+      "subtitle": "Il logo è quello della barra laterale e l’icona è quella della scheda del browser, per tutti nella tua organizzazione. Si impostano nella console.",
+      "iconAlt": "Icona dell’organizzazione",
+      "logoAlt": "Logo dell’organizzazione",
+      "logoDarkAlt": "Logo dell’organizzazione per sfondi scuri",
+      "noneSet": "Nessuno impostato.",
+      "opensInBrowser": "Si apre nel browser",
+      "editInConsole": "Modifica nella console"
+    },
+    "theme": {
+      "title": "Tema dell’organizzazione",
+      "subtitle": "Chiaro o scuro per tutti, oppure lascia scegliere a ogni membro.",
+      "ariaLabel": "Tema dell’organizzazione",
+      "notSet": "Non impostato",
+      "notSetAriaLabel": "Nessun tema dell’organizzazione",
+      "lightAriaLabel": "Tema chiaro dell’organizzazione",
+      "darkAriaLabel": "Tema scuro dell’organizzazione"
+    },
+    "style": {
+      "title": "Stile dell’organizzazione",
+      "deploymentLocked": "Impostato da questa distribuzione, per tutte le organizzazioni che la usano.",
+      "subtitle": "L’aspetto da cui partono tutti nella tua organizzazione. Con Personalizzato scegli colore, sfondo, angoli e carattere.",
+      "ariaLabel": "Stile dell’organizzazione",
+      "notSet": "Non impostato",
+      "notSetAriaLabel": "Nessuno stile dell’organizzazione",
+      "notSetHint": "I membri mantengono l’aspetto standard dell’app.",
+      "optionAriaLabel": "Stile dell’organizzazione {name}"
+    },
+    "accent": {
+      "subtitle": "Pulsanti, evidenziazioni e indicatori di focus.",
+      "ariaLabel": "Colore di risalto dell’organizzazione"
+    },
+    "background": {
+      "lightSubtitle": "Usato nel tema chiaro. Un colore scuro diventa una tinta chiara della stessa tonalità; il testo si adatta per restare leggibile. Con Predefinito, lo tinge lo sfondo scuro, altrimenti si applica l’aspetto chiaro standard.",
+      "lightAriaLabel": "Colore dello sfondo chiaro dell’organizzazione",
+      "lightDefaultAriaLabel": "Sfondo chiaro predefinito dell’organizzazione",
+      "darkSubtitle": "Usato nel tema scuro. Un colore chiaro diventa una sfumatura scura della stessa tonalità; il testo si adatta per restare leggibile. Con Predefinito, lo tinge lo sfondo chiaro, altrimenti si applica l’aspetto scuro standard.",
+      "darkAriaLabel": "Colore dello sfondo scuro dell’organizzazione",
+      "darkDefaultAriaLabel": "Sfondo scuro predefinito dell’organizzazione"
+    },
+    "corners": {
+      "ariaLabel": "Arrotondamento degli angoli dell’organizzazione",
+      "squareAriaLabel": "Angoli squadrati dell’organizzazione",
+      "softAriaLabel": "Angoli morbidi dell’organizzazione",
+      "roundAriaLabel": "Angoli arrotondati dell’organizzazione"
+    },
+    "typeface": {
+      "subtitle": "Il font standard dell’interfaccia oppure monospaziato ovunque.",
+      "ariaLabel": "Carattere dell’organizzazione",
+      "standardAriaLabel": "Font standard dell’organizzazione",
+      "monoAriaLabel": "Font monospaziato dell’organizzazione"
+    },
+    "greeting": {
+      "title": "Messaggio di benvenuto dell’organizzazione",
+      "subtitle": "La frase che i membri vedono quando iniziano una nuova attività. Lascia vuoto per usare quella standard.",
+      "ariaLabel": "Messaggio di benvenuto dell’organizzazione"
+    },
+    "membersChoose": {
+      "title": "Consenti ai membri di scegliere il proprio stile",
+      "subtitle": "Attivo: i membri partono dallo stile dell’organizzazione e possono cambiarlo in Il tuo stile. Disattivo: tutti vedono lo stile dell’organizzazione."
+    },
+    "guidelines": {
+      "title": "Linee guida del marchio per Anton",
+      "subtitle": "Come Anton deve usare il tuo marchio in presentazioni, documenti, app e grafici: tono di voce, parole da usare o evitare, dove va il logo. Anton riceve anche i colori, il carattere e il logo impostati sopra.",
+      "placeholder": "Markdown. Ad esempio:\n- Titoli con la sola iniziale maiuscola\n- Metti il logo in alto a sinistra nelle slide del titolo"
+    },
+    "footer": {
+      "ariaLabel": "Modifiche al branding non salvate",
+      "saving": "Salvataggio…",
+      "unsaved": "Modifiche al branding non salvate. Tu le vedi già; tutti gli altri le vedranno dopo il salvataggio.",
+      "cancel": "Annulla",
+      "save": "Salva branding",
+      "saved": "Salvato. I membri lo vedranno la prossima volta che aprono l’app o le Impostazioni.",
+      "clean": "Nessuna modifica al branding non salvata"
     }
   }
 }

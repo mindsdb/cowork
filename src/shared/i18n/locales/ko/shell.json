@@ -159,6 +159,11 @@
     "skins": {
       "normal": "기본",
       "8bit": "8-Bit"
+    },
+    "setByOrg": {
+      "themeAndStyle": "테마와 스타일은 조직에서 설정합니다.",
+      "theme": "테마는 조직에서 설정합니다.",
+      "style": "스타일은 조직에서 설정합니다."
     }
   },
   "comingSoon": {

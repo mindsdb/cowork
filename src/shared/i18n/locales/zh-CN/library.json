@@ -609,7 +609,34 @@
       "messageLabeled": "已存在具有这些详细信息的 {provider} 连接（“{label}”）。用此连接替换它，或取消以保留原连接。",
       "confirm": "替换"
     },
-    "labelRequired": "名称为必填项。"
+    "labelRequired": "名称为必填项。",
+    "needsRebuild": {
+      "body": "此连接器是在连接测试功能推出之前保存的。请让智能体重新构建它。",
+      "close": "关闭"
+    },
+    "connectionTest": {
+      "notWaiting": "此测试结果已不再等待确认。请重新提交表单。",
+      "failed": "出了点问题。请重试。",
+      "privateTitle": "允许访问私有地址？",
+      "privateBody": "{product} 想要将 {request} 发送到 {target}，该地址位于{where}（{addresses}）。是否在本次测试中允许？",
+      "thisComputer": "此计算机上",
+      "privateNetwork": "你的私有网络中",
+      "previewTitle": "这是你的数据吗？",
+      "previewBody": "{product} 已测试连接。保存前请检查返回的内容。你输入的值会显示为 ***。",
+      "tokenFrom": "令牌来源",
+      "dataFrom": "数据来源",
+      "answer": "响应",
+      "answerValue": "HTTP {status}，{size, plural, other {# 字节}}",
+      "items": "条目",
+      "fields": "字段",
+      "hidden": "已隐藏",
+      "hiddenValue": "{count, plural, other {# 个值}}",
+      "dontAllow": "不允许",
+      "cancel": "取消",
+      "working": "正在处理…",
+      "allow": "在本次测试中允许",
+      "confirm": "确认并保存"
+    }
   },
   "legacyConnect": {
     "shapeChecked": "已检查凭据格式。",

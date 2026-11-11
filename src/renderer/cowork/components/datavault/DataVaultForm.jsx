@@ -409,6 +409,19 @@ export function DataVaultForm({
     );
   }
 
+  // A custom connector saved before connection tests existed can never pass
+  // one, so its stored form is not offered; the agent has to build it again.
+  if (spec._needs_rebuild && !spec._is_success) {
+    return (
+      <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
+        <Alert variant="info">{t('dataVault.needsRebuild.body')}</Alert>
+        <div className="flex justify-end">
+          <Button variant="subtle" onClick={() => onAction?.({ id: 'dismiss', kind: 'cancel' })}>{t('dataVault.needsRebuild.close')}</Button>
+        </div>
+      </div>
+    );
+  }
+
   // Success state — the agent endpoint flips `_is_success` after a
   // save. Replace the noisy fields/actions surface with a green
   // check + the title/subtitle. The user can dismiss via the panel's

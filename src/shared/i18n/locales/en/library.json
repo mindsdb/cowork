@@ -609,7 +609,34 @@
       "messageLabeled": "A {provider} connection with these details already exists (“{label}”). Replace it with this one, or cancel to keep it as it is.",
       "confirm": "Replace"
     },
-    "labelRequired": "Label is required."
+    "labelRequired": "Label is required.",
+    "needsRebuild": {
+      "body": "This connector was saved before connection tests existed. Ask the agent to build it again.",
+      "close": "Close"
+    },
+    "connectionTest": {
+      "notWaiting": "This test result is no longer waiting. Submit the form again.",
+      "failed": "Something went wrong. Try again.",
+      "privateTitle": "Allow a private address?",
+      "privateBody": "{product} wants to send {request} to {target}, which is on {where} ({addresses}). Allow it for this test?",
+      "thisComputer": "this computer",
+      "privateNetwork": "your private network",
+      "previewTitle": "Is this your data?",
+      "previewBody": "{product} tested the connection. Check what came back before it is saved. Values you entered are hidden as ***.",
+      "tokenFrom": "Token from",
+      "dataFrom": "Data from",
+      "answer": "Answer",
+      "answerValue": "HTTP {status}, {size, plural, one {# byte} other {# bytes}}",
+      "items": "Items",
+      "fields": "Fields",
+      "hidden": "Hidden",
+      "hiddenValue": "{count, plural, one {# value} other {# values}}",
+      "dontAllow": "Don't allow",
+      "cancel": "Cancel",
+      "working": "Working…",
+      "allow": "Allow for this test",
+      "confirm": "Confirm and save"
+    }
   },
   "legacyConnect": {
     "shapeChecked": "Credential shape checked.",

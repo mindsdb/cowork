@@ -609,7 +609,34 @@
       "messageLabeled": "同じ内容の{provider}接続（「{label}」）がすでに存在します。この接続で置き換えるか、キャンセルして既存の接続をそのまま残してください。",
       "confirm": "置き換える"
     },
-    "labelRequired": "ラベルは必須です。"
+    "labelRequired": "ラベルは必須です。",
+    "needsRebuild": {
+      "body": "このコネクタは接続テストが導入される前に保存されました。エージェントに作り直すよう依頼してください。",
+      "close": "閉じる"
+    },
+    "connectionTest": {
+      "notWaiting": "このテスト結果は待機中ではなくなりました。フォームをもう一度送信してください。",
+      "failed": "問題が発生しました。もう一度お試しください。",
+      "privateTitle": "プライベートアドレスを許可しますか？",
+      "privateBody": "{product}が{target}に{request}を送信しようとしています。この宛先は{where}上にあります（{addresses}）。このテストで許可しますか？",
+      "thisComputer": "このコンピュータ",
+      "privateNetwork": "プライベートネットワーク",
+      "previewTitle": "これはあなたのデータですか？",
+      "previewBody": "{product}が接続をテストしました。保存する前に、返された内容を確認してください。入力した値は***で隠されています。",
+      "tokenFrom": "トークンの取得元",
+      "dataFrom": "データの取得元",
+      "answer": "応答",
+      "answerValue": "HTTP {status}、{size, plural, other {#バイト}}",
+      "items": "項目",
+      "fields": "フィールド",
+      "hidden": "非表示",
+      "hiddenValue": "{count, plural, other {#個の値}}",
+      "dontAllow": "許可しない",
+      "cancel": "キャンセル",
+      "working": "処理中…",
+      "allow": "このテストで許可",
+      "confirm": "確認して保存"
+    }
   },
   "legacyConnect": {
     "shapeChecked": "認証情報の形式を確認しました。",

@@ -18,6 +18,7 @@ import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
+import { stockBackground } from '../../../lib/stockThemeTokens';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useOrgMode } from '../../../lib/orgMode';
@@ -29,6 +30,7 @@ import AccountSection from './AccountSection';
 import UsageSection from './UsageSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
+import OrgBrandingFields from './OrgBrandingFields';
 import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
@@ -68,6 +70,13 @@ function withLink(message, link) {
   const [before, after = ''] = message.split(LINK_TOKEN);
   return <>{before}{link}{after}</>;
 }
+const NO_ORG_LOCKS = { style: false, theme: false, greeting: false, logo: false, favicon: false };
+
+// Where a deep link (?settings=appearance&section=…) lands on Appearance.
+export const APPEARANCE_ANCHORS = {
+  style: 'settings-appearance-style',
+  display: 'settings-appearance-display',
+};
 
 /* The notice under each Settings > Agent role row after the MindsHub health
    probe was refused, one per `mindsProbeNotice` kind. Exported for the visual
@@ -345,7 +354,7 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   );
 }
 
-function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
+function TextInput({ value, onChange, placeholder, title, ariaLabel, disabled }) {
   return (
     <Input
       value={value ?? ''}
@@ -353,6 +362,7 @@ function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
       placeholder={placeholder}
       title={title}
       aria-label={ariaLabel}
+      disabled={disabled}
     />
   );
 }
@@ -552,7 +562,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             <span
               role="status"
               aria-live="polite"
-              className={`absolute bottom-[calc(100%+6px)] left-1/2 py-[3px] px-2 text-[10.5px] font-semibold tracking-[0.04em] uppercase bg-[rgba(20,28,28,0.92)] border border-solid rounded-md whitespace-nowrap pointer-events-none shadow-sh-2 z-[5] ${copyState === 'failed'
+              className={`absolute bottom-[calc(100%+6px)] left-1/2 py-[3px] px-2 text-[10.5px] font-semibold tracking-[0.04em] uppercase bg-surface-3 border border-solid rounded-md whitespace-nowrap pointer-events-none shadow-sh-2 z-[5] ${copyState === 'failed'
                 ? 'text-danger border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
                 : 'text-accent border-[color-mix(in_srgb,var(--accent)_45%,transparent)]'}`}
               style={{
@@ -634,7 +644,7 @@ function SetBadge({ hasValue, active }) {
       size="xs"
       className={`ml-2 align-middle uppercase tracking-[0.04em] ${active ? 'set-badge-pulse' : ''}`}
       icon={<span aria-hidden className={`w-1.5 h-1.5 rounded-full bg-current ${active
-        ? 'shadow-[0_0_8px_currentColor,0_0_14px_rgba(124,196,182,0.6)]'
+        ? 'shadow-[0_0_8px_currentColor,0_0_14px_color-mix(in_srgb,var(--sage-500)_60%,transparent)]'
         : 'shadow-[0_0_4px_color-mix(in_srgb,var(--sage-500)_45%,transparent)]'}`} />}
       style={{
         // When active, the box-shadow comes from the set-badge-pulse
@@ -830,6 +840,21 @@ export default function SettingsView({
   onDownloadShellAutoUpdate,
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
+  // Company branding: the org-branding read (lib/orgBranding.ts),
+  // what to call with an admin's saved answer, and the resolved look, whose
+  // `lockedByOrg` turns off the member's own controls the org has set.
+  orgBranding = null,
+  onOrgBrandingSaved,
+  // An admin's unsaved Branding edits, for the live preview (null = none).
+  onOrgBrandingDraft,
+  look = null,
+  // Web with the platform UI in org mode, personal orgs included: there is no
+  // per-person sidebar title, logo or tab icon to set.
+  hostedMindsHub = false,
+  // A deep link's part of Appearance to scroll to ('branding' | 'display'),
+  // and what to call once it has.
+  appearanceAnchor = null,
+  onAppearanceAnchorShown,
 }) {
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -841,11 +866,17 @@ export default function SettingsView({
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
+  const canEditBranding = Boolean(orgBranding?.enabled && orgBranding?.canEdit);
   const visibleNav = navItemsForHost(
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
+    { branding: canEditBranding },
   );
+  // Branding is for org admins; anyone else sent there (a deep link, a
+  // stale section) lands on Appearance, where their own look is.
+  const shownSection = section === 'branding' && !canEditBranding ? 'appearance' : section;
+  const orgLocks = look?.lockedByOrg ?? NO_ORG_LOCKS;
   const orgMode = useOrgMode();
   const providerTestsAvailable = providerTestsEnabled(host.isWeb);
   // The `/hub/usage/` view App polls: the probe notice reads it for the
@@ -2280,23 +2311,75 @@ export default function SettingsView({
 
   const renderComputersSection = () => <ComputersSettingsSection />;
 
+  // Settings → Appearance: Your style, then Display.
+  //   Your style — the person's own style, theme and greeting, over the org's
+  //     look. In a hosted org it shows only when they may choose (member
+  //     choice on, or they are an admin). Outside hosted MindsHub it also
+  //     holds their sidebar title, color, logo and tab icon; hosted MindsHub
+  //     has none of those, since the org's are the ones shown.
+  //   Display — personal display preferences, for everyone.
+  // The org's own branding is its own page, Settings → Branding, for admins.
+  //
+  // No Save footer: every control here auto-saves itself (see
+  // autoSaveSetting/AutoSaveTag). `autoSaved` surfaces a quiet "saves
+  // automatically" note on mobile.
+  const org = orgBranding?.enabled ? orgBranding : null;
+  // With member choice off, nobody (admins included) has personal style
+  // controls: the section says so, and points admins to Branding.
+  // With member choice off, only the fields the org set are locked: each shows
+  // a note instead of its controls, and the rest stay the member's to choose.
+  // When every field is the org's, one message replaces them all.
+  const personalStyleOff = Boolean(org && !org.appearance.membersCanChoose
+    && (orgLocks.style || SKIN_LOCKED) && orgLocks.theme && orgLocks.greeting);
+  // A field the org set shows nothing; one line under the open controls says why.
+  const orgSetsNote = () => null;
+  const someLockedByOrg = Boolean(org && !org.appearance.membersCanChoose
+    && (orgLocks.style || orgLocks.theme || orgLocks.greeting));
+  const changeInBranding = org?.canEdit && onSectionChange ? (
+    <>
+      {' '}
+      <button type="button" className={LINK_BTN} onClick={() => onSectionChange('branding')}>
+        {t('appearance.yourStyle.changeInBranding')}
+      </button>
+    </>
+  ) : null;
+  // A deep link's part of Appearance, scrolled to once the page is showing.
+  const appearanceShowing = shownSection === 'appearance';
+  useEffect(() => {
+    const id = appearanceAnchor && APPEARANCE_ANCHORS[appearanceAnchor];
+    if (!id || !appearanceShowing) return;
+    const target = document.getElementById(id);
+    if (target) {
+      target.scrollIntoView?.({ block: 'start' });
+      onAppearanceAnchorShown?.();
+    }
+  }, [appearanceAnchor, appearanceShowing, onAppearanceAnchorShown]);
   const renderAppearanceSection = () => (
-    // No Save footer here — every control on this page auto-saves itself
-    // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
-    // be dead weight that always reads "Saved" and never does anything.
-    // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
-    // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
-      <SettingsGroup title={t('appearance.title')}>
+      <div id={APPEARANCE_ANCHORS.style} className="scroll-mt-2">
+        <SettingsGroup
+          title={org ? t('appearance.yourStyle.title') : t('appearance.style.title')}
+          description={org && !personalStyleOff ? t('appearance.yourStyle.description') : null}
+        >
+        {personalStyleOff ? (
+          <div className="py-3 text-sm text-ink-2" data-testid="personal-style-off">
+            {t('appearance.yourStyle.off')}
+            {changeInBranding}
+          </div>
+        ) : (
+        <>
+        {orgLocks.style ? orgSetsNote() : (
+        <>
         {SKIN_LOCKED ? (
           <Section title={t('appearance.style.title')} subtitle={t('appearance.style.lockedSubtitle')}>
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
           </Section>
         ) : (
-          <Section title={t('appearance.style.title')} subtitle={t('appearance.style.subtitle')}>
+          <Section title={t('appearance.style.title')} subtitle={orgLocks.style ? t('appearance.setByOrg') : t('appearance.style.subtitle')}>
             <ToggleGroup
               value={normalizeSkin(skin)}
               onValueChange={(v) => onSkinChange?.(v)}
+              disabled={orgLocks.style}
               aria-label={t('appearance.style.ariaLabel')}
               options={SKINS.map((s) => {
                 // A deployment brand's own skin keeps its brand name.
@@ -2313,10 +2396,14 @@ export default function SettingsView({
             />
           </Section>
         )}
-        <Section title={t('appearance.theme.title')} subtitle={t('appearance.theme.subtitle')}>
+        </>
+        )}
+        {orgLocks.theme ? orgSetsNote() : (
+        <Section title={t('appearance.theme.title')} subtitle={orgLocks.theme ? t('appearance.setByOrg') : t('appearance.theme.subtitle')}>
           <ToggleGroup
             value={theme || 'dark'}
             onValueChange={(v) => onThemeChange?.(v)}
+            disabled={orgLocks.theme}
             aria-label={t('appearance.theme.ariaLabel')}
             options={[
               {
@@ -2334,13 +2421,15 @@ export default function SettingsView({
             ]}
           />
         </Section>
-        {normalizeSkin(skin) === 'custom' && customTheme && (
+        )}
+        {!orgLocks.style && normalizeSkin(skin) === 'custom' && customTheme && (
           <>
             <Section title={t('appearance.accent.title')} subtitle={t('appearance.accent.subtitle')}>
               <input
                 type="color"
                 value={customTheme.accent}
                 onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
+                disabled={orgLocks.style}
                 aria-label={t('appearance.accent.ariaLabel')}
                 className={COLOR_SWATCH_INPUT}
               />
@@ -2349,9 +2438,9 @@ export default function SettingsView({
               <div className="flex items-center gap-3">
                 <input
                   type="color"
-                  value={customTheme.bgLight || '#fafafa'}
+                  value={customTheme.bgLight || stockBackground('light')}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
-                  disabled={customTheme.bgLight === null}
+                  disabled={orgLocks.style || customTheme.bgLight === null}
                   aria-label={t('appearance.background.lightAriaLabel')}
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgLight === null ? 0.45 : 1 }}
@@ -2359,7 +2448,8 @@ export default function SettingsView({
                 <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgLight === null}
-                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : stockBackground('light') })}
+                    disabled={orgLocks.style}
                     aria-label={t('appearance.background.lightDefaultAriaLabel')}
                   />
                   {t('appearance.background.default')}
@@ -2370,9 +2460,9 @@ export default function SettingsView({
               <div className="flex items-center gap-3">
                 <input
                   type="color"
-                  value={customTheme.bgDark || '#080d18'}
+                  value={customTheme.bgDark || stockBackground('dark')}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
-                  disabled={customTheme.bgDark === null}
+                  disabled={orgLocks.style || customTheme.bgDark === null}
                   aria-label={t('appearance.background.darkAriaLabel')}
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgDark === null ? 0.45 : 1 }}
@@ -2380,7 +2470,8 @@ export default function SettingsView({
                 <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgDark === null}
-                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : stockBackground('dark') })}
+                    disabled={orgLocks.style}
                     aria-label={t('appearance.background.darkDefaultAriaLabel')}
                   />
                   {t('appearance.background.default')}
@@ -2391,6 +2482,7 @@ export default function SettingsView({
               <ToggleGroup
                 value={String(customTheme.radius)}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
+                disabled={orgLocks.style}
                 aria-label={t('appearance.corners.ariaLabel')}
                 options={[
                   { value: '0', label: t('appearance.corners.square'), 'aria-label': t('appearance.corners.squareAriaLabel'), title: t('appearance.corners.squareHint') },
@@ -2403,6 +2495,7 @@ export default function SettingsView({
               <ToggleGroup
                 value={customTheme.font}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
+                disabled={orgLocks.style}
                 aria-label={t('appearance.typeface.ariaLabel')}
                 options={[
                   { value: 'standard', label: t('appearance.typeface.standard'), 'aria-label': t('appearance.typeface.standardAriaLabel'), title: t('appearance.typeface.standardHint') },
@@ -2414,17 +2507,20 @@ export default function SettingsView({
               <Switch
                 checked={customTheme.scanlines}
                 onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
+                disabled={orgLocks.style}
                 aria-label={t('appearance.scanlines.ariaLabel')}
               />
             </Section>
           </>
         )}
-        <Section title={t('appearance.greeting.title')} subtitle={t('appearance.greeting.subtitle')}>
+        {orgLocks.greeting ? orgSetsNote() : (
+        <Section title={t('appearance.greeting.title')} subtitle={orgLocks.greeting ? t('appearance.setByOrg') : t('appearance.greeting.subtitle')}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
-                value={settings.greeting}
+                value={orgLocks.greeting ? look.greeting : settings.greeting}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
+                disabled={orgLocks.greeting}
                 title={t('appearance.greeting.hint')}
                 ariaLabel={t('appearance.greeting.ariaLabel')}
               />
@@ -2432,6 +2528,16 @@ export default function SettingsView({
             <AutoSaveTag settingKey="greeting" />
           </div>
         </Section>
+        )}
+          {someLockedByOrg && (
+            <div className="py-3 text-sm text-ink-2" data-testid="org-sets-rest">
+              {t('appearance.yourStyle.orgSetsRest')}
+              {changeInBranding}
+            </div>
+          )}
+          {/* Hosted MindsHub has no per-person sidebar title, logo or tab icon. */}
+          {!hostedMindsHub && (
+            <>
         <Section title={t('appearance.sidebarTitle.title')} subtitle={t('appearance.sidebarTitle.subtitle', { product: productName(STOCK_WORDMARK) })}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
@@ -2532,6 +2638,14 @@ export default function SettingsView({
             {faviconError && <div role="alert" className="text-[12px] text-danger mt-1.5">{faviconError}</div>}
           </Section>
         )}
+            </>
+          )}
+        </>
+        )}
+        </SettingsGroup>
+      </div>
+      <div id={APPEARANCE_ANCHORS.display} className="scroll-mt-2">
+        <SettingsGroup title={t('appearance.display.title')} description={t('appearance.display.description')}>
         {/* Gated on its own key. A server older than this setting does not
             serve the key and rejects a write to it with a 400, and it sends
             no figure sources to mark either. The renderer ships OTA and
@@ -2592,10 +2706,22 @@ export default function SettingsView({
             </Section>
           )}
         </div>
-      </SettingsGroup>
+        </SettingsGroup>
+      </div>
     </SettingsSectionPanel>
   );
 
+  // Settings → Branding: the org's look, for org admins only.
+  const renderBrandingSection = () => (canEditBranding ? (
+    <SettingsSectionPanel>
+      <SettingsGroup
+        title={t('branding.title')}
+        description={t('branding.description')}
+      >
+        <OrgBrandingFields branding={orgBranding} onSaved={onOrgBrandingSaved} onDraftChange={onOrgBrandingDraft} />
+      </SettingsGroup>
+    </SettingsSectionPanel>
+  ) : null);
   const renderDesktopSection = () => (
     // How the app behaves on this computer. Desktop only (settingsNavigation
     // leaves it out on web). Every control here saves itself.
@@ -2682,13 +2808,14 @@ export default function SettingsView({
       codingAgent: renderCodingAgentSection,
       computers: renderComputersSection,
       appearance: renderAppearanceSection,
+      branding: renderBrandingSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
       usage: renderUsageSection,
       account: renderAccountSection,
     };
-    const activeItem = visibleNav.find((i) => i.id === section) || null;
+    const activeItem = visibleNav.find((i) => i.id === shownSection) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2709,7 +2836,7 @@ export default function SettingsView({
         <div className="settings-mobile__body scroll-clean">
           {inDetail ? (
             <div className="settings-detail">
-              {renderers[section]?.()}
+              {renderers[shownSection]?.()}
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label={t('nav.ariaLabel')}>
@@ -2759,8 +2886,8 @@ export default function SettingsView({
   // sets the section directly, so a deep link (or a stale persisted section)
   // could still render one this host doesn't offer. Resolve through the visible
   // set and fall back to its first entry (Agent).
-  const effectiveSection = visibleNav.some((i) => i.id === section)
-    ? section
+  const effectiveSection = visibleNav.some((i) => i.id === shownSection)
+    ? shownSection
     : visibleNav[0]?.id;
 
   return (
@@ -2771,6 +2898,7 @@ export default function SettingsView({
       {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
       {effectiveSection === 'computers' && renderComputersSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'branding' && renderBrandingSection()}
       {effectiveSection === 'desktop' && renderDesktopSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}

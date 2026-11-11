@@ -13,6 +13,7 @@
       "codingAgent": "Agente de código",
       "computers": "Computadoras",
       "appearance": "Apariencia",
+      "branding": "Marca",
       "desktop": "Escritorio",
       "channels": "Canales",
       "updates": "Actualizaciones",
@@ -77,12 +78,12 @@
     },
     "background": {
       "default": "Predeterminado",
-      "lightTitle": "Fondo — Modo claro",
-      "lightSubtitle": "Elige un color base para el modo claro (las superficies y los tonos del texto se derivan de él) o usa el predeterminado.",
+      "lightTitle": "Fondo claro",
+      "lightSubtitle": "Se usa en el tema claro. Un color oscuro se convierte en un tono claro de su matiz; el texto se ajusta para seguir siendo legible. Con Predeterminado, lo tiñe el fondo oscuro o se aplica el aspecto estándar del tema claro.",
       "lightAriaLabel": "Color de fondo personalizado — Modo claro",
       "lightDefaultAriaLabel": "Fondo claro predeterminado",
-      "darkTitle": "Fondo — Modo oscuro",
-      "darkSubtitle": "Elige un color base para el modo oscuro (las superficies y los tonos del texto se derivan de él) o usa el predeterminado.",
+      "darkTitle": "Fondo oscuro",
+      "darkSubtitle": "Se usa en el tema oscuro. Un color claro se convierte en un tono oscuro de su matiz; el texto se ajusta para seguir siendo legible. Con Predeterminado, lo tiñe el fondo claro o se aplica el aspecto estándar del tema oscuro.",
       "darkAriaLabel": "Color de fondo personalizado — Modo oscuro",
       "darkDefaultAriaLabel": "Fondo oscuro predeterminado"
     },
@@ -176,6 +177,18 @@
     "styleToggle": {
       "title": "Botón para cambiar al estilo 8-bit",
       "subtitle": "Control de estilo Normal/8-Bit en el mismo botón. Con ambos activados, el botón abre la configuración de visualización."
+    },
+    "setByOrg": "Lo define tu organización.",
+    "yourStyle": {
+      "title": "Tu estilo",
+      "description": "Reemplazan el aspecto de tu organización, solo para ti.",
+      "off": "La configuración de estilo personal está desactivada. Todos ven el aspecto de tu organización.",
+      "orgSetsRest": "El resto de la configuración de estilo la define la marca de tu organización.",
+      "changeInBranding": "Cambiar en Marca →"
+    },
+    "display": {
+      "title": "Pantalla",
+      "description": "Preferencias de pantalla personales. Solo tú las ves."
     }
   },
   "mobile": {
@@ -378,6 +391,108 @@
     "keepAwake": {
       "title": "Mantener activa para tareas programadas",
       "subtitle": "Mientras está conectada, evita que esta computadora entre en suspensión cuando una tarea programada se está ejecutando o está por ejecutarse. No puede activar una computadora que ya está suspendida ni evitar que se suspenda al cerrar la tapa."
+    }
+  },
+  "branding": {
+    "title": "Marca",
+    "description": "El aspecto de tu organización, para todos sus miembros. Los miembros lo ven la próxima vez que abren la app o la Configuración.",
+    "adminOnly": "Lo define el administrador de tu organización.",
+    "saveError": {
+      "forbidden": "Solo un administrador de la organización puede cambiar la marca.",
+      "generic": "No se pudo guardar la marca. Inténtalo de nuevo."
+    },
+    "sidebarTitle": {
+      "title": "Título de la barra lateral",
+      "subtitle": "Aparece arriba de la barra lateral para todos en tu organización. Nombre de la empresa sigue los cambios de nombre en la consola; un título personalizado se queda como lo escribiste; Ninguno muestra solo el logo.",
+      "ariaLabel": "Título de la barra lateral",
+      "company": "Nombre de la empresa",
+      "companyHint": "Sigue el nombre de la empresa, incluso si cambia.",
+      "custom": "Personalizado",
+      "customHint": "Un título que escribes tú y que se mantiene aunque cambie el nombre.",
+      "none": "Ninguno",
+      "noneAriaLabel": "Ninguno (solo logo)",
+      "noneHint": "Sin título: solo el logo.",
+      "customAriaLabel": "Título personalizado de la barra lateral",
+      "required": "Escribe un título para la barra lateral o elige Nombre de la empresa o Ninguno.",
+      "preview": "La barra lateral muestra:",
+      "logoOnly": "solo el logo",
+      "noTitle": "(sin título)"
+    },
+    "logo": {
+      "title": "Logo e ícono",
+      "subtitle": "El logo es el de la barra lateral y el ícono es el de la pestaña del navegador, para todos en tu organización. Se configuran en la consola.",
+      "iconAlt": "Ícono de la organización",
+      "logoAlt": "Logo de la organización",
+      "logoDarkAlt": "Logo de la organización para fondos oscuros",
+      "noneSet": "Sin configurar.",
+      "opensInBrowser": "Se abre en tu navegador",
+      "editInConsole": "Editar en la consola"
+    },
+    "theme": {
+      "title": "Tema de la organización",
+      "subtitle": "Claro u oscuro para todos, o deja que cada miembro elija.",
+      "ariaLabel": "Tema de la organización",
+      "notSet": "Sin definir",
+      "notSetAriaLabel": "Sin tema de la organización",
+      "lightAriaLabel": "Tema claro de la organización",
+      "darkAriaLabel": "Tema oscuro de la organización"
+    },
+    "style": {
+      "title": "Estilo de la organización",
+      "deploymentLocked": "Lo define esta implementación, para todas sus organizaciones.",
+      "subtitle": "El aspecto del que parten todos en tu organización. Con Personalizado eliges el color, el fondo, las esquinas y la tipografía.",
+      "ariaLabel": "Estilo de la organización",
+      "notSet": "Sin definir",
+      "notSetAriaLabel": "Sin estilo de la organización",
+      "notSetHint": "Los miembros mantienen el aspecto estándar de la app.",
+      "optionAriaLabel": "Estilo {name} de la organización"
+    },
+    "accent": {
+      "subtitle": "Botones, resaltados y anillos de foco.",
+      "ariaLabel": "Color de acento de la organización"
+    },
+    "background": {
+      "lightSubtitle": "Se usa en el tema claro. Un color oscuro se convierte en un tono claro de su matiz; el texto se ajusta para seguir siendo legible. Con Predeterminado, lo tiñe el fondo oscuro o se aplica el aspecto claro estándar.",
+      "lightAriaLabel": "Color de fondo claro de la organización",
+      "lightDefaultAriaLabel": "Fondo claro predeterminado de la organización",
+      "darkSubtitle": "Se usa en el tema oscuro. Un color claro se convierte en un tono oscuro de su matiz; el texto se ajusta para seguir siendo legible. Con Predeterminado, lo tiñe el fondo claro o se aplica el aspecto oscuro estándar.",
+      "darkAriaLabel": "Color de fondo oscuro de la organización",
+      "darkDefaultAriaLabel": "Fondo oscuro predeterminado de la organización"
+    },
+    "corners": {
+      "ariaLabel": "Radio de las esquinas de la organización",
+      "squareAriaLabel": "Esquinas rectas de la organización",
+      "softAriaLabel": "Esquinas suaves de la organización",
+      "roundAriaLabel": "Esquinas redondas de la organización"
+    },
+    "typeface": {
+      "subtitle": "La fuente estándar de la interfaz, o monoespaciada en todo.",
+      "ariaLabel": "Tipografía de la organización",
+      "standardAriaLabel": "Fuente estándar de la organización",
+      "monoAriaLabel": "Fuente monoespaciada de la organización"
+    },
+    "greeting": {
+      "title": "Saludo de la organización",
+      "subtitle": "La frase que ven los miembros al empezar una tarea nueva. Déjalo vacío para usar la estándar.",
+      "ariaLabel": "Saludo de la organización"
+    },
+    "membersChoose": {
+      "title": "Permitir que los miembros elijan su propio estilo",
+      "subtitle": "Activado: el estilo de la organización es el punto de partida y los miembros pueden cambiarlo en Tu estilo. Desactivado: todos ven el estilo de la organización."
+    },
+    "guidelines": {
+      "title": "Pautas de marca para Anton",
+      "subtitle": "Cómo debe usar Anton tu marca en presentaciones, documentos, apps y gráficos: el tono, las palabras que usar o evitar, dónde va el logo. Anton también recibe tus colores, tu tipografía y tu logo de lo configurado arriba.",
+      "placeholder": "Markdown. Por ejemplo:\n- Títulos con mayúscula solo al inicio\n- Pon el logo arriba a la izquierda en las diapositivas de título"
+    },
+    "footer": {
+      "ariaLabel": "Cambios de marca sin guardar",
+      "saving": "Guardando…",
+      "unsaved": "Cambios de marca sin guardar. Tú ya los ves; los demás los verán cuando guardes.",
+      "cancel": "Cancelar",
+      "save": "Guardar marca",
+      "saved": "Guardado. Los miembros lo verán la próxima vez que abran la app o la Configuración.",
+      "clean": "No hay cambios de marca sin guardar"
     }
   }
 }

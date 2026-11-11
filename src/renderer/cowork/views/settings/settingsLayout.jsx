@@ -14,7 +14,7 @@ export const SettingsLayoutContext = createContext({ mobile: false });
 // A titled card shared by settings pages. Keeping it in the canonical layout
 // module lets focused settings sections live outside the already-large parent
 // view without copying desktop/mobile chrome.
-export function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
+export function SettingsGroup({ title, description = null, children, collapsible = false, defaultCollapsed = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
   const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
   const headingClass = 'section-label m-0';
@@ -35,6 +35,7 @@ export function SettingsGroup({ title, children, collapsible = false, defaultCol
     return (
       <div className="mb-1.5">
         <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
+        {description && !collapsed && <p className="m-0 px-0.5 pb-1 text-sm text-ink-3">{description}</p>}
         {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
       </div>
     );
@@ -42,6 +43,7 @@ export function SettingsGroup({ title, children, collapsible = false, defaultCol
   return (
     <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
       <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
+      {description && !collapsed && <p className="m-0 pt-1.5 px-[18px] text-sm text-ink-3">{description}</p>}
       {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
     </div>
   );

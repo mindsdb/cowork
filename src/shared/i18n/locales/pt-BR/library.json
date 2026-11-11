@@ -609,7 +609,34 @@
       "messageLabeled": "Já existe uma conexão do {provider} com estes dados (“{label}”). Substitua-a por esta ou cancele para mantê-la como está.",
       "confirm": "Substituir"
     },
-    "labelRequired": "O rótulo é obrigatório."
+    "labelRequired": "O rótulo é obrigatório.",
+    "needsRebuild": {
+      "body": "Este conector foi salvo antes de existirem os testes de conexão. Peça ao agente para criá-lo novamente.",
+      "close": "Fechar"
+    },
+    "connectionTest": {
+      "notWaiting": "Este resultado do teste não está mais aguardando. Envie o formulário novamente.",
+      "failed": "Algo deu errado. Tente novamente.",
+      "privateTitle": "Permitir um endereço privado?",
+      "privateBody": "O {product} quer enviar {request} para {target}, que está em {where} ({addresses}). Permitir para este teste?",
+      "thisComputer": "este computador",
+      "privateNetwork": "sua rede privada",
+      "previewTitle": "Estes são os seus dados?",
+      "previewBody": "O {product} testou a conexão. Confira o que voltou antes de salvar. Os valores que você inseriu aparecem ocultos como ***.",
+      "tokenFrom": "Token de",
+      "dataFrom": "Dados de",
+      "answer": "Resposta",
+      "answerValue": "HTTP {status}, {size, plural, one {# byte} many {# bytes} other {# bytes}}",
+      "items": "Itens",
+      "fields": "Campos",
+      "hidden": "Ocultos",
+      "hiddenValue": "{count, plural, one {# valor} many {# valores} other {# valores}}",
+      "dontAllow": "Não permitir",
+      "cancel": "Cancelar",
+      "working": "Processando…",
+      "allow": "Permitir para este teste",
+      "confirm": "Confirmar e salvar"
+    }
   },
   "legacyConnect": {
     "shapeChecked": "Formato das credenciais verificado.",

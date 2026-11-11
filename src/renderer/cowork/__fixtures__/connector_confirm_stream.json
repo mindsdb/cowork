@@ -1,0 +1,203 @@
+{
+  "confirm": {
+    "patch": {
+      "_awaiting_confirmation": false,
+      "_awaiting_private_approval": false,
+      "_is_probing": false,
+      "_is_success": true,
+      "form_error": null,
+      "form_id": "fm_aaaaaaaaaa",
+      "status_text": null,
+      "subtitle": "Saved after you confirmed the test result.",
+      "title": "Connected \u2014 planner-<slug>"
+    },
+    "saved_slug": "planner-<slug>",
+    "user_label": null
+  },
+  "private": {
+    "allow": {
+      "confirm_id": "<confirm_id>",
+      "preview": {
+        "content_type": "application/json",
+        "data_host": "planner.example.com",
+        "first_item": "{\"order\": \"A-1\", \"qty\": 4}",
+        "item_count": 2,
+        "keys": [
+          "rows"
+        ],
+        "masked_count": 0,
+        "over_cap": false,
+        "size": 58,
+        "status": 200,
+        "token_host": "planner.example.com"
+      }
+    },
+    "stream": [
+      [
+        "response.created",
+        {
+          "conversation_id": "<conversation_id>",
+          "response": {
+            "id": "<id>",
+            "model": "datavault-agent",
+            "status": "created"
+          },
+          "sequence_number": 1,
+          "type": "response.created"
+        }
+      ],
+      [
+        "response.output_text.delta",
+        {
+          "delta": "Testing the connection to **planner**\u2026\n\n",
+          "item_id": "<item_id>",
+          "sequence_number": 2,
+          "type": "response.output_text.delta"
+        }
+      ],
+      [
+        "response.output_text.delta",
+        {
+          "delta": "\n\n```data-vault-form-patch\n{\n  \"form_id\": \"fm_aaaaaaaaaa\",\n  \"_is_probing\": true,\n  \"status_text\": \"Testing the connection\\u2026\",\n  \"form_error\": null\n}\n```\n\n",
+          "item_id": "<item_id>",
+          "sequence_number": 3,
+          "type": "response.output_text.delta"
+        }
+      ],
+      [
+        "connector.private_host_request",
+        {
+          "addresses": [
+            "10.0.0.5"
+          ],
+          "approval_id": "<approval_id>",
+          "form_id": "fm_aaaaaaaaaa",
+          "host": "planner.example.com",
+          "host_ascii": "planner.example.com",
+          "method": "POST",
+          "path": "/oauth2/token",
+          "port": 443,
+          "scheme": "https",
+          "step": "token",
+          "this_computer": false,
+          "type": "connector.private_host_request"
+        }
+      ],
+      [
+        "response.output_text.delta",
+        {
+          "delta": "Waiting for you to allow a private address.",
+          "item_id": "<item_id>",
+          "sequence_number": 4,
+          "type": "response.output_text.delta"
+        }
+      ],
+      [
+        "response.output_text.delta",
+        {
+          "delta": "\n\n```data-vault-form-patch\n{\n  \"form_id\": \"fm_aaaaaaaaaa\",\n  \"_awaiting_private_approval\": true,\n  \"_is_probing\": false,\n  \"status_text\": \"Waiting for you to allow a private address.\"\n}\n```\n\n",
+          "item_id": "<item_id>",
+          "sequence_number": 5,
+          "type": "response.output_text.delta"
+        }
+      ],
+      [
+        "response.completed",
+        {
+          "assistant_message_id": "<assistant_message_id>",
+          "response": {
+            "id": "<id>",
+            "status": "awaiting_private_approval"
+          },
+          "sequence_number": 6,
+          "type": "response.completed"
+        }
+      ]
+    ]
+  },
+  "stream": [
+    [
+      "response.created",
+      {
+        "conversation_id": "<conversation_id>",
+        "response": {
+          "id": "<id>",
+          "model": "datavault-agent",
+          "status": "created"
+        },
+        "sequence_number": 1,
+        "type": "response.created"
+      }
+    ],
+    [
+      "response.output_text.delta",
+      {
+        "delta": "Testing the connection to **planner**\u2026\n\n",
+        "item_id": "<item_id>",
+        "sequence_number": 2,
+        "type": "response.output_text.delta"
+      }
+    ],
+    [
+      "response.output_text.delta",
+      {
+        "delta": "\n\n```data-vault-form-patch\n{\n  \"form_id\": \"fm_aaaaaaaaaa\",\n  \"_is_probing\": true,\n  \"status_text\": \"Testing the connection\\u2026\",\n  \"form_error\": null\n}\n```\n\n",
+        "item_id": "<item_id>",
+        "sequence_number": 3,
+        "type": "response.output_text.delta"
+      }
+    ],
+    [
+      "connector.test_preview",
+      {
+        "confirm_id": "<confirm_id>",
+        "form_id": "fm_aaaaaaaaaa",
+        "preview": {
+          "content_type": "application/json",
+          "data_host": "planner.example.com",
+          "first_item": "{\"order\": \"A-1\", \"qty\": 4}",
+          "item_count": 2,
+          "keys": [
+            "rows"
+          ],
+          "masked_count": 0,
+          "over_cap": false,
+          "size": 58,
+          "status": 200,
+          "token_host": "planner.example.com"
+        },
+        "type": "connector.test_preview"
+      }
+    ],
+    [
+      "response.output_text.delta",
+      {
+        "delta": "Waiting for you to confirm the test result.",
+        "item_id": "<item_id>",
+        "sequence_number": 4,
+        "type": "response.output_text.delta"
+      }
+    ],
+    [
+      "response.output_text.delta",
+      {
+        "delta": "\n\n```data-vault-form-patch\n{\n  \"form_id\": \"fm_aaaaaaaaaa\",\n  \"_awaiting_confirmation\": true,\n  \"_is_probing\": false,\n  \"status_text\": \"Waiting for you to confirm the test result.\"\n}\n```\n\n",
+        "item_id": "<item_id>",
+        "sequence_number": 5,
+        "type": "response.output_text.delta"
+      }
+    ],
+    [
+      "response.completed",
+      {
+        "assistant_message_id": "<assistant_message_id>",
+        "response": {
+          "id": "<id>",
+          "status": "awaiting_confirmation"
+        },
+        "sequence_number": 6,
+        "type": "response.completed"
+      }
+    ]
+  ]
+}

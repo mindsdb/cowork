@@ -13,6 +13,7 @@
       "codingAgent": "编程智能体",
       "computers": "计算机",
       "appearance": "外观",
+      "branding": "品牌",
       "desktop": "桌面端",
       "channels": "渠道",
       "updates": "更新",
@@ -77,12 +78,12 @@
     },
     "background": {
       "default": "默认",
-      "lightTitle": "背景（浅色模式）",
-      "lightSubtitle": "为浅色模式选择一个基础色，界面表面和文字色调都会据此生成；也可以使用浅色模式的默认背景。",
+      "lightTitle": "浅色背景",
+      "lightSubtitle": "用于浅色主题。如果选择深色，会转为同一色相的浅色调；文字会自动调整以保持清晰可读。选择“默认”时，由深色背景为其着色，否则使用浅色主题的原始外观。",
       "lightAriaLabel": "自定义背景色（浅色模式）",
       "lightDefaultAriaLabel": "默认浅色背景",
-      "darkTitle": "背景（深色模式）",
-      "darkSubtitle": "为深色模式选择一个基础色，界面表面和文字色调都会据此生成；也可以使用深色模式的默认背景。",
+      "darkTitle": "深色背景",
+      "darkSubtitle": "用于深色主题。如果选择浅色，会转为同一色相的深色调；文字会自动调整以保持清晰可读。选择“默认”时，由浅色背景为其着色，否则使用深色主题的原始外观。",
       "darkAriaLabel": "自定义背景色（深色模式）",
       "darkDefaultAriaLabel": "默认深色背景"
     },
@@ -176,6 +177,18 @@
     "styleToggle": {
       "title": "8-Bit 风格切换按钮",
       "subtitle": "在同一按钮上切换标准和 8-Bit 风格。两项都开启时，点按该按钮会打开显示设置。"
+    },
+    "setByOrg": "由你的组织设定。",
+    "yourStyle": {
+      "title": "你的风格",
+      "description": "这些设置会覆盖你所在组织的外观，仅对你生效。",
+      "off": "个人风格设置已关闭。所有人看到的都是组织的外观。",
+      "orgSetsRest": "其他风格设置由你的组织品牌设定。",
+      "changeInBranding": "在“品牌”中更改 →"
+    },
+    "display": {
+      "title": "显示",
+      "description": "个人显示偏好，只有你能看到。"
     }
   },
   "mobile": {
@@ -378,6 +391,108 @@
     "keepAwake": {
       "title": "为定时任务保持唤醒",
       "subtitle": "接通电源时，如果有定时任务正在运行或即将运行，会阻止这台计算机进入睡眠。它无法唤醒已处于睡眠状态的计算机，也无法阻止合上盖子后进入睡眠。"
+    }
+  },
+  "branding": {
+    "title": "品牌",
+    "description": "你所在组织的外观，适用于组织中的所有人。成员下次打开应用或设置时就会看到。",
+    "adminOnly": "由你的组织管理员设定。",
+    "saveError": {
+      "forbidden": "只有组织管理员才能更改品牌设置。",
+      "generic": "无法保存品牌设置。请重试。"
+    },
+    "sidebarTitle": {
+      "title": "侧边栏标题",
+      "subtitle": "为组织中的所有人显示在侧边栏顶部。“公司名称”会跟随控制台中的改名；自定义标题保持你输入的内容；“无”只显示徽标。",
+      "ariaLabel": "侧边栏标题",
+      "company": "公司名称",
+      "companyHint": "跟随公司名称，包括改名。",
+      "custom": "自定义",
+      "customHint": "你输入的标题，改名后保持不变。",
+      "none": "无",
+      "noneAriaLabel": "无（仅徽标）",
+      "noneHint": "不显示标题：只显示徽标。",
+      "customAriaLabel": "自定义侧边栏标题",
+      "required": "请输入侧边栏标题，或选择“公司名称”或“无”。",
+      "preview": "侧边栏显示：",
+      "logoOnly": "仅徽标",
+      "noTitle": "（无标题）"
+    },
+    "logo": {
+      "title": "徽标和图标",
+      "subtitle": "徽标即侧边栏徽标，图标即浏览器标签页图标，适用于组织中的所有人。它们在控制台中设置。",
+      "iconAlt": "组织图标",
+      "logoAlt": "组织徽标",
+      "logoDarkAlt": "用于深色背景的组织徽标",
+      "noneSet": "未设置。",
+      "opensInBrowser": "在浏览器中打开",
+      "editInConsole": "在控制台中编辑"
+    },
+    "theme": {
+      "title": "组织主题",
+      "subtitle": "为所有人设定浅色或深色，或交由每位成员自行选择。",
+      "ariaLabel": "组织主题",
+      "notSet": "未设置",
+      "notSetAriaLabel": "无组织主题",
+      "lightAriaLabel": "浅色组织主题",
+      "darkAriaLabel": "深色组织主题"
+    },
+    "style": {
+      "title": "组织风格",
+      "deploymentLocked": "由当前部署设定，适用于其中的所有组织。",
+      "subtitle": "组织中所有人的初始外观。选择“自定义”可设置颜色、背景、圆角和字体。",
+      "ariaLabel": "组织风格",
+      "notSet": "未设置",
+      "notSetAriaLabel": "无组织风格",
+      "notSetHint": "成员保持应用的标准外观。",
+      "optionAriaLabel": "{name} 组织风格"
+    },
+    "accent": {
+      "subtitle": "用于按钮、高亮和焦点框。",
+      "ariaLabel": "组织强调色"
+    },
+    "background": {
+      "lightSubtitle": "用于浅色主题。如果选择深色，会转为同一色相的浅色调；文字会自动调整以保持清晰可读。选择“默认”时，由深色背景为其着色，否则使用原始的浅色外观。",
+      "lightAriaLabel": "组织浅色背景颜色",
+      "lightDefaultAriaLabel": "默认组织浅色背景",
+      "darkSubtitle": "用于深色主题。如果选择浅色，会转为同一色相的深色调；文字会自动调整以保持清晰可读。选择“默认”时，由浅色背景为其着色，否则使用原始的深色外观。",
+      "darkAriaLabel": "组织深色背景颜色",
+      "darkDefaultAriaLabel": "默认组织深色背景"
+    },
+    "corners": {
+      "ariaLabel": "组织圆角半径",
+      "squareAriaLabel": "组织直角",
+      "softAriaLabel": "组织柔和圆角",
+      "roundAriaLabel": "组织大圆角"
+    },
+    "typeface": {
+      "subtitle": "标准界面字体，或全部使用等宽字体。",
+      "ariaLabel": "组织字体",
+      "standardAriaLabel": "组织标准字体",
+      "monoAriaLabel": "组织等宽字体"
+    },
+    "greeting": {
+      "title": "组织问候语",
+      "subtitle": "成员开始新任务时看到的文字。留空则使用标准问候语。",
+      "ariaLabel": "组织问候语"
+    },
+    "membersChoose": {
+      "title": "允许成员选择自己的风格",
+      "subtitle": "开启：成员以组织风格为起点，并可在“你的风格”中更改。关闭：所有人都看到组织风格。"
+    },
+    "guidelines": {
+      "title": "Anton 品牌指南",
+      "subtitle": "Anton 在演示文稿、文档、应用和图表中应如何使用你的品牌：语气、推荐或避免使用的措辞、徽标的位置。Anton 也会获取上方设置的颜色、字体和徽标。",
+      "placeholder": "Markdown。例如：\n- 标题只大写首字母\n- 在标题页幻灯片上将徽标放在左上角"
+    },
+    "footer": {
+      "ariaLabel": "未保存的品牌更改",
+      "saving": "正在保存…",
+      "unsaved": "品牌更改尚未保存。你现在已能看到；保存后其他人也会看到。",
+      "cancel": "取消",
+      "save": "保存品牌设置",
+      "saved": "已保存。成员下次打开应用或设置时就会看到。",
+      "clean": "没有未保存的品牌更改"
     }
   }
 }

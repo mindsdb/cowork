@@ -159,6 +159,11 @@
     "skins": {
       "normal": "Normal",
       "8bit": "8-Bit"
+    },
+    "setByOrg": {
+      "themeAndStyle": "O tema e o estilo são definidos pela sua organização.",
+      "theme": "O tema é definido pela sua organização.",
+      "style": "O estilo é definido pela sua organização."
     }
   },
   "comingSoon": {

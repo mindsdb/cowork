@@ -609,7 +609,34 @@
       "messageLabeled": "Une connexion {provider} avec ces informations existe déjà (« {label} »). Remplacez-la par celle-ci, ou annulez pour la conserver telle quelle.",
       "confirm": "Remplacer"
     },
-    "labelRequired": "Le libellé est obligatoire."
+    "labelRequired": "Le libellé est obligatoire.",
+    "needsRebuild": {
+      "body": "Ce connecteur a été enregistré avant l’arrivée des tests de connexion. Demandez à l’agent de le recréer.",
+      "close": "Fermer"
+    },
+    "connectionTest": {
+      "notWaiting": "Ce résultat de test n’est plus en attente. Envoyez à nouveau le formulaire.",
+      "failed": "Une erreur s’est produite. Réessayez.",
+      "privateTitle": "Autoriser une adresse privée ?",
+      "privateBody": "{product} veut envoyer {request} à {target}, qui se trouve {where} ({addresses}). L’autoriser pour ce test ?",
+      "thisComputer": "sur cet ordinateur",
+      "privateNetwork": "sur votre réseau privé",
+      "previewTitle": "S’agit-il de vos données ?",
+      "previewBody": "{product} a testé la connexion. Vérifiez ce qui a été renvoyé avant l’enregistrement. Les valeurs que vous avez saisies sont masquées par ***.",
+      "tokenFrom": "Jeton de",
+      "dataFrom": "Données de",
+      "answer": "Réponse",
+      "answerValue": "HTTP {status}, {size, plural, one {# octet} other {# octets}}",
+      "items": "Éléments",
+      "fields": "Champs",
+      "hidden": "Masqués",
+      "hiddenValue": "{count, plural, one {# valeur} other {# valeurs}}",
+      "dontAllow": "Ne pas autoriser",
+      "cancel": "Annuler",
+      "working": "En cours…",
+      "allow": "Autoriser pour ce test",
+      "confirm": "Confirmer et enregistrer"
+    }
   },
   "legacyConnect": {
     "shapeChecked": "Format des identifiants vérifié.",

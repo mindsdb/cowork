@@ -13,6 +13,7 @@
       "codingAgent": "Coding-Agent",
       "computers": "Computer",
       "appearance": "Darstellung",
+      "branding": "Branding",
       "desktop": "Desktop",
       "channels": "Kanäle",
       "updates": "Updates",
@@ -77,12 +78,12 @@
     },
     "background": {
       "default": "Standard",
-      "lightTitle": "Hintergrund – heller Modus",
-      "lightSubtitle": "Wählen Sie eine Grundfarbe für den hellen Modus – Flächen und Textfarbtöne werden daraus abgeleitet – oder verwenden Sie den Standard.",
+      "lightTitle": "Heller Hintergrund",
+      "lightSubtitle": "Wird im hellen Design verwendet. Eine dunkle Farbe wird zu einem hellen Ton derselben Farbe; der Text passt sich an, damit er lesbar bleibt. Mit „Standard“ färbt der dunkle Hintergrund ihn ein, sonst gilt der ursprüngliche Look von „Hell“.",
       "lightAriaLabel": "Benutzerdefinierte Hintergrundfarbe – heller Modus",
       "lightDefaultAriaLabel": "Standardhintergrund für den hellen Modus",
-      "darkTitle": "Hintergrund – dunkler Modus",
-      "darkSubtitle": "Wählen Sie eine Grundfarbe für den dunklen Modus – Flächen und Textfarbtöne werden daraus abgeleitet – oder verwenden Sie den Standard.",
+      "darkTitle": "Dunkler Hintergrund",
+      "darkSubtitle": "Wird im dunklen Design verwendet. Eine helle Farbe wird zu einer dunklen Schattierung derselben Farbe; der Text passt sich an, damit er lesbar bleibt. Mit „Standard“ färbt der helle Hintergrund ihn ein, sonst gilt der ursprüngliche Look von „Dunkel“.",
       "darkAriaLabel": "Benutzerdefinierte Hintergrundfarbe – dunkler Modus",
       "darkDefaultAriaLabel": "Standardhintergrund für den dunklen Modus"
     },
@@ -176,6 +177,18 @@
     "styleToggle": {
       "title": "Schaltfläche für 8-Bit-Stil",
       "subtitle": "Normal/8-Bit-Umschalter auf derselben Schaltfläche. Sind beide aktiv, öffnet die Schaltfläche die Anzeigeeinstellungen."
+    },
+    "setByOrg": "Von Ihrer Organisation festgelegt.",
+    "yourStyle": {
+      "title": "Ihr Stil",
+      "description": "Diese Einstellungen ersetzen den Look Ihrer Organisation – nur für Sie.",
+      "off": "Persönliche Stileinstellungen sind deaktiviert. Alle sehen den Look Ihrer Organisation.",
+      "orgSetsRest": "Weitere Stileinstellungen legt das Branding Ihrer Organisation fest.",
+      "changeInBranding": "Unter Branding ändern →"
+    },
+    "display": {
+      "title": "Anzeige",
+      "description": "Persönliche Anzeigeeinstellungen. Nur Sie sehen sie."
     }
   },
   "mobile": {
@@ -378,6 +391,108 @@
     "keepAwake": {
       "title": "Für geplante Aufgaben wach bleiben",
       "subtitle": "Verhindert bei angeschlossenem Netzteil, dass dieser Computer in den Ruhezustand wechselt, während eine geplante Aufgabe läuft oder gleich startet. Ein Computer, der bereits schläft, kann nicht geweckt werden, und beim Zuklappen wechselt er trotzdem in den Ruhezustand."
+    }
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "Der Look Ihrer Organisation, für alle Mitglieder. Sie sehen ihn, wenn sie die App oder die Einstellungen das nächste Mal öffnen.",
+    "adminOnly": "Vom Administrator Ihrer Organisation festgelegt.",
+    "saveError": {
+      "forbidden": "Nur ein Administrator der Organisation kann das Branding ändern.",
+      "generic": "Das Branding konnte nicht gespeichert werden. Versuchen Sie es erneut."
+    },
+    "sidebarTitle": {
+      "title": "Seitenleistentitel",
+      "subtitle": "Wird für alle in Ihrer Organisation oben in der Seitenleiste angezeigt. „Firmenname“ übernimmt Umbenennungen aus der Konsole; ein benutzerdefinierter Titel bleibt wie eingegeben; „Keiner“ zeigt nur das Logo.",
+      "ariaLabel": "Seitenleistentitel",
+      "company": "Firmenname",
+      "companyHint": "Folgt dem Firmennamen, auch nach Umbenennungen.",
+      "custom": "Benutzerdefiniert",
+      "customHint": "Ein eigener Titel, der Umbenennungen übersteht.",
+      "none": "Keiner",
+      "noneAriaLabel": "Keiner (nur Logo)",
+      "noneHint": "Kein Titel: nur das Logo.",
+      "customAriaLabel": "Benutzerdefinierter Seitenleistentitel",
+      "required": "Geben Sie einen Seitenleistentitel ein oder wählen Sie „Firmenname“ oder „Keiner“.",
+      "preview": "Seitenleiste zeigt:",
+      "logoOnly": "nur Logo",
+      "noTitle": "(kein Titel)"
+    },
+    "logo": {
+      "title": "Logo und Symbol",
+      "subtitle": "Das Logo ist das Seitenleistenlogo, das Symbol das Browser-Tab-Symbol – für alle in Ihrer Organisation. Beide werden in der Konsole festgelegt.",
+      "iconAlt": "Organisationssymbol",
+      "logoAlt": "Organisationslogo",
+      "logoDarkAlt": "Organisationslogo für dunkle Hintergründe",
+      "noneSet": "Nicht festgelegt.",
+      "opensInBrowser": "Wird in Ihrem Browser geöffnet",
+      "editInConsole": "In der Konsole bearbeiten"
+    },
+    "theme": {
+      "title": "Organisationsdesign",
+      "subtitle": "Hell oder dunkel für alle – oder jedem Mitglied selbst überlassen.",
+      "ariaLabel": "Organisationsdesign",
+      "notSet": "Nicht festgelegt",
+      "notSetAriaLabel": "Kein Organisationsdesign",
+      "lightAriaLabel": "Helles Organisationsdesign",
+      "darkAriaLabel": "Dunkles Organisationsdesign"
+    },
+    "style": {
+      "title": "Organisationsstil",
+      "deploymentLocked": "Von dieser Bereitstellung festgelegt, für jede Organisation darin.",
+      "subtitle": "Der Look, mit dem alle in Ihrer Organisation starten. Mit „Benutzerdefiniert“ wählen Sie Farbe, Hintergrund, Ecken und Schriftart.",
+      "ariaLabel": "Organisationsstil",
+      "notSet": "Nicht festgelegt",
+      "notSetAriaLabel": "Kein Organisationsstil",
+      "notSetHint": "Mitglieder behalten den Standard-Look der App.",
+      "optionAriaLabel": "Organisationsstil {name}"
+    },
+    "accent": {
+      "subtitle": "Schaltflächen, Hervorhebungen und Fokusrahmen.",
+      "ariaLabel": "Akzentfarbe der Organisation"
+    },
+    "background": {
+      "lightSubtitle": "Wird im hellen Design verwendet. Eine dunkle Farbe wird zu einem hellen Ton derselben Farbe; der Text passt sich an, damit er lesbar bleibt. Mit „Standard“ färbt der dunkle Hintergrund ihn ein, sonst gilt der ursprüngliche helle Look.",
+      "lightAriaLabel": "Helle Hintergrundfarbe der Organisation",
+      "lightDefaultAriaLabel": "Standardmäßiger heller Hintergrund der Organisation",
+      "darkSubtitle": "Wird im dunklen Design verwendet. Eine helle Farbe wird zu einer dunklen Schattierung derselben Farbe; der Text passt sich an, damit er lesbar bleibt. Mit „Standard“ färbt der helle Hintergrund ihn ein, sonst gilt der ursprüngliche dunkle Look.",
+      "darkAriaLabel": "Dunkle Hintergrundfarbe der Organisation",
+      "darkDefaultAriaLabel": "Standardmäßiger dunkler Hintergrund der Organisation"
+    },
+    "corners": {
+      "ariaLabel": "Eckenradius der Organisation",
+      "squareAriaLabel": "Eckige Ecken der Organisation",
+      "softAriaLabel": "Weiche Ecken der Organisation",
+      "roundAriaLabel": "Runde Ecken der Organisation"
+    },
+    "typeface": {
+      "subtitle": "Standardschrift der Oberfläche oder überall Monospace.",
+      "ariaLabel": "Schriftart der Organisation",
+      "standardAriaLabel": "Standardschrift der Organisation",
+      "monoAriaLabel": "Monospace-Schrift der Organisation"
+    },
+    "greeting": {
+      "title": "Begrüßung der Organisation",
+      "subtitle": "Der Text, den Mitglieder sehen, wenn sie eine neue Aufgabe beginnen. Leer lassen für den Standardtext.",
+      "ariaLabel": "Begrüßung der Organisation"
+    },
+    "membersChoose": {
+      "title": "Mitglieder ihren eigenen Stil wählen lassen",
+      "subtitle": "Ein: Der Organisationsstil ist der Ausgangspunkt, und Mitglieder können ihn unter „Ihr Stil“ ändern. Aus: Alle sehen den Organisationsstil."
+    },
+    "guidelines": {
+      "title": "Markenrichtlinien für Anton",
+      "subtitle": "Wie Anton Ihre Marke in Präsentationen, Dokumenten, Apps und Diagrammen einsetzen soll: Tonalität, Begriffe, die verwendet oder vermieden werden sollen, Platzierung des Logos. Ihre Farben, Schriftart und Ihr Logo von oben erhält Anton ebenfalls.",
+      "placeholder": "Markdown. Zum Beispiel:\n- Überschriften in normaler Groß- und Kleinschreibung\n- Logo auf Titelfolien oben links platzieren"
+    },
+    "footer": {
+      "ariaLabel": "Nicht gespeicherte Branding-Änderungen",
+      "saving": "Wird gespeichert…",
+      "unsaved": "Nicht gespeicherte Branding-Änderungen. Sie sehen sie bereits; alle anderen sehen sie, sobald Sie speichern.",
+      "cancel": "Abbrechen",
+      "save": "Branding speichern",
+      "saved": "Gespeichert. Mitglieder sehen es, wenn sie die App oder die Einstellungen das nächste Mal öffnen.",
+      "clean": "Keine nicht gespeicherten Branding-Änderungen"
     }
   }
 }

@@ -49,10 +49,11 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
+import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
-import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
+import { applyFavicon, applyNavTitleColor, applyOrgFavicon } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canRunProject, canUseSharedResource } from './lib/sharedResourceAccess';
@@ -82,6 +83,11 @@ import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
+import { useOrgBranding } from './hooks/useOrgBranding';
+import { windowTitleFor, withBrandingDraft } from '../lib/orgBranding';
+import { productName } from '../lib/deploymentBrand';
+import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../shared/product-name';
+import { takeSettingsDeepLink } from './lib/settingsDeepLink';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner, restartUnderway } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
@@ -1804,21 +1810,51 @@ function AppCore() {
     sidebarCollapsibleRoutes,
     sidebarPopout,
   } = useSidebarNav({ isNarrow });
+  const orgMode = useOrgMode();
+  // The org's branding: hosted org mode only. Read at startup, on
+  // an org switch or sign-in, and each time Settings opens; never polled.
+  // Hosted MindsHub (any org, personal ones too): the sidebar title, logo and
+  // tab icon come from the org, not from per-person settings.
+  const hostedMindsHub = PLATFORM_UI && host.isWeb && orgMode;
+  // Desktop reads the same org-branding from its local server (passed through
+  // to auth with the MindsHub credential).
+  const orgBranding = useOrgBranding({ enabled: hostedMindsHub, desktop: host.isElectron, settingsOpen });
+  // Where the org's logo, icon and sidebar title replace the per-person ones:
+  // hosted web (any org), and desktop signed in to an org with branding.
+  const orgControlled = hostedMindsHub || (host.isElectron && Boolean(orgBranding.branding?.enabled));
+  // An admin's unsaved edits on Settings → Branding, previewed live in this
+  // window only: the draft takes the org-look slot in the resolver. It never
+  // reaches the server or the first-paint cache, and leaving the Branding page
+  // (or closing Settings) clears it, which puts the saved look back.
+  const [brandingDraft, setBrandingDraft] = useState(null);
+  const savedOrgBranding = orgBranding.branding;
+  const previewOrgBranding = useMemo(
+    () => withBrandingDraft(savedOrgBranding, brandingDraft, productName(STOCK_WORDMARK)),
+    [brandingDraft, savedOrgBranding],
+  );
+  useEffect(() => { if (!settingsOpen) setBrandingDraft(null); }, [settingsOpen]);
   /* The narrow-band sidebar popout counts as an overlay, so the desktop
      browser pane's native view steps aside rather than draw over it. */
   useNativeOverlay(sidebarPopout && navPopoutOpen);
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
-  // effects that keep them applied — all live in useThemeSkin.
+  // effects that keep them applied — all live in useThemeSkin. `look` is the
+  // deployment brand, the org's branding and the member's choices resolved
+  // in one place (lib/orgBranding.ts): the greeting, sidebar logo and tab
+  // icon below read it rather than the raw settings.
   const {
     theme, setTheme,
     skin, setSkin,
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
-  } = useThemeSkin();
+    look,
+  } = useThemeSkin({ orgBranding: previewOrgBranding, settings: appearanceSettings, hostedMindsHub: orgControlled });
+  // Desktop's window title is the resolved sidebar title, or the stock name.
+  useEffect(() => {
+    if (host.isElectron) document.title = windowTitleFor(look, productName(STOCK_PRODUCT_NAME));
+  }, [look]);
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
-  const orgMode = useOrgMode();
   // One list for the composer's per-conversation toggles: the OAuth
   // connections and the cloud database ones, each keyed by (engine, name),
   // which is the pair the server filters a turn's grants on.
@@ -1911,12 +1947,18 @@ function AppCore() {
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
   useEffect(() => {
-    applyNavTitleColor(appearanceSettings.navTitleColor);
-  }, [appearanceSettings.navTitleColor]);
+    applyNavTitleColor(look.navTitleColor);
+  }, [look.navTitleColor]);
 
+  // The tab icon: the member's own, the org's, or the page's own (the
+  // deployment brand's or stock), as resolved in `look`.
+  const faviconHref = look.favicon?.href ?? null;
+  const faviconFromOrg = look.favicon?.source === 'org';
   useEffect(() => {
-    if (host.isWeb) applyFavicon(appearanceSettings.favicon);
-  }, [appearanceSettings.favicon]);
+    if (!host.isWeb) return;
+    if (faviconFromOrg) applyOrgFavicon(faviconHref);
+    else applyFavicon(faviconHref);
+  }, [faviconHref, faviconFromOrg]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -2935,6 +2977,8 @@ function AppCore() {
           selected_method: '__edit_current__',
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -2952,6 +2996,8 @@ function AppCore() {
           fields: syntheticFields,
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -3163,6 +3209,8 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        // Saved before connection tests: the form shows the rebuild text, not fields.
+        _needs_rebuild: !!full.needs_rebuild,
         /* Reconnecting a shared connection carries its name so the submit
            (DataVaultFormPanel reads spec._existing_name) updates that entry in
            place instead of saving a second one under a fresh random slug. */
@@ -3364,6 +3412,19 @@ function AppCore() {
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
   };
+
+  // A link into Settings (?settings=appearance&section=branding, captured in
+  // web-main.tsx before login): open that page once, scrolled to that part.
+  const [appearanceAnchor, setAppearanceAnchor] = useState(null);
+  const clearAppearanceAnchor = useCallback(() => setAppearanceAnchor(null), []);
+  useEffect(() => {
+    const link = takeSettingsDeepLink();
+    if (!link) return;
+    setAppearanceAnchor(link.section);
+    openSettings(link.page);
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
@@ -4316,15 +4377,7 @@ function AppCore() {
       // Migrate the form store so a success-state panel (e.g. the
       // OAuth success screen set just before onContinue was called)
       // survives the ID change and stays visible under the new task id.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4664,15 +4717,7 @@ function AppCore() {
       // data-vault-form-patch blocks (keyed to the new id) both
       // find the form. Without this the panel loses its spec and
       // the success patch falls through to a bare setForm.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4727,6 +4772,9 @@ function AppCore() {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A custom connector's test waiting on the user: its id goes to the
+        // panel's own store, never into the stream state or the message.
+        if (applyConnectorTestEvent(resolvedId || id, ev)) return;
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -5847,18 +5895,21 @@ function AppCore() {
         window.dispatchEvent(new CustomEvent('anton:open-new-project'));
       }, 60);
     },
-    navTitle: appearanceSettings.navTitle || null,
-    navLogo: appearanceSettings.navLogo || null,
+    navTitle: look.navTitle,
+    navLogo: look.logo,
+    navLogoWide: look.logoSource === 'org',
+    navTitleHidden: look.navTitleHidden,
     // Mobile has no room for the desktop floating-toggle-row (bottom-right,
     // over the FAB) — the theme toggle moves into the top bar, opposite the
     // hamburger, and the coding-mode toggle is dropped entirely rather than
     // hunting for a second spot.
     theme,
-    showThemeToggle: appearanceSettings.showThemeToggle !== false,
+    showThemeToggle: appearanceSettings.showThemeToggle !== false
+      && ['menu', 'theme'].includes(displayToggleMode(appearanceSettings, look.lockedByOrg)),
     /* Opens Display settings only when the corner button would; otherwise it
        flips the theme. */
     onToggleTheme: () => {
-      if (displayToggleMode(appearanceSettings) === 'menu') {
+      if (displayToggleMode(appearanceSettings, look.lockedByOrg) === 'menu') {
         setThemeModalOpen(true);
       } else {
         setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
@@ -5869,7 +5920,7 @@ function AppCore() {
   // Desktop corner button. Each Appearance switch gates only its own control
   // (ENG-3201): both on opens Display settings, one on flips just that one.
   const displayToggle = (() => {
-    switch (displayToggleMode(appearanceSettings)) {
+    switch (displayToggleMode(appearanceSettings, look.lockedByOrg)) {
       case 'menu':
         return {
           label: tApp('display.settings'),
@@ -6036,8 +6087,10 @@ function AppCore() {
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
           showCounters={appearanceSettings.showCounters === true}
-          navTitle={appearanceSettings.navTitle || null}
-          navLogo={appearanceSettings.navLogo || null}
+          navTitle={look.navTitle}
+          navLogo={look.logo}
+          navLogoWide={look.logoSource === 'org'}
+          navTitleHidden={look.navTitleHidden}
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
@@ -6113,7 +6166,7 @@ function AppCore() {
         >
         {route === 'home' && (
           <HomeView
-            greeting={appearanceSettings.greeting}
+            greeting={look.greeting}
             showDots={showDots}
             activeTasks={activeTasks}
             onSelectTask={selectTask}
@@ -6572,6 +6625,13 @@ function AppCore() {
               skin={skin} onSkinChange={setSkin}
               customTheme={customTheme} onCustomThemeChange={setCustomTheme}
               agentLabel={agentLabel}
+              orgBranding={orgBranding.branding}
+              onOrgBrandingSaved={orgBranding.apply}
+              onOrgBrandingDraft={setBrandingDraft}
+              look={look}
+              hostedMindsHub={orgControlled}
+              appearanceAnchor={appearanceAnchor}
+              onAppearanceAnchorShown={clearAppearanceAnchor}
               section={settingsSection}
               onSectionChange={setSettingsSection}
               serverOnline={serverOnline}
@@ -6631,6 +6691,13 @@ function AppCore() {
                 skin={skin} onSkinChange={setSkin}
                 customTheme={customTheme} onCustomThemeChange={setCustomTheme}
                 agentLabel={agentLabel}
+                orgBranding={orgBranding.branding}
+                onOrgBrandingSaved={orgBranding.apply}
+                onOrgBrandingDraft={setBrandingDraft}
+                look={look}
+                hostedMindsHub={orgControlled}
+                appearanceAnchor={appearanceAnchor}
+                onAppearanceAnchorShown={clearAppearanceAnchor}
                 section={settingsSection || 'agent'}
                 onSectionChange={setSettingsSection}
                 serverOnline={serverOnline}
@@ -6702,6 +6769,7 @@ function AppCore() {
         onThemeChange={setTheme}
         skin={skin}
         onSkinChange={setSkin}
+        orgLocks={look.lockedByOrg}
       />
 
       <ComingSoonModal

@@ -113,6 +113,11 @@ export const IPC = {
   // which is what the gateway reads to decide whose credits a turn spends.
   MINDSHUB_LIST_ORGS: 'mindshub:list-orgs',
   MINDSHUB_SWITCH_ORG: 'mindshub:switch-org',
+  // The org's logo and icon: the renderer sends the URLs it got
+  // from org-branding, main returns them as data: URIs and sets the app icon.
+  MINDSHUB_BRAND_IMAGES: 'mindshub:brand-images',
+  // Each org's switcher icon: org id → URL in, org id → data: URI out.
+  MINDSHUB_ORG_ICON_URIS: 'mindshub:org-icon-uris',
   // Pushed main → renderer whenever the MindsHub token store changes
   // (login, silent refresh, logout, definitive session death). The
   // renderer's signed-in indicator subscribes to this instead of

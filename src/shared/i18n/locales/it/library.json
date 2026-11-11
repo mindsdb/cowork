@@ -609,7 +609,34 @@
       "messageLabeled": "Esiste già una connessione {provider} con questi dettagli («{label}»). Sostituiscila con questa oppure annulla per lasciarla com’è.",
       "confirm": "Sostituisci"
     },
-    "labelRequired": "L’etichetta è obbligatoria."
+    "labelRequired": "L’etichetta è obbligatoria.",
+    "needsRebuild": {
+      "body": "Questo connettore è stato salvato prima che esistessero i test di connessione. Chiedi all’agente di ricrearlo.",
+      "close": "Chiudi"
+    },
+    "connectionTest": {
+      "notWaiting": "Questo risultato del test non è più in attesa. Invia di nuovo il modulo.",
+      "failed": "Si è verificato un problema. Riprova.",
+      "privateTitle": "Consentire un indirizzo privato?",
+      "privateBody": "{product} vuole inviare {request} a {target}, che si trova {where} ({addresses}). Lo consenti per questo test?",
+      "thisComputer": "su questo computer",
+      "privateNetwork": "sulla tua rete privata",
+      "previewTitle": "Sono questi i tuoi dati?",
+      "previewBody": "{product} ha testato la connessione. Controlla cosa è stato restituito prima del salvataggio. I valori che hai inserito sono nascosti come ***.",
+      "tokenFrom": "Token da",
+      "dataFrom": "Dati da",
+      "answer": "Risposta",
+      "answerValue": "HTTP {status}, {size, plural, one {# byte} other {# byte}}",
+      "items": "Elementi",
+      "fields": "Campi",
+      "hidden": "Nascosti",
+      "hiddenValue": "{count, plural, one {# valore} other {# valori}}",
+      "dontAllow": "Non consentire",
+      "cancel": "Annulla",
+      "working": "Elaborazione…",
+      "allow": "Consenti per questo test",
+      "confirm": "Conferma e salva"
+    }
   },
   "legacyConnect": {
     "shapeChecked": "Struttura delle credenziali verificata.",
