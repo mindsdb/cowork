@@ -8,7 +8,7 @@ import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveM
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
-import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, PROBE_POLICY_UNAVAILABLE_SENTENCE, PROBE_RATE_LIMITED_SENTENCE } from '../../lib/providerStatus';
+import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, probePolicyUnavailableSentence, probeRateLimitedSentence } from '../../lib/providerStatus';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../../lib/usageWarnings';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
@@ -34,6 +34,7 @@ import OrgBrandingFields from './OrgBrandingFields';
 import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
+import i18n, { useTranslation } from '../../../lib/i18n';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -61,8 +62,14 @@ const FAVICON_EXTENSION_TYPES = { png: 'image/png', ico: 'image/x-icon', svg: 'i
 // Inline text-link button (renders inside a sentence, inherits its type).
 const LINK_BTN =
   'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
-// Under an org's locked look, what a member's own control says.
-const SET_BY_ORG = 'Set by your organization.';
+
+// Renders a translated message whose `{link}` argument is a React element
+// (a button or anchor), so the sentence stays one message in the catalog.
+const LINK_TOKEN = '';
+function withLink(message, link) {
+  const [before, after = ''] = message.split(LINK_TOKEN);
+  return <>{before}{link}{after}</>;
+}
 const NO_ORG_LOCKS = { style: false, theme: false, greeting: false, logo: false, favicon: false };
 
 // Where a deep link (?settings=appearance&section=…) lands on Appearance.
@@ -70,8 +77,6 @@ export const APPEARANCE_ANCHORS = {
   style: 'settings-appearance-style',
   display: 'settings-appearance-display',
 };
-
-const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Try again, or contact your administrator.';
 
 /* The notice under each Settings > Agent role row after the MindsHub health
    probe was refused, one per `mindsProbeNotice` kind. Exported for the visual
@@ -86,15 +91,16 @@ const PROVIDER_UNAVAILABLE_MESSAGE = 'The configured provider is unavailable. Tr
    `usage` is the `/hub/usage/` view, which decides the allowance copy (a
    refill time, or the no-grant sentence). */
 export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false, providerTestsAvailable = true }) {
+  const { t } = useTranslation('settings');
   if (!PLATFORM_UI || !providerTestsAvailable) {
-    return <div className="text-[12px] text-ink-3">{PROVIDER_UNAVAILABLE_MESSAGE}</div>;
+    return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
   }
-  const byok = <div className="text-ink-3">Or add your own provider and API key below.</div>;
+  const byok = <div className="text-ink-3">{t('probe.byok')}</div>;
   if (notice.kind === 'no_credits') {
     return (
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
-          <span className="text-danger font-semibold">No credits available. </span>
+          <span className="text-danger font-semibold">{t('probe.noCredits')}{' '}</span>
           <button
             type="button"
             // Recorded before the navigation, so web and
@@ -108,7 +114,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(MINDS_BILLING_URL);
             }}
             className={LINK_BTN}
-          >Top up balance →</button>
+          >{t('probe.topUp')}</button>
         </div>
         {byok}
       </div>
@@ -134,7 +140,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >Add funds →</button>
+          >{t('probe.addFunds')}</button>
         </div>
         {byok}
       </div>
@@ -145,8 +151,8 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
     return (
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
-          <span className="text-danger">{`Your organization's budget is used up. ${budgetExceededCopy({ usage })}`} </span>
-          <ViewBudgetsLink>View budgets →</ViewBudgetsLink>
+          <span className="text-danger">{t('probe.budgetReached', { detail: budgetExceededCopy({ usage }) })} </span>
+          <ViewBudgetsLink>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
         </div>
         {byok}
       </div>
@@ -155,14 +161,14 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   if (notice.kind === 'slow_down') {
     return (
       <div className="text-[12px] leading-[1.6] text-ink-3">
-        {`${PROBE_RATE_LIMITED_SENTENCE} This isn't a credits problem.`}
+        {t('probe.slowDown', { sentence: probeRateLimitedSentence() })}
       </div>
     );
   }
   if (notice.kind === 'billing_unavailable') {
     return (
       <div className="text-[12px] leading-[1.6] text-ink-3">
-        {PROBE_POLICY_UNAVAILABLE_SENTENCE}
+        {probePolicyUnavailableSentence()}
       </div>
     );
   }
@@ -191,36 +197,37 @@ function ViewBudgetsLink({ children }) {
    so its line has no link; a budget-stopped one links to Budgets. Exported
    for the visual fixture. */
 export function UnavailableModelHint({ label, restricted, budgetReached = false }) {
+  const { t } = useTranslation('settings');
   if (!PLATFORM_UI) {
-    return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
   }
   if (restricted) {
     return (
       <div className="text-[11.5px] text-ink-3">
-        {label} is restricted by an admin in your organization. Choose another model.
+        {t('agent.modelRestricted', { model: label })}
       </div>
     );
   }
   if (budgetReached) {
     return (
       <div className="text-[11.5px] text-ink-3">
-        {label} can't run because your organization's budget is used up.{' '}
-        <ViewBudgetsLink>View budgets</ViewBudgetsLink>
+        {t('agent.modelBudgetReached', { model: label })}{' '}
+        <ViewBudgetsLink>{t('agent.viewBudgets')}</ViewBudgetsLink>
       </div>
     );
   }
   return (
     <div className="text-[11.5px] text-ink-3">
-      {label} needs credits.{' '}
-      <button
-        type="button"
-        onClick={() => {
-          trackBillingOpened('locked_model_hint');
-          return host.openExternal(MINDS_BILLING_URL);
-        }}
-        className={LINK_BTN}
-      >Top up your balance</button>
-      {' '}to use it.
+      {withLink(t('agent.modelNeedsCredits', { model: label, link: LINK_TOKEN }), (
+        <button
+          type="button"
+          onClick={() => {
+            trackBillingOpened('locked_model_hint');
+            return host.openExternal(MINDS_BILLING_URL);
+          }}
+          className={LINK_BTN}
+        >{t('agent.topUpBalance')}</button>
+      ))}
     </div>
   );
 }
@@ -241,6 +248,7 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false 
 // shows the safety limit in force instead of the user's saved value, which is
 // left untouched for when the switch goes back on.
 function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel, lockedValue = null }) {
+  const { t } = useTranslation('settings');
   const { min, max, fallback } = spec;
   const hintId = useId();
   // "No limit" writes the TOP of the range, which already was the off switch —
@@ -300,26 +308,32 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
             }}
             aria-label={label}
             aria-describedby={hintId}
-            title={`${label} (${formatCount(toDisplay(min))}–${formatCount(toDisplay(max))}, default ${formatCount(toDisplay(fallback))}${hasUnit ? ' million tokens' : ''})`}
+            title={t('budget.fieldTitle', {
+              label,
+              min: formatCount(toDisplay(min)),
+              max: formatCount(toDisplay(max)),
+              fallback: formatCount(toDisplay(fallback)),
+              unit: hasUnit ? 'million' : 'none',
+            })}
           />
-          {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">million tokens</span>}
+          {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">{t('budget.millionTokens')}</span>}
         </div>
         <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
           {locked ? (
-            <span className="whitespace-nowrap">safety limit</span>
+            <span className="whitespace-nowrap">{t('budget.safetyLimit')}</span>
           ) : isUnlimited ? (
-            <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
+            <span className="whitespace-nowrap">{t('budget.noLimitHint')}</span>
           ) : (
             <>
               <span className="whitespace-nowrap">{formatCount(toDisplay(min))}&ndash;{formatCount(toDisplay(max))}</span>
-              <span className="whitespace-nowrap">default {formatCount(toDisplay(fallback))}</span>
+              <span className="whitespace-nowrap">{t('budget.default', { value: formatCount(toDisplay(fallback)) })}</span>
             </>
           )}
         </div>
       </div>
       {showUnlimited && (
         <div className="flex flex-col items-start gap-1.5">
-          <span className="text-[11px] text-ink-4">&mdash; or &mdash;</span>
+          <span className="text-[11px] text-ink-4">{t('budget.or')}</span>
           <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <Checkbox
               checked={isUnlimited}
@@ -358,6 +372,7 @@ function TextInput({ value, onChange, placeholder, title, ariaLabel, disabled })
 // key fields so the whole Credentials card uses one clear gesture.
 // Save settings still has to be clicked to commit the deletion to env.
 function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
+  const { t } = useTranslation('settings');
   const v = value ?? '';
   const hasValue = v.length > 0;
   return (
@@ -370,11 +385,11 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
         style={hasValue ? { paddingRight: 36 } : undefined}
       />
       {hasValue && (
-        <Tooltip content="Clear (commits on Save settings)">
+        <Tooltip content={t('fields.clearTooltip')}>
           <button
             type="button"
             onClick={() => onChange('')}
-            aria-label="Clear value"
+            aria-label={t('fields.clearAriaLabel')}
             className={FIELD_ICON_BTN}
           >
             {Ico.close(14)}
@@ -417,6 +432,7 @@ export function shouldRevealStoredKey({ isWeb, show, revealName, isSentinel, alr
 }
 
 function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
+  const { t } = useTranslation('settings');
   const [show, setShow] = useState(false);
   // 'idle' | 'copied' | 'failed' — 'failed' surfaces feedback when the
   // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
@@ -508,10 +524,10 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   // Typing replaces the (empty) value cleanly — no asterisk contamination.
   const showSentinelAsMask = !show && v === '***';
 
-  const copyHint = isDisplayingSentinel ? 'Reveal the key first to copy it'
-    : copyState === 'copied' ? 'Copied'
-      : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
-        : 'Copy to clipboard';
+  const copyHint = isDisplayingSentinel ? t('apiKey.revealFirst')
+    : copyState === 'copied' ? t('apiKey.copied')
+      : copyState === 'failed' ? t('apiKey.copyFailed')
+        : t('apiKey.copy');
 
   return (
     <div className="relative">
@@ -524,7 +540,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
         disabled={disabled}
         autoComplete="off"
         spellCheck={false}
-        aria-label={revealName ? `${revealName} API key` : 'API key'}
+        aria-label={revealName ? t('apiKey.namedAriaLabel', { name: revealName }) : t('apiKey.ariaLabel')}
         style={{ paddingRight: 108 }}
       />
       <div className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5">
@@ -536,7 +552,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
               onBlur={() => { if (copyState === 'failed') setCopyState('idle'); }}
               disabled={!canCopy}
               title={!canCopy ? copyHint : undefined}
-              aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
+              aria-label={copyState === 'copied' ? t('apiKey.copiedAriaLabel') : t('apiKey.copyAriaLabel')}
               className={canCopy ? btnClass : btnClassDisabled}
             >
               {copyState === 'copied' ? Ico.check(14) : Ico.copy(14)}
@@ -555,27 +571,27 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 // or blur), not by the animation, so it stays legible.
                 animation: copyState === 'failed' ? 'failed-pop var(--dur-layout) ease forwards' : 'copied-pop 1.5s ease forwards',
               }}
-            >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
+            >{copyState === 'failed' ? t('apiKey.copyFailed') : t('apiKey.copied')}</span>
           )}
         </span>
-        <Tooltip content={show ? 'Hide key' : (revealing ? 'Revealing…' : 'Reveal key')}>
+        <Tooltip content={show ? t('apiKey.hide') : (revealing ? t('apiKey.revealing') : t('apiKey.reveal'))}>
           <button
             type="button"
             onClick={onToggleShow}
             disabled={revealing}
-            aria-label={show ? 'Hide key' : 'Reveal key'}
+            aria-label={show ? t('apiKey.hide') : t('apiKey.reveal')}
             aria-pressed={show}
             className={show ? btnClassActive : btnClass}
           >
             {show ? Ico.eyeOff(14) : Ico.eye(14)}
           </button>
         </Tooltip>
-        <Tooltip content="Clear this key (commits on Save settings)">
+        <Tooltip content={t('apiKey.clearTooltip')}>
           <button
             type="button"
             onClick={onClearField}
             disabled={!hasValue}
-            aria-label="Clear key"
+            aria-label={t('apiKey.clearAriaLabel')}
             className={hasValue ? btnClass : btnClassDisabled}
           >
             {Ico.close(14)}
@@ -649,19 +665,20 @@ function SetBadge({ hasValue, active }) {
 const PROVIDER_TYPE_ORDER = ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'];
 
 export function providerStatusBadge(status, configured) {
-  if (status === 'ok') return { label: 'connected', variant: 'success' };
-  if (status === 'fail') return { label: 'unable to connect', variant: 'danger' };
-  if (status === 'testing') return { label: 'testing…', variant: 'warning' };
-  if (configured) return { label: 'not tested', variant: 'muted' };
+  if (status === 'ok') return { label: i18n.t('settings:providers.status.connected'), variant: 'success' };
+  if (status === 'fail') return { label: i18n.t('settings:providers.status.unableToConnect'), variant: 'danger' };
+  if (status === 'testing') return { label: i18n.t('settings:providers.status.testing'), variant: 'warning' };
+  if (configured) return { label: i18n.t('settings:providers.status.notTested'), variant: 'muted' };
   return null;
 }
 
+// Catalog keys (settings:providers.desc.*) for each provider type's blurb.
 const PROVIDER_TYPE_DESC = {
-  'minds-cloud': 'All frontier models in one place — Claude, GPT, Gemini, and more.',
-  anthropic: 'Use Claude models with your Anthropic API key.',
-  openai: 'Use GPT models with your OpenAI API key.',
-  gemini: 'Use Gemini models through Google\'s OpenAI-compatible endpoint.',
-  'openai-compatible': 'Any OpenAI-compatible server (Ollama, vLLM, Together, Groq, etc).',
+  'minds-cloud': 'providers.desc.mindsCloud',
+  anthropic: 'providers.desc.anthropic',
+  openai: 'providers.desc.openai',
+  gemini: 'providers.desc.gemini',
+  'openai-compatible': 'providers.desc.openaiCompatible',
 };
 
 const GET_KEY_URL = {
@@ -746,13 +763,14 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 // ───────────────────────── Nav sidebar ─────────────────────────
 
 function SettingsNav({ section, onSectionChange, serverOnline = true, items = [] }) {
+  const { t } = useTranslation('settings');
   return (
     <nav
       role="navigation"
-      aria-label="Settings sections"
+      aria-label={t('nav.ariaLabel')}
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
-      <div className="section-label pt-0 px-2.5 pb-1.5">Settings</div>
+      <div className="section-label pt-0 px-2.5 pb-1.5">{t('nav.title')}</div>
       {items.map((item, index) => {
         const active = section === item.id;
         // A dead local server cannot accept most settings saves. Keep Backend
@@ -767,7 +785,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
         const showGroup = index === 0 || items[index - 1]?.group !== item.group;
         return (
           <Fragment key={item.id}>
-          {showGroup && <div className="section-label mt-3 first:mt-0 px-2.5 pb-1">{item.group}</div>}
+          {showGroup && <div className="section-label mt-3 first:mt-0 px-2.5 pb-1">{t(`nav.groups.${item.group}`)}</div>}
           <button
             type="button"
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
@@ -784,7 +802,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true, items = []
                 {icon}
               </span>
             )}
-            <span>{item.label}</span>
+            <span>{t(`nav.items.${item.id}`)}</span>
           </button>
           </Fragment>
         );
@@ -843,6 +861,7 @@ export default function SettingsView({
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+  const { t } = useTranslation('settings');
   const draft = useSettingsDraft(committedSettings);
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
@@ -1288,7 +1307,7 @@ export default function SettingsView({
         setEditingProviders(new Set());
       }
     } catch (err) {
-      setSaveError(err.message || 'Settings could not be saved.');
+      setSaveError(err.message || t('footer.errors.saveFailed'));
       setSaved(false);
       setTesting(false);
       return;
@@ -1308,7 +1327,7 @@ export default function SettingsView({
       setValidation({
         status: 'error',
         configReady: false,
-        configError: `Settings saved, but verification failed: ${err.message || 'Configuration could not be checked.'}`,
+        configError: t('footer.errors.verifyFailed', { error: err.message || t('footer.errors.checkFailed') }),
       });
       showTested();
     } finally {
@@ -1331,7 +1350,7 @@ export default function SettingsView({
       setValidation({
         status: 'error',
         configReady: false,
-        configError: err.message || 'Settings could not be validated.',
+        configError: err.message || t('footer.errors.validateFailed'),
       });
     } finally {
       setTesting(false);
@@ -1348,10 +1367,10 @@ export default function SettingsView({
 
   const renderSaveFooter = () => {
     const saveDisabled = (!settingsDirty && !canRetestProviders) || testing || missingCustomNames;
-    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…'
-      : (!settingsDirty && !canRetestProviders) ? 'No unsaved changes'
-        : !providerTestsAvailable ? 'Save changes.'
-          : canRetestProviders ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
+    const saveHint = missingCustomNames ? t('footer.hint.missingNames') : testing ? t('footer.hint.saving')
+      : (!settingsDirty && !canRetestProviders) ? t('footer.hint.noChanges')
+        : !providerTestsAvailable ? t('footer.hint.save')
+          : canRetestProviders ? t('footer.hint.retest') : t('footer.hint.saveAndTest');
     return (
     <>
       <div
@@ -1362,13 +1381,13 @@ export default function SettingsView({
         {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(14)}</span>}
         <span>
-          {saveError ? saveError : testing ? (providerTestsAvailable ? 'Testing configuration…' : 'Saving settings…')
+          {saveError ? saveError : testing ? (providerTestsAvailable ? t('footer.status.testing') : t('footer.status.saving'))
             : tested ? (configReady
-              ? (providerTestsAvailable ? 'Test passed — provider, model, and credentials look good.' : 'Settings saved.')
-              : (configError || (providerTestsAvailable ? 'Test reported a problem.' : 'Configuration reported a problem.')))
-              : saved ? 'Settings saved.'
+              ? (providerTestsAvailable ? t('footer.status.testPassed') : t('footer.status.saved'))
+              : (configError || (providerTestsAvailable ? t('footer.status.testProblem') : t('footer.status.configProblem'))))
+              : saved ? t('footer.status.saved')
                 : configError ? configError
-                  : 'Changes apply on save.'}
+                  : t('footer.status.applyOnSave')}
         </span>
       </div>
       <Tooltip content={saveHint}>
@@ -1382,7 +1401,7 @@ export default function SettingsView({
           className="w-[140px] inline-flex items-center justify-center gap-1.5"
           style={{ opacity: saveDisabled ? 0.55 : 1, cursor: saveDisabled ? 'default' : 'pointer' }}
         >
-          {testing ? 'Saving…' : (settingsDirty || canRetestProviders) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
+          {testing ? t('footer.button.saving') : (settingsDirty || canRetestProviders) ? t('footer.button.save') : <>{Ico.check(14)} {t('footer.button.saved')}</>}
         </Button>
       </Tooltip>
     </>
@@ -1398,7 +1417,7 @@ export default function SettingsView({
         <div className="flex flex-col">
           {/* Platform builds offer BYOK outside SaaS orgs, which use their managed provider. */}
           {PLATFORM_UI && !orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
-            <SettingsGroup title="LLM Providers">
+            <SettingsGroup title={t('providers.title')}>
               {visibleProviders.map((p) => {
                 const configured = providerConfigured(p);
                 const label = typeLabels[p.type] || p.type;
@@ -1426,17 +1445,17 @@ export default function SettingsView({
                 // which the detail string alone cannot.
                 const neutralProbeError = (!PLATFORM_UI || !providerTestsAvailable) && p.type === 'minds-cloud'
                   && mindsProbeNotice({ detail, reason: configured ? st.reason : null })
-                  ? PROVIDER_UNAVAILABLE_MESSAGE : '';
+                  ? t('providers.unavailable') : '';
                 const friendlyError = neutralProbeError || friendlyProviderError(detail, configured ? st.reason : null);
                 const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok'
                   ? (!providerTestsAvailable && st.raw !== 'ok'
-                    ? 'Connected through MindsHub sign-in.'
-                    : `Last test passed${detail ? ` (${detail})` : ''}`)
-                  : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
-                    : status === 'testing' ? 'Testing…'
-                      : providerTestsAvailable ? 'Not tested yet — save settings and run a test to verify.'
-                        : 'Provider connectivity has not been tested.';
+                    ? t('providers.statusTitle.signedIn')
+                    : (detail ? t('providers.statusTitle.passedDetail', { detail }) : t('providers.statusTitle.passed')))
+                  : status === 'fail' ? (detail ? t('providers.statusTitle.failedDetail', { detail }) : t('providers.statusTitle.failed'))
+                    : status === 'testing' ? t('providers.statusTitle.testing')
+                      : providerTestsAvailable ? t('providers.statusTitle.notTested')
+                        : t('providers.statusTitle.notTestedNoTests');
                 const statusPill = statusBadge ? (
                   <Badge
                     title={statusPillTitle}
@@ -1459,7 +1478,7 @@ export default function SettingsView({
                 const headingBaseClass =
                   'm-0 p-0 leading-[1.3] text-base font-semibold text-ink';
                 const customHeadingText = p.type === 'openai-compatible'
-                  ? ((p.name || '').trim() || 'Custom OpenAI-compatible provider')
+                  ? ((p.name || '').trim() || t('providers.customHeading'))
                   : null;
                 const titleNode = (
                   <span className="inline-flex items-center flex-wrap gap-2">
@@ -1472,9 +1491,9 @@ export default function SettingsView({
                           <Input
                             value={p.name ?? ''}
                             onChange={(next) => updateProviderField('openai-compatible', 'name', next)}
-                            placeholder="Custom provider name"
-                            title="Display name for this custom provider — shown in the model dropdowns below."
-                            aria-label="Custom provider name"
+                            placeholder={t('providers.customName.label')}
+                            title={t('providers.customName.hint')}
+                            aria-label={t('providers.customName.label')}
                             aria-invalid={nameEmpty || undefined}
                             aria-describedby={nameEmpty ? errorId : undefined}
                             aria-required="true"
@@ -1484,7 +1503,7 @@ export default function SettingsView({
                             }}
                           />
                           {nameEmpty && (
-                            <span id={errorId} className="text-[10.5px] text-danger">Name required</span>
+                            <span id={errorId} className="text-[10.5px] text-danger">{t('providers.customName.required')}</span>
                           )}
                         </div>
                       );
@@ -1513,7 +1532,7 @@ export default function SettingsView({
                       {titleNode}
                       {PROVIDER_TYPE_DESC[p.type] && (PLATFORM_UI || p.type !== 'minds-cloud') && (
                         <div className="text-[12px] text-ink-3 mt-1.5 max-w-[380px] leading-[1.45]">
-                          {PROVIDER_TYPE_DESC[p.type]}
+                          {t(PROVIDER_TYPE_DESC[p.type])}
                         </div>
                       )}
                     </div>
@@ -1543,32 +1562,33 @@ export default function SettingsView({
                             value={p.baseUrl ?? ''}
                             onChange={(v) => updateProviderField('openai-compatible', 'baseUrl', v)}
                             placeholder="https://example.com/v1"
-                            ariaLabel="Base URL"
+                            ariaLabel={t('providers.baseUrl')}
                           />
                         )}
                         {GET_KEY_URL[p.type] && !ssoMindsHub && (PLATFORM_UI || p.type !== 'minds-cloud') && (
                           <div className="text-[11.5px] text-ink-3">
-                            Get your API key at{' '}
-                            <Tooltip content={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}>
-                              <a
-                                href={GET_KEY_URL[p.type]}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                                className="text-accent"
-                              >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
-                            </Tooltip>
+                            {withLink(t('providers.getKey', { link: LINK_TOKEN }), (
+                              <Tooltip content={t('providers.openInBrowser', { url: GET_KEY_URL[p.type].replace(/^https?:\/\//, '') })}>
+                                <a
+                                  href={GET_KEY_URL[p.type]}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="text-accent"
+                                >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
+                              </Tooltip>
+                            ))}
                           </div>
                         )}
                         {PLATFORM_UI && p.type === 'minds-cloud' && !isSsoConnected && (
                           <div className="text-[11.5px] text-ink-3">
-                            Don't have an account?{' '}
-                            <Tooltip content="Open the MindsHub sign-up page in your browser.">
+                            {t('providers.noAccount')}{' '}
+                            <Tooltip content={t('providers.signUpTooltip')}>
                               <a
                                 href={MINDS_REGISTER_URL}
                                 target="_blank"
                                 rel="noreferrer noopener"
                                 className="text-accent"
-                              >Sign up →</a>
+                              >{t('providers.signUp')}</a>
                             </Tooltip>
                           </div>
                         )}
@@ -1592,23 +1612,23 @@ export default function SettingsView({
                     {/* Right (desktop) / inline row (mobile): trash + edit */}
                     <div className={`flex gap-1.5 ${mobile ? 'flex-row w-auto' : 'flex-col w-[30px]'}`}>
                       {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
-                        <Tooltip content="Remove this provider">
+                        <Tooltip content={t('providers.remove')}>
                           <Button
                             variant="danger"
                             icon
                             size="sm"
                             onClick={() => removeProvider(p.type)}
-                            aria-label="Remove this provider"
+                            aria-label={t('providers.remove')}
                           >{Ico.trash(14)}</Button>
                         </Tooltip>
                       )}
                       {!showKeyInput && (
-                        <Tooltip content="Edit API key">
+                        <Tooltip content={t('providers.editKey')}>
                           <Button
                             icon
                             size="sm"
                             onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
-                            aria-label="Edit API key"
+                            aria-label={t('providers.editKey')}
                           >{Ico.edit(14)}</Button>
                         </Tooltip>
                       )}
@@ -1619,12 +1639,12 @@ export default function SettingsView({
               <div className="relative pt-[14px] px-0 pb-1 min-h-[50px]">
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
-                <Tooltip content={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}>
+                <Tooltip content={availableTypesForAdd.length === 0 ? t('providers.allConfigured') : t('providers.addAnother')}>
                   <Button
                     variant="subtle"
                     onClick={() => setAddPickerOpen(true)}
                     disabled={availableTypesForAdd.length === 0}
-                    title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : undefined}
+                    title={availableTypesForAdd.length === 0 ? t('providers.allConfigured') : undefined}
                     className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_var(--dur-layout)_ease,transform_var(--dur-layout)_ease]"
                     style={{
                       opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
@@ -1632,7 +1652,7 @@ export default function SettingsView({
                       pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
                       cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
                     }}
-                  >{Ico.plus(14)} Add provider</Button>
+                  >{Ico.plus(14)} {t('providers.add')}</Button>
                 </Tooltip>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
@@ -1644,23 +1664,23 @@ export default function SettingsView({
                     transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
                     pointerEvents: addPickerOpen ? 'auto' : 'none',
                   }}>
-                  <strong className="text-sm text-ink mr-1">Choose Provider:</strong>
-                  {availableTypesForAdd.map((t) => (
-                    <Tooltip key={t} content={PROVIDER_TYPE_DESC[t]}>
+                  <strong className="text-sm text-ink mr-1">{t('providers.choose')}</strong>
+                  {availableTypesForAdd.map((type) => (
+                    <Tooltip key={type} content={t(PROVIDER_TYPE_DESC[type])}>
                       <Button
                         variant="subtle"
-                        onClick={() => addProviderOfType(t)}
+                        onClick={() => addProviderOfType(type)}
                         style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-                      >{typeLabels[t] || t}</Button>
+                      >{typeLabels[type] || type}</Button>
                     </Tooltip>
                   ))}
-                  <Tooltip content="Hide the provider picker.">
+                  <Tooltip content={t('providers.hidePicker')}>
                     <Button
                       variant="subtle"
                       icon
                       size="sm"
                       onClick={() => setAddPickerOpen(false)}
-                      aria-label="Close provider picker"
+                      aria-label={t('providers.closePicker')}
                       className="ml-1"
                     >{Ico.close(14)}</Button>
                   </Tooltip>
@@ -1669,7 +1689,7 @@ export default function SettingsView({
             </SettingsGroup>
           </div>}
           {PLATFORM_UI && <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
-            <SettingsGroup title="Model Router">
+            <SettingsGroup title={t('agent.modelRouter')}>
               {(() => {
                 // The default-mode provider is the implicit fallback for
                 // any role that hasn't been explicitly assigned an
@@ -1783,7 +1803,7 @@ export default function SettingsView({
                   // Plain bold field label. Note: no dotted underline — that reads as
                   // a "hover for a tooltip" affordance, and none is wired here.
                   const fieldLabel = (text) => (
-                    <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}:</span>
+                    <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}</span>
                   );
 
                   const probeNoticeNode = probeNotice ? (
@@ -1791,9 +1811,9 @@ export default function SettingsView({
                   ) : null;
 
                   const subtitle = role === 'planning'
-                    ? 'Used for reasoning, orchestration, and responses.'
+                    ? t('agent.roles.planningSubtitle')
                     : role === 'coding'
-                      ? 'Used for scratchpad code generation.'
+                      ? t('agent.roles.codingSubtitle')
                       // The server says which model gates (ENG-1851); see routerRoleSubtitle.
                       : routerRoleSubtitle(settings.gate, {
                         rowProviderType: curType,
@@ -1805,10 +1825,10 @@ export default function SettingsView({
                       <div className="grid gap-1.5">
                         {multipleProviders && (
                           <label className="grid gap-1">
-                            {fieldLabel('Provider')}
+                            {fieldLabel(t('agent.providerLabel'))}
                             <Select
                               value={curType}
-                              onValueChange={(t) => {
+                              onValueChange={(type) => {
                                 // Seed the first wallet-affordable candidate,
                                 // not the raw pair value: writing a locked
                                 // model on a provider switch converts the
@@ -1821,20 +1841,20 @@ export default function SettingsView({
                                 // informed-consent lane). ENG-1650 (server
                                 // exposes resolved per-role models) retires
                                 // this derivation too.
-                                const pair = recommendedPair[t] || ['', '', ''];
+                                const pair = recommendedPair[type] || ['', '', ''];
                                 const candidates = [
                                   pair[roleIdx] || pair[1],
-                                  ...(recommendedModels[t] || []),
+                                  ...(recommendedModels[type] || []),
                                 ].filter(Boolean);
                                 const newModel =
                                   candidates.find((m) => !isModelLocked(modelEnabled, m))
                                   || candidates[0] || '';
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
-                                writeOverride({ providerType: t, model: newModel });
+                                writeOverride({ providerType: type, model: newModel });
                               }}
                               invalid={providerUnusable}
                               aria-describedby={(providerUnusable || providerCheckingNotice) ? providerWarnId : undefined}
-                              title={`Choose which provider powers the ${role} role.`}
+                              title={t('agent.providerHint', { role })}
                               options={visibleProviders.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
                             />
                           </label>
@@ -1865,7 +1885,7 @@ export default function SettingsView({
                             return (
                               <>
                               <label className="grid gap-1">
-                                {fieldLabel('Model')}
+                                {fieldLabel(t('agent.modelLabel'))}
                                 <ModelSelect
                                   value={selectValue || firstEnabledModel}
                                   onValueChange={(next) => {
@@ -1913,7 +1933,7 @@ export default function SettingsView({
                                     });
                                   }}
                                   loading={modelRefreshing[role]}
-                                  title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
+                                  title={t('agent.modelHint', { role })}
                                   options={modelOptions}
                                   // Reasoning-effort footer (ENG-1940) — folded into
                                   // this same picker (see ModelSelect.jsx), replacing
@@ -1931,8 +1951,8 @@ export default function SettingsView({
                                   <TextInput
                                     value={curModel}
                                     onChange={(v) => writeOverride({ providerType: curType, model: v })}
-                                    placeholder="Type a model id"
-                                    title="Free-form model id sent verbatim to the provider."
+                                    placeholder={t('agent.customModelPlaceholder')}
+                                    title={t('agent.customModelHint')}
                                   />
                                 )}
                               </label>
@@ -1952,28 +1972,28 @@ export default function SettingsView({
                           })()
                         ) : (
                           <label className="grid gap-1">
-                            {fieldLabel('Model')}
+                            {fieldLabel(t('agent.modelLabel'))}
                             <TextInput
                               value={curModel}
                               onChange={(v) => writeOverride({ providerType: curType, model: v })}
                               placeholder="model-id"
-                              title="Model id sent verbatim to this provider."
+                              title={t('agent.modelIdHint')}
                             />
                           </label>
                         )}
                         {providerCheckingNotice && (
                           <div id={providerWarnId} aria-live="polite" className="text-[11.5px] text-ink-3 flex items-center gap-1.5">
                             <Spinner intervalMs={90} />
-                            Checking {providerDisplayName(provider)} connection…
+                            {t('agent.checking', { provider: providerDisplayName(provider) })}
                           </div>
                         )}
                         {providerUnusable && (
                           <div id={providerWarnId} className="text-[11.5px] text-warning">
                             {providerUnconfigured
                               ? (provider
-                                ? `${providerDisplayName(provider)} isn't configured — add its credentials under LLM Providers above, or pick another provider.`
-                                : 'This provider is not configured. Add it under LLM Providers above.')
-                              : `${providerDisplayName(provider)} failed its last test — check it under LLM Providers above, or pick another provider.`}
+                                ? t('agent.notConfigured', { provider: providerDisplayName(provider) })
+                                : t('agent.unknownNotConfigured'))
+                              : t('agent.failed', { provider: providerDisplayName(provider) })}
                           </div>
                         )}
                       </div>
@@ -1982,12 +2002,12 @@ export default function SettingsView({
                 };
                 return (
                   <>
-                    {RoleRow({ role: 'planning', label: 'Planning model' })}
+                    {RoleRow({ role: 'planning', label: t('agent.roles.planning') })}
                     {/* Hidden once the server routes with a decision model:
                         see showRouterRoleRow for when it stays. */}
                     {showRouterRoleRow(settings.routing, settings.gate)
-                      && RoleRow({ role: 'router', label: 'Routing and summarization model' })}
-                    {RoleRow({ role: 'coding', label: 'Coding model' })}
+                      && RoleRow({ role: 'router', label: t('agent.roles.router') })}
+                    {RoleRow({ role: 'coding', label: t('agent.roles.coding') })}
                   </>
                 );
               })()}
@@ -1995,38 +2015,38 @@ export default function SettingsView({
           </div>}
         </div>
 
-        <SettingsGroup title="Memory">
-          <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
+        <SettingsGroup title={t('memory.title')}>
+          <Section title={t('memory.mode.title')} subtitle={t('memory.mode.subtitle', { agent: agentLabel || 'Anton' })}>
             <ToggleGroup
               value={settings.memoryMode ?? 'autopilot'}
               onValueChange={(v) => setSetting('memoryMode', v)}
-              aria-label="Memory mode"
+              aria-label={t('memory.mode.ariaLabel')}
               options={[
-                { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
-                { value: 'copilot', label: 'Copilot', title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
-                { value: 'off', label: 'Off', title: 'Disable long-term memory updates.' },
+                { value: 'autopilot', label: t('memory.mode.autopilot'), title: t('memory.mode.autopilotHint', { agent: agentLabel || 'Anton' }) },
+                { value: 'copilot', label: t('memory.mode.copilot'), title: t('memory.mode.copilotHint', { agent: agentLabel || 'Anton' }) },
+                { value: 'off', label: t('memory.mode.off'), title: t('memory.mode.offHint') },
               ]}
             />
           </Section>
-          <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
+          <Section title={t('memory.episodic.title')} subtitle={t('memory.episodic.subtitle')}>
             <Switch
               checked={settings.episodicMemory ?? true}
               onCheckedChange={(v) => setSetting('episodicMemory', v)}
-              aria-label="Episodic memory"
+              aria-label={t('memory.episodic.title')}
             />
           </Section>
-          <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
+          <Section title={t('memory.dashboards.title')} subtitle={t('memory.dashboards.subtitle')}>
             <Switch
               checked={settings.proactiveDashboards ?? false}
               onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
-              aria-label="Proactive dashboards"
+              aria-label={t('memory.dashboards.title')}
             />
           </Section>
-          <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
+          <Section title={t('memory.actFirst.title')} subtitle={t('memory.actFirst.subtitle')}>
             <Switch
               checked={settings.actFirst ?? true}
               onCheckedChange={(v) => setSetting('actFirst', v)}
-              aria-label="Act first, ask later"
+              aria-label={t('memory.actFirst.title')}
             />
           </Section>
         </SettingsGroup>
@@ -2039,25 +2059,25 @@ export default function SettingsView({
             turn runs under. Self-hosted web runs turns in its own server, where
             they apply. The Jev switch has no such limit, so it keeps the group. */}
         {(budgetRowsShown || jevSwitchShown) && (
-          <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
+          <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
             {budgetRowsShown && <>
             {hasLimitsSwitch && (
               <Section
-                title="Limit how much a task can do"
+                title={t('advanced.limits.title')}
                 subtitle={limitsOn
-                  ? `${agentLabel || 'Anton'} stops or asks before going further at the steps, auto-continues and tokens you set below.`
-                  : `Off: a task runs until it's done, up to a high safety limit where ${agentLabel || 'Anton'} asks before going further. Turn on to set your own limits.`}
+                  ? t('advanced.limits.subtitleOn', { agent: agentLabel || 'Anton' })
+                  : t('advanced.limits.subtitleOff', { agent: agentLabel || 'Anton' })}
               >
                 <Switch
                   checked={limitsOn}
                   onCheckedChange={(v) => setSetting('limitsEnabled', v)}
-                  aria-label="Limit how much a task can do"
+                  aria-label={t('advanced.limits.title')}
                 />
               </Section>
             )}
             <Section
-              title="Max steps per task"
-              subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
+              title={t('advanced.maxSteps.title')}
+              subtitle={t('advanced.maxSteps.subtitle', { agent: agentLabel || 'Anton' })}
             >
               <BudgetNumberField
                 settingKey="maxToolRounds"
@@ -2065,13 +2085,13 @@ export default function SettingsView({
                 value={settings.maxToolRounds}
                 savedValue={lastSavedSettings?.maxToolRounds}
                 spec={budgetSpec('maxToolRounds', settings.budgetDefaults)}
-                label="Max steps per task"
+                label={t('advanced.maxSteps.title')}
                 setSetting={setSetting}
               />
             </Section>
             <Section
-              title="Max auto-continues"
-              subtitle={`When ${agentLabel || 'Anton'} stops but the work looks unfinished, Cowork sends it back to complete the job — this caps how many times. Raise it for hands-off thoroughness; set 0 to stop after the first attempt (you'll still get a summary of what's missing).`}
+              title={t('advanced.maxContinuations.title')}
+              subtitle={t('advanced.maxContinuations.subtitle', { agent: agentLabel || 'Anton' })}
             >
               <BudgetNumberField
                 settingKey="maxContinuations"
@@ -2079,7 +2099,7 @@ export default function SettingsView({
                 value={settings.maxContinuations}
                 savedValue={lastSavedSettings?.maxContinuations}
                 spec={budgetSpec('maxContinuations', settings.budgetDefaults)}
-                label="Max auto-continues"
+                label={t('advanced.maxContinuations.title')}
                 setSetting={setSetting}
               />
             </Section>
@@ -2090,8 +2110,8 @@ export default function SettingsView({
                 it. The renderer ships OTA and leads the installed server. */}
             {'maxTurnTokens' in settings && (
               <Section
-                title="Max tokens per task"
-                subtitle={`The most tokens ${agentLabel || 'Anton'} may spend on one request before pausing to check in with you, so a task that gets stuck can't use up a large share of your free allowance or balance without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.`}
+                title={t('advanced.maxTokens.title')}
+                subtitle={t('advanced.maxTokens.subtitle', { agent: agentLabel || 'Anton' })}
               >
                 <BudgetNumberField
                   settingKey="maxTurnTokens"
@@ -2099,9 +2119,9 @@ export default function SettingsView({
                   value={settings.maxTurnTokens}
                   savedValue={lastSavedSettings?.maxTurnTokens}
                   spec={budgetSpec('maxTurnTokens', settings.budgetDefaults)}
-                  label="Max tokens per task"
+                  label={t('advanced.maxTokens.title')}
                   setSetting={setSetting}
-                  unlimitedLabel="No limit"
+                  unlimitedLabel={t('advanced.maxTokens.noLimit')}
                 />
               </Section>
             )}
@@ -2111,13 +2131,13 @@ export default function SettingsView({
                 budget rows still shows it. */}
             {jevSwitchShown && (
               <Section
-                title="Fast answers with Jev"
-                subtitle={`Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether ${agentLabel || 'Anton'} finished its work. Turn it off to have every message run ${agentLabel || 'Anton'}.`}
+                title={t('advanced.jev.title')}
+                subtitle={t('advanced.jev.subtitle', { agent: agentLabel || 'Anton' })}
               >
                 <Switch
                   checked={settings.jevDecisionsEnabled ?? true}
                   onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
-                  aria-label="Fast answers with Jev"
+                  aria-label={t('advanced.jev.title')}
                 />
               </Section>
             )}
@@ -2210,14 +2230,14 @@ export default function SettingsView({
       transition: `opacity ${AUTO_SAVE_FADE_MS}ms ease`,
     };
     if (status.state === 'saving') {
-      return <span style={fadeStyle} className="text-[11.5px] text-ink-4 ml-2">Saving…</span>;
+      return <span style={fadeStyle} className="text-[11.5px] text-ink-4 ml-2">{t('autoSave.saving')}</span>;
     }
     if (status.state === 'error') {
-      return <span style={fadeStyle} className="text-[11.5px] text-danger ml-2">Couldn't save</span>;
+      return <span style={fadeStyle} className="text-[11.5px] text-danger ml-2">{t('autoSave.failed')}</span>;
     }
     return (
       <span style={fadeStyle} className="text-[11.5px] text-[var(--ok)] ml-2 inline-flex items-center gap-1">
-        {Ico.check(12)} Saved
+        {Ico.check(12)} {t('autoSave.saved')}
       </span>
     );
   }
@@ -2231,7 +2251,7 @@ export default function SettingsView({
   const handleLogoUpload = (file) => {
     if (!file) return;
     if (file.size > MAX_LOGO_BYTES) {
-      setLogoError('Logo must be under 300 KB.');
+      setLogoError(t('appearance.sidebarLogo.tooLarge'));
       return;
     }
     setLogoError(null);
@@ -2250,11 +2270,11 @@ export default function SettingsView({
     faviconReadRef.current = null;
     const mime = file.type || FAVICON_EXTENSION_TYPES[file.name.split('.').pop().toLowerCase()];
     if (!FAVICON_MIME_TYPES.includes(mime)) {
-      setFaviconError('Choose a PNG, ICO, SVG, or WEBP image.');
+      setFaviconError(t('appearance.favicon.wrongType'));
       return;
     }
     if (file.size >= 100 * 1024) {
-      setFaviconError('Browser tab icon must be under 100 KB.');
+      setFaviconError(t('appearance.favicon.tooLarge'));
       return;
     }
     setFaviconError(null);
@@ -2263,18 +2283,18 @@ export default function SettingsView({
     reader.onload = () => {
       if (faviconReadRef.current !== reader) return;
       if (typeof reader.result !== 'string') {
-        setFaviconError("Couldn't read this image. Try another file.");
+        setFaviconError(t('appearance.favicon.unreadable'));
         return;
       }
       autoSaveSetting('favicon', reader.result);
     };
     reader.onerror = () => {
-      if (faviconReadRef.current === reader) setFaviconError("Couldn't read this image. Try another file.");
+      if (faviconReadRef.current === reader) setFaviconError(t('appearance.favicon.unreadable'));
     };
     try {
       reader.readAsDataURL(file.type ? file : file.slice(0, file.size, mime));
     } catch {
-      setFaviconError("Couldn't read this image. Try another file.");
+      setFaviconError(t('appearance.favicon.unreadable'));
     }
   };
 
@@ -2319,7 +2339,7 @@ export default function SettingsView({
     <>
       {' '}
       <button type="button" className={LINK_BTN} onClick={() => onSectionChange('branding')}>
-        Change in Branding →
+        {t('appearance.yourStyle.changeInBranding')}
       </button>
     </>
   ) : null;
@@ -2338,12 +2358,12 @@ export default function SettingsView({
     <SettingsSectionPanel autoSaved>
       <div id={APPEARANCE_ANCHORS.style} className="scroll-mt-2">
         <SettingsGroup
-          title={org ? 'Your style' : 'Style'}
-          description={org && !personalStyleOff ? 'These override your organization\'s look, just for you.' : null}
+          title={org ? t('appearance.yourStyle.title') : t('appearance.style.title')}
+          description={org && !personalStyleOff ? t('appearance.yourStyle.description') : null}
         >
         {personalStyleOff ? (
           <div className="py-3 text-sm text-ink-2" data-testid="personal-style-off">
-            Personal style settings are off. Everyone sees your organization's look.
+            {t('appearance.yourStyle.off')}
             {changeInBranding}
           </div>
         ) : (
@@ -2351,48 +2371,52 @@ export default function SettingsView({
         {orgLocks.style ? orgSetsNote() : (
         <>
         {SKIN_LOCKED ? (
-          <Section title="Style" subtitle="Set by this deployment. Light and dark stay your choice.">
+          <Section title={t('appearance.style.title')} subtitle={t('appearance.style.lockedSubtitle')}>
             <span className="text-sm text-ink-2">{skinLabel(DEFAULT_SKIN)}</span>
           </Section>
         ) : (
-          <Section title="Style" subtitle={orgLocks.style ? SET_BY_ORG : 'Normal, 8-Bit, or design your own with Custom. Combines with light and dark.'}>
+          <Section title={t('appearance.style.title')} subtitle={orgLocks.style ? t('appearance.setByOrg') : t('appearance.style.subtitle')}>
             <ToggleGroup
               value={normalizeSkin(skin)}
               onValueChange={(v) => onSkinChange?.(v)}
               disabled={orgLocks.style}
-              aria-label="Style"
-              options={SKINS.map((s) => ({
-                value: s.id,
-                label: s.icon && Ico[s.icon]
-                  ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {s.label}</span>)
-                  : s.label,
-                'aria-label': `${s.label} style`,
-                title: s.title,
-              }))}
+              aria-label={t('appearance.style.ariaLabel')}
+              options={SKINS.map((s) => {
+                // A deployment brand's own skin keeps its brand name.
+                const label = t(`appearance.skins.${s.id}.label`, { defaultValue: s.label });
+                return {
+                  value: s.id,
+                  label: s.icon && Ico[s.icon]
+                    ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](14)} {label}</span>)
+                    : label,
+                  'aria-label': t('appearance.style.optionAriaLabel', { name: label }),
+                  title: t(`appearance.skins.${s.id}.title`, { defaultValue: s.title }),
+                };
+              })}
             />
           </Section>
         )}
         </>
         )}
         {orgLocks.theme ? orgSetsNote() : (
-        <Section title="Theme" subtitle={orgLocks.theme ? SET_BY_ORG : 'Light or dark — also drives the animated background.'}>
+        <Section title={t('appearance.theme.title')} subtitle={orgLocks.theme ? t('appearance.setByOrg') : t('appearance.theme.subtitle')}>
           <ToggleGroup
             value={theme || 'dark'}
             onValueChange={(v) => onThemeChange?.(v)}
             disabled={orgLocks.theme}
-            aria-label="Theme"
+            aria-label={t('appearance.theme.ariaLabel')}
             options={[
               {
                 value: 'light',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} Light</span>),
-                'aria-label': 'Light theme',
-                title: 'Use the light theme.',
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(14)} {t('appearance.theme.light')}</span>),
+                'aria-label': t('appearance.theme.lightAriaLabel'),
+                title: t('appearance.theme.lightHint'),
               },
               {
                 value: 'dark',
-                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} Dark</span>),
-                'aria-label': 'Dark theme',
-                title: 'Use the dark theme.',
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(14)} {t('appearance.theme.dark')}</span>),
+                'aria-label': t('appearance.theme.darkAriaLabel'),
+                title: t('appearance.theme.darkHint'),
               },
             ]}
           />
@@ -2400,24 +2424,24 @@ export default function SettingsView({
         )}
         {!orgLocks.style && normalizeSkin(skin) === 'custom' && customTheme && (
           <>
-            <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
+            <Section title={t('appearance.accent.title')} subtitle={t('appearance.accent.subtitle')}>
               <input
                 type="color"
                 value={customTheme.accent}
                 onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
                 disabled={orgLocks.style}
-                aria-label="Custom accent color"
+                aria-label={t('appearance.accent.ariaLabel')}
                 className={COLOR_SWATCH_INPUT}
               />
             </Section>
-            <Section title="Light background" subtitle="Used in light theme. A dark pick becomes a light tint of its hue; text adjusts to stay readable. With Default, the dark background tints it, or Light's stock look applies.">
+            <Section title={t('appearance.background.lightTitle')} subtitle={t('appearance.background.lightSubtitle')}>
               <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={customTheme.bgLight || stockBackground('light')}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
                   disabled={orgLocks.style || customTheme.bgLight === null}
-                  aria-label="Custom background color — Light mode"
+                  aria-label={t('appearance.background.lightAriaLabel')}
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgLight === null ? 0.45 : 1 }}
                 />
@@ -2426,20 +2450,20 @@ export default function SettingsView({
                     checked={customTheme.bgLight === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : stockBackground('light') })}
                     disabled={orgLocks.style}
-                    aria-label="Default Light background"
+                    aria-label={t('appearance.background.lightDefaultAriaLabel')}
                   />
-                  Default
+                  {t('appearance.background.default')}
                 </label>
               </div>
             </Section>
-            <Section title="Dark background" subtitle="Used in dark theme. A light pick becomes a dark shade of its hue; text adjusts to stay readable. With Default, the light background tints it, or Dark's stock look applies.">
+            <Section title={t('appearance.background.darkTitle')} subtitle={t('appearance.background.darkSubtitle')}>
               <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={customTheme.bgDark || stockBackground('dark')}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
                   disabled={orgLocks.style || customTheme.bgDark === null}
-                  aria-label="Custom background color — Dark mode"
+                  aria-label={t('appearance.background.darkAriaLabel')}
                   className={COLOR_SWATCH_INPUT}
                   style={{ opacity: customTheme.bgDark === null ? 0.45 : 1 }}
                 />
@@ -2448,57 +2472,57 @@ export default function SettingsView({
                     checked={customTheme.bgDark === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : stockBackground('dark') })}
                     disabled={orgLocks.style}
-                    aria-label="Default Dark background"
+                    aria-label={t('appearance.background.darkDefaultAriaLabel')}
                   />
-                  Default
+                  {t('appearance.background.default')}
                 </label>
               </div>
             </Section>
-            <Section title="Corners" subtitle="How sharp the surfaces feel.">
+            <Section title={t('appearance.corners.title')} subtitle={t('appearance.corners.subtitle')}>
               <ToggleGroup
                 value={String(customTheme.radius)}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
                 disabled={orgLocks.style}
-                aria-label="Corner radius"
+                aria-label={t('appearance.corners.ariaLabel')}
                 options={[
-                  { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
-                  { value: '6', label: 'Soft', 'aria-label': 'Soft corners', title: 'Gently rounded.' },
-                  { value: '12', label: 'Round', 'aria-label': 'Round corners', title: 'Fully rounded.' },
+                  { value: '0', label: t('appearance.corners.square'), 'aria-label': t('appearance.corners.squareAriaLabel'), title: t('appearance.corners.squareHint') },
+                  { value: '6', label: t('appearance.corners.soft'), 'aria-label': t('appearance.corners.softAriaLabel'), title: t('appearance.corners.softHint') },
+                  { value: '12', label: t('appearance.corners.round'), 'aria-label': t('appearance.corners.roundAriaLabel'), title: t('appearance.corners.roundHint') },
                 ]}
               />
             </Section>
-            <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
+            <Section title={t('appearance.typeface.title')} subtitle={t('appearance.typeface.subtitle')}>
               <ToggleGroup
                 value={customTheme.font}
                 onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
                 disabled={orgLocks.style}
-                aria-label="Custom typeface"
+                aria-label={t('appearance.typeface.ariaLabel')}
                 options={[
-                  { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
-                  { value: 'mono', label: 'Mono', 'aria-label': 'Mono font', title: 'JetBrains Mono everywhere.' },
+                  { value: 'standard', label: t('appearance.typeface.standard'), 'aria-label': t('appearance.typeface.standardAriaLabel'), title: t('appearance.typeface.standardHint') },
+                  { value: 'mono', label: t('appearance.typeface.mono'), 'aria-label': t('appearance.typeface.monoAriaLabel'), title: t('appearance.typeface.monoHint') },
                 ]}
               />
             </Section>
-            <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
+            <Section title={t('appearance.scanlines.title')} subtitle={t('appearance.scanlines.subtitle')}>
               <Switch
                 checked={customTheme.scanlines}
                 onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
                 disabled={orgLocks.style}
-                aria-label="Scanline overlay"
+                aria-label={t('appearance.scanlines.ariaLabel')}
               />
             </Section>
           </>
         )}
         {orgLocks.greeting ? orgSetsNote() : (
-        <Section title="Greeting" subtitle={orgLocks.greeting ? SET_BY_ORG : 'The line shown when you start a new task.'}>
+        <Section title={t('appearance.greeting.title')} subtitle={orgLocks.greeting ? t('appearance.setByOrg') : t('appearance.greeting.subtitle')}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={orgLocks.greeting ? look.greeting : settings.greeting}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
                 disabled={orgLocks.greeting}
-                title="Shown above the task input when you start a new task."
-                ariaLabel="Greeting text"
+                title={t('appearance.greeting.hint')}
+                ariaLabel={t('appearance.greeting.ariaLabel')}
               />
             </div>
             <AutoSaveTag settingKey="greeting" />
@@ -2507,35 +2531,35 @@ export default function SettingsView({
         )}
           {someLockedByOrg && (
             <div className="py-3 text-sm text-ink-2" data-testid="org-sets-rest">
-              Other style settings are set by your organization's branding.
+              {t('appearance.yourStyle.orgSetsRest')}
               {changeInBranding}
             </div>
           )}
           {/* Hosted MindsHub has no per-person sidebar title, logo or tab icon. */}
           {!hostedMindsHub && (
             <>
-        <Section title="Sidebar title" subtitle={`Shown at the top of the left-hand nav panel. Leave blank for the default, ${productName(STOCK_WORDMARK)}.`}>
+        <Section title={t('appearance.sidebarTitle.title')} subtitle={t('appearance.sidebarTitle.subtitle', { product: productName(STOCK_WORDMARK) })}>
           <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.navTitle || ''}
                 onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
                 placeholder={productName(STOCK_WORDMARK)}
-                title={`Replaces the ${productName(STOCK_WORDMARK)} wordmark in the nav panel.`}
-                ariaLabel="Sidebar title text"
+                title={t('appearance.sidebarTitle.hint', { product: productName(STOCK_WORDMARK) })}
+                ariaLabel={t('appearance.sidebarTitle.ariaLabel')}
               />
             </div>
             <AutoSaveTag settingKey="navTitle" />
           </div>
         </Section>
-        <Section title="Sidebar title color" subtitle="Pick a color for the sidebar title, or follow the theme's default text color.">
+        <Section title={t('appearance.sidebarTitleColor.title')} subtitle={t('appearance.sidebarTitleColor.subtitle')}>
           <div className="flex items-center gap-3">
             <input
               type="color"
               value={settings.navTitleColor || '#e8e8ec'}
               onChange={(e) => autoSaveSetting('navTitleColor', e.target.value, { debounceMs: 400 })}
               disabled={!settings.navTitleColor}
-              aria-label="Sidebar title color"
+              aria-label={t('appearance.sidebarTitleColor.ariaLabel')}
               className={COLOR_SWATCH_INPUT}
               style={{ opacity: settings.navTitleColor ? 1 : 0.45 }}
             />
@@ -2543,14 +2567,14 @@ export default function SettingsView({
               <Checkbox
                 checked={!settings.navTitleColor}
                 onCheckedChange={(v) => autoSaveSetting('navTitleColor', v ? '' : '#e8e8ec')}
-                aria-label="Follow theme color"
+                aria-label={t('appearance.sidebarTitleColor.followAriaLabel')}
               />
-              Follow theme
+              {t('appearance.sidebarTitleColor.follow')}
             </label>
             <AutoSaveTag settingKey="navTitleColor" />
           </div>
         </Section>
-        <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
+        <Section title={t('appearance.sidebarLogo.title')} subtitle={t('appearance.sidebarLogo.subtitle')}>
           <div className="flex items-center gap-3">
             {settings.navLogo && (
               <img
@@ -2563,7 +2587,7 @@ export default function SettingsView({
               variant="subtle"
               onClick={() => logoInputRef.current?.click()}
             >
-              {settings.navLogo ? 'Change logo' : 'Upload logo'}
+              {settings.navLogo ? t('appearance.sidebarLogo.change') : t('appearance.sidebarLogo.upload')}
             </Button>
             {settings.navLogo && (
               <Button
@@ -2571,7 +2595,7 @@ export default function SettingsView({
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
               >
                 {Ico.trash(14)}
-                Remove
+                {t('appearance.sidebarLogo.remove')}
               </Button>
             )}
             <input
@@ -2588,13 +2612,13 @@ export default function SettingsView({
           )}
         </Section>
         {host.isWeb && (
-          <Section title="Browser tab icon" subtitle="PNG, ICO, SVG, or WEBP, under 100 KB. A square image at least 32 × 32 pixels works best.">
+          <Section title={t('appearance.favicon.title')} subtitle={t('appearance.favicon.subtitle')}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               {settings.favicon && (
-                <img src={settings.favicon} alt="Browser tab icon preview" className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
+                <img src={settings.favicon} alt={t('appearance.favicon.previewAlt')} className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface" />
               )}
               <Button variant="subtle" className="whitespace-nowrap" onClick={() => faviconInputRef.current?.click()}>
-                {settings.favicon ? 'Change icon' : 'Upload icon'}
+                {settings.favicon ? t('appearance.favicon.change') : t('appearance.favicon.upload')}
               </Button>
               {settings.favicon && (
                 <Button variant="danger" className="whitespace-nowrap" onClick={() => {
@@ -2602,12 +2626,12 @@ export default function SettingsView({
                   faviconReadRef.current = null;
                   autoSaveSetting('favicon', '');
                   setFaviconError(null);
-                }} aria-label="Remove browser tab icon">
-                  {Ico.trash(14)} Remove
+                }} aria-label={t('appearance.favicon.removeAriaLabel')}>
+                  {Ico.trash(14)} {t('appearance.favicon.remove')}
                 </Button>
               )}
               <input ref={faviconInputRef} type="file" accept={`${FAVICON_MIME_TYPES.join(',')},.ico`}
-                aria-label="Browser tab icon file" className="hidden"
+                aria-label={t('appearance.favicon.fileAriaLabel')} className="hidden"
                 onChange={(e) => { handleFaviconUpload(e.target.files?.[0]); e.target.value = ''; }} />
               <AutoSaveTag settingKey="favicon" />
             </div>
@@ -2621,61 +2645,61 @@ export default function SettingsView({
         </SettingsGroup>
       </div>
       <div id={APPEARANCE_ANCHORS.display} className="scroll-mt-2">
-        <SettingsGroup title="Display" description="Personal display preferences. Only you see them.">
+        <SettingsGroup title={t('appearance.display.title')} description={t('appearance.display.description')}>
         {/* Gated on its own key. A server older than this setting does not
             serve the key and rejects a write to it with a 400, and it sends
             no figure sources to mark either. The renderer ships OTA and
             leads the installed server. */}
         {'showFigureSources' in settings && (
-          <Section title="Show where figures came from" subtitle="Underline each figure in an answer with the step it came from, and mark figures no step returned.">
+          <Section title={t('appearance.figureSources.title')} subtitle={t('appearance.figureSources.subtitle')}>
             <div className="flex items-center">
               <Switch
                 checked={settings.showFigureSources !== false}
                 onCheckedChange={(v) => autoSaveSetting('showFigureSources', v)}
-                aria-label="Show where figures came from"
+                aria-label={t('appearance.figureSources.title')}
               />
               <AutoSaveTag settingKey="showFigureSources" />
             </div>
           </Section>
         )}
         <div className="settings-hide-mobile">
-          <Section title="Animated background" subtitle="Animated dot-grid behind the app instead of a flat surface.">
+          <Section title={t('appearance.animatedBackground.title')} subtitle={t('appearance.animatedBackground.subtitle')}>
             <div className="flex items-center">
               <Switch
                 checked={settings.showDots === true}
                 onCheckedChange={(v) => autoSaveSetting('showDots', v)}
-                aria-label="Animated background"
+                aria-label={t('appearance.animatedBackground.title')}
               />
               <AutoSaveTag settingKey="showDots" />
             </div>
           </Section>
-          <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
+          <Section title={t('appearance.counters.title')} subtitle={t('appearance.counters.subtitle')}>
             <div className="flex items-center">
               <Switch
                 checked={settings.showCounters === true}
                 onCheckedChange={(v) => autoSaveSetting('showCounters', v)}
-                aria-label="Nav-panel counters"
+                aria-label={t('appearance.counters.ariaLabel')}
               />
               <AutoSaveTag settingKey="showCounters" />
             </div>
           </Section>
-          <Section title="Theme toggle button" subtitle="Light/dark control on the display button in the window corner.">
+          <Section title={t('appearance.themeToggle.title')} subtitle={t('appearance.themeToggle.subtitle')}>
             <div className="flex items-center">
               <Switch
                 checked={settings.showThemeToggle !== false}
                 onCheckedChange={(v) => autoSaveSetting('showThemeToggle', v)}
-                aria-label="Theme toggle button"
+                aria-label={t('appearance.themeToggle.title')}
               />
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
           {!SKIN_LOCKED && (
-            <Section title="8-bit style toggle button" subtitle="Normal/8-Bit style control on the same button. With both on, the button opens Display settings.">
+            <Section title={t('appearance.styleToggle.title')} subtitle={t('appearance.styleToggle.subtitle')}>
               <div className="flex items-center">
                 <Switch
                   checked={settings.show8bitToggle !== false}
                   onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
-                  aria-label="8-bit style toggle button"
+                  aria-label={t('appearance.styleToggle.title')}
                 />
                 <AutoSaveTag settingKey="show8bitToggle" />
               </div>
@@ -2691,8 +2715,8 @@ export default function SettingsView({
   const renderBrandingSection = () => (canEditBranding ? (
     <SettingsSectionPanel>
       <SettingsGroup
-        title="Branding"
-        description="Your organization's look, for everyone in it. Members see it the next time they open the app or Settings."
+        title={t('branding.title')}
+        description={t('branding.description')}
       >
         <OrgBrandingFields branding={orgBranding} onSaved={onOrgBrandingSaved} onDraftChange={onOrgBrandingDraft} />
       </SettingsGroup>
@@ -2702,16 +2726,16 @@ export default function SettingsView({
     // How the app behaves on this computer. Desktop only (settingsNavigation
     // leaves it out on web). Every control here saves itself.
     <SettingsSectionPanel autoSaved>
-      <SettingsGroup title="Desktop">
+      <SettingsGroup title={t('desktop.title')}>
         <Section
-          title="Stay awake for scheduled tasks"
-          subtitle="While plugged in, keeps this computer from sleeping when a scheduled task is running or about to run. It can't wake a computer that's already asleep or stop it sleeping when you close the lid."
+          title={t('desktop.keepAwake.title')}
+          subtitle={t('desktop.keepAwake.subtitle')}
         >
           <div className="flex items-center">
             <Switch
               checked={settings.scheduleKeepAwake !== false}
               onCheckedChange={(v) => autoSaveSetting('scheduleKeepAwake', v)}
-              aria-label="Stay awake for scheduled tasks"
+              aria-label={t('desktop.keepAwake.title')}
             />
             <AutoSaveTag settingKey="scheduleKeepAwake" />
           </div>
@@ -2799,13 +2823,13 @@ export default function SettingsView({
           <button
             type="button"
             className="settings-mobile__back"
-            aria-label={inDetail ? 'Back to settings' : 'Close settings'}
+            aria-label={inDetail ? t('mobile.back') : t('mobile.close')}
             onClick={() => (inDetail ? onSectionChange?.(null) : onClose?.())}
           >
             {Ico.chevLeft(20)}
           </button>
           <div className="settings-mobile__title" id="settings-mobile-title">
-            {activeItem ? activeItem.label : 'Settings'}
+            {activeItem ? t(`nav.items.${activeItem.id}`) : t('nav.title')}
           </div>
           <span className="settings-mobile__spacer" aria-hidden="true" />
         </header>
@@ -2815,7 +2839,7 @@ export default function SettingsView({
               {renderers[shownSection]?.()}
             </div>
           ) : (
-            <nav className="settings-list" role="navigation" aria-label="Settings sections">
+            <nav className="settings-list" role="navigation" aria-label={t('nav.ariaLabel')}>
               {visibleNav.map((item, index, items) => {
                 // Match the desktop nav: Backend can recover a dead local
                 // server, while Coding agent owns a device-local opt-in and
@@ -2828,7 +2852,7 @@ export default function SettingsView({
                 return (
                   <Fragment key={item.id}>
                   {(index === 0 || items[index - 1]?.group !== item.group) && (
-                    <div className="section-label pt-4 px-1 pb-1.5">{item.group}</div>
+                    <div className="section-label pt-4 px-1 pb-1.5">{t(`nav.groups.${item.group}`)}</div>
                   )}
                   <div className="mshell-accordion">
                     <button
@@ -2844,7 +2868,7 @@ export default function SettingsView({
                           {icon}
                         </span>
                       )}
-                      <span className="mshell-accordion__label">{item.label}</span>
+                      <span className="mshell-accordion__label">{t(`nav.items.${item.id}`)}</span>
                       <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
                     </button>
                   </div>

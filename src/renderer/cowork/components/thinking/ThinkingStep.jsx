@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import { StepIcon } from './StepIcon';
 import { useTypedText } from './FirstTake';
 import { stepDisplayLabel } from '../../lib/responseStreamAdapter';
+import i18n, { useTranslation } from '../../../lib/i18n';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 
 const DOT_FRAMES = ['.', '..', '...', '..', '.'];
@@ -30,10 +31,10 @@ function TextDots() {
 function formatStepDuration(startedAt, completedAt) {
   if (!startedAt || !completedAt) return null;
   const seconds = Math.floor((completedAt - startedAt) / 1000);
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) return i18n.t('duration.seconds', { ns: 'chat', seconds });
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return `${m}m ${s}s`;
+  return i18n.t('duration.minutesSeconds', { ns: 'chat', minutes: m, seconds: s });
 }
 
 // The opening Note's stand-in phrase types out like streamed text would.
@@ -88,6 +89,7 @@ export function ThinkingStep({
   isLast = false,
   onActivate,
 }) {
+  const { t } = useTranslation('chat');
   const isInProgress = step.status === 'in_progress';
   const isNote = step.badge === 'Note';
   const duration = formatStepDuration(step.startedAt, step.completedAt);
@@ -145,9 +147,9 @@ export function ThinkingStep({
           {step.cellStatus === 'timeout' && (
             <span
               className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
-              title="This cell was stopped — it timed out or went silent. The next cell should be smaller, or split the work across cells."
+              title={t('thinking.cellTimedOutTitle')}
             >
-              timed out
+              {t('thinking.cellTimedOut')}
             </span>
           )}
           {/* Gone from the layout once it has faded, so nothing is left
@@ -158,12 +160,12 @@ export function ThinkingStep({
               className="h-1.5 w-1.5 flex-none rounded-full bg-yellow-400"
               style={{ animation: 'step-error-dot-fade 4s ease-out forwards' }}
               onAnimationEnd={() => setErrorDotFaded(true)}
-              title="This cell ended with an error."
+              title={t('thinking.cellErrorTitle')}
             />
           )}
           {step.badge === 'Artifact' && (
             <span className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-ink-4">
-              artifact
+              {t('thinking.artifactBadge')}
             </span>
           )}
           {/* The duration is always the last, fixed-width slot, empty when

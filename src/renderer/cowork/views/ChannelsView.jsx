@@ -15,6 +15,7 @@ import Ico from '../components/Icons';
 import { iconSize } from '../components/ui/Icon';
 import { Badge, Button, Field, Tooltip } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
+import { useTranslation } from '../../lib/i18n';
 import {
   fetchChannelPlugins,
   fetchChannelStatus,
@@ -33,6 +34,7 @@ import {
 // toggle. Changing it applies to NEW conversations; existing chats stay pinned
 // to the agent that first served them.
 function ChannelAgentSelect() {
+  const { t } = useTranslation('settingsTools');
   const [agent, setAgent] = useState(null);   // { harness, options }
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState('');
@@ -46,10 +48,10 @@ function ChannelAgentSelect() {
       setAgent(r);
       const n = r?.reset_conversations || 0;
       setNote(n > 0
-        ? `Saved — ${n} active chat${n === 1 ? '' : 's'} will continue with ${harness} on the next message.`
-        : `Saved — channels now use ${harness}.`);
+        ? t('channels.agent.savedReset', { count: n, agent: harness })
+        : t('channels.agent.saved', { agent: harness }));
     } catch (err) {
-      setNote(err?.message || 'Could not change the channel agent');
+      setNote(err?.message || t('channels.agent.changeFailed'));
     } finally {
       setSaving(false);
     }
@@ -58,8 +60,8 @@ function ChannelAgentSelect() {
   if (!agent || !(agent.options || []).length) return null;
   return (
     <div className="channels-agent">
-      <span className="channels-agent-label">Channel agent</span>
-      <div className="channels-agent-tabs" role="tablist" aria-label="Channel agent">
+      <span className="channels-agent-label">{t('channels.agent.label')}</span>
+      <div className="channels-agent-tabs" role="tablist" aria-label={t('channels.agent.label')}>
         {agent.options.map((o) => (
           <button
             key={o}
@@ -75,7 +77,7 @@ function ChannelAgentSelect() {
         ))}
       </div>
       <span className="channels-agent-hint">
-        Switching restarts active chats with the new agent on their next message.
+        {t('channels.agent.hint')}
       </span>
       {note ? <span className="channels-notice">{note}</span> : null}
     </div>
@@ -105,8 +107,9 @@ function ChannelLogo({ type, size = 26 }) {
 }
 
 function StatusBadge({ active, configured, orgReady = true }) {
-  if (!orgReady) return <Badge variant="muted" size="xs">Coming soon</Badge>;
-  const label = active ? 'Active' : configured ? 'Configured' : 'Not connected';
+  const { t } = useTranslation('settingsTools');
+  if (!orgReady) return <Badge variant="muted" size="xs">{t('channels.status.comingSoon')}</Badge>;
+  const label = active ? t('channels.status.active') : configured ? t('channels.status.configured') : t('channels.status.notConnected');
   // Active and Configured are both "healthy" states (green) — Configured
   // just means set-but-not-necessarily-live, not a warning.
   const variant = (active || configured) ? 'success' : 'muted';
@@ -116,6 +119,7 @@ function StatusBadge({ active, configured, orgReady = true }) {
 }
 
 function ChannelCard({ plugin, status, onChanged }) {
+  const { t } = useTranslation('settingsTools');
   const caps = plugin.capabilities || {};
   const [config, setConfig] = useState(null);     // { fields: { name: {is_set, value} } }
   const [draft, setDraft] = useState({});          // user-typed values, by field name
@@ -165,7 +169,7 @@ function ChannelCard({ plugin, status, onChanged }) {
     const missing = missingRequired(values);
     if (missing.length) {
       setError(''); setNotice(''); setWarning('');
-      setFieldErrors(Object.fromEntries(missing.map((f) => [f.name, `${f.label} is required.`])));
+      setFieldErrors(Object.fromEntries(missing.map((f) => [f.name, t('channels.fieldRequired', { field: f.label })])));
       return;
     }
 
@@ -187,26 +191,26 @@ function ChannelCard({ plugin, status, onChanged }) {
 
       if (caps.supports_webhook_setup) {
         const r = await setupChannel(plugin.channel_type);
-        setNotice(r?.detail || (r?.active ? 'Connected.' : 'Setup ran.'));
+        setNotice(r?.detail || (r?.active ? t('channels.connected') : t('channels.setupRan')));
       } else {
         const r = await reloadChannel(plugin.channel_type);
         // A channel can stay down with every required field set, so this is a
         // real outcome and not something the validation above missed.
         if (r?.active) {
           setNotice(saved
-            ? 'Credentials saved — adapter active. Register the webhook URL below on the platform.'
-            : 'Adapter active. Register the webhook URL below on the platform.');
+            ? t('channels.savedActive')
+            : t('channels.active'));
         } else if (saved) {
-          setWarning('Credentials saved, but the channel is not active yet. Check the remaining fields above and the server log.');
+          setWarning(t('channels.savedNotActive'));
         } else {
-          setError('The channel is not active. Check the stored credentials and the server log.');
+          setError(t('channels.notActive'));
         }
       }
       setDraft({});
       onChanged?.();
     } catch (err) {
-      const detail = err?.message || 'Connect failed';
-      setError(saved ? `Credentials saved, but connecting failed: ${detail}` : detail);
+      const detail = err?.message || t('channels.connectFailed');
+      setError(saved ? t('channels.savedConnectFailed', { detail }) : detail);
     } finally {
       setBusy(false);
       // Whichever way the attempt went, show what is actually stored now.
@@ -228,7 +232,7 @@ function ChannelCard({ plugin, status, onChanged }) {
       await loadConfig();
       onChanged?.();
     } catch (err) {
-      setError(err?.message || 'Disconnect failed');
+      setError(err?.message || t('channels.disconnectFailed'));
     } finally {
       setBusy(false);
     }
@@ -240,10 +244,10 @@ function ChannelCard({ plugin, status, onChanged }) {
     setBusy(true); setError(''); setNotice(''); setWarning('');
     try {
       const r = await testChannelConnection(plugin.channel_type);
-      if (r?.ok) setNotice(r.detail || 'Connection verified.');
-      else setError(r?.detail || 'The platform rejected these credentials.');
+      if (r?.ok) setNotice(r.detail || t('channels.verified'));
+      else setError(r?.detail || t('channels.rejected'));
     } catch (err) {
-      setError(err?.message || 'Could not test the connection');
+      setError(err?.message || t('channels.testFailed'));
     } finally {
       setBusy(false);
     }
@@ -273,7 +277,7 @@ function ChannelCard({ plugin, status, onChanged }) {
           return (
             <Field
               key={f.name}
-              label={<>{f.label}{isSet ? <Badge variant="muted" size="xs">set</Badge> : null}</>}
+              label={<>{f.label}{isSet ? <Badge variant="muted" size="xs">{t('channels.fieldSet')}</Badge> : null}</>}
               required={f.required}
               error={fieldErrors[f.name]}
             >
@@ -281,7 +285,7 @@ function ChannelCard({ plugin, status, onChanged }) {
                 type={f.secret ? 'password' : 'text'}
                 className="channels-input"
                 value={draft[f.name] ?? (f.secret ? '' : (stored ?? ''))}
-                placeholder={f.secret && isSet ? '•••••••• (leave blank to keep)' : (f.description || '')}
+                placeholder={f.secret && isSet ? t('channels.secretPlaceholder') : (f.description || '')}
                 onChange={(e) => setField(f.name, e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
@@ -293,18 +297,18 @@ function ChannelCard({ plugin, status, onChanged }) {
 
       {webhookPath && !caps.supports_webhook_setup ? (
         <p className="channels-hook">
-          Register this webhook on {plugin.display_name}:{' '}
+          {t('channels.registerWebhook', { channel: plugin.display_name })}{' '}
           <code>{`<server public URL>/api/v1/channels/${plugin.channel_type}${webhookPath}`}</code>
         </p>
       ) : null}
 
       {caps.supports_oauth ? (
-        <p className="channels-note">OAuth install isn’t wired yet — enter credentials directly above.</p>
+        <p className="channels-note">{t('channels.oauthNotWired')}</p>
       ) : null}
 
       {!orgReady ? (
         <p className="channels-note">
-          Coming soon for team/cloud workspaces — {plugin.display_name} works today on desktop.
+          {t('channels.orgComingSoon', { channel: plugin.display_name })}
         </p>
       ) : null}
 
@@ -314,16 +318,16 @@ function ChannelCard({ plugin, status, onChanged }) {
 
       <div className="channels-actions">
         <Button variant="primary" onClick={connect} disabled={busy || !orgReady || configPending}>
-          {Ico.power(14)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
+          {Ico.power(14)}<span>{configured ? t('channels.saveReconnect') : t('channels.connect')}</span>
         </Button>
         {configured && caps.supports_verify ? (
           <Button variant="subtle" onClick={testConnection} disabled={busy || !orgReady}>
-            Test connection
+            {t('channels.testConnection')}
           </Button>
         ) : null}
         {configured ? (
           <Button variant="danger" onClick={disconnect} disabled={busy || !orgReady}>
-            Disconnect
+            {t('channels.disconnect')}
           </Button>
         ) : null}
       </div>
@@ -332,6 +336,7 @@ function ChannelCard({ plugin, status, onChanged }) {
 }
 
 export default function ChannelsView() {
+  const { t } = useTranslation('settingsTools');
   const [plugins, setPlugins] = useState([]);
   const [statusByType, setStatusByType] = useState({});
   const [loading, setLoading] = useState(true);
@@ -359,28 +364,28 @@ export default function ChannelsView() {
   return (
     <div className="channels-view">
       <header className="channels-top">
-        <span>Channels</span>
-        <Tooltip content="Refresh">
-          <Button variant="subtle" icon onClick={refreshAll} aria-label="Refresh">
+        <span>{t('channels.title')}</span>
+        <Tooltip content={t('channels.refresh')}>
+          <Button variant="subtle" icon onClick={refreshAll} aria-label={t('channels.refresh')}>
             {Ico.refresh(16)}
           </Button>
         </Tooltip>
       </header>
       <div className="channels-lede">
         <p className="channels-intro">
-          Connect a messaging app so people can talk to the agent from their chats.
+          {t('channels.intro')}
         </p>
         <ChannelAgentSelect />
       </div>
       {loading ? (
-        <p className="channels-muted channels-pad">Loading channels…</p>
+        <p className="channels-muted channels-pad">{t('channels.loading')}</p>
       ) : plugins.length === 0 ? (
         <p className="channels-muted channels-pad">
-          No channels available. Is the server running?
+          {t('channels.empty')}
         </p>
       ) : (
         <main className="channels-body">
-          <nav className="channels-list scroll-clean" aria-label="Channels">
+          <nav className="channels-list scroll-clean" aria-label={t('channels.listAriaLabel')}>
             {plugins.map((p) => {
               const st = statusByType[p.channel_type];
               const isSelected = p.channel_type === selected?.channel_type;

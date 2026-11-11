@@ -35,6 +35,7 @@ import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, compactPath, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
 import { takeTaskStarted } from './startedTasks';
+import i18n, { useTranslation } from '../../lib/i18n';
 import './event-timeline.css';
 
 
@@ -227,6 +228,7 @@ const STEP_ICON: Record<StepIcon, (size: IconSize) => ReactNode> = {
 
 
 function StepHead({ icon, verb, target, failed, extra }: { icon: StepIcon; verb: string; target: string; failed?: boolean; extra?: ReactNode }) {
+  const { t } = useTranslation('code');
   return (
     <>
       <span className="code-step__icon" aria-hidden="true">{STEP_ICON[icon](14)}</span>
@@ -235,7 +237,7 @@ function StepHead({ icon, verb, target, failed, extra }: { icon: StepIcon; verb:
         {verb && target ? ' ' : ''}
         <span className="code-step__target">{target}</span>
       </span>
-      {failed && <span className="code-step__status">Failed</span>}
+      {failed && <span className="code-step__status">{t('timeline.failed')}</span>}
       {extra}
     </>
   );
@@ -268,7 +270,7 @@ function stepDetail(event: CodingEvent): (() => ReactNode) | undefined {
     return () => (
       <div className="code-step__shell">
         <pre className="code-step__command"><span aria-hidden="true">$ </span>{displayCommand(event)}</pre>
-        {stepFailed(event) && code !== null && <div className="code-step__exit">Exit code {code}</div>}
+        {stepFailed(event) && code !== null && <div className="code-step__exit">{i18n.t('timeline.exitCode', { ns: 'code', code: String(code) })}</div>}
         {output && <pre className="code-step__output">{output}</pre>}
       </div>
     );
@@ -338,6 +340,7 @@ function stepHeadline(row: ActivityRow): string {
 
 
 function ActivityGroup({ events }: { events: CodingEvent[] }) {
+  const { t } = useTranslation('code');
   const rows = activityRows(events);
   // Retries are recoverable, so they do not count as failures.
   const failures = rows.filter((row) => row.kind === 'step' && stepFailed(row.event)).length;
@@ -364,7 +367,7 @@ function ActivityGroup({ events }: { events: CodingEvent[] }) {
     >
       <summary>
         {copy}
-        {failed && <small>{failures} failed</small>}
+        {failed && <small>{t('timeline.failedCount', { count: failures })}</small>}
         <span className="code-activity-group__chevron">{Ico.chevDown(12)}</span>
       </summary>
       {open && (
@@ -447,7 +450,7 @@ function foldFinishedTurns(items: TimelineItem[], answers: Set<number>): RenderI
       if (work.some(hasVisibleContent)) {
         const start = Number.isFinite(startedAt) ? startedAt : Date.parse(lastEvent(work[0])?.timestamp || '');
         const duration = durationLabel(start, Date.parse(item.event.timestamp));
-        rendered.push({ kind: 'worked', key: `worked-${item.event.seq}`, items: work, label: duration ? `Worked for ${duration}` : 'Worked' });
+        rendered.push({ kind: 'worked', key: `worked-${item.event.seq}`, items: work, label: duration ? i18n.t('timeline.workedFor', { ns: 'code', duration }) : i18n.t('timeline.worked', { ns: 'code' }) });
       } else {
         rendered.push(...work);
       }
@@ -481,17 +484,18 @@ const TURN_CHANGES_SHOWN = 5;
 
 
 function TurnChanges({ diff, onOpenReview }: { diff: CodingEvent; onOpenReview?: () => void }) {
+  const { t } = useTranslation('code');
   const files = turnDiffFiles(diff.text);
   if (!files.length) return null;
   const additions = files.reduce((total, file) => total + file.additions, 0);
   const deletions = files.reduce((total, file) => total + file.deletions, 0);
   return (
-    <section className="code-turn-changes" aria-label="Files changed in this turn">
+    <section className="code-turn-changes" aria-label={t('timeline.turnChanges.ariaLabel')}>
       <header>
         <span className="code-turn-changes__icon" aria-hidden="true">{Ico.edit(14)}</span>
-        <strong>Edited {files.length} {files.length === 1 ? 'file' : 'files'}</strong>
+        <strong>{t('timeline.turnChanges.edited', { count: files.length })}</strong>
         <LineCounts additions={additions} deletions={deletions} />
-        {onOpenReview && <Button size="sm" variant="subtle" className="ml-auto" onClick={onOpenReview}>Review</Button>}
+        {onOpenReview && <Button size="sm" variant="subtle" className="ml-auto" onClick={onOpenReview}>{t('timeline.turnChanges.review')}</Button>}
       </header>
       <ul>
         {files.slice(0, TURN_CHANGES_SHOWN).map((file) => (
@@ -500,7 +504,7 @@ function TurnChanges({ diff, onOpenReview }: { diff: CodingEvent; onOpenReview?:
             <LineCounts additions={file.additions} deletions={file.deletions} />
           </li>
         ))}
-        {files.length > TURN_CHANGES_SHOWN && <li className="code-turn-changes__more">and {files.length - TURN_CHANGES_SHOWN} more</li>}
+        {files.length > TURN_CHANGES_SHOWN && <li className="code-turn-changes__more">{t('timeline.turnChanges.more', { count: files.length - TURN_CHANGES_SHOWN })}</li>}
       </ul>
     </section>
   );
@@ -543,8 +547,8 @@ function elapsedLabel(milliseconds: number): string {
 // header: what the agent is doing now, and how long this turn has taken.
 function runningLabel(session: CodingSession, liveEvents: CodingEvent[]): string {
   // A new task is running while its workspace is still being copied or checked out.
-  if (session.run_status === 'queued' || session.run_status === 'preparing') return 'Preparing the task workspace…';
-  if (session.task_mode === 'plan' && !liveEvents.length) return 'Exploring and preparing a plan…';
+  if (session.run_status === 'queued' || session.run_status === 'preparing') return i18n.t('timeline.preparingWorkspace', { ns: 'code' });
+  if (session.task_mode === 'plan' && !liveEvents.length) return i18n.t('timeline.preparingPlan', { ns: 'code' });
   return liveStatusLabel(liveEvents);
 }
 
@@ -581,18 +585,20 @@ function PlanSteps({ event }: { event: CodingEvent }) {
 
 // A plan proposed in plan mode, which the user decides on.
 function PlanEvent({ event }: { event: CodingEvent }) {
+  const { t } = useTranslation('code');
   return (
     <section className="code-plan">
-      <div className="code-plan__heading">{event.title || 'Plan'}</div>
+      <div className="code-plan__heading">{event.title || t('timeline.plan.heading')}</div>
       {isPlanUpdate(event)
         ? <PlanSteps event={event} />
-        : <MarkdownContent text={event.text || (typeof event.data.text === 'string' ? event.data.text : '') || 'The agent is preparing a plan…'} />}
+        : <MarkdownContent text={event.text || (typeof event.data.text === 'string' ? event.data.text : '') || t('timeline.plan.preparing')} />}
     </section>
   );
 }
 
 
 function ChildWorkEvent({ event }: { event: CodingEvent }) {
+  const { t } = useTranslation('code');
   const status = typeof event.data.status === 'string' ? event.data.status : event.phase || '';
   const running = event.phase === 'started' || event.phase === 'progress' || /running|progress/i.test(status);
   const failed = event.phase === 'failed' || /failed|error/i.test(status);
@@ -600,14 +606,14 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
     .map((key) => event.data[key])
     .find((value) => typeof value === 'string' && value !== event.title);
   return (
-    <section className={`code-child-work${running ? ' is-running' : ''}${failed ? ' is-failed' : ''}`} aria-label="Parallel Codex work">
+    <section className={`code-child-work${running ? ' is-running' : ''}${failed ? ' is-failed' : ''}`} aria-label={t('timeline.childWork.ariaLabel')}>
       <span className="code-child-work__icon">{running ? <Spinner className="text-xs" /> : failed ? Ico.close(12) : Ico.check(12)}</span>
       <div>
-        <small className="section-label">Parallel work</small>
-        <strong>{event.title || 'Codex worker'}</strong>
+        <small className="section-label">{t('timeline.childWork.label')}</small>
+        <strong>{event.title || t('timeline.childWork.worker')}</strong>
         {typeof detail === 'string' && <p>{detail}</p>}
       </div>
-      <span className="code-child-work__status">{running ? 'Working' : failed ? 'Stopped' : 'Done'}</span>
+      <span className="code-child-work__status">{running ? t('timeline.childWork.working') : failed ? t('timeline.childWork.stopped') : t('timeline.childWork.done')}</span>
     </section>
   );
 }
@@ -635,6 +641,7 @@ function messageAttachments(event: CodingEvent): ReactNode {
 // The files a turn changed sit with its answer, ahead of the answer's
 // actions, so the actions close the turn.
 function TimelineEvent({ event, copyable = false, changes }: { event: CodingEvent; copyable?: boolean; changes?: ReactNode }) {
+  const { t } = useTranslation('code');
   if (event.type === 'user_message') {
     return (
       <UserTurn
@@ -642,13 +649,13 @@ function TimelineEvent({ event, copyable = false, changes }: { event: CodingEven
         content={event.text}
         turnId={`code-${event.seq}`}
         attachments={messageAttachments(event)}
-        actions={<TurnActions text={event.text} copyLabel="Copy message" align="right" />}
+        actions={<TurnActions text={event.text} copyLabel={t('timeline.copyMessage')} align="right" />}
       />
     );
   }
   if (event.type === 'agent_message') {
     return (
-      <article className="code-agent-message" aria-label="Coding agent message">
+      <article className="code-agent-message" aria-label={t('timeline.agentMessageAriaLabel')}>
         <MarkdownContent
           text={event.text}
           id={`code-event-${event.seq}`}
@@ -656,17 +663,17 @@ function TimelineEvent({ event, copyable = false, changes }: { event: CodingEven
           animateStreamingWords={false}
         />
         {changes}
-        {copyable && <TurnActions text={event.text} copyLabel="Copy response" isLast />}
+        {copyable && <TurnActions text={event.text} copyLabel={t('timeline.copyResponse')} isLast />}
       </article>
     );
   }
   if (event.type === 'plan') return <PlanEvent event={event} />;
   if (event.type === 'child_work') return <ChildWorkEvent event={event} />;
-  if (event.type === 'approval' && event.data.decision === 'deny') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>Approval denied</strong></div></div>;
-  if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Approval resolved'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
-  if (event.type === 'command_result' && event.data.delivery === 'confirmed') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Follow-up delivered'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
-  if (event.type === 'command_result') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{event.title || 'Request rejected'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
-  if (event.type === 'session') return <div className="code-decision-record is-info"><span>{Ico.list(12)}</span><div><strong>{event.title || 'Task status'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (event.type === 'approval' && event.data.decision === 'deny') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{t('timeline.record.approvalDenied')}</strong></div></div>;
+  if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || t('timeline.record.approvalResolved')}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (event.type === 'command_result' && event.data.delivery === 'confirmed') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || t('timeline.record.followUpDelivered')}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (event.type === 'command_result') return <div className="code-decision-record is-failed"><span>{Ico.close(12)}</span><div><strong>{event.title || t('timeline.record.requestRejected')}</strong>{event.text && <p>{event.text}</p>}</div></div>;
+  if (event.type === 'session') return <div className="code-decision-record is-info"><span>{Ico.list(12)}</span><div><strong>{event.title || t('timeline.record.taskStatus')}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   return null;
 }
 
@@ -682,6 +689,7 @@ function TaskOutcome({
   latestError: CodingEvent | undefined;
   recovering: boolean;
 }) {
+  const { t } = useTranslation('code');
   // A paused remote run and its Reopen task action are about the next send,
   // so the composer lip carries them, as it does account and model limits.
   if (RECOVERABLE_RUNS.includes(session.run_status || '')) return null;
@@ -704,7 +712,7 @@ function TaskOutcome({
         <strong>{status.label}</strong>
         {errorDetail && session.status === 'failed' && (
           <details className="code-task-outcome__details">
-            <summary>Failure details</summary>
+            <summary>{t('timeline.failureDetails')}</summary>
             <p>{errorDetail}</p>
           </details>
         )}
@@ -727,6 +735,7 @@ export const EventTimeline = memo(function EventTimeline({
   recovering?: boolean;
   onOpenReview?: () => void;
 }) {
+  const { t } = useTranslation('code');
   const items = useTimelineItems(events, session.id);
   const [visibleCount, setVisibleCount] = useState(TIMELINE_WINDOW_SIZE);
   useEffect(() => { setVisibleCount(TIMELINE_WINDOW_SIZE); }, [session.id]);
@@ -786,7 +795,7 @@ export const EventTimeline = memo(function EventTimeline({
           className="code-timeline__earlier"
           onClick={() => setVisibleCount((current) => current + TIMELINE_WINDOW_SIZE)}
         >
-          Show {Math.min(hiddenCount, TIMELINE_WINDOW_SIZE)} earlier updates
+          {t('timeline.showEarlier', { count: Math.min(hiddenCount, TIMELINE_WINDOW_SIZE) })}
         </Button>
       )}
       {foldFinishedTurns(visibleItems, answers).map((item) => {

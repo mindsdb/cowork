@@ -15,6 +15,12 @@
 // section of docs/update-behavior.md.
 
 import { parseCalVer, compareCalVer, calverDate } from './version';
+import { sourceTranslator, type Translate } from './i18n/translate';
+import appSource from './i18n/locales/en/app.json';
+
+/* The notices' copy lives in the `app` catalog under `shellSupport`. The
+   renderer passes its `app` translator; without one the copy is English. */
+const english: Translate = sourceTranslator(appSource);
 
 /**
  * The oldest prod shell the current UI and cowork-server support.
@@ -198,36 +204,36 @@ export interface ShellAutoUpdateView {
 export function deriveShellTooOldNotice(
   verdict: ShellSupportVerdict | null | undefined,
   shellAuto: ShellAutoUpdateView | null | undefined,
+  t: Translate = english,
 ): ShellTooOldNotice | null {
   if (!verdict || verdict.status !== 'too-old') return null;
 
-  const title = 'This app is too old for this version of Cowork';
-  const body = `App shell ${verdict.shellVersion} is installed; ${verdict.latestShellVersion} is current. `
-    + 'Some features are hidden until the app updates.';
+  const title = t('shellSupport.tooOld.title');
+  const body = t('shellSupport.tooOld.body', { installed: verdict.shellVersion, current: verdict.latestShellVersion });
 
   const phase = shellAuto?.phase;
   switch (phase) {
     case 'ready-to-install':
-      return { title, body, actionLabel: 'Restart to update', action: 'install' };
+      return { title, body, actionLabel: t('shellSupport.tooOld.restartToUpdate'), action: 'install' };
     case 'available':
-      return { title, body, actionLabel: 'Download update', action: 'download' };
+      return { title, body, actionLabel: t('shellSupport.tooOld.downloadUpdate'), action: 'download' };
     case 'checking':
-      return { title, body, actionLabel: 'Checking for update…', action: null };
+      return { title, body, actionLabel: t('shellSupport.tooOld.checking'), action: null };
     case 'downloading': {
       const pct = shellAuto?.progress?.percent;
-      const actionLabel = pct != null ? `Downloading (${Math.round(pct)}%)` : 'Downloading…';
+      const actionLabel = pct != null ? t('shellSupport.tooOld.downloadingPercent', { percent: Math.round(pct) }) : t('shellSupport.tooOld.downloading');
       return { title, body, actionLabel, action: null };
     }
     case 'installing':
-      return { title, body, actionLabel: 'Installing…', action: null };
+      return { title, body, actionLabel: t('shellSupport.tooOld.installing'), action: null };
     case 'failed':
-      if (shellAuto?.recoverable) return { title, body, actionLabel: 'Retry update', action: 'retry' };
-      return { title, body, actionLabel: 'Download the latest app', action: 'open-download-page' };
+      if (shellAuto?.recoverable) return { title, body, actionLabel: t('shellSupport.tooOld.retryUpdate'), action: 'retry' };
+      return { title, body, actionLabel: t('shellSupport.tooOld.downloadLatest'), action: 'open-download-page' };
     default:
       // disabled, idle, complete, or no snapshot at all (a shell older than the
       // auto-updater): the shell will not update itself, so send the user to
       // the installer.
-      return { title, body, actionLabel: 'Download the latest app', action: 'open-download-page' };
+      return { title, body, actionLabel: t('shellSupport.tooOld.downloadLatest'), action: 'open-download-page' };
   }
 }
 
@@ -249,22 +255,20 @@ export interface ShellOsCappedNotice {
  */
 export function deriveShellOsCappedNotice(
   verdict: ShellSupportVerdict | null | undefined,
+  t: Translate = english,
 ): ShellOsCappedNotice | null {
   if (!verdict || verdict.status !== 'os-capped') return null;
-  const minimum = `macOS ${MIN_MACOS_FOR_LATEST_SHELL} or later`;
+  const minimum = t('shellSupport.osCapped.minimum', { version: MIN_MACOS_FOR_LATEST_SHELL });
   if (verdict.reason === 'below-floor') {
     return {
-      title: 'Update macOS to keep using Cowork safely',
-      body: 'This version of the app is unsafe if more than one person signs in to Cowork on this Mac user account: '
-        + 'it can show one account\'s data to the next person who signs in. '
-        + `Newer versions fix this but need ${minimum}.`,
+      title: t('shellSupport.osCapped.belowFloorTitle'),
+      body: t('shellSupport.osCapped.belowFloorBody', { minimum }),
       dismissal: 'this-launch',
     };
   }
   return {
-    title: 'Your version of macOS no longer receives app updates',
-    body: `This Mac runs macOS ${verdict.macosMajor}. Update to ${minimum} to keep getting app updates. `
-      + 'Some features may stop working over time.',
+    title: t('shellSupport.osCapped.title'),
+    body: t('shellSupport.osCapped.body', { major: verdict.macosMajor, minimum }),
     dismissal: 'once',
   };
 }

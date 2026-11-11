@@ -1,5 +1,6 @@
 import type { ConnectorConnection } from '../api';
 import type { CodeProject, ProjectConnection } from './api';
+import i18n from '../../lib/i18n';
 
 
 /**
@@ -30,5 +31,7 @@ export type ConnectorReturn = {
 );
 
 export function connectorReturnLabel(destination: ConnectorReturn['destination']): string {
-  return destination === 'settings' ? 'Back to project settings' : 'Back to task';
+  return destination === 'settings'
+    ? i18n.t('projectConnections.backToSettings', { ns: 'code' })
+    : i18n.t('projectConnections.backToTask', { ns: 'code' });
 }

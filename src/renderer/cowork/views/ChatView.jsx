@@ -58,7 +58,7 @@ import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
-import { artifactOpenTarget, NO_PREVIEW_DOWNLOADED_NOTE } from '../lib/artifactActions';
+import { artifactOpenTarget, noPreviewDownloadedNote } from '../lib/artifactActions';
 import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
@@ -79,6 +79,11 @@ import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
 import { TurnActions } from '../components/chat/TurnActions';
 import { UserTurn } from '../components/chat/UserTurn';
+import i18n, { currentLocale, useTranslation } from '../../lib/i18n';
+import { productName } from '../../lib/deploymentBrand';
+
+// Chat-namespace text for helpers that run outside a component.
+const tc = (key, vars) => i18n.t(key, { ns: 'chat', ...vars });
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -102,7 +107,7 @@ function formatTime(value) {
   if (!value) return '';
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return d.toLocaleTimeString(currentLocale(), { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 // Footer meta under an answer — "Jun 21, 7:39 AM". Date included because
@@ -111,8 +116,8 @@ function formatMetaTime(value) {
   if (!value) return '';
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-  const month = d.toLocaleString('en-US', { month: 'short' });
-  return `${month} ${d.getDate()}, ${formatTime(d)}`;
+  const month = d.toLocaleString(currentLocale(), { month: 'short' });
+  return tc('chatView.turn.metaDateTime', { month, day: d.getDate(), time: formatTime(d) });
 }
 
 // ─── User pill ───────────────────────────────────────────────────────────
@@ -134,6 +139,7 @@ function formatMetaTime(value) {
 // "Disconnect". Both stay in the chat row so the user can bail or
 // destroy without scrolling around to find a menu.
 function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, onCancel, onDisconnect, onClickCard }) {
+  const { t } = useTranslation('chat');
   const iconName = connector?.logo || 'database';
   const Icon = (Ico[iconName] || Ico.database);
   const clickable = typeof onClickCard === 'function';
@@ -163,8 +169,8 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
             <span className="font-display font-semibold text-base text-ink tracking-normal">{title}</span>
             <span className="font-body text-sm text-ink-3">
               {clickable
-                ? <>Click to re-open the form <span aria-hidden className="text-accent">→</span></>
-                : <>Fill out the form on the side panel <span aria-hidden className="text-accent">→</span></>}
+                ? <>{t('chatView.connectIntro.clickToReopen')} <span aria-hidden className="text-accent">→</span></>
+                : <>{t('chatView.connectIntro.fillOutForm')} <span aria-hidden className="text-accent">→</span></>}
             </span>
           </div>
         </div>
@@ -180,7 +186,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
                 renderIcon={() => (
                   <span aria-hidden className="text-base leading-none inline-block -mt-px">←</span>
                 )}
-                label="Cancel"
+                label={t('chatView.connectIntro.cancel')}
               />
             )}
             {onDisconnect && (
@@ -188,7 +194,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
                 kind="danger"
                 onClick={onDisconnect}
                 renderIcon={(s) => Ico.trash(s)}
-                label="Disconnect"
+                label={t('chatView.connectIntro.disconnect')}
               />
             )}
           </div>
@@ -251,9 +257,9 @@ function userTurnAttachmentMeta(a) {
 function userTurnAttachmentLabel(a) {
   const src = a.source || a.kind || 'file';
   if (a.name) return a.name;
-  if (src === 'connector') return 'Connector';
-  if (a.mime && String(a.mime).startsWith('image/')) return 'Image';
-  return 'File';
+  if (src === 'connector') return tc('chatView.attachment.connector');
+  if (a.mime && String(a.mime).startsWith('image/')) return tc('chatView.attachment.image');
+  return tc('chatView.attachment.file');
 }
 
 // The user's side of a Cowork turn: the shared UserTurn bubble, plus the
@@ -262,6 +268,7 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
   // An "Address with agent" handoff is a machine prompt — ids, a base revision
   // and the raw thread JSON — so it renders as a card rather than as the wall of
   // identifiers it literally is. Null for every ordinary message.
+  const { t } = useTranslation('chat');
   const repair = parseArtifactRepairPrompt(content);
   const attachmentRows = attachments?.map((a) => {
     // Image attachments preview inline as a thumbnail (fetched as a
@@ -277,7 +284,7 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
         <AttachmentThumbnail
           key={a.id}
           url={rawUrl}
-          alt={a.name || 'Image'}
+          alt={a.name || t('chatView.attachment.image')}
           onOpen={() => {
             openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
           }}
@@ -300,12 +307,12 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
       // 60% opacity, which drags --ink-4 to roughly 1.7:1 against the page.
       className="font-[family-name:var(--font-body)] text-[13px] leading-[1.5] text-ink shrink-0 mt-1"
     >
-      Deleting…
+      {t('chatView.turn.deleting')}
     </span>
   ) : (
     <TurnActions
       text={content || ''}
-      copyLabel="Copy message"
+      copyLabel={t('chatView.turn.copyMessage')}
       onEdit={onEdit ? () => onEdit(content) : null}
       onDelete={onDelete}
       isLast={isLast}
@@ -333,15 +340,16 @@ const CHAT_ORB_SIZE = 22;
 const RAIL_DOCK_MIN_PX = 640 + 40 * 2 + 320;
 
 // Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
-const INCOMPLETE_REASON_TEXT = {
-  spend_ceiling: 'Stopped early: this task reached its token budget.',
-  round_cap: 'Stopped early: this task reached its step limit.',
-  handback_budget: 'Stopped early: automatic continuations ran out before the task was done.',
-  handback_verifier_failure: "Stopped early: the agent couldn't confirm the task was done.",
-  handback_stuck: 'Stopped early: the agent judged the task stuck.',
-  retry_exhausted: 'Stopped early: the task kept failing.',
-  question_unanswered: 'Stopped early: a question went unanswered.',
-  content_filter: "Stopped early: the model's content filter blocked a reply.",
+// Values are chat-namespace keys, translated at render.
+const INCOMPLETE_REASON_KEYS = {
+  spend_ceiling: 'chatView.incomplete.spendCeiling',
+  round_cap: 'chatView.incomplete.roundCap',
+  handback_budget: 'chatView.incomplete.handbackBudget',
+  handback_verifier_failure: 'chatView.incomplete.handbackVerifierFailure',
+  handback_stuck: 'chatView.incomplete.handbackStuck',
+  retry_exhausted: 'chatView.incomplete.retryExhausted',
+  question_unanswered: 'chatView.incomplete.questionUnanswered',
+  content_filter: 'chatView.incomplete.contentFilter',
 };
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
@@ -349,6 +357,7 @@ const INCOMPLETE_REASON_TEXT = {
 // is the single indicator; once done, a hover-only footer (bottom-right)
 // names the agent that answered and when.
 function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, deleting = false }) {
+  const { t } = useTranslation('chat');
   return (
     <div
       // marginTop pulls the answer closer to ITS question (the column gap
@@ -360,7 +369,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       {state !== 'thinking' && (
         <div className="flex items-center gap-2">
           {showActions && !deleting && (
-            <TurnActions text={copyText || ''} copyLabel="Copy response" onDelete={onDelete} isLast={isLast} />
+            <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast} />
           )}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
@@ -480,7 +489,7 @@ export function TextBlock({
  */
 function figureFileViewerProps(source, projectName, projectPath, conversationId) {
   if (!source?.path && source?.attachment_id) {
-    const name = source.label || 'Attached file';
+    const name = source.label || tc('chatView.figureFile.attachedFile');
     return {
       title: name,
       filePath: name,
@@ -499,8 +508,8 @@ function figureFileViewerProps(source, projectName, projectPath, conversationId)
  */
 function figureFileNote(source) {
   return source?.stepId
-    ? 'Shows the file as it is now. Open step shows what the step read.'
-    : 'Shows the file as it is now, which may differ from what the step read.';
+    ? tc('chatView.figureFile.noteWithStep')
+    : tc('chatView.figureFile.note');
 }
 
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
@@ -518,7 +527,7 @@ export function artifactStepToCard(step, projectPath) {
     // whole also prevents each new artifact field from requiring another
     // fragile pass-through list here.
     ...data,
-    title: data.title || step.label || 'Artifact',
+    title: data.title || step.label || tc('chatView.artifactCard.fallbackTitle'),
     kind: data.action ? `${data.action}` : 'live artifact',
     icon: 'doc',
     path,
@@ -717,6 +726,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
   // panel had already stopped offering them for the very same artifact.
+  const { t } = useTranslation('chat');
   const orgMode = useOrgMode();
   // Same question the artifacts panel answers by simply not listing the row:
   // is this artifact still there? The card outlives the artifact because it is
@@ -733,7 +743,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
   const disabledReason = artifact.actionDisabledReason || '';
   const canAct = !!path && !disabledReason && !deleted;
   const platform = host.getPlatform();
-  const revealLabel = platform === 'darwin' ? 'Show in Finder' : 'Show in folder';
+  const revealLabel = platform === 'darwin' ? t('chatView.artifactCard.showInFinder') : t('chatView.artifactCard.showInFolder');
 
   // `note` reads like `ok` but stays as long as an error, since it is a sentence.
   const showStatus = (kind, text) => {
@@ -794,10 +804,10 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
   const needsLocalPath = !orgMode && openTarget !== 'download' && !canPreviewDoc;
   const canActivate = !!openTarget && (needsLocalPath ? canAct : !deleted);
   const activateLabel = openTarget === 'published'
-    ? 'Open shared artifact'
+    ? t('chatView.artifactCard.openShared')
     : openTarget === 'download'
-      ? 'Download'
-      : openTarget === 'os' ? 'Open' : 'Open preview';
+      ? t('chatView.artifactCard.download')
+      : openTarget === 'os' ? t('chatView.artifactCard.open') : t('chatView.artifactCard.openPreview');
   /*
    * What the card says when it has nowhere to go. Neither org mode nor web has
    * a local file to blame, and blaming one is actively wrong there: the card
@@ -806,9 +816,9 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    */
   const noDestinationReason = !openTarget
     ? (orgMode
-      ? 'This artifact cannot be previewed and has no shared link yet.'
-      : 'This artifact has no downloadable file yet.')
-    : (disabledReason || 'No file path');
+      ? t('chatView.artifactCard.noPreviewNoLink')
+      : t('chatView.artifactCard.noDownloadableFile'))
+    : (disabledReason || t('chatView.artifactCard.noFilePath'));
   /*
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
@@ -828,7 +838,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
      * agreeing is not worth the risk.
      */
     if (deleted) {
-      showStatus('error', 'This artifact was deleted.');
+      showStatus('error', t('chatView.artifactCard.deletedStatus'));
       return;
     }
     if (openTarget === 'preview' && onOpen) {
@@ -849,7 +859,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
        * serve URL still streams it, so the click saves it instead of
        * dead-ending, and says why once the save went through.
        */
-      await downloadFile('note', NO_PREVIEW_DOWNLOADED_NOTE);
+      await downloadFile('note', noPreviewDownloadedNote());
       return;
     }
     if (openTarget === null) {
@@ -860,45 +870,45 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
   };
   const openInDefaultApp = async () => {
     if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
+      showStatus('error', disabledReason || t('chatView.artifactCard.noPathAvailable'));
       return;
     }
     try {
       const result = await host.openPath(path);
-      if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
-      showStatus('ok', 'Opened.');
+      if (result && result.ok === false) throw new Error(result.reason || t('chatView.artifactCard.couldNotOpen'));
+      showStatus('ok', t('chatView.artifactCard.opened'));
     }
     catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.views.ChatView", "ERROR", "artifact_open_failed", '[artifact-open] failed', e);
-      showStatus('error', e?.message || 'Could not open artifact.');
+      showStatus('error', e?.message || t('chatView.artifactCard.couldNotOpen'));
       revalidateAfterFailure();
     }
   };
   const handleReveal = async () => {
     if (!canAct) {
-      showStatus('error', disabledReason || 'No artifact file path is available.');
+      showStatus('error', disabledReason || t('chatView.artifactCard.noPathAvailable'));
       return;
     }
     let bridgeError = null;
     try {
       const result = await host.showItemInFolder(path);
       if (result?.ok) {
-        showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
+        showStatus('ok', platform === 'darwin' ? t('chatView.artifactCard.shownInFinder') : t('chatView.artifactCard.shownInFolder'));
         return;
       }
-      bridgeError = result?.reason || 'Could not show artifact.';
+      bridgeError = result?.reason || t('chatView.artifactCard.couldNotShow');
     } catch (e) {
       bridgeError = e;
     }
 
     try {
       await revealArtifact(path);
-      showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
+      showStatus('ok', platform === 'darwin' ? t('chatView.artifactCard.shownInFinder') : t('chatView.artifactCard.shownInFolder'));
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.views.ChatView", "ERROR", "artifact_reveal_failed", '[artifact-reveal] failed', e || bridgeError);
-      showStatus('error', e?.message || bridgeError?.message || bridgeError || 'Could not show artifact.');
+      showStatus('error', e?.message || bridgeError?.message || bridgeError || t('chatView.artifactCard.couldNotShow'));
       revalidateAfterFailure();
     }
   };
@@ -910,16 +920,16 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    */
   const downloadFile = async (doneKind, doneText) => {
     if (deleted) {
-      showStatus('error', 'This artifact was deleted.');
+      showStatus('error', t('chatView.artifactCard.deletedStatus'));
       return;
     }
     if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
-      showStatus('error', 'This artifact has no downloadable file yet.');
+      showStatus('error', t('chatView.artifactCard.noDownloadableFile'));
       return;
     }
     showStatus(doneKind, doneText);
   };
-  const handleDownload = () => downloadFile('ok', 'Downloading…');
+  const handleDownload = () => downloadFile('ok', t('chatView.artifactCard.downloading'));
   /*
    * One primary action button instead of an Open/Show-in-Finder pair: what it
    * does follows what the artifact actually supports — Preview for anything the
@@ -933,22 +943,22 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    */
   const primaryAction = orgMode
     ? (openTarget === 'preview'
-      ? { label: 'Preview', onClick: handleOpen, tooltip: 'Preview this artifact in Cowork' }
+      ? { label: t('chatView.artifactCard.preview'), onClick: handleOpen, tooltip: t('chatView.artifactCard.previewInProduct', { product: productName('Cowork') }) }
       : openTarget === 'published'
-        ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
+        ? { label: t('chatView.artifactCard.open'), onClick: handleOpen, tooltip: t('chatView.artifactCard.openSharedTooltip') }
         : openTarget === 'download'
-          ? { label: 'Download', onClick: handleOpen, tooltip: 'Save this artifact\'s file' }
+          ? { label: t('chatView.artifactCard.download'), onClick: handleOpen, tooltip: t('chatView.artifactCard.saveFileTooltip') }
           : null)
     : openTarget === 'preview'
-      ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
+      ? { label: t('chatView.artifactCard.preview'), onClick: handleOpen, tooltip: canAct ? t('chatView.artifactCard.previewPath', { path }) : '' }
       : openTarget === 'download'
-        ? { label: 'Download', onClick: handleOpen, tooltip: canAct ? `Download ${path}` : '' }
+        ? { label: t('chatView.artifactCard.download'), onClick: handleOpen, tooltip: canAct ? t('chatView.artifactCard.downloadPath', { path }) : '' }
         // handleReveal already falls back from the Electron bridge to the
         // server-side reveal endpoint and surfaces its own error, so this
         // doesn't gate further on bridge availability the way the old
         // Open button didn't either.
         : openTarget === 'os'
-          ? { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' }
+          ? { label: revealLabel, onClick: handleReveal, tooltip: canAct ? t('chatView.artifactCard.actionTarget', { action: revealLabel, target: path }) : '' }
           : null;
   /*
    * Only when the primary button is the preview: otherwise "Open" already is
@@ -966,18 +976,18 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
    * web, and on desktop Open, which hands the file to the default app.
    */
   const sharedLinkAction = !deleted && showSharedLink
-    ? { label: 'Shared link', onClick: handleOpenPublished, tooltip: 'Open the shared artifact in a new tab' }
+    ? { label: t('chatView.artifactCard.sharedLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.sharedLinkTooltip') }
     : null;
   const downloadAction = !deleted && openTarget !== 'download'
     && (orgMode ? canDownloadOrgDraft(artifact) : (!hasBridge && canPreviewDoc && canDownload))
-    ? { label: 'Download', onClick: handleDownload, tooltip: 'Save this artifact\'s file' }
+    ? { label: t('chatView.artifactCard.download'), onClick: handleDownload, tooltip: t('chatView.artifactCard.saveFileTooltip') }
     : null;
   const openInAppAction = !deleted && !orgMode && hasBridge && canPreviewDoc && openTarget === 'preview'
-    ? { label: 'Open', onClick: openInDefaultApp, tooltip: 'Open in the default app' }
+    ? { label: t('chatView.artifactCard.open'), onClick: openInDefaultApp, tooltip: t('chatView.artifactCard.openInDefaultApp') }
     : null;
   const secondaryAction = sharedLinkAction || downloadAction || openInAppAction;
   const primaryDisabled = needsLocalPath && !canAct;
-  const primaryReason = primaryDisabled ? (disabledReason || 'No file path') : '';
+  const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -1001,8 +1011,8 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
       padding="none"
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
-        ? `Deleted artifact: ${artifact.title}`
-        : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
+        ? t('chatView.artifactCard.deletedAriaLabel', { title: artifact.title })
+        : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
       className="railed chat-artifact-card"
     >
       <div
@@ -1012,7 +1022,7 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
         )}
       >
         {thumbSrc ? (
-          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} className="block size-full object-cover" />
+          <img src={thumbSrc} alt={artifact.title || t('chatView.artifactCard.thumbnailAlt')} className="block size-full object-cover" />
         ) : (
           isImage ? Ico.image(16) : (artifact.icon === 'doc' ? Ico.doc(16) : Ico.sparkle(16))
         )}
@@ -1025,12 +1035,12 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
-          title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
+          title={deleted ? t('chatView.artifactCard.deletedTitle') : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
           className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
         <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
-          <span className="shrink-0">{artifact.kind || 'live artifact'}</span>
-          {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
+          <span className="shrink-0">{artifact.kind && artifact.kind !== 'live artifact' ? artifact.kind : t('chatView.artifactCard.liveArtifact')}</span>
+          {deleted && <Badge variant="muted" size="xs">{t('chatView.artifactCard.deletedBadge')}</Badge>}
         </span>
         {/* A disabled button takes no hover, so its reason is said here, in
             the text column: beside the button it would widen the actions
@@ -1148,14 +1158,15 @@ function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deletin
 }
 
 function ProviderLimitCard({ time, agentLabel, deleting }) {
+  const { t } = useTranslation('chat');
   return (
     <ActionCard
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
-      kind="Provider"
-      title="Task stopped"
-      body="The provider's usage limit was reached. Contact your administrator before starting another task."
+      kind={t('chatView.kinds.provider')}
+      title={t('chatView.cards.taskStopped')}
+      body={t('chatView.cards.providerLimitBody')}
     />
   );
 }
@@ -1182,6 +1193,7 @@ function ProviderLimitCard({ time, agentLabel, deleting }) {
 export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
+  const { t } = useTranslation('chat');
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
      cowork-server that predates it arrives with none, and the hub usage read
@@ -1194,12 +1206,12 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
-      kind="Billing"
-      title="Task stopped"
+      kind={t('chatView.kinds.billing')}
+      title={t('chatView.cards.taskStopped')}
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={[
         {
-          label: 'Add funds',
+          label: t('chatView.cards.addFunds'),
           // The click, not an impression — same rule as
           // the drained-wallet card. token_cap_hit already
           // counts this impression once per receipt in the stream
@@ -1228,7 +1240,7 @@ export function AllowanceExhaustedCard({
    every card that offers it, and nothing when the caller has no switch to give
    (Air locked, no message to resend, or the task is already on Air). */
 function switchToAirButtons(onSwitchToAir) {
-  return onSwitchToAir ? [{ label: 'Switch to MindsHub Air', onClick: onSwitchToAir }] : [];
+  return onSwitchToAir ? [{ label: tc('chatView.cards.switchToAir'), onClick: onSwitchToAir }] : [];
 }
 
 /*
@@ -1260,12 +1272,13 @@ function switchToAirButtons(onSwitchToAir) {
 export function BalanceEmptyCard({
   time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
 }) {
+  const { t } = useTranslation('chat');
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
   const addFunds = {
-    label: 'Add funds',
+    label: t('chatView.cards.addFunds'),
     // The click, not an impression. token_cap_hit
     // already counts the impression once per receipt in the
     // stream adapter; an impression here would re-fire on
@@ -1278,10 +1291,10 @@ export function BalanceEmptyCard({
   };
   // Fixed copy, not the server string: the
   // gateway's wording predates pay as you go.
-  let body = 'Your balance ran out before this task finished. Add funds before starting another task.';
+  let body = t('chatView.cards.balanceRanOut');
   let buttons = [addFunds];
   if (!walletPaysNow && free.status === 'has_room' && onSwitchToAir) {
-    body = "Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.";
+    body = t('chatView.cards.balanceEmptyAirLeft');
     buttons = [addFunds, ...switchToAirButtons(onSwitchToAir)];
   } else if (!walletPaysNow && free.status === 'spent' && refill) {
     body = allowanceStopCopy({ usage });
@@ -1293,8 +1306,8 @@ export function BalanceEmptyCard({
       agentLabel={agentLabel}
       // A billing failure ends the turn; there is no resume,
       // so this is "stopped", never "paused".
-      kind="Billing"
-      title="Task stopped"
+      kind={t('chatView.kinds.billing')}
+      title={t('chatView.cards.taskStopped')}
       body={body}
       buttons={buttons}
     />
@@ -1315,15 +1328,16 @@ export function BalanceEmptyCard({
 export function FreeServingPausedCard({
   time, agentLabel, resetAt, isBillingOwner, deleting = false,
 }) {
+  const { t } = useTranslation('chat');
   if (!PLATFORM_UI) {
     return (
       <ActionCard
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
-        kind="Provider"
-        title="The provider is temporarily unavailable"
-        body="The provider has paused requests. Try again later or contact your administrator."
+        kind={t('chatView.kinds.provider')}
+        title={t('chatView.cards.providerUnavailableTitle')}
+        body={t('chatView.cards.providerPausedBody')}
       />
     );
   }
@@ -1334,12 +1348,12 @@ export function FreeServingPausedCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
-      kind="Usage"
-      title="Free MindsHub Air is paused"
+      kind={t('chatView.kinds.usage')}
+      title={t('chatView.cards.freeAirPausedTitle')}
       body={freeServingPausedCopy(resetAt)}
       buttons={[
         {
-          label: 'Add funds',
+          label: t('chatView.cards.addFunds'),
           /* The click only, like the other stopped-task cards. Its own
              trigger: a fleet-wide pause is not this user running out. */
           onClick: () => {
@@ -1363,6 +1377,7 @@ export function FreeServingPausedCard({
 export function BudgetExceededCard({
   time, agentLabel, usage, onSwitchToAir, deleting = false,
 }) {
+  const { t } = useTranslation('chat');
   const budgetsUrl = useBudgetsUrl();
   if (!PLATFORM_UI) {
     return (
@@ -1370,9 +1385,9 @@ export function BudgetExceededCard({
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
-        kind="Provider"
-        title="Task stopped"
-        body="Your administrator's spending limit was reached. Contact your administrator."
+        kind={t('chatView.kinds.provider')}
+        title={t('chatView.cards.taskStopped')}
+        body={t('chatView.cards.adminSpendingLimitBody')}
       />
     );
   }
@@ -1382,12 +1397,12 @@ export function BudgetExceededCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
-      kind="Billing"
-      title="Your organization's budget is used up"
+      kind={t('chatView.kinds.billing')}
+      title={t('chatView.cards.budgetUsedUpTitle')}
       body={budgetExceededCopy({ usage })}
       buttons={[
         {
-          label: 'View budgets',
+          label: t('chatView.cards.viewBudgets'),
           // The click only, like the other stopped-task cards.
           onClick: () => {
             trackBillingOpened('budget_exceeded');
@@ -1404,18 +1419,19 @@ export function BudgetExceededCard({
 /* No provider connected (`provider_required`). HomeView renders the same card
    on the home screen and its first sentence must read the same. */
 export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) {
+  const { t } = useTranslation('chat');
   return (
     <ActionCard
       deleting={deleting}
       time={time}
-      kind="Connection"
-      title={PLATFORM_UI ? 'Connect a provider to start chatting' : 'Provider setup is required'}
+      kind={t('chatView.kinds.connection')}
+      title={PLATFORM_UI ? t('chatView.cards.connectProviderTitle') : t('chatView.cards.providerSetupRequiredTitle')}
       body={PLATFORM_UI
-        ? 'Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings.'
-        : 'Ask your operator to configure the model provider before starting a task.'}
+        ? t('chatView.cards.connectProviderBody')
+        : t('chatView.cards.providerSetupRequiredBody')}
       buttons={PLATFORM_UI ? [
         {
-          label: 'Start for free',
+          label: t('chatView.cards.startForFree'),
           // The click only. Whether this card deserves an
           // impression event of its own is an open
           // question, and is not settled here.
@@ -1425,7 +1441,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
           },
           primary: true,
         },
-        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: false },
+        { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: false },
       ] : []}
     />
   );
@@ -1438,6 +1454,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 // It keeps its own link: most people who reach billing from a chat notice never
 // click the bar.
 function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
+  const { t } = useTranslation('chat');
   if (!PLATFORM_UI) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert', undefined, kind);
@@ -1449,9 +1466,9 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
       <ActionCard
         time={time}
         agentLabel={agentLabel}
-        kind="Billing"
-        title="Auto top up failed"
-        body="We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running."
+        kind={t('chatView.kinds.billing')}
+        title={t('chatView.cards.autoTopUpFailedTitle')}
+        body={t('chatView.cards.autoTopUpFailedBody')}
         buttons={[
           { label: USAGE_ACTIONS.addFunds.label, onClick: open(USAGE_ACTIONS.addFunds), primary: true },
           { label: USAGE_ACTIONS.updatePaymentMethod.label, onClick: open(USAGE_ACTIONS.updatePaymentMethod) },
@@ -1465,8 +1482,12 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
   // No usable refill time drops the clause rather than leaving "refills".
   const refillsAt = formatResetTime(resetsAt);
   const text = kind === 'free_low'
-    ? `Free Air allowance ${formatPercentShort(fractionLeft)} left${refillsAt ? ` · refills at ${refillsAt}` : ''}`
-    : `Free Air allowance used up · now using your balance${refillsAt ? ` until ${refillsAt}` : ''}`;
+    ? (refillsAt
+      ? t('chatView.usageAlert.freeLowRefills', { percent: formatPercentShort(fractionLeft), time: refillsAt })
+      : t('chatView.usageAlert.freeLow', { percent: formatPercentShort(fractionLeft) }))
+    : (refillsAt
+      ? t('chatView.usageAlert.freeUsedUntil', { time: refillsAt })
+      : t('chatView.usageAlert.freeUsed'));
   return (
     <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
       <Icon of={CircleAlert} size={14} />
@@ -1504,8 +1525,11 @@ const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
    requests didn't create. */
 function RateLimitedCard({
   time, agentLabel, body, retryAt, onRetry, deleting = false,
-  kind = 'Rate limit', title = 'Too many requests too quickly',
+  kind: kindProp, title: titleProp,
 }) {
+  const { t } = useTranslation('chat');
+  const kind = kindProp ?? t('chatView.kinds.rateLimit');
+  const title = titleProp ?? t('chatView.cards.rateLimitedTitle');
   const readyAt = useMemo(() => {
     // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
     // derived from the message's created_at + retryAfter: created_at is
@@ -1529,13 +1553,13 @@ function RateLimitedCard({
 
   useEffect(() => {
     if (!readyAt || remaining <= 0) return undefined;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, [readyAt, remaining]);
 
   const buttons = onRetry
     ? [{
-        label: remaining > 0 ? `Try again in ${remaining}s` : 'Try again',
+        label: remaining > 0 ? t('chatView.cards.tryAgainIn', { seconds: remaining }) : t('chatView.cards.tryAgain'),
         onClick: remaining > 0 ? undefined : onRetry,
         disabled: remaining > 0,
         primary: true,
@@ -1574,6 +1598,7 @@ function RateLimitedCard({
 // desktop-only (finalize/login are Electron IPC), so on web we fall back to
 // Settings too.
 function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel, deleting = false }) {
+  const { t } = useTranslation('chat');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
@@ -1606,10 +1631,10 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
         await waitForServerReady();
         setDone(true);
       } else {
-        setErr(res?.reason || 'Could not reconnect. Try signing out and back in.');
+        setErr(res?.reason || t('chatView.reconnect.couldNotReconnect'));
       }
     } catch (e) {
-      setErr(e?.message || 'Reconnect failed.');
+      setErr(e?.message || t('chatView.reconnect.failed'));
     } finally {
       setBusy(false);
     }
@@ -1620,22 +1645,24 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   // server's copy here: it's provider-aware but not web-aware (it can't know the
   // desktop-only Reconnect is unavailable on web).
   const title = !PLATFORM_UI
-    ? 'The provider could not authenticate'
+    ? t('chatView.reconnect.cannotAuthTitle')
     : done
-      ? 'Reconnected'
-      : canReconnect ? 'Reconnect to continue'
-      : reconnectable ? 'Sign in again'
-      : 'Update your API key';
+      ? t('chatView.reconnect.reconnectedTitle')
+      : canReconnect ? t('chatView.reconnect.reconnectTitle')
+      : reconnectable ? t('chatView.reconnect.signInAgainTitle')
+      : t('chatView.reconnect.updateKeyTitle');
   const body = !PLATFORM_UI
-    ? 'The model provider rejected its credentials. Ask your operator to check the provider configuration.'
+    ? t('chatView.reconnect.cannotAuthBody')
     : done
-      ? 'Your MindsHub session was refreshed. Send your message again to continue.'
+      ? t('chatView.reconnect.reconnectedBody')
       : err || (
           canReconnect
-            ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
+            ? t('chatView.reconnect.reconnectBody')
             : reconnectable
-              ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
-              : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
+              ? t('chatView.reconnect.signInAgainBody')
+              : (providerLabel
+                ? t('chatView.reconnect.updateKeyBody', { provider: providerLabel })
+                : t('chatView.reconnect.updateKeyBodyGeneric'))
         );
 
   return (
@@ -1643,19 +1670,19 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
-      kind="Connection"
+      kind={t('chatView.kinds.connection')}
       title={title}
       body={body}
       buttons={!PLATFORM_UI || done ? [] : [
         ...(canReconnect ? [{
-          label: busy ? 'Reconnecting…' : 'Reconnect',
+          label: busy ? t('chatView.reconnect.reconnecting') : t('chatView.reconnect.reconnect'),
           onClick: reconnect,
           primary: true,
           busy,
         }] : []),
         // Settings is the primary action when Reconnect isn't available
         // (BYOK key, or web where the IPC flow doesn't exist).
-        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: !canReconnect },
+        { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: !canReconnect },
       ]}
     />
   );
@@ -1692,6 +1719,7 @@ export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
   deleting = false,
 }) {
+  const { t } = useTranslation('chat');
   // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
   // hold one, else the id-derived form. This card used to call the bare
   // prettifier, so the row the user had just picked as "MindsHub Air" came back
@@ -1701,7 +1729,7 @@ export function ModelUnavailableCard({
   // those. Only a bare single-token alias ("sonnet") comes back lowercase, and
   // it reads better capitalized in the title. So capitalize single-word labels
   // only, leaving anything already spaced/cased untouched.
-  const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
+  const raw = displayModelLabel(failedModel, modelLabels) || failedModel || t('chatView.model.thisModel');
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   if (code === 'model_restricted' || !PLATFORM_UI) {
     return (
@@ -1709,13 +1737,13 @@ export function ModelUnavailableCard({
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
-        kind="Model"
-        title={code === 'model_restricted' ? `${label} is restricted` : `${label} isn't available right now`}
+        kind={t('chatView.kinds.model')}
+        title={code === 'model_restricted' ? t('chatView.model.restrictedTitle', { model: label }) : t('chatView.model.unavailableTitle', { model: label })}
         body={!PLATFORM_UI
-          ? 'Ask your operator to check the configured model and its access.'
-          : 'An admin in your organization restricted this model. Choose another model in Settings.'}
+          ? t('chatView.model.askOperatorBody')
+          : t('chatView.model.restrictedBody')}
         buttons={PLATFORM_UI ? [
-          { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
+          { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: true },
         ] : []}
       />
     );
@@ -1732,8 +1760,8 @@ export function ModelUnavailableCard({
     host.openExternal(MINDS_BILLING_URL);
   };
   const title = denied
-    ? `${label} needs credits`
-    : `${label} isn't available right now`;
+    ? t('chatView.model.needsCreditsTitle', { model: label })
+    : t('chatView.model.unavailableTitle', { model: label });
 
   // Fixed copy, not the server's error string (ENG-1304): old gateways word
   // these denials as access problems ("your workspace does not have access"),
@@ -1743,22 +1771,22 @@ export function ModelUnavailableCard({
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
-      kind="Model"
+      kind={t('chatView.kinds.model')}
       title={title}
       body={denied
-        ? "You don't have enough credits for this model. Top up your balance to use it."
-        : 'This model is turned off for your workspace. Choose another model in Settings.'}
+        ? t('chatView.model.needsCreditsBody')
+        : t('chatView.model.disabledBody')}
       buttons={denied
         ? [
-            { label: 'Top up balance', onClick: openBilling, primary: true },
+            { label: t('chatView.model.topUpBalance'), onClick: openBilling, primary: true },
             // Only while Air can still run (free allowance or a payable
             // wallet) — a switch offer into another locked model is the same
             // dead end this card exists to close.
             ...switchToAirButtons(onSwitchToAir),
           ]
         : [
-            { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
-            { label: 'Top up balance', onClick: openBilling },
+            { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: true },
+            { label: t('chatView.model.topUpBalance'), onClick: openBilling },
           ]}
     />
   );
@@ -1783,21 +1811,22 @@ function ProviderOverloadedCard({
   time, agentLabel, onOpenSettings, onRetry, reconnectable, providerLabel, errorText,
   deleting = false,
 }) {
+  const { t } = useTranslation('chat');
   const onManaged = Boolean(reconnectable);
-  const who = !PLATFORM_UI ? 'The model provider' : onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
+  const who = !PLATFORM_UI ? t('chatView.overloaded.theModelProvider') : onManaged ? 'MindsHub' : (providerLabel || t('chatView.overloaded.theModelProvider'));
   const base = (PLATFORM_UI && errorText)
-    || `${who} had a temporary incident and didn't recover in time. Try again in a moment.`;
+    || t('chatView.overloaded.body', { who });
   const body = !PLATFORM_UI || onManaged
     ? base
-    : `${base} MindsHub automatically routes around provider outages like this, so tasks keep running.`;
+    : t('chatView.overloaded.withFailover', { base });
 
   return (
     <ActionCard
       deleting={deleting}
       time={time}
       agentLabel={agentLabel}
-      kind="Provider"
-      title={`${who} is having a temporary issue`}
+      kind={t('chatView.kinds.provider')}
+      title={t('chatView.overloaded.title', { who })}
       body={body}
       buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
     />
@@ -1947,6 +1976,7 @@ export default function ChatView({
   // render here.
   pane = false,
 }) {
+  const { t } = useTranslation('chat');
   const scrollRef = useRef(null);
   const { isNarrow, paneFloats } = useBreakpoint();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
@@ -2371,11 +2401,11 @@ export default function ChatView({
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        {!pane && !railHidden && (<Tooltip content="Expand panel">
+        {!pane && !railHidden && (<Tooltip content={t('chatView.header.expandPanel')}>
           <button
             type="button"
             onClick={() => railFloats ? setRailNarrowOpen(true) : setRailOpen(true)}
-            aria-label="Expand panel"
+            aria-label={t('chatView.header.expandPanel')}
             // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
             // rail-open state, and the transition's per-state delay) stay inline —
             // resting/hover color+background moved to className below so the
@@ -2430,18 +2460,18 @@ export default function ChatView({
               if (hasConnectIntro && formActive) {
                 return (
                   <CrumbButton
-                    label="Apps"
+                    label={t('chatView.header.apps')}
                     onClick={() => onNavigateToConnectors?.()}
-                    title="Connect Apps and Data"
+                    title={t('chatView.header.connectAppsAndData')}
                   />
                 );
               }
               return (
                 <>
                   <CrumbButton
-                    label="Projects"
+                    label={t('chatView.header.projects')}
                     onClick={() => onOpenProjectsList?.()}
-                    title="All projects"
+                    title={t('chatView.header.allProjects')}
                   />
                   {project?.name && (
                     <>
@@ -2449,7 +2479,7 @@ export default function ChatView({
                       <CrumbButton
                         label={projectLabel(project)}
                         onClick={() => onOpenProject?.(project)}
-                        title={`Open project: ${projectLabel(project)}`}
+                        title={t('chatView.header.openProject', { project: projectLabel(project) })}
                         maxWidth={200}
                       />
                     </>
@@ -2518,11 +2548,11 @@ export default function ChatView({
                 </span>
               )}
               {!titleEditing && (
-                <Tooltip content="Task menu">
+                <Tooltip content={t('chatView.header.taskMenu')}>
                   <button
                     ref={settingsBtnRef}
                     type="button"
-                    aria-label="Task menu"
+                    aria-label={t('chatView.header.taskMenu')}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (settingsOpen) {
@@ -2615,7 +2645,7 @@ export default function ChatView({
                 disabled={loadingEarlierMessages}
                 className="mt-0 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-center gap-2 hover:bg-surface-2 hover:border-line hover:text-ink disabled:opacity-60 disabled:cursor-default [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease]"
               >
-                <span>{loadingEarlierMessages ? 'Loading…' : 'Load earlier messages'}</span>
+                <span>{loadingEarlierMessages ? t('chatView.transcript.loading') : t('chatView.transcript.loadEarlier')}</span>
               </button>
             )}
             {(() => {
@@ -2704,7 +2734,7 @@ export default function ChatView({
                 if (m.placeholder && !streamingMsg) {
                   return (
                     <AnswerTurn key={messageKey(m, i)} state="thinking" showActions={false}>
-                      <WorkingIndicator label={m._label || 'Thinking…'} />
+                      <WorkingIndicator label={m._label || t('chatView.transcript.thinking')} />
                     </AnswerTurn>
                   );
                 }
@@ -2728,7 +2758,7 @@ export default function ChatView({
                 return (
                   <ConnectIntroBubble
                     key={messageKey(m, i)}
-                    title={m.content || 'Connect'}
+                    title={m.content || t('chatView.transcript.connect')}
                     connector={m.connector}
                     onClickCard={reopenForm}
                     // Modify-flow extras: when set, the bubble
@@ -2895,13 +2925,13 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Model"
-                      title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
+                      kind={t('chatView.kinds.model')}
+                      title={badModel ? t('chatView.errors.modelNotFoundNamedTitle', { model: badModel }) : t('chatView.errors.modelNotFoundTitle')}
                       body={!PLATFORM_UI
-                        ? 'The provider cannot serve the configured model. Ask your operator to check the model configuration.'
+                        ? t('chatView.errors.modelNotFoundOperatorBody')
                         : badModel
-                          ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
-                          : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
+                          ? t('chatView.errors.modelNotFoundNamedBody', { model: badModel })
+                          : t('chatView.errors.modelNotFoundBody')}
                       /* With platform UI on, offer Open Settings only.
                          cowork-server does apply a turn's
                          own model (the request's `model`, handed to
@@ -2911,7 +2941,7 @@ export default function ChatView({
                          and every new task would fail on it again, so the card
                          sends the user to where the id is set. */
                       buttons={PLATFORM_UI ? [
-                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
+                        { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: true },
                       ] : []}
                     />
                   );
@@ -2926,9 +2956,9 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Attachment"
-                      title="That image couldn't be read"
-                      body="The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again."
+                      kind={t('chatView.kinds.attachment')}
+                      title={t('chatView.errors.imageFormatTitle')}
+                      body={t('chatView.errors.imageFormatBody')}
                     />
                   );
                 }
@@ -2948,11 +2978,11 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Conversation"
-                      title="Fixed an issue with this conversation"
-                      body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
+                      kind={t('chatView.kinds.conversation')}
+                      title={t('chatView.errors.contentRecoveryTitle')}
+                      body={t('chatView.errors.contentRecoveryBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -2980,8 +3010,8 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Attachment"
-                      title="That image is too large"
+                      kind={t('chatView.kinds.attachment')}
+                      title={t('chatView.errors.contentTooLargeTitle')}
                       body={m.content}
                     />
                   );
@@ -2997,13 +3027,13 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind={PLATFORM_UI ? 'Billing' : 'Provider'}
-                      title={PLATFORM_UI ? 'Billing is temporarily unavailable' : 'The provider is temporarily unavailable'}
+                      kind={PLATFORM_UI ? t('chatView.kinds.billing') : t('chatView.kinds.provider')}
+                      title={PLATFORM_UI ? t('chatView.errors.billingUnavailableTitle') : t('chatView.cards.providerUnavailableTitle')}
                       body={PLATFORM_UI
-                        ? "MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
-                        : "The provider couldn't authorize this request. Try again in a moment."}
+                        ? t('chatView.errors.billingUnavailableBody')
+                        : t('chatView.errors.providerUnauthorizedBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -3024,11 +3054,11 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Agent"
-                      title="The agent didn't start"
-                      body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
+                      kind={t('chatView.kinds.agent')}
+                      title={t('chatView.errors.workerUnresponsiveTitle')}
+                      body={t('chatView.errors.workerUnresponsiveBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -3045,16 +3075,16 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Agent"
-                      title="The model didn't respond"
+                      kind={t('chatView.kinds.agent')}
+                      title={t('chatView.errors.modelTimeoutTitle')}
                       body={PLATFORM_UI
-                        ? 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings.'
-                        : 'The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.'}
+                        ? t('chatView.errors.modelTimeoutBody')
+                        : t('chatView.errors.modelTimeoutOperatorBody')}
                       buttons={[
                         ...(resend && sendAgain
-                          ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                          ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                           : []),
-                        ...(PLATFORM_UI ? [{ label: 'Open Settings', onClick: () => onOpenSettings?.('agent') }] : []),
+                        ...(PLATFORM_UI ? [{ label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
                     />
                   );
@@ -3072,11 +3102,11 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Agent"
-                      title="The answer was cut off"
-                      body="The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back."
+                      kind={t('chatView.kinds.agent')}
+                      title={t('chatView.errors.turnLostTitle')}
+                      body={t('chatView.errors.turnLostBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -3097,11 +3127,11 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Agent"
-                      title="The response stalled"
-                      body="Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again."
+                      kind={t('chatView.kinds.agent')}
+                      title={t('chatView.errors.stalledTitle')}
+                      body={t('chatView.errors.stalledBody', { product: productName('Cowork') })}
                       buttons={resend && !turnMayBeRunning && sendAgain
-                        ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
                     />
                   );
@@ -3153,8 +3183,8 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Server"
-                      title="The server is busy"
+                      kind={t('chatView.kinds.server')}
+                      title={t('chatView.errors.serverBusyTitle')}
                       body={m.content}
                       retryAt={m.retryAt}
                       onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments) : undefined}
@@ -3174,8 +3204,8 @@ export default function ChatView({
                       deleting={deletingThisTurn}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      kind="Server"
-                      title="The server isn't answering"
+                      kind={t('chatView.kinds.server')}
+                      title={t('chatView.errors.coworkUnavailableTitle')}
                       body={m.content}
                       retryAt={m.retryAt}
                       onRetry={unavailableResend && sendAgain
@@ -3210,7 +3240,7 @@ export default function ChatView({
                           className="mt-1 text-xs flex items-center gap-2 flex-wrap"
                           style={{ color: 'var(--text-muted)' }}
                         >
-                          <span>Reference: {m.requestId}</span>
+                          <span>{t('chatView.errors.reference', { id: m.requestId })}</span>
                           <CopyDiagnosticsButton
                             requestId={m.requestId}
                             code={m.code}
@@ -3252,7 +3282,7 @@ export default function ChatView({
                   // failure whose recovery also failed has none until reload.
                   onDelete={m.id && !deleteInFlight ? () => onDeleteTurn?.(m.id) : null}
                   deleting={deletingThisTurn}
-                  agentLabel={harnessLabel(m.harness) || 'Agent'}
+                  agentLabel={harnessLabel(m.harness) || t('chatView.turn.agentFallback')}
                   isLast={i === lastTurnIdx}
                 >
                   {/* Above the text: a question is asked, then answered, then
@@ -3311,7 +3341,7 @@ export default function ChatView({
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
                     <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
-                      {INCOMPLETE_REASON_TEXT[m.incompleteReason] || 'Stopped before it finished.'}
+                      {t(INCOMPLETE_REASON_KEYS[m.incompleteReason] || 'chatView.incomplete.fallback')}
                     </Alert>
                   )}
                 </AnswerTurn>
@@ -3375,7 +3405,7 @@ export default function ChatView({
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" showActions={false}>
-                <WorkingIndicator label="Streaming…" />
+                <WorkingIndicator label={t('chatView.transcript.streaming')} />
               </AnswerTurn>
             )}
 
@@ -3393,7 +3423,7 @@ export default function ChatView({
               aria-live="polite"
               data-testid="delete-turn-status"
             >
-              {deleteInFlight ? 'Deleting the selected exchange.' : ''}
+              {deleteInFlight ? t('chatView.transcript.deletingExchange') : ''}
             </div>
           </div>
         </ChatScroller>
@@ -3412,7 +3442,7 @@ export default function ChatView({
             <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_var(--dur-layout)_var(--ease-out)]">
               <div className="section-label text-accent flex items-center gap-1.5">
                 <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent-glow)]" />
-                {queuedMessages.length} queued · waiting for {agentLabel || 'Anton'}
+                {t('chatView.queue.status', { count: queuedMessages.length, agent: agentLabel || 'Anton' })}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {queuedMessages.map((q) => (
@@ -3422,11 +3452,11 @@ export default function ChatView({
                     className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-hover ease-[ease]"
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
-                    <Tooltip content="Remove from queue">
+                    <Tooltip content={t('chatView.queue.remove')}>
                       <button
                         type="button"
                         onClick={() => onRemoveFromQueue?.(q.id)}
-                        aria-label="Remove from queue"
+                        aria-label={t('chatView.queue.remove')}
                         className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
                       >{Ico.close(12)}</button>
                     </Tooltip>
@@ -3457,7 +3487,7 @@ export default function ChatView({
             onUpdateConnectorMute={onUpdateConnectorMute}
             browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
-            placeholder="Reply…"
+            placeholder={t('chatView.composer.replyPlaceholder')}
             metaReadOnly
             modelReadOnly={false}
             hideMeta
@@ -3520,12 +3550,12 @@ export default function ChatView({
             FLOATING expand button outside is the one hidden via
             .chat-rail-toggle in globals.css. */}
         <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
-          <Tooltip content="Collapse panel">
+          <Tooltip content={t('chatView.header.collapsePanel')}>
             <button
               type="button"
               className="chat-rail-close"
               onClick={() => railFloats ? setRailNarrowOpen(false) : setRailOpen(false)}
-              aria-label="Collapse panel"
+              aria-label={t('chatView.header.collapsePanel')}
               // kept inline: same all:unset cascade-priority reason as ArtifactCard's
               // buttons — every property here stays co-located with the reset, and
               // the hover color/background mutation needs a subsequent inline write
@@ -3620,7 +3650,7 @@ export default function ChatView({
         size="sm"
         width="min(90vw, 460px)"
         maxHeight="85vh"
-        ariaLabel="Connect"
+        ariaLabel={t('chatView.transcript.connect')}
       >
         <ModalBody padding="0">
             <FormErrorBoundary>

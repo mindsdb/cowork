@@ -1,0 +1,264 @@
+{
+  "common": {
+    "justNow": "à l’instant",
+    "untitledTask": "Tâche sans titre",
+    "newTask": "Nouvelle tâche",
+    "delete": "Supprimer",
+    "keep": "Conserver",
+    "cancel": "Annuler",
+    "connect": "Connecter"
+  },
+  "connect": {
+    "taskTitle": "Connecter {name}",
+    "intro": "Connectons {name}.",
+    "thisConnector": "Ce connecteur",
+    "followups": {
+      "fields": "Une question sur l’un des champs ? Je vous l’explique volontiers.",
+      "credentials": "Besoin d’aide pour trouver vos identifiants ? Il suffit de demander.",
+      "unclear": "Si quelque chose n’est pas clair, dites-le-moi : je peux vous guider pas à pas.",
+      "fieldExpects": "Vous vous demandez ce qu’attend un champ précis ? Je peux vous l’expliquer.",
+      "steps": "Besoin de plus de détails sur l’une des étapes ? Il suffit de demander.",
+      "beforeSubmit": "Des questions avant d’envoyer ? Je suis là.",
+      "deeper": "Voulez-vous que j’explique un champ plus en détail ? Dites-le-moi.",
+      "clarify": "Je peux volontiers préciser quoi que ce soit avant que vous remplissiez le formulaire.",
+      "context": "Si vous voulez plus de contexte sur un champ, il suffit de demander.",
+      "setup": "Des questions sur la configuration ? Je suis là pour vous aider."
+    }
+  },
+  "modify": {
+    "taskTitle": "Modifier {name}",
+    "body": "Mettez à jour les identifiants ou les paramètres de « {name} » : l’enregistrement remplace la connexion existante.",
+    "intro": "Mettons à jour {name}.",
+    "chatRequest": "Mettre à jour la connexion {name} ({label}).",
+    "savedValuesLabel": "Valeurs actuellement enregistrées",
+    "savedValuesDescription": "Modifiez les valeurs stockées pour cette connexion."
+  },
+  "disconnect": {
+    "title": "Déconnecter {name} ?",
+    "titleFallback": "Couper cette connexion ?",
+    "message": "La connexion {engine} enregistrée et ses identifiants stockés seront supprimés. Vous pourrez la reconnecter plus tard.",
+    "confirm": "Déconnecter",
+    "busy": "Déconnexion…"
+  },
+  "oauth": {
+    "reconnectNeeded": "La connexion {engine} doit être rétablie : le jeton d’actualisation a expiré.",
+    "refreshRetrying": "Échec de l’actualisation de la connexion {engine} : nouvelle tentative automatique."
+  },
+  "askUser": {
+    "selectOnly": "Cette question attend l’une des options ci-dessus. Choisissez-en une, ou appuyez sur Passer pour saisir autre chose.",
+    "rejected": "Cette réponse a été refusée. Essayez l’une des options proposées.",
+    "sendFailed": "Impossible d’envoyer votre réponse. Veuillez réessayer.",
+    "notAccepted": "Cette réponse n’a pas été acceptée. Rechargez la conversation pour voir la question dans son état actuel."
+  },
+  "attachments": {
+    "needSavedConversation": "Choisissez un projet et utilisez une conversation enregistrée avant d’envoyer des pièces jointes.",
+    "waitForStart": "Attendez que cette conversation ait commencé avant d’envoyer des pièces jointes.",
+    "sendFailed": "Impossible d’envoyer votre pièce jointe. Veuillez réessayer.",
+    "notSent": "{count, plural, one {Votre fichier n’a pas été envoyé : l’agent a d’abord posé une question. Il est toujours joint.} other {Vos # fichiers n’ont pas été envoyés : l’agent a d’abord posé une question. Ils sont toujours joints.}}"
+  },
+  "tasks": {
+    "stopFailed": "Impossible d’arrêter la tâche : elle est peut-être toujours en cours. Vérifiez votre connexion et réessayez.",
+    "ownerOnly": "Seul le propriétaire peut exécuter des tâches dans ce projet partagé.",
+    "creating": "Création de la tâche…",
+    "configuredPlanningModel": "Modèle de planification configuré",
+    "formSubmitFailed": "Échec de l’envoi du formulaire.",
+    "loadEarlierFailed": "Impossible de charger les messages précédents. Réessayez."
+  },
+  "codeMode": {
+    "stopUnchecked": "Le mode code est masqué, mais les tâches en cours n’ont pas pu être entièrement vérifiées.",
+    "stopFailed": "{count, plural, one {Le mode code est masqué, mais # tâche n’a pas pu être arrêtée.} other {Le mode code est masqué, mais # tâches n’ont pas pu être arrêtées.}}",
+    "needFolder": "Choisissez un projet avec un dossier avant de lancer Claude Code.",
+    "needModel": "Choisissez un modèle avant de lancer Claude Code.",
+    "noKey": "Aucune clé API MindsHub configurée : connectez-vous avec MindsHub ou ajoutez une clé dans les Paramètres avant d’utiliser le mode code.",
+    "createFailed": "Impossible de créer la tâche Claude Code."
+  },
+  "deleteTask": {
+    "title": "Supprimer cette tâche ?",
+    "message": "L’historique de la conversation et les cellules du bloc-notes propres à la tâche seront supprimés. Cette action est irréversible.",
+    "failed": "Impossible de supprimer cette conversation. Elle est revenue dans votre liste ; réessayez."
+  },
+  "deleteTurn": {
+    "title": "Supprimer cet échange ?",
+    "message": "Votre question et la réponse de {agent} seront retirées de la conversation. Les cellules du bloc-notes, artefacts ou écritures en mémoire produits pendant cet échange restent sur le disque. Cette action est irréversible.",
+    "unconfirmedRefresh": "La dernière suppression n’a pas pu être confirmée, la liste va donc être actualisée. Vérifiez-la, puis supprimez à nouveau si nécessaire.",
+    "refreshFailed": "Impossible d’actualiser cette conversation. Rechargez-la avant d’y supprimer quoi que ce soit d’autre.",
+    "messageChanged": "Ce message a changé avant d’avoir pu être supprimé. Réessayez.",
+    "unconfirmedNoRefresh": "Impossible de confirmer cette suppression ou d’actualiser la conversation. Rechargez cette conversation avant d’y supprimer quoi que ce soit d’autre.",
+    "deletedNoRefresh": "Cet échange a été supprimé, mais la conversation n’a pas pu être actualisée : la liste n’est peut-être pas à jour. Rechargez cette conversation avant d’y supprimer quoi que ce soit d’autre.",
+    "unconfirmed": "Impossible de confirmer cette suppression. Elle a peut-être abouti ; la conversation sera donc actualisée avant la prochaine suppression.",
+    "failedWithReason": "Impossible de supprimer cet échange : {reason}",
+    "notDeletedAsShown": "Le serveur n’a pas supprimé cet échange comme affiché ; la conversation a donc été actualisée. Vérifiez-la, puis supprimez à nouveau si nécessaire."
+  },
+  "deleteProject": {
+    "title": "Supprimer le projet « {name} » ?",
+    "messageExternal": "Le projet et ses conversations seront supprimés. Votre dossier {path} reste en place et vos propres fichiers n’y sont pas modifiés, mais les dossiers skills/ et .anton/ de Cowork y resteront. Cette action est irréversible.",
+    "message": "Toutes les conversations, sorties du bloc-notes, la mémoire et les artefacts de ce projet seront supprimés du disque. Cette action est irréversible.",
+    "confirm": "Supprimer le projet",
+    "failed": "Impossible de supprimer ce projet. Rien n’a été supprimé ; réessayez."
+  },
+  "display": {
+    "settings": "Paramètres d’affichage",
+    "toggleTheme": "Basculer entre mode clair et sombre"
+  },
+  "compare": {
+    "unavailableTitle": "La comparaison de modèles n’est pas disponible ici",
+    "unavailableDescription": "Aucun modèle n’est proposé sur ce déploiement, il n’y a donc rien à comparer. C’est votre opérateur qui choisit les modèles disponibles."
+  },
+  "drive": {
+    "connectTitle": "Connecter Google Drive ?",
+    "connectMessage": "Connectez votre compte Google Drive pour ajouter des fichiers depuis Drive.",
+    "chooseAccountTitle": "Choisir un compte Google Drive",
+    "chooseAccountSubtitle": "Plusieurs comptes Google Drive sont connectés : choisissez celui à utiliser."
+  },
+  "update": {
+    "updating": "Mise à jour...",
+    "updatingTo": "Mise à jour vers {version}...",
+    "almostThere": "Presque terminé..."
+  },
+  "router": {
+    "unavailableTitle": "Cette conversation n’a pas pu être chargée",
+    "unavailableDescription": "Impossible de joindre le serveur. Votre lien reste valide : réessayez une fois la connexion rétablie.",
+    "retrying": "Nouvelle tentative…",
+    "tryAgain": "Réessayer"
+  },
+  "shell": {
+    "welcome": "Bienvenue dans {product}",
+    "setupErrorTitle": "Impossible de terminer la configuration",
+    "setupErrorBody": "Votre fournisseur est enregistré, mais votre modèle n’a pas pu être appliqué. Vérifiez votre connexion, puis réessayez.",
+    "retrying": "Nouvelle tentative…",
+    "retry": "Réessayer",
+    "tryAgain": "Réessayer",
+    "switchToLight": "Passer au thème clair",
+    "switchToDark": "Passer au thème sombre",
+    "toggleTheme": "Changer le thème de couleur",
+    "dismiss": "Ignorer",
+    "dismissUntilNextLaunch": "Masquer jusqu’au prochain lancement",
+    "serviceUnconfiguredTitle": "Le service n’est pas encore configuré",
+    "serviceUnavailableTitle": "Le service est indisponible",
+    "serviceUnconfiguredBody": "Demandez à votre administrateur de vérifier les paramètres du modèle, puis réessayez.",
+    "serviceUnavailableBody": "Le serveur est peut-être en train de redémarrer. Patientez un instant, puis réessayez."
+  },
+  "ownership": {
+    "title": "À qui appartiennent ces données ?",
+    "intro": "Cet ordinateur contient des données datant d’avant la séparation des comptes, et nous ne pouvons pas savoir si elles appartiennent à {who}.",
+    "thisAccount": "ce compte",
+    "credentials": "Il ne s’agit pas seulement d’anciennes conversations. En récupérant ces données, vous récupérez aussi les clés API des fournisseurs enregistrées ici et les identifiants des sources de données qui étaient connectées.",
+    "nothingDeleted": "Rien n’est supprimé, quel que soit votre choix. Si vous repartez de zéro, les données existantes restent sur cet ordinateur pour leur propriétaire.",
+    "startingFresh": "Réinitialisation…",
+    "startFresh": "Repartir de zéro",
+    "restoring": "Restauration…",
+    "mine": "Ces données sont à moi",
+    "accountChanged": "Le compte connecté a changé. Reconnectez-vous pour répondre.",
+    "claimFailed": "Impossible de récupérer ces données. Rien n’a été modifié ; réessayez."
+  },
+  "updateBanner": {
+    "downloading": "Téléchargement de la mise à jour…",
+    "downloadingPercent": "Téléchargement de la mise à jour ({percent} %)",
+    "installing": "Installation de la mise à jour…",
+    "restartFailed": "Échec de la dernière tentative de redémarrage",
+    "tryAgain": "Réessayer",
+    "ready": "Mise à jour prête",
+    "readyVersion": "Mise à jour prête{hasVersion, select, yes { ({version})} other {}}",
+    "restartNow": "Redémarrer maintenant",
+    "restart": "Redémarrer",
+    "readyAutoHint": "La nouvelle version{hasVersion, select, yes { ({version})} other {}} est téléchargée. Redémarrez maintenant pour l’utiliser, sinon elle s’installera automatiquement la prochaine fois que vous quitterez l’application.",
+    "appUpdateFailed": "Échec de la mise à jour de l’application",
+    "retry": "Réessayer",
+    "download": "Télécharger",
+    "appVersionAvailable": "Nouvelle version de l’application disponible",
+    "newVersion": "Nouvelle version disponible{hasVersion, select, yes { ({version})} other {}}",
+    "abortedHint": "La dernière tentative de redémarrage a échoué. La mise à jour est toujours téléchargée. Réessayez pour redémarrer.",
+    "abortedHintReason": "Échec de la dernière tentative de redémarrage : {reason}. La mise à jour est toujours téléchargée. Réessayez pour redémarrer.",
+    "debInstallStep": "exécutez {command} depuis le dossier où vous l’avez téléchargé",
+    "otaHint": "Recharge l’application pour terminer la mise à jour{hasVersion, select, yes { vers {version}} other {}}. Elle s’appliquera aussi automatiquement la prochaine fois que vous ouvrirez l’application.",
+    "otaFailed": "Échec de la mise à jour{hasVersion, select, yes { ({version})} other {}}"
+  },
+  "shellSupport": {
+    "tooOld": {
+      "title": "Cette application est trop ancienne pour cette version de Cowork",
+      "body": "La version {installed} de l’application est installée ; la version actuelle est {current}. Certaines fonctionnalités restent masquées jusqu’à la mise à jour de l’application.",
+      "restartToUpdate": "Redémarrer pour mettre à jour",
+      "downloadUpdate": "Télécharger la mise à jour",
+      "checking": "Recherche de mise à jour…",
+      "downloading": "Téléchargement…",
+      "downloadingPercent": "Téléchargement ({percent} %)",
+      "installing": "Installation…",
+      "retryUpdate": "Relancer la mise à jour",
+      "downloadLatest": "Télécharger la dernière version"
+    },
+    "osCapped": {
+      "minimum": "macOS {version} ou version ultérieure",
+      "belowFloorTitle": "Mettez à jour macOS pour continuer à utiliser Cowork en toute sécurité",
+      "belowFloorBody": "Cette version de l’application n’est pas sûre si plusieurs personnes se connectent à Cowork sur ce compte utilisateur Mac : elle peut afficher les données d’un compte à la personne qui se connecte ensuite. Les versions plus récentes corrigent ce problème, mais nécessitent {minimum}.",
+      "title": "Votre version de macOS ne reçoit plus les mises à jour de l’application",
+      "body": "Ce Mac exécute macOS {major}. Passez à {minimum} pour continuer à recevoir les mises à jour de l’application. Certaines fonctionnalités pourraient cesser de fonctionner avec le temps."
+    }
+  },
+  "serverStatus": {
+    "exitCode": {
+      "stillStarting": "démarrage en cours",
+      "notApplicable": "sans objet",
+      "stopped": "arrêté",
+      "unknown": "inconnu",
+      "neverStarted": "jamais démarré"
+    },
+    "timeout": {
+      "headline": "Le backend démarrait encore quand l’application a cessé d’attendre.",
+      "firstLaunch": "C’est généralement le premier lancement après une installation : tout l’environnement Python est analysé lors de sa première exécution, ce qui est bien plus lent que les lancements suivants.",
+      "reopen": "Quittez complètement l’application et rouvrez-la. Le backend repart de zéro et démarre normalement à la deuxième tentative."
+    },
+    "exited": {
+      "headline": "Le backend a démarré, puis s’est arrêté avant la fin de son initialisation."
+    },
+    "spawnError": {
+      "headline": "Le programme du backend n’a pas pu être lancé du tout.",
+      "antivirus": "La cause habituelle est un antivirus ou une protection des terminaux qui bloque l’exécutable ; autorisez le backend de {product} et réessayez.",
+      "reinstall": "Si ce n’est pas le cas, relancez le programme d’installation pour réinstaller le backend."
+    },
+    "notInstalled": {
+      "headline": "Le backend n’est pas encore installé.",
+      "rerun": "Relancez le programme d’installation pour le configurer."
+    },
+    "credentialClear": {
+      "headline": "Le backend n’a pas pu supprimer les clés API de votre dernière déconnexion ; il s’est donc arrêté au lieu de les utiliser.",
+      "reopen": "Quittez complètement {product} et rouvrez-le. Le backend réessaie à chaque démarrage.",
+      "filesHeld": "Si l’échec persiste, un autre programme garde peut-être ouverts des fichiers du dossier de données de Cowork ; fermez-le ou redémarrez l’ordinateur."
+    },
+    "incompatible": {
+      "headline": "Le backend doit être mis à jour pour cette version de {product}.",
+      "reopen": "Quittez complètement {product} et rouvrez-le pour installer et démarrer le backend correspondant.",
+      "rerun": "Si la mise à jour n’aboutit pas, relancez le dernier programme d’installation."
+    },
+    "notRunning": {
+      "headline": "Le backend n’est pas en cours d’exécution.",
+      "startBelow": "Démarrez-le ci-dessous."
+    },
+    "portHeld": "Le processus {pid} occupe le port {port}. Fermez-le (ou redémarrez l’ordinateur), puis relancez le backend.",
+    "copyLog": "Si l’échec persiste, copiez le journal ci-dessous et envoyez-le au support.",
+    "noLog": {
+      "timeout": "Le backend n’avait encore rien écrit quand l’application a cessé d’attendre : il n’y a donc aucun journal à envoyer.",
+      "exited": "Le journal est vide, car le backend s’est arrêté avant d’écrire quoi que ce soit : il n’y a donc aucun journal à envoyer.",
+      "spawnError": "Le programme ne s’est jamais exécuté : l’erreur de lancement ci-dessus est la seule information disponible, et il n’y a aucun journal à envoyer.",
+      "notInstalled": "Rien ne s’est encore exécuté : il n’y a donc aucun journal à envoyer.",
+      "incompatible": "Le backend a répondu normalement, mais il s’agit d’une ancienne version incompatible ; il n’y a peut-être aucun journal d’erreurs.",
+      "credentialClear": "Le backend s’est arrêté avant d’indiquer la raison : il n’y a donc aucun journal à envoyer.",
+      "default": "Aucun journal n’a encore été enregistré : il n’y a rien à envoyer."
+    }
+  },
+  "restartConfirm": {
+    "confirm": "Redémarrer quand même",
+    "cancel": "Annuler",
+    "unknownTitle": "Redémarrer maintenant ?",
+    "unknownBody": "Cowork ne peut pas déterminer si des tâches sont en cours. Le redémarrage arrête toutes les tâches en cours.",
+    "title": "Arrêter {count, plural, one {# tâche en cours} other {# tâches en cours}} et redémarrer ?",
+    "body": "Le redémarrage interrompt les tâches en pleine réponse. Vous pouvez redémarrer plus tard depuis les Paramètres ou la bannière de mise à jour."
+  },
+  "bootStatus": {
+    "downloading": "Téléchargement de la dernière mise à jour…",
+    "finishing": "Finalisation…",
+    "installing": "Installation de la mise à jour — Cowork va se rouvrir…"
+  },
+  "orgs": {
+    "personal": "Personnel"
+  }
+}

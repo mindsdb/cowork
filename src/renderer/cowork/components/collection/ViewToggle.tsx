@@ -13,6 +13,7 @@ import { useCallback, useState } from 'react';
 import Ico from '../Icons';
 import { ToggleGroup } from '../ui/ToggleGroup';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useTranslation } from '../../../lib/i18n';
 
 export type CollectionViewMode = 'grid' | 'list';
 
@@ -44,9 +45,9 @@ export function useCollectionView(storageKey: string, { defaultView = 'grid' }: 
 }
 
 const OPTIONS = [
-  { value: 'grid', label: 'Grid', icon: Ico.grid(14) },
-  { value: 'list', label: 'List', icon: Ico.list(14) },
-];
+  { value: 'grid', labelKey: 'collection.view.grid', icon: Ico.grid(14) },
+  { value: 'list', labelKey: 'collection.view.list', icon: Ico.list(14) },
+] as const;
 
 export interface ViewToggleProps {
   value: CollectionViewMode;
@@ -55,14 +56,15 @@ export interface ViewToggleProps {
 
 export function ViewToggle({ value, onValueChange }: ViewToggleProps) {
   const { isMobile } = useBreakpoint();
+  const { t } = useTranslation('library');
   if (isMobile) return null;
   return (
     <ToggleGroup
       value={value}
       onValueChange={(next) => onValueChange(next as CollectionViewMode)}
       size="md"
-      aria-label="View"
-      options={OPTIONS}
+      aria-label={t('collection.view.ariaLabel')}
+      options={OPTIONS.map(({ labelKey, ...o }) => ({ ...o, label: t(labelKey) }))}
     />
   );
 }

@@ -23,14 +23,14 @@ import {
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
 import {
-  NO_PREVIEW_DOWNLOADED_NOTE, artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete,
+  noPreviewDownloadedNote, artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete,
 } from '../lib/artifactActions';
 import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { useLiveApps } from '../../lib/liveApps';
-import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../lib/liveAppSharing';
+import { shareLiveAppLabel, canShareLiveApp, isLiveAppCard } from '../lib/liveAppSharing';
 import {
-  LAUNCH_LIVE_APP_LABEL, canLaunchLiveApp, launchLiveAppPrompt, liveAppLines, liveAppOpenAddress,
+  launchLiveAppLabel, canLaunchLiveApp, launchLiveAppPrompt, liveAppLines, liveAppOpenAddress,
 } from '../lib/liveAppState';
 import { useLiveAppStates } from '../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../components/artifacts/LiveAppShareDialog';
@@ -75,6 +75,9 @@ import { host } from '../../platform/host';
 import { surfaceCopy } from '../lib/surface';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
+import i18n, { useTranslation } from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(key, { ns: 'artifacts', ...vars });
 
 const EMPTY_ARTIFACTS = [];
 
@@ -84,13 +87,8 @@ const LIST_CLASS = 'mx-8 mb-[60px]';
 
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
-const SORT_OPTIONS = [
-  { id: 'published', label: 'Shared first' },
-  { id: 'recent', label: 'Recent' },
-  { id: 'oldest', label: 'Oldest' },
-  { id: 'title', label: 'Title (A–Z)' },
-  { id: 'type', label: 'Type' },
-];
+// Labels are artifactsView.sort.<id>, translated where the pill renders.
+const SORT_IDS = ['published', 'recent', 'oldest', 'title', 'type'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -157,6 +155,7 @@ export function titleCompare(a, b) {
 // On confirm it hands back the access payload. Re-publishing pre-fills
 // the existing selection.
 function PublishDialog({ artifact, onCancel, onConfirm }) {
+  const { t } = useTranslation('artifacts');
   const [draft, setDraft] = useState(() => accessDraftFromArtifact(artifact));
   if (!artifact) return null;
   const canConfirm = isAccessDraftValid(draft);
@@ -166,20 +165,20 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
       <ModalHeader
         id="publish-dialog-title"
-        title="Share to the Web"
+        title={t('publish.shareToWeb')}
         subtitle={artifact.title || artifact.path?.split('/').pop()}
         onClose={onCancel}
       />
       <ModalBody>
         <div className="font-[family-name:var(--font-body)] font-semibold text-sm text-ink mb-2">
-          Who can access your app
+          {t('publish.whoCanAccess')}
         </div>
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
       </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>Cancel</Button>}>
+      <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>{t('common.cancel')}</Button>}>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
-          {draft.mode === AUDIENCE_CHOICE.PASSWORD ? 'Share protected'
-            : draft.mode === AUDIENCE_CHOICE.SPECIFIC ? 'Share restricted' : 'Share'}
+          {draft.mode === AUDIENCE_CHOICE.PASSWORD ? t('artifactsView.shareProtected')
+            : draft.mode === AUDIENCE_CHOICE.SPECIFIC ? t('artifactsView.shareRestricted') : t('publish.share')}
         </Button>
       </ModalFooter>
     </Modal>
@@ -225,7 +224,7 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
  */
 async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
   if (!(await downloadArtifactFile(artifact))) {
-    toastManager.add({ title: 'Could not download this artifact.', type: 'danger' });
+    toastManager.add({ title: tr('artifactsView.downloadFailed'), type: 'danger' });
     return;
   }
   if (note) toastManager.add({ title: note });
@@ -236,6 +235,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
      ↗ opens the artifact outside the app. */
   const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const orgMode = useOrgMode();
+  const { t } = useTranslation('artifacts');
 
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
@@ -322,12 +322,12 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           {/* Actions — open-in-browser + ⋯ menu. */}
           <div className="flex items-center gap-0.5 shrink-0">
             {canOpenOutside && (
-              <Tooltip content="Open">
-                <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(16)}</CardIconButton>
+              <Tooltip content={t('documentPreview.open')}>
+                <CardIconButton ariaLabel={t('documentPreview.open')} onClick={onOpenExternal}>{Ico.externalLink(16)}</CardIconButton>
               </Tooltip>
             )}
-            <Tooltip content="More actions">
-              <CardIconButton ref={kebabRef} ariaLabel="Artifact menu"
+            <Tooltip content={t('header.moreActions')}>
+              <CardIconButton ref={kebabRef} ariaLabel={t('artifactsView.menu')}
                 onClick={(e) => { e.stopPropagation(); openMenu(e); }}>
                 {Ico.moreVert(16)}
               </CardIconButton>
@@ -356,7 +356,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       <div className="card__rail flex items-center gap-2 py-[9px] px-4">
         <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(14)}</span>
         {canOpenProject ? (
-          <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
+          <Tooltip content={t('artifactsView.openProject', { project: projectLabel(projectMatch) })}>
             <button
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
@@ -429,7 +429,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
    */
   const openBest = () => {
     if (target === 'preview') onOpenViewer?.(artifact);
-    else if (target === 'download') downloadWithFeedback(artifact, toastManager, { note: NO_PREVIEW_DOWNLOADED_NOTE });
+    else if (target === 'download') downloadWithFeedback(artifact, toastManager, { note: noPreviewDownloadedNote() });
     else if (published) openUrl(artifact.publishedUrl);
     else if (target === 'os') openArtifactFile(artifact);
   };
@@ -481,6 +481,7 @@ function ArtifactFileName({ artifact, liveLines = null }) {
 
 // Project origin. When it resolves to a known project, the label opens it.
 function ArtifactProject({ artifact, projects, onOpenProject }) {
+  const { t } = useTranslation('artifacts');
   // Not `projectName`: that name is reserved for slugs (projectLabelSurfaces
   // guards it). projectNameOf routes through projectLabel itself.
   const projectDisplay = projectNameOf(artifact, projects);
@@ -491,7 +492,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
       <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(14)}</span>
       {canOpenProject ? (
         <ItemActions className="min-w-0 shrink">
-          <Tooltip content={`Open ${projectLabel(projectMatch)}`}>
+          <Tooltip content={t('artifactsView.openProject', { project: projectLabel(projectMatch) })}>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
@@ -532,16 +533,17 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, p
 }
 
 function ArtifactActions({ onOpen, showOpen, menuItems }) {
+  const { t } = useTranslation('artifacts');
   return (
     <>
       {showOpen && (
-        <Tooltip content="Open">
+        <Tooltip content={t('documentPreview.open')}>
           {/* Same ghost icon Button as the menu trigger beside it. */}
           <Button
             icon
             size="sm"
             variant="subtle"
-            aria-label="Open"
+            aria-label={t('documentPreview.open')}
             onClick={(e) => { e.stopPropagation(); onOpen(); }}
           >
             {Ico.externalLink(14)}
@@ -550,8 +552,8 @@ function ArtifactActions({ onOpen, showOpen, menuItems }) {
       )}
       <OverflowMenu
         items={menuItems}
-        label="Artifact menu"
-        title="More actions"
+        label={t('artifactsView.menu')}
+        title={t('header.moreActions')}
         icon={Ico.moreVert(16)}
         size="sm"
         zIndex={60}
@@ -575,20 +577,20 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
        * org mode the row leaves out onOpen when its click downloads, since the
        * Download item below already does that.
        */
-      label: orgMode ? 'Open shared link' : (isHtml ? 'Open viewer' : 'Open'),
+      label: orgMode ? tr('artifactsView.openSharedLink') : (isHtml ? tr('artifactsView.openViewer') : tr('documentPreview.open')),
       icon: Ico.externalLink(14),
       onClick: orgMode ? onOpenShared : onOpen,
     },
     // Org only: on Desktop the item above already opens the viewer.
     orgMode && (canPreviewOrgDraft(artifact) || canPreviewDocument(artifact, host)) && {
       id: 'preview',
-      label: 'Preview',
+      label: tr('modeTabs.preview'),
       icon: (Ico.eye?.(13) || Ico.sparkle(14)),
       onClick: onPreview,
     },
     onReveal && {
       id: 'reveal',
-      label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
+      label: isMacPlatform ? tr('header.showInFinder') : tr('artifactsView.showInExplorer'),
       icon: Ico.folder(14),
       onClick: onReveal,
     },
@@ -596,45 +598,45 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
        primary is only its shell, so it gets none. */
     onDownload && canDownloadArtifact(artifact) && {
       id: 'download',
-      label: 'Download',
+      label: tr('documentPreview.download'),
       icon: Ico.download(14),
       onClick: onDownload,
     },
     published && {
       id: 'copy-url',
-      label: 'Copy URL',
+      label: tr('publish.copyUrl'),
       icon: Ico.copy(14),
       onClick: onCopyUrl,
     },
     published && artifact.modified && {
       id: 'update',
-      label: 'Update',
+      label: tr('publish.update'),
       icon: Ico.refresh(14),
       onClick: onUpdate,
     },
     // A live app shares through "Share with…": cowork-server refuses it as a page.
     !published && isPublishableArtifact(artifact) && !isLiveAppCard(artifact, liveApps) && {
       id: 'publish',
-      label: 'Share',
+      label: tr('publish.share'),
       icon: Ico.upload(14),
       onClick: onPublish,
     },
     published && {
       id: 'unpublish',
-      label: 'Stop sharing',
+      label: tr('publish.stopSharing'),
       icon: Ico.upload(14),
       onClick: onUnpublish,
     },
     onShareLiveApp && canShareLiveApp(artifact, liveApps) && {
       id: 'share-live-app',
-      label: SHARE_LIVE_APP_LABEL,
+      label: shareLiveAppLabel(),
       icon: Ico.userPlus(14),
       onClick: onShareLiveApp,
     },
     // Only for an app that isn't running (canLaunchLiveApp), so the caller passes it or not.
     onLaunchLiveApp && {
       id: 'launch-live-app',
-      label: LAUNCH_LIVE_APP_LABEL,
+      label: launchLiveAppLabel(),
       icon: Ico.play(14),
       onClick: onLaunchLiveApp,
     },
@@ -642,7 +644,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     onDelete && {
       id: 'delete',
       // See the grid menu's delete for why this is disabled while busy.
-      label: busy ? 'Deleting…' : 'Delete artifact',
+      label: busy ? tr('status.deleting') : tr('artifactsView.deleteItem'),
       icon: Ico.trash(14),
       danger: true,
       disabled: busy,
@@ -777,6 +779,8 @@ export default function ArtifactsView({
   // apply `transform` on hover, which would re-anchor a position:fixed
   // descendant to the card itself instead of the viewport.
   const [menuFor, setMenuFor] = useState(null); // { artifact, rect }
+  const { t } = useTranslation('artifacts');
+  const sortOptions = SORT_IDS.map((id) => ({ id, label: t(`artifactsView.sort.${id}`) }));
   const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
   // don't disappear into the console.
@@ -832,7 +836,7 @@ export default function ArtifactsView({
   const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
     if (!isPublishableArtifact(artifact)) {
-      showToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be shared.' });
+      showToast({ kind: 'error', message: t('artifactsView.onlyHtmlMd') });
       return Promise.resolve();
     }
     // Settle any prior unresolved flow before starting a new one so a
@@ -869,23 +873,22 @@ export default function ArtifactsView({
           ownerOnly: m === 'restricted' ? (answered.ownerOnly ?? requested.ownerOnly) : false,
         });
         setPhase(artifact.path, null);
-        const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
         trackArtifactPublished(r.report_id || artifact.id || '', m);
         showToast({
           kind: 'ok',
-          message: label ? `Shared (${label}) — ${r.url}` : `Shared — ${r.url}`,
+          message: t('artifactsView.sharedToast', { mode: m === 'password' || m === 'restricted' ? m : 'other', url: r.url }),
         });
       } else {
         setPhase(artifact.path, 'failed');
-        showToast({ kind: 'error', message: 'Sharing returned no URL.' });
+        showToast({ kind: 'error', message: t('publish.errors.noUrl') });
       }
     } catch (e) {
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
       const refusal = publishRefusalMessage(e);
-      let friendly = refusal ?? `Sharing failed: ${msg}`;
+      let friendly = refusal ?? t('publish.errors.sharingFailed', { message: msg });
       if (!refusal && (/minds_api_key/i.test(msg) || /minds api key/i.test(msg))) {
-        friendly = 'Set your Minds API key in Settings to share artifacts.';
+        friendly = t('artifactsView.mindsApiKey');
       }
       /* A refused share (another owner's artifact, or a share with everyone
          the caller may not make) is refused again, so the card keeps its
@@ -909,9 +912,9 @@ export default function ArtifactsView({
       // so the toast names no service.
       showToast(leftLive
         ? { kind: 'warning', message: leftLive }
-        : { kind: 'ok', message: PLATFORM_UI ? 'Stopped sharing on MindsHub.' : 'Stopped sharing.' });
+        : { kind: 'ok', message: PLATFORM_UI ? t('artifactsView.stoppedOnMindsHub') : t('artifactsView.stopped') });
     } catch (e) {
-      showToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
+      showToast({ kind: 'error', message: t('publish.errors.stopFailed', { message: String(e?.message || e) }) });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
@@ -928,9 +931,9 @@ export default function ArtifactsView({
       // longer "modified". Reflect it locally without a refetch.
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       const replaced = republishNotice(r);
-      showToast(replaced ? { kind: 'warning', message: replaced } : { kind: 'ok', message: 'Updated the shared version.' });
+      showToast(replaced ? { kind: 'warning', message: replaced } : { kind: 'ok', message: t('artifactsView.updated') });
     } catch (e) {
-      const message = publishRefusalMessage(e) ?? `Update failed: ${e?.message || e}`;
+      const message = publishRefusalMessage(e) ?? t('publish.errors.updateFailed', { message: String(e?.message || e) });
       showToast({ kind: 'error', message });
     } finally {
       setBusy(artifact.path, false);
@@ -940,7 +943,7 @@ export default function ArtifactsView({
 
   const handleTrash = async (artifact) => {
     if (artifact?.capabilities?.canEdit === false) {
-      showToast({ kind: 'error', message: 'Only the artifact owner can delete it.' });
+      showToast({ kind: 'error', message: t('artifactsView.ownerOnlyDelete') });
       return;
     }
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
@@ -961,9 +964,9 @@ export default function ArtifactsView({
         leftLive = stopSharingNotice(await unpublishArtifact(artifact.path));
       }
       await deleteArtifactAndSync(artifact);
-      showToast(leftLive ? { kind: 'warning', message: leftLive } : { kind: 'ok', message: 'Deleted.' });
+      showToast(leftLive ? { kind: 'warning', message: leftLive } : { kind: 'ok', message: t('artifactsView.deleted') });
     } catch (e) {
-      showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
+      showToast({ kind: 'error', message: t('artifactsView.deleteFailed', { message: String(e?.message || e) }) });
       // Only on failure: on success the row is already gone, and clearing the
       // phase of a removed path would just leave a dead entry in statusByPath.
       setPhase(artifact.path, null);
@@ -1011,8 +1014,8 @@ export default function ArtifactsView({
       className="scroll-clean flex-1 overflow-y-auto flex flex-col [container-type:inline-size]"
     >
       <PageHeader
-        title="Live Artifacts"
-        subtitle={`Documents, dashboards, and code ${agentLabel} produces. To get a web link for a page or document, open it and choose Share.`}
+        title={t('artifactsView.title')}
+        subtitle={t('artifactsView.subtitle', { agent: agentLabel })}
         // 20px below the subtitle text so the page reads with a
         // little air before the search-row begins. The 20px spacer
         // below the header still adds the standard between-section
@@ -1036,7 +1039,7 @@ export default function ArtifactsView({
           // The copy sorts with the viewer's own artifacts, often below the
           // fold, so the toast is what says it worked.
           onDuplicated={() => {
-            showToast({ kind: 'ok', message: 'Duplicated into your General project.' });
+            showToast({ kind: 'ok', message: t('artifactsView.duplicated') });
             onRefreshArtifacts?.();
           }}
           className="mx-8 mb-6"
@@ -1050,10 +1053,10 @@ export default function ArtifactsView({
               value={search}
               onChange={setSearch}
               inputRef={searchRef}
-              placeholder="Search artifacts"
+              placeholder={t('artifactsView.search')}
             />
           }
-          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          sort={<SortPill value={sort} onChange={setSort} options={sortOptions} />}
           view={<ViewToggle value={view} onValueChange={setView} />}
         />
       )}
@@ -1070,12 +1073,12 @@ export default function ArtifactsView({
         skeletonGridClassName="artifacts-grid"
         empty={{
           icon: Ico.sparkle(20),
-          title: 'No artifacts yet',
+          title: t('artifactsView.emptyTitle'),
           // Second line (ENG-2169): the two apps keep separate artifacts, so
           // someone looking for work made in the other one is told where it is.
           description: (
             <>
-              {`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+              {t('artifactsView.emptyBody', { agent: agentLabel })}
               {artifactsNote && <span className="block mt-2 text-ink-4">{artifactsNote}</span>}
             </>
           ),
@@ -1180,14 +1183,14 @@ export default function ArtifactsView({
             if (a.modified) {
               items.push({
                 id: 'update',
-                label: busyA ? 'Working…' : 'Update',
+                label: busyA ? t('artifactsView.working') : t('publish.update'),
                 icon: Ico.refresh(14),
                 onClick: () => handleUpdate(a),
               });
             }
             items.push({
               id: 'unpublish',
-              label: busyA ? 'Working…' : 'Stop sharing',
+              label: busyA ? t('artifactsView.working') : t('publish.stopSharing'),
               icon: Ico.power(14),
               onClick: () => handleUnpublish(a),
             });
@@ -1195,7 +1198,7 @@ export default function ArtifactsView({
             // A live app shares through "Share with…": cowork-server refuses it as a page.
             items.push({
               id: 'publish',
-              label: busyA ? 'Sharing…' : 'Share',
+              label: busyA ? t('status.sharing') : t('publish.share'),
               icon: Ico.power(14),
               onClick: () => handlePublish(a),
             });
@@ -1206,7 +1209,7 @@ export default function ArtifactsView({
           if (canPreviewDocument(a, host) || (orgMode ? canPreviewOrgDraft(a) : canPreviewLocally(a))) {
             items.push({
               id: 'preview',
-              label: 'Preview',
+              label: t('modeTabs.preview'),
               icon: (Ico.eye?.(13) || Ico.sparkle(14)),
               onClick: () => openViewer(a),
             });
@@ -1228,7 +1231,7 @@ export default function ArtifactsView({
           if (orgMode ? published : (isHtml && (!isBackend || published))) {
             items.push({
               id: 'open',
-              label: orgMode ? 'Open shared link' : 'Open in browser',
+              label: orgMode ? t('artifactsView.openSharedLink') : t('liveAppPreview.openInBrowser'),
               icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(14)),
               /*
                * Awaited so a rejected bridge call is caught rather than left
@@ -1249,7 +1252,7 @@ export default function ArtifactsView({
             // desktop where the renderer and server share a filesystem.
             items.push({
               id: 'reveal',
-              label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
+              label: isMacPlatform ? t('header.showInFinder') : t('artifactsView.showInExplorer'),
               icon: Ico.folder(14),
               onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
@@ -1262,7 +1265,7 @@ export default function ArtifactsView({
           if ((orgMode || host.isWeb) && canDownloadArtifact(a)) {
             items.push({
               id: 'download',
-              label: 'Download',
+              label: t('documentPreview.download'),
               icon: Ico.download(14),
               onClick: () => downloadWithFeedback(a, toastManager),
             });
@@ -1270,7 +1273,7 @@ export default function ArtifactsView({
           if (canShareLiveApp(a, liveApps)) {
             items.push({
               id: 'share-live-app',
-              label: SHARE_LIVE_APP_LABEL,
+              label: shareLiveAppLabel(),
               icon: Ico.userPlus(14),
               onClick: () => setShareTarget(a),
             });
@@ -1279,7 +1282,7 @@ export default function ArtifactsView({
           if (launch) {
             items.push({
               id: 'launch-live-app',
-              label: LAUNCH_LIVE_APP_LABEL,
+              label: launchLiveAppLabel(),
               icon: Ico.play(14),
               onClick: () => launch(a),
             });
@@ -1292,7 +1295,7 @@ export default function ArtifactsView({
               // Disabled while it runs: handleTrash already ignores a re-entrant
               // call, but a menu item that still looks clickable reads as "nothing
               // happened" and invites the second click.
-              label: busyA ? 'Deleting…' : 'Delete',
+              label: busyA ? t('status.deleting') : t('common.delete'),
               icon: Ico.trash(14),
               danger: true,
               disabled: busyA,

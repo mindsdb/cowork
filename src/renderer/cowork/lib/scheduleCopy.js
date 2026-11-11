@@ -1,4 +1,7 @@
 import { host } from '../../platform/host';
+import i18n from '../../lib/i18n';
+
+const msg = (key) => i18n.t(`messages.scheduleCopy.${key}`, { ns: 'projects' });
 
 // What a scheduled task does when it couldn't run at its time. One sentence
 // per cadence, shown when the task is created or edited and on its page, so
@@ -10,22 +13,16 @@ import { host } from '../../platform/host';
 // closed. Web builds run tasks on a server that stays up, so only an outage
 // makes one miss. `onServer` defaults to the current host.
 export function missedRunText(cadence, onServer = host.isWeb) {
-  const absent = onServer ? 'the server is down' : 'MindsHub is closed';
-  const back = onServer ? 'it’s back' : 'it reopens';
-  if (cadence === 'once') {
-    return `If ${absent} at this time, the task runs when ${back} within the hour. After that it’s marked missed, and you can run it yourself.`;
-  }
-  return `If ${absent} when this is due, the task runs once when ${back}, for the latest time it missed in the last 7 days. Other missed times are skipped.`;
+  if (cadence === 'once') return msg(onServer ? 'missedOnceServer' : 'missedOnceApp');
+  return msg(onServer ? 'missedRecurringServer' : 'missedRecurringApp');
 }
 
 // The accessible name of the control that shows missedRunText.
 export function missedRunLabel(onServer = host.isWeb) {
-  return onServer ? 'If the server is down at this time' : 'If MindsHub is closed at this time';
+  return msg(onServer ? 'missedLabelServer' : 'missedLabelApp');
 }
 
 // Title for a one-off that ran out of its hour without running.
 export function missedOnceTitle(onServer = host.isWeb) {
-  return onServer
-    ? 'This one-time task’s time passed while the server was down'
-    : 'This one-time task’s time passed while MindsHub was closed';
+  return msg(onServer ? 'missedOnceTitleServer' : 'missedOnceTitleApp');
 }

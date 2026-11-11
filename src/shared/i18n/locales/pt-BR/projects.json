@@ -1,0 +1,860 @@
+{
+  "messages": {
+    "usage": {
+      "actions": {
+        "viewUsage": "Ver uso",
+        "addFunds": "Adicionar fundos",
+        "setUpAutoTopUp": "Configurar recarga automática",
+        "manageAutoTopUp": "Gerenciar recarga automática",
+        "updatePaymentMethod": "Atualizar forma de pagamento"
+      },
+      "noFreeGrant": "Esta conta não inclui tokens gratuitos do MindsHub Air. O MindsHub Air usa seu saldo, como qualquer outro modelo.",
+      "allowanceStop": {
+        "noGrant": "{noGrant} Seu saldo está vazio, então adicione fundos para continuar.",
+        "withTime": "Sua cota gratuita do MindsHub Air acabou e seu saldo está vazio. Adicione fundos para continuar trabalhando ou espere ela ser renovada às {time}.",
+        "noTime": "Sua cota gratuita do MindsHub Air acabou e seu saldo está vazio. Adicione fundos para continuar trabalhando."
+      },
+      "freeServingPaused": {
+        "until": "O MindsHub Air gratuito está pausado para todos até {until}. Isso não usa sua cota. Adicione fundos para continuar trabalhando agora.",
+        "dailyReset": "O MindsHub Air gratuito está pausado para todos até o orçamento diário ser reiniciado. Isso não usa sua cota. Adicione fundos para continuar trabalhando agora."
+      },
+      "resting": {
+        "resetsAt": "Renova às {time}.",
+        "noReset": "O Air usa estes até acabarem."
+      },
+      "balanceEmptySentence": "Seu saldo está vazio.",
+      "percentLeft": "Resta {percent} da sua cota gratuita",
+      "autoTopUpFailed": {
+        "title": "A recarga automática falhou",
+        "body": "Não conseguimos cobrar seu cartão. Adicione fundos ou atualize sua forma de pagamento."
+      },
+      "balanceEmpty": {
+        "title": "Saldo vazio",
+        "body": "Adicione fundos para iniciar outra tarefa.",
+        "freeUsedToo": "Sua cota gratuita também acabou. Adicione fundos ou espere ela ser renovada.",
+        "freeUsedTooWithTime": "Sua cota gratuita também acabou. Adicione fundos ou espere ela ser renovada às {time}."
+      },
+      "balanceLow": {
+        "title": "Saldo baixo",
+        "autoRefills": "Restam {usd}. A recarga automática o completa até {target} quando ficar abaixo de {floor}.",
+        "autoCovers": "Restam {usd}. A recarga automática vai cobrir.",
+        "autoPending": "Restam {usd}. A recarga automática está aguardando seu banco.",
+        "autoCapReached": "Restam {usd} e a recarga automática está pausada para respeitar o limite mensal. Adicione fundos para continuar.",
+        "body": "Restam {usd}. Adicione fundos ou ative a recarga automática."
+      },
+      "freeUsed": {
+        "title": "Cota gratuita esgotada",
+        "body": "O MindsHub Air usa seu saldo até sua cota ser renovada.",
+        "bodyWithTime": "O MindsHub Air usa seu saldo até sua cota ser renovada às {time}.",
+        "bodyWithUsd": "O MindsHub Air usa seu saldo (restam {usd}) até sua cota ser renovada.",
+        "bodyWithUsdWithTime": "O MindsHub Air usa seu saldo (restam {usd}) até sua cota ser renovada às {time}."
+      },
+      "freeLow": {
+        "body": "Depois disso, o MindsHub Air usará seu saldo até sua cota ser renovada.",
+        "bodyWithTime": "Depois disso, o MindsHub Air usará seu saldo até sua cota ser renovada às {time}.",
+        "balanceLowToo": "Seu saldo também está baixo ({usd})."
+      },
+      "budgetExceeded": {
+        "raise": "Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos.",
+        "airHasRoom": "Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita."
+      }
+    },
+    "scheduleWhen": {
+      "timeZone": "horário de {city}",
+      "onceNoDate": "Uma vez às {time}",
+      "once": "Uma vez, em {day} às {time}",
+      "every15": "A cada 15 minutos",
+      "every30": "A cada 30 minutos",
+      "hourly": "A cada hora no minuto :{minute}",
+      "daily": "Todo dia às {time}",
+      "weekdays": "Todo dia útil às {time}",
+      "weekly": "Semanal: {weekday} às {time}",
+      "weeklyNoDay": "Toda semana às {time}"
+    },
+    "scheduleCopy": {
+      "missedOnceServer": "Se o servidor estiver fora do ar nesse horário, a tarefa é executada quando ele voltar, dentro de uma hora. Depois disso, ela é marcada como perdida e você pode executá-la.",
+      "missedOnceApp": "Se o MindsHub estiver fechado nesse horário, a tarefa é executada quando ele reabrir, dentro de uma hora. Depois disso, ela é marcada como perdida e você pode executá-la.",
+      "missedRecurringServer": "Se o servidor estiver fora do ar no horário previsto, a tarefa é executada uma vez quando ele voltar, para o horário perdido mais recente dos últimos 7 dias. Os outros horários perdidos são ignorados.",
+      "missedRecurringApp": "Se o MindsHub estiver fechado no horário previsto, a tarefa é executada uma vez quando ele reabrir, para o horário perdido mais recente dos últimos 7 dias. Os outros horários perdidos são ignorados.",
+      "missedLabelServer": "Se o servidor estiver fora do ar nesse horário",
+      "missedLabelApp": "Se o MindsHub estiver fechado nesse horário",
+      "missedOnceTitleServer": "O horário desta tarefa única passou enquanto o servidor estava fora do ar",
+      "missedOnceTitleApp": "O horário desta tarefa única passou enquanto o MindsHub estava fechado"
+    },
+    "stopScheduleRun": {
+      "unreachable": "Não foi possível acessar o servidor para parar a execução. Tente novamente.",
+      "failed": "Não foi possível parar a execução. Tente novamente.",
+      "starting": "A execução ainda está começando. Tente Parar novamente em instantes."
+    },
+    "providerStatus": {
+      "probe": {
+        "rateLimited": "Muitas solicitações em pouco tempo. Aguarde um momento e teste de novo.",
+        "policyUnavailable": "O faturamento está temporariamente indisponível. Tente de novo em instantes."
+      },
+      "row": {
+        "walletEmpty": "Nenhum crédito disponível. Adicione fundos para usar o MindsHub.",
+        "allowanceExhausted": "Nenhum token gratuito do MindsHub Air disponível, e o saldo está vazio.",
+        "freeAirPaused": "O MindsHub Air gratuito está pausado no momento.",
+        "budgetExceeded": "O orçamento da sua organização acabou."
+      },
+      "missingApiKey": "Adicione uma chave de API à direita.",
+      "missingBaseUrl": "Adicione uma URL base à direita.",
+      "http": {
+        "unauthorized": "Não autorizado: a chave de API foi rejeitada.",
+        "forbidden": "Proibido: a chave de API não tem acesso.",
+        "notFound": "Endpoint não encontrado: verifique a URL base.",
+        "rateLimited": "Limite de solicitações: tente de novo em instantes.",
+        "unreachable": "O provedor está inacessível no momento (HTTP {code}).",
+        "rejected": "O provedor rejeitou a solicitação (HTTP {code})."
+      },
+      "connectError": "Não foi possível acessar o provedor: problema de rede ou DNS.",
+      "timeout": "O provedor não respondeu a tempo.",
+      "tls": "Problema de TLS ou certificado ao acessar o provedor."
+    },
+    "witPhrases": {
+      "thinking": {
+        "0": "Aquecendo os neurônios",
+        "1": "Sentindo o clima",
+        "2": "Escolhendo o ângulo",
+        "3": "Esboçando a abordagem",
+        "4": "Mapeando a pergunta",
+        "5": "Revendo o que sei",
+        "6": "Escolhendo as ferramentas",
+        "7": "Organizando as etapas",
+        "8": "Avaliando o terreno",
+        "9": "Decidindo por onde começar",
+        "10": "Procurando pistas",
+        "11": "Montando o plano"
+      },
+      "working": {
+        "0": "Processando os números",
+        "1": "Perguntando com jeitinho aos dados",
+        "2": "Domando os dados",
+        "3": "Encarando o desafio",
+        "4": "Puxando os fios",
+        "5": "Garimpando ouro",
+        "6": "Montando o panorama",
+        "7": "Testando as contas",
+        "8": "Plotando os pontos",
+        "9": "Trabalhando duro nisso",
+        "10": "Seguindo as pistas",
+        "11": "Fazendo o trabalho pesado"
+      },
+      "reasoning": {
+        "0": "Destilando o insight",
+        "1": "Compondo a resposta",
+        "2": "Polindo o texto",
+        "3": "Transformando dados em conhecimento",
+        "4": "Montando o quebra-cabeça",
+        "5": "Ligando os pontos",
+        "6": "Tecendo os fios",
+        "7": "Triangulando a verdade",
+        "8": "Escolhendo as palavras certas",
+        "9": "Deixando legível",
+        "10": "Afinando a história",
+        "11": "Quase lá, só um instante"
+      }
+    },
+    "responseStream": {
+      "reasoning": "Raciocinando…",
+      "responseFailed": "A resposta falhou",
+      "questionForYou": "Uma pergunta para você",
+      "runningCode": "Executando código",
+      "toolCall": "Chamada de ferramenta",
+      "rateLimitedWaiting": "Limite de solicitações: aguardando",
+      "waitingForModel": "Aguardando o modelo",
+      "standIn": {
+        "0": "Começando…",
+        "1": "Trabalhando nisso…",
+        "2": "Já estou nisso…",
+        "3": "Preparando tudo…",
+        "4": "Configurando as coisas…",
+        "5": "Reunindo o que preciso…",
+        "6": "Organizando as primeiras etapas…",
+        "7": "Planejando a abordagem…",
+        "8": "Resolvendo os detalhes…",
+        "9": "Preparando o terreno…",
+        "10": "Pensando bem…",
+        "11": "Mapeando as etapas…",
+        "12": "Juntando as peças…",
+        "13": "Começando pela primeira parte…",
+        "14": "Fazendo uma primeira passada…",
+        "15": "Avançando…",
+        "16": "Arregaçando as mangas…",
+        "17": "Aquecendo…",
+        "18": "Me situando…",
+        "19": "Uma coisa de cada vez…"
+      },
+      "artifact": "Artefato",
+      "skill": "Habilidade"
+    },
+    "compare": {
+      "unjudgeable": {
+        "both": "Os dois modelos ficaram sem créditos antes de terminar, então este turno não pode ser avaliado.",
+        "one": "{name} ficou sem créditos antes de terminar, então este turno não pode ser avaliado.",
+        "bothBudget": "Os dois modelos atingiram o orçamento da sua organização antes de terminar, então este turno não pode ser avaliado.",
+        "oneBudget": "{name} atingiu o orçamento da sua organização antes de terminar, então este turno não pode ser avaliado."
+      },
+      "verdict": {
+        "tie": "Mais ou menos igual",
+        "neither": "Nenhum",
+        "none": "Sem veredito"
+      },
+      "status": {
+        "continued": "Continuado como tarefa",
+        "working": "Trabalhando",
+        "waiting": "Aguardando",
+        "done": "Concluído",
+        "outOfCredits": "Sem créditos",
+        "rateLimited": "Limite de solicitações",
+        "failed": "Falhou",
+        "stopped": "Interrompido",
+        "budgetReached": "Orçamento esgotado"
+      },
+      "block": {
+        "loadFailed": "Um lado não carregou. Tente de novo acima antes de continuar.",
+        "loading": "Você pode continuar quando os dois modelos carregarem.",
+        "checkFailed": "Não foi possível verificar se um lado ainda está trabalhando.",
+        "sending": "Enviando a tarefa aos dois modelos…",
+        "firstFailed": "A tarefa ainda não chegou a nenhum modelo. Tente enviá-la de novo acima.",
+        "outOfCreditsBoth": "Os dois modelos pararam porque o saldo acabou. Adicione fundos para continuar comparando.",
+        "outOfCreditsOne": "{name} parou porque o saldo acabou. Adicione fundos para continuar comparando.",
+        "bothWorking": "Você pode continuar quando os dois modelos terminarem.",
+        "oneWorking": "Você pode continuar quando {name} terminar.",
+        "bothContinued": "Os dois lados foram continuados como tarefas, então esta comparação não aceita mais mensagens.",
+        "sideContinued": "{name} foi continuado como tarefa. Envie só para {other}.",
+        "sideWorking": "{name} ainda está trabalhando. Envie só para {other} ou aguarde."
+      },
+      "twiceTheCredits": "Uma comparação executa dois modelos, então usa cerca do dobro de créditos de uma tarefa.",
+      "turnsTitle": "{nameA}: {countA, plural, one {# turno} other {# turnos}} · {nameB}: {countB, plural, one {# turno} other {# turnos}}",
+      "cost": {
+        "truncated": "A sessão foi longa demais para contar por completo, então isto é um mínimo.",
+        "unpriced": "Algumas chamadas não puderam ser precificadas e ficaram de fora."
+      },
+      "usage": {
+        "inputDetail": "{fresh} novos · {cached} em cache · {written} gravados em cache",
+        "notPriced": "sem preço",
+        "turn": "Turno {turn}",
+        "total": "Total"
+      }
+    },
+    "orgSharing": {
+      "counts": {
+        "teams": "{count, plural, one {# equipe} other {# equipes}}",
+        "people": "{count, plural, one {# pessoa} other {# pessoas}}",
+        "outsideEmails": "{count, plural, one {# e-mail externo} other {# e-mails externos}}"
+      },
+      "list": {
+        "two": "{first} e {second}",
+        "three": "{first}, {second} e {third}"
+      },
+      "orgAdminOnlyHint": "Só administradores podem compartilhar com toda a organização",
+      "orgArtifactShareWithheldHint": "Sua função não pode compartilhar com toda a organização",
+      "mindsHubUnreachableHint": "Não foi possível acessar o MindsHub",
+      "mindsHubUnreachablePermissions": "Não foi possível acessar o MindsHub para verificar o que você pode compartilhar.",
+      "mindsHubUnreachableEdit": "Não foi possível acessar o MindsHub para verificar se você pode alterar isso.",
+      "mindsHubUnreachableTeams": "Não foi possível acessar o MindsHub para carregar suas equipes, então as habilidades compartilhadas com elas não aparecem.",
+      "mindsHubThrottled": "O MindsHub está limitando as solicitações. Tente de novo em um minuto.",
+      "onlyMeTitle": "Só eu",
+      "onlyMeDesc": {
+        "skill": "Ninguém mais pode usá-la",
+        "artifact": "Ninguém mais pode abrir isto"
+      },
+      "specificTitle": "Equipes e pessoas específicas",
+      "specificDesc": {
+        "skill": "Escolha equipes ou colegas",
+        "artifact": "Escolha equipes, colegas ou e-mails externos"
+      },
+      "alwaysOnLabel": "Sempre incluir em todas as tarefas",
+      "thisSkill": "esta habilidade",
+      "alwaysOnHelp": {
+        "on": "O Anton vai incluir {name} em todas as tarefas.",
+        "off": "O Anton vai usar {name} só quando for relevante."
+      },
+      "alwaysOnOrgAdminHint": "Só administradores podem deixar sempre ativa uma habilidade compartilhada com todos",
+      "alwaysOnEditorHint": "Só quem pode editar esta habilidade pode alterar isso",
+      "alwaysOnBadge": "Sempre ativa",
+      "alwaysOnBadgeHint": "Faz parte de todas as tarefas de todos com quem é compartilhada",
+      "everyoneAt": "Todos em {org}",
+      "everyoneInOrganization": "Toda a organização",
+      "everyoneAtDesc": "Qualquer pessoa da sua organização",
+      "yourOrganization": "sua organização",
+      "unknownPerson": "Pessoa desconhecida",
+      "recipients": {
+        "addEmail": "Adicione pelo menos um e-mail.",
+        "outside": "{count} fora de {org}",
+        "addTeamPersonOrEmail": "Adicione pelo menos uma equipe, pessoa ou e-mail.",
+        "addTeamOrPerson": "Adicione pelo menos uma equipe ou pessoa."
+      },
+      "teamBadge": "Equipe: {team}",
+      "sections": {
+        "mine": "Suas",
+        "sharedWithMe": "Compartilhadas comigo",
+        "team": "Minhas equipes",
+        "builtin": "Integradas"
+      },
+      "share": {
+        "everyoneAt": "Compartilhado com todos em {org}",
+        "everyoneInOrganization": "Compartilhado com toda a organização",
+        "with": "Compartilhado com {phrase}",
+        "notYet": "Ainda não compartilhado",
+        "public": "Link público: qualquer pessoa com a URL pode abrir",
+        "password": "Protegido por senha",
+        "shared": "Compartilhado"
+      }
+    },
+    "sharedResourceAccess": {
+      "otherActor": "Outro membro",
+      "unknownActor": "Desconhecido"
+    },
+    "liveAppSharing": {
+      "shareLabel": "Permitir que outros dupliquem…",
+      "everyoneLabel": "Todos neste stack",
+      "sharedWithYouLabel": "Apps que você pode duplicar",
+      "copyGoesToGeneral": "Sua cópia vai para o seu projeto General.",
+      "from": "De {owner}",
+      "fromForEveryone": "De {owner} · para todos",
+      "duplicatedFrom": "Duplicado de {owner}",
+      "thisApp": "este app",
+      "duplicateTitle": "Duplicar \"{name}\"?",
+      "duplicateDisclaimer": "{owner} permite que você duplique este app. Sua cópia roda com as suas próprias conexões e pode usar tudo o que elas podem usar. Revise antes de iniciar."
+    },
+    "liveAppState": {
+      "liveAt": "No ar em {host}",
+      "live": "No ar",
+      "stoppedAt": "Parado {when}",
+      "stopped": "Parado",
+      "stoppedLineReason": "{stopped}, {reason}. Peça ao seu agente para reiniciá-lo.",
+      "stoppedLine": "{stopped}. Peça ao seu agente para reiniciá-lo.",
+      "checkFailed": "Não foi possível verificar se este app está rodando. Recarregue para tentar de novo.",
+      "runsAtOwnAddress": "Este app ao vivo roda no próprio endereço.",
+      "runningAskAddress": "Este app ao vivo está rodando. Peça o endereço ao seu agente.",
+      "notRunning": "Este app ao vivo não está rodando. Peça ao seu agente para iniciá-lo.",
+      "launch": "Iniciar"
+    },
+    "skillSharing": {
+      "label": "Quem pode usar",
+      "private": {
+        "label": "Só eu",
+        "description": "Só você vê e usa."
+      },
+      "everyone": {
+        "label": "Todos (somente leitura)",
+        "description": "Todos aqui podem usar. Só você pode alterar."
+      },
+      "createHint": "Você pode alterar isso depois na página da habilidade."
+    },
+    "artifactAuthorship": {
+      "unknownOwner": "Proprietário desconhecido",
+      "otherMemberDescription": "Criado por outro membro deste projeto. Você pode revisar, mas não alterar.",
+      "unknownOwnerDescription": "Nenhum proprietário está registrado para este artefato."
+    },
+    "artifactExport": {
+      "cannotExport": "Este arquivo não pode ser exportado.",
+      "alreadyRunning": "Já há uma exportação em andamento; tente de novo em instantes.",
+      "pdfBusy": "A exportação para PDF está ocupada; tente de novo.",
+      "pdfTooLong": "A exportação para PDF demorou demais.",
+      "failed": "Não foi possível exportar este arquivo.",
+      "omittedReferences": "{count, plural, one {# item fora deste artefato foi deixado de fora.} other {# itens fora deste artefato foram deixados de fora.}}",
+      "notSaved": "{filename} foi exportado, mas não foi possível baixá-lo."
+    },
+    "artifactPaths": {
+      "noPath": "Este artefato não incluiu um caminho de arquivo.",
+      "relativeNoProject": "O caminho deste artefato é relativo, mas a tarefa não tem pasta de projeto.",
+      "outsideProject": "O caminho deste artefato aponta para fora da pasta do projeto."
+    },
+    "artifactActions": {
+      "noPreviewDownloaded": "Sem pré-visualização para este tipo de arquivo; ele foi baixado."
+    },
+    "browserApproval": {
+      "unreadable": "Não é possível verificar esta solicitação de aprovação, então nada foi executado.",
+      "lapsed": "Esta etapa não está mais aguardando no navegador, então nada foi executado.",
+      "unavailable": "O navegador não está disponível aqui, então nada foi executado.",
+      "refusedReason": "Não foi possível aprovar esta etapa no navegador: {reason}.",
+      "refused": "Não foi possível aprovar esta etapa no navegador. Tente de novo.",
+      "notConfirmed": "O navegador não confirmou a aprovação, então nada foi executado. Tente de novo."
+    },
+    "browserSession": {
+      "opened": "Abriu o navegador"
+    },
+    "figureSources": {
+      "noSource": "Sem fonte: nenhuma etapa desta resposta retornou este número. Confira antes de agir.",
+      "repeated": "Repetido de uma resposta anterior",
+      "aFile": "um arquivo",
+      "fromPage": "De {name}, página {page}",
+      "from": "De {name}",
+      "fromQueryLabel": "De uma consulta: {label}",
+      "fromQuery": "De uma consulta",
+      "fromWebLabel": "Da web: {label}",
+      "fromWeb": "Da web",
+      "fromStepLabel": "De uma etapa: {label}",
+      "fromStep": "De uma etapa",
+      "andMore": "{source} e mais {count}"
+    },
+    "connectionIdentity": {
+      "unrecognizedConnector": "Conector não reconhecido"
+    },
+    "datasourceSubmission": {
+      "errors": {
+        "nameRequired": "Dê um nome a esta conexão para diferenciá-la depois.",
+        "tlsModeRequired": "Escolha como o certificado deste servidor deve ser verificado.",
+        "caRequired": "Cole o certificado da CA ou escolha autoridades certificadoras públicas.",
+        "caTooLarge": "Esse certificado da CA passa do limite de 64 KiB. Cole só a cadeia de que este servidor precisa."
+      },
+      "hints": {
+        "tlsFailed": "Não foi possível verificar o certificado do servidor. Um banco de dados auto-hospedado costuma apresentar um certificado gerado por ele mesmo, que nenhum cliente consegue verificar. Se for o caso deste servidor, desative \"Only connect if the certificate is signed by a public authority\".",
+        "destinationForbidden": "Esse endereço não pode ser acessado daqui. O banco de dados precisa estar em um endereço público, não privado ou local.",
+        "authenticationFailed": "O servidor recusou o nome de usuário ou a senha.",
+        "insufficientPrivileges": "A conta não consegue ler nada do que esta conexão aponta. Se você indicou um schema, confira a grafia e as maiúsculas, que o PostgreSQL trata como parte do nome, e se a conta tem USAGE nesse schema, além de SELECT nas tabelas dele. Uma conta que também pode escrever não tem problema; uma com permissões de superusuário, ou que pode ler arquivos do servidor, é recusada, porque vai além do seu banco de dados.",
+        "connectionFailed": "O servidor não respondeu. Confira o host e a porta, e se o seu firewall permite a conexão.",
+        "tls": {
+          "refusedLogin": "O servidor pediu a senha diretamente e esta conexão não verifica o certificado do servidor, então a senha não foi enviada.",
+          "refusedLoginOrHandshake": "Ou o servidor não concluiu uma conexão criptografada, ou pediu a senha diretamente e, como esta conexão não verifica o certificado do servidor, a senha não foi enviada.",
+          "refusedPgLogin": "O servidor pediu um tipo de login que esta conexão não permite sem verificar o certificado do servidor, então a senha não foi enviada.",
+          "refusedPgLoginOrHandshake": "Ou o servidor não concluiu uma conexão criptografada, ou pediu um tipo de login que esta conexão não permite sem verificar o certificado do servidor. A senha não foi enviada.",
+          "turnChecksOnCheckbox": "Se o certificado do servidor for assinado por uma autoridade pública, ative \"Only connect if the certificate is signed by a public authority\" e tente novamente.",
+          "turnChecksOnMysql": "Em \"Certificate\", escolha \"Signed by a public authority\" ou \"Signed by my own certificate authority\" e cole o certificado da CA do servidor; depois tente novamente.",
+          "pgScramFallback": "Se o servidor não tiver TLS, ou se o certificado dele não for assinado por uma autoridade pública, peça ao administrador para mudar esta conta para logins SCRAM-SHA-256.",
+          "mysqlUnverifiedCertificate": "Não foi possível verificar o certificado do servidor. Se o servidor assina o próprio certificado ou usa uma autoridade privada, escolha \"Signed by my own certificate authority\" em \"Certificate\" e cole o certificado dessa autoridade. \"Encrypt when offered, don't check the certificate\" também conecta, mas o login pode falhar sempre que o servidor pedir a senha diretamente, por exemplo depois de reiniciar.",
+          "mysqlCustomCaMismatch": "Não foi possível verificar o certificado do servidor com o certificado da CA que você colou. Confira se é a autoridade que assinou o certificado deste servidor e se o host informado é um nome desse certificado."
+        }
+      },
+      "state": {
+        "connected": "Conectado",
+        "failed": "Não foi possível conectar",
+        "pending": "Verificando a conexão",
+        "pendingDetail": "Suas credenciais são armazenadas criptografadas. Esta página é atualizada quando a verificação termina."
+      }
+    },
+    "fileDrop": {
+      "uploading": "Enviando…"
+    },
+    "authenticatedResource": {
+      "loadFailedStatus": "Não foi possível carregar o arquivo ({status})",
+      "loadFailed": "Não foi possível carregar o arquivo"
+    },
+    "artifactWorkspaceApi": {
+      "requestFailed": "A solicitação falhou ({status})",
+      "draftLoadFailed": "Não foi possível carregar o rascunho privado ({status})"
+    },
+    "skillsStore": {
+      "catalogueInvalid": "A resposta do catálogo de habilidades é inválida."
+    },
+    "modelCatalog": {
+      "modelRouter": {
+        "label": "Roteador de modelos",
+        "desc": "Direciona automaticamente para o modelo configurado nesta conta"
+      },
+      "operatorDefault": "Padrão do operador",
+      "restricted": {
+        "title": "Um administrador da sua organização restringiu este modelo.",
+        "tag": "Restrito"
+      },
+      "needsCredits": "Requer créditos",
+      "budgetReached": {
+        "tag": "Orçamento esgotado",
+        "title": "O orçamento da sua organização acabou. Um proprietário ou administrador pode aumentá-lo em Orçamentos."
+      }
+    },
+    "settingsTransform": {
+      "routerSubtitle": {
+        "legacy": "Usado para decidir rapidamente entre responder ou delegar em cada turno, e para resumir o histórico.",
+        "gateOffUntilPicked": "Usado para resumir o histórico. O filtro de responder ou delegar antes de cada turno do chat fica desativado até você escolher um modelo aqui.",
+        "gateOffNoModel": "Usado para resumir o histórico. O filtro de responder ou delegar antes de cada turno do chat está desativado: não há modelo disponível para ele.",
+        "followsPick": "Usado para resumir o histórico e para o filtro de responder ou delegar antes de cada turno do chat, que tem um limite de latência rigoroso: escolha aqui seu modelo mais rápido, não o mais inteligente.",
+        "gateRunsOn": "Usado para resumir o histórico. O filtro de responder ou delegar antes de cada turno do chat usa {model}, não esta escolha.",
+        "gateRunsOnWithProvider": "Usado para resumir o histórico. O filtro de responder ou delegar antes de cada turno do chat usa {model} ({provider}), não esta escolha."
+      },
+      "staleModel": "{model} (antigo: escolha um modelo de novo)",
+      "otherModel": "Outro…",
+      "latestNote": "mais recente"
+    },
+    "time": {
+      "justNow": "agora mesmo",
+      "ago": {
+        "s": "há {value} s",
+        "m": "há {value} min",
+        "h": "há {value} h",
+        "d": "há {value} d"
+      },
+      "in": {
+        "s": "em {value} s",
+        "m": "em {value} min",
+        "h": "em {value} h",
+        "d": "em {value} d"
+      }
+    },
+    "turnError": {
+      "tryAgain": "Tentar de novo",
+      "setUpMindsHub": "Configurar o MindsHub"
+    },
+    "surface": {
+      "tasksNote": "As tarefas criadas no {other, select, desktop {app para desktop} other {app web}} ficam lá.",
+      "artifactsNote": "Os artefatos criados no {other, select, desktop {app para desktop} other {app web}} ficam lá."
+    },
+    "antonErrors": {
+      "noProvider": "Nenhum provedor de LLM está conectado a esta conta. Comece grátis com o MindsHub ou adicione seu próprio provedor em Configurações.",
+      "couldNotComplete": "Não foi possível concluir esta tarefa."
+    },
+    "displayToggle": {
+      "switchStyle": "Mudar para o estilo {style}"
+    },
+    "conversationHistory": {
+      "thinkingDots": "Pensando...",
+      "thinking": "Pensando…",
+      "runningTask": "Executando tarefa…",
+      "finishedReasoning": "Raciocínio concluído",
+      "updatedContext": "Contexto atualizado",
+      "agentPhase": "{agent}: {phase}",
+      "agentWorking": "{agent} está trabalhando",
+      "unexpectedError": "Ocorreu um erro inesperado."
+    },
+    "cloudConnector": {
+      "editTitle": "Editar {name}"
+    },
+    "artifactRepair": {
+      "queued": "Fazendo alterações",
+      "ready": "Alterações prontas para revisão",
+      "accepted": "Alterações aplicadas",
+      "rejected": "Alterações descartadas",
+      "noChange": "Nenhuma alteração foi necessária",
+      "conflict": "Não foi possível aplicar as alterações",
+      "cancelled": "Cancelado",
+      "discarded": "Sugestão dispensada",
+      "sent": "Enviado ao agente"
+    }
+  },
+  "scheduleCommon": {
+    "untitled": "Agendamento sem título",
+    "deleteTitle": "Excluir a tarefa agendada?",
+    "deleteMessage": "\"{title}\" será excluída permanentemente. Isso não pode ser desfeito.",
+    "delete": "Excluir",
+    "keep": "Manter",
+    "deleting": "Excluindo…",
+    "edit": "Editar",
+    "noProject": "Sem projeto",
+    "breadcrumb": "Tarefas agendadas"
+  },
+  "scheduleStatus": {
+    "pausedFinishing": "Pausada · terminando execução",
+    "running": "Em execução",
+    "autoPaused": "Pausada automaticamente",
+    "paused": "Pausada",
+    "missed": "Perdida",
+    "lastFailed": "Última falhou",
+    "lastRunFailed": "Última execução falhou",
+    "done": "Concluída",
+    "active": "Ativa"
+  },
+  "scheduleRow": {
+    "cadence": {
+      "once": "Única",
+      "every15": "A cada 15 min",
+      "every30": "A cada 30 min",
+      "hourly": "De hora em hora",
+      "daily": "Diária",
+      "weekdays": "Dias úteis",
+      "weekly": "Semanal"
+    },
+    "openProject": "Abrir {project}",
+    "descriptionWithNext": "{sentence} · próxima {next}",
+    "stop": "Parar",
+    "run": "Executar",
+    "pause": "Pausar",
+    "resume": "Retomar"
+  },
+  "scheduleRunAlert": {
+    "finishingTitle": "Pausada: a execução atual vai terminar",
+    "finishingNote": "Nada mais começa enquanto estiver pausada. Parar execução a encerra agora; o que ela já fez continua feito.",
+    "missedNote": "Ela atrasou mais de uma hora, então não foi executada sozinha. Execute agora ou edite para definir um novo horário.",
+    "autoPausedTitleCount": "Pausada após {count} execuções com falha seguidas",
+    "autoPausedTitle": "Pausada após várias execuções com falha",
+    "autoPausedNote": "Retomar reativa o agendamento e pode recuperar uma execução pendente. Executar agora a executa uma vez, agora.",
+    "partialTitle": "A última execução parou no meio",
+    "partialNote": "Algumas das ações podem ter sido concluídas. Revise a execução antes de executá-la novamente.",
+    "failedTitle": "A última execução falhou",
+    "resume": "Retomar",
+    "runNow": "Executar agora",
+    "reviewRun": "Revisar execução",
+    "runAgain": "Executar novamente"
+  },
+  "scheduleTaskModal": {
+    "cadence": {
+      "once": "Uma vez",
+      "every15": "A cada 15 minutos",
+      "every30": "A cada 30 minutos",
+      "hourly": "A cada hora",
+      "daily": "Todo dia",
+      "weekdays": "Todo dia útil",
+      "weekly": "Toda semana"
+    },
+    "errorNoPrompt": "Diga ao {agent} o que fazer.",
+    "errorPickFutureTime": "Escolha um horário no futuro.",
+    "errorPickTime": "Escolha um horário.",
+    "errorSave": "Não foi possível salvar o agendamento.",
+    "editTitle": "Editar tarefa agendada",
+    "createTitle": "Agendar uma tarefa",
+    "editSubtitle": "As alterações valem a partir da próxima execução.",
+    "createSubtitleWeb": "{agent} executa isso sozinho, mesmo com esta aba fechada.",
+    "createSubtitleDesktop": "{agent} executa isso sozinho enquanto o MindsHub está aberto.",
+    "promptLabel": "O que o {agent} deve fazer?",
+    "promptPlaceholder": "Peça ao {agent} para…",
+    "when": "Quando",
+    "howOften": "Frequência",
+    "dayOfWeek": "Dia da semana",
+    "date": "Data",
+    "atMinute": "no minuto",
+    "at": "às",
+    "time": "Horário",
+    "nextRuns": "{count, plural, one {Próxima execução: {runs}} other {Próximas execuções: {runs}}}",
+    "timePassed": "Esse horário já passou.",
+    "name": "Nome",
+    "namePlaceholder": "Nomeada a partir do prompt",
+    "project": "Projeto",
+    "cancel": "Cancelar",
+    "saveAndRunOnce": "Salvar e executar uma vez",
+    "saving": "Salvando…",
+    "saveChanges": "Salvar alterações",
+    "schedule": "Agendar"
+  },
+  "scheduledView": {
+    "sort": {
+      "next": "Próxima execução",
+      "name": "Nome",
+      "created": "Criadas recentemente"
+    },
+    "trialRunFailed": "“{title}” foi salva, mas a execução de teste não começou: {reason}",
+    "trialRunFallback": "tente Executar agora.",
+    "deleteFailed": "Não foi possível excluir o agendamento.",
+    "actionFailed": "A ação do agendamento falhou.",
+    "title": "Tarefas agendadas",
+    "subtitleDesktop": "As tarefas agendadas são executadas enquanto o {product} está aberto. Se uma execução estava prevista enquanto ele estava fechado, o {agent} executa a mais recente dos últimos 7 dias quando ele reabrir.",
+    "subtitleWeb": "As tarefas agendadas são executadas no servidor, mesmo com esta aba fechada. Se uma execução estava prevista enquanto o servidor estava fora do ar, o {agent} executa a mais recente dos últimos 7 dias quando ele voltar.",
+    "scheduleTask": "Agendar tarefa",
+    "searchPlaceholder": "Pesquisar tarefas agendadas",
+    "filteredCount": "{shown} de {total} tarefas agendadas",
+    "count": "{count, plural, one {# tarefa agendada} other {# tarefas agendadas}}",
+    "missedCount": "{count, plural, one {# execução perdida} other {# execuções perdidas}}",
+    "autoPausedOne": "“{title}” foi pausada após falhar várias execuções seguidas",
+    "autoPausedMany": "{count} tarefas agendadas foram pausadas após falhar várias execuções seguidas",
+    "review": "Revisar",
+    "reviewNamed": "Revisar “{title}”",
+    "emptyTitle": "Nenhuma tarefa agendada ainda",
+    "emptyDescription": "Faça o {agent} repetir uma tarefa: um resumo às segundas, uma varredura de logs a cada hora, um retrato diário de KPIs.",
+    "emptyAction": "Agende sua primeira tarefa",
+    "needsAttention": "Precisam de atenção",
+    "everythingElse": "Todo o resto"
+  },
+  "scheduleDetail": {
+    "runStatus": {
+      "running": "Em execução",
+      "success": "Concluída",
+      "failed": "Falhou",
+      "cancelled": "Parada"
+    },
+    "sentence": "{when}, {zone}",
+    "runningNow": "Em execução agora",
+    "nextRun": "Próxima execução {when}",
+    "notFound": "Agendamento não encontrado.",
+    "backToList": "Voltar às tarefas agendadas",
+    "actionFailed": "A ação falhou.",
+    "allScheduledTasks": "Todas as tarefas agendadas",
+    "enabledAriaLabel": "Agendamento ativado",
+    "stopping": "Parando…",
+    "stopRun": "Parar execução",
+    "running": "Executando…",
+    "runNow": "Executar agora",
+    "scheduleAriaLabel": "Agendamento",
+    "accountDefaultModel": "Modelo padrão da conta",
+    "succeededCount": "{total, plural, one {{succeeded} de # execução concluída} other {{succeeded} de # execuções concluídas}}",
+    "promptAriaLabel": "Prompt",
+    "runs": "Execuções",
+    "loading": "Carregando…",
+    "noRuns": "Nenhuma execução ainda. Clique em Executar agora para testar.",
+    "manual": "Manual",
+    "statusWithReason": "{status}: {reason}",
+    "openFailedRun": "Abrir a execução com falha de {when}: {reason}",
+    "openRun": "Abrir a execução de {when}",
+    "showOlder": "Mostrar execuções anteriores"
+  },
+  "contextFileModal": {
+    "download": "Baixar",
+    "revealInFinder": "Mostrar no Finder",
+    "reveal": "Mostrar",
+    "openInDefaultApp": "Abrir no app padrão",
+    "open": "Abrir",
+    "binary": {
+      "cantDisplay": "Este arquivo não pode ser exibido aqui (é binário, grande demais ou não é texto).",
+      "useActions": "Use as ações abaixo para vê-lo.",
+      "downloading": "Baixando…"
+    },
+    "projectInstructions": "Instruções do projeto",
+    "instructionsPlaceholder": "Diga ao agente como trabalhar neste projeto: convenções do código, preferências de resultado, o que evitar…",
+    "fileContentsPlaceholder": "Conteúdo do arquivo",
+    "noInstructionsYet": "(ainda sem instruções — clique em Editar para adicionar)",
+    "emptyFile": "(arquivo vazio)",
+    "thisFileCapitalized": "Este arquivo",
+    "thisFile": "este arquivo",
+    "noLongerAttached": "{name} não está mais anexado a este chat.",
+    "noLongerInProject": "{path} não está mais neste projeto.",
+    "couldNotLoadImage": "Não foi possível carregar a imagem.",
+    "couldNotLoadPreview": "Não foi possível carregar a prévia",
+    "couldNotReadFile": "Não foi possível ler o arquivo",
+    "couldNotSave": "Não foi possível salvar",
+    "couldNotDelete": "Não foi possível excluir",
+    "deleteConfirm": {
+      "title": "Excluir {name}?",
+      "message": "Esta ação não pode ser desfeita."
+    },
+    "delete": "Excluir",
+    "loading": "Carregando…",
+    "readOnly": "Somente leitura. Você não tem permissão para editar este recurso compartilhado.",
+    "preview": "Prévia",
+    "file": "arquivo",
+    "deletePermanently": "Excluir permanentemente.",
+    "noDeletePermission": "Você não tem permissão para excluir este recurso compartilhado.",
+    "noEditPermission": "Você não tem permissão para editar este recurso compartilhado.",
+    "cancel": "Cancelar",
+    "saving": "Salvando…",
+    "save": "Salvar",
+    "close": "Fechar",
+    "edit": "Editar"
+  },
+  "newProjectModal": {
+    "remove": "Remover",
+    "fileSizeKb": "{size} KB",
+    "nameRequired": "O nome do projeto é obrigatório.",
+    "folderUnsupported": "Este servidor não permite apontar um projeto para uma pasta. Ele criou \"{name}\" como um projeto normal e limpou a pasta que você escolheu. Atualize o Cowork para usar sua pasta ou exclua esse projeto se não quiser mantê-lo.",
+    "couldNotCreate": "Não foi possível criar o projeto.",
+    "couldNotOpenPicker": "Não foi possível abrir o seletor de pastas.",
+    "title": "Criar um projeto",
+    "nameLabel": "Nome do projeto",
+    "instructionsLabel": "Instruções",
+    "savedAs": "Salvo como",
+    "instructionsPlaceholder": "Diga ao agente como trabalhar neste projeto: convenções do código, preferências de resultado, o que evitar…",
+    "locationLabel": "Local",
+    "locationHelpChosen": "O agente trabalha nos arquivos que já estão nesta pasta. O Cowork adiciona as pastas skills/ e .anton/ dentro dela, e excluir o projeto mantém seus arquivos onde estão.",
+    "locationHelpDefault": "Por padrão, o Cowork cria uma pasta nova para o projeto.",
+    "changeFolder": "Trocar pasta",
+    "useExistingFolder": "Usar uma pasta existente",
+    "clear": "Limpar",
+    "filesLabel": "Arquivos",
+    "optional": "(opcional)",
+    "dropFiles": "Solte arquivos aqui ou",
+    "clickToBrowse": "clique para procurar",
+    "dropHint": "Documentos de referência, esquemas, exemplos — tudo o que o agente deve saber.",
+    "cancel": "Cancelar",
+    "creating": "Criando…",
+    "create": "Criar"
+  },
+  "projectCard": {
+    "untitledTask": "Tarefa sem título",
+    "stats": {
+      "tasks": "{count, plural, one {# tarefa} other {# tarefas}}",
+      "memories": "{count, plural, one {# memória} other {# memórias}}",
+      "schedules": "{count, plural, one {# agendamento} other {# agendamentos}}",
+      "artifacts": "{count, plural, one {# artefato} other {# artefatos}}"
+    },
+    "pin": "Fixar projeto",
+    "unpin": "Desafixar projeto",
+    "menu": "Menu do projeto",
+    "deleting": "Excluindo…",
+    "sharedReadOnly": "Compartilhado com você · Somente leitura",
+    "noActivity": "Ainda sem atividade",
+    "running": "{count} em andamento"
+  },
+  "sharedProjectFiles": {
+    "unavailable": "Este projeto compartilhado não está disponível. O proprietário ou o operador pode ter removido o acesso.",
+    "notText": "Este arquivo não pode ser exibido como texto. Baixe-o se ainda estiver disponível.",
+    "downloadUnavailable": "Download indisponível. O acesso pode ter sido removido.",
+    "ariaLabel": "Arquivos do projeto compartilhado",
+    "projectsCrumb": "Projetos",
+    "allProjects": "Todos os projetos",
+    "sharedReadOnly": "Compartilhado com você · Somente leitura",
+    "intro": "Navegue e baixe arquivos. Só o proprietário pode editar este projeto ou executar tarefas aqui.",
+    "loadingFiles": "Carregando arquivos…",
+    "files": "Arquivos",
+    "noFiles": "Ainda não há arquivos compartilhados.",
+    "truncated": "Este projeto tem mais arquivos do que é possível listar.",
+    "download": "Baixar",
+    "loadingFile": "Carregando arquivo…",
+    "selectFile": "Selecione um arquivo para lê-lo. HTML é exibido como código-fonte."
+  },
+  "sharedProjectReference": {
+    "title": "ID do projeto: {id}",
+    "label": "Projeto · {id}"
+  },
+  "projectPicker": {
+    "couldNotCreate": "Não foi possível criar o projeto.",
+    "choose": "Escolher projeto",
+    "workInProject": "Trabalhar em um projeto",
+    "searchOrCreate": "Pesquisar ou criar…",
+    "searchProjects": "Pesquisar projetos…",
+    "noMatch": "Nenhum projeto corresponde a “{query}”.",
+    "noProjects": "Ainda não há projetos.",
+    "creating": "Criando…",
+    "createPrefix": "Criar",
+    "quotedName": "“{name}”",
+    "newProject": "Novo projeto"
+  },
+  "moveToProjectModal": {
+    "title": "Mover para um projeto",
+    "subtitleNamed": "Mover “{title}” e o trabalho dela",
+    "subtitle": "Mover esta tarefa e o trabalho dela",
+    "searchPlaceholder": "Pesquise projetos ou digite um nome novo…",
+    "createNew": "Criar “{name}”",
+    "alreadyIn": "Esta tarefa já está em “{name}”.",
+    "noOtherProjects": "Ainda não há outros projetos — digite um nome para criar um.",
+    "moveEverythingAriaLabel": "Mover tudo — os arquivos e artefatos que esta tarefa criou",
+    "moveEverything": "Mover tudo — os arquivos e artefatos que esta tarefa criou",
+    "cancel": "Cancelar",
+    "moving": "Movendo…",
+    "moveTo": "Mover para {name}",
+    "move": "Mover"
+  },
+  "projectsView": {
+    "newProject": "Novo projeto",
+    "sort": {
+      "recent": "Recentes",
+      "name": "Nome",
+      "mostActive": "Mais ativos",
+      "leastActive": "Menos ativos"
+    },
+    "counts": {
+      "filtered": "{filtered} de {total} projetos",
+      "total": "{count, plural, one {# projeto} other {# projetos}}",
+      "pinned": "{count, plural, one {# fixado} other {# fixados}}"
+    },
+    "menu": {
+      "open": "Abrir",
+      "pin": "Fixar",
+      "unpin": "Desafixar",
+      "rename": "Renomear…",
+      "chosenFolderHint": "Pasta escolhida",
+      "adminOrCreatorHint": "Admin ou criador",
+      "chosenFolderRenameTitle": "Este projeto aponta para uma pasta que você escolheu. Renomeie a própria pasta.",
+      "revealInFinder": "Mostrar no Finder",
+      "delete": "Excluir…",
+      "generalUndeletable": "O projeto General não pode ser excluído — é o espaço de trabalho de reserva para tarefas sem projeto.",
+      "noDeletePermission": "Você não tem permissão para excluir este projeto.",
+      "ariaLabel": "Ações do projeto"
+    },
+    "noRenamePermission": "Você não tem permissão para renomear este projeto.",
+    "renameFailed": "Não foi possível renomear: {error}",
+    "expandPanel": "Expandir painel",
+    "collapsePanel": "Recolher painel",
+    "title": "Projetos",
+    "allProjects": "Todos os projetos",
+    "deleting": "Excluindo…",
+    "projectMenu": "Menu do projeto",
+    "composerPlaceholder": "Inicie uma tarefa nova em {project}…",
+    "subtitle": "Espaços de trabalho que {agent} usa para agrupar conversas, memória e resultados.",
+    "theAgent": "o agente",
+    "searchPlaceholder": "Pesquisar projetos",
+    "empty": {
+      "title": "Ainda não há projetos",
+      "description": "Crie seu primeiro projeto para começar a agrupar conversas e resultados.",
+      "action": "Criar seu primeiro projeto"
+    }
+  }
+}

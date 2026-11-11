@@ -1,0 +1,1595 @@
+{
+  "reviewPanel": {
+    "ariaLabel": "変更を確認",
+    "closeAriaLabel": "レビューパネルを閉じる",
+    "resizeAriaLabel": "レビューパネルのサイズを変更",
+    "eyebrow": "タスクの出力",
+    "title": "変更を確認",
+    "tabsAriaLabel": "レビューのセクション",
+    "tabs": {
+      "changes": "変更",
+      "deliver": "反映"
+    },
+    "summary": {
+      "changedFiles": "{count, plural, other {#個のファイルを変更}}",
+      "trackingUnavailable": "変更を追跡できません",
+      "unchanged": "作業ツリーに変更はありません"
+    },
+    "empty": {
+      "directTitle": "フォルダを開いて変更を確認",
+      "title": "確認する変更はまだありません",
+      "directDescription": "直接開いたフォルダにはGitのベースラインがないため、{product}でインラインの差分を作成できません。",
+      "description": "エージェントの作業中、ファイルの変更がここに表示されます。"
+    },
+    "deliver": {
+      "heading": "このタスクを反映",
+      "project": "プロジェクト",
+      "branch": "ブランチ",
+      "openOriginalFolder": "元のフォルダを開く",
+      "openIsolatedCopy": "分離コピーを開く",
+      "openOriginal": "元のフォルダを開く"
+    },
+    "sourceChanged": {
+      "title": "このタスクの開始時、ソースにローカルの変更がありました",
+      "body": "これらの変更はソースフォルダに残っています。{product}は適用前に競合を確認します。"
+    },
+    "reconcile": {
+      "title": "元の変更を統合",
+      "body": "分離コピーで両方のバージョンを残すようエージェントに依頼してから、もう一度確認してください。",
+      "action": "エージェントで解決"
+    },
+    "checks": {
+      "title": "プロジェクトのチェック",
+      "run": "チェックを実行",
+      "adopt": "最新のプロジェクトコマンドを使用",
+      "failed": "{total}件中{failed}件のプロジェクトチェックが失敗しました。出力はタスクのアクティビティで確認できます。",
+      "passed": "{count, plural, other {#件のプロジェクトチェックに合格しました。}}",
+      "none": "このタスクにはプロジェクトのチェックがありません。このプロジェクトから開始したタスクでは、プロジェクト設定に保存されたコマンドが使われます。",
+      "noValidationCommands": "このタスクのフォルダには、プロジェクト設定で検証コマンドが設定されていないため、チェックする項目はありません。{count, plural, other {#件の実行アクションが使用できるようになりました。}}",
+      "noCommands": "このタスクのフォルダには、プロジェクト設定でコマンドがまだ設定されていません。検証コマンドを追加してから、もう一度お試しください。"
+    },
+    "applyLocally": {
+      "title": "ローカルに適用",
+      "tooltip": "確認済みの変更を元のフォルダにコピーします",
+      "applied": "適用済み",
+      "appliedNotice": "確認済みの変更をソースフォルダに適用しました。",
+      "nothingToApply": "このタスクは選択したフォルダで直接作業しているため、適用する変更はありません。"
+    },
+    "git": {
+      "title": "Gitオプション",
+      "branchLabel": "タスクのワークツリーにブランチを作成",
+      "create": "作成",
+      "commitLabel": "タスクのすべての変更をコミット",
+      "commitPlaceholder": "変更内容を入力",
+      "commit": "コミット"
+    },
+    "applyConfirm": {
+      "title": "ソースフォルダに変更を適用しますか？",
+      "message": "確認済みのタスクの変更で{target}を更新しますか？競合が見つかった場合、{product}はフォルダを変更する前に停止します。",
+      "confirm": "変更を適用",
+      "error": "変更を適用できませんでした。もう一度お試しください。"
+    }
+  },
+  "fileReview": {
+    "staged": "ステージ済み",
+    "unstaged": "未ステージ",
+    "committed": "コミット済み",
+    "stage": "ステージ",
+    "unstage": "ステージを解除",
+    "askCodex": "Codexに質問",
+    "discardAriaLabel": "{path}の変更を破棄",
+    "noteAriaLabel": "{path}のレビューメモ",
+    "notePlaceholder": "このファイルで何を変更しますか？",
+    "toSend": "で送信",
+    "cancel": "キャンセル",
+    "sendToCodex": "Codexに送信",
+    "discardConfirm": {
+      "title": "このファイルの変更を破棄しますか？",
+      "message": "{path}は現在のタスクのバージョンに戻ります。この操作は元に戻せません。",
+      "confirm": "変更を破棄"
+    }
+  },
+  "reviewFileCard": {
+    "binary": "バイナリファイルが変更されました",
+    "noTextualDiff": "テキストの差分はありません"
+  },
+  "diffPatch": {
+    "ariaLabel": "ファイルの差分",
+    "selectLine": "{line}行目を選択",
+    "selectRemovedLine": "削除された{line}行目を選択",
+    "selectedLines": "選択した行",
+    "line": "{line}行目",
+    "lines": "{start}〜{end}行目"
+  },
+  "filesPanel": {
+    "ariaLabel": "タスクのファイル",
+    "closeAriaLabel": "ファイルパネルを閉じる",
+    "resizeAriaLabel": "ファイルパネルのサイズを変更",
+    "eyebrow": "タスクのコンテキスト",
+    "title": "ファイル",
+    "folderMenuAriaLabel": "プロジェクトフォルダ",
+    "resourceAriaLabel": "リソース：{name}",
+    "searchPlaceholder": "タスクのファイルを検索",
+    "loading": "読み込み中…",
+    "empty": {
+      "title": "利用できるタスクのファイルはありません",
+      "description": "このタスクには、このコンピュータ上に準備された作業コピーがありません。"
+    },
+    "noMatches": {
+      "title": "一致する項目はありません",
+      "description": "ファイル名、シンボル、またはコード内のフレーズで検索してください。"
+    },
+    "back": "戻る",
+    "folderEmpty": "このフォルダは空です。",
+    "backToFiles": "ファイル",
+    "lineWindow": "{total}行中{start}〜{end}行目",
+    "linesAriaLabel": "{name}の行",
+    "pagesAriaLabel": "ファイルのページ",
+    "previous": "前へ",
+    "next": "次へ",
+    "selectedLine": "{start}行目",
+    "selectedLines": "{start}〜{end}行目",
+    "wholeFile": "ファイル全体",
+    "addToPrompt": "プロンプトに追加",
+    "errors": {
+      "loadFiles": "ファイルを読み込めませんでした。",
+      "openFolder": "このフォルダを開けませんでした。",
+      "search": "検索できませんでした。",
+      "openFile": "このファイルを開けませんでした。"
+    }
+  },
+  "previewPanel": {
+    "ariaLabel": "ライブプレビュー",
+    "closeAriaLabel": "プレビューを閉じる",
+    "eyebrow": "プロジェクトのアクション",
+    "title": "プレビュー",
+    "reloadAriaLabel": "プレビューを再読み込み",
+    "openInBrowserAriaLabel": "ブラウザでプレビューを開く",
+    "unavailable": "プレビューは利用できません",
+    "widthAriaLabel": "プレビューの幅",
+    "responsiveAriaLabel": "レスポンシブプレビュー",
+    "tabletAriaLabel": "タブレットプレビュー",
+    "mobileAriaLabel": "モバイルプレビュー",
+    "frameTitle": "プロジェクトのプレビュー",
+    "empty": {
+      "title": "ローカルプレビューはまだありません",
+      "description": "タスクの開発用ポートで待ち受けるプロジェクトアクションを実行してください。"
+    }
+  },
+  "draftPullRequest": {
+    "status": {
+      "merged": "マージ済み",
+      "closed": "クローズ",
+      "draft": "下書き",
+      "changesRequested": "変更をリクエスト済み",
+      "checksFailing": "チェック失敗",
+      "readyToMerge": "マージ可能",
+      "checksRunning": "チェック実行中",
+      "open": "オープン",
+      "draftCreated": "下書きを作成済み"
+    },
+    "item": {
+      "needsCommit": "コミットが必要です",
+      "noChanges": "変更なし",
+      "readyFor": "{branch}への準備完了",
+      "baseBranch": "ベースブランチ",
+      "unavailable": "利用不可"
+    },
+    "review": {
+      "approved": "レビュー承認済み",
+      "changesRequested": "変更をリクエスト済み",
+      "pending": "レビュー待ち"
+    },
+    "ci": {
+      "passing": "チェック合格",
+      "failing": "チェック失敗",
+      "running": "チェック実行中"
+    },
+    "checkState": "{state, select, passing {合格} failing {失敗} pending {保留中} other {{state}}}",
+    "updatedAt": "{time}に更新",
+    "checks": "チェック",
+    "reviewFeedback": "レビューのフィードバック",
+    "reviewer": "レビュアー",
+    "fixWithAgent": "エージェントで修正",
+    "resolve": "解決",
+    "markReady": "準備完了にする",
+    "addressFeedback": "フィードバックに対応",
+    "fixChecks": "チェックを修正",
+    "merge": "マージ",
+    "automationOptions": {
+      "fixFailingChecks": "失敗したチェックを修正",
+      "fixFailingChecksHint": "{count, plural, other {失敗ごとにエージェントが最大#回試行}}",
+      "markReady": "準備完了にする",
+      "markReadyHint": "チェック合格後",
+      "merge": "マージ",
+      "mergeHint": "承認とチェック合格後",
+      "completeLinkedIssues": "リンクされたIssueを完了",
+      "completeLinkedIssuesHint": "最終更新とすべてのマージの後",
+      "archiveTask": "タスクをアーカイブ",
+      "archiveTaskHint": "すべてのマージの後"
+    },
+    "loadError": "GitHubへの反映を準備できませんでした。",
+    "sectionAriaLabel": "GitHubで仕上げる",
+    "title": "GitHubで仕上げる",
+    "summary": {
+      "published": "{count, plural, other {#件公開済み}}",
+      "toResolve": "{count, plural, other {#件の要対応項目}}",
+      "ready": "{count, plural, other {#件準備完了}}"
+    },
+    "automation": "自動化",
+    "automationAriaLabel": "反映の自動化",
+    "refreshAriaLabel": "プルリクエストを更新",
+    "attempt": {
+      "created": "{count, plural, other {#件作成}}",
+      "failed": "{count, plural, other {#件失敗}}",
+      "failureHint": "該当するリポジトリの問題を解決してから再試行してください。作成済みの下書きは再作成されません。"
+    },
+    "allMerged": "すべてのプルリクエストがマージされました。",
+    "archiveTask": "タスクをアーカイブ",
+    "githubAccount": "GitHubアカウント",
+    "connected": "このプロジェクトに接続済み",
+    "addAccount": "このプロジェクトにアカウントを追加",
+    "addGithub": "GitHubを追加",
+    "commitMessagePlaceholder": "コミットメッセージ",
+    "commitRepositories": "{count, plural, other {#個のリポジトリをコミット}}",
+    "githubAccountAriaLabel": "GitHubアカウント",
+    "titlePlaceholder": "プルリクエストのタイトル",
+    "bodyPlaceholder": "レビュアー向けの補足（任意）…",
+    "repositories": "リポジトリ",
+    "selectedOf": "{total}個中{selected}個",
+    "includeAriaLabel": "{name}を含める",
+    "into": "{branch}へ",
+    "editOverride": "タイトルまたは補足を編集",
+    "createDrafts": "{count, plural, other {#件の下書きプルリクエストを作成}}",
+    "createConfirm": {
+      "title": "{count, plural, other {#件の下書きプルリクエストを作成しますか？}}",
+      "message": "選択したタスクのブランチをプッシュし、表示されている順に下書きを作成します。既存の下書きは変更されません。",
+      "confirm": "下書きを作成"
+    },
+    "mergeConfirm": {
+      "title": "{name}をマージしますか？",
+      "message": "GitHubはリポジトリのデフォルトのマージ方法でこのプルリクエストをマージします。この操作はここでは元に戻せません。",
+      "confirm": "プルリクエストをマージ"
+    },
+    "resolveConfirm": {
+      "title": "このレビュースレッドを解決しますか？",
+      "message": "このGitHubのレビュー会話を解決済みにします。スレッドはGitHubの履歴に引き続き表示されます。",
+      "confirm": "スレッドを解決"
+    },
+    "readyConfirm": {
+      "title": "{name}を準備完了にしますか？",
+      "pullRequest": "プルリクエスト",
+      "message": "下書きの状態を解除し、GitHubでレビューをリクエストします。",
+      "confirm": "準備完了にする"
+    }
+  },
+  "sourceUpdate": {
+    "ariaLabel": "リンクされた作業の更新",
+    "title": "リンクされた作業",
+    "completeIssue": "Issueを完了",
+    "cancel": "キャンセル",
+    "postAnother": "もう一件投稿",
+    "postUpdate": "更新を投稿",
+    "needsAttention": "要対応",
+    "completed": "完了",
+    "posted": "投稿済み",
+    "placeholder": "{target}への更新を入力…",
+    "progress": "進捗",
+    "finalResult": "最終結果",
+    "typeAriaLabel": "更新の種類",
+    "useLatestSummary": "最新の概要を使用",
+    "postTo": "{provider}に投稿",
+    "completeConfirm": {
+      "title": "{target}を完了しますか？",
+      "issue": "Issue",
+      "linearMessage": "このLinearのIssueをチームの完了ステータスに移動します。",
+      "githubMessage": "このGitHubのIssueをクローズします。ディスカッションと履歴は引き続き参照できます。",
+      "confirm": "Issueを完了"
+    }
+  },
+  "repositoryLocalChanges": {
+    "ariaLabel": "{name}のローカルの変更",
+    "heading": "{count, plural, other {{name}に#件のローカルの変更があります}}",
+    "hideDiff": "差分を非表示",
+    "viewDiff": "差分を表示",
+    "moreFiles": "{count, plural, other {他#個のファイル}}",
+    "loadError": "ローカルの変更を読み込めませんでした。もう一度お試しください。",
+    "closeAndRetry": "閉じて再試行",
+    "binary": "バイナリファイルが変更されました。",
+    "noChanges": "ローカルの変更は残っていません。更新するとこのパネルが最新の状態になります。"
+  },
+  "deliveryAutomation": {
+    "error": "反映の自動化を続行できませんでした。"
+  },
+  "developerTools": {
+    "comments": "{count, plural, other {#件のコメント}}",
+    "attachments": "{count, plural, other {#件の添付ファイル}}"
+  },
+  "workspaceUsage": {
+    "explanation": "このタスクのためにCoworkが保持しているおおよそのストレージ容量です（ワークスペース、比較用コピー、復元用データ）。ご自身のフォルダや、ワークツリー間で共有されるGit履歴は含まれません。macOSではコピーが元のファイルとディスク領域を共有するため、タスクを削除しても、表示より大幅に少ない容量しか解放されない場合があります。",
+    "storage": "ストレージ",
+    "measuring": "計測中…",
+    "notMeasured": "未計測",
+    "taskSize": "約{size}",
+    "taskSizeUpdating": "約{size} · 更新中…",
+    "recovery": "復元用データ",
+    "recoveryOfThat": "うち{size}",
+    "allTasks": "すべてのタスク"
+  },
+  "repositorySetup": {
+    "invalidBranch": "{example}のようなGitのブランチ名を使用してください。"
+  },
+  "gitIdentity": {
+    "saveFailed": "Gitのユーザー情報を保存できませんでした。",
+    "title": "Gitにユーザー情報を設定してください",
+    "body": "このコンピュータでコミットするには、名前とメールアドレスが必要です。一度保存すると、コミットが再実行されます。Gitに設定済みの情報はそのまま保持されます。",
+    "namePlaceholder": "名前",
+    "nameAriaLabel": "Gitコミットに使う名前",
+    "emailAriaLabel": "Gitコミットに使うメールアドレス",
+    "saving": "保存中…",
+    "save": "保存してコミット"
+  },
+  "deleteProject": {
+    "title": "このコードプロジェクトを削除しますか？",
+    "message": "プロジェクトの設定を削除します。ソースフォルダは変更されません。コーディングタスクがあるプロジェクトは削除できません。",
+    "confirm": "プロジェクトを削除",
+    "deleting": "削除中…",
+    "failed": "このコードプロジェクトを削除できませんでした。"
+  },
+  "renameTask": {
+    "failed": "このコーディングタスクの名前を変更できませんでした。",
+    "title": "コーディングタスクの名前を変更",
+    "label": "タスク名",
+    "cancel": "キャンセル",
+    "rename": "名前を変更"
+  },
+  "recovery": {
+    "title": "タスクを再開",
+    "subtitle": "このタスクを再開する場所を選択してください。再開後にメッセージを送信すると、中断された作業を続行できます。",
+    "computerAriaLabel": "タスクを再開するコンピュータ",
+    "recommended": "おすすめ",
+    "savedCopy": "保存された作業コピー",
+    "freshCopy": "新しい作業コピー",
+    "empty": {
+      "title": "対応するコンピュータがオンラインではありません",
+      "body": "元のコンピュータをオンラインにするか、対応する別のコンピュータを接続してください。"
+    },
+    "recreateWarning": "保存されたリポジトリのリビジョンから開始します。以前のコンピュータにある未プッシュの変更は、タスクと一緒に移行できません。",
+    "cancel": "キャンセル",
+    "reopening": "再開中…",
+    "startFresh": "新しいコピーで開始"
+  },
+  "projectResources": {
+    "title": "コード",
+    "errors": {
+      "chooseFolder": "そのフォルダを選択できませんでした。",
+      "duplicateResource": "そのリソースはすでにこのプロジェクトにあります。",
+      "inspectFolder": "そのフォルダを確認できませんでした。",
+      "invalidUrl": "{example}のようなGitリポジトリのURLを入力してください。",
+      "duplicateRepository": "そのリポジトリはすでにこのプロジェクトにあります。"
+    },
+    "status": {
+      "offline": "{computer}はオフライン",
+      "computerOffline": "コンピュータがオフライン",
+      "anyComputer": "任意のコンピュータ",
+      "only": "{computer}のみ",
+      "onlyThisComputer": "このコンピュータのみ"
+    },
+    "baseBranch": "ベースブランチ",
+    "baseBranchPlaceholder": "リポジトリのデフォルト",
+    "commands": "コマンド",
+    "optional": "（任意）",
+    "setup": "セットアップ",
+    "setupAriaLabel": "セットアップコマンド",
+    "validate": "検証",
+    "validateAriaLabel": "検証コマンド",
+    "run": "実行",
+    "runAriaLabel": "実行コマンド",
+    "remove": "削除",
+    "removeAriaLabel": "{name}を削除",
+    "adding": "追加中…",
+    "addFolder": "フォルダを追加",
+    "addRepository": "リポジトリを追加",
+    "chooseFolder": "フォルダを選択",
+    "runsOnThisComputer": "このコンピュータで実行",
+    "cloneRepository": "リポジトリをクローン",
+    "runsOnAnyComputer": "任意のコンピュータで実行"
+  },
+  "projectConnectedTools": {
+    "title": "コネクタ",
+    "usedByRepository": " · リポジトリで使用中",
+    "reconnect": "再接続",
+    "manage": "コネクタを管理",
+    "empty": "GitHubまたはLinearを接続すると、Issueからタスクを開始したり、プルリクエストを作成したりできます。",
+    "open": "コネクタを開く"
+  },
+  "projectConnections": {
+    "backToSettings": "プロジェクト設定に戻る",
+    "backToTask": "タスクに戻る"
+  },
+  "projectActions": {
+    "settings": "プロジェクト設定",
+    "delete": "プロジェクトを削除",
+    "noTask": "プロジェクトのアクションを実行するには、先にコーディングタスクを開いてください。"
+  },
+  "projectDefaults": {
+    "invalidEnvironmentLine": "環境変数の行は NAME=value の形式で入力してください: {line}"
+  },
+  "projectSettings": {
+    "title": "プロジェクト設定",
+    "newTitle": "新しいコードプロジェクト",
+    "subtitle": "このプロジェクト内のタスクは、コード、コネクタ、デフォルト設定を共有します。",
+    "name": "プロジェクト名",
+    "skills": "スキル",
+    "teamSetup": {
+      "title": "チームセットアップ",
+      "summary": "{branch} · {count}件を含む",
+      "updateAvailable": "アップデートがあります",
+      "checkForUpdates": "アップデートを確認",
+      "reviewUpdate": "アップデートの内容を確認",
+      "newerRevision": "チームセットアップの新しいリビジョンがあります。",
+      "applyUpdate": "アップデートを適用",
+      "includedGuidance": "含まれるガイダンス",
+      "includedCount": "{enabled}/{total}",
+      "details": "詳細",
+      "source": "ソース",
+      "revision": "リビジョン",
+      "checking": "確認中…",
+      "openSource": "ソースを開く",
+      "openLocalCopy": "ローカルコピーを開く"
+    },
+    "defaults": {
+      "title": "タスクのデフォルト",
+      "agent": "エージェント",
+      "agentAriaLabel": "デフォルトのコーディングエージェント",
+      "model": "モデル",
+      "modelAriaLabel": "デフォルトのコーディングモデル",
+      "modelPlaceholder": "モデルを選択",
+      "noModels": "利用できるコーディングモデルがありません",
+      "reasoning": "推論",
+      "reasoningAriaLabel": "デフォルトの推論レベル",
+      "permissions": "権限",
+      "permissionsAriaLabel": "デフォルトのコーディング権限"
+    },
+    "environment": {
+      "title": "環境",
+      "ports": "開発用ポート",
+      "portsHelp": "各タスクには、名前ごとに空いているポートが個別に割り当てられます。",
+      "variables": "環境変数",
+      "variablesHelp": "このプロジェクトのすべてのタスクから参照できます。シークレットは入力しないでください。"
+    },
+    "errors": {
+      "inspectPlaybook": "チームのプレイブックを確認できませんでした。",
+      "checkAvailability": "リソースの利用可否を確認できませんでした。",
+      "nameRequired": "このコードプロジェクトの名前を入力してください。",
+      "resourceRequired": "リポジトリまたはフォルダを1つ以上追加してください。",
+      "save": "このコードプロジェクトを保存できませんでした。",
+      "checkTeamSetup": "チームセットアップのアップデートを確認できませんでした。",
+      "applyTeamSetup": "チームセットアップのアップデートを適用できませんでした。",
+      "updateGuidance": "チームセットアップのガイダンスを更新できませんでした。",
+      "openRepository": "このリポジトリを開けませんでした。"
+    },
+    "cancel": "キャンセル",
+    "saving": "保存中…",
+    "creating": "作成中…",
+    "save": "変更を保存",
+    "create": "プロジェクトを作成"
+  },
+  "runtimeControls": {
+    "tryAgain": "もう一度お試しください。",
+    "title": "タスク設定",
+    "subtitle": "これらの設定は、このコーディングタスクの以降のターンに適用されます。",
+    "model": "モデル",
+    "modelAriaLabel": "タスクのモデル",
+    "reasoning": "推論",
+    "modelDefault": "モデルのデフォルト",
+    "reasoningAriaLabel": "推論レベル",
+    "effortPlaceholder": "レベル",
+    "permissions": "権限",
+    "permissionsAriaLabel": "タスクの権限",
+    "personality": "パーソナリティ",
+    "personalityAriaLabel": "エージェントのパーソナリティ",
+    "personalities": {
+      "pragmatic": "実務的",
+      "friendly": "フレンドリー",
+      "none": "パーソナリティなし"
+    },
+    "fast": {
+      "title": "高速",
+      "description": "モデルが対応している場合は優先推論を使用します。",
+      "ariaLabel": "高速推論"
+    },
+    "network": {
+      "title": "ネットワークアクセス",
+      "includedWithFullAccess": "フルアクセスに含まれます。",
+      "description": "コマンドから外部サービスへのアクセスを許可します。"
+    },
+    "webSearch": {
+      "title": "ウェブ検索",
+      "description": "必要に応じて、コーディングエージェントがウェブを検索できるようにします。"
+    },
+    "folders": {
+      "title": "追加のフォルダ",
+      "description": "このタスクで、関連するローカルフォルダもまとめて扱えるようにします。",
+      "add": "フォルダを追加",
+      "removeAriaLabel": "追加のフォルダ {path} を削除"
+    },
+    "sandbox": {
+      "title": "Windowsサンドボックス",
+      "checking": "確認中…",
+      "unknown": "不明",
+      "unavailable": "利用不可",
+      "setupStarted": "セットアップを開始しました",
+      "setupFailed": "セットアップに失敗しました",
+      "ready": "準備完了",
+      "setUp": "セットアップ"
+    },
+    "applyFailed": "タスク設定を適用できませんでした",
+    "cancel": "キャンセル",
+    "apply": "適用"
+  },
+  "extensions": {
+    "alsoInstalled": "{location}にもインストールされています",
+    "alsoInstalledAt": "{location}にもインストールされています · {path}",
+    "loadFailed": "タスクの拡張機能を読み込めませんでした。",
+    "title": "タスクの拡張機能",
+    "subtitle": "このフォルダ、Codexのスキル、Coworkのスキルライブラリから読み込まれた機能です。",
+    "typesAriaLabel": "拡張機能の種類",
+    "tabs": {
+      "skills": "スキル",
+      "mcp_servers": "MCP",
+      "plugins": "プラグイン",
+      "apps": "アプリ",
+      "hooks": "フック"
+    },
+    "refreshAriaLabel": "タスクの拡張機能を再読み込み",
+    "loading": "{tab, select, skills {スキル} mcp_servers {MCP} plugins {プラグイン} apps {アプリ} hooks {フック} other {拡張機能}}を読み込み中…",
+    "empty": "このタスクで有効な{tab, select, skills {スキル} mcp_servers {MCP} plugins {プラグイン} apps {アプリ} hooks {フック} other {拡張機能}}はありません。",
+    "sourceErrors": "一部の拡張機能のソースを確認できませんでした",
+    "config": {
+      "title": "コードモードの構成",
+      "description": "この非公開のCodex構成は、コーディングタスク間で共有されます。プロジェクトの{file}ファイルは自動的に重ねて適用されます。",
+      "open": "構成を開く"
+    }
+  },
+  "projects": {
+    "viewTasks": "{name}のタスクを表示",
+    "resourceCount": "{count, plural, other {#個のリソース}}",
+    "actionsAriaLabel": "{name}のアクション",
+    "title": "プロジェクト",
+    "subtitle": "コーディングタスクで共有するリポジトリ、フォルダ、スキル、デフォルト設定です。",
+    "new": "新しいプロジェクト",
+    "search": "プロジェクトを検索",
+    "sort": {
+      "updated": "最近更新した順",
+      "name": "名前"
+    },
+    "empty": {
+      "title": "プロジェクトはまだありません",
+      "description": "プロジェクトを作成して、関連するリポジトリやフォルダをまとめましょう。",
+      "action": "最初のプロジェクトを作成"
+    },
+    "listAriaLabel": "コードプロジェクト",
+    "loadFailed": "コードプロジェクトを読み込めませんでした。"
+  },
+  "projectPicker": {
+    "resourceCount": "{count, plural, other {#個のリソース}}",
+    "noProject": "プロジェクトなし",
+    "localFolder": "ローカルフォルダ",
+    "projects": "プロジェクト",
+    "newProject": "新しいプロジェクト",
+    "search": "プロジェクトを検索",
+    "noResults": "プロジェクトが見つかりません",
+    "ariaLabel": "コードプロジェクト",
+    "menuLabel": "プロジェクト"
+  },
+  "skills": {
+    "origin": {
+      "all": "すべてのソース",
+      "team": "チーム",
+      "personal": "自分"
+    },
+    "kind": {
+      "instructions": "指示",
+      "workflow": "ワークフロー",
+      "skill": "スキル"
+    },
+    "unversioned": "バージョンなし",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "save": "保存",
+    "saving": "保存中…",
+    "usedBy": "{count, plural, other {#個のプロジェクトで使用中}}",
+    "updateAvailable": "アップデートがあります",
+    "addSource": {
+      "title": "チームのソースを追加",
+      "subtitle": "スキル、指示、ワークフローを含むGitリポジトリを接続します。",
+      "repositoryLabel": "リポジトリまたはフォルダ",
+      "choose": "選択",
+      "nameLabel": "名前",
+      "optional": "任意",
+      "namePlaceholder": "エンジニアリング標準",
+      "branchLabel": "ブランチ",
+      "repositoryRequired": "Gitリポジトリを選択するか、URLを入力してください。",
+      "addFailed": "このチームのソースを追加できませんでした。",
+      "folderFailed": "このフォルダを選択できませんでした。",
+      "adding": "追加中…",
+      "add": "ソースを追加"
+    },
+    "projects": {
+      "title": "プロジェクトを選択",
+      "subtitle": "選択したコードプロジェクトのタスクで利用できるようにします。",
+      "folders": "{count, plural, other {#個のフォルダ}}",
+      "empty": "チームのスキルを割り当てるには、先にコードプロジェクトを作成してください。"
+    },
+    "source": {
+      "fallbackTitle": "チームのソース",
+      "repository": "リポジトリ",
+      "itemsUnit": "{count, plural, other {個の項目}}",
+      "projectsUnit": "{count, plural, other {個のプロジェクト}}",
+      "openRepository": "リポジトリを開く",
+      "checkUpdates": "アップデートを確認",
+      "update": "ソースを更新",
+      "remove": "ソースを削除"
+    },
+    "view": {
+      "title": "スキル",
+      "subtitle": "あなたのワークフローとチームのエンジニアリング標準を、コードタスクですぐに使えます。",
+      "addPersonal": "個人スキルを追加",
+      "searchPlaceholder": "スキルを検索",
+      "noMatch": "検索に一致するスキルはありません。",
+      "emptyPersonal": {
+        "title": "個人スキルはまだありません",
+        "description": "指示を書くか、SKILL.mdをインポートしてください。Gitリポジトリは不要です。",
+        "action": "最初のスキルを追加"
+      },
+      "emptyTeam": {
+        "title": "チームのソースはまだありません",
+        "description": "Gitリポジトリを接続して、エンジニアリング標準をプロジェクト間で共有しましょう。"
+      },
+      "emptyView": "この表示にはスキルがありません。",
+      "viewItem": "{name}を表示",
+      "moreActions": "{name}のその他のアクション",
+      "edit": "編集",
+      "delete": "削除",
+      "projectCount": "{count, plural, other {#個のプロジェクト}}",
+      "available": "利用可能",
+      "disabled": "無効",
+      "sourceFilter": "ソース",
+      "itemCount": "{count, plural, other {#個の項目}}",
+      "needsAttention": "要対応",
+      "sourceDetails": "ソースの詳細",
+      "sourceUnavailable": "ソースを利用できません。開いて詳細を確認してください。",
+      "noItemsMatch": "この検索に一致する項目はありません。",
+      "noSharedItems": "共有されている項目はありません。",
+      "personalDescription": "コードモードで使える個人スキル",
+      "builtInDescription": "MindsHubが管理するエンジニアリングスキル"
+    },
+    "errors": {
+      "updateProjects": "プロジェクトのスキルを更新できませんでした。",
+      "updateSource": "このソースを更新できませんでした。",
+      "openRepository": "このリポジトリを開けませんでした。",
+      "removeSource": "このソースを削除できませんでした。",
+      "deleteSkill": "このスキルを削除できませんでした。",
+      "loadLibrary": "スキルライブラリを読み込めませんでした。"
+    },
+    "removeConfirm": {
+      "title": "チームのソースを削除しますか？",
+      "message": "{name}をこのスキルライブラリから削除します。Gitリポジトリは変更されません。",
+      "busy": "削除中…"
+    },
+    "deleteConfirm": {
+      "title": "個人スキルを削除しますか？",
+      "message": "{name}をライブラリから削除します。既存のタスクには保存済みのコピーが残ります。",
+      "confirm": "スキルを削除",
+      "busy": "削除中…"
+    }
+  },
+  "personalSkill": {
+    "saveFailed": "このスキルを保存できませんでした。もう一度お試しください。",
+    "errors": {
+      "fileType": "SKILL.mdまたは.skillのテキストファイルを選択してください。",
+      "fileTooLarge": "120 KB未満のスキルを選択してください。",
+      "fileUnreadable": "このファイルを読み込めませんでした。UTF-8のテキスト形式のスキルを選択してください。",
+      "instructionsTooLong": "指示は120 KB未満にしてください。"
+    },
+    "fields": {
+      "name": "名前",
+      "namePlaceholder": "例: TypeScriptをレビュー",
+      "description": "使用するタイミング",
+      "descriptionHelp": "このスキルが役立つ場面をエージェントが判断しやすくなります。",
+      "descriptionPlaceholder": "TypeScriptの変更を、わかりやすさと確実なエラー処理の観点でレビューします。",
+      "instructions": "指示",
+      "instructionsHelp": "エージェントが従う手順や基準を入力するか、貼り付けてください。",
+      "instructionsPlaceholder": "まず、変更されたファイルを読み込みます…",
+      "available": "エージェントが利用可能",
+      "keepRestrictions": "既存のプロジェクトの制限は維持されます。",
+      "availableHint": "このコンピュータの新しいコードタスクで利用できます。"
+    },
+    "editTitle": "個人スキルを編集",
+    "addTitle": "個人スキルを追加",
+    "subtitle": "あなたのコードタスク用です。Gitリポジトリは不要です。",
+    "loading": "スキルを読み込み中…",
+    "tryAgain": "再試行",
+    "tabs": {
+      "ariaLabel": "個人スキルを追加",
+      "write": "指示を書く",
+      "import": "ファイルをインポート"
+    },
+    "import": {
+      "fileAriaLabel": "スキルファイル",
+      "title": "手持ちのSKILL.mdを使う",
+      "description": "名前、説明、指示を含むテキストファイルを選択してください。コードスキルにコピーされ、元のファイルは変更されません。",
+      "chooseAnother": "別のファイルを選択",
+      "choose": "ファイルを選択",
+      "limits": "SKILL.mdまたは.skill · 最大120 KB"
+    },
+    "cancel": "キャンセル",
+    "saving": "保存中…",
+    "saveChanges": "変更を保存",
+    "add": "スキルを追加",
+    "discard": {
+      "title": "変更を破棄しますか？",
+      "message": "保存していないスキルの変更は失われます。",
+      "confirm": "変更を破棄",
+      "cancel": "編集を続ける"
+    }
+  },
+  "skillDetail": {
+    "loadFailed": "このスキルを読み込めませんでした。",
+    "rendered": "表示形式",
+    "viewSource": "ソースを表示",
+    "files": "ファイル"
+  },
+  "projectSkills": {
+    "heading": {
+      "added": "{count, plural, other {#個のスキルを追加済み}}",
+      "choose": "スキルを選択",
+      "included": "{count, plural, other {#個のスキルを含む}}"
+    },
+    "summary": {
+      "selected": "{count}個を選択中",
+      "available": "{count}個が利用可能",
+      "included": "{count}個を含む",
+      "none": "利用できるコードスキルがありません"
+    },
+    "footer": {
+      "selected": "このプロジェクトで{count}個を選択中",
+      "maintained": "{count, plural, other {管理対象のスキル#個が自動的に含まれます}}",
+      "default": "すべてのタスクに渡すガイダンスを選択してください"
+    },
+    "loadingEngineering": "エンジニアリングスキルを読み込み中…",
+    "search": "コードスキルを検索",
+    "loading": "スキルを読み込み中…",
+    "maintained": "MindsHubが管理",
+    "included": "含まれています",
+    "empty": "この組織で利用できるコードスキルはまだありません。",
+    "openSkills": "スキルを開く"
+  },
+  "connectors": {
+    "title": "コネクタ",
+    "subtitle": "開発ツールを一度接続すれば、どのコードプロジェクトにも追加できます。",
+    "ariaLabel": "コードのコネクタ",
+    "providers": {
+      "github": "Issueから作業を開始し、ドラフトのプルリクエストを作成して、レビューやチェックを追跡します。",
+      "linear": "LinearのIssueから作業を開始し、進捗をIssueに投稿します。"
+    },
+    "usage": {
+      "none": "どのプロジェクトでも使用されていません",
+      "used": "{count, plural, other {#個のプロジェクトで使用中}}"
+    },
+    "errors": {
+      "loadOptions": "{provider}の接続オプションを読み込めませんでした。",
+      "connect": "{provider}に接続できませんでした。",
+      "validate": "この認証情報を検証できませんでした。",
+      "postConnect": "接続しましたが、コードモードの更新を完了できませんでした: {reason}",
+      "postConnectFallback": "コネクタを開き直してください。",
+      "disconnect": "このアカウントの接続を解除できませんでした。"
+    },
+    "returnProject": {
+      "before": "ここで接続したアカウントは",
+      "after": "に追加されます。必要な数だけ接続してから戻ってください。"
+    },
+    "returnTask": "アカウントを接続してから、タスクに戻ってください。",
+    "backToTask": "タスクに戻る",
+    "status": {
+      "reconnect": "{count, plural, other {#個のアカウント · 再接続が必要}}",
+      "connectedCount": "{count}個を接続済み",
+      "notConnected": "未接続",
+      "reconnectNeeded": "再接続が必要",
+      "connected": "接続済み"
+    },
+    "connecting": "接続中…",
+    "addAccount": "アカウントを追加",
+    "connect": "接続",
+    "browser": {
+      "title": "ブラウザで続行してください",
+      "hint": "{provider}での認証が完了したら、ここに戻ってください。"
+    },
+    "cancel": "キャンセル",
+    "reconnecting": "再接続中…",
+    "reconnect": "再接続",
+    "credential": {
+      "title": "{provider}に接続",
+      "githubSubtitle": "このローカルビルドでは個人アクセストークンを使用します。",
+      "linearSubtitle": "このローカルビルドでは個人APIキーを使用します。"
+    },
+    "disconnect": {
+      "action": "接続を解除",
+      "title": "{name}の接続を解除しますか？",
+      "titleFallback": "このアカウントの接続を解除しますか？",
+      "message": "このアカウントを使用しているプロジェクトでは参照は残りますが、再接続するまでコードモードはこのアカウントを通じて読み取りや公開ができません。"
+    }
+  },
+  "commandPalette": {
+    "skillFallback": "MindsHubスキル",
+    "view": "表示",
+    "ariaLabel": "スキルとコマンド",
+    "search": "スキルとコマンドを検索",
+    "skillsSection": "MindsHubスキル",
+    "commandsSection": "{agent}のコマンド",
+    "empty": "一致するスキルやコマンドはありません"
+  },
+  "sidebarSessions": {
+    "title": "コードタスク",
+    "noProject": "プロジェクトなし",
+    "errors": {
+      "pin": "このタスクをピン留めできませんでした。",
+      "unpin": "このタスクのピン留めを解除できませんでした。"
+    },
+    "untitled": "無題のコーディングタスク",
+    "untitledLower": "無題のコーディングタスク",
+    "rowAriaLabel": "{title}、{status}{unread, select, yes {、未読} other {}}、{repository}、{updated}",
+    "actionsFor": "{name}の操作",
+    "organize": "整理",
+    "organizeAriaLabel": "コーディングタスクを整理",
+    "projects": "プロジェクト",
+    "taskList": "タスク一覧",
+    "sort": "並べ替え",
+    "priority": "優先度",
+    "lastUpdated": "最終更新",
+    "searchPlaceholder": "タスクを検索",
+    "searchAriaLabel": "コーディングタスクを検索",
+    "noMatch": "検索に一致するコーディングタスクはありません。",
+    "empty": "コーディングタスクを開始すると、その会話と変更内容がここに保存されます。",
+    "pinned": "ピン留め",
+    "archived": "アーカイブ済み"
+  },
+  "tasksView": {
+    "status": {
+      "all": "すべてのステータス",
+      "attention": "要対応",
+      "inProgress": "進行中",
+      "completed": "完了",
+      "failed": "失敗",
+      "readyOrStopped": "準備完了または停止"
+    },
+    "sort": {
+      "updated": "更新日時が新しい順",
+      "created": "作成日時が新しい順",
+      "title": "タイトル"
+    },
+    "unavailableProject": "利用できないプロジェクト",
+    "filters": {
+      "project": "プロジェクト",
+      "allProjects": "すべてのプロジェクト",
+      "status": "ステータス"
+    },
+    "allTasks": "すべてのタスク",
+    "projectSubtitle": "このプロジェクトのコーディングタスクです。",
+    "projectActions": "{name}の操作",
+    "newTask": "新しいタスク",
+    "search": "タスクを検索",
+    "count": "{count, plural, other {#件のタスク}}",
+    "filteredCount": "{total}件中{shown}件のタスク",
+    "noMatch": "一致するタスクはありません",
+    "clearFilters": "フィルタをクリア",
+    "emptyArchived": {
+      "title": "アーカイブ済みのタスクはありません",
+      "description": "アーカイブしたタスクはここに表示されます。"
+    },
+    "empty": {
+      "title": "タスクはまだありません",
+      "description": "タスクには、1つのコーディング会話と、それによるフォルダやリポジトリへの変更が保存されます。",
+      "action": "最初のタスクを開始"
+    },
+    "projectTasks": "プロジェクトのタスク"
+  },
+  "taskMenu": {
+    "errors": {
+      "archive": "このタスクをアーカイブできませんでした。",
+      "restore": "このタスクを復元できませんでした。",
+      "delete": "このタスクを削除できませんでした。"
+    },
+    "stopFirst": "先に実行中のターンを停止してください。",
+    "pin": "ピン留め",
+    "unpin": "ピン留めを解除",
+    "rename": "名前を変更",
+    "archive": "アーカイブ",
+    "restore": "復元",
+    "delete": "削除",
+    "deleteConfirm": {
+      "title": "このコーディングタスクを削除しますか？",
+      "message": "タスクの履歴と、分離された作業コピーが削除されます。元のファイルはそのまま残ります。",
+      "confirm": "タスクを削除"
+    }
+  },
+  "taskList": {
+    "loadFailed": "コーディングタスクを読み込めませんでした。"
+  },
+  "taskActions": {
+    "refreshFailed": "{completed}が、タスク一覧を更新できませんでした：{reason}",
+    "tryAgainShortly": "しばらくしてからもう一度お試しください",
+    "operationFailed": "コーディング操作に失敗しました。",
+    "completed": {
+      "operation": "操作は完了しました",
+      "started": "タスクを開始しました",
+      "forked": "タスクをフォークしました",
+      "archived": "タスクをアーカイブしました",
+      "restored": "タスクを復元しました"
+    },
+    "errors": {
+      "start": "このタスクを開始できませんでした。",
+      "fork": "このコーディングタスクをフォークできませんでした。",
+      "update": "このコーディングタスクを更新できませんでした。"
+    }
+  },
+  "taskAttention": {
+    "answer": "タスクがあなたの回答を待っています。",
+    "approval": "タスクがあなたの承認を待っています。",
+    "plan": "プランを確認できます。",
+    "failed": "続行するには、タスクへの対応が必要です。",
+    "finished": "コーディングタスクが完了しました。",
+    "bar": {
+      "ariaLabel": "対応が必要なタスク",
+      "unavailable": "このウィンドウではデスクトップ通知を利用できません。",
+      "denied": "通知を受け取るには、システム設定でMindsHubの通知を許可してください。",
+      "failed": "通知を有効にできませんでした。対応が必要な項目は「要対応」で確認できます。",
+      "needsYou": "{count, plural, other {#件のタスクが対応を待っています →}}",
+      "on": "通知オン",
+      "off": "不在時に通知"
+    }
+  },
+  "catalog": {
+    "loadAgentsFailed": "コーディングエージェントを読み込めませんでした。",
+    "loadModelsFailed": "コーディングモデルを読み込めませんでした。"
+  },
+  "newTask": {
+    "heading": "何を作りましょうか？",
+    "composerAriaLabel": "コーディングタスクを作成",
+    "dropHint": "ドロップしてファイルを添付",
+    "editProject": "{name}を編集",
+    "changeFolder": "フォルダを変更（現在：{name}）",
+    "chooseFolder": "フォルダを選択",
+    "localResources": "ローカルリソース",
+    "promptPlaceholder": "変更内容、重要な制約、確認方法を入力してください…",
+    "promptAriaLabel": "コーディングタスク",
+    "agentAriaLabel": "コーディングエージェント",
+    "agentMenuLabel": "エージェント",
+    "modelAriaLabel": "モデルを選択",
+    "modelMenuLabel": "モデル",
+    "modelPlaceholder": "モデルを選択",
+    "noModels": "利用できるコーディングモデルはありません",
+    "effortLabel": "推論レベル",
+    "effortPlaceholder": "レベル",
+    "starting": "開始中…",
+    "startPlanning": "プランを作成",
+    "startTask": "タスクを開始",
+    "automaticBranches": "タスクブランチを自動作成",
+    "localChangesIncluded": "ローカルの変更を含める",
+    "localChangesExcluded": "ローカルの変更を除外",
+    "loadingSource": "IssueまたはPRを読み込み中…",
+    "planUnavailable": "ここではプランモードを利用できません。プランモードをオフにするか、対応しているコンピュータを選択してください。",
+    "connectToStart": "タスクを開始するには、MindsHubに接続してください。",
+    "mindsHubRequired": "コードはMindsHub上で実行されます。タスクを開始するには、MindsHubアカウントを接続してください。",
+    "connecting": "接続中…",
+    "connectMindsHub": "MindsHubに接続"
+  },
+  "newTaskDraft": {
+    "folderUnavailable": "{name}は利用できません。プロジェクト設定で削除してから、もう一度追加してください。",
+    "baseBranchMissing": "{name}のベースブランチ「{branch}」が見つかりません。{location, select, setup {「リポジトリとフォルダ」} other {プロジェクト設定}}で更新してください。",
+    "sourcePromptOne": "{id}に取り組む：{title}",
+    "sourcePromptMany": "{count, plural, other {リンクされた#件の作業項目に取り組んでください。}}",
+    "foldersCheckFailed": "このプロジェクトのフォルダを確認できませんでした。",
+    "engineUnavailable": "利用不可",
+    "folderGone": "そのフォルダは利用できなくなりました。別のフォルダを選択してください。",
+    "folderAccessFailed": "そのフォルダにアクセスできませんでした。",
+    "folderChooseFailed": "そのフォルダを選択できませんでした。",
+    "readiness": {
+      "startingTask": "タスクを開始中…",
+      "loadingAgent": "コーディングエージェントを読み込み中…",
+      "checkingResources": "プロジェクトのリソースを確認中…",
+      "checkingFolder": "フォルダを確認中…",
+      "findingComputer": "利用可能なコンピュータを検索中…",
+      "addResource": "プロジェクト設定で、このプロジェクトにリポジトリまたはフォルダを追加してください。",
+      "noComputer": "このタスクを実行できるコンピュータがありません。",
+      "noAgent": "利用できるコーディングエージェントがありません。",
+      "modelRestricted": "このモデルは管理者によって制限されています。別のモデルを選択してください。",
+      "addCredits": "クレジットを追加するか、利用可能なモデルを選択してください。",
+      "noModels": "利用できるコーディングモデルがありません。",
+      "chooseModel": "続行するにはモデルを選択してください。",
+      "chooseFolder": "続行するにはフォルダを選択してください。",
+      "budgetReached": "組織の予算を使い切りました。利用可能なモデルを選択するか、オーナーまたは管理者に予算の引き上げを依頼してください。"
+    }
+  },
+  "executionTarget": {
+    "thisComputer": "このコンピュータ",
+    "readyNow": "{platform} · 今すぐ利用可能",
+    "offline": "{platform} · オフライン",
+    "activeTasks": "{platform} · {count, plural, other {#件のタスクを実行中}}",
+    "ready": "{platform} · 準備完了",
+    "localFolder": "ローカルフォルダ",
+    "unavailable": "利用不可",
+    "computers": "コンピュータ",
+    "cloudDescription": "マネージドのオンデマンドコンピューティング",
+    "comingSoon": "近日公開",
+    "runOn": "タスクの実行先",
+    "capacityIssue": "現在、このタスクを実行できるオンラインのコンピュータはありません。",
+    "offlineIssue": "{name}はオフラインのコンピュータ上にあります。",
+    "findFailed": "このコンピュータが見つかりませんでした。",
+    "checkFailed": "このタスクの実行先を確認できませんでした。"
+  },
+  "permissions": {
+    "ariaLabel": "コーディングの権限",
+    "menuLabel": "権限",
+    "readOnly": {
+      "label": "読み取り専用",
+      "title": "ファイルを変更せずに調査・説明します。"
+    },
+    "supervised": {
+      "label": "事前に確認",
+      "title": "承認が必要なコマンドの前で一時停止します。"
+    },
+    "workspace": {
+      "label": "ワークスペース内で自動",
+      "title": "このタスク専用の分離されたコピー内で自律的に作業します。"
+    },
+    "fullAccess": {
+      "label": "フルアクセス",
+      "title": "ファイルシステムの制限なしで自律的に作業します。"
+    }
+  },
+  "branchSelect": {
+    "loadFailed": "ブランチを読み込めませんでした。ピッカーを開いて再試行してください。",
+    "ariaLabel": "{name}の開始元",
+    "placeholder": "デフォルトブランチ",
+    "searchPlaceholder": "ブランチを検索…",
+    "menuLabel": "開始元"
+  },
+  "repositoryPicker": {
+    "resultsAriaLabel": "GitHubリポジトリ",
+    "private": "非公開",
+    "public": "公開",
+    "archivedSuffix": " · アーカイブ済み",
+    "added": "追加済み",
+    "add": "追加",
+    "searchingMore": "さらにリポジトリを検索中…",
+    "loading": "リポジトリを読み込み中…",
+    "noMatches": "一致するリポジトリはありません。",
+    "noRepositories": "この接続で利用できるリポジトリはありません。",
+    "tryAgain": "再試行",
+    "manageConnection": "接続を管理",
+    "loadMore": "さらにリポジトリを読み込む",
+    "ariaLabel": "Gitリポジトリを追加",
+    "title": "GitHubリポジトリ",
+    "close": "リポジトリピッカーを閉じる",
+    "accountAriaLabel": "GitHubアカウント",
+    "accountMenuLabel": "アカウント",
+    "reconnectHint": "リポジトリを参照するには、GitHubに再接続してください。",
+    "connectHint": "GitHubに接続すると、リポジトリから選択できます。",
+    "reconnect": "GitHubに再接続",
+    "connect": "GitHubに接続",
+    "searchPlaceholder": "リポジトリを検索…",
+    "searchAriaLabel": "リポジトリを検索",
+    "missingHint": "リポジトリが見つからない場合は、この接続にアクセス権の付与が必要な可能性があります。",
+    "manageAccess": "アクセスを管理",
+    "pasteUrl": "リポジトリのURLを貼り付け",
+    "urlAriaLabel": "GitリポジトリのURL",
+    "loadFailed": "リポジトリを読み込めませんでした。もう一度お試しください。"
+  },
+  "taskRepositories": {
+    "checkFailed": "リポジトリを確認できませんでした。更新して再試行してください。",
+    "ariaLabel": "リポジトリとフォルダ",
+    "resources": "{count, plural, other {#個のリソース}}",
+    "localChanges": "ローカルの変更"
+  },
+  "repositoryDrawer": {
+    "branchExists": "そのブランチはすでに存在します。新しいタスクブランチ名を指定してください。",
+    "remoteCheckFailed": "リモートブランチを確認できませんでした。",
+    "retryApply": "{message}もう一度適用して再試行してください。",
+    "newTask": "新しいタスク",
+    "title": "リポジトリとフォルダ",
+    "remoteNotice": "タスクブランチの設定やローカルの変更を含めるには、このコンピュータを選択してください。リソースの選択はどのコンピュータでも行えます。",
+    "branchLabel": "このタスク用の新しいブランチ",
+    "optional": "任意",
+    "branchHint": "選択した各リポジトリに作成されます。空欄の場合は名前が自動で付けられます。",
+    "includeInTask": "このタスクに含める",
+    "startFrom": "開始元",
+    "computerOffline": "{name}はオフラインです",
+    "requiredComputer": "必要なコンピュータ",
+    "onlyOn": "{name}のみ",
+    "linkedComputer": "リンクされたコンピュータ",
+    "include": "{name}を含める",
+    "localFolder": "ローカルフォルダ · このタスクにコピー",
+    "onSelectedComputer": "選択したコンピュータ上",
+    "onThisComputer": "このコンピュータ上：{branch}",
+    "onThisComputerClean": "このコンピュータ上：{branch} · 変更なし",
+    "checkingRepository": "リポジトリを確認中…",
+    "statusUnavailable": "ステータスを取得できません",
+    "checkingRepositories": "リポジトリを確認中…",
+    "checkoutStatus": "ローカルチェックアウトのステータス",
+    "refresh": "更新",
+    "localChanges": "ローカルの変更",
+    "committedTitle": "コミット済みのコードから開始",
+    "committedHint": "ローカルの変更はこのコンピュータに残します。",
+    "includeTitle": "ローカルの変更を含める",
+    "includeHint": "変更をこのタスクにコピーします。元の変更はそのまま残ります。",
+    "count": "{repositories, plural, other {#個のリポジトリ}} · {folders, plural, other {#個のフォルダ}}",
+    "checkingBranches": "ブランチを確認中…",
+    "apply": "タスクに適用"
+  },
+  "workItemPicker": {
+    "justNow": "たった今",
+    "hours": "{count}時間",
+    "days": "{count}日",
+    "ariaLabel": "既存の作業から開始",
+    "title": "作業から開始",
+    "searchSubtitle": "Issueとプルリクエストを検索",
+    "recentSubtitle": "最近更新された、あなたに割り当てられた項目",
+    "close": "作業ピッカーを閉じる",
+    "providerAriaLabel": "開発者ツール",
+    "accountAriaLabel": "{provider}アカウント",
+    "accountMenuLabel": "アカウント",
+    "searchPlaceholder": "{provider}を検索",
+    "searchAriaLabel": "{provider}の作業を検索",
+    "resultsAriaLabel": "{provider}の作業",
+    "finding": "作業を検索中…",
+    "noMatches": "一致する作業はありません。",
+    "noAssigned": "割り当てられた作業はありません。",
+    "linkPlaceholder": "またはIssueやプルリクエストのリンクを貼り付け",
+    "linkAriaLabel": "Issueまたはプルリクエストのリンク",
+    "adding": "追加中…",
+    "add": "追加",
+    "connectHint": "既存の作業から開始するには、GitHubまたはLinearに接続してください。",
+    "openConnectors": "コネクタを開く"
+  },
+  "taskSourceLinks": {
+    "invalidLink": "GitHubまたはLinearのIssueかプルリクエストのリンクを貼り付けてください。",
+    "chooseAccount": "使用する{provider}アカウントを選択してください。",
+    "loadFailed": "その作業項目を読み込めませんでした。",
+    "searchFailed": "接続済みの作業を検索できませんでした。",
+    "linkedAriaLabel": "リンクされた作業",
+    "remove": "{label}を削除",
+    "addAnother": "IssueまたはPRをさらに追加",
+    "add": "IssueまたはPRを追加"
+  },
+  "activity": {
+    "phrase": {
+      "edit": "{count, plural, other {#個のファイルを編集}}",
+      "command": "{count, plural, other {#件のコマンドを実行}}",
+      "read": "{count, plural, other {#個のファイルを読み取り}}",
+      "search": "{count, plural, other {#回検索}}",
+      "list": "{count, plural, other {#個のフォルダを一覧表示}}",
+      "tool": "{count, plural, other {#個のツールを使用}}",
+      "plan": "プランを更新",
+      "compact": "コンテキストを圧縮",
+      "retry": "{count, plural, other {#回再試行}}"
+    },
+    "askedForApproval": "承認をリクエスト",
+    "thoughtItThrough": "検討しました",
+    "agentActivity": "エージェントのアクティビティ",
+    "aFile": "ファイル",
+    "planStep": "プランのステップ",
+    "stepPosition": "ステップ {step}/{total}",
+    "live": {
+      "editingFile": "{name}を編集中",
+      "editingFiles": "ファイルを編集中",
+      "compacting": "コンテキストを圧縮中",
+      "calling": "{tool}を呼び出し中",
+      "using": "{tool}を使用中",
+      "usingTool": "ツールを使用中",
+      "reading": "{name}を読み取り中",
+      "searchingFor": "「{query}」を検索中",
+      "searching": "検索中",
+      "listing": "ファイルを一覧表示中",
+      "running": "{command}を実行中",
+      "reconnecting": "再接続中…",
+      "thinking": "考え中…"
+    },
+    "step": {
+      "edited": "編集",
+      "files": "{count, plural, other {#個のファイル}}",
+      "updatedPlan": "プランを更新",
+      "planProgress": "· {total}件中{done}件完了",
+      "retried": "再試行",
+      "retryTarget": "（接続が切断されたため）",
+      "retryTargetAttempt": "（接続が切断されたため・{attempt}）",
+      "askedToRun": "実行の確認",
+      "compacted": "コンテキストを圧縮",
+      "viewed": "表示",
+      "anImage": "画像",
+      "called": "呼び出し",
+      "used": "使用",
+      "aTool": "ツール",
+      "read": "読み取り",
+      "searchedFor": "検索",
+      "searched": "検索",
+      "listed": "一覧表示",
+      "filesWord": "ファイル",
+      "ran": "実行",
+      "created": "作成",
+      "deleted": "削除"
+    }
+  },
+  "presentation": {
+    "status": {
+      "ready": "準備完了",
+      "working": "作業中",
+      "needsApproval": "承認が必要",
+      "completed": "完了",
+      "stopped": "停止",
+      "interrupted": "中断",
+      "failed": "失敗",
+      "preparing": "準備中",
+      "needsAttention": "対応が必要",
+      "paused": "一時停止中",
+      "reopening": "再開中",
+      "computerOffline": "コンピュータがオフライン",
+      "answerNeeded": "回答が必要",
+      "reviewPlan": "プランを確認",
+      "planning": "計画中"
+    },
+    "relative": {
+      "now": "たった今",
+      "minutes": "{count}分",
+      "hours": "{count}時間",
+      "days": "{count}日"
+    },
+    "replaces": "{skills}を置き換え"
+  },
+  "reasoning": {
+    "levels": {
+      "none": "なし",
+      "minimal": "最小",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最大"
+    },
+    "levelEffort": "推論レベル：{level}",
+    "projectDefault": "プロジェクトのデフォルト",
+    "modelDefault": "モデルのデフォルト",
+    "default": "デフォルト",
+    "defaultEffort": "デフォルトの推論レベル"
+  },
+  "timeline": {
+    "failed": "失敗",
+    "exitCode": "終了コード {code}",
+    "failedCount": "{count, plural, other {#件失敗}}",
+    "workedFor": "{duration}作業しました",
+    "worked": "作業しました",
+    "turnChanges": {
+      "ariaLabel": "このターンで変更されたファイル",
+      "edited": "{count, plural, other {#個のファイルを編集}}",
+      "review": "レビュー",
+      "more": "ほか{count}件"
+    },
+    "preparingWorkspace": "タスクのワークスペースを準備しています…",
+    "preparingPlan": "調査してプランを準備しています…",
+    "plan": {
+      "heading": "プラン",
+      "preparing": "エージェントがプランを準備しています…"
+    },
+    "childWork": {
+      "ariaLabel": "Codexの並列作業",
+      "label": "並列作業",
+      "worker": "Codexワーカー",
+      "working": "作業中",
+      "stopped": "停止",
+      "done": "完了"
+    },
+    "copyMessage": "メッセージをコピー",
+    "copyResponse": "応答をコピー",
+    "agentMessageAriaLabel": "コーディングエージェントのメッセージ",
+    "record": {
+      "approvalDenied": "承認が拒否されました",
+      "approvalResolved": "承認が処理されました",
+      "followUpDelivered": "追加の指示を送信しました",
+      "requestRejected": "リクエストが拒否されました",
+      "taskStatus": "タスクのステータス"
+    },
+    "failureDetails": "失敗の詳細",
+    "showEarlier": "以前の更新を{count}件表示"
+  },
+  "externalLink": {
+    "unsafeRepository": "このリポジトリのアドレスは安全に開けません。",
+    "openRepositoryFailed": "リポジトリを開けませんでした。"
+  },
+  "commandLine": {
+    "unclosedQuote": "コマンド引数の引用符を閉じてください。"
+  },
+  "queuedResume": {
+    "failed": "キューに入っている指示を再開できませんでした。"
+  },
+  "session": {
+    "refreshFailed": "このコーディングタスクを更新できませんでした。",
+    "liveDisconnected": "ライブ更新が切断されました。再接続しています…",
+    "loadFailed": "このコーディングタスクを読み込めませんでした。",
+    "historyReconnecting": "タスクの履歴に再接続しています…"
+  },
+  "codeView": {
+    "resumeFailed": "タスクを再開できませんでした。",
+    "recoveryOptionsFailed": "復元オプションを読み込めませんでした。",
+    "projectActionFailed": "プロジェクトアクションを開始できませんでした。",
+    "loadingTasks": "コーディングタスクを読み込み中…",
+    "restoringTask": "タスクを復元中…",
+    "steerTimeout": "タスクが時間内に方向修正を受け付けませんでした。承認待ちの場合は、先に対応してからもう一度お試しください。",
+    "stopTimeout": "タスクが時間内に停止リクエストに応答しませんでした。もう一度お試しください。",
+    "commandUnavailable": "/{command}の操作は、このビルドではまだ利用できません。",
+    "projectCommandsNotUpdated": "プロジェクトコマンドは更新されませんでした。",
+    "restoreFailed": "このコーディングタスクを復元できませんでした。",
+    "applyBlocked": "変更は現在のターンが終わってから適用できます"
+  },
+  "api": {
+    "serviceStartFailed": "ローカルのCodeサービスを起動できませんでした。",
+    "requestFailed": "コーディングのリクエストに失敗しました（{status}）",
+    "outdatedBackend": "このデスクトップビルドは、コードモードに対応していない古いバックエンドに接続されています。対応するcowork-serverビルドでアプリを再起動してください。"
+  },
+  "composer": {
+    "checkingModes": "利用可能なタスクモードを確認しています…",
+    "modeUnavailable": "このタスクモードは利用できません。送信する前にモードを変更してください。",
+    "dropHint": "ファイルをドロップして添付",
+    "placeholder": {
+      "queueWhileWaiting": "エージェントの待機中に追加の指示をキューに入れる…",
+      "steer": "現在の作業の方向を修正…",
+      "followUp": "このターンの後に実行する指示を追加…",
+      "notStarted": "続けるには新しいタスクを開始してください",
+      "recoverable": "タスクを再開してから、続け方を指示…",
+      "refinePlan": "プランを調整…",
+      "anotherChange": "別の変更を依頼…"
+    },
+    "inputAriaLabel": "追加の指示",
+    "whenBuilding": "ビルド時：",
+    "permissionsLocked": "権限は現在のターンが終わってから変更できます",
+    "stopAriaLabel": "コーディングエージェントを停止",
+    "stop": "停止",
+    "deliveryAriaLabel": "指示の送り方",
+    "queue": "キュー",
+    "steer": "方向修正",
+    "steerAriaLabel": "現在のターンの方向を修正",
+    "queueAriaLabel": "指示をキューに追加",
+    "sendAriaLabel": "追加の指示を送信",
+    "send": "送信"
+  },
+  "promptQueue": {
+    "ariaLabel": "キューに入っている指示",
+    "queued": "{count, plural, =0 {キュー済み} other {キュー済み · #個のファイル}}",
+    "steerAriaLabel": "キューの指示{position}で方向を修正",
+    "steer": "方向修正",
+    "removeAriaLabel": "キューの指示{position}を削除"
+  },
+  "slashMenu": {
+    "ariaLabel": "Codeコマンド",
+    "label": "コマンド"
+  },
+  "mentionMenu": {
+    "ariaLabel": "タスクのファイル",
+    "label": "このタスクのファイルとフォルダ"
+  },
+  "composerAddMenu": {
+    "ariaLabel": "追加",
+    "triggerAriaLabel": "プロンプトに追加",
+    "heading": "追加",
+    "planMode": "プランモード",
+    "planUnavailable": "現在のターンが終わると利用できます",
+    "files": "ファイルとフォルダ",
+    "planOffAriaLabel": "プランモードをオフにする",
+    "plan": "プラン"
+  },
+  "composerLip": {
+    "showMore": "{count, plural, other {ほか#件のお知らせを表示}}",
+    "addCredits": "クレジットを追加",
+    "reopening": "再開中…",
+    "reopen": "タスクを再開",
+    "chooseModel": "モデルを選択",
+    "chooseAnotherModel": "別のモデルを選択",
+    "hideDetails": "詳細を非表示",
+    "showDetails": "詳細を表示",
+    "details": "詳細",
+    "moreOptions": "その他のオプション",
+    "dismiss": "閉じる",
+    "viewBudgets": "予算を表示"
+  },
+  "composerNotices": {
+    "thisModel": "このモデル",
+    "insufficientCredits": {
+      "title": "{model}にはクレジットが必要です",
+      "body": "クレジットを追加するか別のモデルを選択して、このタスクを続けてください。"
+    },
+    "authFailed": {
+      "title": "サインイン情報がこのサーバーと一致しません",
+      "body": "もう一度サインインするか、サインインした環境に切り替えてから、このタスクを続けてください。"
+    },
+    "modelUnavailable": {
+      "title": "{model}は利用できません",
+      "body": "別のモデルを選択して、このタスクを続けてください。"
+    },
+    "rateLimited": {
+      "title": "MindsHubへのリクエストが多すぎます",
+      "body": "このターンは停止しました。しばらく待ってから、このタスクを続けてください。"
+    },
+    "allowanceExhausted": {
+      "title": "プランに含まれる無料枠を使い切りました",
+      "body": "今すぐ続けるにはクレジットを追加してください。または無料枠が補充されるのを待ってから、このタスクを続けてください。"
+    },
+    "freeAirPaused": {
+      "title": "無料のMindsHub Airは一時停止中です",
+      "body": "1日の予算がリセットされると再開します。今すぐ続けるには、クレジットを追加するか別のモデルを選択してください。"
+    },
+    "notStarted": {
+      "title": "タスクが開始されませんでした",
+      "body": "ワークスペースを準備できなかったため、エージェントは実行されませんでした。問題を解決してから新しいタスクを開始してください。"
+    },
+    "reopening": {
+      "title": "タスクを再開しています",
+      "body": "タスクのファイルに再接続しています…"
+    },
+    "paused": {
+      "title": "タスクは一時停止中です",
+      "offlineBody": "タスクのコンピュータとの接続が切れました。会話は保持されています。そのコンピュータで再開するか、互換性のある別のコンピュータを選択してください。",
+      "interruptedBody": "ターンが完了する前に停止しました。再開すると作業コピーが復元されます。中断した作業を続けるにはメッセージを送信してください。"
+    },
+    "restoreError": {
+      "title": "このタスクのワークスペースを再開できませんでした",
+      "body": "{error}。タスクの作業内容は保存されています。問題を解決してからもう一度お試しください。"
+    },
+    "released": {
+      "body": "ディスク容量を節約するため、このタスクのワークスペースは片付けられました。続行またはレビューすると、すべての変更を含めて再構築されます。"
+    },
+    "kept": {
+      "body": "{reason}のため、まだディスクを使用しています。"
+    },
+    "budgetExceeded": {
+      "title": "組織の予算を使い切りました",
+      "body": "オーナーまたは管理者が「予算」で上限を引き上げられます。または、利用可能なモデルを選択してこのタスクを続けてください。"
+    }
+  },
+  "planModeCommand": {
+    "label": "プランモード",
+    "turnOn": "プランモードをオンにする",
+    "turnOff": "プランモードをオフにする"
+  },
+  "taskBar": {
+    "originalFolder": "元のフォルダ",
+    "isolatedFolders": "{count, plural, other {#個の分離フォルダ}}",
+    "isolatedCopy": "分離コピー",
+    "allProjectFiles": "すべてのプロジェクトファイル",
+    "allProjectFolders": "{count, plural, other {すべてのプロジェクトフォルダ（#個）}}",
+    "selectedFolders": "{count, plural, other {#個の選択したフォルダ}}",
+    "openOriginalFolder": "元のフォルダを開く",
+    "openIsolatedCopy": "分離コピーを開く",
+    "forkTask": "タスクをフォーク",
+    "taskSettings": "タスクの設定",
+    "detailsMenuAriaLabel": "作業コピーとタスクの詳細",
+    "showDetailsAriaLabel": "{label}のタスクの詳細を表示",
+    "details": {
+      "title": "タスクの構成",
+      "files": "ファイル",
+      "branch": "ブランチ",
+      "computer": "コンピュータ",
+      "agent": "エージェント",
+      "model": "モデル",
+      "folder": "フォルダ"
+    },
+    "runAndPreviewAriaLabel": "実行とプレビュー",
+    "runAction": "{action}を実行",
+    "startingAction": "{action}を開始中",
+    "starting": "開始中…",
+    "run": "実行",
+    "runMenuAriaLabel": "プロジェクトアクションを実行",
+    "chooseActionAriaLabel": "実行するプロジェクトアクションを選択",
+    "previewRunning": "実行中のプロジェクトをプレビュー",
+    "previewUnavailable": "プレビューするにはプロジェクトを実行してください",
+    "preview": "プレビュー",
+    "surfacesAriaLabel": "タスクのパネル",
+    "files": "ファイル",
+    "terminal": "ターミナル",
+    "reviewChanges": "変更をレビュー",
+    "review": "レビュー",
+    "taskActionsAriaLabel": "コーディングタスクの操作"
+  },
+  "terminal": {
+    "status": {
+      "running": "実行中",
+      "disconnected": "切断",
+      "ready": "準備完了",
+      "exited": "終了",
+      "exitedWithCode": "終了（コード {code}）"
+    },
+    "errors": {
+      "open": "ターミナルを開けませんでした。",
+      "actionTerminal": "プロジェクトアクションは開始しましたが、ターミナルを開けませんでした。",
+      "refresh": "ターミナルの一覧を更新できませんでした。",
+      "create": "ターミナルを作成できませんでした。",
+      "rename": "ターミナルの名前を変更できませんでした。",
+      "close": "ターミナルを閉じられませんでした。",
+      "stop": "ターミナルを停止できませんでした。",
+      "restart": "ターミナルを再起動できませんでした。",
+      "write": "ターミナルに書き込めませんでした。",
+      "interrupted": "ターミナルの接続が中断されました。再接続するには、タブを切り替えるかパネルを開き直してください。",
+      "unavailable": "ターミナルは利用できません。"
+    },
+    "ariaLabel": "タスクのターミナル",
+    "resize": "ターミナルのサイズを変更",
+    "tabs": "ターミナルのタブ",
+    "renameAriaLabel": "{label}の名前を変更",
+    "renameHint": "ダブルクリックで名前を変更",
+    "tabAriaLabel": "{label}、{status}",
+    "closeAriaLabel": "{label}を閉じる",
+    "limit": "1つのタスクにつきターミナルは最大{max}個です",
+    "new": "新しいターミナル",
+    "stopHint": "タブを閉じずにこのターミナルを停止します",
+    "stop": "ターミナルを停止",
+    "restart": "再起動",
+    "hide": "ターミナルパネルを非表示",
+    "opening": "ターミナルを開いています…",
+    "empty": "開いているターミナルはありません",
+    "output": "ターミナルの出力"
+  },
+  "planDecision": {
+    "error": "続行できませんでした。もう一度お試しください。",
+    "label": "プランを確認",
+    "kind": "プランの準備完了",
+    "cancelRevision": "修正をキャンセル",
+    "revise": "プランを修正",
+    "update": "プランを更新",
+    "build": "プランに沿ってビルド",
+    "buildTooltip": "このタスクで選択した権限でビルドします",
+    "question": "このプランでビルドを開始しますか？",
+    "changesAriaLabel": "プランへの変更",
+    "changesPlaceholder": "プランのどこを変更しますか？"
+  },
+  "question": {
+    "error": "回答を送信できませんでした。もう一度お試しください。",
+    "label": "エージェントからの質問",
+    "kind": "{count, plural, other {#件の質問}}",
+    "sending": "送信中…",
+    "continue": "続行",
+    "privateAnswer": "非公開の回答",
+    "ownAnswer": "または自分で回答を入力",
+    "yourAnswer": "あなたの回答"
+  },
+  "approval": {
+    "kinds": {
+      "command": {
+        "label": "ターミナル",
+        "question": "このコマンドを実行しますか？"
+      },
+      "fileChange": {
+        "label": "ファイルの変更",
+        "question": "保護されたファイルを変更しますか？"
+      },
+      "network": {
+        "label": "アクセス",
+        "question": "追加のアクセスを許可しますか？"
+      },
+      "elevated": {
+        "label": "管理者権限",
+        "question": "管理者権限での操作を承認しますか？"
+      }
+    },
+    "deny": "拒否",
+    "alwaysAllow": "常に許可",
+    "alwaysAllowTooltip": "今回を許可し、このタスクの間は同様のコマンドも許可します",
+    "label": "承認が必要です",
+    "kind": "承認",
+    "allowOnce": "1回だけ許可",
+    "fallbackQuestion": "エージェントが承認を求めています"
+  },
+  "promptReferences": {
+    "desktopOnly": "ローカルファイルの添付はデスクトップアプリで利用できます。",
+    "ariaLabel": "添付されたコンテキスト",
+    "removeAriaLabel": "{name}を削除"
+  }
+}

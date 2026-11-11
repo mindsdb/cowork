@@ -48,11 +48,10 @@ import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptio
 import { trackBillingOpened } from '../lib/analytics';
 import { MINDS_BILLING_URL, MINDS_BUDGETS_URL, consoleUrlFor } from '../../lib/mindsUrls';
 import { openCodeExternalUrl } from './shellLinks';
+import { useTranslation } from '../../lib/i18n';
 import './code.css';
 
 
-const STEER_TIMEOUT_MESSAGE = 'The task did not accept the steer in time. If an approval is pending, resolve it first and try again.';
-const STOP_TIMEOUT_MESSAGE = 'The task did not acknowledge the stop request in time. Try again.';
 
 
 export default function CodeView({
@@ -114,6 +113,7 @@ export default function CodeView({
   /** Row actions for the All tasks list; without them its rows have no menu. */
   taskActions?: CodeTaskListActions;
 }) {
+  const { t } = useTranslation('code');
   const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
   const openReview = useCallback(() => {
@@ -307,7 +307,7 @@ export default function CodeView({
       );
       setRecoveryPlan(null);
     } catch (reason) {
-      setRecoveryError(reason instanceof Error ? reason.message : 'The task could not be resumed.');
+      setRecoveryError(reason instanceof Error ? reason.message : t('codeView.resumeFailed'));
     } finally {
       setRecoveringTaskId((current) => current === sessionId ? null : current);
     }
@@ -325,7 +325,7 @@ export default function CodeView({
       setRecoveryPlan(plan);
       setRecoveryComputerId(recommended?.computer.id || '');
     } catch (reason) {
-      setActionError(reason instanceof Error ? reason.message : 'Recovery options could not be loaded.');
+      setActionError(reason instanceof Error ? reason.message : t('codeView.recoveryOptionsFailed'));
     } finally {
       setRecoveringTaskId((current) => current === sessionId ? null : current);
     }
@@ -341,7 +341,7 @@ export default function CodeView({
       const result = await project.run(action);
       setTerminalFocusId(result.terminal_id);
     } catch (reason) {
-      setActionError(reason instanceof Error ? reason.message : 'The project action could not be started.');
+      setActionError(reason instanceof Error ? reason.message : t('codeView.projectActionFailed'));
     }
   };
   return (
@@ -472,7 +472,7 @@ export default function CodeView({
             onRetry={() => { void taskList.retry(); void projects.load(); }}
           />
         ) : taskList.loading && !sessions.length ? (
-          <div className="code-loading"><Spinner className="text-lg" /> Loading coding tasks…</div>
+          <div className="code-loading"><Spinner className="text-lg" /> {t('codeView.loadingTasks')}</div>
         ) : newTask || !selectedId || draftSuspended ? (
           <NewTaskPanel
             suspended={draftSuspended}
@@ -501,7 +501,7 @@ export default function CodeView({
             onCreateProject={() => setProjectEditor({ id: null })}
           />
         ) : restoring && !session ? (
-          <div className="code-loading"><Spinner className="text-lg" /> Restoring task…</div>
+          <div className="code-loading"><Spinner className="text-lg" /> {t('codeView.restoringTask')}</div>
         ) : session ? (
           <div className="code-workspace">
             <section className="code-conversation">
@@ -523,7 +523,7 @@ export default function CodeView({
                       active={isActiveStatus(session.status) && !session.pending_question && !session.pending_approval}
                       busy={busy}
                       onSteer={(instructionId) => runAction(
-                        () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), STEER_TIMEOUT_MESSAGE),
+                        () => withControlTimeout(codingApi.steerQueued(session.id, instructionId), t('codeView.steerTimeout')),
                         true,
                       )}
                       onRemove={(instructionId) => runAction(
@@ -603,14 +603,14 @@ export default function CodeView({
                     )}
                     onSend={(prompt, delivery, attachments) => runAction(
                       () => delivery === 'steer'
-                        ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), STEER_TIMEOUT_MESSAGE)
+                        ? withControlTimeout(codingApi.steer(session.id, prompt, attachments), t('codeView.steerTimeout'))
                         : delivery === 'queue'
                           ? codingApi.queue(session.id, prompt, attachments)
                           : codingApi.turn(session.id, prompt, attachments),
                       true,
                       true,
                     )}
-                    onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), STOP_TIMEOUT_MESSAGE), true)}
+                    onStop={() => runAction(() => withControlTimeout(codingApi.cancel(session.id), t('codeView.stopTimeout')), true)}
                     commands={commands}
                     onPermissionChange={(permissionMode) => runAction(
                       () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
@@ -638,7 +638,7 @@ export default function CodeView({
                         void forkTask();
                         return;
                       }
-                      setActionError(`/${command.name} controls are not available in this build yet.`);
+                      setActionError(t('codeView.commandUnavailable', { command: command.name }));
                     }}
                   />
                 </div>
@@ -677,7 +677,7 @@ export default function CodeView({
                   await project.refresh();
                   return summary;
                 }, false, true);
-                if (!refreshed) throw new Error('Project commands were not updated.');
+                if (!refreshed) throw new Error(t('codeView.projectCommandsNotUpdated'));
                 return refreshed;
               }}
               connections={projects.selected?.connections || []}
@@ -739,7 +739,7 @@ export default function CodeView({
             />
           </div>
         ) : (
-          <div className="code-loading"><Alert variant="danger">{detail.error || 'This coding task could not be restored.'}</Alert></div>
+          <div className="code-loading"><Alert variant="danger">{detail.error || t('codeView.restoreFailed')}</Alert></div>
         )}
         {session && can('task_controls') && (
           <RuntimeControlsModal
@@ -758,7 +758,7 @@ export default function CodeView({
             models={models}
             modelMeta={modelMeta}
             busy={busy}
-            applyBlockedReason={isActiveStatus(session.status) ? 'Changes can be applied after the current turn finishes' : undefined}
+            applyBlockedReason={isActiveStatus(session.status) ? t('codeView.applyBlocked') : undefined}
             onClose={() => setControlsOpen(false)}
             onApply={async (value) => {
               try {

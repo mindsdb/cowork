@@ -26,12 +26,9 @@ import ScheduleRow from '../components/schedule/ScheduleRow';
 import { lastRunFailed, scheduleState } from '../components/schedule/ScheduleStatusBadge';
 import { host } from '../../platform/host';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import { useTranslation } from '../../lib/i18n';
 
-const SORT_OPTIONS = [
-  { id: 'next', label: 'Next run' },
-  { id: 'name', label: 'Name' },
-  { id: 'created', label: 'Recently created' },
-];
+const SORT_IDS = ['next', 'name', 'created'];
 
 export default function ScheduledView({
   scheduled,
@@ -56,6 +53,9 @@ export default function ScheduledView({
   unseenAutoPauses = [],
   agentLabel,
 }) {
+  const { t } = useTranslation('projects');
+  const sortOptions = SORT_IDS.map((id) => ({ id, label: t(`scheduledView.sort.${id}`) }));
+  const untitled = t('scheduleCommon.untitled');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -132,7 +132,7 @@ export default function ScheduledView({
     try {
       await onRunNow(created.id, { trial: true });
     } catch (err) {
-      showError(`Saved “${payload.title}”, but its trial run didn’t start: ${err?.message || 'try Run now.'}`);
+      showError(t('scheduledView.trialRunFailed', { title: payload.title, reason: err?.message || t('scheduledView.trialRunFallback') }));
     }
   }
 
@@ -143,7 +143,7 @@ export default function ScheduledView({
       await onDelete(deletingTask.id);
       setDeletingTask(null);
     } catch (err) {
-      showError(err?.message || 'Could not delete schedule.');
+      showError(err?.message || t('scheduledView.deleteFailed'));
     } finally {
       setDeleteBusy(false);
     }
@@ -152,22 +152,22 @@ export default function ScheduledView({
   async function runAction(id, action) {
     setBusyId(id);
     try { await action(id); }
-    catch (err) { showError(err?.message || 'Schedule action failed.'); }
+    catch (err) { showError(err?.message || t('scheduledView.actionFailed')); }
     finally { setBusyId(null); }
   }
 
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
-        title="Scheduled Tasks"
+        title={t('scheduledView.title')}
         // Desktop runs its own server, so tasks stop with the app. Every web
         // build, hosted or self-hosted, runs them on a server that stays up.
         subtitle={!host.isWeb
-          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while it was closed, ${agentLabel} runs the latest one from the last 7 days when it reopens.`
-          : `Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one from the last 7 days when it's back.`}
+          ? t('scheduledView.subtitleDesktop', { product: STOCK_PRODUCT_NAME, agent: agentLabel })
+          : t('scheduledView.subtitleWeb', { agent: agentLabel })}
         actions={
           <Button variant="primary" onClick={openCreate}>
-            {Ico.plus(14)} Schedule task
+            {Ico.plus(14)} {t('scheduledView.scheduleTask')}
           </Button>
         }
       />
@@ -180,20 +180,20 @@ export default function ScheduledView({
               value={search}
               onChange={setSearch}
               inputRef={searchRef}
-              placeholder="Search scheduled tasks"
+              placeholder={t('scheduledView.searchPlaceholder')}
             />
           }
-          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          sort={<SortPill value={sort} onChange={setSort} options={sortOptions} />}
           counts={
             <>
               {(search || '').trim().length > 0
-                ? `${visible.length} of ${scheduled.length} scheduled tasks`
-                : `${scheduled.length} scheduled ${scheduled.length === 1 ? 'task' : 'tasks'}`}
+                ? t('scheduledView.filteredCount', { shown: visible.length, total: scheduled.length })
+                : t('scheduledView.count', { count: scheduled.length })}
               {totalMissed > 0 && (
                 <>
                   {' · '}
                   <span className="text-ink-3">
-                    {totalMissed} missed run{totalMissed === 1 ? '' : 's'}
+                    {t('scheduledView.missedCount', { count: totalMissed })}
                   </span>
                 </>
               )}
@@ -207,13 +207,13 @@ export default function ScheduledView({
           variant="danger"
           className="mx-8 mb-3"
           title={unseenAutoPauses.length === 1
-            ? `“${unseenAutoPauses[0].title || 'Untitled schedule'}” was paused after failing several runs in a row`
-            : `${unseenAutoPauses.length} scheduled tasks were paused after failing several runs in a row`}
+            ? t('scheduledView.autoPausedOne', { title: unseenAutoPauses[0].title || untitled })
+            : t('scheduledView.autoPausedMany', { count: unseenAutoPauses.length })}
         >
           <div className="flex flex-wrap items-center gap-2">
             {unseenAutoPauses.map((task) => (
               <Button key={task.id} size="sm" onClick={() => onOpenSchedule?.(task)}>
-                {unseenAutoPauses.length === 1 ? 'Review' : `Review “${task.title || 'Untitled schedule'}”`}
+                {unseenAutoPauses.length === 1 ? t('scheduledView.review') : t('scheduledView.reviewNamed', { title: task.title || untitled })}
               </Button>
             ))}
           </div>
@@ -228,17 +228,17 @@ export default function ScheduledView({
         onClear={() => setSearch('')}
         empty={{
           icon: Ico.schedule ? Ico.schedule(20) : Ico.clock(20),
-          title: 'No scheduled tasks yet',
-          description: `Have ${agentLabel} repeat a task — a Monday digest, an hourly log sweep, a daily KPI snapshot.`,
-          action: { label: 'Schedule your first task', onClick: openCreate },
+          title: t('scheduledView.emptyTitle'),
+          description: t('scheduledView.emptyDescription', { agent: agentLabel }),
+          action: { label: t('scheduledView.emptyAction'), onClick: openCreate },
           className: 'mx-8 mb-8',
         }}
       >
         {/* What needs you sits on top: auto-paused, missed, or a failed last
             run. The rest follow in the chosen order. */}
         {[
-          ['attention', 'Needs attention', visible.filter(needsAttention)],
-          ['rest', attentionCount ? 'Everything else' : null, visible.filter((t) => !needsAttention(t))],
+          ['attention', t('scheduledView.needsAttention'), visible.filter(needsAttention)],
+          ['rest', attentionCount ? t('scheduledView.everythingElse') : null, visible.filter((t) => !needsAttention(t))],
         ].filter(([, , rows]) => rows.length > 0).map(([key, title, rows]) => (
           <ListGroup key={key} className="mx-8 mb-8" title={title ? <h2>{title}</h2> : undefined} meta={title ? rows.length : undefined}>
             {rows.map((task) => (
@@ -273,15 +273,15 @@ export default function ScheduledView({
 
       <ConfirmModal
         open={!!deletingTask}
-        title="Delete scheduled task?"
+        title={t('scheduleCommon.deleteTitle')}
         message={deletingTask
-          ? `"${deletingTask.title || 'Untitled schedule'}" will be permanently deleted. This can't be undone.`
+          ? t('scheduleCommon.deleteMessage', { title: deletingTask.title || untitled })
           : ''}
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        confirmLabel={t('scheduleCommon.delete')}
+        cancelLabel={t('scheduleCommon.keep')}
         destructive
         busy={deleteBusy}
-        busyLabel="Deleting…"
+        busyLabel={t('scheduleCommon.deleting')}
         onConfirm={confirmDelete}
         onClose={() => { if (!deleteBusy) setDeletingTask(null); }}
       />

@@ -1,4 +1,7 @@
 import { TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
+import i18n from '../../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`previewUtils.${key}`, { ns: 'artifacts', ...vars });
 
 export { TEXT_PREVIEW_EXTS };
 
@@ -12,8 +15,7 @@ const ABSOLUTE_PREVIEW_URL_RE = /^(?:https?:|blob:|data:|\/\/)/i;
  * a cause a reader can act on, and none of them are ours.
  */
 const TRANSPORT_FAILURE_RE = /^(?:failed to fetch|load failed|networkerror)/i;
-const TRANSPORT_FAILURE_MESSAGE =
-  'Could not reach the server to load this preview. Check the connection, then reload.';
+const TRANSPORT_FAILURE_MESSAGE = () => tr('transportFailure');
 
 /*
  * One place decides what a failed preview fetch says to the reader, because
@@ -26,10 +28,10 @@ const TRANSPORT_FAILURE_MESSAGE =
  * shown. Anything else is one of our own messages and passes through, since
  * those already read as sentences ("Preview returned no content").
  */
-export function draftPreviewErrorMessage(error, fallback = 'Could not load preview') {
+export function draftPreviewErrorMessage(error, fallback = tr('loadFailed')) {
   const status = error?.status;
-  if (status === 401) return 'Your session expired — reload the page and try again.';
-  if (status === 403) return 'You do not have access to this draft.';
+  if (status === 401) return tr('sessionExpired');
+  if (status === 403) return tr('noAccess');
   const message = String(error?.message || '');
   if (typeof status === 'number') {
     /*
@@ -39,7 +41,7 @@ export function draftPreviewErrorMessage(error, fallback = 'Could not load previ
      * say it twice.
      */
     if (message.includes(`(${status})`)) return message;
-    return message ? `${message} (HTTP ${status})` : `Could not load this preview (HTTP ${status}).`;
+    return message ? `${message} (HTTP ${status})` : tr('loadFailedStatus', { status });
   }
   /*
    * A transport failure arrives as a TypeError from `fetch` itself. The
@@ -48,7 +50,7 @@ export function draftPreviewErrorMessage(error, fallback = 'Could not load previ
    * even if a future runtime rejects with something other than a TypeError.
    */
   if (error instanceof TypeError || TRANSPORT_FAILURE_RE.test(message)) {
-    return TRANSPORT_FAILURE_MESSAGE;
+    return TRANSPORT_FAILURE_MESSAGE();
   }
   return message || fallback;
 }
@@ -415,11 +417,8 @@ export function summarizeCsvPreview(text, { truncated = false, totalRows = null 
 // The notice under a cut preview. A CSV table that shows at least one data row
 // says how many; anything else gets the generic text.
 export function csvPreviewNotice(csvPreview) {
-  if (!csvPreview?.truncated || csvPreview.shownRows === 0) return 'Preview is truncated.';
+  if (!csvPreview?.truncated || csvPreview.shownRows === 0) return tr('truncated');
   const { shownRows, totalRows } = csvPreview;
-  const shown = shownRows.toLocaleString();
-  if (totalRows === null) {
-    return `Showing first ${shown} ${shownRows === 1 ? 'row' : 'rows'}. The full file is larger than the preview.`;
-  }
-  return `Showing first ${shown} of ${totalRows.toLocaleString()} rows.`;
+  if (totalRows === null) return tr('csvShownUnknownTotal', { count: shownRows });
+  return tr('csvShownOfTotal', { count: shownRows, total: totalRows });
 }

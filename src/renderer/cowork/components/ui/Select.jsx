@@ -56,6 +56,7 @@ import { Icon } from './Icon';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import { useNativeOverlay } from '../../lib/nativeOverlay';
+import { useTranslation } from '../../../lib/i18n';
 import Spinner from './Spinner.jsx';
 
 // Exported for Combobox, which renders a popup-based trigger that
@@ -196,7 +197,7 @@ export function Select({
   // new options land in place rather than gating the open on a fetch.
   onOpenChange,
   options = [],
-  placeholder = 'Select…',
+  placeholder,
   // "field" = full-width bordered control (form fields).
   // "pill"  = compact "Label: value ⌄" control (sort/filter selectors).
   variant = 'field',
@@ -232,6 +233,7 @@ export function Select({
   // `aria-describedby` to associate an inline error message).
   ...rest
 }) {
+  const { t } = useTranslation('shell');
   const itemsForLabels = useMemo(() => flattenForLabels(options), [options]);
   const selectedLabel = itemsForLabels.find((item) => item.value === value)?.label;
   /* An open popup counts as an overlay, so the desktop browser pane's
@@ -265,7 +267,7 @@ export function Select({
         className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
         aria-description={(typeof selectedLabel === 'string' || typeof selectedLabel === 'number')
-          ? `Selected: ${selectedLabel}`
+          ? t('ui.select.selected', { label: String(selectedLabel) })
           : undefined}
         aria-invalid={invalid || undefined}
         // The spinner that replaces the chevron is aria-hidden, so without
@@ -285,7 +287,7 @@ export function Select({
             a prompt, not a value (matches Combobox's `placeholder:text-ink-4`).
             Without this the placeholder inherited full-strength `text-ink` and
             looked identical to a real selection. */}
-        <BaseSelect.Value placeholder={placeholder} className="truncate data-[placeholder]:text-ink-4" />
+        <BaseSelect.Value placeholder={placeholder === undefined ? t('ui.select.placeholder') : placeholder} className="truncate data-[placeholder]:text-ink-4" />
         <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">
           {loading
             ? <Spinner style={{ color: 'currentColor' }} />

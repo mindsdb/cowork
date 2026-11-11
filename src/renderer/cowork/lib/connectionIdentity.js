@@ -1,3 +1,6 @@
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.connectionIdentity.${key}`, { ns: 'projects', ...vars });
 // Pure derivations for how a saved connection names itself in the UI —
 // unit-testable without rendering CustomizeView.
 
@@ -44,7 +47,7 @@ export function connectionIdentity(connection) {
   const slug = c.name || c.slug || 'unnamed';
   const identity = c.display_name || c.displayName || null;
   const title = c.label
-    || (isLegacyEngine(c.engine) ? 'Unrecognized connector' : humanLabel(c.engine || 'unknown'));
+    || (isLegacyEngine(c.engine) ? tr('unrecognizedConnector') : humanLabel(c.engine || 'unknown'));
 
   const isTitleAgain = (value) => normalize(stripDisambiguationCounter(value)) === normalize(title);
   const isIdentityAgain = (value) => (

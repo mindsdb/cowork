@@ -18,6 +18,9 @@ import { useSyncExternalStore } from 'react';
 import {
   fetchSkills, saveSkill, deleteSkill, setSkillSharing, setSkillAccess, setSkillEnabledForMe,
 } from '../api';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.skillsStore.${key}`, { ns: 'projects', ...vars });
 
 // `null` = never loaded yet (consumers can show a loading state); an array
 // once a fetch has settled. `_catalogueStatus` distinguishes a verified empty
@@ -71,7 +74,7 @@ export async function reloadSkills({ afterCurrent = false } = {}) {
     try {
       const data = await fetchSkills();
       if (!Array.isArray(data?.skills)) {
-        throw new Error('The skills catalogue response was invalid.');
+        throw new Error(tr('catalogueInvalid'));
       }
       _skills = data.skills;
       _canShare = data.canShare === true;
