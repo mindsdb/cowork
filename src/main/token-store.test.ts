@@ -514,6 +514,20 @@ describe('token-store write ordering', () => {
     expect(fs.existsSync(FALLBACK())).toBe(false);
   });
 
+  it('a flush waits for a token saved while it was waiting', async () => {
+    const gate = deferred();
+    h.encryptGate.value = gate.promise;
+    const store = await loadStore('linux');
+    await store.initTokenStore();
+    store.saveTokens('at-1', 3600, 'A');
+    await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
+    const flushed = store.flushTokenStore();
+    store.saveTokens('at-2', 3600, 'B');
+    gate.resolve();
+    await flushed;
+    expect(readSecure()).toBe('B');
+  });
+
   it('a sign-out right after encryption resolved leaves nothing on disk', async () => {
     const gate = deferred();
     h.encryptGate.value = gate.promise;
@@ -616,21 +630,41 @@ describe('token-store on macOS', () => {
 
   it('removes the legacy Keychain item once, before the first safeStorage call', async () => {
     h.deleteEntry.mockImplementation(async () => { h.calls.push('delete'); return true; });
+    writeFallback('mac-token');
     let store = await loadStore('darwin');
     await store.initTokenStore();
     expect(h.deleteEntry).toHaveBeenCalledWith('TestApp Safe Storage', 'TestApp');
     expect(fs.existsSync(FLAG())).toBe(true);
     expect(logged('token_store_legacy_keychain_entry_removed')).toBe(true);
+    // The startup load reached safeStorage, and only after the removal.
+    expect(h.calls.indexOf('available')).toBeGreaterThan(-1);
+    expect(h.calls.indexOf('delete')).toBeGreaterThan(-1);
+    expect(h.calls.indexOf('delete')).toBeLessThan(h.calls.indexOf('available'));
 
-    store.saveTokens('at', 3600, 'mac-token');
     await store.flushTokenStore();
-    expect(h.calls[0]).toBe('delete');
     expect(readSecure()).toBe('mac-token');
 
     store = await loadStore('darwin');
     await store.initTokenStore();
     expect(h.deleteEntry).toHaveBeenCalledTimes(1);
     expect(store.getRefreshToken()).toBe('mac-token');
+  });
+
+  it('does not pin the install to the fallback file when the availability check throws', async () => {
+    skipLegacyRemoval();
+    h.available.value = 'throw';
+    let store = await loadStore('darwin');
+    await store.initTokenStore();
+    store.saveTokens('at', 3600, 'thrown-token');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('thrown-token');
+    expect(fs.existsSync(MARKER())).toBe(false);
+
+    h.available.value = true;
+    store = await loadStore('darwin');
+    await store.initTokenStore();
+    await store.flushTokenStore();
+    expect(readSecure()).toBe('thrown-token');
   });
 
   it('reports a missing legacy item as not found and still writes the flag', async () => {

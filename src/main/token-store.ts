@@ -137,15 +137,16 @@ function deleteTokenFiles(): void {
 
 async function secureStoreAvailable(): Promise<boolean> {
   if (_fallbackOnly || keychainRefused()) return false;
-  let available = false;
-  let error: unknown = null;
+  let available: boolean;
   try {
     available = await safeStorage.isAsyncEncryptionAvailable();
   } catch (e) {
-    error = e;
+    // A throw says nothing about the user's choice, so it must not pin the
+    // install to the fallback file; only a false answer counts as a refusal.
     diagnostic("main.token-store", "WARNING", "token_store_async_encryption_check_failed", '[token-store] safeStorage availability check failed', e);
+    return false;
   }
-  if (!available) recordKeychainRefusal('availability_false', error);
+  if (!available) recordKeychainRefusal('availability_false', null);
   return available;
 }
 
@@ -298,8 +299,9 @@ async function loadAtStartup(): Promise<void> {
       const decrypted = await safeStorage.decryptStringAsync(fs.readFileSync(SECURE_FILE));
       token = decrypted.result;
       reEncrypt = decrypted.shouldReEncrypt;
-    } catch (e) {
-      diagnostic("main.token-store", "WARNING", "token_store_secure_file_unreadable", '[token-store] secure token file cannot be decrypted', e);
+    } catch (e: any) {
+      // ENOENT: the file vanished meanwhile (a sign-out), not a decrypt failure.
+      if (e?.code !== 'ENOENT') diagnostic("main.token-store", "WARNING", "token_store_secure_file_unreadable", '[token-store] secure token file cannot be decrypted', e);
       // The secure file is lost for good, so an older fallback file costs nothing to try.
       if (fallbackTime !== null) {
         token = readFallbackFile();
@@ -395,10 +397,16 @@ async function persist(token: string, generation: number): Promise<void> {
   }
 }
 
-/** Resolves once every write queued so far reached disk or failed. Before
- *  initTokenStore runs, writes are held, so there is nothing to wait for. */
-export function flushTokenStore(): Promise<void> {
-  return _initPromise ? _persistChain : Promise.resolve();
+/** Resolves once every write queued before it settles, including writes queued
+ *  while it waits, reached disk or failed. Before initTokenStore runs, writes
+ *  are held, so there is nothing to wait for. */
+export async function flushTokenStore(): Promise<void> {
+  if (!_initPromise) return;
+  let current: Promise<void>;
+  do {
+    current = _persistChain;
+    await current;
+  } while (current !== _persistChain);
 }
 
 registerQuitFlush(flushTokenStore);

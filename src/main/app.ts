@@ -2112,6 +2112,8 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  // A refresh landing after the token flush would rotate the token in memory only.
+  cancelScheduledRefresh();
   // An auto-mode shell update installs itself as the app goes down, outside
   // the update-maintenance gate that the in-app "Restart now" install enters.
   // The download only stages the payload (Windows: the NSIS installer on disk;
