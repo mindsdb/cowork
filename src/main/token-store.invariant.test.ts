@@ -44,7 +44,9 @@ describe('safeStorage synchronous API', () => {
   });
 
   it('is not used anywhere in the main process', () => {
-    const found = sourceFiles('src/main').flatMap((file) =>
+    const files = sourceFiles('src/main');
+    expect(files.length).toBeGreaterThan(0);
+    const found = files.flatMap((file) =>
       mentionsIn(file.split(path.sep).join('/'), readFileSync(path.join(REPO, file), 'utf-8')));
     expect(found).toEqual([]);
   });

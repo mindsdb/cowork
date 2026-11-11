@@ -173,7 +173,13 @@ function recordKeychainRefusal(reason: 'availability_false' | 'encrypt_failed', 
 }
 
 async function removeLegacyKeychainEntry(): Promise<void> {
-  if (!IS_MAC || fs.existsSync(LEGACY_ENTRY_REMOVED_FLAG) || keychainRefused()) return;
+  if (!IS_MAC || fs.existsSync(LEGACY_ENTRY_REMOVED_FLAG)) return;
+  if (keychainRefused()) {
+    // The marker can be deleted while the app runs; the flag is still absent,
+    // so writes must stay on the fallback file even then.
+    _fallbackOnly = true;
+    return;
+  }
   try {
     await attemptLegacyKeychainRemoval();
   } finally {
@@ -308,6 +314,14 @@ async function loadAtStartup(): Promise<void> {
     return;
   }
 
+  if (from === 'secure' && process.platform !== 'win32') {
+    // The previous build wrote this file without a mode; nothing may be queued
+    // to rewrite it, so tighten it here.
+    try { fs.chmodSync(SECURE_FILE, 0o600); } catch (e: any) {
+      if (e?.code !== 'ENOENT') diagnostic("main.token-store", "WARNING", "token_store_could_not_restrict_secure_file_mode", '[token-store] could not restrict the secure token file mode', e);
+    }
+  }
+
   const otherFileExists = (from === 'secure' ? fallbackTime : secureTime) !== null;
   const needsWrite = from !== target || otherFileExists || reEncrypt;
   adoptLoadedToken(generation, token, needsWrite, needsWrite ? null : { token, kind: target });
@@ -353,7 +367,8 @@ async function persist(token: string, generation: number): Promise<void> {
     }
     if (encrypted) {
       try {
-        if (await writeStoreFile(generation, SECURE_FILE, SECURE_TMP, encrypted, FALLBACK_FILE)) {
+        if (await writeStoreFile(generation, SECURE_FILE, SECURE_TMP, encrypted, FALLBACK_FILE)
+          && generation === _persistGeneration) {
           _lastPersisted = { token, kind: 'secure' };
         }
         return;
@@ -374,7 +389,8 @@ async function persist(token: string, generation: number): Promise<void> {
   }
   // Removing the secure file keeps an older token there from shadowing this
   // one once safeStorage recovers.
-  if (await writeStoreFile(generation, FALLBACK_FILE, FALLBACK_TMP, encryptToken(token), SECURE_FILE)) {
+  if (await writeStoreFile(generation, FALLBACK_FILE, FALLBACK_TMP, encryptToken(token), SECURE_FILE)
+    && generation === _persistGeneration) {
     _lastPersisted = { token, kind: 'fallback' };
   }
 }
@@ -386,7 +402,6 @@ export function flushTokenStore(): Promise<void> {
 }
 
 registerQuitFlush(flushTokenStore);
-
 
 // Push the new auth state to every renderer. token-store is the single
 // choke point every MindsHub auth transition flows through (login,

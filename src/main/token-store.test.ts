@@ -572,6 +572,31 @@ describe('token-store write ordering', () => {
     expect(readSecure()).toBe('fresh');
   });
 
+  it('a sign-out during the startup decrypt leaves nothing on disk', async () => {
+    writeSecure('old');
+    const gate = deferred();
+    h.decryptGate.value = gate.promise;
+    const store = await loadStore('linux');
+    const init = store.initTokenStore();
+    await vi.waitFor(() => expect(h.decrypted.length).toBe(1));
+    store.clearTokens();
+    gate.resolve();
+    await init;
+    expect(store.getRefreshToken()).toBeNull();
+    await store.flushTokenStore();
+    expect(fs.existsSync(SECURE())).toBe(false);
+    expect(fs.existsSync(FALLBACK())).toBe(false);
+  });
+
+  it.skipIf(process.platform === 'win32')('tightens the mode of a secure file written without one', async () => {
+    writeSecure('loose');
+    fs.chmodSync(SECURE(), 0o644);
+    const store = await loadStore('linux');
+    await store.initTokenStore();
+    expect(store.getRefreshToken()).toBe('loose');
+    expect(fs.statSync(SECURE()).mode & 0o777).toBe(0o600);
+  });
+
   it('holds writes until the store has loaded', async () => {
     const store = await loadStore('linux');
     store.saveTokens('at', 3600, 'early');
@@ -692,6 +717,18 @@ describe('token-store on macOS', () => {
     fs.writeFileSync(MARKER(), '{}');
     const store = await loadStore('darwin');
     await store.initTokenStore();
+    expect(h.deleteEntry).not.toHaveBeenCalled();
+  });
+
+  it('keeps writing the fallback file when the marker is deleted while the app runs', async () => {
+    fs.writeFileSync(MARKER(), '{}');
+    const store = await loadStore('darwin');
+    await store.initTokenStore();
+    fs.rmSync(MARKER());
+    store.saveTokens('at', 3600, 'after-marker');
+    await store.flushTokenStore();
+    expect(readFallback()).toBe('after-marker');
+    expect(fs.existsSync(SECURE())).toBe(false);
     expect(h.deleteEntry).not.toHaveBeenCalled();
   });
 
