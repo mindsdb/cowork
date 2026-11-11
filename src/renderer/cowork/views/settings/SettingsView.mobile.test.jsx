@@ -70,6 +70,23 @@ function renderMobile({ initialSection = null, ...props } = {}) {
 describe('SettingsView mobile master-detail (ENG-990/ENG-991)', () => {
   beforeEach(() => { spies.getAccessToken.mockClear(); });
 
+  // ENG-4149: the narrow layout has no Appearance language row, so its top
+  // bar carries the same picker as the desktop Settings header.
+  it('shows the language picker in the top bar while the language preview is on', () => {
+    renderMobile();
+    expect(screen.getByRole('combobox', { name: 'Language' })).toBeTruthy();
+  });
+
+  it('keeps the top bar picker hidden outside the language preview', () => {
+    vi.stubEnv('DEV', false);
+    try {
+      renderMobile();
+      expect(screen.queryByRole('combobox', { name: 'Language' })).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('opens on the section list with all six sections', () => {
     renderMobile();
     // Header title is "Settings", back control closes the surface.

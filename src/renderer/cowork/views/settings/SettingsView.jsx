@@ -34,7 +34,7 @@ import OrgBrandingFields from './OrgBrandingFields';
 import BrowserSettingsSection from './BrowserSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
-import i18n, { useTranslation } from '../../../lib/i18n';
+import i18n, { languagePickerEnabled, useTranslation } from '../../../lib/i18n';
 import { useCodeModeAccess } from '../../code/codeModeAccess';
 import { useSettingsDraft } from './useSettingsDraft';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -42,6 +42,7 @@ import { providerTestsEnabled } from '../../../lib/providerTests';
 import { visibleProviderCards } from './providerVisibility';
 import { productName } from '../../../lib/deploymentBrand';
 import { STOCK_WORDMARK } from '../../../../shared/product-name';
+import { LanguageHeaderSelect } from './LanguageSection';
 
 // Small icon button that lives inside a text field (clear / reveal / copy).
 // CORE carries the shape; the states add color/background/cursor so no state
@@ -2831,7 +2832,11 @@ export default function SettingsView({
           <div className="settings-mobile__title" id="settings-mobile-title">
             {activeItem ? t(`nav.items.${activeItem.id}`) : t('nav.title')}
           </div>
-          <span className="settings-mobile__spacer" aria-hidden="true" />
+          {/* Same language picker as the desktop Settings header (ENG-4149);
+              without it the spacer keeps the title centred. */}
+          {languagePickerEnabled()
+            ? <div className="shrink-0"><LanguageHeaderSelect /></div>
+            : <span className="settings-mobile__spacer" aria-hidden="true" />}
         </header>
         <div className="settings-mobile__body scroll-clean">
           {inDetail ? (
