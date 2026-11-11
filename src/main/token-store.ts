@@ -36,7 +36,8 @@ import { registerQuitFlush } from './quit-flush';
 // macOS: safeStorage keeps its key in the Keychain item "<app name> Safe
 // Storage". Its ACL trusts the app's designated requirement (bundle id plus
 // Team ID), so signed updates read it without a prompt. An install whose item
-// predates the bundle id change sees one prompt. A Keychain refusal, including
+// predates the bundle id change is prompted for Keychain access: Always Allow
+// ends the prompts, a plain Allow repeats them every launch. A refusal, including
 // a Deny, is recorded in KEYCHAIN_UNAVAILABLE_MARKER and keeps the install on
 // the fallback file, so the user is not asked again on every launch. Deleting
 // the marker file brings the Keychain back.

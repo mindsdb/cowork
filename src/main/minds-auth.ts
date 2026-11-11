@@ -1,5 +1,5 @@
 import { diagnostic } from '../shared/diagnostics';
-import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
+import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired, flushTokenStore } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores, ensureSidecarOnCurrentAccountRoot } from './server-process';
 import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
@@ -11,7 +11,7 @@ import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
 import { beginMindsResumeCredentialGate, settleMindsResumeCredentialGate } from './minds-resume-gate';
 import { retryOnTransientLock } from './fs-retry';
-import { registerQuitHold } from './quit-flush';
+import { registerQuitFlush, registerQuitHold } from './quit-flush';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
 import { describeFetchError } from './fetch-error';
 import {
@@ -1676,6 +1676,15 @@ function holdScheduledRefresh(): () => void {
   };
 }
 registerQuitHold(holdScheduledRefresh);
+
+// The hold stops new exchanges only. One already in flight queues its rotated
+// token after the token store's own flush may have returned, so wait for it
+// and flush again, within the same quit ceiling.
+registerQuitFlush(async () => {
+  if (!_inflightRefresh) return;
+  await _inflightRefresh.catch(() => undefined);
+  await flushTokenStore();
+});
 
 function scheduleRefreshAt(expiresAt: number): void {
   // Only reached after a successful exchange, so the outage is over.

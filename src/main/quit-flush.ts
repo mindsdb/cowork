@@ -19,8 +19,9 @@ export function registerQuitHold(hold: QuitHold): void {
   holds.push(hold);
 }
 
-/** Stops every registered write source, so nothing new is queued after the
- *  flush. The returned function restarts them for an exit that did not happen. */
+/** Stops every registered source of new writes; work already in flight is
+ *  left to the flushes. The returned function restarts them for an exit that
+ *  did not happen. */
 export function holdQuitWriters(): () => void {
   const resumes = holds.map((hold) => hold());
   return () => { for (const resume of resumes) resume(); };
