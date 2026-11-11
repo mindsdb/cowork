@@ -145,3 +145,27 @@ describe('keychain-service — file fallback when keytar is unavailable', () => 
     expect(fallback.getFallbackPassword).toHaveBeenCalledWith('cowork-oauth', '__generation__');
   });
 });
+
+describe('keychain-service — removing the safeStorage Keychain item', () => {
+  beforeEach(() => {
+    keytar.deletePassword.mockReset();
+    fallback.deleteFallbackPassword.mockClear();
+  });
+
+  it('passes the item names to keytar and reports whether an item was removed', async () => {
+    const svc = await loadForKind('prod');
+    keytar.deletePassword.mockResolvedValueOnce(true);
+    await expect(svc.deleteSafeStorageKeychainEntry('anton Safe Storage', 'anton')).resolves.toBe(true);
+    expect(keytar.deletePassword).toHaveBeenCalledWith('anton Safe Storage', 'anton');
+
+    keytar.deletePassword.mockResolvedValueOnce(false);
+    await expect(svc.deleteSafeStorageKeychainEntry('anton Safe Storage', 'anton')).resolves.toBe(false);
+  });
+
+  it('lets a Keychain failure reach the caller and leaves the file fallback alone', async () => {
+    const svc = await loadForKind('prod');
+    keytar.deletePassword.mockRejectedValueOnce(new Error('user denied'));
+    await expect(svc.deleteSafeStorageKeychainEntry('anton Safe Storage', 'anton')).rejects.toThrow('user denied');
+    expect(fallback.deleteFallbackPassword).not.toHaveBeenCalled();
+  });
+});
