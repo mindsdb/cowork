@@ -95,7 +95,7 @@ export function BrowserPanel(props) {
 /**
  * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
  */
-function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null }) {
+function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null }) {
   const [viewUrl, setViewUrl] = useState(null);
   const [error, setError] = useState(/** @type {PaneStop | null} */ (null));
   const [hidden, setHidden] = useState(tabHidden);
@@ -246,6 +246,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = 
       onClose={onClose}
       floating={floating}
       extraActions={extraActions}
+      dock={dock}
     >
       {viewUrl && !error && (
         <iframe

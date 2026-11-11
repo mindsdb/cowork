@@ -4257,3 +4257,13 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 @media (prefers-reduced-motion: reduce) {
   .compare-vs-orb { animation: none; }
 }
+
+/* A phone's task: the voice call's card and the docked browser above the
+   chat (ChatView phoneDock). */
+.chat-phone-dock { display: flex; flex-direction: column; min-width: 0; }
+.chat-phone-dock > .voice-call.voice-call--docked {
+  position: relative; inset: auto; top: auto; left: auto; right: auto; bottom: auto;
+  margin: 8px 10px; border-radius: var(--r-lg, 12px);
+}
+.chat-phone-dock > .voice-call .voice-waves { height: 30px; }
+.chat-phone-dock > .voice-call .voice-call__x { top: -6px; right: -6px; }

@@ -35,7 +35,7 @@ export function browserRequestFor(text) {
  *   onClose: () => void, floating?: boolean, extraActions?: import('react').ReactNode }} props
  */
 export default function BlankBrowserPanel({
-  taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onOpenUrl, onClose, floating = false, extraActions = null,
+  taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onOpenUrl, onClose, floating = false, extraActions = null, dock = null,
 }) {
   const [address, setAddress] = useState('');
   const [search, setSearch] = useState('');
@@ -86,7 +86,7 @@ export default function BlankBrowserPanel({
   );
 
   return (
-    <BrowserFrame hint={busy || 'Nothing open yet'} below={addressBar} onClose={onClose} floating={floating} extraActions={extraActions}>
+    <BrowserFrame hint={busy || 'Nothing open yet'} below={addressBar} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock}>
       <div className="browser-panel__blank">
         <span className="browser-panel__blank-mark" aria-hidden="true">{Ico.globe(20)}</span>
         <h2 className="browser-panel__blank-title">{line.title}</h2>

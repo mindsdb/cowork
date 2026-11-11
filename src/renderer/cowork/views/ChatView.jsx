@@ -1887,6 +1887,8 @@ export default function ChatView({
   // The top-right call icon (TopShortcuts' `call`): starts a voice call, and
   // shows one is running; null hides it.
   callShortcut = null,
+  // On a phone: the voice call's card, shown at the top of the chat.
+  phoneCallCard = null,
   // Bumped by the phone top bar's browser icon: open this task's browser.
   openBrowserSignal = 0,
   browserSwitch = null,
@@ -1959,7 +1961,7 @@ export default function ChatView({
   pane = false,
 }) {
   const scrollRef = useRef(null);
-  const { isNarrow, paneFloats } = useBreakpoint();
+  const { isNarrow, paneFloats, isMobile } = useBreakpoint();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
@@ -2149,6 +2151,21 @@ export default function ChatView({
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
   const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen;
+  /* On a phone the pane docks at the top of the chat (no taller than half
+     the screen) and minimizes to its header instead of closing. It expands
+     when Anton starts using the browser, and minimizes when the turn ends so
+     the answer shows. */
+  const [browserMinimized, setBrowserMinimized] = useState(false);
+  useEffect(() => { setBrowserMinimized(false); }, [task.id]);
+  useEffect(() => { if (liveBrowserId) setBrowserMinimized(false); }, [liveBrowserId]);
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming && isMobile && browserOpen) setBrowserMinimized(true);
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming, isMobile, browserOpen]);
+  const browserDock = isMobile && !pane
+    ? { collapsed: browserMinimized, onToggle: () => setBrowserMinimized((m) => !m) }
+    : null;
   /* The inline pane holds the right-hand column, where a docked rail would
      go, so the rail and its Expand button step aside. A rail that floats
      opens over the pane instead. */
@@ -2177,9 +2194,42 @@ export default function ChatView({
   // The call icon beside the browser's X, while the browser takes the column.
   const browserCallIcon = callShortcut ? <TopShortcuts call={callShortcut} /> : null;
   const openBrowserFromShortcut = () => {
+    setBrowserMinimized(false);
     if (viewable(latestBrowserId)) setShownBrowserId(latestBrowserId);
     else setBlankBrowser(true);
   };
+  const browserNode = (
+    <>
+      {browserOpen && (
+        <BrowserPanel
+          sessionId={shownBrowserId}
+          agentLabel={harnessLabel(task?.harness) || 'Anton'}
+          onClose={() => setShownBrowserId(null)}
+          extraActions={browserCallIcon}
+          dock={browserDock}
+        />
+      )}
+      {blankBrowserOpen && (
+        <BlankBrowserPanel
+          taskKey={task.id}
+          agentLabel={harnessLabel(task?.harness) || 'Anton'}
+          browserOn={!!browserOn}
+          onSend={onSend ? (text) => onSend(text) : undefined}
+          onOpenUrl={openUrlInTask}
+          extraActions={browserCallIcon}
+          onClose={() => setBlankBrowser(false)}
+          dock={browserDock}
+        />
+      )}
+    </>
+  );
+  // A phone's task: the call's card, then the browser, then the chat.
+  const phoneDock = browserDock && (phoneCallCard || browserPaneOpen) ? (
+    <div className="chat-phone-dock">
+      {phoneCallCard}
+      {browserNode}
+    </div>
+  ) : null;
   // The floating Expand button's spot, when it shows; the icons sit beside it.
   const expandShown = !pane && !railHidden && !(effectiveRailOpen || railOverlayOpen);
   /* The web browser takes a while to wake, so a task that used it starts it
@@ -2417,7 +2467,7 @@ export default function ChatView({
         // for the "header + scrollable body" layout — the 1fr row pins
         // the scroll area to the column's available height, so the inner
         // overflowY can actually scroll.
-        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
+        className={`relative overflow-hidden grid ${pane ? 'grid-rows-[1fr]' : phoneDock ? 'grid-rows-[auto_auto_1fr]' : 'grid-rows-[auto_1fr]'} min-w-0 min-h-0`}
       >
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
@@ -2648,6 +2698,8 @@ export default function ChatView({
             onSend?.('Turn this conversation into a reusable skill.');
           }}
         />
+
+        {phoneDock}
 
         {isClaudeCodeTask ? (
           <CodingTerminal
@@ -3539,26 +3591,9 @@ export default function ChatView({
       </div>
 
       {!pane && (<>
-      {/* ─── Shared browser ─── takes the right-hand column while open. */}
-      {browserOpen && (
-        <BrowserPanel
-          sessionId={shownBrowserId}
-          agentLabel={harnessLabel(task?.harness) || 'Anton'}
-          onClose={() => setShownBrowserId(null)}
-          extraActions={browserCallIcon}
-        />
-      )}
-      {blankBrowserOpen && (
-        <BlankBrowserPanel
-          taskKey={task.id}
-          agentLabel={harnessLabel(task?.harness) || 'Anton'}
-          browserOn={!!browserOn}
-          onSend={onSend ? (text) => onSend(text) : undefined}
-          onOpenUrl={openUrlInTask}
-          extraActions={browserCallIcon}
-          onClose={() => setBlankBrowser(false)}
-        />
-      )}
+      {/* ─── Shared browser ─── takes the right-hand column while open (on
+          a phone it docks at the top of the chat instead: phoneDock). */}
+      {!browserDock && browserNode}
 
       {/* ─── Right rail ─── */}
       {/* On narrow screens: translucent backdrop behind the overlay rail */}

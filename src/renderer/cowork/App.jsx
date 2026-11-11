@@ -4859,6 +4859,9 @@ function AppCore() {
   // Where the call's card goes: in the sidebar above its footer while the
   // sidebar is docked open, floating in that corner otherwise.
   const dockVoiceCall = !isMobile && !sidebarPopout && !sidebarCollapsedEffective;
+  // On a phone, in a task, the card sits at the top of the chat, above the
+  // browser (ChatView's phone dock).
+  const callInTaskOnPhone = isMobile && route === 'task' && Boolean(currentTask) && !showConversationError && !showConversationLoading;
 
   const startVideoCall = facetimeAvailable && noCallRunning
     ? () => {
@@ -6617,6 +6620,7 @@ function AppCore() {
             browserRequest={browserRequest}
             openBrowserSignal={taskBrowserSignal}
             callShortcut={voiceCallShortcut}
+            phoneCallCard={callInTaskOnPhone ? <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} /> : null}
             browserSwitch={browserSwitchShown && currentTask
               ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
               : null}
@@ -7141,7 +7145,7 @@ function AppCore() {
       )}
 
       <FacetimeWindow call={facetime} agentLabel={agentLabel} />
-      {!dockVoiceCall && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
+      {!dockVoiceCall && !callInTaskOnPhone && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
       {offTaskBrowserOpen && route !== 'task' && (offTaskBrowser ? (
         <BrowserPanel
           floating
