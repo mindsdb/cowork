@@ -133,3 +133,17 @@ describe('position clicks', () => {
     expect(submit).toHaveBeenLastCalledWith('c1', 'ask:q1', { values: ['approve'] });
   });
 });
+
+describe('position clicks, refused answers', () => {
+  it('does not answer a web card whose ids cannot be read', async () => {
+    const submit = vi.fn();
+    expect(await autoApprovePositionClick({ conversationIds: ['c1'], questionId: 'browser:approve:bad id', isWeb: true, approve: vi.fn(), submit })).toBe(false);
+    expect(submit).not.toHaveBeenCalled();
+  });
+  it('reports a failed or refused answer, and no id the server knows', async () => {
+    for (const status of ['error', 'rejected']) {
+      expect(await autoApprovePositionClick({ conversationIds: ['c1'], questionId: 'ask:q', isWeb: false, submit: vi.fn(async () => ({ status })) })).toBe(false);
+    }
+    expect(await autoApprovePositionClick({ conversationIds: ['c1'], questionId: 'ask:q', isWeb: false, submit: vi.fn(async () => ({ status: 'not_found' })) })).toBe(false);
+  });
+});

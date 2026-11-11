@@ -9,6 +9,9 @@ import {
   VIEWER_READY,
   afterViewerClose,
   browserSessionIdIn,
+  desktopTaskSession,
+  latestBrowserSessionIdIn,
+  typedUrl,
   browserStep,
   browserViewerTheme,
   conversationUsedBrowser,
@@ -193,5 +196,38 @@ describe('browserViewerTheme', () => {
       vars: { bg: '#080d18', panel: '#0E1626', border: '#1E2A44', text: '#F2F6FF', font: "'JetBrains Mono', monospace" },
     });
     expect(browserViewerTheme(style, undefined).scheme).toBe('light');
+  });
+});
+
+describe('latestBrowserSessionIdIn', () => {
+  const turn = (sessionId) => ({ steps: [{ badge: BROWSER_BADGE, data: { sessionId } }] });
+  it('is the newest session, the streaming turn first', () => {
+    expect(latestBrowserSessionIdIn([turn('t-a'), { steps: [] }, turn('t-b')])).toBe('t-b');
+    expect(latestBrowserSessionIdIn([turn('t-a')], turn('t-live'))).toBe('t-live');
+    expect(latestBrowserSessionIdIn([{ steps: [] }])).toBeNull();
+    expect(latestBrowserSessionIdIn(undefined)).toBeNull();
+  });
+});
+
+describe('typedUrl', () => {
+  it('takes an address, adding https:// when it has no scheme', () => {
+    expect(typedUrl('kayak.com/flights')).toBe('https://kayak.com/flights');
+    expect(typedUrl('  http://example.com  ')).toBe('http://example.com');
+    expect(typedUrl('localhost:3000')).toBe('https://localhost:3000');
+    expect(typedUrl('localhost')).toBe('https://localhost');
+  });
+  it('leaves searches and other schemes alone', () => {
+    for (const raw of ['', 'tacos', 'cheap flights', 'javascript:alert(1)', 'ftp://x.com', 'mailto:a@b.co', 'https://', `${'a'.repeat(4100)}.com`, null]) {
+      expect(typedUrl(raw), String(raw).slice(0, 30)).toBeNull();
+    }
+  });
+});
+
+describe('desktopTaskSession', () => {
+  it("is anton's name for the task's browser: t- and 24 hex of sha256(':' + id)", async () => {
+    const id = await desktopTaskSession('conv-1');
+    expect(id).toMatch(/^t-[0-9a-f]{24}$/);
+    expect(await desktopTaskSession('conv-1')).toBe(id);
+    expect(await desktopTaskSession('conv-2')).not.toBe(id);
   });
 });
