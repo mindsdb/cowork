@@ -125,8 +125,17 @@ import {
   installShellAutoUpdate,
   requestShellInstall,
 } from './shell-auto-update-runtime';
+import { registerQuitFlush } from './quit-flush';
+
+// Stands in for the token store's pending writes. Silent unless a test turns
+// it on, so the other order assertions stay as they are.
+const flushProbe = { active: false };
+registerQuitFlush(async () => {
+  if (flushProbe.active) order.events.push('flush');
+});
 
 beforeEach(() => {
+  flushProbe.active = false;
   order.events.length = 0;
   controller.launch.mockReset();
   controller.launch.mockImplementation(() => { order.events.push('quitAndInstall'); });
@@ -152,6 +161,14 @@ describe('installShellAutoUpdate', () => {
     // Interrupted row landed 83 ms after launchd reported the shell gone.
     expect(await installShellAutoUpdate()).toBe(true);
     expect(order.events).toEqual(['begin-install', 'stop:begin', 'stop:done', 'quitAndInstall']);
+  });
+
+  it('flushes pending writes after the stop and before handing over to the installer', async () => {
+    // macOS quits inside quitAndInstall before before-quit can drain, so a
+    // rotated refresh token still queued for disk would be lost.
+    flushProbe.active = true;
+    expect(await installShellAutoUpdate()).toBe(true);
+    expect(order.events).toEqual(['begin-install', 'stop:begin', 'stop:done', 'flush', 'quitAndInstall']);
   });
 
   it('does nothing when no update is ready', async () => {

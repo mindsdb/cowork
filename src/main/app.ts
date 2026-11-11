@@ -29,7 +29,8 @@ import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnecti
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens } from './token-store';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, initTokenStore } from './token-store';
+import { QUIT_FLUSH_CEILING_MS, runQuitFlushes } from './quit-flush';
 import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
@@ -1625,6 +1626,11 @@ diagnostic("main.app", "INFO", "boot_modules_loaded", '[boot] modules loaded');
 app.whenReady().then(async () => {
   diagnostic("main.app", "INFO", "boot_app_ready", '[boot] app ready');
 
+  diagnostic("main.app", "INFO", "boot_token_store", '[boot] token store');
+  // Everything below reads the stored session synchronously. No timeout: one
+  // would turn a slow answer to a Keychain or wallet prompt into a sign-out.
+  await initTokenStore();
+
   diagnostic("main.app", "INFO", "boot_migrate_legacy_home", '[boot] migrate legacy home');
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
@@ -2145,6 +2151,12 @@ async function drainServerForQuit(): Promise<void> {
       forceReapServer(),
       new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
     ]);
+  }
+
+  // The refresh token rotates on refresh; a write still queued when the
+  // process exits would leave the previous one on disk.
+  if (!(await runQuitFlushes(QUIT_FLUSH_CEILING_MS))) {
+    diagnostic("main.app", "WARNING", "token_store_flush_did_not_finish_before_quit", '[token-store] pending token writes did not finish before the quit ceiling');
   }
 }
 
