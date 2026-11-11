@@ -8,4 +8,6 @@ export function beginOrganizationTransition(subject: string | null): Promise<str
 export function releaseOrganizationTransition(id: string): void;
 export function reloadForOrganizationTransition(id: string): void;
 export function assertOrganizationTransitionClear(): void;
+export function isOrganizationReloadBlocked(): boolean;
+export function subscribeOrganizationReloadBlocked(listener: () => void): () => void;
 export function __resetOrganizationTransitionForTests(): void;

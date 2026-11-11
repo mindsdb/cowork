@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./organizationTransition', () => transitionMock);
@@ -27,6 +27,10 @@ function accessToken(activateOrganization) {
 beforeEach(() => {
   __resetOrganizationRequestBoundaryForTests();
   transitionMock.prepareForOrganizationReload.mockReset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 const ORG_A = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
@@ -93,12 +97,35 @@ describe('expectedOrganizationHeaders', () => {
 
 describe('handleOrganizationBoundaryResponse', () => {
   it('clears and reloads for the mandatory response instruction', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const response = new Response(null, {
       headers: { 'X-Cowork-Organization-Reload': ' Required ' },
     });
 
     expect(handleOrganizationBoundaryResponse(response)).toBe(true);
     expect(transitionMock.prepareForOrganizationReload).toHaveBeenCalledTimes(1);
+  });
+
+  // A QA capture needs to show which request forced each reload.
+  it('logs the request path and status, without query or headers', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const response = {
+      url: 'https://cowork.mindshub.ai/api/v1/artifacts/?access_token=secret-value',
+      status: 409,
+      headers: new Headers({
+        'X-Cowork-Organization-Reload': 'required',
+        Authorization: 'Bearer secret-token',
+      }),
+    };
+
+    expect(handleOrganizationBoundaryResponse(response)).toBe(true);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[organization] the server required a reload', {
+      path: '/api/v1/artifacts/',
+      status: 409,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/secret|Bearer/);
   });
 
   it('leaves ordinary and malformed responses alone', () => {
