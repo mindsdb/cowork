@@ -4,6 +4,14 @@
 // away (App previews it, or moves a live call to it).
 
 import { useSyncExternalStore } from 'react';
+import { providerValueToType } from '../settingsTransform';
+
+/* Voice calls run on MindsHub (GPT-Live through MindsHub Inference), so they
+   are offered only where MindsHub is the LLM provider (the planning
+   provider, MindsHub when none is set). */
+export function llmViaMindsHub(settings) {
+  return (providerValueToType(settings?.planningProvider) || 'minds-cloud') === 'minds-cloud';
+}
 
 const KEY = 'cowork.voiceCall';
 

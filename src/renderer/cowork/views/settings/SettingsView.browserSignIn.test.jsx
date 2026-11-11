@@ -48,11 +48,16 @@ it.each([
 });
 
 it.each([
-  ['shows Voice while the app is signed in to MindsHub', true],
-  ['hides Voice while the app is signed out', false],
-])('Settings %s', async (_case, signedIn) => {
-  renderSettings(signedIn);
-  await screen.findByText(pageContentLine('Cowork', { signedInToMindsHub: signedIn }));
-  if (signedIn) expect(screen.getByRole('switch', { name: 'Voice agent' })).toBeInTheDocument();
+  ['shows Voice when MindsHub is the LLM provider', 'minds-cloud', true],
+  ['shows Voice when no provider is set (MindsHub by default)', undefined, true],
+  ['hides Voice with another LLM provider', 'anthropic', false],
+])('Settings %s', async (_case, planningProvider, shown) => {
+  render(<SettingsView
+    settings={{ configReady: true, planningProvider }} setSetting={vi.fn()} onSave={vi.fn(async () => ({}))} theme="dark" skin="normal" customTheme={{}}
+    onThemeChange={vi.fn()} onSkinChange={vi.fn()} onCustomThemeChange={vi.fn()}
+    agentLabel="Cowork" serverOnline section="agent" onSectionChange={vi.fn()} isSsoConnected={false}
+  />);
+  await screen.findByText(pageContentLine('Cowork', { signedInToMindsHub: false }));
+  if (shown) expect(screen.getByRole('switch', { name: 'Voice agent' })).toBeInTheDocument();
   else expect(screen.queryByRole('switch', { name: 'Voice agent' })).not.toBeInTheDocument();
 });

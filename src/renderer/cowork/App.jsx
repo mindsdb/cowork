@@ -158,7 +158,7 @@ import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { desktopTaskSession, latestBrowserSessionIdIn } from './lib/browserSession';
-import { VOICES, getVoicePrefs, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
+import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
 import { autoApprovePositionClick, isPositionClickCard } from './lib/browserApproval';
@@ -4827,9 +4827,9 @@ function AppCore() {
   // first request. A click, so the browser plays the avatar's voice.
   // One call at a time: each start offers itself only while neither runs.
   const noCallRunning = facetime.phase === 'idle' && voiceCall.phase === 'idle';
-  // Voice calls are for people signed in through MindsHub only: the call runs
-  // on their MindsHub account. Signed out, every call button is hidden.
-  const voiceOffered = ssoConnected && voicePrefs.enabled;
+  // Voice calls only where the LLM provider is MindsHub: the call runs on
+  // MindsHub. With another provider every call button is hidden.
+  const voiceOffered = llmViaMindsHub(settings) && voicePrefs.enabled;
   const startVoiceCall = voiceAvailable && voiceOffered && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
