@@ -24,10 +24,7 @@ const DATA = {
   unique_viewers: 1,
   viewers: [{
     email: 'a@example.com',
-    visits: 12,
-    first_seen: hoursAgo(400),
     last_seen: hoursAgo(3),
-    device: 'Desktop · Chrome',
   }],
 };
 const EMPTY = {
@@ -80,12 +77,10 @@ describe('StatsPanel content', () => {
     expect(screen.getByText('Days in UTC')).toBeInTheDocument();
 
     const table = screen.getByRole('table');
-    for (const name of ['Email', 'Visits (all time)', 'Last seen', 'Device']) {
-      expect(within(table).getByRole('columnheader', { name })).toBeInTheDocument();
-    }
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent))
+      .toEqual(['Email', 'Last seen']);
     expect(within(table).getByText('a@example.com')).toBeInTheDocument();
-    expect(within(table).getByText('12')).toBeInTheDocument();
-    expect(within(table).getByText('Desktop · Chrome')).toBeInTheDocument();
+    expect(within(table).getByText('3h ago')).toBeInTheDocument();
   });
 
   it('shows the exact last view time in a focusable tooltip', async () => {

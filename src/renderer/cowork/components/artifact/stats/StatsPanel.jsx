@@ -91,9 +91,7 @@ function ViewersTable({ viewers }) {
         <thead>
           <tr className="text-left text-ink-3">
             <th scope="col" className="py-1 pr-2 font-medium">Email</th>
-            <th scope="col" className="py-1 pr-2 font-medium">Visits (all time)</th>
-            <th scope="col" className="whitespace-nowrap py-1 pr-2 font-medium">Last seen</th>
-            <th scope="col" className="py-1 font-medium">Device</th>
+            <th scope="col" className="whitespace-nowrap py-1 font-medium">Last seen</th>
           </tr>
         </thead>
         <tbody>
@@ -103,16 +101,14 @@ function ViewersTable({ viewers }) {
               className="text-ink-2"
               style={{ borderTop: '1px solid var(--line)' }}
             >
-              <td className="max-w-[100px] truncate py-1 pr-2" title={viewer.email}>{viewer.email}</td>
-              <td className="py-1 pr-2">{viewer.visits}</td>
-              <td className="whitespace-nowrap py-1 pr-2">
+              <td className="max-w-[160px] truncate py-1 pr-2" title={viewer.email}>{viewer.email}</td>
+              <td className="whitespace-nowrap py-1">
                 <Tooltip content={exactTime(viewer.last_seen)}>
                   <span tabIndex={viewer.last_seen ? 0 : undefined}>
                     {relativeAge(viewer.last_seen) || '—'}
                   </span>
                 </Tooltip>
               </td>
-              <td className="py-1">{viewer.device || '—'}</td>
             </tr>
           ))}
         </tbody>
