@@ -28,10 +28,10 @@ import {
   ACCOUNTS_DIR,
   listOrgSegments,
 } from './account-data';
-import { accountDataRoot, coworkHome, buildKind } from './cowork-home';
+import { accountDataRoot, coworkHome, buildKind, readEnvFile } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
-import { analyticsEnv, antonDotenvNames } from './analytics-env';
+import { analyticsEnv, antonDotenvNames, usageEventsOn } from './analytics-env';
 import { authHeader, resetServerAuthTokenCache } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
@@ -220,6 +220,13 @@ let _runningOrgStoreRoot: string | undefined;
 // The store a spawn in flight is bringing a sidecar up on, so a sign-out during
 // the start marks the store that sidecar is about to create and seed.
 let _startingOrgStoreRoot: string | undefined;
+
+/* The account data root (an absolute path, as accountDataRoot() gives it) the
+   RUNNING sidecar serves, and the one a spawn in flight is bringing one up on.
+   Kept beside the store roots for the same reason: the account record can move
+   while the sidecar stays where it started. */
+let _runningAccountDataRoot: string | undefined;
+let _startingAccountDataRoot: string | undefined;
 
 // Whether the last sidecar this process started or adopted clears a store's
 // pending credential clear at startup, or null before one has answered. Kept
@@ -758,6 +765,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // Adoption only happens on an owner-token match, and the token is bound to
       // the account, so an adopted server is on this session's root by definition.
       _runningAccountRoot = currentAccountRoot();
+      _runningAccountDataRoot = accountDataRoot();
       _runningOrgStoreRoot = currentOrgStoreRoot();
       noteServerClearsPendingCredentials(probe.clearsPendingCredentials);
       lastStartError = null;
@@ -866,6 +874,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // app and for the account that owns the default root, which is what keeps
     // an existing single-account install on exactly the paths it has today.
     const account = currentAccountRoot();
+    const accountDataRootAtSpawn = accountDataRoot();
+    _startingAccountDataRoot = accountDataRootAtSpawn;
     const accountEnv = sidecarEnvForSession(dataHome, readActiveAccount(dataHome));
     // Per-organization store paths inside that account root. COWORK_HOME stays
     // put: it carries the .env and the provider config, which no organization
@@ -875,6 +885,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     _startingOrgStoreRoot = orgStoreRootAtSpawn;
     const orgSegmentAtSpawn = currentOrgSegment();
     const orgEnv = orgStoreEnv(accountDataRoot(), readActiveOrg(accountDataRoot()));
+    const ownerAtSpawn = serverOwnerToken(account, orgSegmentAtSpawn);
     diagnostic("main.server-process", "INFO", "server_build_kind_data_home",
       `[server] build kind "${kind}" → data home ${dataHome}` +
         (accountEnv.COWORK_HOME ? ` → account root ${accountEnv.COWORK_HOME}` : '') +
@@ -930,14 +941,23 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // OS user's app sees a mismatch and never adopts it. Bound to the account
       // this server is started for, so an orphan still holding a previous
       // account's stores reads as foreign rather than being adopted.
-      COWORK_SERVER_OWNER: serverOwnerToken(account, orgSegmentAtSpawn),
+      COWORK_SERVER_OWNER: ownerAtSpawn,
+      /* cowork-server's owner setting has no prefix, so an OWNER variable in
+         this app's environment or in the account dotenv wins over the value
+         above, and /health would echo it. The start wait accepts only the
+         stamped owner, so every start would then wait out the cap. */
+      OWNER: ownerAtSpawn,
       // Propagate the client's environment (staging/dev) to the server so its
       // own env-aware MindsHub defaults resolve to the same host the desktop
       // build points at. Only set when the build is baked for a non-prod env
       // and the caller hasn't already pinned ENV explicitly.
       ...(MINDS_ENV_SLUG && !process.env.ENV ? { ENV: MINDS_ENV_SLUG } : {}),
       // A staging, preview or dev build's turns are ours, not users'.
-      ...analyticsEnv(kind, process.env, antonDotenvNames(spawnCwd ?? process.cwd())),
+      // The person's switch for the agent's usage events (Settings), read from
+      // the account's dotenv at each start.
+      ...analyticsEnv(kind, process.env, antonDotenvNames(spawnCwd ?? process.cwd()), {
+        usageEvents: usageEventsOn(readEnvFile()),
+      }),
     };
 
     // detached: true on POSIX puts the child in its own process group so
@@ -1030,9 +1050,20 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       await sleep(HEALTH_POLL_INTERVAL_MS);
       const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS);
       clearsPendingCredentials = probe.clearsPendingCredentials;
+      /* Only an answer naming the owner this child was stamped with can make
+         the start ready. Anything else on the port (no owner, or another one)
+         may be some other process that took it while the child was still
+         importing; the child then loses the bind and exits, and the start
+         fails. Reading it as ready would run the started hook, which hands the
+         listener the credentials and the in-app browser's key. */
+      const ours = probe.owner === ownerAtSpawn;
+      /* A server too old to echo an owner also predates the coding capability.
+         Failing the start runs no hook, so such an answer fails at once as too
+         old instead of waiting out the cap. */
+      const ownerless = probe.owner === null;
       step = decideStartWait({
-        healthy: probe.state === 'compatible',
-        incompatible: probe.state === 'incompatible',
+        healthy: ours && probe.state === 'compatible',
+        incompatible: (ours || ownerless) && probe.state === 'incompatible',
         spawnError,
         exited: childExited,
         elapsedMs: Date.now() - waitStartedAt,
@@ -1090,6 +1121,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     }
     serverStarted = true;
     _runningAccountRoot = account;
+    _runningAccountDataRoot = accountDataRootAtSpawn;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
     noteServerClearsPendingCredentials(clearsPendingCredentials);
     // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
@@ -1129,6 +1161,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   } finally {
     pendingStart = null;
     _startingOrgStoreRoot = undefined;
+    _startingAccountDataRoot = undefined;
   }
 }
 
@@ -1201,6 +1234,7 @@ async function stopServerUnlocked(): Promise<void> {
   await prepareCodingTasksForShutdown();
   serverStarted = false;
   _runningAccountRoot = undefined;
+  _runningAccountDataRoot = undefined;
   _runningOrgStoreRoot = undefined;
 
   const exited = new Promise<void>((resolve) => {
@@ -1279,6 +1313,17 @@ export function isServerStarting(): boolean {
 }
 
 /**
+ * The port of the server this app started or adopted, else null. Null during a
+ * start too: until the wait reads the owner this child was stamped with at
+ * /health, whatever answers the port may be another process, so nothing the
+ * sidecar keeps (the in-app browser's address and key) goes there. The started
+ * hook sends it once the start succeeds.
+ */
+export function runningServerPort(): number | null {
+  return isServerRunning() ? serverPort : null;
+}
+
+/**
  * The store a sidecar is running or starting on, or null when there is none.
  * Read only through the live flags, because the recorded root outlives a stop
  * of an adopted or handed-off sidecar.
@@ -1286,6 +1331,17 @@ export function isServerStarting(): boolean {
 export function activeStoreRoot(): string | null {
   if (isServerRunning()) return _runningOrgStoreRoot ?? null;
   if (isServerStarting()) return _startingOrgStoreRoot ?? null;
+  return null;
+}
+
+/**
+ * The account data root a sidecar is running or starting on, as an absolute
+ * path in the form accountDataRoot() gives, or null when there is none. Read
+ * through the live flags, like activeStoreRoot.
+ */
+export function activeAccountDataRoot(): string | null {
+  if (isServerRunning()) return _runningAccountDataRoot ?? null;
+  if (isServerStarting()) return _startingAccountDataRoot ?? null;
   return null;
 }
 

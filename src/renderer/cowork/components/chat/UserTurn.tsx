@@ -69,8 +69,10 @@ export function UserTurn({
               {/* The same markdown pipeline as answers, so fences, emphasis and
                   lists typed in the composer render. Forms and charts are off:
                   a special fence typed by the user must not trigger renderers
-                  reserved for assistant output. */}
-              <MarkdownContent text={content} variant="user" enableForms={false} enableCharts={false} />
+                  reserved for assistant output. Single newlines stay line
+                  breaks: the reader typed them with Shift+Enter or pasted
+                  them, and CommonMark would join the lines into one. */}
+              <MarkdownContent text={content} variant="user" softBreaks enableForms={false} enableCharts={false} />
             </div>
           )}
           {!custom && overflowing && (

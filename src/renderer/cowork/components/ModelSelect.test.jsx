@@ -294,6 +294,30 @@ describe('ModelSelect — the route to credits on a locked row', () => {
   });
 });
 
+/* A budget-stopped row is closed off too, and credits do not lift a budget. */
+describe('ModelSelect: a row the org budget stops offers no credits', () => {
+  const OPTIONS = buildModelPickerOptions([
+    { id: 'mindshub_air', name: 'MindsHub Air' },
+    { id: 'opus', name: 'Claude Opus 5' },
+  ], {
+    modelEnabled: { mindshub_air: true, opus: false },
+    modelDisabledReasons: { opus: 'budget_exceeded' },
+  });
+
+  it('tags the row Budget reached, explains it on hover, and attaches no Add credits button', async () => {
+    const user = userEvent.setup();
+    render(<Harness options={OPTIONS} />);
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    expect(row).toHaveTextContent('Budget reached');
+    expect(row).not.toHaveTextContent('Needs credits');
+    expect(row).toHaveAttribute('title', "Your organization's budget is used up. An owner or admin can raise it in Budgets.");
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
+  });
+});
+
 /* A row an org admin's model rule blocks is closed off like a locked one, but
    money cannot open it, so it must not carry the route to credits. Fed the
    real builder's output: a builder that marked the row `locked` would hand it

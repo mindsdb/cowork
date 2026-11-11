@@ -16,6 +16,8 @@
 //    flight emitting more text — keeping it out of the streaming
 //    body insulates it from re-renders that would reset its inputs.
 
+import { dropPendingTest, movePendingTest } from './connectorTestStore';
+
 const _byConversation = new Map();
 const _listeners = new Map(); // cid → Set<fn>
 
@@ -115,6 +117,9 @@ export function setForm(conversationId, spec) {
   // each render. Skip the notification when nothing actually changed.
   const prev = _byConversation.get(conversationId);
   if (prev && _shallowFormEqual(prev, spec)) return;
+  // A new form never inherits a waiting connection test: its Confirm belongs
+  // to the form the user submitted, not to one the agent emitted since.
+  dropPendingTest(conversationId);
   _byConversation.set(conversationId, spec);
   const subs = _listeners.get(conversationId);
   if (subs) for (const fn of subs) {
@@ -270,6 +275,7 @@ export function patchForm(conversationId, patch) {
 export function clearForm(conversationId) {
   if (!conversationId) return;
   _byConversation.delete(conversationId);
+  dropPendingTest(conversationId);
   // Closing / clearing the form also clears the redacted state
   // snapshot — once the form is gone, there's nothing to inject
   // into chat messages.
@@ -282,6 +288,24 @@ export function clearForm(conversationId) {
   if (subs) for (const fn of subs) {
     try { fn(null); } catch {}
   }
+}
+
+// Carry a conversation's form, its input snapshot, picked method and waiting
+// connection test over when the server mints the conversation's id. The test
+// moves after the new form is set and before the old one is cleared, since
+// both setForm and clearForm drop a waiting test.
+export function moveForm(fromId, toId) {
+  if (!fromId || !toId || fromId === toId) return;
+  const form = getForm(fromId);
+  if (form) {
+    const state = getFormState(fromId);
+    const method = getSelectedMethod(fromId);
+    setForm(toId, form);
+    if (state) setFormState(toId, state);
+    if (method) setSelectedMethod(toId, method);
+  }
+  movePendingTest(fromId, toId);
+  if (form) clearForm(fromId);
 }
 
 export function getForm(conversationId) {

@@ -62,6 +62,10 @@ export default defineConfig({
         'src/renderer/cowork/hooks/useLogout.js': { statements: 100, branches: 93 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
+        // What a comparison treats as the same question, a finished turn and a
+        // continued side's cut-off. A wrong answer here reads as a plausible
+        // screen, so the tests that pin it stay pinned.
+        'src/renderer/cowork/lib/compareSides.js': { statements: 98, branches: 93 },
         // The liveness decision and its store. Pinned for the same reason as the
         // entries above: these exist because a stale artifact card shipped, and
         // the value is entirely in the branch table that proves each fail-open
@@ -100,6 +104,20 @@ export default defineConfig({
            read as no on the desktop too, and a control that wrongly appears
            looks like a working feature until its request is refused. */
         'src/renderer/cowork/lib/skillSharing.js': { statements: 100, branches: 100 },
+        /* The desktop in-app browser's guards: the bridge's request checks,
+           the profile's lockdown and destination refusals, the host's
+           downloads and account moves, and the tasks' control and caps. A
+           refusal that stops firing looks like a browser that works, so the
+           branch table is what proves each one still does. */
+        'src/main/browser-bridge.ts': { statements: 86, branches: 78 },
+        'src/main/browser-profile.ts': { statements: 91, branches: 88 },
+        'src/main/browser-host.ts': { statements: 89, branches: 78 },
+        'src/main/browser-sessions.ts': { statements: 94, branches: 84 },
+        /* The web commit hold's card and the web pane's viewer link. A card
+           answered without the browser's approval, or a frame for another
+           session's viewer, looks like a working page. */
+        'src/renderer/cowork/lib/browserApproval.js': { statements: 98, branches: 95 },
+        'src/renderer/cowork/lib/browserSession.js': { statements: 98, branches: 95 },
       },
     },
     projects: [
@@ -144,6 +162,7 @@ export default defineConfig({
             'src/renderer/cowork/components/artifact/ArtifactViewerBody.liveApp.test.jsx',
             'src/renderer/cowork/components/WorkspaceSelector.test.jsx',
             'src/renderer/cowork/App.appearancePreview.test.jsx',
+            'src/renderer/cowork/App.updateRestart.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTestPending.test.jsx',
             'src/renderer/cowork/views/settings/SettingsView.providerTesting.test.jsx',
             'src/renderer/cowork/views/settings/useSettingsDraft.test.jsx',

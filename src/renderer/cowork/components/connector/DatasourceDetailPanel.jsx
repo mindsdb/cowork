@@ -58,7 +58,12 @@ export default function DatasourceDetailPanel({ connection, onClose, onRetry, on
   const failed = connection.status === 'failed';
   // Auth stores only that validation failed; the gateway's code is what turns
   // that into something to act on.
-  const failedState = describeConnectionState({ status: 'failed', validation_code: connection.validationCode });
+  const failedState = describeConnectionState({
+    status: 'failed',
+    validation_code: connection.validationCode,
+    tls_mode: connection.tlsMode,
+    connector_id: connection.engine,
+  });
   const pending = connection.status === 'pending';
 
   const run = async (action) => {

@@ -67,7 +67,10 @@ describe('useProjectActions', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(result.current.previewUrl).toBe('http://127.0.0.1:5173');
 
+    // An open preview only needs a slow check that its server is still up.
     await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(codingApi.projectActions).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(8_500); });
 
     expect(result.current.previewUrl).toBeNull();
     expect(codingApi.projectActions).toHaveBeenCalledTimes(2);
@@ -138,8 +141,19 @@ describe('useProjectActions', () => {
 
     // It dies behind its shell: the preview goes away again.
     vi.mocked(codingApi.projectActions).mockResolvedValue({ items: [action], preview_url: null, preview_pending: true });
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(result.current.previewUrl).toBeNull();
     expect(result.current.previewPending).toBe(true);
+  });
+
+  it('does not poll an open preview while Code Mode is not the active surface', async () => {
+    const action = { id: 'serve', resource_id: 'web', resource_name: 'Web', label: 'Dev server' };
+    vi.useFakeTimers();
+    vi.mocked(codingApi.projectActions).mockResolvedValue({ items: [action], preview_url: 'http://127.0.0.1:5173' });
+
+    renderHook(() => useProjectActions('task-1', false));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+    expect(codingApi.projectActions).toHaveBeenCalledTimes(1);
   });
 });

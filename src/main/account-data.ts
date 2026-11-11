@@ -101,7 +101,7 @@ export type ActiveAccount =
 // A Keycloak `sub` is a UUID; this only has to be a safe single path segment.
 const SAFE_ACCOUNT_ID = /^[A-Za-z0-9._-]{1,128}$/;
 
-const QUARANTINE_PREFIX = '_unresolved-';
+export const QUARANTINE_PREFIX = '_unresolved-';
 
 /**
  * Where a session goes when the account cannot be named and the default root is

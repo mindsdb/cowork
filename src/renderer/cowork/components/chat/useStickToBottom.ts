@@ -69,7 +69,7 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
     if (reserveRef.current) reserveRef.current.style.height = px ? `${px}px` : '';
   };
 
-  // The reader took over: a wheel, a key, a touch, a scrollbar press. Normal following rules
+  // The reader took over: a wheel up, a key, a touch, a scrollbar press. Normal following rules
   // resume from wherever they scroll to.
   const releaseAnchor = useCallback(() => {
     if (anchor.current) anchor.current.active = false;
@@ -99,10 +99,14 @@ export function useStickToBottom(existingRef?: RefObject<HTMLDivElement | null>)
   }, [pause]);
 
   // Scrolling up with a wheel or trackpad is intent even before the position
-  // moves far enough to count: unpin straight away.
+  // moves far enough to count: unpin straight away. Scrolling down doesn't
+  // release a held message: once the answer fills the view the end is a few
+  // pixels away, so a trackpad nudge would pin the reader and follow the
+  // answer away from its start.
   const onWheel = useCallback((event: { deltaY: number }) => {
+    if (event.deltaY >= 0) return;
     releaseAnchor();
-    if (event.deltaY < 0) setStuck(false);
+    setStuck(false);
   }, [releaseAnchor, setStuck]);
 
   // Live deltas can arrive many times a second. Starting a smooth-scroll

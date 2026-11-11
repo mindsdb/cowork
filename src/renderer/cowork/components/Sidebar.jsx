@@ -230,6 +230,8 @@ export default function Sidebar({
   projectsCount = 0,
   artifactsCount = 0,
   connectorsCount = 0,
+  // Whether this build offers Compare Models (compareAvailable).
+  showCompare = false,
   activeRoute,
   activeTaskId,
   activeWorkspace = 'cowork',
@@ -269,7 +271,6 @@ export default function Sidebar({
   // ("Daily digest · 3 runs") so the recents list isn't drowned
   // out by repeat scheduled-run conversations.
   schedules = [],
-  scheduleRunsIndex = {},
   onOpenSchedule,
   onToggleServer,
   onShowServerHelp,
@@ -291,6 +292,12 @@ export default function Sidebar({
   // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,
   navLogo = null,
+  // The org's logo is a wordmark, not a square icon, so it gets a
+  // wider box than a logo uploaded in Settings.
+  navLogoWide = false,
+  // The org chose "None (logo only)": no title at all, not even
+  // the product name.
+  navTitleHidden = false,
   // Onboarding — "Get to know Cowork" checklist. Each step seeds a new
   // chat via this handler (App's send-from-home). Omit to hide the card
   // (tests, web shells that don't wire it).
@@ -362,7 +369,7 @@ export default function Sidebar({
     return Number.isFinite(t) ? t : 0;
   };
   const _scheduleById = new Map((schedules || []).map((s) => [s?.id, s]));
-  const _resolveSchedId = (t) => t?.scheduledId || scheduleRunsIndex?.[t?.id] || null;
+  const _resolveSchedId = (t) => t?.scheduledId || null;
 
   const recentsAll = (() => {
     const out = [];
@@ -563,19 +570,21 @@ export default function Sidebar({
               </button>
             </Tooltip>
           </div>
-          <span
-            aria-hidden="true"
-            className="text-ink-3 opacity-50 text-[13px] select-none"
-          >·</span>
+          {(!navTitleHidden || navLogo || brandLogoUrl()) && (
+            <span
+              aria-hidden="true"
+              className="text-ink-3 opacity-50 text-[13px] select-none"
+            >·</span>
+          )}
           {(navLogo || brandLogoUrl()) && (
             <img
               src={navLogo || brandLogoUrl()}
               alt=""
               aria-hidden="true"
-              className="anton-sidebar__logo"
+              className={navLogoWide ? 'anton-sidebar__logo anton-sidebar__logo--wide' : 'anton-sidebar__logo'}
             />
           )}
-          <div className="anton-sidebar__wordmark">{navTitle || productName(STOCK_WORDMARK)}</div>
+          {!navTitleHidden && <div className="anton-sidebar__wordmark">{navTitle || productName(STOCK_WORDMARK)}</div>}
         </div>
       </div>
 
@@ -718,6 +727,9 @@ export default function Sidebar({
         <div className="nav-list px-2.5 flex flex-col gap-px">
           <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
           <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
+          {showCompare && (
+            <NavItem icon={Ico.columns(16)} label="Compare Models" onClick={() => onNavigate('compare')} active={activeRoute === 'compare'} />
+          )}
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty
