@@ -21,6 +21,7 @@ import { accountDataRoot, coworkHome } from './cowork-home';
 import { IPC } from '../shared/ipc-channels';
 import { retryOnTransientLock } from './fs-retry';
 import { registerQuitFlush } from './quit-flush';
+import { deleteSafeStorageKeychainEntry } from './keychain-service';
 
 // Persistence for the Keycloak refresh token.
 //
@@ -32,6 +33,15 @@ import { registerQuitFlush } from './quit-flush';
 // On every platform the token is encrypted with safeStorage into
 // userData/mindshub-refresh.bin. refresh-token.dat is written only while
 // safeStorage is unavailable, and removed once a secure write lands.
+//
+// macOS: safeStorage keeps its key in the Keychain item "<app name> Safe
+// Storage". Its ACL trusts the app's designated requirement (bundle id plus
+// Team ID), so signed updates read it without a prompt. Installs from before
+// the bundle id changed hold an item trusting the old id; it is removed once,
+// before first use (LEGACY_ENTRY_REMOVED_FLAG). A Keychain refusal is recorded
+// in KEYCHAIN_UNAVAILABLE_MARKER and keeps the install on the fallback file, so
+// a user who clicked Deny is not asked again on every launch. Deleting the
+// marker file brings the Keychain back.
 
 const SECURE_FILE = path.join(app.getPath('userData'), 'mindshub-refresh.bin');
 const FALLBACK_FILE = path.join(coworkHome(), 'refresh-token.dat');
@@ -41,6 +51,12 @@ const FALLBACK_TMP = `${FALLBACK_FILE}.tmp`;
 // EPERM/EACCES and would spend the whole budget on every write, and two files'
 // worth must fit inside the quit flush ceiling.
 const WRITE_RETRY = { attempts: 4, baseDelayMs: 60 };
+const IS_MAC = process.platform === 'darwin';
+const KEYCHAIN_UNAVAILABLE_MARKER = path.join(app.getPath('userData'), 'keychain-unavailable');
+const LEGACY_ENTRY_REMOVED_FLAG = path.join(app.getPath('userData'), 'keychain-legacy-entry-removed');
+// Skipping the removal costs only a retry next launch; a hung Keychain call
+// would otherwise keep the window from ever opening.
+const LEGACY_REMOVAL_TIMEOUT_MS = 5_000;
 
 type StoreKind = 'secure' | 'fallback';
 
@@ -120,11 +136,85 @@ function deleteTokenFiles(): void {
 // ── safeStorage ─────────────────────────────────────────────────────
 
 async function secureStoreAvailable(): Promise<boolean> {
+  if (_fallbackOnly || keychainRefused()) return false;
+  let available = false;
+  let error: unknown = null;
   try {
-    return await safeStorage.isAsyncEncryptionAvailable();
+    available = await safeStorage.isAsyncEncryptionAvailable();
   } catch (e) {
+    error = e;
     diagnostic("main.token-store", "WARNING", "token_store_async_encryption_check_failed", '[token-store] safeStorage availability check failed', e);
-    return false;
+  }
+  if (!available) recordKeychainRefusal('availability_false', error);
+  return available;
+}
+
+function keychainRefused(): boolean {
+  return IS_MAC && fs.existsSync(KEYCHAIN_UNAVAILABLE_MARKER);
+}
+
+// macOS only. Windows DPAPI never asks, and on Linux a refusal is often
+// temporary, so neither is worth pinning.
+function recordKeychainRefusal(reason: 'availability_false' | 'encrypt_failed', error: unknown): void {
+  if (!IS_MAC) return;
+  const record = {
+    reason,
+    error: error instanceof Error ? error.message : error == null ? null : String(error),
+    at: new Date().toISOString(),
+    appVersion: app.getVersion(),
+  };
+  try {
+    fs.mkdirSync(path.dirname(KEYCHAIN_UNAVAILABLE_MARKER), { recursive: true });
+    fs.writeFileSync(KEYCHAIN_UNAVAILABLE_MARKER, JSON.stringify(record) + '\n', { mode: 0o600 });
+    diagnostic("main.token-store", "WARNING", "token_store_keychain_unavailable_marker_written", `[token-store] Keychain unavailable (${reason}); this install stays on the fallback file`, error);
+  } catch (e) {
+    diagnostic("main.token-store", "WARNING", "token_store_could_not_write_keychain_unavailable_marker", '[token-store] could not record the Keychain refusal', e);
+  }
+}
+
+async function removeLegacyKeychainEntry(): Promise<void> {
+  if (!IS_MAC || fs.existsSync(LEGACY_ENTRY_REMOVED_FLAG) || keychainRefused()) return;
+  try {
+    await attemptLegacyKeychainRemoval();
+  } finally {
+    // Until the flag exists the next launch repeats the removal, and it would
+    // delete a secure file written now together with the Keychain item that
+    // decrypts it. So without the flag this session writes the fallback file.
+    if (!fs.existsSync(LEGACY_ENTRY_REMOVED_FLAG)) _fallbackOnly = true;
+  }
+}
+
+async function attemptLegacyKeychainRemoval(): Promise<void> {
+  const name = app.getName();
+  let removed: boolean | 'timeout';
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    removed = await Promise.race([
+      deleteSafeStorageKeychainEntry(`${name} Safe Storage`, name),
+      new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), LEGACY_REMOVAL_TIMEOUT_MS); }),
+    ]);
+  } catch (e) {
+    diagnostic("main.token-store", "WARNING", "token_store_legacy_keychain_entry_not_removed", '[token-store] could not remove the legacy Keychain item; retrying next launch', e);
+    return;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (removed === 'timeout') {
+    diagnostic("main.token-store", "WARNING", "token_store_legacy_keychain_removal_timed_out", '[token-store] legacy Keychain removal did not answer; retrying next launch');
+    return;
+  }
+  if (removed) {
+    diagnostic("main.token-store", "INFO", "token_store_legacy_keychain_entry_removed", '[token-store] removed the legacy Keychain item');
+  } else {
+    diagnostic("main.token-store", "INFO", "token_store_legacy_keychain_entry_not_found", '[token-store] no legacy Keychain item to remove');
+  }
+  // Encrypted under the key just removed, or under one this app cannot read.
+  removeStaleStore(SECURE_FILE);
+  try {
+    fs.mkdirSync(path.dirname(LEGACY_ENTRY_REMOVED_FLAG), { recursive: true });
+    fs.writeFileSync(LEGACY_ENTRY_REMOVED_FLAG, '');
+  } catch (e) {
+    diagnostic("main.token-store", "WARNING", "token_store_legacy_keychain_flag_not_written", '[token-store] could not record the legacy Keychain removal; retrying next launch', e);
   }
 }
 
@@ -137,6 +227,10 @@ let _refreshToken: string | null = null;
 let _initialized = false;
 let _initPromise: Promise<void> | null = null;
 let _warnedReadBeforeInit = false;
+// Set on macOS while the legacy removal has not recorded its flag; see
+// removeLegacyKeychainEntry.
+let _fallbackOnly = false;
+let _warnedPinnedFallback = false;
 // Bumped by every saveTokens that carries a refresh token and by clearTokens.
 // A queued write or a startup load that finds it changed is stale and drops out.
 let _persistGeneration = 0;
@@ -168,6 +262,7 @@ async function loadAtStartup(): Promise<void> {
   const generation = _persistGeneration;
   removeStaleStore(SECURE_TMP);
   removeStaleStore(FALLBACK_TMP);
+  await removeLegacyKeychainEntry();
 
   const secureTime = mtimeMs(SECURE_FILE);
   const fallbackTime = mtimeMs(FALLBACK_FILE);
@@ -254,6 +349,7 @@ async function persist(token: string, generation: number): Promise<void> {
       encrypted = await safeStorage.encryptStringAsync(token);
     } catch (e) {
       diagnostic("main.token-store", "WARNING", "token_store_encryption_failed", '[token-store] safeStorage encryption failed', e);
+      recordKeychainRefusal('encrypt_failed', e);
     }
     if (encrypted) {
       try {
@@ -268,7 +364,13 @@ async function persist(token: string, generation: number): Promise<void> {
     }
   }
   if (!fileWriteFailed) {
-    diagnostic("main.token-store", "WARNING", "token_store_safestorage_unavailable_using_encrypted_file_fallback", '[token-store] safeStorage unavailable — using encrypted-file fallback');
+    // A marker or a failed legacy removal pins the fallback for good; saying
+    // so on every token rotation adds nothing.
+    const pinned = _fallbackOnly || keychainRefused();
+    if (!pinned || !_warnedPinnedFallback) {
+      _warnedPinnedFallback = _warnedPinnedFallback || pinned;
+      diagnostic("main.token-store", "WARNING", "token_store_safestorage_unavailable_using_encrypted_file_fallback", '[token-store] safeStorage unavailable — using encrypted-file fallback');
+    }
   }
   // Removing the secure file keeps an older token there from shadowing this
   // one once safeStorage recovers.
