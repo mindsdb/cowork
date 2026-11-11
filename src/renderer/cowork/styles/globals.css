@@ -4271,11 +4271,18 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 /* Phone, browser expanded: the page under it doesn't scroll or move, and the
    strip under the browser says what Anton needs from the person. */
 html.phone-browser-open, html.phone-browser-open body { overflow: hidden; overscroll-behavior: none; }
-.phone-browser-ask {
+.phone-browser-strip {
   position: fixed; z-index: 71; left: 0; right: 0; bottom: 0; height: 20dvh;
-  display: flex; flex-direction: column; justify-content: center; gap: 10px;
-  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
-  background: var(--surface); border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg); border-top: 1px solid var(--line);
 }
-.phone-browser-ask p { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.4; }
-.phone-browser-ask .btn, .phone-browser-ask button { align-self: flex-start; }
+.phone-browser-strip.is-asking { background: var(--surface); }
+.phone-browser-strip__text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.phone-browser-strip__text p {
+  margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.phone-browser-strip.is-asking .phone-browser-strip__text p { color: var(--ink); }
+/* The composer steps aside while the browser is expanded. */
+html.phone-browser-open .chat-floating-composer { display: none; }

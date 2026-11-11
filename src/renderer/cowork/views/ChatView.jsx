@@ -2194,11 +2194,18 @@ export default function ChatView({
     if (!phoneBrowserExpanded) return undefined;
     const root = document.documentElement;
     root.classList.add('phone-browser-open');
+    // No zoom while it is open: a tap in the browser's own address field
+    // happens inside its frame, where the app's focus-based zoom lock
+    // (useViewportZoomLock) never hears it.
+    const meta = document.querySelector('meta[name="viewport"]');
+    const viewportBefore = meta?.getAttribute('content') || null;
+    meta?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
     const keepTop = () => { window.setTimeout(() => window.scrollTo(0, 0), 0); };
     window.addEventListener('focusin', keepTop);
     window.visualViewport?.addEventListener('resize', keepTop);
     return () => {
       root.classList.remove('phone-browser-open');
+      if (meta && viewportBefore !== null) meta.setAttribute('content', viewportBefore);
       window.removeEventListener('focusin', keepTop);
       window.visualViewport?.removeEventListener('resize', keepTop);
     };
@@ -2268,17 +2275,26 @@ export default function ChatView({
   const needsUser = browserHandoff
     ? `Your turn: ${browserHandoff}. Tap Done in the browser when you're finished, then minimize to continue.`
     : askingUser ? `${harnessLabel(task?.harness) || 'Anton'} has a question for you. Minimize to answer it.` : '';
+  // Otherwise the strip says what Anton is doing right now: the live step.
+  const liveSteps = (streamingMsg?.steps || []).filter((s) => s.badge !== 'AskUser' && s.label);
+  const nowDoing = isStreaming
+    ? (liveSteps[liveSteps.length - 1]?.label || 'Working on it…')
+    : 'Done. Minimize to see the answer.';
   const phoneDock = browserDock && (phoneCallCard || browserPaneOpen) ? (
     <div className="chat-phone-dock">
       {!phoneBrowserExpanded && phoneCallCard}
       {browserNode}
-      {phoneBrowserExpanded && phoneCall && phoneCall.phase !== 'idle' && (
-        <VoiceOrb call={phoneCall} onClick={() => setBrowserMinimized(true)} />
-      )}
-      {phoneBrowserExpanded && needsUser && (
-        <div className="phone-browser-ask" role="status">
-          <p>{needsUser}</p>
-          <Button size="sm" onClick={() => setBrowserMinimized(true)}>Minimize</Button>
+      {/* Under the expanded browser, in place of the composer: the call's
+          orb, and what Anton needs from the person or else what he's doing. */}
+      {phoneBrowserExpanded && (
+        <div className={`phone-browser-strip${needsUser ? ' is-asking' : ''}`} role="status" aria-live="polite">
+          {phoneCall && phoneCall.phase !== 'idle' && (
+            <VoiceOrb call={phoneCall} onClick={() => setBrowserMinimized(true)} />
+          )}
+          <div className="phone-browser-strip__text">
+            <p>{needsUser || nowDoing}</p>
+            {needsUser && <Button size="sm" onClick={() => setBrowserMinimized(true)}>Minimize</Button>}
+          </div>
         </div>
       )}
     </div>

@@ -124,8 +124,8 @@ body[data-skin="8bit"] .voice-call__spin { border-radius: 0; animation: voice-ca
 /* The phone's speaking orb, at the bottom edge of the expanded browser. */
 .voice-orb {
   --orb-level: 0;
-  position: fixed; z-index: 72; right: 16px; top: calc(80dvh - 22px);
-  width: 44px; height: 44px; padding: 0; border-radius: 50%;
+  position: relative; flex: none;
+  width: 52px; height: 52px; padding: 0; border-radius: 50%;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
   background: var(--surface); overflow: hidden; cursor: pointer;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .3), 0 0 calc(var(--orb-level) * 22px) color-mix(in srgb, var(--accent) 55%, transparent);
