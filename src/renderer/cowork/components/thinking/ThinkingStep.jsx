@@ -91,6 +91,7 @@ export function ThinkingStep({
   const isInProgress = step.status === 'in_progress';
   const isNote = step.badge === 'Note';
   const duration = formatStepDuration(step.startedAt, step.completedAt);
+  const [errorDotFaded, setErrorDotFaded] = useState(false);
 
   return (
     <div
@@ -141,12 +142,6 @@ export function ThinkingStep({
           {isInProgress && <TextDots />}
         </div>
         <div className="ml-2 flex flex-none items-center gap-2 pr-1">
-          {/* No duration on a tool's step line: fullstack generation runs
-              steps in parallel, so "time until the next line" is not how
-              long the step took (ENG-2981). */}
-          {!isInProgress && duration && step.badge !== 'ToolProgress' && (
-            <span className="w-10 text-right text-[11px] text-ink-4">{duration}</span>
-          )}
           {step.cellStatus === 'timeout' && (
             <span
               className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
@@ -155,10 +150,14 @@ export function ThinkingStep({
               timed out
             </span>
           )}
-          {step.cellStatus === 'error' && (
+          {/* Gone from the layout once it has faded, so nothing is left
+              holding the space next to the duration (ENG-4196). */}
+          {step.cellStatus === 'error' && !errorDotFaded && (
             <span
+              data-testid="step-error-dot"
               className="h-1.5 w-1.5 flex-none rounded-full bg-yellow-400"
               style={{ animation: 'step-error-dot-fade 4s ease-out forwards' }}
+              onAnimationEnd={() => setErrorDotFaded(true)}
               title="This cell ended with an error."
             />
           )}
@@ -167,6 +166,15 @@ export function ThinkingStep({
               artifact
             </span>
           )}
+          {/* The duration is always the last, fixed-width slot, empty when
+              there is nothing to show, so every row's time sits on the same
+              right edge whatever badges come before it (ENG-4196).
+              No duration on a tool's step line: fullstack generation runs
+              steps in parallel, so "time until the next line" is not how
+              long the step took (ENG-2981). */}
+          <span data-testid="step-duration" className="w-10 text-right text-[11px] text-ink-4">
+            {!isInProgress && duration && step.badge !== 'ToolProgress' ? duration : null}
+          </span>
         </div>
       </div>
     </div>
