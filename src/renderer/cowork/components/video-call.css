@@ -63,3 +63,19 @@
     height: 40px;
   }
 }
+
+/* The X in a circle on the corner: ends the call. Shown on hover or keyboard
+   focus; always on touch screens, which have no hover. */
+.video-call__x {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  width: 24px; height: 24px; display: inline-grid; place-items: center;
+  border: 1px solid rgb(255 255 255 / 0.35); border-radius: 50%;
+  background: rgb(0 0 0 / 0.55); color: #fff; cursor: pointer;
+  transition: opacity 140ms ease, transform 140ms ease, background 120ms ease, border-color 120ms ease;
+}
+.video-call__x:hover { background: #d93025; border-color: #d93025; }
+@media (hover: hover) {
+  .video-call .video-call__x { opacity: 0; transform: scale(0.85); }
+  .video-call:hover .video-call__x,
+  .video-call:focus-within .video-call__x { opacity: 1; transform: none; }
+}

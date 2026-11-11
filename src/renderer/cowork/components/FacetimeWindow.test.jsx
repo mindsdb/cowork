@@ -30,7 +30,7 @@ describe('the video call window', () => {
     expect(screen.getByText('AI')).toBeInTheDocument();
     expect(screen.getByText('Anton is working on it…')).toBeInTheDocument();
     expect(screen.getByText('Let me look into that.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Hang up' }));
+    await userEvent.click(screen.getByRole('button', { name: 'End call' }));
     expect(c.end).toHaveBeenCalled();
   });
 

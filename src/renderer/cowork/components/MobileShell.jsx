@@ -111,6 +111,8 @@ export default function MobileShell({
   // The voice call icon beside the theme toggle (TopShortcuts' `call`:
   // {label, onClick, live, disabled}); null hides it.
   callShortcut = null,
+  // The browser icon beside it: opens the task's browser, or the blank one.
+  onShowBrowser = null,
   children,
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -228,6 +230,11 @@ export default function MobileShell({
         <div className="mshell__title" title={title}>{title}</div>
         {/* Top-bar "+" removed — the FAB is now the universal create
             entry, so two affordances would just duplicate each other. */}
+        {onShowBrowser && (
+          <button type="button" className="mshell__theme-toggle mshell__browser" aria-label="Show browser" onClick={onShowBrowser}>
+            {Ico.globe(16)}
+          </button>
+        )}
         {callShortcut && (
           <button
             type="button"
@@ -357,12 +364,14 @@ export default function MobileShell({
             {tasksList.length > 0 && (
               <div className="mshell-recent-chats">
                 {(allChats ? tasksList : tasksList.slice(0, RECENT_CHATS)).map((t) => (
-                  <ListRow
+                  <button
                     key={t.id}
-                    primary={t.title || 'Untitled task'}
-                    secondary={projectLabelByName(projects, t.projectName) || ''}
+                    type="button"
+                    className={`mshell-recent-chat${route === 'task' && currentTask?.id === t.id ? ' is-active' : ''}`}
                     onClick={() => handleTaskTap(t.id)}
-                  />
+                  >
+                    {t.title || 'Untitled task'}
+                  </button>
                 ))}
                 {tasksList.length > RECENT_CHATS && (
                   <button

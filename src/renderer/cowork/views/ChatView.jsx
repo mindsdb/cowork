@@ -1838,6 +1838,8 @@ export default function ChatView({
   // The top-right call icon (TopShortcuts' `call`): starts a voice call, and
   // shows one is running; null hides it.
   callShortcut = null,
+  // Bumped by the phone top bar's browser icon: open this task's browser.
+  openBrowserSignal = 0,
   browserSwitch = null,
   onRemoveAttachment,
   onPinTask,
@@ -2119,6 +2121,10 @@ export default function ChatView({
     }
     if (sessionId) setShownBrowserId(sessionId);
   };
+  useEffect(() => {
+    if (openBrowserSignal) openBrowserFromShortcut();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openBrowserSignal]);
   // The call icon beside the browser's X, while the browser takes the column.
   const browserCallIcon = callShortcut ? <TopShortcuts call={callShortcut} /> : null;
   const openBrowserFromShortcut = () => {

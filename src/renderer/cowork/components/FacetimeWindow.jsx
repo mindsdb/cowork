@@ -146,6 +146,13 @@ export default function FacetimeWindow({ call, agentLabel = 'Anton' }) {
           <span className="absolute top-2 left-10 text-[11px] px-1.5 py-0.5 rounded bg-black/50">{clock(secondsLeft)}</span>
         )}
 
+        {/* The X in a circle on the corner ends the call; shown on hover. */}
+        {phase !== 'ended' && (
+          <button type="button" className="video-call__x" onClick={call.end} aria-label="End call" title="End call">
+            {Ico.close(12)}
+          </button>
+        )}
+
         {cameraOn && phase !== 'ended' && (
           <video
             ref={call.selfVideoRef}
@@ -203,9 +210,6 @@ export default function FacetimeWindow({ call, agentLabel = 'Anton' }) {
             </RoundButton>
             <RoundButton label="Minimize" onClick={() => setMinimized(true)}>
               {Ico.minimize(16)}
-            </RoundButton>
-            <RoundButton label="Hang up" onClick={call.end} danger>
-              {Ico.hangUp(16)}
             </RoundButton>
           </div>
         )}

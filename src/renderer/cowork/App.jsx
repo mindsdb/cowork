@@ -699,6 +699,8 @@ function AppCore() {
   // An address typed there opens at once, with no agent, in a browser session
   // of its own (no task yet): {sessionId} once it is open.
   const [offTaskBrowser, setOffTaskBrowser] = useState(null);
+  // The phone top bar's browser icon, in a task: ChatView opens its browser.
+  const [taskBrowserSignal, setTaskBrowserSignal] = useState(0);
   const offTaskBrowserIdRef = useRef(null);
   // "Show the browser" from a call: ChatView opens the pane for this task.
   const [browserRequest, setBrowserRequest] = useState(null);
@@ -6142,6 +6144,10 @@ function AppCore() {
       }
     },
     callShortcut: voiceCallShortcut,
+    onShowBrowser: () => {
+      if (route === 'task') setTaskBrowserSignal((n) => n + 1);
+      else setOffTaskBrowserOpen(true);
+    },
   };
 
   // Desktop corner button. Each Appearance switch gates only its own control
@@ -6496,6 +6502,7 @@ function AppCore() {
             onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
             browserRequest={browserRequest}
+            openBrowserSignal={taskBrowserSignal}
             callShortcut={voiceCallShortcut}
             browserSwitch={browserSwitchShown && currentTask
               ? { on: !currentTask.browserOff, onChange: (on) => handleTaskBrowserSwitch(currentTask.id, on), agentLabel }
