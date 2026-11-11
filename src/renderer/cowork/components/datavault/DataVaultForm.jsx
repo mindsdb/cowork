@@ -200,6 +200,9 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
   );
 }
 
+// The same words the server answers a stamped submission of such a connector with.
+const NEEDS_REBUILD_TEXT = 'This connector was saved before connection tests existed. Ask the agent to build it again.';
+
 export function DataVaultForm({
   spec, busy = false, onAction, onMethodChange, conversationId,
   userLabel, onUserLabelChange, onFieldChange,
@@ -403,6 +406,19 @@ export function DataVaultForm({
           <Button variant="primary" onClick={() => onAction?.({ id: 'view_connectors', kind: 'primary', values: {}, skipped: [] })}>
             View connections
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // A custom connector saved before connection tests existed can never pass
+  // one, so its stored form is not offered; the agent has to build it again.
+  if (spec._needs_rebuild && !spec._is_success) {
+    return (
+      <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
+        <Alert variant="info">{NEEDS_REBUILD_TEXT}</Alert>
+        <div className="flex justify-end">
+          <Button variant="subtle" onClick={() => onAction?.({ id: 'dismiss', kind: 'cancel' })}>Close</Button>
         </div>
       </div>
     );
