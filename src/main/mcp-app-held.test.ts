@@ -39,11 +39,18 @@ vi.mock('./keychain-service', () => ({
 }));
 
 /** The refresh path: a loop exists and a forced refresh yields a new token. */
-const refresh = vi.hoisted(() => ({ token: { access_token: 'at-fresh', expires_at: '2030-01-01T00:00:00.000Z' } as { access_token: string; expires_at: string } | null }));
+const refresh = vi.hoisted(() => ({
+  token: { access_token: 'at-fresh', expires_at: '2030-01-01T00:00:00.000Z' } as { access_token: string; expires_at: string } | null,
+  /** Runs while the refresh is in flight, between the sync's keychain read and its PUT. */
+  during: null as (() => Promise<unknown>) | null,
+}));
 vi.mock('./token-refresh', () => ({
   hasRefreshLoop: () => true,
   startRefreshLoop: vi.fn(),
-  refreshAccessTokenNow: async () => refresh.token,
+  refreshAccessTokenNow: async () => {
+    if (refresh.during) await refresh.during();
+    return refresh.token;
+  },
 }));
 
 import {
@@ -64,9 +71,10 @@ type Recorded = {
 };
 
 /** A local server with the given saved connections. Records every request. */
-function fakeServer(connections: Array<{ engine: string; name: string; method: string; fields?: Record<string, string> }>, opts: { accessModeStatus?: number; putFailures?: Record<string, number> } = {}) {
+function fakeServer(connections: Array<{ engine: string; name: string; method: string; fields?: Record<string, string> }>, opts: { accessModeStatus?: number; putFailures?: Record<string, number>; listFailures?: number } = {}) {
   const requests: Recorded[] = [];
   const putFailures = { ...opts.putFailures };
+  let listFailures = opts.listFailures ?? 0;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const { pathname } = new URL(url);
     const p = pathname.replace('/api/v1/connectors', '');
@@ -79,6 +87,10 @@ function fakeServer(connections: Array<{ engine: string; name: string; method: s
       keychainAtSend: Object.fromEntries(keychain.modes),
     });
     if (method === 'GET' && p === '/connections/') {
+      if (listFailures > 0) {
+        listFailures--;
+        return new Response('{}', { status: 503 });
+      }
       return new Response(JSON.stringify(connections.map(({ engine, name }) => ({ engine, name }))), { status: 200 });
     }
     const detail = connections.find((c) => p === `/connections/${c.engine}/${c.name}`);
@@ -114,6 +126,7 @@ beforeEach(() => {
   keychain.migratedRoots.clear();
   keychain.failWrites = false;
   refresh.token = { access_token: 'at-fresh', expires_at: '2030-01-01T00:00:00.000Z' };
+  refresh.during = null;
 });
 
 afterEach(() => {
@@ -293,6 +306,25 @@ describe('access modes per store', () => {
   });
 });
 
+describe('a mode change during the start-up hand-over', () => {
+  it('leaves the server with the new mode, not the one the sync read first', async () => {
+    protectedMode();
+    keychain.modes.set('hubspot:acme', 'write');
+    const requests = fakeServer([{ engine: 'hubspot', name: 'acme', method: 'mcp' }]);
+    refresh.during = () => setConnectionAccessMode('hubspot', 'acme', 'read');
+
+    await syncAppHeldMcpConnections();
+
+    const modesSent = requests
+      .filter((r) => r.method === 'PUT' || r.method === 'PATCH')
+      .filter((r) => r.body && 'access_mode' in r.body)
+      .map((r) => r.body!.access_mode);
+    expect(modesSent.at(-1)).toBe('read');
+    // The token still reaches the server.
+    expect(requests.find((r) => r.method === 'PUT')!.body?.access_token).toBe('at-fresh');
+  });
+});
+
 describe('start-up hand-over retries', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
@@ -348,6 +380,35 @@ describe('start-up hand-over retries', () => {
     expect(putsFor(requests, 'hubspot/acme')).toHaveLength(4);
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(putsFor(requests, 'hubspot/acme')).toHaveLength(5);
+  });
+
+  it('retries the connection list with backoff', async () => {
+    protectedMode();
+    const requests = fakeServer([{ engine: 'hubspot', name: 'acme', method: 'mcp' }], { listFailures: 2 });
+    const lists = () => requests.filter((r) => r.path === '/connections/').length;
+
+    await syncAppHeldMcpConnections();
+    expect(lists()).toBe(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(lists()).toBe(2);
+    expect(putsFor(requests, 'hubspot/acme')).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(lists()).toBe(3);
+    expect(putsFor(requests, 'hubspot/acme')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(lists()).toBe(3);
+  });
+
+  it('stops retrying the connection list once the server run changes', async () => {
+    protectedMode();
+    const requests = fakeServer([{ engine: 'hubspot', name: 'acme', method: 'mcp' }], { listFailures: 100 });
+
+    await syncAppHeldMcpConnections();
+    newAppSecret();
+    setServerTrust('protected');
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(requests.filter((r) => r.path === '/connections/')).toHaveLength(1);
   });
 
   it('stops retrying once the server run changes', async () => {

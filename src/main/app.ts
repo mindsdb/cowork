@@ -25,7 +25,7 @@ import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
 import { hasRequiredTokens } from './oauth-connect-result';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
-import { serverMayReceiveTokens } from './app-secret';
+import { serverMayReceiveTokens, serverTrust } from './app-secret';
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
@@ -926,7 +926,12 @@ function setupIPC() {
       // A server that has not proved the app secret gets no token.
       if (!serverMayReceiveTokens()) {
         try { await deleteRefreshToken(engine, accountEmail); } catch {}
-        return { ok: false, reason: 'The backend is not running.' };
+        return {
+          ok: false,
+          reason: serverTrust() === 'untrusted'
+            ? 'The backend could not be verified. Restart Cowork and try again.'
+            : 'The backend is not running.',
+        };
       }
 
       // Persist to vault — refresh_token intentionally excluded.

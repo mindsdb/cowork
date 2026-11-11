@@ -41,15 +41,29 @@ async function keychainAccessMode(storeRoot: string, engine: string, name: strin
   }
 }
 
+// Bumped by every access-mode change, per store and connection, so a hand-over
+// that read the keychain earlier can tell its mode may be stale.
+const modeChanges = new Map<string, number>();
+
+function modeChangeCount(storeRoot: string, engine: string, name: string): number {
+  return modeChanges.get(`${storeRoot}|${engine}:${name}`) ?? 0;
+}
+
 async function putAppHeld(
   engine: string,
   name: string,
   body: { access_token?: string; expires_at?: string; access_mode?: AccessMode },
+  modeStillCurrent: () => boolean = () => true,
 ): Promise<boolean> {
+  // Checked in the same tick as the send: a change seen here sends its own
+  // PATCH, and one that starts later sends it after this PUT.
+  const { access_mode: _mode, ...withoutMode } = body;
+  const sent = modeStillCurrent() ? body : withoutMode;
+  if (Object.keys(sent).length === 0) return true;
   const res = await fetch(connectionUrl(engine, name, '/app-held'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeader(), ...appSecretHeader() },
-    body: JSON.stringify(body),
+    body: JSON.stringify(sent),
   });
   if (!res.ok) {
     diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_put_failed', `[mcp-app-held] PUT app-held for ${engine}/${name} returned ${res.status}`);
@@ -101,10 +115,39 @@ export async function syncAppHeldMcpConnections(): Promise<void> {
   } catch (err) {
     diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_migration_marker_unreadable', err);
   }
+  await syncConnections(storeRoot, migrated, markerReadable, stillCurrent, 0);
+}
+
+function retryDelay(attempt: number): number {
+  return RETRY_DELAYS_MS[attempt] ?? RETRY_STEADY_MS;
+}
+
+// Connection keys always contain a colon, so this cannot collide with one.
+const LIST_RETRY_KEY = '__list__';
+
+async function syncConnections(
+  storeRoot: string,
+  migrated: boolean,
+  markerReadable: boolean,
+  stillCurrent: () => boolean,
+  attempt: number,
+): Promise<void> {
+  let connections: Array<{ engine: string; name: string }>;
   try {
     const listRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/`, { headers: authHeader() });
-    if (!listRes.ok) return;
-    const connections = await listRes.json() as Array<{ engine: string; name: string }>;
+    if (!listRes.ok) throw new Error(`connection list returned ${listRes.status}`);
+    connections = await listRes.json() as Array<{ engine: string; name: string }>;
+  } catch (err) {
+    diagnostic('main.mcp-app-held', 'WARNING', 'mcp_app_held_list_failed', '[mcp-app-held] could not list connections:', err);
+    if (stillCurrent()) {
+      retryTimers.set(LIST_RETRY_KEY, setTimeout(() => {
+        retryTimers.delete(LIST_RETRY_KEY);
+        if (stillCurrent()) void syncConnections(storeRoot, migrated, markerReadable, stillCurrent, attempt + 1);
+      }, retryDelay(attempt)));
+    }
+    return;
+  }
+  try {
     let everyModeInKeychain = true;
     for (const { engine, name } of connections) {
       if (!stillCurrent()) return;
@@ -124,7 +167,7 @@ export async function syncAppHeldMcpConnections(): Promise<void> {
 
 function scheduleRetry(storeRoot: string, engine: string, name: string, migrated: boolean, stillCurrent: () => boolean, attempt: number): void {
   const key = `${engine}:${name}`;
-  const delay = RETRY_DELAYS_MS[attempt] ?? RETRY_STEADY_MS;
+  const delay = retryDelay(attempt);
   retryTimers.set(key, setTimeout(() => {
     retryTimers.delete(key);
     if (!stillCurrent()) return;
@@ -145,13 +188,14 @@ async function handOverConnection(storeRoot: string, engine: string, name: strin
     if (detail.method !== 'mcp') return { outcome: 'gone', modeInKeychain: true };
     const fields = detail.fields || {};
 
+    const changesSeen = modeChangeCount(storeRoot, engine, name);
     const mode = await keychainAccessMode(storeRoot, engine, name, migrated ? undefined : fields._access_mode);
     const token = fields.status === 'needs_reconnect'
       ? { kind: 'none' as const }
       : await freshAccessToken(engine, name, fields);
     if (!stillCurrent()) return { outcome: 'gone', modeInKeychain: mode !== null };
     const body = { ...(token.kind === 'ok' ? token.token : {}), ...(mode ? { access_mode: mode } : {}) };
-    const put = Object.keys(body).length > 0 ? await putAppHeld(engine, name, body) : true;
+    const put = await putAppHeld(engine, name, body, () => modeChangeCount(storeRoot, engine, name) === changesSeen);
     const done = put && mode !== null && token.kind !== 'failed';
     return { outcome: done ? 'done' : 'retry', modeInKeychain: mode !== null };
   } catch (err) {
@@ -200,6 +244,7 @@ export async function setConnectionAccessMode(
 ): Promise<{ ok: true; access_mode: AccessMode } | { ok: false; status?: number; reason: string }> {
   const storeRoot = activeStoreRoot();
   if (!storeRoot) return { ok: false, reason: 'The backend is not running.' };
+  modeChanges.set(`${storeRoot}|${engine}:${name}`, modeChangeCount(storeRoot, engine, name) + 1);
   const previous = await getMcpAccessMode(storeRoot, engine, name);
   await setMcpAccessMode(storeRoot, engine, name, mode);
   let res: Response | null = null;
