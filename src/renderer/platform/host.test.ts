@@ -581,7 +581,6 @@ describe('electron mode (bridge present)', () => {
     const host = await importHost();
     expect(host.getPlatform()).toBe('web');
     await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
-    await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
   });
 

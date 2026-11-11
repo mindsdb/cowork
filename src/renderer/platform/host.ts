@@ -1750,23 +1750,6 @@ export function onMindsHubCredentialChanged(cb: () => void): () => void {
   return () => {};
 }
 
-// Where the refresh token is stored: macOS keychain (true) or a plaintext
-// file under ~/.cowork (false). Electron-only — the web shell has no local
-// token store, so both wrappers no-op to a safe default.
-export async function getKeychainPref(): Promise<boolean> {
-  if (isElectron && typeof bridge.getKeychainPref === 'function') {
-    return (await bridge.getKeychainPref()).enabled;
-  }
-  return false;
-}
-
-export async function setKeychainPref(enabled: boolean): Promise<boolean> {
-  if (isElectron && typeof bridge.setKeychainPref === 'function') {
-    return (await bridge.setKeychainPref(enabled)).ok;
-  }
-  return false;
-}
-
 // Whether the desktop's agent sends its anonymous usage events, the shared
 // browser's included (COWORK_USAGE_EVENTS in the account's dotenv; on unless
 // turned off). Null where the shell can't say: the web, or an older shell.
@@ -1964,8 +1947,6 @@ export const host = {
   mindshubSwitchOrg,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,
-  getKeychainPref,
-  setKeychainPref,
   getUsageEventsPref,
   setUsageEventsPref,
   getAccessToken,

@@ -128,8 +128,6 @@ interface AntonTronAPI {
   onMindsHubCredentialChanged?: (cb: () => void) => () => void;
   getAccessToken: () => Promise<string | null>;
   logout: () => Promise<void>;
-  getKeychainPref: () => Promise<{ enabled: boolean }>;
-  setKeychainPref: (enabled: boolean) => Promise<{ ok: boolean }>;
   getUsageEventsPref?: () => Promise<{ enabled: boolean }>;
   setUsageEventsPref?: (enabled: boolean) => Promise<{ ok: boolean }>;
   getPathForFile: (file: File) => string;

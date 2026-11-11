@@ -833,28 +833,11 @@ export default function SettingsView({
   // session — the one open where the wallet state is most likely to be stale.
   const modelOpenState = useRef({});
   const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: -Infinity });
-  // Whether the refresh token lives in the macOS keychain (vs a file under
-  // ~/.cowork). Mac-only; read from main on mount.
-  const [keychainPref, setKeychainPref] = useState(false);
   // Mobile master-detail (ENG-990/ENG-991): the open section is the shared
   // `section` prop, not a separate local state — so a deep-link
   // (onOpenSettings('backend')) lands on that section AND the section-keyed
   // load effects below fire on mobile too. `section == null` is the list; a
   // row tap calls onSectionChange(id), the back control onSectionChange(null).
-
-  useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
-
-  // Optimistically flip the keychain toggle, then persist via main. Revert
-  // the local state if the migration/write fails.
-  const handleKeychainToggle = async (next) => {
-    setKeychainPref(next);
-    try {
-      const ok = await host.setKeychainPref(next);
-      if (!ok) setKeychainPref(!next);
-    } catch {
-      setKeychainPref(!next);
-    }
-  };
 
   // Tracks whether any LLM-affecting setting changed since the last
   // successful Save. Used to skip provider tests on a no-op Save so a

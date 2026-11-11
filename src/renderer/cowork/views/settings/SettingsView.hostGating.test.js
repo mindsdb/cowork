@@ -19,7 +19,6 @@ vi.mock('../../../platform/host', () => ({
     isElectron: true,
     isMac: () => false,
     getApiOrigin: () => 'http://127.0.0.1:26866',
-    getKeychainPref: vi.fn(async () => false),
     openExternal: vi.fn(),
     serverDiagnostics: vi.fn(async () => ({})),
   },

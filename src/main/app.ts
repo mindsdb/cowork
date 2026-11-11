@@ -29,7 +29,7 @@ import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnecti
 import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens } from './token-store';
 import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
@@ -1458,39 +1458,6 @@ function setupIPC() {
       return { ok: true };
     } catch (error) {
       diagnostic("main.app", "ERROR", "usage_events_failed_to_set_preference", '[usage-events] failed to set preference', error);
-      return { ok: false };
-    }
-  });
-
-  // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
-  // When enabled the refresh token lives in the macOS keychain; otherwise
-  // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
-  // any existing token to the chosen store.
-  ipcMain.handle(IPC.KEYCHAIN_PREF_GET, () => {
-    const vars = readEnvFile();
-    // Default is enabled; only false when explicitly set to 'false'.
-    return { enabled: vars.COWORK_KEYCHAIN !== 'false' };
-  });
-
-  ipcMain.handle(IPC.KEYCHAIN_PREF_SET, async (_event, enabled: boolean) => {
-    try {
-      const homeDir = coworkHome();
-      if (!fs.existsSync(homeDir)) {
-        ensureAccountDataRoot();
-      }
-      const envPath = coworkEnvPath();
-      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-      const lines = existing.split('\n').filter((l) => !l.startsWith('COWORK_KEYCHAIN='));
-      // Only write the key when disabling; absence means "enabled" (the default).
-      if (!enabled) lines.push('COWORK_KEYCHAIN=false');
-      const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
-      fs.writeFileSync(envPath, out, 'utf-8');
-
-      // Move any existing token into the newly-chosen store.
-      migrateRefreshTokenStore(enabled);
-      return { ok: true };
-    } catch (error) {
-      diagnostic("main.app", "ERROR", "keychain_failed_to_set_preference", '[keychain] failed to set preference', error);
       return { ok: false };
     }
   });

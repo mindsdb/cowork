@@ -591,8 +591,3 @@ export function clearTokens(): void {
   }
   broadcastAuthChanged(false);
 }
-
-// Stub — the keychain toggle in settings calls this, but on macOS we no
-// longer use the keychain so there is nothing to migrate. On Windows/Linux
-// there is only one store (safeStorage) so migration is also a no-op.
-export function migrateRefreshTokenStore(_toKeychain: boolean): void {}

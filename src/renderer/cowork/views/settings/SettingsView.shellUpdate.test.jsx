@@ -20,7 +20,6 @@ vi.mock('../../../platform/host', () => ({
     isElectron: true,
     isMac: () => platformMock.value === 'darwin',
     getPlatform: () => platformMock.value,
-    getKeychainPref: vi.fn(async () => false),
     openExternal: vi.fn(),
     serverDiagnostics: vi.fn(async () => ({})),
     checkForUpdates: vi.fn(async () => ({ ok: true, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false })),
