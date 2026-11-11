@@ -85,6 +85,7 @@ body[data-skin="8bit"] .browser-panel__blank-input { border: 2px solid var(--ink
 /* The start page over a live browser's blank tab, under the viewer's own
    address row (so the address and Minimize stay in reach). */
 .browser-panel__blank-over { position: absolute; z-index: 1; inset: 49px 0 0; display: flex; padding: 24px 0; overflow: auto; background: var(--bg); }
+.browser-panel__blank-over--full { inset: 0; }
 .browser-panel__blank-error { margin: 0; color: var(--danger); font-size: 12px; }
 body[data-skin="8bit"] .browser-panel__address { border: 2px solid var(--ink); border-radius: 0; }
 

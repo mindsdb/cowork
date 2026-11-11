@@ -620,7 +620,8 @@ export class BrowserSessions {
   /** The person typed an address in the pane: the task's session opens at it,
       or its active tab goes there. Refused like the agent's for a destination
       the request filter would cancel. */
-  async personOpen(id: string, url: string): Promise<void> {
+  /** The person opens an address in a task's browser; null opens it on a blank tab, or leaves an open one be. */
+  async personOpen(id: string, url: string | null): Promise<void> {
     refuseDestination(url);
     this.requireAvailable();
     const existing = this.sessions.get(id);
@@ -628,6 +629,7 @@ export class BrowserSessions {
       this.create(id, url);
       return;
     }
+    if (url === null) return;
     existing.lastUsed = this.now();
     existing.lastPersonInputAt = this.now();
     await this.active(existing).view.load(url);

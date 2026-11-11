@@ -50,6 +50,7 @@ import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, desktopTaskSession, latestBrowserSessionIdIn } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
 import BlankBrowserPanel from '../components/browser/BlankBrowserPanel';
+import { browserInsteadRequest } from '../lib/connectorWebsites';
 import TopShortcuts from '../components/TopShortcuts';
 import VoiceOrb from '../components/VoiceOrb';
 import { isPositionClickCard } from '../lib/browserApproval';
@@ -2159,9 +2160,9 @@ export default function ChatView({
     if (browserRequest?.taskId === task.id && browserRequest.sessionId) setShownBrowserId(browserRequest.sessionId);
   }, [browserRequest, task.id]);
   const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
-  /* The top-right Show browser icon, in a task with no browser to show yet:
-     a blank page that asks where to go. The real pane takes its place as
-     soon as the turn's Browser step arrives. */
+  /* The top-right Show browser icon, in a task whose browser is off or could
+     not open: a blank page that asks where to go. The real pane takes its
+     place as soon as the turn's Browser step arrives. */
   const [blankBrowser, setBlankBrowser] = useState(false);
   useEffect(() => { setBlankBrowser(false); }, [task.id]);
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
@@ -2239,6 +2240,7 @@ export default function ChatView({
   // An address typed in the blank page opens in the task's own browser, with
   // no agent: through the server on the web, the app's own browser on the
   // desktop. The real pane then shows it.
+  /** `url` null opens the task's browser on a blank tab, where the real pane shows the start page. */
   const openUrlInTask = async (url) => {
     let sessionId;
     if (host.isWeb) {
@@ -2248,6 +2250,7 @@ export default function ChatView({
       await host.inAppBrowser.open(sessionId, url);
     }
     if (sessionId) setShownBrowserId(sessionId);
+    return sessionId;
   };
   useEffect(() => {
     if (openBrowserSignal) openBrowserFromShortcut();
@@ -2257,8 +2260,19 @@ export default function ChatView({
   const browserCallIcon = callShortcut ? <TopShortcuts call={callShortcut} /> : null;
   const openBrowserFromShortcut = () => {
     setBrowserMinimized(false);
-    if (viewable(latestBrowserId)) setShownBrowserId(latestBrowserId);
-    else setBlankBrowser(true);
+    if (viewable(latestBrowserId)) {
+      setShownBrowserId(latestBrowserId);
+      return;
+    }
+    /* No browser here yet: open the task's real browser on a blank tab, so
+       the pane is the same one the agent uses, with the start page over the
+       blank tab. The standalone start page stays for a browser that is off or
+       that could not open. */
+    if (!browserOn) {
+      setBlankBrowser(true);
+      return;
+    }
+    openUrlInTask(null).then((id) => { if (!id) setBlankBrowser(true); }, () => setBlankBrowser(true));
   };
   const browserNode = (
     <>
@@ -3851,6 +3865,16 @@ export default function ChatView({
                 onSubmit={onSubmitDataVaultForm}
                 onNavigateToConnectors={onNavigateToConnectors}
                 onClose={onDismissConnectForm}
+                /* Only in a conversation the agent can carry on in the
+                   browser: not a connect form opened from the picker. */
+                onUseBrowser={onSend && browserOn && (host.isWeb || host.supportsInAppBrowser)
+                  && task?.id && !String(task.id).startsWith('tmp-connect-')
+                  ? ({ name, url }) => {
+                    if (onDismissConnectForm) onDismissConnectForm(task.id);
+                    else clearDataVaultForm(task.id);
+                    onSend(browserInsteadRequest(name, url));
+                  }
+                  : undefined}
               />
             </FormErrorBoundary>
         </ModalBody>

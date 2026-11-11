@@ -612,8 +612,9 @@ export interface InAppBrowserBridge {
   setBounds(bounds: StageBounds): Promise<PaneDrawAnswer>;
   /** The person opens an address in a task's browser, typed in the pane: a
       new session at it, or the session's active tab goes there. No agent is
-      involved. */
-  open(sessionId: string, url: string): Promise<void>;
+      involved. A null address opens the task's browser on a blank tab, and
+      leaves one already open as it is. */
+  open(sessionId: string, url: string | null): Promise<void>;
   back(sessionId: string): Promise<void>;
   forward(sessionId: string): Promise<void>;
   reload(sessionId: string): Promise<void>;

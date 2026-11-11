@@ -292,6 +292,16 @@ describe('the agent API', () => {
     await expect(sessions.personOpen('t-a', 'https://cowork.mindshub.ai/')).rejects.toMatchObject({ code: 'bad_request' });
   });
 
+  it('opens a blank tab when the person opens the browser with no address, and leaves an open one be', async () => {
+    const { sessions, tabs } = harness();
+    await sessions.personOpen('t-a', null);
+    expect(sessions.open('t-a', null)).toEqual({ created: false, url: null });
+    await sessions.personOpen('t-a', 'https://a.test/');
+    await sessions.personOpen('t-a', null);
+    expect(tabs).toHaveLength(1);
+    expect(sessions.open('t-a', null)).toEqual({ created: false, url: 'https://a.test/' });
+  });
+
   it("refuses to open MindsHub's own hosts or a metadata address, saying why", async () => {
     const { sessions, tabs } = harness();
     expect(() => sessions.open('t-a', 'https://cowork.mindshub.ai/')).toThrow(expect.objectContaining({ code: 'bad_request', message: "MindsDB's sign-in and app hosts are blocked in this browser" }));

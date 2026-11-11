@@ -10,6 +10,7 @@ import { host } from '../../../platform/host';
 import { useNativeOverlayOpen } from '../../lib/nativeOverlay';
 import { DESKTOP_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 import { BrowserFrame } from './BrowserFrame';
+import { BlankStartOver } from './BlankBrowserPanel';
 
 /* The desktop pane: the app's own browser, a native view the app's main
    process places over this stage. The stage mounts no frame. It shows the
@@ -138,7 +139,10 @@ export function downloadLine(download) {
   }
 }
 
-export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null }) {
+export function LocalBrowserStage({
+  sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null,
+  taskKey = '', onSend, onOpenUrl,
+}) {
   const browser = host.inAppBrowser;
   const stageRef = useRef(null);
   /** @type {[BrowserViewState | null, (s: BrowserViewState | null) => void]} */
@@ -160,7 +164,10 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose, fl
 
   const closed = !exists || state?.open === false;
   const signIn = state?.login ?? null;
-  const mayDraw = !overlayOpen && !signIn;
+  /* A blank tab (no address, nothing loading) gets the start page in the
+     view's place, as on the web, so the view stays parked while it shows. */
+  const startPage = Boolean(state) && !closed && !signIn && !state.url && !state.loading && Boolean(onSend || onOpenUrl);
+  const mayDraw = !overlayOpen && !signIn && !startPage;
   // Whether the view may draw now, for the pane's effect below to read.
   const mayDrawRef = useRef(mayDraw);
   // Sends main what the view may draw on now, or null while the pane shows no task.
@@ -331,6 +338,8 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose, fl
           site={signIn.host}
           onAnswer={(answer) => report(browser.answerLogin(sessionId, answer))}
         />
+      ) : startPage ? (
+        <BlankStartOver taskKey={taskKey} agentLabel={agentLabel} onSend={onSend} onOpenUrl={onOpenUrl} inset={false} />
       ) : squeezed ? (
         <EmptyState size="sm" className="browser-panel__empty" title="Make the window bigger to see the page" />
       ) : null}

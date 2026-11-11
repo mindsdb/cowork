@@ -108,6 +108,7 @@ describe('ChatView shared browser pane', () => {
     shell.hides = 0;
     shell.bounds = [];
     embedBrowser.mockReset();
+    openBrowserAt.mockReset();
     embedBrowser.mockResolvedValue({ session_id: 't-abc', view_url: VIEW, ticket_expires_at: 1_900_000_000, lease_expires_at: 1_900_000_780 });
     iframeLoading = window.happyDOM.settings.disableIframePageLoading;
     window.happyDOM.settings.disableIframePageLoading = true;
@@ -137,7 +138,27 @@ describe('ChatView shared browser pane', () => {
     expect(screen.queryByRole('button', { name: 'Show browser' })).toBeNull();
   });
 
-  it('opens a blank page from the Show browser icon in a task without a browser, which sends a search to Anton', async () => {
+  it("opens the task's real browser on a blank tab from the Show browser icon, with the call icon by the X", async () => {
+    openBrowserAt.mockResolvedValue({ session_id: 't-abc' });
+    render(
+      <ChatView
+        task={task('p-url', [{ id: 'u1', role: 'user', content: 'Hi' }])}
+        onSend={vi.fn()}
+        browserOn
+        callShortcut={{ label: 'Call Anton', onClick: vi.fn() }}
+      />,
+    );
+    await act(async () => {});
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+
+    expect(openBrowserAt).toHaveBeenCalledWith('p-url', null);
+    expect(embedBrowser).toHaveBeenCalledWith('t-abc');
+    expect(screen.queryByRole('textbox', { name: 'Address' })).toBeNull();
+    expect(within(pane()).getByRole('button', { name: 'Call Anton' })).toBeInTheDocument();
+  });
+
+  it("falls back to the start page when the task's browser can't open, which sends a search to Anton", async () => {
+    openBrowserAt.mockRejectedValue(new Error('No browser is free'));
     const onSend = vi.fn();
     render(<ChatView task={task('p-none', [{ id: 'u1', role: 'user', content: 'Hi' }])} onSend={onSend} browserOn />);
     await act(async () => {});
@@ -151,30 +172,6 @@ describe('ChatView shared browser pane', () => {
 
     await act(async () => { fireEvent.click(within(pane()).getByRole('button', { name: 'Close browser' })); });
     expect(pane()).toBeNull();
-  });
-
-  it('opens an address typed in the blank page in the task\'s own browser, without Anton, with the call icon by the X', async () => {
-    openBrowserAt.mockResolvedValue({ session_id: 't-abc' });
-    const onSend = vi.fn();
-    render(
-      <ChatView
-        task={task('p-url', [{ id: 'u1', role: 'user', content: 'Hi' }])}
-        onSend={onSend}
-        browserOn
-        callShortcut={{ label: 'Call Anton', onClick: vi.fn() }}
-      />,
-    );
-    await act(async () => {});
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
-    expect(within(pane()).getByRole('button', { name: 'Call Anton' })).toBeInTheDocument();
-
-    fireEvent.change(within(pane()).getByRole('textbox', { name: 'Address' }), { target: { value: 'example.com' } });
-    await act(async () => { fireEvent.submit(within(pane()).getByRole('textbox', { name: 'Address' })); });
-
-    expect(openBrowserAt).toHaveBeenCalledWith('p-url', 'https://example.com');
-    expect(onSend).not.toHaveBeenCalled();
-    expect(embedBrowser).toHaveBeenCalledWith('t-abc');
-    expect(within(pane()).getByRole('button', { name: 'Call Anton' })).toBeInTheDocument();
   });
 
   it('opens when a voice call asks to show this task\'s browser, and offers a minimized call back', async () => {

@@ -409,6 +409,31 @@ describe('the desktop browser pane', () => {
     expect(screen.queryByText(BIGGER)).not.toBeInTheDocument();
   });
 
+  it('shows the start page in place of a blank tab, with the view parked, and the page once it has one', async () => {
+    const onOpenUrl = vi.fn(async () => {});
+    render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} taskKey="t-abc" onSend={vi.fn()} onOpenUrl={onOpenUrl} />);
+    await flush();
+    emit(state({ url: null, title: '', tabs: [{ id: 't1', url: '', title: '', active: true }] }));
+    await flush();
+    expect(calls('setBounds')).toEqual([['setBounds', NOWHERE]]);
+    fireEvent.change(screen.getByLabelText('What to look up'), { target: { value: 'example.com' } });
+    fireEvent.submit(screen.getByLabelText('What to look up').closest('form'));
+    await flush();
+    expect(onOpenUrl).toHaveBeenCalledWith('https://example.com');
+    emit(state());
+    await flush();
+    expect(screen.queryByLabelText('What to look up')).not.toBeInTheDocument();
+    expect(calls('setBounds').at(-1)).toEqual(['setBounds', { x: 600, y: 56, width: 600, height: 700 }]);
+  });
+
+  it('shows no start page without a way to act on it', async () => {
+    render(<BrowserPanel sessionId="t-abc" onClose={vi.fn()} />);
+    await flush();
+    emit(state({ url: null }));
+    await flush();
+    expect(screen.queryByLabelText('What to look up')).not.toBeInTheDocument();
+  });
+
   it("forgets the answer when the task's browser closes, and waits for the show sent on opening again", async () => {
     // A short window squeezes the stage.
     stageBox = { left: 600, top: 56, width: 600, height: 150 };

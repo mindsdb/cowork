@@ -625,6 +625,7 @@ export class InAppBrowserHost {
       return this.sessions.personNavigate(sessionArg(id), where);
     });
     handle(IPC.BROWSER_OPEN, (id, url) => {
+      if (url === null) return this.sessions.personOpen(sessionArg(id), null);
       const address = navigableUrl(url);
       if (!address) throw new Error('bad url');
       return this.sessions.personOpen(sessionArg(id), address);

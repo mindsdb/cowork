@@ -734,6 +734,35 @@ function AppCore() {
   // The phone top bar's browser icon, in a task: ChatView opens its browser.
   const [taskBrowserSignal, setTaskBrowserSignal] = useState(0);
   const offTaskBrowserIdRef = useRef(null);
+  // The off-task browser could not open: the standalone start page shows instead.
+  const [offTaskBlank, setOffTaskBlank] = useState(false);
+  /* Opens the off-task browser, at `url` or (null) on a blank tab, in a
+     session of its own kept while the app runs, so the next address goes to
+     the same tabs. */
+  const openOffTaskBrowser = async (url) => {
+    offTaskBrowserIdRef.current ||= allocateConversationId();
+    let sessionId;
+    if (host.isWeb) {
+      sessionId = (await openBrowserAt(offTaskBrowserIdRef.current, url))?.session_id;
+    } else {
+      sessionId = await desktopTaskSession(offTaskBrowserIdRef.current);
+      await host.inAppBrowser.open(sessionId, url);
+    }
+    if (sessionId) setOffTaskBrowser({ sessionId });
+    return sessionId;
+  };
+  // Showing the browser opens the real one, as the agent's, with the start page over its blank tab.
+  useEffect(() => {
+    if (!offTaskBrowserOpen || offTaskBrowser) return;
+    setOffTaskBlank(false);
+    openOffTaskBrowser(null).then((id) => { if (!id) setOffTaskBlank(true); }, () => setOffTaskBlank(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offTaskBrowserOpen]);
+  const sendFromOffTaskBrowser = (text) => {
+    setOffTaskBrowserOpen(false);
+    const inProject = route === 'projects' && canRunProject(selectedProject) ? selectedProject : null;
+    void handleSendFromHome(text, { attachments: [], disabledConnections: [], ...(inProject ? { project: inProject } : {}) });
+  };
   // "Show the browser" from a call: ChatView opens the pane for this task.
   const [browserRequest, setBrowserRequest] = useState(null);
   // The row ids a conversation holds before a fetch, or undefined (no
@@ -7235,31 +7264,18 @@ function AppCore() {
           agentLabel={agentLabel}
           extraActions={<TopShortcuts call={voiceCallShortcut} />}
           onClose={() => { setOffTaskBrowserOpen(false); setOffTaskBrowser(null); }}
+          taskKey={route}
+          onOpenUrl={openOffTaskBrowser}
+          onSend={sendFromOffTaskBrowser}
         />
-      ) : (
+      ) : offTaskBlank && (
         <BlankBrowserPanel
           floating
           taskKey={route}
           agentLabel={agentLabel}
           extraActions={<TopShortcuts call={voiceCallShortcut} />}
-          onOpenUrl={async (url) => {
-            // A session of its own, kept while the app runs, so the next
-            // address goes to the same tabs.
-            offTaskBrowserIdRef.current ||= allocateConversationId();
-            let sessionId;
-            if (host.isWeb) {
-              sessionId = (await openBrowserAt(offTaskBrowserIdRef.current, url))?.session_id;
-            } else {
-              sessionId = await desktopTaskSession(offTaskBrowserIdRef.current);
-              await host.inAppBrowser.open(sessionId, url);
-            }
-            if (sessionId) setOffTaskBrowser({ sessionId });
-          }}
-          onSend={(text) => {
-            setOffTaskBrowserOpen(false);
-            const inProject = route === 'projects' && canRunProject(selectedProject) ? selectedProject : null;
-            void handleSendFromHome(text, { attachments: [], disabledConnections: [], ...(inProject ? { project: inProject } : {}) });
-          }}
+          onOpenUrl={openOffTaskBrowser}
+          onSend={sendFromOffTaskBrowser}
           onClose={() => setOffTaskBrowserOpen(false)}
         />
       ))}

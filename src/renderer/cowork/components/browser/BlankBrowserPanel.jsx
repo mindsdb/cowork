@@ -95,10 +95,11 @@ function BlankStart({ taskKey, agentLabel, browserOn, state, autoFocus = true })
  * @param {{ taskKey?: string, agentLabel?: string, onSend?: (text: string) => void,
  *   onOpenUrl?: (url: string) => Promise<void> }} props
  */
-export function BlankStartOver({ taskKey = '', agentLabel = 'Anton', onSend, onOpenUrl }) {
+export function BlankStartOver({ taskKey = '', agentLabel = 'Anton', onSend, onOpenUrl, inset = true }) {
   const state = useBlankGo({ agentLabel, browserOn: true, onSend, onOpenUrl });
+  // `inset` leaves the web viewer's own toolbar showing above it; the desktop's is the pane's.
   return (
-    <div className="browser-panel__blank-over">
+    <div className={`browser-panel__blank-over${inset ? '' : ' browser-panel__blank-over--full'}`}>
       <BlankStart taskKey={taskKey} agentLabel={agentLabel} browserOn state={state} autoFocus={false} />
     </div>
   );
