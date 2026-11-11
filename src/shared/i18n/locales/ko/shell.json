@@ -1,0 +1,408 @@
+{
+  "common": {
+    "cancel": "취소",
+    "delete": "삭제",
+    "keep": "유지",
+    "remove": "제거",
+    "time": {
+      "justNow": "방금",
+      "minutesShort": "{count}분",
+      "hoursShort": "{count}시간",
+      "daysShort": "{count}일"
+    },
+    "opensInBrowser": "브라우저에서 열립니다"
+  },
+  "ui": {
+    "actionBar": {
+      "moreActions": "추가 옵션"
+    },
+    "toast": {
+      "dismiss": "닫기"
+    },
+    "modal": {
+      "close": "닫기"
+    },
+    "select": {
+      "placeholder": "선택…",
+      "selected": "선택됨: {label}"
+    },
+    "combobox": {
+      "placeholder": "선택",
+      "search": "검색",
+      "empty": "결과 없음"
+    },
+    "field": {
+      "optional": "(선택 사항)"
+    }
+  },
+  "rail": {
+    "context": {
+      "title": "컨텍스트",
+      "memoryDescriptions": {
+        "lessons": "에이전트가 여기서 작업하며 배운 내용",
+        "rules": "에이전트가 항상 따르는 지침",
+        "profile": "사용자 정보와 선호하는 작업 방식"
+      },
+      "attachmentFallbackName": "첨부 파일",
+      "attachmentFallbackLower": "첨부 파일",
+      "fileFallbackName": "파일",
+      "taskUploadActionsAriaLabel": "작업 업로드 파일 메뉴",
+      "instructions": "지침",
+      "deleteFile": "파일 삭제",
+      "deleteFileAriaLabel": "{name} 삭제",
+      "openNamedInDrive": "Google Drive에서 ‘{name}’ 열기",
+      "untitled": "제목 없음",
+      "openInDrive": "Google Drive에서 열기",
+      "removeFromProjectFiles": "프로젝트 파일에서 제거",
+      "removeFromProjectFilesAriaLabel": "프로젝트 파일에서 {name} 제거",
+      "loadAttachmentsFailed": "첨부 파일을 불러오지 못했습니다",
+      "uploadFailed": "업로드하지 못했습니다.",
+      "emptyMemories": "에이전트는 작업하면서 학습합니다. 기억된 내용이 여기에 표시됩니다.",
+      "dropToAdd": "파일을 끌어다 놓아 프로젝트에 추가",
+      "projectFiles": "프로젝트 파일",
+      "addToProject": "이 프로젝트에 파일 추가",
+      "uploading": "업로드 중…",
+      "attachFiles": "파일 첨부",
+      "connecting": "연결 중…",
+      "attachDriveFiles": "Google Drive 파일 첨부",
+      "addDriveFilesFailed": "Google Drive 파일을 추가하지 못했습니다.",
+      "addFromSharePoint": "SharePoint에서 파일 추가",
+      "emptyProjectFiles": "파일을 추가하여 에이전트에 컨텍스트를 제공하세요.",
+      "truncated": "이 폴더에는 목록에 표시할 수 있는 것보다 많은 파일이 있어 일부가 여기에 표시되지 않습니다.",
+      "taskUploads": "작업 업로드",
+      "attachToTask": "이 작업에 파일 첨부",
+      "loadingAttachments": "첨부 파일을 불러오는 중…",
+      "emptyTaskUploads": "아직 첨부된 파일이 없습니다. 클릭하여 추가하세요.",
+      "open": "열기",
+      "moveToProjectFiles": "프로젝트 파일로 이동",
+      "moveFailed": "파일을 이동하지 못했습니다.",
+      "projectMemory": "프로젝트 메모리",
+      "globalMemory": "전역 메모리",
+      "projectMemorySubtitle": "프로젝트 · {name}",
+      "globalScope": "전역",
+      "emptyMemory": "(빈 메모리)",
+      "memoryPlaceholder": "메모리 내용: 에이전트가 무엇을 기억해야 하나요?",
+      "deleteFileTitle": "‘{name}’을(를) 삭제할까요?",
+      "deleteFileMessage": "프로젝트 작업 폴더에서 파일이 제거됩니다. 이 작업은 실행 취소할 수 없습니다.",
+      "deleteFileFailed": "파일을 삭제하지 못했습니다.",
+      "removeDriveFileTitle": "프로젝트 파일에서 ‘{name}’을(를) 제거할까요?",
+      "removeDriveFileMessage": "Cowork가 더 이상 이 파일에 액세스할 수 없습니다. Google Drive에 있는 파일 자체에는 영향이 없습니다.",
+      "removeFileFailed": "파일을 제거하지 못했습니다.",
+      "deleteAttachmentMessage": "이 작업의 업로드에서 파일이 제거되며 이후 대화에서는 이 파일을 볼 수 없습니다. 이 작업은 실행 취소할 수 없습니다.",
+      "deleteAttachmentFailed": "첨부 파일을 삭제하지 못했습니다."
+    },
+    "progress": {
+      "title": "진행 상황"
+    },
+    "card": {
+      "collapse": "접기",
+      "expand": "펼치기"
+    },
+    "showMore": {
+      "less": "간단히 보기",
+      "more": "+ {count}개 더 보기"
+    },
+    "scheduled": {
+      "title": "예약된 작업",
+      "empty": "아직 예약된 작업이 없습니다."
+    },
+    "artifacts": {
+      "title": "아티팩트",
+      "noServableFile": "이 아티팩트에는 아직 표시할 수 있는 파일이 없습니다.",
+      "openFailed": "파일을 열지 못했습니다.",
+      "preview": "미리 보기",
+      "openInOs": "기본 앱으로 열기",
+      "openInNewTab": "새 탭에서 열기",
+      "download": "다운로드",
+      "deleteFailed": "삭제하지 못했습니다.",
+      "empty": "아직 아티팩트가 없습니다. 에이전트가 대시보드, 보고서, 데이터 세트를 만들면 여기에 저장됩니다.",
+      "otherInProject": "이 프로젝트의 다른 아티팩트",
+      "published": "게시됨",
+      "actionsAriaLabel": "아티팩트 메뉴",
+      "deleteTitle": "‘{name}’을(를) 삭제할까요?",
+      "deleteFallbackName": "아티팩트",
+      "deleteMessage": "아티팩트가 영구적으로 삭제됩니다. 현재 공유 중이면 먼저 공유가 중지됩니다. 이 작업은 실행 취소할 수 없습니다."
+    },
+    "shared": {
+      "loadFailed": "복제할 수 있는 앱을 불러오지 못했습니다.",
+      "duplicateFailed": "이 앱을 복제하지 못했습니다.",
+      "duplicate": "복제",
+      "duplicating": "복제 중…",
+      "duplicated": "복제됨",
+      "haveCopyAriaLabel": "{name}의 사본이 있습니다",
+      "haveCopyTitle": "이미 사본이 있습니다. 앱을 다시 복제하려면 사본을 삭제하세요.",
+      "duplicateAriaLabel": "{name} 복제",
+      "duplicatedToast": "이 프로젝트에 복제되었습니다."
+    }
+  },
+  "confirm": {
+    "title": "계속하시겠습니까?",
+    "confirm": "확인"
+  },
+  "taskMenu": {
+    "schedule": "일정 예약",
+    "turnIntoSkill": "스킬로 만들기",
+    "moveToProject": "프로젝트로 이동…",
+    "pin": "고정",
+    "unpin": "고정 해제",
+    "rename": "이름 바꾸기",
+    "ariaLabel": "작업 메뉴"
+  },
+  "themeModal": {
+    "title": "디스플레이 설정",
+    "subtitle": "테마와 스타일이 즉시 적용됩니다",
+    "subtitleThemeOnly": "테마가 즉시 적용됩니다",
+    "theme": "테마",
+    "light": "라이트",
+    "dark": "다크",
+    "style": "스타일",
+    "skins": {
+      "normal": "기본",
+      "8bit": "8-Bit"
+    }
+  },
+  "comingSoon": {
+    "cloudTitle": "Cloud에서 곧 제공 예정",
+    "unavailableTitle": "사용할 수 없는 기능",
+    "cloudBodyNamed": "{feature}은(는) 아직 Cloud에서 사용할 수 없습니다. 그동안 데스크톱 앱에서 사용할 수 있습니다.",
+    "cloudBody": "이 기능은 아직 Cloud에서 사용할 수 없습니다. 그동안 데스크톱 앱에서 사용할 수 있습니다.",
+    "unavailableBodyNamed": "{feature}은(는) 이 배포에서 사용할 수 없습니다.",
+    "unavailableBody": "이 기능은 이 배포에서 사용할 수 없습니다.",
+    "notNow": "나중에",
+    "download": "앱 다운로드"
+  },
+  "loadStatus": {
+    "retry": "다시 시도",
+    "failed": "{what}을(를) 불러오지 못했습니다.",
+    "loading": "{what} 불러오는 중…"
+  },
+  "upToDate": "최신 상태",
+  "usageBar": {
+    "hideAllowance": "제공량 숨기기",
+    "hide": "숨기기"
+  },
+  "diagnostics": {
+    "copy": "진단 정보 복사",
+    "copied": "복사됨",
+    "copyFailed": "복사하지 못했습니다"
+  },
+  "appShell": {
+    "openSidebar": "사이드바 열기"
+  },
+  "workspace": {
+    "label": "워크스페이스",
+    "archived": "해당 워크스페이스는 보관되었습니다. 다른 워크스페이스를 선택하세요.",
+    "switchFailed": "워크스페이스를 전환하지 못했습니다. 다시 시도하세요.",
+    "manage": "워크스페이스 관리",
+    "triggerAriaLabel": "워크스페이스: {name}"
+  },
+  "workspaceMode": {
+    "code": "코드"
+  },
+  "search": {
+    "label": "{product} 검색",
+    "ariaLabel": "검색",
+    "types": {
+      "task": "작업",
+      "project": "프로젝트",
+      "artifact": "아티팩트",
+      "attachment": "첨부 파일",
+      "schedule": "일정",
+      "pin": "고정됨"
+    },
+    "recentTasks": "최근 작업",
+    "failed": "검색하지 못했습니다.",
+    "searching": "검색 중…",
+    "noResults": "{product}에서 검색 결과를 찾을 수 없습니다.",
+    "hint": "작업, 프로젝트, 아티팩트, 첨부 파일, 일정, 고정 항목을 검색할 수 있습니다.",
+    "toNavigate": "이동",
+    "toOpen": "열기",
+    "toClose": "닫기"
+  },
+  "recents": {
+    "untitled": "제목 없음",
+    "deleteTask": "이 작업 삭제",
+    "searchPlaceholder": "최근 작업 검색…",
+    "searchAriaLabel": "최근 작업 검색",
+    "count": "{shown}/{total}",
+    "noMatch": "일치하는 작업이 없습니다.",
+    "empty": "아직 최근 작업이 없습니다.",
+    "noProject": "(프로젝트 없음)"
+  },
+  "serverHelp": {
+    "online": {
+      "title": "{agent} 백엔드 실행 중",
+      "subtitle": "포트 {port}에서 실행 중입니다. 로컬 Python 서버가 /health에 응답하고 있습니다."
+    },
+    "starting": {
+      "title": "{agent} 백엔드를 시작하는 중…",
+      "subtitle": "로컬 Python 서버를 시작하고 있습니다. 보통 몇 초 정도 걸리며, 결과는 이 창에 자동으로 반영됩니다."
+    },
+    "stopping": {
+      "title": "{agent} 백엔드를 중지하는 중…",
+      "subtitle": "로컬 Python 서버가 종료되기를 기다리고 있습니다."
+    },
+    "stopped": {
+      "title": "{agent} 백엔드가 중지됨",
+      "subtitle": "로컬 Python 서버를 중지했습니다. 다시 실행하려면 아래의 ‘백엔드 시작’을 클릭하세요."
+    },
+    "failed": {
+      "title": "{agent} 백엔드가 실행되지 않음",
+      "subtitle": "로컬 Python 서버가 시작되지 않았습니다. 아래에 프로세스에서 캡처한 최근 오류와 로그 끝부분이 표시됩니다."
+    },
+    "port": "포트",
+    "exitCode": "종료 코드",
+    "lastAttempt": "마지막 시도",
+    "noError": "캡처된 구체적인 시작 오류가 없습니다. 아래 로그 끝부분을 확인하세요. Python 프로세스가 정상적으로 시작된 후 종료되었을 수 있습니다.",
+    "recentLog": "최근 로그",
+    "noLog": "(아직 캡처된 로그 없음)",
+    "actions": {
+      "start": "백엔드 시작",
+      "starting": "시작 중…",
+      "restart": "백엔드 다시 시작",
+      "restarting": "다시 시작하는 중…",
+      "stop": "백엔드 중지",
+      "stopping": "중지 중…"
+    }
+  },
+  "userMenu": {
+    "switchOrgFailed": "조직을 변경하지 못했습니다. 다시 시도하세요.",
+    "changingOrg": "조직 변경 중",
+    "organization": "조직",
+    "account": "계정",
+    "settings": "설정",
+    "billing": "결제 및 사용량",
+    "members": "멤버",
+    "help": "도움말 및 피드백",
+    "manageOrg": "조직 관리",
+    "logout": "로그아웃",
+    "signingOut": "로그아웃하는 중…"
+  },
+  "sidebar": {
+    "soon": "곧 제공",
+    "renameTask": "작업 이름 바꾸기",
+    "runs": "{count, plural, other {#회 실행}}",
+    "agentWorking": "{agent}이(가) 이 작업을 진행하고 있습니다",
+    "active": "진행 중",
+    "taskMenu": "작업 메뉴",
+    "scheduledTask": "예약된 작업",
+    "expand": "사이드바 펼치기",
+    "collapse": "사이드바 접기",
+    "newTask": "새 작업",
+    "newCodeTask": "새 코드 작업",
+    "nav": {
+      "projects": "프로젝트",
+      "scheduled": "예약된 작업",
+      "artifacts": "라이브 아티팩트",
+      "connectedApps": "연결된 앱 및 데이터",
+      "connectApps": "앱 및 데이터 연결",
+      "allTasks": "모든 작업",
+      "connectors": "커넥터",
+      "skills": "스킬",
+      "memories": "메모리",
+      "skillsLibrary": "스킬 라이브러리",
+      "compare": "모델 비교"
+    },
+    "agent": "에이전트",
+    "pinned": "고정됨",
+    "viewAllTasks": "모든 작업 보기",
+    "viewAll": "모두 보기 →",
+    "loadingTasks": "작업을 불러오는 중",
+    "loadFailed": "작업을 불러오지 못했습니다.",
+    "noTasks": "아직 작업이 없습니다",
+    "showMore": "더 보기",
+    "update": {
+      "manualTooltip": "{product}의 새 버전을 사용할 수 있습니다. 설치 프로그램을 다운로드하고 앱을 종료한 다음 {step}",
+      "manualTooltipVersion": "{product}의 새 버전({version})을 사용할 수 있습니다. 설치 프로그램을 다운로드하고 앱을 종료한 다음 {step}",
+      "openToUpdate": "설치 프로그램을 열어 업데이트하세요.",
+      "dismiss": "업데이트 알림 닫기"
+    },
+    "status": {
+      "details": "백엔드 상태 - 클릭하여 자세히 보기",
+      "backend": "백엔드 ·",
+      "starting": "시작 중",
+      "stopping": "중지 중",
+      "offline": "오프라인"
+    },
+    "settings": "설정",
+    "openSettings": "설정 열기"
+  },
+  "mobile": {
+    "tasks": "작업",
+    "titles": {
+      "newTaskIn": "새 작업 · {project}",
+      "conversation": "대화",
+      "scheduled": "예약됨",
+      "connect": "연결"
+    },
+    "closeMenu": "메뉴 닫기",
+    "openMenu": "메뉴 열기",
+    "switchToLight": "라이트 모드로 전환",
+    "switchToDark": "다크 모드로 전환",
+    "inProject": "{project}에서",
+    "newProject": "새 프로젝트",
+    "closeCreateMenu": "만들기 메뉴 닫기",
+    "createNew": "새로 만들기",
+    "chat": "채팅",
+    "chatSubtitle": "대화를 시작하거나 이어서 진행",
+    "noProjects": "아직 프로젝트가 없습니다.",
+    "tapToStart": "탭하여 채팅 시작",
+    "taskCount": "{count, plural, other {작업 #개}}",
+    "noScheduled": "예약된 작업이 없습니다.",
+    "schedule": "일정",
+    "noArtifacts": "라이브 아티팩트가 없습니다.",
+    "viewAllArtifacts": "모든 아티팩트 보기",
+    "total": "총 {count}개",
+    "noTasks": "아직 작업이 없습니다.",
+    "untitledTask": "제목 없는 작업",
+    "seeAllTasks": "모든 작업 보기"
+  },
+  "dispatch": {
+    "qrAriaLabel": "장식용 페어링 코드",
+    "defaultAgent": "에이전트",
+    "title": "Dispatch",
+    "heading": "{product} 모바일 앱과 페어링",
+    "body": "모바일 앱을 사용하면 {agent}이(가) 데스크톱에서 작업하는 동안에도 대화할 수 있습니다. 코드를 스캔하여 휴대폰에 앱을 다운로드하세요.",
+    "signedIn": "휴대폰에서 로그인했습니다",
+    "comingSoon": "곧 제공 예정",
+    "later": "나중에 설정"
+  },
+  "tasks": {
+    "sort": {
+      "recent": "최근 항목",
+      "name": "이름(A–Z)",
+      "project": "프로젝트"
+    },
+    "allProjects": "모든 프로젝트",
+    "subtitle": "모든 프로젝트의 모든 대화를 한곳에서 확인하세요. 정렬하고 필터링하고 바로 이어서 작업할 수 있습니다.",
+    "searchPlaceholder": "작업 검색",
+    "countFiltered": "작업 {total}개 중 {shown}개",
+    "noMatch": "이 필터와 일치하는 작업이 없습니다.",
+    "clearFilters": "필터 지우기",
+    "emptyDescription": "홈 화면에서 대화를 시작하세요. 모든 채팅이 여기에 표시됩니다."
+  },
+  "home": {
+    "greetingFallback": "오늘 할 일을 하나씩 끝내 볼까요?",
+    "active": "진행 중",
+    "clearActive": "목록 지우기",
+    "connectProvider": {
+      "title": "채팅을 시작하려면 제공업체를 연결하세요",
+      "operatorTitle": "제공업체 설정이 필요합니다",
+      "body": "MindsHub로 시작하면 MindsHub Air의 무료 제공량을 받은 뒤 사용한 만큼 결제할 수 있습니다. 또는 설정에서 직접 API 키(Anthropic, OpenAI 또는 OpenAI 호환 엔드포인트)를 추가하세요.",
+      "operatorBody": "작업을 시작하기 전에 운영자에게 모델 제공업체 구성을 요청하세요.",
+      "startFree": "무료로 시작"
+    },
+    "handoffHint": "이 프롬프트를 수정한 다음 준비되면 보내세요."
+  },
+  "logout": {
+    "title": "{product}에서 로그아웃할까요?",
+    "messageWebMindsHub": "Cowork에서 로그아웃됩니다. 계속 사용하려면 MindsHub로 다시 로그인해야 합니다.",
+    "messageWeb": "{product}에서 로그아웃됩니다. 계속 사용하려면 다시 로그인해야 합니다.",
+    "messageDesktop": "MindsHub 세션이 종료되고 이 계정에 대해 Cowork에 저장된 AI 제공업체 API 키가 제거됩니다. 각 조직의 키는 다음에 사용되기 전에 제거됩니다. 프로젝트, 파일, 연결된 앱, 데이터 연결과 저장된 비밀번호는 그대로 유지됩니다. Cowork를 계속 사용하려면 다시 로그인해야 합니다.",
+    "paneSubtitle": "MindsHub 세션을 종료하고 이 계정에 대해 Cowork에 저장된 AI 제공업체 API 키를 제거합니다. 열려 있지 않은 조직의 키는 다음에 사용되기 전에 제거됩니다. 프로젝트, 파일, 연결된 앱, 데이터 연결과 저장된 비밀번호는 이 기기에 그대로 유지됩니다.",
+    "tooltip": "로그아웃하고 저장된 API 키 제거",
+    "confirm": "로그아웃",
+    "failed": "로그아웃을 완료하지 못했습니다. 다시 시도하세요.",
+    "waitNote": "아직 로그아웃하는 중입니다. 이 창을 닫아도 자동으로 완료됩니다."
+  }
+}

@@ -25,11 +25,16 @@ describe('normalizeLocale', () => {
     [' pt-br ', 'pt-BR'],
     ['ja', 'ja'],
     ['ja-JP', 'ja'],
+    ['de-AT', 'de'],
+    ['de-CH', 'de'],
+    ['fr-CA', 'fr'],
+    ['fr-FR', 'fr'],
+    ['ko-KR', 'ko'],
   ])('%s → %s', (tag, expected) => {
     expect(normalizeLocale(tag)).toBe(expected);
   });
 
-  it.each([['fr-FR'], ['de'], ['zh-CN'], [''], ['*'], [null], [undefined]])('%s → null', (tag) => {
+  it.each([['it-IT'], ['nl'], ['zh-CN'], [''], ['*'], [null], [undefined]])('%s → null', (tag) => {
     expect(normalizeLocale(tag as string | null | undefined)).toBeNull();
   });
 });
@@ -40,11 +45,11 @@ describe('resolveLocale', () => {
   });
 
   it('"system" takes the first system language we have', () => {
-    expect(resolveLocale('system', ['fr-FR', 'es-AR', 'en'])).toBe('es');
+    expect(resolveLocale('system', ['it-IT', 'es-AR', 'en'])).toBe('es');
   });
 
   it('falls back to English when no system language matches', () => {
-    expect(resolveLocale('system', ['fr-FR', 'de-DE'])).toBe('en');
+    expect(resolveLocale('system', ['it-IT', 'nl-NL'])).toBe('en');
     expect(resolveLocale('system', [])).toBe('en');
   });
 
@@ -78,7 +83,7 @@ describe('serverLocale', () => {
 });
 
 it('names every locale in its own language', () => {
-  expect(LOCALE_NATIVE_NAMES).toMatchObject({ en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)', ja: '日本語' });
+  expect(LOCALE_NATIVE_NAMES).toMatchObject({ en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)', de: 'Deutsch', fr: 'Français', ja: '日本語', ko: '한국어' });
 });
 
 describe('pseudoLocalize', () => {

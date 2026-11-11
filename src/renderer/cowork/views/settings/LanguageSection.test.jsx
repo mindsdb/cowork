@@ -65,4 +65,16 @@ describe('LanguageSection', () => {
     expect(screen.getByRole('combobox', { name: '言語' })).toHaveTextContent('日本語');
     expect(document.documentElement.lang).toBe('ja');
   });
+
+  it.each([
+    ['de', 'Einstellungen', 'Sprache', 'Deutsch'],
+    ['fr', 'Paramètres', 'Langue', 'Français'],
+    ['ko', '설정', '언어', '한국어'],
+  ])('switches to %s', async (locale, settings, language, nativeName) => {
+    render(<><SettingsTitle /><LanguageSection /></>);
+    await act(async () => { await setLanguagePreference(locale); });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(settings);
+    expect(screen.getByRole('combobox', { name: language })).toHaveTextContent(nativeName);
+    expect(document.documentElement.lang).toBe(locale);
+  });
 });

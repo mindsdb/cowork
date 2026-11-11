@@ -1,0 +1,599 @@
+{
+  "cardShell": {
+    "notice": "알림",
+    "question": "질문"
+  },
+  "chatView": {
+    "connectIntro": {
+      "clickToReopen": "클릭하여 양식 다시 열기",
+      "fillOutForm": "사이드 패널에서 양식을 작성하세요",
+      "cancel": "취소",
+      "disconnect": "연결 해제"
+    },
+    "attachment": {
+      "connector": "커넥터",
+      "image": "이미지",
+      "file": "파일"
+    },
+    "turn": {
+      "metaDateTime": "{month} {day}일, {time}",
+      "deleting": "삭제하는 중…",
+      "copyMessage": "메시지 복사",
+      "copyResponse": "응답 복사",
+      "agentFallback": "에이전트"
+    },
+    "incomplete": {
+      "spendCeiling": "조기 중단됨: 이 작업이 토큰 예산에 도달했습니다.",
+      "roundCap": "조기 중단됨: 이 작업이 단계 한도에 도달했습니다.",
+      "handbackBudget": "조기 중단됨: 작업이 끝나기 전에 자동 계속 횟수를 모두 사용했습니다.",
+      "handbackVerifierFailure": "조기 중단됨: 에이전트가 작업 완료를 확인하지 못했습니다.",
+      "handbackStuck": "조기 중단됨: 에이전트가 작업이 막혔다고 판단했습니다.",
+      "retryExhausted": "조기 중단됨: 작업이 계속 실패했습니다.",
+      "questionUnanswered": "조기 중단됨: 질문에 대한 답변이 없었습니다.",
+      "contentFilter": "조기 중단됨: 모델의 콘텐츠 필터가 응답을 차단했습니다.",
+      "fallback": "완료되기 전에 중단되었습니다."
+    },
+    "figureFile": {
+      "attachedFile": "첨부 파일",
+      "noteWithStep": "파일의 현재 상태를 보여 줍니다. 단계에서 읽은 내용은 ‘단계 열기’에서 확인할 수 있습니다.",
+      "note": "파일의 현재 상태를 보여 주며, 단계에서 읽은 내용과 다를 수 있습니다."
+    },
+    "artifactCard": {
+      "fallbackTitle": "아티팩트",
+      "showInFinder": "Finder에서 보기",
+      "showInFolder": "폴더에서 보기",
+      "openShared": "공유된 아티팩트 열기",
+      "download": "다운로드",
+      "open": "열기",
+      "openPreview": "미리 보기 열기",
+      "noPreviewNoLink": "이 아티팩트는 미리 볼 수 없으며 아직 공유 링크가 없습니다.",
+      "noDownloadableFile": "이 아티팩트에는 아직 다운로드할 수 있는 파일이 없습니다.",
+      "noFilePath": "파일 경로 없음",
+      "deletedStatus": "이 아티팩트는 삭제되었습니다.",
+      "noPathAvailable": "사용할 수 있는 아티팩트 파일 경로가 없습니다.",
+      "couldNotOpen": "아티팩트를 열 수 없습니다.",
+      "opened": "열었습니다.",
+      "shownInFinder": "Finder에 표시했습니다.",
+      "shownInFolder": "폴더에 표시했습니다.",
+      "couldNotShow": "아티팩트를 표시할 수 없습니다.",
+      "downloading": "다운로드하는 중…",
+      "preview": "미리 보기",
+      "previewInProduct": "{product}에서 이 아티팩트 미리 보기",
+      "openSharedTooltip": "공유된 아티팩트 열기",
+      "saveFileTooltip": "이 아티팩트의 파일 저장",
+      "previewPath": "{path} 미리 보기",
+      "downloadPath": "{path} 다운로드",
+      "actionTarget": "{action}: {target}",
+      "sharedLink": "공유 링크",
+      "sharedLinkTooltip": "새 탭에서 공유된 아티팩트 열기",
+      "openInDefaultApp": "기본 앱에서 열기",
+      "deletedAriaLabel": "삭제된 아티팩트: {title}",
+      "thumbnailAlt": "아티팩트 썸네일",
+      "deletedTitle": "이 아티팩트는 삭제되었습니다",
+      "liveArtifact": "라이브 아티팩트",
+      "deletedBadge": "삭제됨"
+    },
+    "kinds": {
+      "provider": "공급자",
+      "billing": "결제",
+      "usage": "사용량",
+      "connection": "연결",
+      "model": "모델",
+      "rateLimit": "요청 한도",
+      "attachment": "첨부 파일",
+      "conversation": "대화",
+      "agent": "에이전트",
+      "server": "서버"
+    },
+    "cards": {
+      "taskStopped": "작업이 중지됨",
+      "providerLimitBody": "공급자의 사용 한도에 도달했습니다. 다른 작업을 시작하기 전에 관리자에게 문의하세요.",
+      "addFunds": "잔액 충전",
+      "switchToAir": "MindsHub Air로 전환",
+      "balanceRanOut": "이 작업이 끝나기 전에 잔액이 모두 소진되었습니다. 다른 작업을 시작하기 전에 잔액을 충전하세요.",
+      "balanceEmptyAirLeft": "잔액이 없어 이 모델을 실행할 수 없습니다. MindsHub Air에는 아직 무료 제공량이 남아 있습니다.",
+      "providerUnavailableTitle": "공급자를 일시적으로 사용할 수 없습니다",
+      "providerPausedBody": "공급자가 요청을 일시 중지했습니다. 나중에 다시 시도하거나 관리자에게 문의하세요.",
+      "freeAirPausedTitle": "무료 MindsHub Air가 일시 중지되었습니다",
+      "connectProviderTitle": "채팅을 시작하려면 공급자를 연결하세요",
+      "providerSetupRequiredTitle": "공급자 설정이 필요합니다",
+      "connectProviderBody": "MindsHub로 시작하면 MindsHub Air 무료 제공량을 받고, 이후에는 사용한 만큼만 지불합니다. 또는 설정에서 직접 API 키를 추가하세요.",
+      "providerSetupRequiredBody": "작업을 시작하기 전에 운영자에게 모델 공급자 설정을 요청하세요.",
+      "startForFree": "무료로 시작",
+      "openSettings": "설정 열기",
+      "autoTopUpFailedTitle": "자동 충전 실패",
+      "autoTopUpFailedBody": "잔액을 충전하지 못했습니다. 작업이 계속 실행되도록 잔액을 충전하거나 결제 수단을 업데이트하세요.",
+      "rateLimitedTitle": "짧은 시간에 요청이 너무 많습니다",
+      "tryAgainIn": "{seconds}초 후 다시 시도",
+      "tryAgain": "다시 시도",
+      "adminSpendingLimitBody": "관리자가 설정한 지출 한도에 도달했습니다. 관리자에게 문의하세요.",
+      "budgetUsedUpTitle": "조직의 예산이 모두 소진되었습니다",
+      "viewBudgets": "예산 보기"
+    },
+    "usageAlert": {
+      "freeLow": "Air 무료 제공량 {percent} 남음",
+      "freeLowRefills": "Air 무료 제공량 {percent} 남음 · {time}에 충전",
+      "freeUsed": "Air 무료 제공량 모두 사용 · 이제 잔액에서 차감됨",
+      "freeUsedUntil": "Air 무료 제공량 모두 사용 · {time}까지 잔액에서 차감됨"
+    },
+    "reconnect": {
+      "couldNotReconnect": "다시 연결할 수 없습니다. 로그아웃한 후 다시 로그인해 보세요.",
+      "failed": "다시 연결하지 못했습니다.",
+      "cannotAuthTitle": "공급자 인증에 실패했습니다",
+      "reconnectedTitle": "다시 연결됨",
+      "reconnectTitle": "계속하려면 다시 연결하세요",
+      "signInAgainTitle": "다시 로그인하세요",
+      "updateKeyTitle": "API 키를 업데이트하세요",
+      "cannotAuthBody": "모델 공급자가 자격 증명을 거부했습니다. 운영자에게 공급자 설정을 확인해 달라고 요청하세요.",
+      "reconnectedBody": "MindsHub 세션이 새로 고쳐졌습니다. 계속하려면 메시지를 다시 보내세요.",
+      "reconnectBody": "MindsHub 세션이 더 이상 유효하지 않습니다. 다시 연결하여 계속하세요. 이 대화는 사라지지 않습니다.",
+      "signInAgainBody": "MindsHub 세션이 더 이상 유효하지 않습니다. 설정을 열어 다시 로그인하세요.",
+      "updateKeyBody": "{provider} API 키가 더 이상 유효하지 않습니다. 계속하려면 설정에서 키를 업데이트하세요.",
+      "updateKeyBodyGeneric": "공급자 API 키가 더 이상 유효하지 않습니다. 계속하려면 설정에서 키를 업데이트하세요.",
+      "reconnecting": "다시 연결하는 중…",
+      "reconnect": "다시 연결"
+    },
+    "model": {
+      "thisModel": "이 모델",
+      "restrictedTitle": "{model} 사용이 제한되었습니다",
+      "unavailableTitle": "지금은 {model}을(를) 사용할 수 없습니다",
+      "askOperatorBody": "운영자에게 설정된 모델과 액세스 권한을 확인해 달라고 요청하세요.",
+      "restrictedBody": "조직의 관리자가 이 모델을 제한했습니다. 설정에서 다른 모델을 선택하세요.",
+      "needsCreditsTitle": "{model}을(를) 사용하려면 크레딧이 필요합니다",
+      "needsCreditsBody": "이 모델을 사용할 크레딧이 부족합니다. 잔액을 충전한 후 사용하세요.",
+      "disabledBody": "워크스페이스에서 이 모델이 꺼져 있습니다. 설정에서 다른 모델을 선택하세요.",
+      "topUpBalance": "잔액 충전"
+    },
+    "overloaded": {
+      "theModelProvider": "모델 공급자",
+      "body": "{who}에서 일시적인 장애가 발생했으며 제때 복구되지 않았습니다. 잠시 후 다시 시도하세요.",
+      "withFailover": "{base} MindsHub는 이러한 공급자 장애를 자동으로 우회하므로 작업이 계속 실행됩니다.",
+      "title": "{who}에 일시적인 문제가 발생했습니다"
+    },
+    "header": {
+      "expandPanel": "패널 펼치기",
+      "collapsePanel": "패널 접기",
+      "apps": "앱",
+      "connectAppsAndData": "앱 및 데이터 연결",
+      "projects": "프로젝트",
+      "allProjects": "모든 프로젝트",
+      "openProject": "프로젝트 열기: {project}",
+      "taskMenu": "작업 메뉴"
+    },
+    "transcript": {
+      "loading": "로드하는 중…",
+      "loadEarlier": "이전 메시지 불러오기",
+      "thinking": "생각하는 중…",
+      "connect": "연결",
+      "streaming": "응답하는 중…",
+      "deletingExchange": "선택한 대화 항목을 삭제하는 중입니다."
+    },
+    "queue": {
+      "status": "{count}개 대기 중 · {agent} 대기 중",
+      "remove": "대기열에서 제거"
+    },
+    "composer": {
+      "replyPlaceholder": "답장…"
+    },
+    "errors": {
+      "reference": "참조: {id}",
+      "modelNotFoundNamedTitle": "‘{model}’은(는) 사용할 수 있는 모델이 아닙니다",
+      "modelNotFoundTitle": "해당 모델을 사용할 수 없습니다",
+      "modelNotFoundOperatorBody": "공급자가 설정된 모델을 제공할 수 없습니다. 운영자에게 모델 설정을 확인해 달라고 요청하세요.",
+      "modelNotFoundNamedBody": "설정에 지정된 ‘{model}’은(는) 이 공급자가 제공하지 않는 모델이어서 아무것도 전송되지 않았습니다. 설정의 목록에서 모델을 선택하세요.",
+      "modelNotFoundBody": "선택한 모델이 삭제되었거나 더 이상 제공되지 않습니다. 설정에서 다른 모델로 전환하세요.",
+      "imageFormatTitle": "이미지를 읽을 수 없습니다",
+      "imageFormatBody": "첨부한 이미지가 모델에서 처리할 수 없는 형식입니다. PNG 또는 JPEG로 변환한 후 다시 보내세요.",
+      "contentRecoveryTitle": "이 대화의 문제를 해결했습니다",
+      "contentRecoveryBody": "내부 형식 문제로 이 대화의 이전 이미지를 모델에 보낼 수 없었습니다. 해당 이미지는 자동으로 제거되었으니 계속 진행하셔도 됩니다.",
+      "contentTooLargeTitle": "이미지가 너무 큽니다",
+      "billingUnavailableTitle": "결제를 일시적으로 사용할 수 없습니다",
+      "billingUnavailableBody": "MindsHub에서 이 요청의 결제를 확인하지 못했습니다. 일시적인 문제이니 잠시 후 다시 시도하세요.",
+      "providerUnauthorizedBody": "공급자가 이 요청을 승인하지 못했습니다. 잠시 후 다시 시도하세요.",
+      "workerUnresponsiveTitle": "에이전트가 시작되지 않았습니다",
+      "workerUnresponsiveBody": "이번 턴이 에이전트에 전달되지 않아 아무것도 실행되지 않았습니다. 요청의 문제가 아니라 저희 쪽 오류입니다. 잠시 후 다시 시도하세요.",
+      "modelTimeoutTitle": "모델이 응답하지 않았습니다",
+      "modelTimeoutBody": "모델의 응답이 멈춰 이번 턴이 종료되었습니다. 다시 시도하세요. 문제가 계속되면 설정에서 다른 모델을 선택하세요.",
+      "modelTimeoutOperatorBody": "모델의 응답이 멈춰 이번 턴이 종료되었습니다. 다시 시도하세요. 문제가 계속되면 운영자에게 모델 설정을 확인해 달라고 요청하세요.",
+      "turnLostTitle": "답변이 중간에 끊겼습니다",
+      "turnLostBody": "답변이 끝나기 전에 서버가 중지되어 여기에서 끝났습니다. 질문에는 문제가 없었습니다. 서버가 복구되면 다시 시도하세요.",
+      "stalledTitle": "응답이 멈췄습니다",
+      "stalledBody": "{product}에서 에이전트의 응답을 더 이상 받지 못하고 있습니다. 답변이 아직 진행 중일 수 있으니 완료될 때까지 기다린 후 다시 보내세요.",
+      "serverBusyTitle": "서버가 사용 중입니다",
+      "coworkUnavailableTitle": "서버가 응답하지 않습니다"
+    }
+  },
+  "composer": {
+    "placeholder": "안녕하세요, 오늘은 무엇을 도와드릴까요?",
+    "removeMode": "{mode} 모드 제거",
+    "attachment": {
+      "connector": "커넥터",
+      "image": "이미지",
+      "file": "파일",
+      "queued": "대기 중",
+      "remove": "첨부 파일 제거"
+    },
+    "claudeCodeNotDetected": "Claude-Code — 이 컴퓨터에서 찾을 수 없음",
+    "model": {
+      "operatorDefaultTitle": "운영자가 설정한 모델로 실행됩니다",
+      "routerTitle": "이 계정에 설정된 모델로 자동 라우팅됩니다",
+      "routerSettings": "라우터 설정",
+      "fixed": "이 작업의 모델은 고정되어 있습니다",
+      "model": "모델",
+      "connectProvider": "모델을 선택하려면 설정에서 공급자를 연결하세요",
+      "choose": "모델 선택",
+      "select": "모델 선택",
+      "effort": "추론 수준"
+    },
+    "slash": {
+      "openFilePicker": "파일 선택기 열기",
+      "ariaLabel": "스킬 및 작업"
+    },
+    "errors": {
+      "attachFiles": "파일을 첨부할 수 없습니다.",
+      "addGoogleDriveFiles": "Google Drive 파일을 추가할 수 없습니다.",
+      "updateDatasource": "데이터 소스 설정을 업데이트할 수 없습니다.",
+      "send": "보낼 수 없습니다."
+    },
+    "dropFiles": "파일을 놓아 첨부",
+    "addContext": "컨텍스트 추가",
+    "menu": {
+      "attachFiles": "파일 또는 사진 첨부",
+      "openingGoogleDrive": "Google Drive를 여는 중…",
+      "addFromGoogleDrive": "Google Drive에서 파일 추가",
+      "addFromSharePoint": "SharePoint에서 파일 추가",
+      "browserTitle": "이 작업에서 {agent}이(가) 공유 브라우저를 사용할 수 있습니다. 끄면 다음 메시지부터 적용됩니다.",
+      "browser": "브라우저",
+      "browserOff": "이 작업에서 브라우저 끄기",
+      "browserOn": "이 작업에서 브라우저 켜기",
+      "connectors": "커넥터",
+      "connectorsHint": "커넥터를 끄면 이 채팅의 다음 메시지부터 적용됩니다.",
+      "noConnectors": "아직 커넥터가 없습니다. {link}에서 추가하세요.",
+      "connectAppsAndData": "앱 및 데이터 연결",
+      "enableConnector": "이 채팅에서 {name} 사용",
+      "disableConnector": "이 채팅에서 {name} 사용 안 함"
+    },
+    "stop": "생성 중지",
+    "send": "보내기",
+    "project": {
+      "fixed": "이 작업의 프로젝트는 고정되어 있습니다",
+      "none": "프로젝트 없음"
+    },
+    "chooseHarness": "하네스 선택"
+  },
+  "attachmentThumbnail": {
+    "open": "이미지 열기",
+    "openNamed": "이미지 열기: {name}"
+  },
+  "askUser": {
+    "announcement": "에이전트가 질문하고 있습니다",
+    "hintCustom": "…또는 아래에 직접 답변을 입력하세요.",
+    "hintSelectOnly": "위에서 옵션을 선택하세요. 직접 입력한 답변은 받을 수 없습니다. 다른 내용을 입력하려면 건너뛰세요.",
+    "skip": "건너뛰기",
+    "send": "보내기",
+    "skipped": "건너뛰었습니다.",
+    "timedOut": "답변 없음 — 시간이 초과되었습니다.",
+    "answered": "답변:",
+    "noLongerActive": "더 이상 유효하지 않은 질문입니다."
+  },
+  "codingTerminal": {
+    "unavailable": "이 빌드에서는 내장 터미널을 사용할 수 없습니다.",
+    "couldNotStart": "Claude Code를 시작할 수 없습니다.",
+    "exited": "Claude Code가 종료되었습니다(코드 {code})."
+  },
+  "turnActions": {
+    "copy": "복사",
+    "editTooltip": "편집 후 다시 보내기",
+    "editAriaLabel": "이 메시지를 편집하여 다시 보내기",
+    "copied": "복사됨",
+    "delete": "삭제",
+    "copyFailed": "복사할 수 없습니다. 다시 시도하세요."
+  },
+  "minimap": {
+    "ariaLabel": "대화 턴",
+    "message": "메시지",
+    "goTo": "{index}번 메시지로 이동: {snippet}"
+  },
+  "userTurn": {
+    "showMore": "더 보기",
+    "showLess": "간단히 보기"
+  },
+  "scroller": {
+    "scrollToLatest": "최신 메시지로 이동"
+  },
+  "duration": {
+    "seconds": "{seconds}초",
+    "minutesSeconds": "{minutes}분 {seconds}초",
+    "hoursMinutes": "{hours}시간 {minutes}분",
+    "milliseconds": "{ms}ms"
+  },
+  "thinking": {
+    "workingFor": "{duration} 동안 작업 중",
+    "hide": "사고 과정 숨기기",
+    "show": "사고 과정 보기",
+    "thinking": "생각하는 중…",
+    "workedFor": "{duration} 동안 작업함",
+    "thoughtProcess": "사고 과정",
+    "timedOutTitle": "{count, plural, other {셀 #개의 시간이 초과되어 에이전트가 더 작은 단계로 다시 시도했습니다. 펼쳐서 어떤 셀인지 확인하세요.}}",
+    "timedOutBadge": "{count}개 시간 초과",
+    "cellTimedOutTitle": "이 셀은 시간이 초과되었거나 응답이 없어 중지되었습니다. 다음 셀은 더 작게 만들거나 작업을 여러 셀로 나누어야 합니다.",
+    "cellTimedOut": "시간 초과",
+    "cellErrorTitle": "이 셀은 오류로 종료되었습니다.",
+    "artifactBadge": "아티팩트"
+  },
+  "phaseProgress": {
+    "thinking": {
+      "1": "충분히 생각함",
+      "2": "전체 구조를 파악함",
+      "3": "단계를 정리함",
+      "4": "접근 방향을 정함",
+      "5": "방법을 구상함"
+    },
+    "working": {
+      "1": "차근차근 처리함",
+      "2": "숫자를 계산함",
+      "3": "핵심 작업을 마침",
+      "4": "결과를 취합함",
+      "5": "단서를 따라감"
+    },
+    "reasoning": {
+      "1": "답변을 마무리함",
+      "2": "내용을 하나로 엮음",
+      "3": "결과를 정리함",
+      "4": "응답을 작성함",
+      "5": "읽기 쉽게 다듬음"
+    },
+    "artifact": "아티팩트를 완성함",
+    "empty": "에이전트가 작업하는 동안 여기에 단계가 표시됩니다."
+  },
+  "scratchpad": {
+    "untitled": "제목 없음",
+    "toolCall": "도구 호출",
+    "title": "스크래치패드",
+    "noSteps": "이 턴에는 단계가 없습니다.",
+    "stepOf": "단계 {index}/{total}",
+    "reason": "추론:",
+    "exec": "실행:",
+    "duration": "소요 시간:",
+    "arguments": "인수",
+    "code": "코드",
+    "args": "인수",
+    "packages": "패키지:",
+    "output": "출력",
+    "stderr": "Stderr",
+    "hideArgs": "인수 숨기기",
+    "showArgs": "인수 보기",
+    "hideCode": "코드 숨기기",
+    "showCode": "코드 보기"
+  },
+  "figure": {
+    "kinds": {
+      "query": "쿼리",
+      "file": "파일",
+      "web": "웹 페이지",
+      "step": "단계"
+    },
+    "states": {
+      "query": "쿼리에서 가져옴",
+      "file": "파일에서 가져옴",
+      "web": "웹에서 가져옴",
+      "step": "단계에서 가져옴",
+      "none": "출처 없음",
+      "earlierAnswer": "이전 답변에서 반복됨"
+    },
+    "tableHint": "화살표 키로 이 표의 수치 사이를 이동할 수 있습니다.",
+    "copied": "복사됨",
+    "copyFailed": "복사할 수 없음",
+    "copy": "복사",
+    "opensInNewWindow": " (새 창에서 열림)",
+    "page": "{page}페이지",
+    "copySql": "SQL 복사",
+    "request": "요청",
+    "copyRequest": "요청 복사",
+    "viewFile": "파일 보기",
+    "openStep": "단계 열기",
+    "ariaLabel": "{figure}, {state}",
+    "popoverTitle": "{figure}의 출처"
+  },
+  "markdown": {
+    "artifactLocalLinkTitle": "이 파일은 라이브 아티팩트 패널에 있습니다. 해당 패널에서 열거나 다운로드하세요",
+    "linkBlocked": "링크 차단됨: 지원되지 않는 URL 스킴",
+    "opensInNewWindow": " (새 창에서 열림)",
+    "copied": "복사됨",
+    "copy": "복사",
+    "scrollSideways": "가로로 스크롤하면 줄의 나머지 부분을 볼 수 있습니다.",
+    "copyCode": "코드 복사",
+    "copyLanguageCode": "{language} 코드 복사",
+    "form": {
+      "parseErrorTitle": "양식을 구문 분석하지 못했습니다",
+      "parseErrorSubtitle": "에이전트가 보낸 양식 사양이 유효한 JSON이 아닙니다.",
+      "askRetry": "에이전트에게 다시 시도 요청",
+      "dismiss": "닫기",
+      "preparing": "양식 준비 중…",
+      "specDidNotParse": "양식 사양을 구문 분석하지 못했습니다.",
+      "useSidePanel": "사이드 패널에서 에이전트에게 다시 시도를 요청하세요.",
+      "openInSidePanel": "사이드 패널에서 열기",
+      "form": "양식",
+      "fillItOut": " — 사이드 패널에서 작성하세요 →"
+    },
+    "chart": {
+      "invalidSpec": "잘못된 차트 사양",
+      "intentUnsupported": "`chart` 인텐트 형식에는 백엔드 컴파일 엔드포인트가 필요합니다(아직 연결되지 않음). 전체 구성에는 `chartjs`를 사용하세요.",
+      "missingType": "차트 유형 누락",
+      "unsupportedType": "지원되지 않는 차트 유형: ‘{type}’. 지원되는 유형: {supported}.",
+      "invalidJson": "차트 사양의 JSON이 잘못되었습니다",
+      "error": "오류: {error}"
+    }
+  },
+  "taskModes": {
+    "slides": {
+      "pillLabel": "슬라이드 만들기",
+      "chipLabel": "슬라이드",
+      "placeholder": "프레젠테이션 주제를 설명하세요",
+      "samples": {
+        "0": "분기별 영업 실적 대시보드 만들기",
+        "1": "경쟁 환경과 포지셔닝 분석하기",
+        "2": "주간 팀 현황 보고 자동화하기",
+        "3": "제품 출시를 위한 시장 기회 조사하기",
+        "4": "지난주 업데이트를 바탕으로 이번 주 업데이트 초안 작성하기"
+      }
+    },
+    "website": {
+      "pillLabel": "웹사이트 만들기",
+      "chipLabel": "웹사이트",
+      "placeholder": "만들고 싶은 웹사이트를 설명하세요",
+      "samples": {
+        "0": "소규모 비즈니스용 온라인 스토어 만들기",
+        "1": "제품 출시용 랜딩 페이지 만들기",
+        "2": "대시보드 웹사이트 만들기",
+        "3": "포트폴리오 웹사이트 만들기",
+        "4": "회사 블로그 만들기"
+      }
+    },
+    "apps": {
+      "pillLabel": "앱 개발",
+      "chipLabel": "앱 개발",
+      "chipNoun": "앱",
+      "placeholder": "만들고 싶은 앱을 설명하세요",
+      "samples": {
+        "0": "신규 직원 온보딩 워크플로 앱 만들기",
+        "1": "경비 보고 및 승인 앱 만들기",
+        "2": "체크인 기능이 있는 운동 기록 앱 만들기",
+        "3": "학습 계획 및 진도 관리 도구 만들기",
+        "4": "고객 피드백 수집 앱 만들기",
+        "5": "견적서 또는 청구서 생성기 만들기",
+        "6": "오류를 설명하고 해결 방법 제안하기",
+        "7": "습관 트래커 만들기"
+      }
+    },
+    "spreadsheet": {
+      "pillLabel": "스프레드시트",
+      "chipLabel": "스프레드시트",
+      "placeholder": "분석할 스프레드시트를 업로드하거나 새로 시작하세요",
+      "samples": {
+        "0": "프로젝트 작업을 전체 수명 주기에 걸쳐 깔끔하게 추적하기",
+        "1": "북미 AI 콘퍼런스 일정표 정리하기",
+        "2": "인수 실사 체크리스트 만들기",
+        "3": "Hugging Face 데이터로 주요 VLM 모델 비교하기",
+        "4": "투자 현금 흐름의 IRR 계산하기",
+        "5": "스프레드시트를 정리하고 차트로 만들기"
+      }
+    },
+    "visualization": {
+      "pillLabel": "시각화",
+      "chipLabel": "시각화",
+      "placeholder": "데이터를 업로드하고 Cowork에 시각화 방법을 알려 주세요",
+      "samples": {
+        "0": "주간 영업 활동을 히트맵으로 보여 주기",
+        "1": "고객 이탈 분석 및 인사이트 도출하기",
+        "2": "부서별 월간 KPI 추적하기",
+        "3": "시장 세그먼트별 경쟁 환경 분석하기"
+      }
+    },
+    "wide-research": {
+      "pillLabel": "광범위 리서치",
+      "chipLabel": "광범위 리서치",
+      "placeholder": "병렬로 조사하고 싶은 복잡한 프로젝트를 설명하세요",
+      "samples": {
+        "0": "포괄적인 시장 규모 분석 수행하기",
+        "1": "심층 경쟁사 벤치마킹 조사 수행하기",
+        "2": "신기술 동향 조사하기",
+        "3": "투자 실사 조사 수행하기",
+        "4": "고객 페르소나와 여정 지도 조사하기",
+        "5": "문서를 요약하고 답장 초안 작성하기",
+        "6": "내 컴퓨터에 맞는 로컬 모델 고르기",
+        "7": "이번 주 할 일 검토하기"
+      }
+    },
+    "games": {
+      "pillLabel": "게임 만들기",
+      "chipLabel": "게임 만들기",
+      "chipNoun": "게임",
+      "placeholder": "만들고 싶은 게임을 설명하세요",
+      "samples": {
+        "0": "클래식 스네이크 게임",
+        "1": "네온 블록 떨어뜨리기",
+        "2": "반딧불이 기억력 게임",
+        "3": "별자리 합치기 2048",
+        "4": "종이비행기 탭 게임"
+      }
+    },
+    "examples": {
+      "chipLabel": "예제",
+      "placeholder": "예제를 고르거나 직접 작업을 설명하세요"
+    },
+    "samplePrompts": "샘플 프롬프트",
+    "pillsAriaLabel": "작업 유형"
+  },
+  "taskRows": {
+    "openProject": "{project} 열기",
+    "untitled": "제목 없는 작업",
+    "actionsFor": "{title} 작업 메뉴",
+    "actionsForUntitled": "제목 없는 작업의 메뉴",
+    "running": "실행 중",
+    "moveToProject": "프로젝트로 이동…",
+    "delete": "삭제",
+    "scheduledTask": "예약된 작업",
+    "runs": "{count, plural, other {#회 실행}}",
+    "openLatestRun": "최근 실행 열기"
+  },
+  "taskList": {
+    "title": "작업",
+    "emptyTitle": "이 프로젝트에는 아직 작업이 없습니다",
+    "emptyDescription": "위에 프롬프트를 입력하여 작업을 시작하세요."
+  },
+  "browser": {
+    "close": "브라우저 닫기",
+    "shared": "공유 브라우저",
+    "title": "브라우저",
+    "unreachable": "브라우저에 연결할 수 없습니다",
+    "stopped": {
+      "keepsClosing": "브라우저 화면이 계속 닫힙니다. 잠시 후 다시 시도하세요.",
+      "noSlotTitle": "사용 가능한 브라우저가 없습니다",
+      "noSlotDescription": "지금은 모든 브라우저가 사용 중입니다. 몇 분 후에 다시 시도하세요.",
+      "taskCapTitle": "브라우저가 가득 찼습니다",
+      "taskCapDescription": "브라우저에 이미 작업 {count}개가 열려 있습니다."
+    },
+    "webPaneNote": "이 창에 표시되는 내용과 여기에 입력하는 내용(비밀번호 포함)은 사이트와 주고받는 과정에서 Cloudflare와 MindsDB의 브라우저 서비스를 거칩니다. {agent}이(가) 읽은 페이지 내용과 스크린샷은 이번 턴을 처리하는 모델 공급자에게 전송됩니다.",
+    "unexpectedAddress": "브라우저가 예상치 못한 주소를 반환했습니다.",
+    "couldNotOpen": "브라우저를 열 수 없습니다.",
+    "hint": "{agent}와(과) 함께 사용하는 브라우저입니다. 클릭하면 직접 제어할 수 있습니다.",
+    "reload": "브라우저 화면 새로 고침",
+    "tryAgain": "다시 시도",
+    "slowTitle": "브라우저가 평소보다 오래 걸리고 있습니다",
+    "slowDescription": "아직 시작하는 중일 수 있습니다. 다시 시도하거나, 창을 닫고 1분 후에 다시 오세요.",
+    "starting": "브라우저를 시작하는 중…",
+    "signIn": {
+      "title": "{site}에서 로그인을 요청합니다",
+      "hint": "사용자 이름과 비밀번호는 이 사이트에만 전송됩니다.",
+      "username": "사용자 이름",
+      "password": "비밀번호",
+      "cancel": "취소",
+      "submit": "로그인"
+    },
+    "download": {
+      "where": "{folder}의 다운로드 폴더",
+      "waiting": "이 페이지에서 {name}을(를) {where}에 다운로드하려고 합니다.",
+      "progressing": "{name} 다운로드 중…",
+      "completed": "{name}이(가) {where}에 저장되었습니다.",
+      "cancelled": "{name}을(를) 저장하지 않았습니다.",
+      "failed": "{name}을(를) 다운로드하지 못했습니다.",
+      "save": "저장",
+      "dontSave": "저장 안 함"
+    },
+    "aNewTab": "새 탭",
+    "yourTurn": "{site}에서 직접 진행할 차례입니다. 완료를 클릭하면 {agent}에게 다시 넘깁니다.",
+    "yourTurnReason": "{site}에서 직접 진행할 차례입니다: {reason}. 완료를 클릭하면 {agent}에게 다시 넘깁니다.",
+    "agentUsing": "{agent}이(가) 사용 중입니다. 직접 사용하려면 제어권을 가져오세요.",
+    "pageReadsNote": "{agent}이(가) 읽은 페이지 내용과 스크린샷은 이번 턴을 처리하는 모델 공급자에게 전송됩니다.",
+    "back": "뒤로",
+    "forward": "앞으로",
+    "reloadPage": "페이지 새로 고침",
+    "done": "완료",
+    "takeOver": "제어하기",
+    "newTab": "새 탭",
+    "closedTitle": "이 작업의 브라우저가 닫혔습니다",
+    "closedDescription": "{agent}이(가) 필요할 때 다시 엽니다.",
+    "squeezed": "페이지를 보려면 창을 더 크게 만드세요"
+  }
+}

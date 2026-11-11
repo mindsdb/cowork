@@ -1,0 +1,384 @@
+{
+  "nav": {
+    "title": "Einstellungen",
+    "ariaLabel": "Einstellungsbereiche",
+    "groups": {
+      "General": "Allgemein",
+      "Code": "Code",
+      "App": "App",
+      "System": "System"
+    },
+    "items": {
+      "agent": "Agent",
+      "codingAgent": "Coding-Agent",
+      "computers": "Computer",
+      "appearance": "Darstellung",
+      "desktop": "Desktop",
+      "channels": "Kanäle",
+      "updates": "Updates",
+      "backend": "Backend",
+      "usage": "Nutzung",
+      "account": "Konto"
+    }
+  },
+  "header": {
+    "signIn": "Anmelden",
+    "signInTooltip": "Mit MindsHub anmelden, um verwaltete Modelle zu nutzen"
+  },
+  "autoSave": {
+    "saving": "Wird gespeichert…",
+    "failed": "Speichern fehlgeschlagen",
+    "saved": "Gespeichert",
+    "savedAutomatically": "Änderungen werden automatisch gespeichert."
+  },
+  "language": {
+    "title": "Sprache",
+    "subtitle": "Die Sprache für Menüs, Schaltflächen und Meldungen. Antworten folgen der Sprache, in der Sie schreiben.",
+    "ariaLabel": "Sprache",
+    "matchSystem": "Wie im System ({language})"
+  },
+  "appearance": {
+    "title": "Darstellung",
+    "style": {
+      "title": "Stil",
+      "lockedSubtitle": "Von dieser Bereitstellung festgelegt. Hell und Dunkel wählen Sie weiterhin selbst.",
+      "subtitle": "Normal, 8-Bit oder ein eigener Look mit „Benutzerdefiniert“. Lässt sich mit Hell und Dunkel kombinieren.",
+      "ariaLabel": "Stil",
+      "optionAriaLabel": "Stil {name}"
+    },
+    "skins": {
+      "normal": {
+        "label": "Normal",
+        "title": "Standard-Look verwenden."
+      },
+      "8bit": {
+        "label": "8-Bit",
+        "title": "Retro-Look im 8-Bit-Stil verwenden."
+      },
+      "custom": {
+        "label": "Benutzerdefiniert",
+        "title": "Eigenen Look gestalten."
+      }
+    },
+    "theme": {
+      "title": "Design",
+      "subtitle": "Hell oder dunkel – steuert auch den animierten Hintergrund.",
+      "ariaLabel": "Design",
+      "light": "Hell",
+      "lightAriaLabel": "Helles Design",
+      "lightHint": "Helles Design verwenden.",
+      "dark": "Dunkel",
+      "darkAriaLabel": "Dunkles Design",
+      "darkHint": "Dunkles Design verwenden."
+    },
+    "accent": {
+      "title": "Akzentfarbe",
+      "subtitle": "Schaltflächen, Hervorhebungen, Fokus – die Markenfarbe Ihres Designs.",
+      "ariaLabel": "Benutzerdefinierte Akzentfarbe"
+    },
+    "background": {
+      "default": "Standard",
+      "lightTitle": "Hintergrund – heller Modus",
+      "lightSubtitle": "Wählen Sie eine Grundfarbe für den hellen Modus – Flächen und Textfarbtöne werden daraus abgeleitet – oder verwenden Sie den Standard.",
+      "lightAriaLabel": "Benutzerdefinierte Hintergrundfarbe – heller Modus",
+      "lightDefaultAriaLabel": "Standardhintergrund für den hellen Modus",
+      "darkTitle": "Hintergrund – dunkler Modus",
+      "darkSubtitle": "Wählen Sie eine Grundfarbe für den dunklen Modus – Flächen und Textfarbtöne werden daraus abgeleitet – oder verwenden Sie den Standard.",
+      "darkAriaLabel": "Benutzerdefinierte Hintergrundfarbe – dunkler Modus",
+      "darkDefaultAriaLabel": "Standardhintergrund für den dunklen Modus"
+    },
+    "corners": {
+      "title": "Ecken",
+      "subtitle": "Wie kantig die Flächen wirken.",
+      "ariaLabel": "Eckenradius",
+      "square": "Eckig",
+      "squareAriaLabel": "Eckige Ecken",
+      "squareHint": "Scharfe Pixelecken.",
+      "soft": "Weich",
+      "softAriaLabel": "Weiche Ecken",
+      "softHint": "Leicht abgerundet.",
+      "round": "Rund",
+      "roundAriaLabel": "Runde Ecken",
+      "roundHint": "Vollständig abgerundet."
+    },
+    "typeface": {
+      "title": "Schriftart",
+      "subtitle": "Standardschrift der Oberfläche oder überall Monospace für Terminal-Feeling.",
+      "ariaLabel": "Benutzerdefinierte Schriftart",
+      "standard": "Standard",
+      "standardAriaLabel": "Standardschrift",
+      "standardHint": "Inter für Oberflächentext.",
+      "mono": "Mono",
+      "monoAriaLabel": "Monospace-Schrift",
+      "monoHint": "Überall JetBrains Mono."
+    },
+    "scanlines": {
+      "title": "Scanlines",
+      "subtitle": "Eine dezente CRT-Scanline-Überlagerung über der gesamten App.",
+      "ariaLabel": "Scanline-Überlagerung"
+    },
+    "greeting": {
+      "title": "Begrüßung",
+      "subtitle": "Der Text, der angezeigt wird, wenn Sie eine neue Aufgabe beginnen.",
+      "hint": "Wird über dem Eingabefeld angezeigt, wenn Sie eine neue Aufgabe beginnen.",
+      "ariaLabel": "Begrüßungstext"
+    },
+    "sidebarTitle": {
+      "title": "Seitenleistentitel",
+      "subtitle": "Wird oben im linken Navigationsbereich angezeigt. Leer lassen für den Standard, {product}.",
+      "hint": "Ersetzt den {product}-Schriftzug im Navigationsbereich.",
+      "ariaLabel": "Text des Seitenleistentitels"
+    },
+    "sidebarTitleColor": {
+      "title": "Farbe des Seitenleistentitels",
+      "subtitle": "Wählen Sie eine Farbe für den Seitenleistentitel oder übernehmen Sie die Standard-Textfarbe des Designs.",
+      "ariaLabel": "Farbe des Seitenleistentitels",
+      "follow": "Wie Design",
+      "followAriaLabel": "Farbe des Designs übernehmen"
+    },
+    "sidebarLogo": {
+      "title": "Seitenleistenlogo",
+      "subtitle": "Ein Symbol neben dem Seitenleistentitel. PNG, JPG oder SVG, unter 300 KB.",
+      "change": "Logo ändern",
+      "upload": "Logo hochladen",
+      "remove": "Entfernen",
+      "tooLarge": "Das Logo muss kleiner als 300 KB sein."
+    },
+    "favicon": {
+      "title": "Browser-Tab-Symbol",
+      "subtitle": "PNG, ICO, SVG oder WEBP, unter 100 KB. Am besten eignet sich ein quadratisches Bild mit mindestens 32 × 32 Pixeln.",
+      "previewAlt": "Vorschau des Browser-Tab-Symbols",
+      "change": "Symbol ändern",
+      "upload": "Symbol hochladen",
+      "remove": "Entfernen",
+      "removeAriaLabel": "Browser-Tab-Symbol entfernen",
+      "fileAriaLabel": "Datei für das Browser-Tab-Symbol",
+      "wrongType": "Wählen Sie ein PNG-, ICO-, SVG- oder WEBP-Bild.",
+      "tooLarge": "Das Browser-Tab-Symbol muss kleiner als 100 KB sein.",
+      "unreadable": "Dieses Bild konnte nicht gelesen werden. Versuchen Sie eine andere Datei."
+    },
+    "figureSources": {
+      "title": "Herkunft von Zahlen anzeigen",
+      "subtitle": "Jede Zahl in einer Antwort mit dem Schritt unterstreichen, aus dem sie stammt, und Zahlen markieren, die kein Schritt geliefert hat."
+    },
+    "animatedBackground": {
+      "title": "Animierter Hintergrund",
+      "subtitle": "Animiertes Punktraster hinter der App statt einer einfarbigen Fläche."
+    },
+    "counters": {
+      "title": "Zähler im Navigationsbereich anzeigen",
+      "subtitle": "Anzahl-Badges bei Projekte / Geplant / Artefakte / Verbundene Apps sowie die verstrichene Zeit in jeder Zeile unter „Zuletzt verwendet“.",
+      "ariaLabel": "Zähler im Navigationsbereich"
+    },
+    "themeToggle": {
+      "title": "Schaltfläche für Design-Wechsel",
+      "subtitle": "Hell/Dunkel-Umschalter auf der Anzeige-Schaltfläche in der Fensterecke."
+    },
+    "styleToggle": {
+      "title": "Schaltfläche für 8-Bit-Stil",
+      "subtitle": "Normal/8-Bit-Umschalter auf derselben Schaltfläche. Sind beide aktiv, öffnet die Schaltfläche die Anzeigeeinstellungen."
+    }
+  },
+  "mobile": {
+    "back": "Zurück zu den Einstellungen",
+    "close": "Einstellungen schließen"
+  },
+  "footer": {
+    "hint": {
+      "missingNames": "Jeder benutzerdefinierte Anbieter braucht einen Namen",
+      "saving": "Wird gespeichert…",
+      "noChanges": "Keine ungespeicherten Änderungen",
+      "save": "Änderungen speichern.",
+      "retest": "Fehlgeschlagene Anbieter erneut testen.",
+      "saveAndTest": "Änderungen speichern und Anbietertests erneut ausführen."
+    },
+    "status": {
+      "testing": "Konfiguration wird getestet…",
+      "saving": "Einstellungen werden gespeichert…",
+      "testPassed": "Test bestanden – Anbieter, Modell und Anmeldedaten sind in Ordnung.",
+      "saved": "Einstellungen gespeichert.",
+      "testProblem": "Beim Test ist ein Problem aufgetreten.",
+      "configProblem": "Bei der Konfiguration ist ein Problem aufgetreten.",
+      "applyOnSave": "Änderungen werden beim Speichern übernommen."
+    },
+    "button": {
+      "saving": "Wird gespeichert…",
+      "save": "Einstellungen speichern",
+      "saved": "Gespeichert"
+    },
+    "errors": {
+      "saveFailed": "Die Einstellungen konnten nicht gespeichert werden.",
+      "verifyFailed": "Einstellungen gespeichert, aber die Überprüfung ist fehlgeschlagen: {error}",
+      "checkFailed": "Die Konfiguration konnte nicht geprüft werden.",
+      "validateFailed": "Die Einstellungen konnten nicht validiert werden."
+    }
+  },
+  "fields": {
+    "clearTooltip": "Leeren (wird mit „Einstellungen speichern“ übernommen)",
+    "clearAriaLabel": "Wert leeren"
+  },
+  "apiKey": {
+    "ariaLabel": "API-Schlüssel",
+    "namedAriaLabel": "API-Schlüssel für {name}",
+    "revealFirst": "Zeigen Sie den Schlüssel zuerst an, um ihn zu kopieren",
+    "copied": "Kopiert",
+    "copyFailed": "Kopieren fehlgeschlagen – markieren Sie den Schlüssel und kopieren Sie ihn manuell",
+    "copy": "In die Zwischenablage kopieren",
+    "copiedAriaLabel": "In die Zwischenablage kopiert",
+    "copyAriaLabel": "Schlüssel in die Zwischenablage kopieren",
+    "hide": "Schlüssel ausblenden",
+    "revealing": "Wird angezeigt…",
+    "reveal": "Schlüssel anzeigen",
+    "clearTooltip": "Diesen Schlüssel leeren (wird mit „Einstellungen speichern“ übernommen)",
+    "clearAriaLabel": "Schlüssel leeren"
+  },
+  "budget": {
+    "fieldTitle": "{label} ({min}–{max}, Standard: {fallback}{unit, select, million { Mio. Tokens} other {}})",
+    "millionTokens": "Mio. Tokens",
+    "safetyLimit": "Sicherheitslimit",
+    "noLimitHint": "kein Limit – es gelten nur die Obergrenzen für Schritte und automatisches Fortsetzen",
+    "default": "Standard: {value}",
+    "or": "– oder –"
+  },
+  "probe": {
+    "byok": "Oder fügen Sie unten einen eigenen Anbieter und API-Schlüssel hinzu.",
+    "noCredits": "Kein Guthaben verfügbar.",
+    "topUp": "Guthaben aufladen →",
+    "addFunds": "Guthaben aufladen →",
+    "slowDown": "{sentence} Das liegt nicht am Guthaben.",
+    "budgetReached": "Das Budget Ihrer Organisation ist aufgebraucht. {detail}",
+    "viewBudgetsArrow": "Budgets anzeigen →"
+  },
+  "providers": {
+    "title": "LLM-Anbieter",
+    "unavailable": "Der konfigurierte Anbieter ist nicht verfügbar. Versuchen Sie es erneut oder wenden Sie sich an Ihren Administrator.",
+    "status": {
+      "connected": "verbunden",
+      "unableToConnect": "Verbindung nicht möglich",
+      "testing": "wird getestet…",
+      "notTested": "nicht getestet"
+    },
+    "statusTitle": {
+      "signedIn": "Über die MindsHub-Anmeldung verbunden.",
+      "passed": "Letzter Test bestanden",
+      "passedDetail": "Letzter Test bestanden ({detail})",
+      "failed": "Letzter Test fehlgeschlagen",
+      "failedDetail": "Letzter Test fehlgeschlagen: {detail}",
+      "testing": "Wird getestet…",
+      "notTested": "Noch nicht getestet – speichern Sie die Einstellungen und führen Sie einen Test aus.",
+      "notTestedNoTests": "Die Verbindung zum Anbieter wurde nicht getestet."
+    },
+    "desc": {
+      "mindsCloud": "Alle führenden Modelle an einem Ort – Claude, GPT, Gemini und mehr.",
+      "anthropic": "Claude-Modelle mit Ihrem Anthropic-API-Schlüssel nutzen.",
+      "openai": "GPT-Modelle mit Ihrem OpenAI-API-Schlüssel nutzen.",
+      "gemini": "Gemini-Modelle über den OpenAI-kompatiblen Endpunkt von Google nutzen.",
+      "openaiCompatible": "Jeder OpenAI-kompatible Server (Ollama, vLLM, Together, Groq usw.)."
+    },
+    "customHeading": "Benutzerdefinierter OpenAI-kompatibler Anbieter",
+    "customName": {
+      "label": "Name des benutzerdefinierten Anbieters",
+      "hint": "Anzeigename für diesen Anbieter – erscheint unten in den Modellauswahllisten.",
+      "required": "Name erforderlich"
+    },
+    "baseUrl": "Basis-URL",
+    "getKey": "Ihren API-Schlüssel erhalten Sie unter {link}",
+    "openInBrowser": "{url} im Browser öffnen.",
+    "noAccount": "Noch kein Konto?",
+    "signUp": "Registrieren →",
+    "signUpTooltip": "Die MindsHub-Registrierungsseite im Browser öffnen.",
+    "remove": "Diesen Anbieter entfernen",
+    "editKey": "API-Schlüssel bearbeiten",
+    "allConfigured": "Alle Anbietertypen sind bereits konfiguriert",
+    "addAnother": "Weiteren Anbieter hinzufügen",
+    "add": "Anbieter hinzufügen",
+    "choose": "Anbieter wählen:",
+    "hidePicker": "Anbieterauswahl ausblenden.",
+    "closePicker": "Anbieterauswahl schließen"
+  },
+  "agent": {
+    "modelRouter": "Modell-Router",
+    "roles": {
+      "planning": "Planungsmodell",
+      "router": "Modell für Routing und Zusammenfassung",
+      "coding": "Coding-Modell",
+      "planningSubtitle": "Für Schlussfolgern, Orchestrierung und Antworten.",
+      "codingSubtitle": "Für die Codegenerierung im Scratchpad."
+    },
+    "providerLabel": "Anbieter:",
+    "modelLabel": "Modell:",
+    "providerHint": "Wählen Sie den Anbieter für die Rolle {role, select, planning {Planung} coding {Coding} router {Routing} other {{role}}}.",
+    "modelHint": "Wählen Sie das Modell für {role, select, planning {Planung} coding {Coding} router {Routing} other {{role}}}. Mit „Andere…“ können Sie eine eigene Modell-ID eingeben.",
+    "customModelPlaceholder": "Modell-ID eingeben",
+    "customModelHint": "Freie Modell-ID, die unverändert an den Anbieter gesendet wird.",
+    "modelIdHint": "Modell-ID, die unverändert an diesen Anbieter gesendet wird.",
+    "checking": "Verbindung zu {provider} wird geprüft…",
+    "notConfigured": "{provider} ist nicht konfiguriert – fügen Sie die Zugangsdaten oben unter „LLM-Anbieter“ hinzu oder wählen Sie einen anderen Anbieter.",
+    "unknownNotConfigured": "Dieser Anbieter ist nicht konfiguriert. Fügen Sie ihn oben unter „LLM-Anbieter“ hinzu.",
+    "failed": "{provider} ist beim letzten Test fehlgeschlagen – prüfen Sie ihn oben unter „LLM-Anbieter“ oder wählen Sie einen anderen Anbieter.",
+    "modelUnavailable": "{model} ist nicht verfügbar. Wählen Sie ein anderes Modell oder wenden Sie sich an Ihren Administrator.",
+    "modelRestricted": "{model} wurde von einem Administrator Ihrer Organisation eingeschränkt. Wählen Sie ein anderes Modell.",
+    "modelNeedsCredits": "{model} benötigt Guthaben. {link}, um es zu nutzen.",
+    "topUpBalance": "Laden Sie Ihr Guthaben auf",
+    "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil das Budget Ihrer Organisation aufgebraucht ist.",
+    "viewBudgets": "Budgets anzeigen"
+  },
+  "memory": {
+    "title": "Gedächtnis",
+    "mode": {
+      "title": "Gedächtnismodus",
+      "subtitle": "Wie {agent} sein Langzeitgedächtnis aktualisiert.",
+      "ariaLabel": "Gedächtnismodus",
+      "autopilot": "Autopilot",
+      "autopilotHint": "{agent} aktualisiert das Langzeitgedächtnis automatisch.",
+      "copilot": "Copilot",
+      "copilotHint": "{agent} schlägt Aktualisierungen vor, die Sie bestätigen.",
+      "off": "Aus",
+      "offHint": "Keine Aktualisierungen des Langzeitgedächtnisses."
+    },
+    "episodic": {
+      "title": "Episodisches Gedächtnis",
+      "subtitle": "Gesprächsverlauf speichern, um sich später daran zu erinnern."
+    },
+    "dashboards": {
+      "title": "Proaktive Dashboards",
+      "subtitle": "HTML-Berichte automatisch aus der Scratchpad-Ausgabe erstellen."
+    },
+    "actFirst": {
+      "title": "Erst handeln, dann fragen",
+      "subtitle": "Mit sinnvollen Standardwerten arbeiten und Annahmen direkt nennen, statt anzuhalten und nachzufragen."
+    }
+  },
+  "advanced": {
+    "title": "Erweiterte Einstellungen",
+    "limits": {
+      "title": "Umfang einer Aufgabe begrenzen",
+      "subtitleOn": "{agent} hält an oder fragt nach, bevor die unten festgelegten Schritte, automatischen Fortsetzungen und Tokens überschritten werden.",
+      "subtitleOff": "Aus: Eine Aufgabe läuft, bis sie erledigt ist – bis zu einem hohen Sicherheitslimit, an dem {agent} nachfragt, bevor es weitergeht. Aktivieren Sie die Option, um eigene Limits festzulegen."
+    },
+    "maxSteps": {
+      "title": "Max. Schritte pro Aufgabe",
+      "subtitle": "Wie viele Aktionen (Code ausführen, Dateien lesen, suchen) {agent} für eine Anfrage ausführen darf, bevor er pausiert und bei Ihnen nachfragt. Erhöhen Sie den Wert, damit große Aufgaben in einem Durchgang fertig werden; senken Sie ihn, um Zeit und Kosten enger zu begrenzen."
+    },
+    "maxContinuations": {
+      "title": "Max. automatische Fortsetzungen",
+      "subtitle": "Wenn {agent} anhält, die Arbeit aber unfertig wirkt, schickt Cowork ihn zurück, um sie abzuschließen – dieser Wert begrenzt, wie oft. Erhöhen Sie ihn für mehr Gründlichkeit ohne Eingreifen; mit 0 wird nach dem ersten Versuch angehalten (Sie erhalten trotzdem eine Zusammenfassung, was noch fehlt)."
+    },
+    "maxTokens": {
+      "title": "Max. Tokens pro Aufgabe",
+      "subtitle": "Die maximale Anzahl Tokens, die {agent} für eine Anfrage verbrauchen darf, bevor er pausiert und bei Ihnen nachfragt – so kann eine festgefahrene Aufgabe nicht einen großen Teil Ihres Gratiskontingents oder Guthabens aufbrauchen, ohne fertig zu werden. Erhöhen Sie den Wert, wenn Sie regelmäßig große Aufgaben vergeben; senken Sie ihn, um die Kosten einer einzelnen Anfrage zu deckeln.",
+      "noLimit": "Kein Limit"
+    },
+    "jev": {
+      "title": "Schnelle Antworten mit Jev",
+      "subtitle": "Jev, das Entscheidungsmodell von MindsHub, liest jede Nachricht und den aktuellen Gesprächsverlauf, um zu entscheiden, ob Ihr gewähltes Modell direkt antworten kann, und prüft, ob {agent} seine Arbeit abgeschlossen hat. Deaktivieren Sie die Option, damit jede Nachricht von {agent} bearbeitet wird."
+    }
+  },
+  "desktop": {
+    "title": "Desktop",
+    "keepAwake": {
+      "title": "Für geplante Aufgaben wach bleiben",
+      "subtitle": "Verhindert bei angeschlossenem Netzteil, dass dieser Computer in den Ruhezustand wechselt, während eine geplante Aufgabe läuft oder gleich startet. Ein Computer, der bereits schläft, kann nicht geweckt werden, und beim Zuklappen wechselt er trotzdem in den Ruhezustand."
+    }
+  }
+}
