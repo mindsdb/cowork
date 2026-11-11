@@ -11,6 +11,10 @@ import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 import { mergeTasksFromServer } from './lib/mergeTasks';
 import { resolveConversationLoadState } from './lib/conversationLoadingGate';
 import { mergeMessagePage, reconcilePaginationState, knownRowIds } from './lib/mergeMessagePage';
+import {
+  isDroppedStream, withoutDroppedRows, droppedError, stopReconnecting, historyEndsTurn,
+  waitOrOnline, RECONNECT_DELAYS_MS,
+} from './lib/droppedTurn';
 import { stampUserMessageId } from './lib/stampUserMessageId';
 import { displayToggleMode, nextToggledSkin, styleToggleLabel } from './lib/displayToggle';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
@@ -1022,6 +1026,11 @@ function AppCore() {
   // instead — assigned right after the drain is defined and read only from
   // async completion callbacks, never during render.
   const drainNextQueuedMessageRef = useRef(null);
+  // The same for the dropped-turn recovery, which handleStreamError starts but
+  // which reattaches through reconnectInFlight, declared after it.
+  const recoverDroppedTurnRef = useRef(null);
+  // Conversations with a dropped-turn recovery out, so a second drop waits on it.
+  const droppedRecoveryRef = useRef(new Set());
 
   // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
   // a stream that dies with no terminal pins the slot forever, so the in-flight
@@ -1745,6 +1754,7 @@ function AppCore() {
     // Judged on the server id: a replay counts only that one, not the tmp- id.
     const reportsFailure = cid != null ? ownsRows(cid) : ids.some(ownsRows);
     if (reportsFailure && (!recovered || persistedFailure)) trackTurnFailed(cid, event);
+    const dropped = !recovered && Boolean(cid) && isDroppedStream(event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id) || !ownsRows(t.id)) return t;
       if (recovered) {
@@ -1770,7 +1780,10 @@ function AppCore() {
         if (!row.content && !row.steps?.length) return [];
         // A server-declared failure names the row it persisted; without that
         // id neither row of this turn would offer Delete.
-        return [{ ...row, id: row.id ?? event?.assistant_message_id, role: 'assistant', streamStatus: 'error' }];
+        const id = row.id ?? event?.assistant_message_id;
+        // A drop's partial answer goes once the turn is reached again: the
+        // reattached stream replays it from the start.
+        return [{ ...row, id, role: 'assistant', streamStatus: 'error', ...(dropped && !id ? { _dropped: true } : {}) }];
       })));
       const configError = isAntonConfigError(message, event);
       const displayError = normalizeAntonError(message, event);
@@ -1793,6 +1806,10 @@ function AppCore() {
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
             requestId: typeof event?.request_id === 'string' ? event.request_id : null,
+            /* Client-only: a lost connection, shown with "Trying to
+               reconnect" while recoverDroppedTurn tries to reach the turn,
+               and removed once it does. */
+            ...(dropped ? { _dropped: true, _reconnecting: true, _userMessageId: event?.user_message_id ?? null } : {}),
           };
       return {
         ...t,
@@ -1803,6 +1820,7 @@ function AppCore() {
     if (isAntonConfigError(message, event)) {
       fetchHealth().then((h) => setHealth(h));
     }
+    if (dropped && reportsFailure) void recoverDroppedTurnRef.current?.(cid);
   }, [markInFlightDone, releaseLiveSteps, releaseSlotClaim]);
 
   // Per-task streaming state is derived inside ChatView (it has the
@@ -2718,6 +2736,63 @@ function AppCore() {
     registerStream(taskId, ctrl);
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad, releaseSlotClaim]);
+
+  /*
+   * A dropped connection, not a failed turn: keep trying to reach the turn
+   * until it is back, then take the error away. A turn still running is
+   * reattached (its stream replays from the start); one that finished
+   * meanwhile has its answer, or its saved failure, loaded in place of the
+   * error. The error stays, without "Trying to reconnect", once the tries run
+   * out, the turn is gone without an ending, or another turn takes over.
+   */
+  const recoverDroppedTurn = useCallback(async (cid) => {
+    if (!cid || droppedRecoveryRef.current.has(cid)) return;
+    droppedRecoveryRef.current.add(cid);
+    const current = () => tasksRef.current.find((t) => t.id === cid);
+    const settle = (update) => setTasks((prev) => prev.map((t) => (
+      t.id === cid && droppedError(t) ? update(t) : t
+    )));
+    try {
+      for (const delay of RECONNECT_DELAYS_MS) {
+        await waitOrOnline(delay);
+        if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        let status;
+        try {
+          status = await fetchInFlightStatus(cid, { strict: true, timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+        } catch { continue; } // Still offline.
+        if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        if (status?.in_flight) {
+          if (await reconnectInFlight(cid).catch(() => false)) {
+            settle((t) => ({ ...t, messages: withoutDroppedRows(t.messages) }));
+            return;
+          }
+          continue;
+        }
+        let loaded = null;
+        try {
+          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+        } catch { continue; }
+        if (!loaded) continue;
+        if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        const knownIds = knownIdsOf(cid);
+        settle((t) => {
+          if (!historyEndsTurn(loaded.messages, droppedError(t)?._userMessageId)) return t;
+          const hasError = loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required');
+          return {
+            ...t,
+            status: hasError ? 'error' : 'idle',
+            messages: mergeMessagePage(withoutDroppedRows(t.messages), loaded.messages, knownIds),
+            ...reconcilePaginationState(t, loaded),
+          };
+        });
+        return;
+      }
+    } finally {
+      droppedRecoveryRef.current.delete(cid);
+      settle((t) => ({ ...t, messages: stopReconnecting(t.messages) }));
+    }
+  }, [hasLiveTurnHere, reconnectInFlight]);
+  recoverDroppedTurnRef.current = recoverDroppedTurn;
 
   // Navigation intent only: flipping route + activeTaskId drives the URL to
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and

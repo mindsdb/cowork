@@ -1142,6 +1142,16 @@ async function waitForServerReady(timeoutMs = 8000) {
 // behind "…").
 // buttons: [{ label, onClick, primary, disabled, busy }]. An empty list hides
 // the row (e.g. reconnect's "done" state).
+// Beside a lost connection's error while the app tries to reach the turn
+// again; the error goes away once it does.
+function Reconnecting() {
+  return (
+    <span className="chat-reconnecting" role="status">
+      Trying to reconnect<span className="chat-reconnecting__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+    </span>
+  );
+}
+
 function ActionCard({ time, agentLabel, kind, title, body, buttons = [], deleting = false }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel} deleting={deleting}>
@@ -3304,7 +3314,10 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       kind="Agent"
                       title="The response stalled"
-                      body="Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again."
+                      body={<>
+                        Cowork stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again.
+                        {m._reconnecting && <Reconnecting />}
+                      </>}
                       buttons={resend && !turnMayBeRunning && sendAgain
                         ? [{ label: 'Try again', onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
                         : []}
@@ -3409,7 +3422,7 @@ export default function ChatView({
                 return (
                   <AnswerTurn key={messageKey(m, i)} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel} deleting={deletingThisTurn}>
                     <Alert variant="danger">
-                      <div>{m.content}</div>
+                      <div>{m.content}{m._reconnecting && <Reconnecting />}</div>
                       {m.requestId && (
                         <div
                           className="mt-1 text-xs flex items-center gap-2 flex-wrap"
