@@ -1,16 +1,21 @@
 /**
  * Why MindsHub lists a model as unavailable: the gateway's own reason words, as
  * the renderer holds them. cowork-server relays any non-empty `disabled_reason`
- * string; `knownModelDisabledReasons` keeps only these three and drops any other
+ * string; `knownModelDisabledReasons` keeps only these and drops any other
  * value, so a row with an unknown reason reads as having none ("Needs credits").
  */
-export type ModelDisabledReason = 'model_restricted' | 'wallet_empty' | 'included_allowance_exhausted';
+export type ModelDisabledReason =
+  | 'model_restricted'
+  | 'budget_exceeded'
+  | 'wallet_empty'
+  | 'included_allowance_exhausted';
 
 /** Picker-row fields for a model that cannot run (see unavailableModelFields). */
 export interface UnavailableModelFields {
   disabled?: true;
   locked?: true;
   restricted?: true;
+  budgetReached?: true;
   tag?: string;
   title?: string;
 }
@@ -21,6 +26,9 @@ export const RESTRICTED_MODEL_TITLE: string;
 export function restrictedModelTitle(): string;
 export function modelRouterLabel(): string;
 export function operatorDefaultLabel(): string;
+export const BUDGET_EXCEEDED_REASON: 'budget_exceeded';
+export const BUDGET_REACHED_MODEL_TITLE: string;
+export function budgetReachedModelTitle(): string;
 
 /**
  * Narrows cowork-server's `modelDisabledReasons` relay to the entries whose
@@ -31,6 +39,11 @@ export function knownModelDisabledReasons(raw: unknown): Record<string, ModelDis
 export function isFrozenAlias(id: string, families?: Record<string, string>): boolean;
 export function isModelLocked(modelEnabled: Record<string, boolean> | undefined, id: string): boolean;
 export function isModelRestricted(
+  modelEnabled: Record<string, boolean> | undefined,
+  modelDisabledReasons: Record<string, ModelDisabledReason> | undefined,
+  id: string,
+): boolean;
+export function isModelBudgetReached(
   modelEnabled: Record<string, boolean> | undefined,
   modelDisabledReasons: Record<string, ModelDisabledReason> | undefined,
   id: string,

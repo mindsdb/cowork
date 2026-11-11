@@ -105,7 +105,10 @@
       "autoTopUpFailedBody": "We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running.",
       "rateLimitedTitle": "Too many requests too quickly",
       "tryAgainIn": "Try again in {seconds}s",
-      "tryAgain": "Try again"
+      "tryAgain": "Try again",
+      "adminSpendingLimitBody": "Your administrator's spending limit was reached. Contact your administrator.",
+      "budgetUsedUpTitle": "Your organization's budget is used up",
+      "viewBudgets": "View budgets"
     },
     "usageAlert": {
       "freeLow": "Free Air allowance {percent} left",

@@ -25,8 +25,9 @@ export function compareAvailable({ platformUi, pickerMode, models = [], modelEna
 const FAILED_ROLES = new Set(['error', 'provider_required']);
 
 /** Failures that mean the account could not pay for the turn, not that the
- *  model did badly: the paid balance ran out, or the free Air allowance did. */
-export const CREDIT_FAILURE_CODES = new Set(['token_limit', 'included_allowance_exhausted']);
+ *  model did badly: the paid balance ran out, the free Air allowance did, or
+ *  the organization's budget stopped paid models. */
+export const CREDIT_FAILURE_CODES = new Set(['token_limit', 'included_allowance_exhausted', 'budget_exceeded']);
 
 export function isCreditFailure(turn) {
   return turn?.reply === 'failed' && CREDIT_FAILURE_CODES.has(turn.failureCode);
@@ -119,9 +120,13 @@ export function judgeableTurn(aTurns = [], bTurns = []) {
 export function unjudgeableReason(aTurns = [], bTurns = [], names = { a: 'A', b: 'B' }) {
   const turn = latestSharedTurn(aTurns, bTurns);
   if (turn === null) return null;
-  const out = ['a', 'b'].filter((l) => isCreditFailure((l === 'a' ? aTurns : bTurns)[turn]));
+  const sides = { a: aTurns[turn], b: bTurns[turn] };
+  const out = ['a', 'b'].filter((l) => isCreditFailure(sides[l]));
   if (out.length === 0) return null;
-  return out.length === 2 ? tr('unjudgeable.both') : tr('unjudgeable.one', { name: names[out[0]] });
+  // Credits do not lift a budget, so a budget stop is never called running out of credits.
+  const budget = out.every((l) => sides[l].failureCode === 'budget_exceeded');
+  if (out.length === 2) return budget ? tr('unjudgeable.bothBudget') : tr('unjudgeable.both');
+  return budget ? tr('unjudgeable.oneBudget', { name: names[out[0]] }) : tr('unjudgeable.one', { name: names[out[0]] });
 }
 
 /** How long a finished turn took, in ms, or null when either end is unknown. */
@@ -234,7 +239,9 @@ export function sideStatus(turns = [], { busy = false, continued = false } = {})
   if (!last) return { tone: 'muted', label: tr('status.waiting') };
   if (last.reply === 'running') return { tone: 'working', label: tr('status.working') };
   if (last.reply === 'done') return { tone: 'done', label: tr('status.done') };
-  if (isCreditFailure(last)) return { tone: 'failed', label: tr('status.outOfCredits') };
+  if (isCreditFailure(last)) {
+    return { tone: 'failed', label: last.failureCode === 'budget_exceeded' ? tr('status.budgetReached') : tr('status.outOfCredits') };
+  }
   if (last.reply === 'failed' && last.failureCode === 'rate_limited') return { tone: 'failed', label: tr('status.rateLimited') };
   if (last.reply === 'failed') return { tone: 'failed', label: tr('status.failed') };
   return { tone: 'muted', label: tr('status.stopped') };

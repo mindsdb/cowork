@@ -53,6 +53,10 @@
         "body": "Después, MindsHub Air usará tu saldo hasta que se renueve tu cupo.",
         "bodyWithTime": "Después, MindsHub Air usará tu saldo hasta que se renueve tu cupo a las {time}.",
         "balanceLowToo": "Tu saldo también está bajo ({usd})."
+      },
+      "budgetExceeded": {
+        "raise": "Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos.",
+        "airHasRoom": "Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito."
       }
     },
     "scheduleWhen": {
@@ -90,7 +94,8 @@
       "row": {
         "walletEmpty": "No hay créditos disponibles. Agrega fondos para usar MindsHub.",
         "allowanceExhausted": "No hay tokens gratuitos de MindsHub Air disponibles y el saldo está vacío.",
-        "freeAirPaused": "MindsHub Air gratuito está en pausa en este momento."
+        "freeAirPaused": "MindsHub Air gratuito está en pausa en este momento.",
+        "budgetExceeded": "Se agotó el presupuesto de tu organización."
       },
       "missingApiKey": "Agrega una clave de API a la derecha.",
       "missingBaseUrl": "Agrega una URL base a la derecha.",
@@ -186,7 +191,9 @@
     "compare": {
       "unjudgeable": {
         "both": "Ambos modelos se quedaron sin créditos antes de terminar, así que este turno no se puede evaluar.",
-        "one": "{name} se quedó sin créditos antes de terminar, así que este turno no se puede evaluar."
+        "one": "{name} se quedó sin créditos antes de terminar, así que este turno no se puede evaluar.",
+        "bothBudget": "Ambos modelos alcanzaron el presupuesto de tu organización antes de terminar, así que este turno no se puede evaluar.",
+        "oneBudget": "{name} alcanzó el presupuesto de tu organización antes de terminar, así que este turno no se puede evaluar."
       },
       "verdict": {
         "tie": "Más o menos igual",
@@ -201,7 +208,8 @@
         "outOfCredits": "Sin créditos",
         "rateLimited": "Límite de solicitudes",
         "failed": "Falló",
-        "stopped": "Detenido"
+        "stopped": "Detenido",
+        "budgetReached": "Presupuesto agotado"
       },
       "block": {
         "loadFailed": "Un lado no se pudo cargar. Vuelve a intentarlo arriba antes de continuar.",
@@ -394,11 +402,22 @@
         "caTooLarge": "Ese certificado de la CA supera el límite de 64 KiB. Pega solo la cadena que necesita este servidor."
       },
       "hints": {
-        "tlsFailed": "No se pudo verificar el certificado del servidor. Una base de datos autoalojada suele presentar un certificado generado por ella misma, que ningún cliente puede verificar. Si es el caso de este servidor, desactiva \"Conectar solo si el certificado está firmado por una autoridad pública\".",
+        "tlsFailed": "No se pudo verificar el certificado del servidor. Una base de datos autoalojada suele presentar un certificado generado por ella misma, que ningún cliente puede verificar. Si es el caso de este servidor, desactiva \"Only connect if the certificate is signed by a public authority\".",
         "destinationForbidden": "No se puede acceder a esa dirección desde aquí. La base de datos debe estar en una dirección pública, no en una privada o local.",
         "authenticationFailed": "El servidor rechazó el nombre de usuario o la contraseña.",
         "insufficientPrivileges": "La cuenta no puede leer nada de lo que apunta esta conexión. Si indicaste un esquema, revisa cómo está escrito y sus mayúsculas, que PostgreSQL trata como parte del nombre, y que la cuenta tenga USAGE en ese esquema además de SELECT en sus tablas. Una cuenta que también puede escribir está bien; una con permisos de superusuario, o que puede leer archivos del servidor, se rechaza, porque llega más allá de tu base de datos.",
-        "connectionFailed": "El servidor no respondió. Revisa el host y el puerto, y que tu firewall permita la conexión."
+        "connectionFailed": "El servidor no respondió. Revisa el host y el puerto, y que tu firewall permita la conexión.",
+        "tls": {
+          "refusedLogin": "El servidor pidió la contraseña directamente y esta conexión no verifica el certificado del servidor, así que la contraseña no se envió.",
+          "refusedLoginOrHandshake": "O el servidor no completó una conexión cifrada, o pidió la contraseña directamente y, como esta conexión no verifica el certificado del servidor, la contraseña no se envió.",
+          "refusedPgLogin": "El servidor pidió un tipo de inicio de sesión que esta conexión no permite sin verificar el certificado del servidor, así que la contraseña no se envió.",
+          "refusedPgLoginOrHandshake": "O el servidor no completó una conexión cifrada, o pidió un tipo de inicio de sesión que esta conexión no permite sin verificar el certificado del servidor. La contraseña no se envió.",
+          "turnChecksOnCheckbox": "Si el certificado del servidor está firmado por una autoridad pública, activa \"Only connect if the certificate is signed by a public authority\" e inténtalo de nuevo.",
+          "turnChecksOnMysql": "En \"Certificate\", elige \"Signed by a public authority\", o \"Signed by my own certificate authority\" y pega el certificado de la CA del servidor; luego inténtalo de nuevo.",
+          "pgScramFallback": "Si el servidor no tiene TLS, o su certificado no está firmado por una autoridad pública, pide a su administrador que cambie esta cuenta a inicios de sesión SCRAM-SHA-256.",
+          "mysqlUnverifiedCertificate": "No se pudo verificar el certificado del servidor. Si el servidor firma su propio certificado o usa una autoridad privada, elige \"Signed by my own certificate authority\" en \"Certificate\" y pega el certificado de esa autoridad. \"Encrypt when offered, don't check the certificate\" también conecta, pero el inicio de sesión puede fallar cada vez que el servidor pida la contraseña directamente, por ejemplo después de reiniciarse.",
+          "mysqlCustomCaMismatch": "No se pudo verificar el certificado del servidor con el certificado de CA que pegaste. Comprueba que sea la autoridad que firmó el certificado de este servidor y que el host que ingresaste sea un nombre de ese certificado."
+        }
       },
       "state": {
         "connected": "Conectado",
@@ -431,7 +450,11 @@
         "title": "Un administrador de tu organización restringió este modelo.",
         "tag": "Restringido"
       },
-      "needsCredits": "Requiere créditos"
+      "needsCredits": "Requiere créditos",
+      "budgetReached": {
+        "tag": "Presupuesto agotado",
+        "title": "Se agotó el presupuesto de tu organización. Un propietario o administrador puede aumentarlo en Presupuestos."
+      }
     },
     "settingsTransform": {
       "routerSubtitle": {

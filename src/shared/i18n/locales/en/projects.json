@@ -53,6 +53,10 @@
         "body": "After that, MindsHub Air uses your balance until your allowance refills.",
         "bodyWithTime": "After that, MindsHub Air uses your balance until your allowance refills at {time}.",
         "balanceLowToo": "Your balance is low too ({usd})."
+      },
+      "budgetExceeded": {
+        "raise": "Paid models can't run until an owner or admin raises it in Budgets.",
+        "airHasRoom": "Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while its free allowance lasts."
       }
     },
     "scheduleWhen": {
@@ -90,7 +94,8 @@
       "row": {
         "walletEmpty": "No credits available. Add funds to use MindsHub.",
         "allowanceExhausted": "No free MindsHub Air tokens available, and the balance is empty.",
-        "freeAirPaused": "Free MindsHub Air is paused right now."
+        "freeAirPaused": "Free MindsHub Air is paused right now.",
+        "budgetExceeded": "Your organization's budget is used up."
       },
       "missingApiKey": "Add an API key on the right.",
       "missingBaseUrl": "Add a base URL on the right.",
@@ -186,7 +191,9 @@
     "compare": {
       "unjudgeable": {
         "both": "Both models ran out of credits before finishing, so this turn can't be judged.",
-        "one": "{name} ran out of credits before finishing, so this turn can't be judged."
+        "one": "{name} ran out of credits before finishing, so this turn can't be judged.",
+        "bothBudget": "Both models hit your organization's budget before finishing, so this turn can't be judged.",
+        "oneBudget": "{name} hit your organization's budget before finishing, so this turn can't be judged."
       },
       "verdict": {
         "tie": "About the same",
@@ -201,7 +208,8 @@
         "outOfCredits": "Out of credits",
         "rateLimited": "Rate limited",
         "failed": "Failed",
-        "stopped": "Stopped"
+        "stopped": "Stopped",
+        "budgetReached": "Budget reached"
       },
       "block": {
         "loadFailed": "A side couldn't load. Retry it above before following up.",
@@ -398,7 +406,18 @@
         "destinationForbidden": "That address cannot be reached from here. The database has to be on a public address, not a private or local one.",
         "authenticationFailed": "The server refused the username or password.",
         "insufficientPrivileges": "The account cannot read anything this connection points at. If you named a schema, check its spelling and its capitals, which PostgreSQL treats as part of the name, and that the account has USAGE on that schema as well as SELECT on its tables. An account that can also write is fine; one with superuser rights, or that can read server files, is refused, because those reach past your database.",
-        "connectionFailed": "The server did not answer. Check the host and port, and that your firewall allows the connection."
+        "connectionFailed": "The server did not answer. Check the host and port, and that your firewall allows the connection.",
+        "tls": {
+          "refusedLogin": "The server asked for the password itself, and this connection does not check the server's certificate, so the password was not sent.",
+          "refusedLoginOrHandshake": "Either the server did not complete an encrypted connection, or it asked for the password itself and, since this connection does not check the server's certificate, the password was not sent.",
+          "refusedPgLogin": "The server asked for a kind of login this connection does not allow without checking the server's certificate, so the password was not sent.",
+          "refusedPgLoginOrHandshake": "Either the server did not complete an encrypted connection, or it asked for a kind of login this connection does not allow without checking the server's certificate. The password was not sent.",
+          "turnChecksOnCheckbox": "If the server's certificate is signed by a public authority, turn on \"Only connect if the certificate is signed by a public authority\" and try again.",
+          "turnChecksOnMysql": "Under \"Certificate\", choose \"Signed by a public authority\", or \"Signed by my own certificate authority\" and paste the server's CA certificate, then try again.",
+          "pgScramFallback": "If the server has no TLS, or its certificate is not signed by a public authority, ask its administrator to switch this account to SCRAM-SHA-256 logins.",
+          "mysqlUnverifiedCertificate": "The server's certificate could not be verified. If the server signs its own certificate or uses a private authority, choose \"Signed by my own certificate authority\" under \"Certificate\" and paste that authority's certificate. \"Encrypt when offered, don't check the certificate\" also connects, but a login can then fail whenever the server asks for the password itself, for example after it restarts.",
+          "mysqlCustomCaMismatch": "The server's certificate could not be verified against the CA certificate you pasted. Check that it is the authority that signed this server's certificate, and that the host you entered is a name on that certificate."
+        }
       },
       "state": {
         "connected": "Connected",
@@ -431,7 +450,11 @@
         "title": "An admin in your organization restricted this model.",
         "tag": "Restricted"
       },
-      "needsCredits": "Needs credits"
+      "needsCredits": "Needs credits",
+      "budgetReached": {
+        "tag": "Budget reached",
+        "title": "Your organization's budget is used up. An owner or admin can raise it in Budgets."
+      }
     },
     "settingsTransform": {
       "routerSubtitle": {

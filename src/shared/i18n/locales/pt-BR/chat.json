@@ -105,7 +105,10 @@
       "autoTopUpFailedBody": "Não conseguimos adicionar fundos ao seu saldo. Adicione fundos ou atualize sua forma de pagamento para manter as tarefas em execução.",
       "rateLimitedTitle": "Muitas solicitações em pouco tempo",
       "tryAgainIn": "Tentar novamente em {seconds} s",
-      "tryAgain": "Tentar novamente"
+      "tryAgain": "Tentar novamente",
+      "adminSpendingLimitBody": "O limite de gastos definido pelo administrador foi atingido. Fale com o seu administrador.",
+      "budgetUsedUpTitle": "O orçamento da sua organização acabou",
+      "viewBudgets": "Ver orçamentos"
     },
     "usageAlert": {
       "freeLow": "Resta {percent} da cota gratuita do Air",

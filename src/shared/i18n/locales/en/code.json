@@ -1008,7 +1008,8 @@
       "addCredits": "Add credits or choose an available model.",
       "noModels": "No coding models are available.",
       "chooseModel": "Choose a model to continue.",
-      "chooseFolder": "Choose a folder to continue."
+      "chooseFolder": "Choose a folder to continue.",
+      "budgetReached": "Your organization's budget is used up. Choose an available model or ask an owner or admin to raise it."
     }
   },
   "executionTarget": {
@@ -1397,7 +1398,8 @@
     "showDetails": "Show details",
     "details": "Details",
     "moreOptions": "More options",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "viewBudgets": "View budgets"
   },
   "composerNotices": {
     "thisModel": "This model",
@@ -1447,6 +1449,10 @@
     },
     "kept": {
       "body": "{reason}, so it still uses disk."
+    },
+    "budgetExceeded": {
+      "title": "Your organization's budget is used up",
+      "body": "An owner or admin can raise it in Budgets, or choose an available model to continue in this task."
     }
   },
   "planModeCommand": {

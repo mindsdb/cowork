@@ -203,7 +203,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
 
 export function DataVaultForm({
   spec, busy = false, onAction, onMethodChange, conversationId,
-  userLabel, onUserLabelChange,
+  userLabel, onUserLabelChange, onFieldChange,
   hideHeader = false,
 }) {
   const { t } = useTranslation('library');
@@ -276,6 +276,11 @@ export function DataVaultForm({
   // for multi-method, or the top-level fields[] for single-method.
   const fields = isMultiMethod ? (activeMethod?.fields || []) : (spec?.fields || []);
 
+  // The host passes `userLabel={undefined}` to hide the Label (on success),
+  // and there is nothing to label while the method picker is up.
+  const showUserLabel = userLabel !== undefined && !(isMultiMethod && !activeMethod);
+  const userLabelRequired = showUserLabel && !!spec?._cloud_datasource;
+
   // Per-(form, method) input state so flipping methods preserves
   // anything typed under each one. Storing inside a Map keyed by
   // `${form_id}::${method_id || 'default'}` keeps the state shape flat
@@ -283,6 +288,8 @@ export function DataVaultForm({
   const [valuesByKey, setValuesByKey] = useState({});
   const [skippedByKey, setSkippedByKey] = useState({});
   const [requiredErrorsByKey, setRequiredErrorsByKey] = useState({});
+  // Kept apart from the per-field map, whose keys are whatever a spec names.
+  const [userLabelError, setUserLabelError] = useState('');
   /* Focus target for the first field that fails the required check.
      `fieldRefs` holds the real control, which is what we want the caret in,
      but only `Input` and `Textarea` forward a ref — a `select` or `boolean`
@@ -290,6 +297,7 @@ export function DataVaultForm({
      every field type has, so the error is at least scrolled into view. */
   const fieldRefs = useRef({});
   const fieldContainerRefs = useRef({});
+  const userLabelRef = useRef(null);
 
   const initialFor = (fs) => {
     const out = {};
@@ -307,6 +315,7 @@ export function DataVaultForm({
       setValuesByKey({});
       setSkippedByKey({});
       setRequiredErrorsByKey({});
+      setUserLabelError('');
       setLocalSelectedMethod(null);
     }
   }, [spec?.form_id]);
@@ -461,6 +470,7 @@ export function DataVaultForm({
 
   const updateField = (name, v) => {
     setValues((prev) => ({ ...prev, [name]: v }));
+    onFieldChange?.(name);
     setRequiredErrorsByKey((prev) => {
       if (!prev[stateKey]?.[name]) return prev;
       const next = { ...prev[stateKey] };
@@ -473,6 +483,11 @@ export function DataVaultForm({
       next.delete(name);
       return next;
     });
+  };
+
+  const updateUserLabel = (v) => {
+    onUserLabelChange?.(v);
+    setUserLabelError('');
   };
 
   const skipField = (name) => {
@@ -510,12 +525,21 @@ export function DataVaultForm({
         const value = values[field.name];
         return value === null || value === undefined || String(value).trim() === '';
       });
-      if (missing.length) {
+      // A cloud database form saves the Label as the connection's name,
+      // which the relay requires; other forms fall back to a generated one.
+      const labelMissing = userLabelRequired && String(userLabel ?? '').trim() === '';
+      if (missing.length || labelMissing) {
         const errors = Object.fromEntries(
           missing.map((field) => [field.name, t('dataVault.required', { field: field.label || field.name })]),
         );
         setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
+        setUserLabelError(labelMissing ? t('dataVault.labelRequired') : '');
         requestAnimationFrame(() => {
+          // The Label sits above the fields, so it is the first one missing.
+          if (labelMissing) {
+            userLabelRef.current?.focus?.();
+            return;
+          }
           const name = missing[0].name;
           (fieldRefs.current[name] || fieldContainerRefs.current[name])?.focus?.();
         });
@@ -577,22 +601,32 @@ export function DataVaultForm({
 
       {/* Generic "name this connection" field — applies to every connector
           regardless of method, so it renders right under the title rather
-          than inside the per-method fields list below. Hidden on success
-          (host passes `userLabel={undefined}` in that case) and while the
-          user is still on the method picker (nothing to label yet). */}
-      {userLabel !== undefined && !(isMultiMethod && !activeMethod) && (
+          than inside the per-method fields list below. */}
+      {showUserLabel && (
         <div className="flex flex-col gap-1">
-          <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
-            {t('skillModal.label')}
-          </label>
+          {/* The marker sits outside the <label> so the input's accessible
+              name stays "Label"; aria-required carries the meaning. */}
+          <div className="flex items-baseline">
+            <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
+              {t('skillModal.label')}
+            </label>
+            {userLabelRequired && (
+              <span aria-hidden="true" className="text-[12px] text-danger ml-[3px]">*</span>
+            )}
+          </div>
           <Input
+            ref={userLabelRef}
             id="connection-user-label"
             type="text"
             value={userLabel}
-            onChange={(v) => onUserLabelChange?.(v)}
+            onChange={updateUserLabel}
             disabled={busy}
+            aria-required={userLabelRequired || undefined}
             placeholder={spec.engine || spec._connector_id || t('dataVault.labelPlaceholder')}
           />
+          {userLabelRequired && userLabelError && (
+            <div className="text-[11.5px] text-danger">{userLabelError}</div>
+          )}
         </div>
       )}
 
@@ -677,8 +711,10 @@ export function DataVaultForm({
                     `skipable: false` in the spec is still respected.
                     Locked fields (modify-flow identity) drop the
                     skip affordance entirely — there's nothing for
-                    Anton to figure out about a fixed row key. */}
-                {f.skipable !== false && !isLocked && (
+                    Anton to figure out about a fixed row key. A cloud
+                    database form posts straight to the relay, so no
+                    agent ever reads the skipped set there. */}
+                {f.skipable !== false && !isLocked && !spec._cloud_datasource && (
                   <button
                     type="button"
                     onClick={() => isSkipped ? updateField(f.name, values[f.name] ?? '') : skipField(f.name)}

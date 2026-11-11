@@ -274,10 +274,24 @@ export function restrictedModelTitle() {
   return tr('restricted.title');
 }
 
+/* The `disabled_reason` for a paid row while the org's spending budget is used
+   up. Credits do not lift it; an owner or admin raises the budget. */
+export const BUDGET_EXCEEDED_REASON = 'budget_exceeded';
+
+/* The row tooltip for a model the org's budget stops. English, for tests and
+   callers that import it; budgetReachedModelTitle() is the viewer's language. */
+export const BUDGET_REACHED_MODEL_TITLE = "Your organization's budget is used up. An owner or admin can raise it in Budgets.";
+
+export function budgetReachedModelTitle() {
+  return tr('budgetReached.title');
+}
+
 /* Every `disabled_reason` the renderer recognizes on a MindsHub model row: an
-   admin's model rule, the empty wallet, and the spent allowance. */
+   admin's model rule, the spent org budget, the empty wallet, and the spent
+   allowance. */
 const KNOWN_MODEL_DISABLED_REASONS = new Set([
   MODEL_RESTRICTED_REASON,
+  BUDGET_EXCEEDED_REASON,
   'wallet_empty',
   'included_allowance_exhausted',
 ]);
@@ -287,7 +301,7 @@ const KNOWN_MODEL_DISABLED_REASONS = new Set([
  * renderer recognizes, id → reason.
  *
  * cowork-server relays any non-empty `disabled_reason` string MindsHub sends. An
- * entry whose value is not one of the three known reasons is dropped, so its row
+ * entry whose value is not one of the known reasons is dropped, so its row
  * reads as having no reason, the same as a row from a server too old to send
  * one: "Needs credits". Anything that is not a plain object gives `{}`.
  *
@@ -314,11 +328,18 @@ export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
     && (modelDisabledReasons || {})[id] === MODEL_RESTRICTED_REASON;
 }
 
+/** True when `id` is unavailable because the org's spending budget is used up. */
+export function isModelBudgetReached(modelEnabled, modelDisabledReasons, id) {
+  return isModelLocked(modelEnabled, id)
+    && (modelDisabledReasons || {})[id] === BUDGET_EXCEEDED_REASON;
+}
+
 /**
  * @typedef {{
  *   disabled?: true,
  *   locked?: true,
  *   restricted?: true,
+ *   budgetReached?: true,
  *   tag?: string,
  *   title?: string,
  * }} UnavailableModelFields
@@ -332,6 +353,8 @@ export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
  * - Restricted by an admin: disabled and `restricted`, tagged "Restricted", with
  *   the admin tooltip. Never `locked`, so ModelSelect attaches no "Add credits"
  *   button: money cannot unlock an admin rule.
+ * - Stopped by the org's spent budget: disabled and `budgetReached`, tagged
+ *   "Budget reached". Never `locked`, since credits do not raise a budget.
  * - Anything else unavailable (the wallet, the spent allowance, or a server too
  *   old to send a reason): disabled and `locked`, tagged "Needs credits".
  *
@@ -341,6 +364,9 @@ export function unavailableModelFields(modelEnabled, modelDisabledReasons, id) {
   if (!isModelLocked(modelEnabled, id)) return {};
   if (isModelRestricted(modelEnabled, modelDisabledReasons, id)) {
     return { disabled: true, restricted: true, tag: tr('restricted.tag'), title: restrictedModelTitle() };
+  }
+  if (isModelBudgetReached(modelEnabled, modelDisabledReasons, id)) {
+    return { disabled: true, budgetReached: true, tag: tr('budgetReached.tag'), title: budgetReachedModelTitle() };
   }
   return { disabled: true, locked: true, tag: tr('needsCredits') };
 }

@@ -105,7 +105,10 @@
       "autoTopUpFailedBody": "No pudimos agregar fondos a tu saldo. Agrega fondos o actualiza tu método de pago para que las tareas sigan ejecutándose.",
       "rateLimitedTitle": "Demasiadas solicitudes en poco tiempo",
       "tryAgainIn": "Reintentar en {seconds} s",
-      "tryAgain": "Reintentar"
+      "tryAgain": "Reintentar",
+      "adminSpendingLimitBody": "Se alcanzó el límite de gasto que fijó tu administrador. Comunícate con tu administrador.",
+      "budgetUsedUpTitle": "Se agotó el presupuesto de tu organización",
+      "viewBudgets": "Ver presupuestos"
     },
     "usageAlert": {
       "freeLow": "Queda {percent} de la asignación gratuita de Air",

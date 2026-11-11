@@ -93,9 +93,43 @@ const HINTS = {
   connection_failed: 'connectionFailed',
 };
 
-function hintFor(code) {
-  const key = Object.hasOwn(HINTS, code) ? HINTS[code] : null;
+// Without certificate checks, `tls_failed` is the gateway refusing to send the
+// password to an unidentified server, whether or not the password is right.
+// Only `encrypted` insists on TLS, so there the handshake may be what failed.
+// PostgreSQL also refuses a login asking for no password, Kerberos, or an
+// unsigned SCRAM exchange there. Each value is a key under `hints.tls`.
+const UNVERIFIED_CAUSES = {
+  mysql: { prefer: 'refusedLogin', disabled: 'refusedLogin', encrypted: 'refusedLoginOrHandshake' },
+  checkbox: { prefer: 'refusedPgLogin', disabled: 'refusedPgLogin', encrypted: 'refusedPgLoginOrHandshake' },
+};
+
+// MySQL's form asks which certificate to trust; the other engines' ask one yes-or-no question.
+const TURN_CHECKS_ON = { checkbox: 'turnChecksOnCheckbox', mysql: 'turnChecksOnMysql' };
+
+function hintText(key) {
   return key ? tr(`hints.${key}`) : '';
+}
+
+// The code's advice, except that `tls_failed` depends on whether the connection
+// checked the server and on which form the engine has. '' when there is none.
+function hintFor(connection) {
+  const code = connection?.validation_code || connection?.validationCode;
+  // Own keys only: the code arrives off the wire, and `__proto__` would otherwise render an object.
+  if (code !== 'tls_failed') return hintText(Object.hasOwn(HINTS, code) ? HINTS[code] : null);
+  const mysql = connection?.connector_id === 'mysql';
+  const form = mysql ? 'mysql' : 'checkbox';
+  if (Object.hasOwn(UNVERIFIED_CAUSES[form], connection?.tls_mode)) {
+    // `encrypted` needs TLS, so a server without it fails before any login and SCRAM cannot help.
+    // The box cannot help a server without a publicly signed certificate, and its form has no CA paste.
+    const fallback = mysql || connection.tls_mode === 'encrypted' ? null : 'tls.pgScramFallback';
+    return [`tls.${UNVERIFIED_CAUSES[form][connection.tls_mode]}`, `tls.${TURN_CHECKS_ON[form]}`, fallback]
+      .filter(Boolean).map(hintText).join(' ');
+  }
+  if (!mysql) return hintText(HINTS.tls_failed);
+  // The user already chose their own authority, so the pasted one or the host name is what failed.
+  // Otherwise lead with the CA: an unchecked MySQL connection fails again whenever the server asks
+  // for the password.
+  return hintText(connection?.tls_mode === 'custom_ca' ? 'tls.mysqlCustomCaMismatch' : 'tls.mysqlUnverifiedCertificate');
 }
 
 // auth creates a connection `pending` and only the gateway's probe completion
@@ -122,7 +156,7 @@ export function describeConnectionState(connection) {
       // The server stores that validation failed, not why; the gateway's own
       // code rides along on the three routes that run a check, and it is the
       // only thing here that can tell the user what to change.
-      hint: hintFor(connection?.validation_code || connection?.validationCode),
+      hint: hintFor(connection),
     };
   }
 

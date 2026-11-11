@@ -488,7 +488,8 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  *   (settings.modelEnabled); a model mapped to `false` renders disabled. Its
  *   tag comes from `unavailableModelFields`: "Needs credits" and `locked` (so
  *   the picker puts an "Add credits" button on the row), or "Restricted" and
- *   `restricted` when `meta.modelDisabledReasons` names an admin's model rule.
+ *   `restricted` when `meta.modelDisabledReasons` names an admin's model rule,
+ *   or "Budget reached" and `budgetReached` when it names the org's spent budget.
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
@@ -545,7 +546,8 @@ export function buildModelOptions(
        *
        * A row an org admin's model rule blocks is closed the same way but is
        * `restricted`, not `locked`: credits cannot unlock it, so it carries no
-       * "Add credits" button (see unavailableModelFields).
+       * "Add credits" button (see unavailableModelFields). A row the org's
+       * spent budget closes is `budgetReached`, for the same reason.
        */
       disabled: locked,
       // Availability is the only row tag, and it rides on `tag`,

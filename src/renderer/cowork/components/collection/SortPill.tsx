@@ -10,7 +10,19 @@ import { Icon } from '../ui/Icon';
 import Select from '../ui/Select';
 import { useTranslation } from '../../../lib/i18n';
 
-export function SortPill({ value, onChange, options = [], label: labelProp }) {
+export interface SortOption {
+  id: string;
+  label: string;
+}
+
+export interface SortPillProps {
+  value: string;
+  onChange: (id: string) => void;
+  options: SortOption[];
+  label?: string;
+}
+
+export function SortPill({ value, onChange, options, label: labelProp }: SortPillProps) {
   const { t } = useTranslation('library');
   const label = labelProp ?? t('collection.sort');
   const items = useMemo(() => options.map((o) => ({ value: o.id, label: o.label })), [options]);

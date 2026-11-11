@@ -234,6 +234,16 @@ export function freeServingPausedCopy(resetAt) {
   return until ? tr('freeServingPaused.until', { until }) : tr('freeServingPaused.dailyReset');
 }
 
+/** What a stop on the org's spent budget says (`budget_exceeded`), after a
+ *  lead naming the budget, for the stopped-task card and the Settings notice.
+ *  Credits do not lift it, so it never asks for funds; Air is named only while
+ *  the hub read shows its free allowance has room. */
+export function budgetExceededCopy({ usage = null } = {}) {
+  return freeAllowanceState(usage).status === 'has_room'
+    ? tr('budgetExceeded.airHasRoom')
+    : tr('budgetExceeded.raise');
+}
+
 /** Whether a bar descriptor is something to WARN about, as opposed to the
  *  standing figure. The one place that rule is written: a resting figure can
  *  sit on screen for a whole window, so counting it as a warning would mean a

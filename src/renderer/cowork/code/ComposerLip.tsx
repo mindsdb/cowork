@@ -30,12 +30,13 @@ export function MoreNotices({ count, onShow }: { count: number; onShow: () => vo
  * One status line that peeks out from behind the composer. It stays within
  * two lines; technical detail opens on request instead of growing the strip.
  */
-export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseModel, onAddCredits, onReopen, onDismiss }: {
+export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseModel, onAddCredits, onViewBudgets = () => {}, onReopen, onDismiss }: {
   notice: ComposerNotice;
   more?: number;
   onShowMore?: () => void;
   onChooseModel: () => void;
   onAddCredits: (billingTrigger: string) => void;
+  onViewBudgets?: () => void;
   onReopen: () => void;
   onDismiss: (key: string) => void;
 }) {
@@ -47,11 +48,12 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
   // Two controls at most: the step that unblocks the next send, then one
   // more as a plain button, or a menu when there are several.
   const primary = notice.addCredits ? { label: t('composerLip.addCredits'), onClick: () => onAddCredits(notice.billingTrigger || 'unknown') }
+    : notice.viewBudgets ? { label: t('composerLip.viewBudgets'), onClick: onViewBudgets }
     : notice.reopen ? { label: notice.reopening ? t('composerLip.reopening') : t('composerLip.reopen'), onClick: onReopen, disabled: notice.reopening }
       : notice.chooseModel ? { label: t('composerLip.chooseModel'), onClick: onChooseModel }
         : null;
   const others = [
-    ...(notice.addCredits && notice.chooseModel ? [{ label: t('composerLip.chooseAnotherModel'), button: t('composerLip.chooseModel'), onClick: onChooseModel }] : []),
+    ...((notice.addCredits || notice.viewBudgets) && notice.chooseModel ? [{ label: t('composerLip.chooseAnotherModel'), button: t('composerLip.chooseModel'), onClick: onChooseModel }] : []),
     ...(notice.detail ? [{ label: detailOpen ? t('composerLip.hideDetails') : t('composerLip.showDetails'), button: t('composerLip.details'), expanded: detailOpen, onClick: () => setDetailOpen((open) => !open) }] : []),
   ];
   const secondary = others.length === 1 ? { ...others[0], label: others[0].button } : null;

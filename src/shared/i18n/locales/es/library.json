@@ -608,7 +608,8 @@
       "message": "Ya existe una conexión de {provider} con estos datos. Reemplázala con esta o cancela para dejarla como está.",
       "messageLabeled": "Ya existe una conexión de {provider} con estos datos (“{label}”). Reemplázala con esta o cancela para dejarla como está.",
       "confirm": "Reemplazar"
-    }
+    },
+    "labelRequired": "La etiqueta es obligatoria."
   },
   "legacyConnect": {
     "shapeChecked": "Se verificó el formato de las credenciales.",

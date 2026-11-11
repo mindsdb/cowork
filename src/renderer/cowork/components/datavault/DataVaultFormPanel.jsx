@@ -53,6 +53,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const errorRef = useRef(null);
+  // The error renders under the submit button, below the fold on a long
+  // database form. Each submit clears it first, so a repeat refusal scrolls too.
+  useEffect(() => {
+    if (!error || !spec?._cloud_datasource) return;
+    errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [error, spec?._cloud_datasource]);
+  const clearCloudDatasourceError = () => {
+    if (spec?._cloud_datasource) setError('');
+  };
   // A new connection that would overwrite a saved one waits here for the
   // user to choose Replace or Cancel.
   const [replacePrompt, setReplacePrompt] = useState(null);
@@ -981,7 +991,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               onAction={handleAction}
               conversationId={conversationId}
               userLabel={!spec._is_success ? userLabel : undefined}
-              onUserLabelChange={setUserLabel}
+              onUserLabelChange={(label) => {
+                setUserLabel(label);
+                clearCloudDatasourceError();
+              }}
+              onFieldChange={clearCloudDatasourceError}
               onMethodChange={async (methodId) => {
                 // 'mcp' (HubSpot, ENG-487) drives the identical zero-field
                 // auto-start flow as browser_oauth_builtin — found in code
@@ -1057,7 +1071,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               </Alert>
             )}
             {error && (
-              <Alert variant="danger" className="mt-2.5">{error}</Alert>
+              <div ref={errorRef}>
+                <Alert variant="danger" className="mt-2.5">{error}</Alert>
+              </div>
             )}
           </>
         )}

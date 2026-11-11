@@ -1008,7 +1008,8 @@
       "addCredits": "Adicione créditos ou escolha um modelo disponível.",
       "noModels": "Nenhum modelo de código está disponível.",
       "chooseModel": "Escolha um modelo para continuar.",
-      "chooseFolder": "Escolha uma pasta para continuar."
+      "chooseFolder": "Escolha uma pasta para continuar.",
+      "budgetReached": "O orçamento da sua organização acabou. Escolha um modelo disponível ou peça a um proprietário ou administrador para aumentá-lo."
     }
   },
   "executionTarget": {
@@ -1397,7 +1398,8 @@
     "showDetails": "Mostrar detalhes",
     "details": "Detalhes",
     "moreOptions": "Mais opções",
-    "dismiss": "Dispensar"
+    "dismiss": "Dispensar",
+    "viewBudgets": "Ver orçamentos"
   },
   "composerNotices": {
     "thisModel": "Este modelo",
@@ -1447,6 +1449,10 @@
     },
     "kept": {
       "body": "{reason}, então ainda usa disco."
+    },
+    "budgetExceeded": {
+      "title": "O orçamento da sua organização acabou",
+      "body": "Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa."
     }
   },
   "planModeCommand": {

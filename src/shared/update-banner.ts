@@ -171,6 +171,17 @@ export function debInstallStep(version?: string, t: Translate = english): string
   return t('updateBanner.debInstallStep', { command: `sudo apt install ./mindshub-cowork-${version ?? ''}*.deb` });
 }
 
+/** True once main reports a restart underway: an OTA apply downloading or
+ *  reloading the window, or the shell installer taking over. Surfaces that
+ *  started the restart (the Settings modal) close on this, because the apply
+ *  and install requests only resolve once the window is already reloading or
+ *  the app is quitting. It reads main's pushed state rather than the click, so
+ *  a restart the person cancels in the running-tasks dialog closes nothing. */
+export function restartUnderway(input: Pick<UpdateBannerInput, 'ota' | 'shellAuto'>): boolean {
+  const ota = input.ota?.phase;
+  return ota === 'downloading' || ota === 'reloading' || input.shellAuto?.phase === 'installing';
+}
+
 /** The one banner to show, or null when nothing is pending. Shell-first: a
  *  pending shell update (auto or manual) always owns the slot over OTA. */
 export function deriveUpdateBanner(input: UpdateBannerInput, t: Translate = english): UpdateBanner | null {

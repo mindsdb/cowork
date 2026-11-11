@@ -245,7 +245,9 @@
     "noCredits": "No hay créditos disponibles.",
     "topUp": "Recargar saldo →",
     "addFunds": "Agregar fondos →",
-    "slowDown": "{sentence} No es un problema de créditos."
+    "slowDown": "{sentence} No es un problema de créditos.",
+    "budgetReached": "Se agotó el presupuesto de tu organización. {detail}",
+    "viewBudgetsArrow": "Ver presupuestos →"
   },
   "providers": {
     "title": "Proveedores de LLM",
@@ -317,7 +319,9 @@
     "modelUnavailable": "{model} no está disponible. Elige otro modelo o contacta a tu administrador.",
     "modelRestricted": "Un administrador de tu organización restringió {model}. Elige otro modelo.",
     "modelNeedsCredits": "{model} necesita créditos. {link} para usarlo.",
-    "topUpBalance": "Recarga tu saldo"
+    "topUpBalance": "Recarga tu saldo",
+    "modelBudgetReached": "{model} no puede ejecutarse porque se agotó el presupuesto de tu organización.",
+    "viewBudgets": "Ver presupuestos"
   },
   "memory": {
     "title": "Memoria",

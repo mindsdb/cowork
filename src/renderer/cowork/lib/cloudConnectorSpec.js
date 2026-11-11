@@ -8,9 +8,10 @@
 //
 // A method without the block cannot be submitted in cloud at all — the server
 // supports one method per database connector and refuses the rest — so it is
-// not offered rather than offered and rejected. A connector with no cloud
-// block anywhere is returned untouched; that is every OAuth connector, and
-// cloud already runs those through their own path.
+// not offered rather than offered and rejected. The exception is an OAuth
+// method: it never reaches the datasource route, cloud runs it through its own
+// path, so it stays beside the cloud form (Supabase has both). A connector
+// with no cloud block anywhere is returned untouched.
 
 import i18n from '../../lib/i18n';
 
@@ -28,8 +29,10 @@ export function toCloudSpec(spec, connection = null) {
   if (!isCloudDatasourceSpec(spec)) return spec;
 
   const methods = spec.methods
-    .filter((m) => m?.cloud?.available)
+    // An edit form edits a saved database connection, so it offers no OAuth.
+    .filter((m) => m?.cloud?.available || (m?.oauth && !connection))
     .map((m) => {
+      if (!m.cloud) return m;
       const { cloud, ...rest } = m;
       return {
         ...rest,

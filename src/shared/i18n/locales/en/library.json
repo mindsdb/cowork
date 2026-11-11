@@ -608,7 +608,8 @@
       "message": "A {provider} connection with these details already exists. Replace it with this one, or cancel to keep it as it is.",
       "messageLabeled": "A {provider} connection with these details already exists (“{label}”). Replace it with this one, or cancel to keep it as it is.",
       "confirm": "Replace"
-    }
+    },
+    "labelRequired": "Label is required."
   },
   "legacyConnect": {
     "shapeChecked": "Credential shape checked.",
