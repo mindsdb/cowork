@@ -3988,6 +3988,32 @@ body[data-theme="light"] .anton-inline-code {
   pointer-events: none;
   background: linear-gradient(to right, transparent, var(--surface-2));
 }
+/* A note in the steps list (MarkdownContent size="steps", ENG-4195): code
+   stays the small mono style with little padding, so a note holding a code
+   block or a code span keeps the step rows' rhythm. */
+.markdown-steps .anton-inline-code {
+  font-size: 0.92em;
+}
+/* Bold keeps the row's ink: the dark theme's brightest-ink emphasis (see
+   `body[data-theme="dark"] strong`) would make a note's bold outshine the
+   step rows around it. */
+body[data-theme] .markdown-steps :is(strong, b) {
+  color: inherit;
+}
+.markdown-steps .anton-code-block {
+  margin: 2px 0;
+  border-radius: var(--r);
+}
+.markdown-steps .anton-code-block-header {
+  padding: 2px 6px 0;
+}
+.markdown-steps .anton-code-block-pre {
+  padding: 2px 8px 6px;
+}
+.markdown-steps .anton-code-block-pre code.hljs {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
 .anton-code-block-overflow-note {
   padding: 0 14px 10px;
   font-family: var(--font-body);
