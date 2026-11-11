@@ -18,7 +18,6 @@ const SECTIONS = [
   { key: 'projects',  label: 'Projects',       route: 'projects' },
   { key: 'scheduled', label: 'Scheduled Tasks', route: 'scheduled' },
   { key: 'artifacts', label: 'Live Artifacts',  route: 'artifacts' },
-  { key: 'tasks',     label: 'Tasks',           route: 'tasks' },
 ];
 
 function titleForRoute(route, { selectedProject, currentTask } = {}) {
@@ -360,29 +359,36 @@ export default function MobileShell({
               </span>
               <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
             </button>
-            {/* The newest chats, under Chat; See all opens every one here. */}
+            {/* The newest chats, under Chat: a Recents line with See all at
+                its end, then the chats on a guide line. See all opens every
+                chat here, so the drawer needs no Tasks section. */}
             {tasksList.length > 0 && (
-              <div className="mshell-recent-chats">
-                {(allChats ? tasksList : tasksList.slice(0, RECENT_CHATS)).map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`mshell-recent-chat${route === 'task' && currentTask?.id === t.id ? ' is-active' : ''}`}
-                    onClick={() => handleTaskTap(t.id)}
-                  >
-                    {t.title || 'Untitled task'}
-                  </button>
-                ))}
-                {tasksList.length > RECENT_CHATS && (
-                  <button
-                    type="button"
-                    className="mshell-recent-chats__more"
-                    aria-expanded={allChats}
-                    onClick={() => setAllChats((v) => !v)}
-                  >
-                    {allChats ? 'Show fewer' : `See all ${tasksList.length}`}
-                  </button>
-                )}
+              <div className="mshell-recents">
+                <div className="mshell-recents__head">
+                  <span className="mshell-recents__label">Recents</span>
+                  {tasksList.length > RECENT_CHATS && (
+                    <button
+                      type="button"
+                      className="mshell-recents__more"
+                      aria-expanded={allChats}
+                      onClick={() => setAllChats((v) => !v)}
+                    >
+                      {allChats ? 'Show fewer' : `See all ${tasksList.length}`}
+                    </button>
+                  )}
+                </div>
+                <div className="mshell-recent-chats">
+                  {(allChats ? tasksList : tasksList.slice(0, RECENT_CHATS)).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`mshell-recent-chat${route === 'task' && currentTask?.id === t.id ? ' is-active' : ''}`}
+                      onClick={() => handleTaskTap(t.id)}
+                    >
+                      {t.title || 'Untitled task'}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
