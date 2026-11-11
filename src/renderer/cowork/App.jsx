@@ -47,10 +47,11 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
+import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
-import { applyFavicon, applyNavTitleColor } from '../lib/navBranding';
+import { applyFavicon, applyNavTitleColor, applyOrgFavicon } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
 import { canRunProject, canUseSharedResource } from './lib/sharedResourceAccess';
@@ -82,16 +83,24 @@ import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
+import { useOrgBranding } from './hooks/useOrgBranding';
+import { windowTitleFor, withBrandingDraft } from '../lib/orgBranding';
+import { productName } from '../lib/deploymentBrand';
+import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../shared/product-name';
+import { takeSettingsDeepLink } from './lib/settingsDeepLink';
 import { useAppUpdates } from './hooks/useAppUpdates';
-import { deriveUpdateBanner } from '../../shared/update-banner';
+import { deriveUpdateBanner, restartUnderway } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { stopScheduleRun } from './lib/stopScheduleRun';
+import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
+import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit,
-         runScheduleNow, fetchDatasources, MOCK_DATA,
+         runScheduleNow, fetchScheduleRuns, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
@@ -99,7 +108,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchRecommendedModels, createConversation, revealSettingKey,
          SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
 import { describeNotionReferencePages, loadNotionPageTexts } from './lib/notionReferencePages';
-import { answerBody, initialStreamState, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
+import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
 import {
@@ -742,7 +751,6 @@ function AppCore() {
   // they cross into the task-list and routing domains.
   const {
     scheduled,
-    scheduleRunsIndex,
     refreshSchedules,
     handleCreateSchedule,
     handleUpdateSchedule,
@@ -1806,21 +1814,51 @@ function AppCore() {
     sidebarCollapsibleRoutes,
     sidebarPopout,
   } = useSidebarNav({ isNarrow });
+  const orgMode = useOrgMode();
+  // The org's branding: hosted org mode only. Read at startup, on
+  // an org switch or sign-in, and each time Settings opens; never polled.
+  // Hosted MindsHub (any org, personal ones too): the sidebar title, logo and
+  // tab icon come from the org, not from per-person settings.
+  const hostedMindsHub = PLATFORM_UI && host.isWeb && orgMode;
+  // Desktop reads the same org-branding from its local server (passed through
+  // to auth with the MindsHub credential).
+  const orgBranding = useOrgBranding({ enabled: hostedMindsHub, desktop: host.isElectron, settingsOpen });
+  // Where the org's logo, icon and sidebar title replace the per-person ones:
+  // hosted web (any org), and desktop signed in to an org with branding.
+  const orgControlled = hostedMindsHub || (host.isElectron && Boolean(orgBranding.branding?.enabled));
+  // An admin's unsaved edits on Settings → Branding, previewed live in this
+  // window only: the draft takes the org-look slot in the resolver. It never
+  // reaches the server or the first-paint cache, and leaving the Branding page
+  // (or closing Settings) clears it, which puts the saved look back.
+  const [brandingDraft, setBrandingDraft] = useState(null);
+  const savedOrgBranding = orgBranding.branding;
+  const previewOrgBranding = useMemo(
+    () => withBrandingDraft(savedOrgBranding, brandingDraft, productName(STOCK_WORDMARK)),
+    [brandingDraft, savedOrgBranding],
+  );
+  useEffect(() => { if (!settingsOpen) setBrandingDraft(null); }, [settingsOpen]);
   /* The narrow-band sidebar popout counts as an overlay, so the desktop
      browser pane's native view steps aside rather than draw over it. */
   useNativeOverlay(sidebarPopout && navPopoutOpen);
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
-  // effects that keep them applied — all live in useThemeSkin.
+  // effects that keep them applied — all live in useThemeSkin. `look` is the
+  // deployment brand, the org's branding and the member's choices resolved
+  // in one place (lib/orgBranding.ts): the greeting, sidebar logo and tab
+  // icon below read it rather than the raw settings.
   const {
     theme, setTheme,
     skin, setSkin,
     themeModalOpen, setThemeModalOpen,
     customTheme, setCustomTheme,
-  } = useThemeSkin();
+    look,
+  } = useThemeSkin({ orgBranding: previewOrgBranding, settings: appearanceSettings, hostedMindsHub: orgControlled });
+  // Desktop's window title is the resolved sidebar title, or the stock name.
+  useEffect(() => {
+    if (host.isElectron) document.title = windowTitleFor(look, productName(STOCK_PRODUCT_NAME));
+  }, [look]);
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
-  const orgMode = useOrgMode();
   // One list for the composer's per-conversation toggles: the OAuth
   // connections and the cloud database ones, each keyed by (engine, name),
   // which is the pair the server filters a turn's grants on.
@@ -1913,12 +1951,18 @@ function AppCore() {
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
   useEffect(() => {
-    applyNavTitleColor(appearanceSettings.navTitleColor);
-  }, [appearanceSettings.navTitleColor]);
+    applyNavTitleColor(look.navTitleColor);
+  }, [look.navTitleColor]);
 
+  // The tab icon: the member's own, the org's, or the page's own (the
+  // deployment brand's or stock), as resolved in `look`.
+  const faviconHref = look.favicon?.href ?? null;
+  const faviconFromOrg = look.favicon?.source === 'org';
   useEffect(() => {
-    if (host.isWeb) applyFavicon(appearanceSettings.favicon);
-  }, [appearanceSettings.favicon]);
+    if (!host.isWeb) return;
+    if (faviconFromOrg) applyOrgFavicon(faviconHref);
+    else applyFavicon(faviconHref);
+  }, [faviconHref, faviconFromOrg]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -2153,6 +2197,13 @@ function AppCore() {
       ? { version: shellUpdate.version, debInstaller: host.getPlatform() === 'linux' }
       : null,
   });
+  // Close Settings once a restart is underway. Its "Restart now" buttons wait
+  // on requests that resolve only as the window reloads or the app quits, so
+  // without this the modal stays up over the update overlay.
+  const restartInProgress = restartUnderway({ ota: updateStatus, shellAuto: shellAutoUpdate });
+  useEffect(() => {
+    if (restartInProgress) setSettingsOpen(false);
+  }, [restartInProgress]);
   const handleUpdateAction = useCallback((action) => {
     if (action === 'apply-ota') return handleApplyUpdate();
     if (action === 'shell-auto') return handleShellAutoUpdateAction();
@@ -2499,6 +2550,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -2534,6 +2586,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -2933,6 +2986,8 @@ function AppCore() {
           selected_method: '__edit_current__',
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -2950,6 +3005,8 @@ function AppCore() {
           fields: syntheticFields,
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -3148,8 +3205,9 @@ function AppCore() {
       // In cloud a connector whose methods carry a `cloud` block is shaped to
       // it: that block replaces the desktop fields and copy whole, and a
       // method without one is not offered, because the relay supports exactly
-      // one method per database connector and refuses the rest. Everything
-      // else, which is every OAuth connector, passes through untouched.
+      // one method per database connector and refuses the rest. OAuth methods
+      // stay beside the cloud form; a connector with no cloud block passes
+      // through untouched.
       const baseSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code
@@ -3160,6 +3218,8 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        // Saved before connection tests: the form shows the rebuild text, not fields.
+        _needs_rebuild: !!full.needs_rebuild,
         /* Reconnecting a shared connection carries its name so the submit
            (DataVaultFormPanel reads spec._existing_name) updates that entry in
            place instead of saving a second one under a fresh random slug. */
@@ -3224,6 +3284,7 @@ function AppCore() {
   } = useNotionPagePicker({ selectedProject, setComposerAttachments });
   const { startSharePointImport, sharePointModals } = useSharePointImport({
     connections: connectors,
+    projects,
     orgMode,
     onConnectionsChanged: () => {
       fetchDatasources()
@@ -3372,6 +3433,19 @@ function AppCore() {
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
   };
+
+  // A link into Settings (?settings=appearance&section=branding, captured in
+  // web-main.tsx before login): open that page once, scrolled to that part.
+  const [appearanceAnchor, setAppearanceAnchor] = useState(null);
+  const clearAppearanceAnchor = useCallback(() => setAppearanceAnchor(null), []);
+  useEffect(() => {
+    const link = takeSettingsDeepLink();
+    if (!link) return;
+    setAppearanceAnchor(link.section);
+    openSettings(link.page);
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
@@ -3780,7 +3854,7 @@ function AppCore() {
       // The canonical id isn't loadable yet either — keep the loader off it.
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
+        t.id === previousId || t.id === taskId ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -3911,6 +3985,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -3938,10 +4013,10 @@ function AppCore() {
           const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           if (configErrorInBody) {
-            return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
+            return { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
           return finalContent
-            ? { ...t, id: finalId, status: 'idle', messages: [...msgs, {
+            ? { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
                 // Client-only: lets its steps fold shut instead of vanishing
@@ -3950,12 +4025,13 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
                 ...(finalIncompleteReason ? { incompleteReason: finalIncompleteReason } : {}),
               }] }
-            : { ...t, id: finalId, status: 'idle', messages: msgs };
+            : { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: msgs };
         }));
         // Follow the rename only if this conversation is still on screen; the
         // person may have moved to another one while the answer ran.
@@ -4328,7 +4404,7 @@ function AppCore() {
       moveDraft(previousId, sid);
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+        t.id === previousId || t.id === id ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       // Move the in-flight + active refs onto the new id so cancel /
       // reconcile passes look at the right key.
@@ -4343,15 +4419,7 @@ function AppCore() {
       // Migrate the form store so a success-state panel (e.g. the
       // OAuth success screen set just before onContinue was called)
       // survives the ID change and stays visible under the new task id.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4430,6 +4498,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -4465,6 +4534,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -4676,7 +4746,7 @@ function AppCore() {
       moveDraft(previousId, sid);
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+        t.id === previousId || t.id === id ? { ...t, id: sid, renamedFrom: t.id } : t
       )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -4689,15 +4759,7 @@ function AppCore() {
       // data-vault-form-patch blocks (keyed to the new id) both
       // find the form. Without this the panel loses its spec and
       // the success patch falls through to a bare setForm.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4752,6 +4814,9 @@ function AppCore() {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A custom connector's test waiting on the user: its id goes to the
+        // panel's own store, never into the stream state or the message.
+        if (applyConnectorTestEvent(resolvedId || id, ev)) return;
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -4819,6 +4884,7 @@ function AppCore() {
         const finalContent = answerBody(streamState);
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalEndedAt = liveTurnEndedAt(streamState.endedAt);
         const finalHarness = streamState.harness;
         /* The figures' offsets index the answer the server saved, which keeps
            narration this message dropped before a tool call. */
@@ -4844,6 +4910,7 @@ function AppCore() {
                 ...(leavingTake ? { _leavingTake: leavingTake } : {}),
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                endedAt: finalEndedAt,
                 harness: finalHarness,
                 ...(finalFigureSources ? { figureSources: finalFigureSources } : {}),
                 ...(finalAssistantMessageId ? { id: finalAssistantMessageId } : {}),
@@ -5706,8 +5773,39 @@ function AppCore() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
-  const handleRunScheduleNow = async (id) => {
-    const result = await runScheduleNow(id);
+  // A desktop notification when the server pauses a schedule after repeated
+  // failures, where the OS allows one; clicking it opens that schedule. Until
+  // the user opens it, the Scheduled Tasks page also says so.
+  const { unseen: unseenAutoPauses, markReviewed: markAutoPauseReviewed } = useAutoPauseNotifications(
+    scheduled,
+    (id) => {
+      setWorkspaceMode('cowork');
+      setSelectedScheduleId(id);
+      setRoute('schedule-detail');
+    },
+  );
+
+  // Stop a schedule's run in flight the way the chat's Stop does: cancel its
+  // conversation's turn. The schedule list doesn't carry that conversation,
+  // so it is read from the newest runs.
+  const handleStopScheduleRun = (id) => stopScheduleRun(id, {
+    fetchRuns: fetchScheduleRuns, cancel: cancelResponse, refresh: refreshSchedules,
+  });
+
+  // Hold off idle sleep while a scheduled run is in flight or about to fire,
+  // unless the user turned it off in Settings. Desktop only; a no-op on web.
+  // Said again on every poll (`scheduled` is a new list each time): the shell
+  // lets a hold lapse when it stops hearing it.
+  const keepAwake = shouldKeepAwake(scheduled, {
+    windowMs: SCHEDULE_POLL_MAX_DELAY_MS + SCHEDULE_POLL_RUN_BUFFER_MS,
+    enabled: settings.scheduleKeepAwake !== false,
+  });
+  useEffect(() => {
+    host.setScheduleKeepAwake(keepAwake);
+  }, [keepAwake, scheduled]);
+  useEffect(() => () => { host.setScheduleKeepAwake(false); }, []);
+  const handleRunScheduleNow = async (id, options) => {
+    const result = await runScheduleNow(id, options);
     // The server creates the conversation eagerly and returns its id.
     // Mark it in-flight locally so reconcileTaskMessages doesn't inject
     // a spurious "got interrupted" prompt before the 5s poll catches up,
@@ -5839,18 +5937,21 @@ function AppCore() {
         window.dispatchEvent(new CustomEvent('anton:open-new-project'));
       }, 60);
     },
-    navTitle: appearanceSettings.navTitle || null,
-    navLogo: appearanceSettings.navLogo || null,
+    navTitle: look.navTitle,
+    navLogo: look.logo,
+    navLogoWide: look.logoSource === 'org',
+    navTitleHidden: look.navTitleHidden,
     // Mobile has no room for the desktop floating-toggle-row (bottom-right,
     // over the FAB) — the theme toggle moves into the top bar, opposite the
     // hamburger, and the coding-mode toggle is dropped entirely rather than
     // hunting for a second spot.
     theme,
-    showThemeToggle: appearanceSettings.showThemeToggle !== false,
+    showThemeToggle: appearanceSettings.showThemeToggle !== false
+      && ['menu', 'theme'].includes(displayToggleMode(appearanceSettings, look.lockedByOrg)),
     /* Opens Display settings only when the corner button would; otherwise it
        flips the theme. */
     onToggleTheme: () => {
-      if (displayToggleMode(appearanceSettings) === 'menu') {
+      if (displayToggleMode(appearanceSettings, look.lockedByOrg) === 'menu') {
         setThemeModalOpen(true);
       } else {
         setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
@@ -5861,7 +5962,7 @@ function AppCore() {
   // Desktop corner button. Each Appearance switch gates only its own control
   // (ENG-3201): both on opens Display settings, one on flips just that one.
   const displayToggle = (() => {
-    switch (displayToggleMode(appearanceSettings)) {
+    switch (displayToggleMode(appearanceSettings, look.lockedByOrg)) {
       case 'menu':
         return {
           label: 'Display settings',
@@ -6020,7 +6121,6 @@ function AppCore() {
           onMoveTaskToProject={handleOpenMoveModal}
           projects={runnableProjects}
           schedules={scheduled}
-          scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
             if (sidebarPopout) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
@@ -6029,8 +6129,10 @@ function AppCore() {
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
           showCounters={appearanceSettings.showCounters === true}
-          navTitle={appearanceSettings.navTitle || null}
-          navLogo={appearanceSettings.navLogo || null}
+          navTitle={look.navTitle}
+          navLogo={look.logo}
+          navLogoWide={look.logoSource === 'org'}
+          navTitleHidden={look.navTitleHidden}
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
@@ -6106,7 +6208,7 @@ function AppCore() {
         >
         {route === 'home' && (
           <HomeView
-            greeting={appearanceSettings.greeting}
+            greeting={look.greeting}
             showDots={showDots}
             activeTasks={activeTasks}
             onSelectTask={selectTask}
@@ -6306,7 +6408,6 @@ function AppCore() {
             loading={projectDetailResolving || !projectsLoaded}
             tasks={tasks}
             scheduled={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             modelMeta={modelMeta}
             model={selectedModel}
@@ -6371,6 +6472,7 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onStopRun={handleStopScheduleRun}
             onOpenSchedule={(task) => {
               setSelectedScheduleId(task.id);
               setRoute('schedule-detail');
@@ -6379,6 +6481,7 @@ function AppCore() {
               if (p) setSelectedProject(p);
               setRoute('projects');
             }}
+            unseenAutoPauses={unseenAutoPauses}
             agentLabel={agentLabel}
           />
         )}
@@ -6399,6 +6502,8 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onReviewedAutoPause={markAutoPauseReviewed}
+            onStopRun={handleStopScheduleRun}
             onOpenRunSession={(sessionId) => {
               if (!sessionId) return;
               // Scheduled runs create real conversations on the
@@ -6447,7 +6552,6 @@ function AppCore() {
             tasks={tasks}
             projects={runnableProjects}
             schedules={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             onOpenTask={(id) => selectTask(id)}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
@@ -6572,6 +6676,13 @@ function AppCore() {
               skin={skin} onSkinChange={setSkin}
               customTheme={customTheme} onCustomThemeChange={setCustomTheme}
               agentLabel={agentLabel}
+              orgBranding={orgBranding.branding}
+              onOrgBrandingSaved={orgBranding.apply}
+              onOrgBrandingDraft={setBrandingDraft}
+              look={look}
+              hostedMindsHub={orgControlled}
+              appearanceAnchor={appearanceAnchor}
+              onAppearanceAnchorShown={clearAppearanceAnchor}
               section={settingsSection}
               onSectionChange={setSettingsSection}
               serverOnline={serverOnline}
@@ -6625,6 +6736,13 @@ function AppCore() {
                 skin={skin} onSkinChange={setSkin}
                 customTheme={customTheme} onCustomThemeChange={setCustomTheme}
                 agentLabel={agentLabel}
+                orgBranding={orgBranding.branding}
+                onOrgBrandingSaved={orgBranding.apply}
+                onOrgBrandingDraft={setBrandingDraft}
+                look={look}
+                hostedMindsHub={orgControlled}
+                appearanceAnchor={appearanceAnchor}
+                onAppearanceAnchorShown={clearAppearanceAnchor}
                 section={settingsSection || 'agent'}
                 onSectionChange={setSettingsSection}
                 serverOnline={serverOnline}
@@ -6696,6 +6814,7 @@ function AppCore() {
         onThemeChange={setTheme}
         skin={skin}
         onSkinChange={setSkin}
+        orgLocks={look.lockedByOrg}
       />
 
       <ComingSoonModal
@@ -6762,7 +6881,7 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteProject != null}
-        title={`Delete project "${pendingDeleteProject?.name}"?`}
+        title={`Delete project "${projectLabel(pendingDeleteProject)}"?`}
         message={
           pendingDeleteProject?.capabilities?.directoryIsExternal
             ? `The project and its conversations will be removed. Your folder ${pendingDeleteProject?.path || ''} stays where it is and your own files in it are not touched, though Cowork's skills/ and .anton/ folders are left behind inside it. This can't be undone.`

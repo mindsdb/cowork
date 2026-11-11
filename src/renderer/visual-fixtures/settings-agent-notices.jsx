@@ -54,6 +54,7 @@ const emptyWallet = (freeTokens) => ({
 });
 const SPENT = emptyWallet({ limit: 100, used: 100, remaining: 0, resetsAt: REFILL });
 const NO_GRANT = emptyWallet({ limit: 0, used: 0, remaining: 0, resetsAt: null });
+const ROOM = emptyWallet({ limit: 100, used: 40, remaining: 60, resetsAt: REFILL });
 
 const reason = (code, resetAt = null) => ({ code, resetAt });
 
@@ -103,6 +104,20 @@ const PROBE_CASES = [
     reason: reason('free_air_daily_spend_fuse_exceeded'),
   },
   {
+    id: 'probe-budget-air-room',
+    label: "budget_exceeded (402): the org's spending budget is used up and Air still has free allowance. View budgets, no funds.",
+    detail: 'HTTP 402',
+    reason: reason('budget_exceeded'),
+    usage: ROOM,
+  },
+  {
+    id: 'probe-budget-no-grant',
+    label: 'The same refusal for an org with no free grant: Air is not named.',
+    detail: 'HTTP 402',
+    reason: reason('budget_exceeded'),
+    usage: NO_GRANT,
+  },
+  {
     id: 'probe-rate-limited',
     label: 'rate_limited (429): a velocity limit. Muted, no billing action.',
     detail: 'HTTP 429',
@@ -122,20 +137,21 @@ const ROW_CASES = [
   { id: 'row-legacy-429', label: 'Providers row, no reason: every 429 reads "Rate limited".', detail: 'HTTP 429', reason: null },
   { id: 'row-allowance', label: 'Providers row, free allowance refused (spent, or no grant at all).', detail: 'HTTP 429', reason: reason('included_allowance_exhausted', REFILL) },
   { id: 'row-paused', label: 'Providers row, daily fuse.', detail: 'HTTP 429', reason: reason('free_air_daily_spend_fuse_exceeded', FUSE_LIFTS) },
+  { id: 'row-budget', label: "Providers row, org's spending budget used up.", detail: 'HTTP 402', reason: reason('budget_exceeded') },
   { id: 'row-rate-limited', label: 'Providers row, velocity limit.', detail: 'HTTP 429', reason: reason('rate_limited') },
   { id: 'row-wallet-empty', label: 'Providers row, empty wallet.', detail: 'HTTP 402', reason: reason('wallet_empty') },
   { id: 'row-policy-unavailable', label: 'Providers row, billing outage.', detail: 'HTTP 503', reason: reason('policy_unavailable') },
 ];
 
 /* The picker catalog: one model an admin restricted, one the wallet closes,
-   and one that runs. */
-const MODEL_LIST = ['mindshub_air', 'claude-opus-4-8', 'gpt-5.6-sol'];
-const MODEL_LABELS = { mindshub_air: 'MindsHub Air', 'claude-opus-4-8': 'Claude Opus 4.8', 'gpt-5.6-sol': 'GPT-5.6 Sol' };
-const MODEL_ENABLED = { mindshub_air: true, 'claude-opus-4-8': false, 'gpt-5.6-sol': false };
-const MODEL_DISABLED_REASONS = { 'claude-opus-4-8': 'model_restricted', 'gpt-5.6-sol': 'wallet_empty' };
+   one the org budget stops, and one that runs. */
+const MODEL_LIST = ['mindshub_air', 'claude-opus-4-8', 'gpt-5.6-sol', 'claude-sonnet-5'];
+const MODEL_LABELS = { mindshub_air: 'MindsHub Air', 'claude-opus-4-8': 'Claude Opus 4.8', 'gpt-5.6-sol': 'GPT-5.6 Sol', 'claude-sonnet-5': 'Claude Sonnet 5' };
+const MODEL_ENABLED = { mindshub_air: true, 'claude-opus-4-8': false, 'gpt-5.6-sol': false, 'claude-sonnet-5': false };
+const MODEL_DISABLED_REASONS = { 'claude-opus-4-8': 'model_restricted', 'gpt-5.6-sol': 'wallet_empty', 'claude-sonnet-5': 'budget_exceeded' };
 const PICKER_OPTIONS = buildModelOptions(
   'mindshub_air', MODEL_LIST, false, false, MODEL_ENABLED, MODEL_LABELS,
-  { modelProviders: { mindshub_air: 'openai', 'claude-opus-4-8': 'anthropic', 'gpt-5.6-sol': 'openai' }, modelDisabledReasons: MODEL_DISABLED_REASONS },
+  { modelProviders: { mindshub_air: 'openai', 'claude-opus-4-8': 'anthropic', 'gpt-5.6-sol': 'openai', 'claude-sonnet-5': 'anthropic' }, modelDisabledReasons: MODEL_DISABLED_REASONS },
 );
 
 const noop = () => {};
@@ -197,7 +213,7 @@ createRoot(document.getElementById('root')).render(
       {/* First on the page, with room below, because the open list is a
           popover that opens under its trigger only while the trigger sits in
           the viewport. Hover the restricted row for its tooltip. */}
-      <Case id="picker-restricted-row" label="The model picker, open: the restricted row is tagged Restricted with no Add credits button; the wallet row keeps Needs credits and its button.">
+      <Case id="picker-restricted-row" label="The model picker, open: the restricted row is tagged Restricted and the budget row Budget reached, neither with an Add credits button; the wallet row keeps Needs credits and its button.">
         <div style={{ width: 320, paddingBottom: 260 }}>
           <ModelSelect value="mindshub_air" options={PICKER_OPTIONS} open onOpenChange={noop} onValueChange={noop} />
         </div>
@@ -206,6 +222,9 @@ createRoot(document.getElementById('root')).render(
       {ROW_CASES.map((c) => <RowCase key={c.id} {...c} />)}
       <Case id="hint-restricted" label="The current model is one an admin restricted: no billing link.">
         <UnavailableModelHint label="Claude Opus 4.8" restricted />
+      </Case>
+      <Case id="hint-budget-reached" label="The current model is one the org budget stops: a View budgets link, no credits.">
+        <UnavailableModelHint label="Claude Sonnet 5" budgetReached />
       </Case>
       <Case id="hint-needs-credits" label="The current model is one the wallet closes: unchanged.">
         <UnavailableModelHint label="GPT-5.6 Sol" restricted={false} />

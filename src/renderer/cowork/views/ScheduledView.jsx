@@ -19,9 +19,11 @@ import {
   ListGroup, useCollectionShortcut,
 } from '../components/collection';
 import { Alert, Button } from '../components/ui';
+import { useToastManager } from '../components/ui/Toast';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleRow from '../components/schedule/ScheduleRow';
+import { lastRunFailed, scheduleState } from '../components/schedule/ScheduleStatusBadge';
 import { host } from '../../platform/host';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 
@@ -41,17 +43,24 @@ export default function ScheduledView({
   onPause,
   onResume,
   onRunNow,
+  // (scheduleId) — stops the schedule's run in flight, as the chat's Stop does.
+  onStopRun,
   onOpenSchedule,
   // Optional — receives the project object when a card or list row's
   // "project:" label is clicked. Wired by App.jsx to setSelected
   // Project + setRoute('projects'), the same path Live artifacts uses.
   onOpenProject,
+  // Auto-paused schedules the user has not opened since they were paused
+  // (useAutoPauseNotifications). Shown here until each is reviewed, so a
+  // pause is not missed when its desktop notification was not.
+  unseenAutoPauses = [],
   agentLabel,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState(null);
-  const [error, setError] = useState('');
+  const toastManager = useToastManager();
+  const showError = (title) => toastManager.add({ type: 'danger', title });
   // Rows by default: a schedule is something you manage (status, next run,
   // run now), not a place you work in. Phones get rows too.
   // Delete confirmation is a standalone ConfirmModal (not part of the edit
@@ -99,32 +108,42 @@ export default function ScheduledView({
     return [...filtered].sort(cmp);
   }, [scheduled, search, sort, projects]);
 
+  const attentionCount = useMemo(() => visible.filter(needsAttention).length, [visible]);
+
   function openCreate() {
     setEditing(null);
-    setError('');
     setModalOpen(true);
   }
 
   function openEdit(task) {
     setEditing(task);
-    setError('');
     setModalOpen(true);
   }
 
-  async function handleSubmit(payload, id) {
-    if (id) await onUpdate(id, payload);
-    else await onCreate(payload);
+  async function handleSubmit(payload, id, { runOnce = false } = {}) {
+    if (id) {
+      await onUpdate(id, payload);
+      return;
+    }
+    const created = await onCreate(payload);
+    if (!runOnce || !created?.id) return;
+    // The task exists now, so a failed trial run must not fail the save: the
+    // form would stay open, and saving again would create a second task.
+    try {
+      await onRunNow(created.id, { trial: true });
+    } catch (err) {
+      showError(`Saved “${payload.title}”, but its trial run didn’t start: ${err?.message || 'try Run now.'}`);
+    }
   }
 
   async function confirmDelete() {
     if (!deletingTask) return;
     setDeleteBusy(true);
-    setError('');
     try {
       await onDelete(deletingTask.id);
       setDeletingTask(null);
     } catch (err) {
-      setError(err?.message || 'Could not delete schedule.');
+      showError(err?.message || 'Could not delete schedule.');
     } finally {
       setDeleteBusy(false);
     }
@@ -132,9 +151,8 @@ export default function ScheduledView({
 
   async function runAction(id, action) {
     setBusyId(id);
-    setError('');
     try { await action(id); }
-    catch (err) { setError(err?.message || 'Schedule action failed.'); }
+    catch (err) { showError(err?.message || 'Schedule action failed.'); }
     finally { setBusyId(null); }
   }
 
@@ -142,9 +160,11 @@ export default function ScheduledView({
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
-        subtitle={host.isElectron
-          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. Runs missed while it's closed are skipped — ${agentLabel} picks up at the next scheduled time.`
-          : `Scheduled tasks run on the server, even with this tab closed. Runs missed while the server is down are skipped — ${agentLabel} picks up at the next scheduled time.`}
+        // Desktop runs its own server, so tasks stop with the app. Every web
+        // build, hosted or self-hosted, runs them on a server that stays up.
+        subtitle={!host.isWeb
+          ? `Scheduled tasks run while ${STOCK_PRODUCT_NAME} is open. If a run was due while it was closed, ${agentLabel} runs the latest one from the last 7 days when it reopens.`
+          : `Scheduled tasks run on the server, even with this tab closed. If a run was due while the server was down, ${agentLabel} runs the latest one from the last 7 days when it's back.`}
         actions={
           <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
@@ -182,8 +202,22 @@ export default function ScheduledView({
         />
       )}
 
-      {error && (
-        <Alert variant="danger" className="mx-8 mb-3">{error}</Alert>
+      {unseenAutoPauses.length > 0 && (
+        <Alert
+          variant="danger"
+          className="mx-8 mb-3"
+          title={unseenAutoPauses.length === 1
+            ? `“${unseenAutoPauses[0].title || 'Untitled schedule'}” was paused after failing several runs in a row`
+            : `${unseenAutoPauses.length} scheduled tasks were paused after failing several runs in a row`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {unseenAutoPauses.map((task) => (
+              <Button key={task.id} size="sm" onClick={() => onOpenSchedule?.(task)}>
+                {unseenAutoPauses.length === 1 ? 'Review' : `Review “${task.title || 'Untitled schedule'}”`}
+              </Button>
+            ))}
+          </div>
+        </Alert>
       )}
 
       {/* Body — empty state or list. */}
@@ -200,23 +234,31 @@ export default function ScheduledView({
           className: 'mx-8 mb-8',
         }}
       >
-        <ListGroup className="mx-8 mb-8">
-          {visible.map((task) => (
-            <ScheduleRow
-              key={task.id}
-              task={task}
-              projects={projects}
-              busy={busyId === task.id}
-              onOpen={() => onOpenSchedule?.(task)}
-              onRunNow={() => runAction(task.id, onRunNow)}
-              onPause={() => runAction(task.id, onPause)}
-              onResume={() => runAction(task.id, onResume)}
-              onEdit={() => openEdit(task)}
-              onDelete={() => setDeletingTask(task)}
-              onOpenProject={onOpenProject}
-            />
-          ))}
-        </ListGroup>
+        {/* What needs you sits on top: auto-paused, missed, or a failed last
+            run. The rest follow in the chosen order. */}
+        {[
+          ['attention', 'Needs attention', visible.filter(needsAttention)],
+          ['rest', attentionCount ? 'Everything else' : null, visible.filter((t) => !needsAttention(t))],
+        ].filter(([, , rows]) => rows.length > 0).map(([key, title, rows]) => (
+          <ListGroup key={key} className="mx-8 mb-8" title={title ? <h2>{title}</h2> : undefined} meta={title ? rows.length : undefined}>
+            {rows.map((task) => (
+              <ScheduleRow
+                key={task.id}
+                task={task}
+                projects={projects}
+                busy={busyId === task.id}
+                onOpen={() => onOpenSchedule?.(task)}
+                onRunNow={() => runAction(task.id, onRunNow)}
+                onStopRun={() => runAction(task.id, onStopRun)}
+                onPause={() => runAction(task.id, onPause)}
+                onResume={() => runAction(task.id, onResume)}
+                onEdit={() => openEdit(task)}
+                onDelete={() => setDeletingTask(task)}
+                onOpenProject={onOpenProject}
+              />
+            ))}
+          </ListGroup>
+        ))}
       </CollectionState>
 
       <ScheduleTaskModal
@@ -245,4 +287,14 @@ export default function ScheduledView({
       />
     </div>
   );
+}
+
+
+// A task that needs the user: paused by failures, a missed one-off, or a last
+// run that failed.
+export function needsAttention(task) {
+  if (task.running) return false;
+  const state = scheduleState(task);
+  return state === 'auto_paused' || state === 'missed'
+    || (state === 'active' && lastRunFailed(task));
 }

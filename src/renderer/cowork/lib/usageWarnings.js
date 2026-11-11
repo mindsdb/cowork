@@ -221,6 +221,17 @@ export function freeServingPausedCopy(resetAt) {
   return `Free MindsHub Air is paused for everyone until ${until}. This doesn't use your allowance. Add funds to keep working now.`;
 }
 
+/** What a stop on the org's spent budget says (`budget_exceeded`), after a
+ *  lead naming the budget, for the stopped-task card and the Settings notice.
+ *  Credits do not lift it, so it never asks for funds; Air is named only while
+ *  the hub read shows its free allowance has room. */
+export function budgetExceededCopy({ usage = null } = {}) {
+  const raise = "Paid models can't run until an owner or admin raises it in Budgets.";
+  return freeAllowanceState(usage).status === 'has_room'
+    ? `${raise} MindsHub Air still works while its free allowance lasts.`
+    : raise;
+}
+
 /** Whether a bar descriptor is something to WARN about, as opposed to the
  *  standing figure. The one place that rule is written: a resting figure can
  *  sit on screen for a whole window, so counting it as a warning would mean a

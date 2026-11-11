@@ -142,6 +142,8 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
   mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),
   mindshubSwitchOrg: (organizationId: string) => ipcRenderer.invoke(IPC.MINDSHUB_SWITCH_ORG, organizationId),
+  mindshubBrandImages: (urls: unknown) => ipcRenderer.invoke(IPC.MINDSHUB_BRAND_IMAGES, urls),
+  mindshubOrgIconUris: (urls: unknown) => ipcRenderer.invoke(IPC.MINDSHUB_ORG_ICON_URIS, urls),
   // Fires whenever the MindsHub session state changes in the main
   // process (login, silent refresh, logout, session death). Returns an
   // unsubscribe function.
@@ -279,6 +281,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // The renderer reports them to PostHog on boot and acks what landed.
   drainUpdateJournal: () => ipcRenderer.invoke(IPC.UPDATE_JOURNAL_DRAIN),
   ackUpdateJournal: (ids: string[]) => ipcRenderer.invoke(IPC.UPDATE_JOURNAL_ACK, ids),
+  setScheduleKeepAwake: (active: boolean) => ipcRenderer.invoke(IPC.SCHEDULE_KEEP_AWAKE, active),
 
   // Resolves once the boot sequence settles; the renderer awaits this before
   // leaving the loading screen so a boot update can't flash the UI (ENG-749).

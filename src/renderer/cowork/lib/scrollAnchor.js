@@ -16,9 +16,15 @@
 // where snapping to the bottom is exactly what opening a conversation
 // should do); a different first id, with more messages than before, means
 // something was prepended.
-export function nextScrollAnchor({ taskId, messages, previousAnchor, scrollHeight }) {
+//
+// A new chat starts under a temporary id and takes the server's id once the
+// reply starts. `renamedFrom` names that earlier id, so the rename reads as the
+// same conversation; read as a switch, it would drop the sent message's anchor
+// and follow the reply to the end.
+export function nextScrollAnchor({ taskId, renamedFrom = null, messages, previousAnchor, scrollHeight }) {
   const firstKey = messages[0]?.id ?? null;
-  const sameTask = previousAnchor?.taskId === taskId;
+  const sameTask = previousAnchor?.taskId === taskId
+    || (renamedFrom != null && previousAnchor?.taskId === renamedFrom);
   const isPrepend = sameTask
     && previousAnchor.firstKey != null
     && firstKey != null

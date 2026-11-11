@@ -34,6 +34,7 @@ import { useStickToBottom } from '../components/chat/useStickToBottom';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, compactPath, isActiveStatus } from './presentation';
 import type { LatestEvents } from './useCodingSession';
+import { takeTaskStarted } from './startedTasks';
 import './event-timeline.css';
 
 
@@ -612,6 +613,25 @@ function ChildWorkEvent({ event }: { event: CodingEvent }) {
 }
 
 
+// The files sent with a message, as the server recorded them: the label the
+// composer showed and whether it was an image. Same chip as a Cowork chat
+// attachment, without a size, which isn't recorded.
+function messageAttachments(event: CodingEvent): ReactNode {
+  const recorded: unknown[] = Array.isArray(event.data.attachments) ? event.data.attachments : [];
+  const items = recorded.flatMap((item) => {
+    const { name, kind } = (item ?? {}) as { name?: unknown; kind?: unknown };
+    return typeof name === 'string' && name ? [{ name, image: kind === 'local_image' }] : [];
+  });
+  if (!items.length) return null;
+  return items.map((item, index) => (
+    <div key={`${index}-${item.name}`} className="user-turn-attachment">
+      <span className="user-turn-attachment-icon">{item.image ? Ico.image(14) : Ico.doc(14)}</span>
+      <span className="user-turn-attachment-name">{item.name}</span>
+    </div>
+  ));
+}
+
+
 // The files a turn changed sit with its answer, ahead of the answer's
 // actions, so the actions close the turn.
 function TimelineEvent({ event, copyable = false, changes }: { event: CodingEvent; copyable?: boolean; changes?: ReactNode }) {
@@ -621,6 +641,7 @@ function TimelineEvent({ event, copyable = false, changes }: { event: CodingEven
         className="code-user-turn"
         content={event.text}
         turnId={`code-${event.seq}`}
+        attachments={messageAttachments(event)}
         actions={<TurnActions text={event.text} copyLabel="Copy message" align="right" />}
       />
     );
@@ -749,8 +770,9 @@ export const EventTimeline = memo(function EventTimeline({
     if (!historyLoaded) return;
     const previous = seenUserSeq.current;
     seenUserSeq.current = latestUserSeq;
-    if (previous != null && latestUserSeq > previous) anchorLastTurn();
-  }, [historyLoaded, latestUserSeq, anchorLastTurn]);
+    // A task just started here anchors its first message like any later send.
+    if (previous == null ? takeTaskStarted(session.id) : latestUserSeq > previous) anchorLastTurn();
+  }, [historyLoaded, latestUserSeq, anchorLastTurn, session.id]);
   useEffect(() => { follow(); }, [latestEventSeq, session.status, follow]);
   return (
     <ChatScroller

@@ -157,6 +157,118 @@ describe('the connections page in cloud', () => {
     await waitFor(() => expect(api.retryDatasourceValidation).toHaveBeenCalledWith(8));
   });
 
+  it('shows the hint a retry returned when the panel is opened again, though the list carries no code', async () => {
+    // Timestamps as auth sends them, distinct, so the match is on the verdict time and not the creation.
+    const REFUSED = {
+      ...FAILED, tls_mode: 'prefer', validation_error: 'validation failed',
+      created_at: '2026-11-01T09:00:00Z', updated_at: '2026-11-05T10:00:00Z',
+    };
+    api.listDatasourceConnections.mockResolvedValue([REFUSED]);
+    // The retry route answers with the re-read connection plus the gateway's code.
+    api.retryDatasourceValidation.mockResolvedValue({ ...REFUSED, validation_code: 'tls_failed' });
+    render(<CustomizeView connectors={[]} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    let panel = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    await userEvent.click(within(panel).getByRole('button', { name: /try again/i }));
+    await waitFor(() => expect(api.listDatasourceConnections).toHaveBeenCalledTimes(2));
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    panel = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    expect(within(panel).getByText(/kind of login this connection does not allow without checking/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/turn off/i)).toBeNull();
+  });
+
+  it('drops a kept code once the connection has been edited since the retry', async () => {
+    const REFUSED = { ...FAILED, tls_mode: 'prefer', validation_error: 'validation failed' };
+    api.listDatasourceConnections.mockResolvedValue([REFUSED]);
+    api.retryDatasourceValidation.mockResolvedValue({ ...REFUSED, validation_code: 'tls_failed' });
+    render(<CustomizeView connectors={[]} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    const panel = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    // By the time the list is read again, an edit elsewhere has moved the revision on.
+    api.listDatasourceConnections.mockResolvedValue([{ ...REFUSED, revision: REFUSED.revision + 1 }]);
+    await userEvent.click(within(panel).getByRole('button', { name: /try again/i }));
+    await waitFor(() => expect(api.listDatasourceConnections).toHaveBeenCalledTimes(2));
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    const reopened = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    expect(within(reopened).queryByText(/kind of login/)).toBeNull();
+    expect(within(reopened).getByText('validation failed')).toBeInTheDocument();
+  });
+
+  it('drops a kept code once a later verdict has changed the connection, though its revision did not', async () => {
+    const REFUSED = { ...FAILED, tls_mode: 'prefer', validation_error: 'validation failed', updated_at: '2026-11-05T10:00:00Z' };
+    api.listDatasourceConnections.mockResolvedValue([REFUSED]);
+    api.retryDatasourceValidation.mockResolvedValue({ ...REFUSED, validation_code: 'tls_failed' });
+    render(<CustomizeView connectors={[]} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    const panel = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    // A retry elsewhere failed again for another reason: same revision, new verdict time.
+    api.listDatasourceConnections.mockResolvedValue([{ ...REFUSED, updated_at: '2026-11-05T10:05:00Z' }]);
+    await userEvent.click(within(panel).getByRole('button', { name: /try again/i }));
+    await waitFor(() => expect(api.listDatasourceConnections).toHaveBeenCalledTimes(2));
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Reporting/i }));
+    const reopened = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    expect(within(reopened).queryByText(/kind of login/)).toBeNull();
+  });
+
+  it('gives a MySQL connection the MySQL hint in its panel', async () => {
+    const MYSQL_REFUSED = {
+      ...FAILED, connector_id: 'mysql', method: 'host-password', port: 3306,
+      tls_mode: 'prefer', validation_error: 'validation failed',
+    };
+    api.listDatasourceConnections.mockResolvedValue([MYSQL_REFUSED]);
+    api.retryDatasourceValidation.mockResolvedValue({ ...MYSQL_REFUSED, validation_code: 'tls_failed' });
+    render(<CustomizeView connectors={[]} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage MySQL: Reporting/i }));
+    const panel = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    await userEvent.click(within(panel).getByRole('button', { name: /try again/i }));
+    await waitFor(() => expect(api.listDatasourceConnections).toHaveBeenCalledTimes(2));
+
+    await userEvent.click(await screen.findByRole('button', { name: /Manage MySQL: Reporting/i }));
+    const reopened = await screen.findByRole('dialog', { name: /Reporting connection/i });
+    expect(within(reopened).getByText(/Under "Certificate", choose/)).toBeInTheDocument();
+  });
+
+  it('keeps each connection\'s code to itself, and forgets one whose retry returned none', async () => {
+    const A = { ...FAILED, id: 8, name: 'Reporting', tls_mode: 'prefer', validation_error: 'validation failed' };
+    const B = { ...FAILED, id: 9, name: 'Ledger', tls_mode: 'prefer', validation_error: 'validation failed' };
+    api.listDatasourceConnections.mockResolvedValue([A, B]);
+    api.retryDatasourceValidation.mockImplementation(async (id) => (
+      id === 8 ? { ...A, validation_code: 'tls_failed' } : { ...B, validation_code: 'tls_failed' }
+    ));
+    render(<CustomizeView connectors={[]} />);
+
+    const retry = async (name) => {
+      await userEvent.click(await screen.findByRole('button', { name: new RegExp(`Manage Postgres: ${name}`, 'i') }));
+      const panel = await screen.findByRole('dialog', { name: new RegExp(`${name} connection`, 'i') });
+      await userEvent.click(within(panel).getByRole('button', { name: /try again/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: new RegExp(`${name} connection`, 'i') })).toBeNull());
+    };
+    const hintOf = async (name) => {
+      await userEvent.click(await screen.findByRole('button', { name: new RegExp(`Manage Postgres: ${name}`, 'i') }));
+      const panel = await screen.findByRole('dialog', { name: new RegExp(`${name} connection`, 'i') });
+      const shown = within(panel).queryByText(/kind of login/) !== null;
+      await userEvent.click(within(panel).getByRole('button', { name: /close/i }));
+      return shown;
+    };
+
+    await retry('Reporting');
+    // Only the connection that was retried gets the code.
+    expect(await hintOf('Reporting')).toBe(true);
+    expect(await hintOf('Ledger')).toBe(false);
+
+    // A retry that could not run answers with no code, which clears what was kept.
+    api.retryDatasourceValidation.mockImplementation(async () => ({ ...A, status: 'failed' }));
+    await retry('Reporting');
+    expect(await hintOf('Reporting')).toBe(false);
+  });
+
   it('shows no retry for a healthy connection', async () => {
     render(<CustomizeView connectors={[]} />);
     await userEvent.click(await screen.findByRole('button', { name: /Manage Postgres: Analytics/i }));

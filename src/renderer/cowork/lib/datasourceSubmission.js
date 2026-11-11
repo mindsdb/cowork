@@ -100,6 +100,63 @@ const HINTS = {
     'The server did not answer. Check the host and port, and that your firewall allows the connection.',
 };
 
+// Without certificate checks, `tls_failed` is the gateway refusing to send the
+// password to an unidentified server, whether or not the password is right.
+const REFUSED_LOGIN = 'The server asked for the password itself, and this connection does not check the '
+  + 'server\'s certificate, so the password was not sent.';
+// Only `encrypted` insists on TLS, so there the handshake may be what failed.
+const REFUSED_LOGIN_OR_HANDSHAKE = 'Either the server did not complete an encrypted connection, or it '
+  + 'asked for the password itself and, since this connection does not check the server\'s certificate, '
+  + 'the password was not sent.';
+// PostgreSQL also refuses a login asking for no password, Kerberos, or an unsigned SCRAM exchange there.
+const REFUSED_PG_LOGIN = 'The server asked for a kind of login this connection does not allow without '
+  + 'checking the server\'s certificate, so the password was not sent.';
+const REFUSED_PG_LOGIN_OR_HANDSHAKE = 'Either the server did not complete an encrypted connection, or it '
+  + 'asked for a kind of login this connection does not allow without checking the server\'s '
+  + 'certificate. The password was not sent.';
+const UNVERIFIED_CAUSES = {
+  mysql: { prefer: REFUSED_LOGIN, disabled: REFUSED_LOGIN, encrypted: REFUSED_LOGIN_OR_HANDSHAKE },
+  checkbox: { prefer: REFUSED_PG_LOGIN, disabled: REFUSED_PG_LOGIN, encrypted: REFUSED_PG_LOGIN_OR_HANDSHAKE },
+};
+
+// MySQL's form asks which certificate to trust; the other engines' ask one yes-or-no question.
+const TURN_CHECKS_ON = {
+  checkbox: ' If the server\'s certificate is signed by a public authority, turn on "Only connect if '
+    + 'the certificate is signed by a public authority" and try again.',
+  mysql: ' Under "Certificate", choose "Signed by a public authority", or "Signed by my own certificate '
+    + 'authority" and paste the server\'s CA certificate, then try again.',
+};
+// The box cannot help a server without a publicly signed certificate, and its form has no CA paste.
+const PG_SCRAM_FALLBACK = ' If the server has no TLS, or its certificate is not signed by a public '
+  + 'authority, ask its administrator to switch this account to SCRAM-SHA-256 logins.';
+// Leads with the CA: an unchecked MySQL connection fails again whenever the server asks for the password.
+const MYSQL_UNVERIFIED_CERTIFICATE = 'The server\'s certificate could not be verified. If the server '
+  + 'signs its own certificate or uses a private authority, choose "Signed by my own certificate '
+  + 'authority" under "Certificate" and paste that authority\'s certificate. "Encrypt when offered, '
+  + 'don\'t check the certificate" also connects, but a login can then fail whenever the server asks '
+  + 'for the password itself, for example after it restarts.';
+// The user already chose their own authority, so the pasted one or the host name is what failed.
+const MYSQL_CUSTOM_CA_MISMATCH = 'The server\'s certificate could not be verified against the CA '
+  + 'certificate you pasted. Check that it is the authority that signed this server\'s certificate, '
+  + 'and that the host you entered is a name on that certificate.';
+
+// The code's advice, except that `tls_failed` depends on whether the connection
+// checked the server and on which form the engine has. '' when there is none.
+function hintFor(connection) {
+  const code = connection?.validation_code || connection?.validationCode;
+  // Own keys only: the code arrives off the wire, and `__proto__` would otherwise render an object.
+  if (code !== 'tls_failed') return Object.hasOwn(HINTS, code) ? HINTS[code] : '';
+  const mysql = connection?.connector_id === 'mysql';
+  const form = mysql ? 'mysql' : 'checkbox';
+  if (Object.hasOwn(UNVERIFIED_CAUSES[form], connection?.tls_mode)) {
+    // `encrypted` needs TLS, so a server without it fails before any login and SCRAM cannot help.
+    const fallback = mysql || connection.tls_mode === 'encrypted' ? '' : PG_SCRAM_FALLBACK;
+    return UNVERIFIED_CAUSES[form][connection.tls_mode] + TURN_CHECKS_ON[form] + fallback;
+  }
+  if (!mysql) return HINTS.tls_failed;
+  return connection?.tls_mode === 'custom_ca' ? MYSQL_CUSTOM_CA_MISMATCH : MYSQL_UNVERIFIED_CERTIFICATE;
+}
+
 // auth creates a connection `pending` and only the gateway's probe completion
 // moves it on, so pending is a real state the user waits in, and anything
 // unrecognised is treated as pending rather than as success.
@@ -124,7 +181,7 @@ export function describeConnectionState(connection) {
       // The server stores that validation failed, not why; the gateway's own
       // code rides along on the three routes that run a check, and it is the
       // only thing here that can tell the user what to change.
-      hint: HINTS[connection?.validation_code || connection?.validationCode] || '',
+      hint: hintFor(connection),
     };
   }
 

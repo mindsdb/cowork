@@ -58,6 +58,8 @@ export function ThinkingBlock({
   steps = [],
   isActive = false,
   startedAt = null,
+  // When the turn ended; without it the block ends at its last step.
+  endedAt = null,
   currentLabel = null,
   currentThought = null,
   slotId = null,
@@ -111,11 +113,11 @@ export function ThinkingBlock({
 
   const finalDuration = useMemo(() => {
     if (!isActive && startedAt && steps.length > 0) {
-      const last = steps[steps.length - 1];
-      if (last.completedAt) return formatDuration(last.completedAt - startedAt);
+      const end = endedAt ?? steps[steps.length - 1].completedAt;
+      if (end) return formatDuration(end - startedAt);
     }
     return null;
-  }, [isActive, startedAt, steps]);
+  }, [isActive, startedAt, endedAt, steps]);
 
   // Glanceable kill signal: how many cells timed out / were killed. Surfaced
   // in the (collapsed) header so a retry-on-timeout loop is visible without
