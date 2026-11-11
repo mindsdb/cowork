@@ -107,6 +107,10 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.invoke(IPC.KEYCHAIN_REVOKE, opts),
   setConnectionAccessMode: (opts: { engine: string; name: string; accessMode: string }) =>
     ipcRenderer.invoke(IPC.CONNECTIONS_SET_ACCESS_MODE, opts),
+  notionSearchPages: (opts: { name: string; query: string }) =>
+    ipcRenderer.invoke(IPC.NOTION_SEARCH_PAGES, opts),
+  notionFetchPage: (opts: { name: string; page: string }) =>
+    ipcRenderer.invoke(IPC.NOTION_FETCH_PAGE, opts),
   // Fires when the background token-refresh loop encounters a failure.
   // Returns an unsubscribe function.
   onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => {

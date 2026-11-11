@@ -1177,6 +1177,29 @@ export async function setConnectionAccessMode(
   return null;
 }
 
+// What main returns for a Notion page search or fetch: the server's JSON, the
+// server's refusal as it sent it, or main's own refusal.
+export type NotionPagesBridgeResult =
+  | { ok: true; data: unknown }
+  | { ok: false; status: number; text: string; retryAfter: string | null }
+  | { ok: false; reason: string };
+
+// Desktop only: main holds the app secret the server requires for these. Null
+// when this shell predates the bridge, so the caller makes the request itself.
+export async function notionSearchPages(name: string, query: string): Promise<NotionPagesBridgeResult | null> {
+  if (isElectron && typeof bridge.notionSearchPages === 'function') {
+    return bridge.notionSearchPages({ name, query });
+  }
+  return null;
+}
+
+export async function notionFetchPage(name: string, page: string): Promise<NotionPagesBridgeResult | null> {
+  if (isElectron && typeof bridge.notionFetchPage === 'function') {
+    return bridge.notionFetchPage({ name, page });
+  }
+  return null;
+}
+
 export interface DrivePickerFile {
   id: string;
   name: string;
@@ -2019,6 +2042,8 @@ export const host = {
   logout,
   keychainRevoke,
   setConnectionAccessMode,
+  notionSearchPages,
+  notionFetchPage,
   onOAuthRefreshError,
   pickDriveFiles,
   cancelDrivePicker,

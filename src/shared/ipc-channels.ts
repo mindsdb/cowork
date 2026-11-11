@@ -81,6 +81,9 @@ export const IPC = {
   // Changes an MCP connection's tool access on the desktop: main writes the
   // keychain and calls the server with the app secret.
   CONNECTIONS_SET_ACCESS_MODE: 'connections:set-access-mode',
+  // The chat's Notion page picker: main calls the server with the app secret.
+  NOTION_SEARCH_PAGES: 'notion:search-pages',
+  NOTION_FETCH_PAGE: 'notion:fetch-page',
   // Fired by the background token-refresh loop when consecutive failures hit
   // threshold (transient) or a 401 makes the refresh token permanently invalid.
   OAUTH_REFRESH_ERROR: 'oauth:refresh-error',
