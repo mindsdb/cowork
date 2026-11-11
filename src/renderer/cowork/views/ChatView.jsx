@@ -70,9 +70,10 @@ import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 import { ChatScroller } from '../components/chat/ChatScroller';
@@ -1349,6 +1350,54 @@ export function FreeServingPausedCard({
           },
           primary: true,
         },
+      ]}
+    />
+  );
+}
+
+/*
+ * The org's spending budget is used up (`budget_exceeded`): the gateway's 402
+ * on a hard-capped budget, with no reset time. Credits do not lift it, so the
+ * card never asks for funds; it links to Budgets, where an owner or admin
+ * raises it. Air may still run on its free allowance, so the switch is offered
+ * while the hub read shows room, as on the balance card.
+ */
+export function BudgetExceededCard({
+  time, agentLabel, usage, onSwitchToAir, deleting = false,
+}) {
+  const budgetsUrl = useBudgetsUrl();
+  if (!PLATFORM_UI) {
+    return (
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind="Provider"
+        title="Task stopped"
+        body="Your administrator's spending limit was reached. Contact your administrator."
+      />
+    );
+  }
+  const airHasRoom = freeAllowanceState(usage).status === 'has_room';
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      kind="Billing"
+      title="Your organization's budget is used up"
+      body={budgetExceededCopy({ usage })}
+      buttons={[
+        {
+          label: 'View budgets',
+          // The click only, like the other stopped-task cards.
+          onClick: () => {
+            trackBillingOpened('budget_exceeded');
+            host.openExternal(budgetsUrl);
+          },
+          primary: true,
+        },
+        ...(airHasRoom ? switchToAirButtons(onSwitchToAir) : []),
       ]}
     />
   );
@@ -2797,6 +2846,25 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       resetAt={m.resetAt}
                       isBillingOwner={isBillingOwner}
+                    />
+                  );
+                }
+                /* The org's spending budget is used up: Budgets, not funds,
+                   and Air while its free allowance has room. */
+                if (m.code === 'budget_exceeded') {
+                  const budgetResend = lastUserMessageBefore(visibleMessages, i);
+                  return (
+                    <BudgetExceededCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      usage={hubUsage?.usage}
+                      onSwitchToAir={
+                        onSwitchToAirAndResend && budgetResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
+                          ? () => onSwitchToAirAndResend(budgetResend.text, budgetResend.attachments)
+                          : undefined
+                      }
                     />
                   );
                 }

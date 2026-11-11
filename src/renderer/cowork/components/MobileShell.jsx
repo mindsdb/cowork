@@ -102,6 +102,8 @@ export default function MobileShell({
   onNewProject,          // () — open the "New project" modal (via projects route)
   navTitle = null,       // Settings → Appearance → Sidebar title override
   navLogo = null,        // Settings → Appearance → Sidebar logo override
+  navLogoWide = false,   // the org's wordmark logo, not a square icon
+  navTitleHidden = false, // the org chose logo only: no title, not even the product name
   // Top-bar theme toggle, opposite the hamburger — the desktop
   // floating-toggle-row has no room on mobile, and the coding-mode toggle
   // that sits beside it there is dropped entirely rather than given a
@@ -336,9 +338,9 @@ export default function MobileShell({
         <div className="mshell__drawer-head">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             {(navLogo || brandLogoUrl()) && (
-              <img src={navLogo || brandLogoUrl()} alt="" aria-hidden="true" className="mshell__drawer-logo" />
+              <img src={navLogo || brandLogoUrl()} alt="" aria-hidden="true" className={navLogoWide ? 'mshell__drawer-logo mshell__drawer-logo--wide' : 'mshell__drawer-logo'} />
             )}
-            <span className="mshell__drawer-title">{navTitle || productName(STOCK_PRODUCT_NAME)}</span>
+            {!navTitleHidden && <span className="mshell__drawer-title">{navTitle || productName(STOCK_PRODUCT_NAME)}</span>}
           </div>
           <button
             type="button"
