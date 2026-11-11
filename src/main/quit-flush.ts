@@ -14,7 +14,7 @@ export function registerQuitFlush(flush: QuitFlush): void {
 
 /** True when every registered flush settled within `timeoutMs`, false at the
  *  ceiling. Never rejects: a quit must not stall on a failed write. */
-export async function runQuitFlushes(timeoutMs: number): Promise<boolean> {
+export async function runQuitFlushes(timeoutMs = QUIT_FLUSH_CEILING_MS): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const settled = Promise.allSettled(flushes.map((flush) => Promise.resolve().then(flush))).then(() => true);
   const ceiling = new Promise<boolean>((resolve) => {

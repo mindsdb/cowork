@@ -118,8 +118,15 @@ async function loadStore(platform: string) {
   return await import('./token-store');
 }
 
+async function bootStore(platform: string) {
+  const store = await loadStore(platform);
+  await store.initTokenStore();
+  return store;
+}
+
 const SECURE = () => path.join(h.userData, 'mindshub-refresh.bin');
 const FALLBACK = () => path.join(h.home, 'refresh-token.dat');
+const present = () => ({ secure: fs.existsSync(SECURE()), fallback: fs.existsSync(FALLBACK()) });
 const MARKER = () => path.join(h.userData, 'keychain-unavailable');
 const FLAG = () => path.join(h.userData, 'keychain-legacy-entry-removed');
 
@@ -191,42 +198,36 @@ afterEach(() => {
 
 describe('token-store persistence', () => {
   it('round-trips the token through the secure file', async () => {
-    let store = await loadStore('linux');
-    await store.initTokenStore();
+    let store = await bootStore('linux');
     store.saveTokens('at', 3600, 'rt-1');
     expect(store.getRefreshToken()).toBe('rt-1');
     await store.flushTokenStore();
     expect(readSecure()).toBe('rt-1');
     expect(fs.existsSync(FALLBACK())).toBe(false);
 
-    store = await loadStore('linux');
-    await store.initTokenStore();
+    store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('rt-1');
   });
 
   it('round-trips on Windows', async () => {
-    let store = await loadStore('win32');
-    await store.initTokenStore();
+    let store = await bootStore('win32');
     store.saveTokens('at', 3600, 'win-token');
     await store.flushTokenStore();
-    store = await loadStore('win32');
-    await store.initTokenStore();
+    store = await bootStore('win32');
     expect(store.getRefreshToken()).toBe('win-token');
   });
 
   it('reads a secure file written by the previous build without altering its bytes', async () => {
     writeSecure('legacy-token');
     const bytes = fs.readFileSync(SECURE());
-    const store = await loadStore('win32');
-    await store.initTokenStore();
+    const store = await bootStore('win32');
     expect(store.getRefreshToken()).toBe('legacy-token');
     expect(h.decrypted).toEqual([bytes]);
   });
 
   it('migrates a fallback-only token into the secure file', async () => {
     writeFallback('from-fallback');
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('from-fallback');
     await store.flushTokenStore();
     expect(readSecure()).toBe('from-fallback');
@@ -236,8 +237,7 @@ describe('token-store persistence', () => {
   it('drops the fallback copy the previous build kept beside the secure file', async () => {
     writeSecure('same', 1_000);
     writeFallback('same', 2_000);
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('same');
     await store.flushTokenStore();
     expect(readSecure()).toBe('same');
@@ -247,8 +247,7 @@ describe('token-store persistence', () => {
   it('reads the secure file when both were written in the same instant', async () => {
     writeSecure('same', 1_000);
     writeFallback('same', 1_000);
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('same');
     expect(h.decrypted).toHaveLength(1);
     await store.flushTokenStore();
@@ -258,8 +257,7 @@ describe('token-store persistence', () => {
   it('prefers a secure file newer than a fallback file left behind', async () => {
     writeSecure('fresh', 2_000);
     writeFallback('stale', 1_000);
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('fresh');
     await store.flushTokenStore();
     expect(readSecure()).toBe('fresh');
@@ -268,8 +266,7 @@ describe('token-store persistence', () => {
 
   it('falls back to the encrypted file when safeStorage is unavailable', async () => {
     h.available.value = false;
-    let store = await loadStore('linux');
-    await store.initTokenStore();
+    let store = await bootStore('linux');
     store.saveTokens('at', 3600, 'fallback-refresh-token');
     await store.flushTokenStore();
     expect(fs.existsSync(SECURE())).toBe(false);
@@ -278,15 +275,13 @@ describe('token-store persistence', () => {
     expect(fs.readFileSync(FALLBACK()).includes('fallback-refresh-token')).toBe(false);
     expect(logged('token_store_safestorage_unavailable_using_encrypted_file_fallback')).toBe(true);
 
-    store = await loadStore('linux');
-    await store.initTokenStore();
+    store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('fallback-refresh-token');
   });
 
   it('treats a failing availability check as unavailable', async () => {
     h.available.value = 'throw';
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'rt');
     await store.flushTokenStore();
     expect(readFallback()).toBe('rt');
@@ -295,8 +290,7 @@ describe('token-store persistence', () => {
 
   it('falls back when encryption fails', async () => {
     h.encryptFails.value = true;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'rt');
     await store.flushTokenStore();
     expect(readFallback()).toBe('rt');
@@ -305,8 +299,7 @@ describe('token-store persistence', () => {
 
   it('moves back to the secure file once safeStorage recovers mid-session', async () => {
     h.available.value = false;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at-1', 3600, 'during-outage');
     await store.flushTokenStore();
     expect(readFallback()).toBe('during-outage');
@@ -319,8 +312,7 @@ describe('token-store persistence', () => {
   });
 
   it('does not revive an older secure token after a fallback write', async () => {
-    let store = await loadStore('linux');
-    await store.initTokenStore();
+    let store = await bootStore('linux');
     store.saveTokens('at-1', 3600, 'old-secure-token');
     await store.flushTokenStore();
 
@@ -330,15 +322,13 @@ describe('token-store persistence', () => {
     expect(fs.existsSync(SECURE())).toBe(false);
 
     h.available.value = true;
-    store = await loadStore('linux');
-    await store.initTokenStore();
+    store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('rotated-fallback-token');
   });
 
   it('keeps an unreadable secure file and reports no session', async () => {
     fs.writeFileSync(SECURE(), 'garbage');
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBeNull();
     await store.flushTokenStore();
     expect(fs.readFileSync(SECURE(), 'utf8')).toBe('garbage');
@@ -349,8 +339,7 @@ describe('token-store persistence', () => {
     fs.writeFileSync(SECURE(), 'garbage');
     setMtime(SECURE(), 2_000);
     writeFallback('backup', 1_000);
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('backup');
     await store.flushTokenStore();
     expect(readSecure()).toBe('backup');
@@ -361,8 +350,7 @@ describe('token-store persistence', () => {
     writeSecure('fresh', 2_000);
     writeFallback('stale', 1_000);
     h.available.value = false;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBeNull();
     await store.flushTokenStore();
     expect(readSecure()).toBe('fresh');
@@ -374,27 +362,23 @@ describe('token-store persistence', () => {
     writeSecure('same', 1_000);
     writeFallback('same', 1_000);
     h.available.value = false;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('same');
     await store.flushTokenStore();
-    expect(fs.existsSync(SECURE())).toBe(true);
-    expect(fs.existsSync(FALLBACK())).toBe(true);
+    expect(present()).toEqual({ secure: true, fallback: true });
   });
 
   it('re-encrypts when safeStorage asks for it', async () => {
     writeSecure('tok');
     h.reEncrypt.value = true;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     await store.flushTokenStore();
     expect(h.encrypted).toEqual(['tok']);
     expect(readSecure()).toBe('tok');
   });
 
   it('does not re-encrypt an unchanged token', async () => {
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at-1', 3600, 'same');
     await store.flushTokenStore();
     store.saveTokens('at-2', 3600, 'same');
@@ -404,16 +388,14 @@ describe('token-store persistence', () => {
 
   it('does not re-encrypt a token it just loaded from the secure file', async () => {
     writeSecure('loaded');
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'loaded');
     await store.flushTokenStore();
     expect(h.encrypted).toEqual([]);
   });
 
   it('ignores a save without a refresh token', async () => {
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at-1', 3600, 'kept');
     await store.flushTokenStore();
     store.saveTokens('at-2', 3600, '');
@@ -433,8 +415,7 @@ describe('token-store persistence', () => {
   it('writes the secure file owner-only, even over a wider file left by an older build', async () => {
     writeSecure('old');
     fs.chmodSync(SECURE(), 0o644);
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'new');
     await store.flushTokenStore();
     expect(fs.statSync(SECURE()).mode & 0o777).toBe(0o600);
@@ -443,8 +424,7 @@ describe('token-store persistence', () => {
   // The rename failures are armed after saveTokens: its synchronous account
   // bookkeeping writes files of its own, and the write under test runs later.
   it('retries a transiently locked rename', async () => {
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'rt');
     h.renameFail.code = 'EPERM';
     h.renameFail.times = 2;
@@ -455,8 +435,7 @@ describe('token-store persistence', () => {
   });
 
   it('falls back on a rename error that is not transient, and says why', async () => {
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'rt');
     h.renameFail.code = 'EXDEV';
     h.renameFail.times = 1;
@@ -469,8 +448,7 @@ describe('token-store persistence', () => {
   it('removes leftover temp files at startup and on sign-out', async () => {
     fs.writeFileSync(`${SECURE()}.tmp`, 'x');
     fs.writeFileSync(`${FALLBACK()}.tmp`, 'x');
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(fs.existsSync(`${SECURE()}.tmp`)).toBe(false);
     expect(fs.existsSync(`${FALLBACK()}.tmp`)).toBe(false);
 
@@ -482,18 +460,15 @@ describe('token-store persistence', () => {
   });
 
   it('clearTokens removes every store so the next read is a definitive null', async () => {
-    let store = await loadStore('linux');
-    await store.initTokenStore();
+    let store = await bootStore('linux');
     store.saveTokens('at', 3600, 'to-be-cleared');
     await store.flushTokenStore();
     store.clearTokens();
     expect(store.getRefreshToken()).toBeNull();
     expect(store.getAccessToken()).toBeNull();
-    expect(fs.existsSync(SECURE())).toBe(false);
-    expect(fs.existsSync(FALLBACK())).toBe(false);
+    expect(present()).toEqual({ secure: false, fallback: false });
 
-    store = await loadStore('linux');
-    await store.initTokenStore();
+    store = await bootStore('linux');
     expect(store.getRefreshToken()).toBeNull();
   });
 });
@@ -502,23 +477,20 @@ describe('token-store write ordering', () => {
   it('a sign-out during encryption leaves nothing on disk', async () => {
     const gate = deferred();
     h.encryptGate.value = gate.promise;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'A');
     await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
     store.clearTokens();
     gate.resolve();
     await store.flushTokenStore();
     expect(store.getRefreshToken()).toBeNull();
-    expect(fs.existsSync(SECURE())).toBe(false);
-    expect(fs.existsSync(FALLBACK())).toBe(false);
+    expect(present()).toEqual({ secure: false, fallback: false });
   });
 
   it('a flush waits for a token saved while it was waiting', async () => {
     const gate = deferred();
     h.encryptGate.value = gate.promise;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at-1', 3600, 'A');
     await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
     const flushed = store.flushTokenStore();
@@ -531,21 +503,18 @@ describe('token-store write ordering', () => {
   it('a sign-out right after encryption resolved leaves nothing on disk', async () => {
     const gate = deferred();
     h.encryptGate.value = gate.promise;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'A');
     await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
     // Same tick: the write's continuation is still queued behind this sign-out.
     gate.resolve();
     store.clearTokens();
     await store.flushTokenStore();
-    expect(fs.existsSync(SECURE())).toBe(false);
-    expect(fs.existsSync(FALLBACK())).toBe(false);
+    expect(present()).toEqual({ secure: false, fallback: false });
   });
 
   it('a sign-out between write attempts leaves nothing on disk', async () => {
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'A');
     // Armed after saveTokens (see above). The first attempt fails; the
     // sign-out lands before the retry.
@@ -553,16 +522,14 @@ describe('token-store write ordering', () => {
     h.renameFail.times = 1;
     h.renameFail.onFail = () => store.clearTokens();
     await store.flushTokenStore();
-    expect(fs.existsSync(SECURE())).toBe(false);
-    expect(fs.existsSync(FALLBACK())).toBe(false);
+    expect(present()).toEqual({ secure: false, fallback: false });
     expect(fs.existsSync(`${SECURE()}.tmp`)).toBe(false);
   });
 
   it('the later of two saves wins', async () => {
     const gate = deferred();
     h.encryptGate.value = gate.promise;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at-1', 3600, 'A');
     await vi.waitFor(() => expect(h.encrypted).toEqual(['A']));
     store.saveTokens('at-2', 3600, 'B');
@@ -598,15 +565,13 @@ describe('token-store write ordering', () => {
     await init;
     expect(store.getRefreshToken()).toBeNull();
     await store.flushTokenStore();
-    expect(fs.existsSync(SECURE())).toBe(false);
-    expect(fs.existsSync(FALLBACK())).toBe(false);
+    expect(present()).toEqual({ secure: false, fallback: false });
   });
 
   it.skipIf(process.platform === 'win32')('tightens the mode of a secure file written without one', async () => {
     writeSecure('loose');
     fs.chmodSync(SECURE(), 0o644);
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(store.getRefreshToken()).toBe('loose');
     expect(fs.statSync(SECURE()).mode & 0o777).toBe(0o600);
   });
@@ -631,8 +596,7 @@ describe('token-store on macOS', () => {
   it('removes the legacy Keychain item once, before the first safeStorage call', async () => {
     h.deleteEntry.mockImplementation(async () => { h.calls.push('delete'); return true; });
     writeFallback('mac-token');
-    let store = await loadStore('darwin');
-    await store.initTokenStore();
+    let store = await bootStore('darwin');
     expect(h.deleteEntry).toHaveBeenCalledWith('TestApp Safe Storage', 'TestApp');
     expect(fs.existsSync(FLAG())).toBe(true);
     expect(logged('token_store_legacy_keychain_entry_removed')).toBe(true);
@@ -644,8 +608,7 @@ describe('token-store on macOS', () => {
     await store.flushTokenStore();
     expect(readSecure()).toBe('mac-token');
 
-    store = await loadStore('darwin');
-    await store.initTokenStore();
+    store = await bootStore('darwin');
     expect(h.deleteEntry).toHaveBeenCalledTimes(1);
     expect(store.getRefreshToken()).toBe('mac-token');
   });
@@ -653,23 +616,20 @@ describe('token-store on macOS', () => {
   it('does not pin the install to the fallback file when the availability check throws', async () => {
     skipLegacyRemoval();
     h.available.value = 'throw';
-    let store = await loadStore('darwin');
-    await store.initTokenStore();
+    let store = await bootStore('darwin');
     store.saveTokens('at', 3600, 'thrown-token');
     await store.flushTokenStore();
     expect(readFallback()).toBe('thrown-token');
     expect(fs.existsSync(MARKER())).toBe(false);
 
     h.available.value = true;
-    store = await loadStore('darwin');
-    await store.initTokenStore();
+    store = await bootStore('darwin');
     await store.flushTokenStore();
     expect(readSecure()).toBe('thrown-token');
   });
 
   it('reports a missing legacy item as not found and still writes the flag', async () => {
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(logged('token_store_legacy_keychain_entry_not_found')).toBe(true);
     expect(fs.existsSync(FLAG())).toBe(true);
   });
@@ -677,8 +637,7 @@ describe('token-store on macOS', () => {
   it('migrates the fallback file and drops the older secure file from before the new scheme', async () => {
     writeSecure('relic', 1_000);
     writeFallback('current', 2_000);
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(h.decrypted).toHaveLength(0);
     expect(store.getRefreshToken()).toBe('current');
     await store.flushTokenStore();
@@ -689,8 +648,7 @@ describe('token-store on macOS', () => {
 
   it('migrates a fallback-only token into the Keychain-backed file', async () => {
     writeFallback('mac-current');
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(store.getRefreshToken()).toBe('mac-current');
     await store.flushTokenStore();
     expect(readSecure()).toBe('mac-current');
@@ -722,8 +680,7 @@ describe('token-store on macOS', () => {
   it('warns about a pinned fallback once per process, not on every rotation', async () => {
     skipLegacyRemoval();
     fs.writeFileSync(MARKER(), '{}');
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     store.saveTokens('at-1', 3600, 'rt-1');
     await store.flushTokenStore();
     store.saveTokens('at-2', 3600, 'rt-2');
@@ -734,30 +691,26 @@ describe('token-store on macOS', () => {
 
   it('drops a secure file from before the new scheme even without a fallback file', async () => {
     writeSecure('relic');
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(fs.existsSync(SECURE())).toBe(false);
     expect(store.getRefreshToken()).toBeNull();
   });
 
   it('skips the removal once the flag exists', async () => {
     skipLegacyRemoval();
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(h.deleteEntry).not.toHaveBeenCalled();
   });
 
   it('skips the removal when the Keychain was refused', async () => {
     fs.writeFileSync(MARKER(), '{}');
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(h.deleteEntry).not.toHaveBeenCalled();
   });
 
   it('keeps writing the fallback file when the marker is deleted while the app runs', async () => {
     fs.writeFileSync(MARKER(), '{}');
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     fs.rmSync(MARKER());
     store.saveTokens('at', 3600, 'after-marker');
     await store.flushTokenStore();
@@ -768,8 +721,7 @@ describe('token-store on macOS', () => {
 
   it('never removes anything on Linux', async () => {
     writeSecure('linux-token');
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     expect(h.deleteEntry).not.toHaveBeenCalled();
     expect(fs.existsSync(FLAG())).toBe(false);
     expect(store.getRefreshToken()).toBe('linux-token');
@@ -778,8 +730,7 @@ describe('token-store on macOS', () => {
   it('carries on, stays on the fallback file and retries next launch when the removal fails', async () => {
     h.deleteEntry.mockRejectedValue(new Error('keychain error'));
     writeFallback('mac-current');
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(logged('token_store_legacy_keychain_entry_not_removed')).toBe(true);
     expect(fs.existsSync(FLAG())).toBe(false);
     expect(store.getRefreshToken()).toBe('mac-current');
@@ -793,15 +744,13 @@ describe('token-store on macOS', () => {
   it('leaves the old secure file alone when the removal fails', async () => {
     h.deleteEntry.mockRejectedValue(new Error('keychain error'));
     writeSecure('relic');
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(fs.existsSync(SECURE())).toBe(true);
   });
 
   it('stays on the fallback file for the session when the flag cannot be written', async () => {
     h.failWriteTo.value = FLAG();
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(logged('token_store_legacy_keychain_flag_not_written')).toBe(true);
     store.saveTokens('at', 3600, 'session-token');
     await store.flushTokenStore();
@@ -826,8 +775,7 @@ describe('token-store on macOS', () => {
   it('records a Keychain refusal and stops asking', async () => {
     skipLegacyRemoval();
     h.available.value = false;
-    let store = await loadStore('darwin');
-    await store.initTokenStore();
+    let store = await bootStore('darwin');
     store.saveTokens('at', 3600, 'refused-token');
     await store.flushTokenStore();
     const marker = JSON.parse(fs.readFileSync(MARKER(), 'utf8'));
@@ -838,8 +786,7 @@ describe('token-store on macOS', () => {
 
     h.available.value = true;
     h.calls.length = 0;
-    store = await loadStore('darwin');
-    await store.initTokenStore();
+    store = await bootStore('darwin');
     expect(h.calls.filter((c) => c === 'available')).toHaveLength(0);
     expect(store.getRefreshToken()).toBe('refused-token');
   });
@@ -847,8 +794,7 @@ describe('token-store on macOS', () => {
   it('records an encryption failure the same way', async () => {
     skipLegacyRemoval();
     h.encryptFails.value = true;
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     store.saveTokens('at', 3600, 'rt');
     await store.flushTokenStore();
     expect(JSON.parse(fs.readFileSync(MARKER(), 'utf8'))).toMatchObject({ reason: 'encrypt_failed' });
@@ -857,8 +803,7 @@ describe('token-store on macOS', () => {
 
   it('never writes the marker on Linux', async () => {
     h.available.value = false;
-    const store = await loadStore('linux');
-    await store.initTokenStore();
+    const store = await bootStore('linux');
     store.saveTokens('at', 3600, 'rt');
     await store.flushTokenStore();
     expect(fs.existsSync(MARKER())).toBe(false);
@@ -867,8 +812,7 @@ describe('token-store on macOS', () => {
   it('does not treat an undecryptable file as a Keychain refusal', async () => {
     skipLegacyRemoval();
     fs.writeFileSync(SECURE(), 'garbage');
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(store.getRefreshToken()).toBeNull();
     expect(fs.existsSync(MARKER())).toBe(false);
     expect(fs.existsSync(SECURE())).toBe(true);
@@ -879,8 +823,7 @@ describe('token-store on macOS', () => {
     fs.writeFileSync(SECURE(), 'garbage');
     setMtime(SECURE(), 2_000);
     writeFallback('backup', 1_000);
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(store.getRefreshToken()).toBe('backup');
     await store.flushTokenStore();
     expect(readSecure()).toBe('backup');
@@ -891,8 +834,7 @@ describe('token-store on macOS', () => {
     skipLegacyRemoval();
     writeSecure('fresh', 2_000);
     writeFallback('stale', 1_000);
-    const store = await loadStore('darwin');
-    await store.initTokenStore();
+    const store = await bootStore('darwin');
     expect(store.getRefreshToken()).toBe('fresh');
     await store.flushTokenStore();
     expect(fs.existsSync(FALLBACK())).toBe(false);

@@ -30,7 +30,7 @@ import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, initTokenStore } from './token-store';
-import { QUIT_FLUSH_CEILING_MS, runQuitFlushes } from './quit-flush';
+import { runQuitFlushes } from './quit-flush';
 import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
@@ -2157,7 +2157,7 @@ async function drainServerForQuit(): Promise<void> {
 
   // The refresh token rotates on refresh; a write still queued when the
   // process exits would leave the previous one on disk.
-  if (!(await runQuitFlushes(QUIT_FLUSH_CEILING_MS))) {
+  if (!(await runQuitFlushes())) {
     diagnostic("main.app", "WARNING", "token_store_flush_did_not_finish_before_quit", '[token-store] pending token writes did not finish before the quit ceiling');
   }
 }

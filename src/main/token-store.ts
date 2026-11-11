@@ -108,12 +108,21 @@ function readFallbackFile(): string | null {
   }
 }
 
+const STORE_FILES = {
+  secure: { file: SECURE_FILE, tmp: SECURE_TMP },
+  fallback: { file: FALLBACK_FILE, tmp: FALLBACK_TMP },
+} as const;
+
 // Each attempt checks the generation and writes in one synchronous run, so a
 // saveTokens or clearTokens can land only between attempts, never between the
 // check and the rename. Resolves false when a newer one made this write stale.
-async function writeStoreFile(generation: number, file: string, tmp: string, data: Buffer, staleCopy: string): Promise<boolean> {
+async function writeStore(kind: StoreKind, token: string, data: Buffer, generation: number): Promise<boolean> {
+  const { file, tmp } = STORE_FILES[kind];
+  // Removing the other kind's file keeps an older token there from shadowing
+  // this one once the stores change roles.
+  const staleCopy = STORE_FILES[kind === 'secure' ? 'fallback' : 'secure'].file;
   try {
-    return await retryOnTransientLock(() => {
+    const written = await retryOnTransientLock(() => {
       if (generation !== _persistGeneration) return false;
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.rmSync(tmp, { force: true });
@@ -124,19 +133,24 @@ async function writeStoreFile(generation: number, file: string, tmp: string, dat
       removeStaleStore(staleCopy);
       return true;
     }, WRITE_RETRY);
+    if (written && generation === _persistGeneration) _lastPersisted = { token, kind };
+    return written;
   } finally {
     removeStaleStore(tmp);
   }
 }
 
 function deleteTokenFiles(): void {
-  for (const file of [SECURE_FILE, FALLBACK_FILE, SECURE_TMP, FALLBACK_TMP]) removeStaleStore(file);
+  for (const { file, tmp } of Object.values(STORE_FILES)) {
+    removeStaleStore(file);
+    removeStaleStore(tmp);
+  }
 }
 
 // ── safeStorage ─────────────────────────────────────────────────────
 
 async function secureStoreAvailable(): Promise<boolean> {
-  if (_fallbackOnly || keychainRefused()) return false;
+  if (fallbackPinned()) return false;
   let available: boolean;
   try {
     available = await safeStorage.isAsyncEncryptionAvailable();
@@ -148,6 +162,10 @@ async function secureStoreAvailable(): Promise<boolean> {
   }
   if (!available) recordKeychainRefusal('availability_false', null);
   return available;
+}
+
+function fallbackPinned(): boolean {
+  return _fallbackOnly || keychainRefused();
 }
 
 function keychainRefused(): boolean {
@@ -175,18 +193,12 @@ function recordKeychainRefusal(reason: 'availability_false' | 'encrypt_failed', 
 
 async function removeLegacyKeychainEntry(): Promise<void> {
   if (!IS_MAC || fs.existsSync(LEGACY_ENTRY_REMOVED_FLAG)) return;
-  if (keychainRefused()) {
-    // The marker can be deleted while the app runs; the flag is still absent,
-    // so writes must stay on the fallback file even then.
-    _fallbackOnly = true;
-    return;
-  }
   try {
-    await attemptLegacyKeychainRemoval();
+    if (!keychainRefused()) await attemptLegacyKeychainRemoval();
   } finally {
-    // Until the flag exists the next launch repeats the removal, and it would
-    // delete a secure file written now together with the Keychain item that
-    // decrypts it. So without the flag this session writes the fallback file.
+    // Without the flag the next launch repeats the removal and would delete a
+    // secure file written now together with its key. The refusal marker may be
+    // deleted mid-session, so a refused install stays on the fallback too.
     if (!fs.existsSync(LEGACY_ENTRY_REMOVED_FLAG)) _fallbackOnly = true;
   }
 }
@@ -287,7 +299,7 @@ async function loadAtStartup(): Promise<void> {
     // An older fallback file may hold a token rotated out since. Only one
     // written in the same instant is the same token.
     const token = fallbackTime === secureTime ? readFallbackFile() : null;
-    adoptLoadedToken(generation, token, false, null);
+    if (token !== null) adoptLoadedToken(generation, token, false, null);
     return;
   }
 
@@ -311,10 +323,7 @@ async function loadAtStartup(): Promise<void> {
   } else {
     token = readFallbackFile();
   }
-  if (token === null) {
-    adoptLoadedToken(generation, null, false, null);
-    return;
-  }
+  if (token === null) return;
 
   if (from === 'secure' && process.platform !== 'win32') {
     // The previous build wrote this file without a mode; nothing may be queued
@@ -331,7 +340,7 @@ async function loadAtStartup(): Promise<void> {
 
 function adoptLoadedToken(
   generation: number,
-  token: string | null,
+  token: string,
   needsWrite: boolean,
   persisted: { token: string; kind: StoreKind } | null,
 ): void {
@@ -339,7 +348,7 @@ function adoptLoadedToken(
   if (generation !== _persistGeneration) return;
   _refreshToken = token;
   _lastPersisted = persisted;
-  if (token !== null && needsWrite) enqueuePersist(token, generation);
+  if (needsWrite) enqueuePersist(token, generation);
 }
 
 // ── Write queue ─────────────────────────────────────────────────────
@@ -358,43 +367,37 @@ async function persist(token: string, generation: number): Promise<void> {
   const kind: StoreKind = available ? 'secure' : 'fallback';
   if (_lastPersisted?.token === token && _lastPersisted.kind === kind) return;
 
-  let fileWriteFailed = false;
-  if (available) {
-    let encrypted: Buffer | null = null;
-    try {
-      encrypted = await safeStorage.encryptStringAsync(token);
-    } catch (e) {
-      diagnostic("main.token-store", "WARNING", "token_store_encryption_failed", '[token-store] safeStorage encryption failed', e);
-      recordKeychainRefusal('encrypt_failed', e);
-    }
-    if (encrypted) {
-      try {
-        if (await writeStoreFile(generation, SECURE_FILE, SECURE_TMP, encrypted, FALLBACK_FILE)
-          && generation === _persistGeneration) {
-          _lastPersisted = { token, kind: 'secure' };
-        }
-        return;
-      } catch (e) {
-        diagnostic("main.token-store", "WARNING", "token_store_secure_file_write_failed", '[token-store] could not write the secure token file', e);
-        fileWriteFailed = true;
-      }
-    }
+  const outcome = available ? await trySecureWrite(token, generation) : 'skipped';
+  if (outcome === 'written') return;
+  if (outcome === 'skipped') warnFallbackWrite();
+  await writeStore('fallback', token, encryptToken(token), generation);
+}
+
+async function trySecureWrite(token: string, generation: number): Promise<'written' | 'write_failed' | 'skipped'> {
+  let encrypted: Buffer;
+  try {
+    encrypted = await safeStorage.encryptStringAsync(token);
+  } catch (e) {
+    diagnostic("main.token-store", "WARNING", "token_store_encryption_failed", '[token-store] safeStorage encryption failed', e);
+    recordKeychainRefusal('encrypt_failed', e);
+    return 'skipped';
   }
-  if (!fileWriteFailed) {
-    // A marker or a failed legacy removal pins the fallback for good; saying
-    // so on every token rotation adds nothing.
-    const pinned = _fallbackOnly || keychainRefused();
-    if (!pinned || !_warnedPinnedFallback) {
-      _warnedPinnedFallback = _warnedPinnedFallback || pinned;
-      diagnostic("main.token-store", "WARNING", "token_store_safestorage_unavailable_using_encrypted_file_fallback", '[token-store] safeStorage unavailable — using encrypted-file fallback');
-    }
+  try {
+    await writeStore('secure', token, encrypted, generation);
+    return 'written';
+  } catch (e) {
+    diagnostic("main.token-store", "WARNING", "token_store_secure_file_write_failed", '[token-store] could not write the secure token file', e);
+    return 'write_failed';
   }
-  // Removing the secure file keeps an older token there from shadowing this
-  // one once safeStorage recovers.
-  if (await writeStoreFile(generation, FALLBACK_FILE, FALLBACK_TMP, encryptToken(token), SECURE_FILE)
-    && generation === _persistGeneration) {
-    _lastPersisted = { token, kind: 'fallback' };
-  }
+}
+
+function warnFallbackWrite(): void {
+  // A marker or a failed legacy removal pins the fallback for good; saying
+  // so on every token rotation adds nothing.
+  const pinned = fallbackPinned();
+  if (pinned && _warnedPinnedFallback) return;
+  _warnedPinnedFallback ||= pinned;
+  diagnostic("main.token-store", "WARNING", "token_store_safestorage_unavailable_using_encrypted_file_fallback", '[token-store] safeStorage unavailable — using encrypted-file fallback');
 }
 
 /** Resolves once every write queued before it settles, including writes queued
