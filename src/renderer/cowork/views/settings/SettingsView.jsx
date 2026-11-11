@@ -19,7 +19,7 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { stockBackground } from '../../../lib/stockThemeTokens';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
@@ -111,7 +111,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
             // an unhardened window if it ever had run.
             onClick={() => {
               trackBillingOpened('no_credits_notice');
-              return host.openExternal(MINDS_BILLING_URL);
+              return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
           >{t('probe.topUp')}</button>
@@ -196,7 +196,7 @@ function ViewBudgetsLink({ children }) {
    names it and gives the way out. A restricted model has no billing way out,
    so its line has no link; a budget-stopped one links to Budgets. Exported
    for the visual fixture. */
-export function UnavailableModelHint({ label, restricted, budgetReached = false }) {
+export function UnavailableModelHint({ label, restricted, budgetReached = false, isBillingOwner = false }) {
   const { t } = useTranslation('settings');
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
@@ -223,7 +223,7 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false 
           type="button"
           onClick={() => {
             trackBillingOpened('locked_model_hint');
-            return host.openExternal(MINDS_BILLING_URL);
+            return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
           }}
           className={LINK_BTN}
         >{t('agent.topUpBalance')}</button>
@@ -1966,6 +1966,7 @@ export default function SettingsView({
                                   label={displayModelLabel(curModel, settings.modelLabels || {})}
                                   restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
                                   budgetReached={isModelBudgetReached(modelEnabled, settings.modelDisabledReasons, curModel)}
+                                  isBillingOwner={isBillingOwner}
                                 />
                               )}
                             </>);
