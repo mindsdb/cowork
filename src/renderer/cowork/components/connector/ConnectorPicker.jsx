@@ -495,6 +495,12 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
                   : 'No connectors available yet.'}
             </div>
           ))}
+          {/* First, so a member who doesn't find their system sees the way to add it without scrolling. */}
+          {canBuildCustom && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
+            <div className={`${GRID} mb-6`}>
+              <BuildCustomTile onBuildCustom={onBuildCustom} />
+            </div>
+          )}
           {/* Body — two modes:
                 • sortBy=default → Featured section first (when not
                   searching/filtering), then category sections.
@@ -554,11 +560,6 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
                 />
               ))}
             </>
-          )}
-          {canBuildCustom && !loading && !error && !(trimmedQuery && filtered.length === 0) && (
-            <div className={GRID}>
-              <BuildCustomTile onBuildCustom={onBuildCustom} />
-            </div>
           )}
           {PLATFORM_UI && <ConnectorSection
             title={DESKTOP_ONLY_TITLE}
