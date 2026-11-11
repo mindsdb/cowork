@@ -8,7 +8,7 @@
 export const SOURCE_LOCALE = 'en' as const;
 
 /* Order is the order the Language picker shows them in. */
-export const SUPPORTED_LOCALES = ['en', 'es', 'pt-BR'] as const;
+export const SUPPORTED_LOCALES = ['en', 'es', 'pt-BR', 'ja'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 /* Dev-only pseudo-locale: English text, accented and padded, so a string
@@ -23,6 +23,7 @@ export const LOCALE_NATIVE_NAMES: Record<AppLocale, string> = {
   en: 'English',
   es: 'Español',
   'pt-BR': 'Português (Brasil)',
+  ja: '日本語',
   [PSEUDO_LOCALE]: 'Ƥşḗŭḓǿ (en-XA)',
 };
 
@@ -33,13 +34,14 @@ export type LanguagePreference = AppLocale | typeof SYSTEM_PREFERENCE;
 /* Map any BCP-47 tag onto a supported locale, or null when we don't have
    that language. Region matters only where we ship a regional variant:
    every Portuguese maps to pt-BR, every Spanish to es (neutral Latin
-   American), every English to en. */
+   American), every English to en, every Japanese to ja. */
 export function normalizeLocale(tag: string | null | undefined): SupportedLocale | null {
   if (typeof tag !== 'string') return null;
   const lang = tag.trim().toLowerCase().replace(/_/g, '-').split('-')[0];
   if (lang === 'en') return 'en';
   if (lang === 'es') return 'es';
   if (lang === 'pt') return 'pt-BR';
+  if (lang === 'ja') return 'ja';
   return null;
 }
 

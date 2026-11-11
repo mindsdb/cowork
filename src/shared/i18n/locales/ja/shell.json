@@ -1,0 +1,408 @@
+{
+  "common": {
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "keep": "残す",
+    "remove": "削除",
+    "time": {
+      "justNow": "たった今",
+      "minutesShort": "{count}分",
+      "hoursShort": "{count}時間",
+      "daysShort": "{count}日"
+    },
+    "opensInBrowser": "ブラウザで開きます"
+  },
+  "ui": {
+    "actionBar": {
+      "moreActions": "その他の操作"
+    },
+    "toast": {
+      "dismiss": "閉じる"
+    },
+    "modal": {
+      "close": "閉じる"
+    },
+    "select": {
+      "placeholder": "選択…",
+      "selected": "選択中：{label}"
+    },
+    "combobox": {
+      "placeholder": "選択",
+      "search": "検索",
+      "empty": "結果がありません"
+    },
+    "field": {
+      "optional": "（任意）"
+    }
+  },
+  "rail": {
+    "context": {
+      "title": "コンテキスト",
+      "memoryDescriptions": {
+        "lessons": "エージェントがここでの作業から学んだこと",
+        "rules": "エージェントが常に従う指示",
+        "profile": "あなたについてと、好みの作業スタイル"
+      },
+      "attachmentFallbackName": "添付ファイル",
+      "attachmentFallbackLower": "添付ファイル",
+      "fileFallbackName": "ファイル",
+      "taskUploadActionsAriaLabel": "タスクのアップロードの操作",
+      "instructions": "指示",
+      "deleteFile": "ファイルを削除",
+      "deleteFileAriaLabel": "{name}を削除",
+      "openNamedInDrive": "「{name}」をGoogle ドライブで開く",
+      "untitled": "無題",
+      "openInDrive": "Google ドライブで開く",
+      "removeFromProjectFiles": "プロジェクトファイルから削除",
+      "removeFromProjectFilesAriaLabel": "{name}をプロジェクトファイルから削除",
+      "loadAttachmentsFailed": "添付ファイルを読み込めませんでした",
+      "uploadFailed": "アップロードできませんでした。",
+      "emptyMemories": "エージェントは作業を通じて学習します。メモリはここに表示されます。",
+      "dropToAdd": "ファイルをドロップしてプロジェクトに追加",
+      "projectFiles": "プロジェクトファイル",
+      "addToProject": "このプロジェクトにファイルを追加",
+      "uploading": "アップロード中…",
+      "attachFiles": "ファイルを添付",
+      "connecting": "接続中…",
+      "attachDriveFiles": "Google ドライブのファイルを添付",
+      "addDriveFilesFailed": "Google ドライブのファイルを追加できませんでした。",
+      "addFromSharePoint": "SharePointからファイルを追加",
+      "emptyProjectFiles": "ファイルを追加して、エージェントにコンテキストを与えましょう。",
+      "truncated": "このフォルダには一覧に表示しきれないほどのファイルがあるため、一部が表示されていません。",
+      "taskUploads": "タスクのアップロード",
+      "attachToTask": "このタスクにファイルを添付",
+      "loadingAttachments": "添付ファイルを読み込み中…",
+      "emptyTaskUploads": "添付ファイルはまだありません。クリックして追加できます。",
+      "open": "開く",
+      "moveToProjectFiles": "プロジェクトファイルに移動",
+      "moveFailed": "ファイルを移動できませんでした。",
+      "projectMemory": "プロジェクトのメモリ",
+      "globalMemory": "グローバルメモリ",
+      "projectMemorySubtitle": "プロジェクト · {name}",
+      "globalScope": "グローバル",
+      "emptyMemory": "（空のメモリ）",
+      "memoryPlaceholder": "メモリの内容：エージェントに何を覚えておいてほしいですか？",
+      "deleteFileTitle": "「{name}」を削除しますか？",
+      "deleteFileMessage": "ファイルはプロジェクトの作業フォルダから削除されます。この操作は元に戻せません。",
+      "deleteFileFailed": "ファイルを削除できませんでした。",
+      "removeDriveFileTitle": "「{name}」をプロジェクトファイルから削除しますか？",
+      "removeDriveFileMessage": "Coworkはこのファイルにアクセスできなくなります。Google ドライブ上のファイル自体は変更されません。",
+      "removeFileFailed": "ファイルを削除できませんでした。",
+      "deleteAttachmentMessage": "ファイルはこのタスクのアップロードから削除され、以降のやり取りでは参照されなくなります。この操作は元に戻せません。",
+      "deleteAttachmentFailed": "添付ファイルを削除できませんでした。"
+    },
+    "progress": {
+      "title": "進行状況"
+    },
+    "card": {
+      "collapse": "折りたたむ",
+      "expand": "展開"
+    },
+    "showMore": {
+      "less": "表示を減らす",
+      "more": "他{count}件"
+    },
+    "scheduled": {
+      "title": "スケジュール済みタスク",
+      "empty": "スケジュールされたものはまだありません。"
+    },
+    "artifacts": {
+      "title": "アーティファクト",
+      "noServableFile": "このアーティファクトには、まだ表示できるファイルがありません。",
+      "openFailed": "ファイルを開けませんでした。",
+      "preview": "プレビュー",
+      "openInOs": "OSで開く",
+      "openInNewTab": "新しいタブで開く",
+      "download": "ダウンロード",
+      "deleteFailed": "削除できませんでした。",
+      "empty": "アーティファクトはまだありません。エージェントが作成したダッシュボード、レポート、データセットはここに保存されます。",
+      "otherInProject": "このプロジェクトの他のアーティファクト",
+      "published": "公開中",
+      "actionsAriaLabel": "アーティファクトの操作",
+      "deleteTitle": "「{name}」を削除しますか？",
+      "deleteFallbackName": "アーティファクト",
+      "deleteMessage": "アーティファクトは完全に削除されます。共有中の場合は、先に共有が停止されます。この操作は元に戻せません。"
+    },
+    "shared": {
+      "loadFailed": "複製できるアプリを読み込めませんでした。",
+      "duplicateFailed": "このアプリを複製できませんでした。",
+      "duplicate": "複製",
+      "duplicating": "複製中…",
+      "duplicated": "複製済み",
+      "haveCopyAriaLabel": "{name}のコピーがあります",
+      "haveCopyTitle": "コピーがすでにあります。もう一度複製するには、コピーを削除してください。",
+      "duplicateAriaLabel": "{name}を複製",
+      "duplicatedToast": "このプロジェクトに複製しました。"
+    }
+  },
+  "confirm": {
+    "title": "よろしいですか？",
+    "confirm": "確認"
+  },
+  "taskMenu": {
+    "schedule": "スケジュール",
+    "turnIntoSkill": "スキルに変換",
+    "moveToProject": "プロジェクトに移動…",
+    "pin": "ピン留め",
+    "unpin": "ピン留めを解除",
+    "rename": "名前を変更",
+    "ariaLabel": "タスクの操作"
+  },
+  "themeModal": {
+    "title": "表示設定",
+    "subtitle": "テーマとスタイル（すぐに反映されます）",
+    "subtitleThemeOnly": "テーマ（すぐに反映されます）",
+    "theme": "テーマ",
+    "light": "ライト",
+    "dark": "ダーク",
+    "style": "スタイル",
+    "skins": {
+      "normal": "標準",
+      "8bit": "8-Bit"
+    }
+  },
+  "comingSoon": {
+    "cloudTitle": "Cloudに近日対応",
+    "unavailableTitle": "この機能は利用できません",
+    "cloudBodyNamed": "{feature}はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
+    "cloudBody": "この機能はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
+    "unavailableBodyNamed": "{feature}はこの環境ではご利用いただけません。",
+    "unavailableBody": "この機能はこの環境ではご利用いただけません。",
+    "notNow": "後で",
+    "download": "アプリをダウンロード"
+  },
+  "loadStatus": {
+    "retry": "再試行",
+    "failed": "{what}を読み込めませんでした。",
+    "loading": "{what}を読み込み中…"
+  },
+  "upToDate": "最新の状態です",
+  "usageBar": {
+    "hideAllowance": "無料枠を非表示",
+    "hide": "非表示"
+  },
+  "diagnostics": {
+    "copy": "診断情報をコピー",
+    "copied": "コピーしました",
+    "copyFailed": "コピーできませんでした"
+  },
+  "appShell": {
+    "openSidebar": "サイドバーを開く"
+  },
+  "workspace": {
+    "label": "ワークスペース",
+    "archived": "このワークスペースはアーカイブされています。別のワークスペースを選択してください。",
+    "switchFailed": "ワークスペースを切り替えられませんでした。もう一度お試しください。",
+    "manage": "ワークスペースを管理",
+    "triggerAriaLabel": "ワークスペース：{name}"
+  },
+  "workspaceMode": {
+    "code": "コード"
+  },
+  "search": {
+    "label": "{product}を検索",
+    "ariaLabel": "検索",
+    "types": {
+      "task": "タスク",
+      "project": "プロジェクト",
+      "artifact": "アーティファクト",
+      "attachment": "添付ファイル",
+      "schedule": "スケジュール",
+      "pin": "ピン留め"
+    },
+    "recentTasks": "最近のタスク",
+    "failed": "検索できませんでした。",
+    "searching": "検索中…",
+    "noResults": "{product}で一致する結果は見つかりませんでした。",
+    "hint": "タスク、プロジェクト、アーティファクト、添付ファイル、スケジュール、ピン留めを検索できます。",
+    "toNavigate": "で移動",
+    "toOpen": "で開く",
+    "toClose": "で閉じる"
+  },
+  "recents": {
+    "untitled": "無題",
+    "deleteTask": "このタスクを削除",
+    "searchPlaceholder": "最近のタスクを検索…",
+    "searchAriaLabel": "最近のタスクを検索",
+    "count": "{shown}/{total}",
+    "noMatch": "一致するタスクはありません。",
+    "empty": "最近のタスクはまだありません。",
+    "noProject": "（プロジェクトなし）"
+  },
+  "serverHelp": {
+    "online": {
+      "title": "{agent}のバックエンドは実行中です",
+      "subtitle": "ポート{port}で稼働中です。ローカルのPythonサーバーは/healthに応答しています。"
+    },
+    "starting": {
+      "title": "{agent}のバックエンドを起動中…",
+      "subtitle": "ローカルのPythonサーバーを起動しています。通常は数秒で完了し、結果はこの画面に自動的に反映されます。"
+    },
+    "stopping": {
+      "title": "{agent}のバックエンドを停止中…",
+      "subtitle": "ローカルのPythonサーバーの終了を待っています。"
+    },
+    "stopped": {
+      "title": "{agent}のバックエンドは停止しています",
+      "subtitle": "ローカルのPythonサーバーを停止しました。再開するには、下の「バックエンドを起動」をクリックしてください。"
+    },
+    "failed": {
+      "title": "{agent}のバックエンドが実行されていません",
+      "subtitle": "ローカルのPythonサーバーを起動できませんでした。プロセスから取得した最新のエラーとログの末尾を以下に表示しています。"
+    },
+    "port": "ポート",
+    "exitCode": "終了コード",
+    "lastAttempt": "最終試行",
+    "noError": "起動時のエラーは記録されていません。下のログの末尾を確認してください。正常に起動した後にPythonプロセスが終了した可能性があります。",
+    "recentLog": "最近のログ",
+    "noLog": "（ログはまだ記録されていません）",
+    "actions": {
+      "start": "バックエンドを起動",
+      "starting": "起動中…",
+      "restart": "バックエンドを再起動",
+      "restarting": "再起動中…",
+      "stop": "バックエンドを停止",
+      "stopping": "停止中…"
+    }
+  },
+  "userMenu": {
+    "switchOrgFailed": "組織を切り替えられませんでした。もう一度お試しください。",
+    "changingOrg": "組織を切り替え中",
+    "organization": "組織",
+    "account": "アカウント",
+    "settings": "設定",
+    "billing": "請求と使用量",
+    "members": "メンバー",
+    "help": "ヘルプとフィードバック",
+    "manageOrg": "組織を管理",
+    "logout": "サインアウト",
+    "signingOut": "サインアウト中…"
+  },
+  "sidebar": {
+    "soon": "近日公開",
+    "renameTask": "タスク名を変更",
+    "runs": "{count, plural, other {#回実行}}",
+    "agentWorking": "{agent}がこのタスクに取り組んでいます",
+    "active": "実行中",
+    "taskMenu": "タスクメニュー",
+    "scheduledTask": "スケジュール済みタスク",
+    "expand": "サイドバーを展開",
+    "collapse": "サイドバーを折りたたむ",
+    "newTask": "新しいタスク",
+    "newCodeTask": "新しいコードタスク",
+    "nav": {
+      "projects": "プロジェクト",
+      "scheduled": "スケジュール済みタスク",
+      "artifacts": "ライブアーティファクト",
+      "connectedApps": "接続済みのアプリとデータ",
+      "connectApps": "アプリとデータを接続",
+      "allTasks": "すべてのタスク",
+      "connectors": "コネクタ",
+      "skills": "スキル",
+      "memories": "メモリ",
+      "skillsLibrary": "スキルライブラリ",
+      "compare": "モデルを比較"
+    },
+    "agent": "エージェント",
+    "pinned": "ピン留め",
+    "viewAllTasks": "すべてのタスクを表示",
+    "viewAll": "すべて表示 →",
+    "loadingTasks": "タスクを読み込み中",
+    "loadFailed": "タスクを読み込めませんでした。",
+    "noTasks": "タスクはまだありません",
+    "showMore": "さらに表示",
+    "update": {
+      "manualTooltip": "{product}の新しいバージョンが利用可能です。インストーラをダウンロードし、アプリを終了してから{step}",
+      "manualTooltipVersion": "{product}の新しいバージョン（{version}）が利用可能です。インストーラをダウンロードし、アプリを終了してから{step}",
+      "openToUpdate": "インストーラを開いてアップデートしてください",
+      "dismiss": "アップデートの通知を閉じる"
+    },
+    "status": {
+      "details": "バックエンドの状態（クリックで詳細を表示）",
+      "backend": "バックエンド ·",
+      "starting": "起動中",
+      "stopping": "停止中",
+      "offline": "オフライン"
+    },
+    "settings": "設定",
+    "openSettings": "設定を開く"
+  },
+  "mobile": {
+    "tasks": "タスク",
+    "titles": {
+      "newTaskIn": "新しいタスク · {project}",
+      "conversation": "会話",
+      "scheduled": "スケジュール済み",
+      "connect": "接続"
+    },
+    "closeMenu": "メニューを閉じる",
+    "openMenu": "メニューを開く",
+    "switchToLight": "ライトモードに切り替え",
+    "switchToDark": "ダークモードに切り替え",
+    "inProject": "{project}内",
+    "newProject": "新しいプロジェクト",
+    "closeCreateMenu": "作成メニューを閉じる",
+    "createNew": "新規作成",
+    "chat": "チャット",
+    "chatSubtitle": "会話を開始または続行",
+    "noProjects": "プロジェクトはまだありません。",
+    "tapToStart": "タップしてチャットを開始",
+    "taskCount": "{count, plural, other {#件のタスク}}",
+    "noScheduled": "スケジュール済みのタスクはありません。",
+    "schedule": "スケジュール",
+    "noArtifacts": "ライブアーティファクトはありません。",
+    "viewAllArtifacts": "すべてのアーティファクトを表示",
+    "total": "合計{count}件",
+    "noTasks": "タスクはまだありません。",
+    "untitledTask": "無題のタスク",
+    "seeAllTasks": "すべてのタスクを表示"
+  },
+  "dispatch": {
+    "qrAriaLabel": "装飾用のペアリングコード",
+    "defaultAgent": "エージェント",
+    "title": "Dispatch",
+    "heading": "{product} Mobileアプリとペアリング",
+    "body": "モバイルアプリを使えば、デスクトップで作業中の{agent}とやり取りできます。コードをスキャンして、スマートフォンにアプリをダウンロードしてください。",
+    "signedIn": "スマートフォンでサインインしました",
+    "comingSoon": "近日公開",
+    "later": "後で設定"
+  },
+  "tasks": {
+    "sort": {
+      "recent": "最近",
+      "name": "名前（A〜Z）",
+      "project": "プロジェクト"
+    },
+    "allProjects": "すべてのプロジェクト",
+    "subtitle": "すべてのプロジェクトのすべての会話です。並べ替えや絞り込みをして、すぐに再開できます。",
+    "searchPlaceholder": "タスクを検索",
+    "countFiltered": "{total}件中{shown}件のタスク",
+    "noMatch": "これらのフィルタに一致するタスクはありません。",
+    "clearFilters": "フィルタをクリア",
+    "emptyDescription": "ホーム画面から会話を始めると、すべてのチャットがここに表示されます。"
+  },
+  "home": {
+    "greetingFallback": "やることリストを片付けましょう",
+    "active": "実行中",
+    "clearActive": "実行中をクリア",
+    "connectProvider": {
+      "title": "チャットを始めるにはプロバイダを接続してください",
+      "operatorTitle": "プロバイダの設定が必要です",
+      "body": "MindsHubならMindsHub Airの無料枠から始めて、その後は従量課金でご利用いただけます。または、設定で独自のAPIキー（Anthropic、OpenAI、またはOpenAI互換のエンドポイント）を追加することもできます。",
+      "operatorBody": "タスクを開始する前に、モデルプロバイダの設定を運用担当者に依頼してください。",
+      "startFree": "無料で始める"
+    },
+    "handoffHint": "このプロンプトを編集して、準備ができたら送信してください。"
+  },
+  "logout": {
+    "title": "{product}からサインアウトしますか？",
+    "messageWebMindsHub": "Coworkからサインアウトします。引き続き使用するには、MindsHubで再度サインインする必要があります。",
+    "messageWeb": "{product}からサインアウトします。引き続き使用するには、再度サインインする必要があります。",
+    "messageDesktop": "MindsHubのセッションを終了し、このアカウントでCoworkに保存されているAIプロバイダのAPIキーを削除します（各組織のキーは次回使用される前に削除されます）。プロジェクト、ファイル、接続済みのアプリ、データ接続（保存されたパスワードを含む）はそのまま残ります。引き続きCoworkを使用するには、再度サインインする必要があります。",
+    "paneSubtitle": "MindsHubのセッションを終了し、このアカウントでCoworkに保存されているAIプロバイダのAPIキーを削除します。開いていない組織のキーは、次回使用される前に削除されます。プロジェクト、ファイル、接続済みのアプリ、データ接続（保存されたパスワードを含む）はこのデバイスに残ります。",
+    "tooltip": "サインアウトして保存済みのAPIキーを削除",
+    "confirm": "サインアウト",
+    "failed": "サインアウトを完了できませんでした。もう一度お試しください。",
+    "waitNote": "サインアウト処理中です。この画面は閉じても構いません。処理は自動的に完了します。"
+  }
+}

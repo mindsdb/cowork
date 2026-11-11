@@ -57,4 +57,12 @@ describe('LanguageSection', () => {
     const { container } = render(<LanguageHeaderSelect />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it('switches to Japanese, with the picker named in Japanese', async () => {
+    render(<><SettingsTitle /><LanguageSection /></>);
+    await act(async () => { await setLanguagePreference('ja'); });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('設定');
+    expect(screen.getByRole('combobox', { name: '言語' })).toHaveTextContent('日本語');
+    expect(document.documentElement.lang).toBe('ja');
+  });
 });

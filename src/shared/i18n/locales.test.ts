@@ -23,11 +23,13 @@ describe('normalizeLocale', () => {
     ['pt-BR', 'pt-BR'],
     ['pt-PT', 'pt-BR'],
     [' pt-br ', 'pt-BR'],
+    ['ja', 'ja'],
+    ['ja-JP', 'ja'],
   ])('%s → %s', (tag, expected) => {
     expect(normalizeLocale(tag)).toBe(expected);
   });
 
-  it.each([['fr-FR'], ['de'], [''], ['*'], [null], [undefined]])('%s → null', (tag) => {
+  it.each([['fr-FR'], ['de'], ['zh-CN'], [''], ['*'], [null], [undefined]])('%s → null', (tag) => {
     expect(normalizeLocale(tag as string | null | undefined)).toBeNull();
   });
 });
@@ -76,7 +78,7 @@ describe('serverLocale', () => {
 });
 
 it('names every locale in its own language', () => {
-  expect(LOCALE_NATIVE_NAMES).toMatchObject({ en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)' });
+  expect(LOCALE_NATIVE_NAMES).toMatchObject({ en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)', ja: '日本語' });
 });
 
 describe('pseudoLocalize', () => {

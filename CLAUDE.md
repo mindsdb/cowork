@@ -207,11 +207,11 @@ Settings live in `~/.cowork/.env` (provider API keys, consent flags, provider ch
 
 Dark/light via `body[data-theme="dark"]` selector. Colors defined as CSS variables (`--bg`, `--surface`, `--ink`, `--accent`, …) and aliased in [tailwind.config.js](tailwind.config.js). Tailwind's preflight is disabled to preserve existing inline styles.
 
-### i18n (English, Spanish, Brazilian Portuguese)
+### i18n (English, Spanish, Brazilian Portuguese, Japanese)
 
-**Every user-visible string goes through `t()`, and every PR that adds or changes English text updates `es` and `pt-BR` in the same PR.** Don't wait to be asked; don't leave it for a follow-up.
+**Every user-visible string goes through `t()`, and every PR that adds or changes English text updates every other locale (`es`, `pt-BR`, `ja`) in the same PR.** Don't wait to be asked; don't leave it for a follow-up.
 
-- Catalogs: `src/shared/i18n/locales/<en|es|pt-BR>/<namespace>.json`, ICU MessageFormat. In components: `const { t } = useTranslation('<namespace>')` from `src/renderer/lib/i18n.ts`. Plurals and variables go in the message (`{count, plural, one {…} other {…}}`), never in code.
+- Catalogs: `src/shared/i18n/locales/<en|es|pt-BR|ja>/<namespace>.json`, ICU MessageFormat. In components: `const { t } = useTranslation('<namespace>')` from `src/renderer/lib/i18n.ts`. Plurals and variables go in the message (`{count, plural, one {…} other {…}}`), never in code.
 - After changing any catalog, run the `/i18n-sync` skill (or translate by hand using `docs/i18n/glossary.md`), then `npm run check:i18n -- --write-lock`. `npm run check:i18n` must pass: it fails on missing, extra, mismatched, unlocked or **stale** translations (English edited without updating the others), and on new hard-coded English in `src/renderer`.
 - When you move hard-coded strings into catalogs, lower the ratchet: `npm run check:i18n -- --update-baseline`.
 - Tests run in English. Full guide: [docs/i18n/README.md](docs/i18n/README.md).

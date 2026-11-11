@@ -1,8 +1,8 @@
 # Translations (i18n)
 
-Cowork ships in English, Spanish (`es`) and Brazilian Portuguese (`pt-BR`). Tracking ticket: ENG-4149.
+Cowork ships in English, Spanish (`es`), Brazilian Portuguese (`pt-BR`) and Japanese (`ja`). Tracking ticket: ENG-4149.
 
-**The rule:** every string a person reads goes through `t()`. When you add or change English, update `es` and `pt-BR` in the same PR. CI (`npm run check:i18n`) fails otherwise. The `/i18n-sync` Claude Code skill does the translation work.
+**The rule:** every string a person reads goes through `t()`. When you add or change English, update every other locale (`es`, `pt-BR`, `ja`) in the same PR. CI (`npm run check:i18n`) fails otherwise. The `/i18n-sync` Claude Code skill does the translation work.
 
 ## Writing a string
 
@@ -34,7 +34,7 @@ function DeleteButton({ count }) {
 - Each other locale is a separate chunk, loaded the first time someone picks it. In Electron the chunk is a local file (bundled, or the OTA UI cache); on the web cowork-server serves it as a static asset. Catalogs live with the UI, not in the server, because an OTA UI routinely runs ahead of the server — each UI version carries the text for its own keys.
 - The entry points (`main.tsx`, `web-main.tsx`) wait for the user's language before the first render (bounded at 1.5 s, falls back to English), so there is no English flash.
 - Settings → Appearance → Language switches in place with `i18n.changeLanguage()`: nothing reloads. The choice is stored on the device (`localStorage: cowork.language`); "Match system" follows the OS language.
-- Every server request carries `Accept-Language: en|es|pt-BR` (`withAcceptLanguage` in `cowork/api.js`), which cowork-server hands to Anton so it replies in the user's language.
+- Every server request carries `Accept-Language: en|es|pt-BR|ja` (`withAcceptLanguage` in `cowork/api.js`), which cowork-server hands to Anton so it replies in the user's language.
 
 ### Preview gate
 

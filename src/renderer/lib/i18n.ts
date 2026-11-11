@@ -9,7 +9,7 @@
      because an OTA renderer routinely runs ahead of the server.
    - Switching language re-renders in place: no reload.
 
-   How to write strings, and the rules that keep es / pt-BR in step with
+   How to write strings, and the rules that keep every locale in step with
    English, are in docs/i18n/README.md. */
 
 import i18next, { type i18n as I18n } from 'i18next';
