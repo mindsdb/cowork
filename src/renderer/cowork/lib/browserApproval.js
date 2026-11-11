@@ -120,16 +120,22 @@ export function isPositionClickCard(data) {
   );
 }
 
+/* The Approve option's line on a step card (anton's browser tool), which
+   marks the desktop's cards: they carry no commit-hold id. */
+export const STEP_APPROVE_DETAIL = 'Take this step once';
+
 /**
- * Whether a question asks to approve a held browser step: a commit-hold card
- * (its id has the hold's prefix) with an Approve option.
+ * Whether a question asks to approve a browser step: a commit-hold card (its
+ * id has the hold's prefix) with an Approve option, or a card whose Approve
+ * is a step's "Take this step once".
  *
- * @param {{ question_id?: string, options?: Array<{ value?: string }> } | null | undefined} data
+ * @param {{ question_id?: string, options?: Array<{ value?: string, detail?: string }> } | null | undefined} data
  * @returns {boolean}
  */
 export function isBrowserStepCard(data) {
-  return isBrowserApprovalCard(data?.question_id)
-    && (data?.options || []).some((o) => o?.value === BROWSER_APPROVE_VALUE);
+  const approves = (data?.options || []).filter((o) => o?.value === BROWSER_APPROVE_VALUE);
+  if (!approves.length) return false;
+  return isBrowserApprovalCard(data?.question_id) || approves.some((o) => o?.detail === STEP_APPROVE_DETAIL);
 }
 
 /**

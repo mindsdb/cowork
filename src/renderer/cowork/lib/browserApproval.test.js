@@ -5,6 +5,7 @@ import {
   isPositionClickCard,
   isAutoApprovedCard,
   isBrowserStepCard,
+  STEP_APPROVE_DETAIL,
   POSITION_APPROVE_DETAIL,
   approvalRefusalText,
   browserApprovalIds,
@@ -163,5 +164,10 @@ describe('which cards the app approves for the person', () => {
     expect(isAutoApprovedCard(position, { askToApprove: true })).toBe(true);
     expect(isAutoApprovedCard({ question_id: 'q2', options: approve }, { askToApprove: false })).toBe(false);
     expect(isAutoApprovedCard(hold([{ value: 'cancel' }]), { askToApprove: false })).toBe(false);
+  });
+  it("approves the desktop's step cards too, which carry no commit-hold id", () => {
+    const desktop = { question_id: 'q-7', options: [{ value: 'approve', detail: STEP_APPROVE_DETAIL }, { value: 'cancel' }] };
+    expect(isAutoApprovedCard(desktop, { askToApprove: false })).toBe(true);
+    expect(isAutoApprovedCard(desktop, { askToApprove: true })).toBe(false);
   });
 });
