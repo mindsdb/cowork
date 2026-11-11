@@ -1020,7 +1020,6 @@ export default function SettingsView({
   const roleProviderType = (role) => canonicalProviderForRole(role);
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
-  const budgetRowsShown = hasBudgetSettings && !(host.isWeb && PLATFORM_UI);
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
@@ -2053,14 +2052,9 @@ export default function SettingsView({
 
         <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
 
-        {/* Not on hosted web yet: its turns run in a pod that doesn't receive
-            these limits until the web time limit and the PR that sends them
-            ship, so the switch and values here would not be what a hosted web
-            turn runs under. Self-hosted web runs turns in its own server, where
-            they apply. The Jev switch has no such limit, so it keeps the group. */}
-        {(budgetRowsShown || jevSwitchShown) && (
+        {(hasBudgetSettings || jevSwitchShown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
-            {budgetRowsShown && <>
+            {hasBudgetSettings && <>
             {hasLimitsSwitch && (
               <Section
                 title={t('advanced.limits.title')}
