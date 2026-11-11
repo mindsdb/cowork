@@ -702,6 +702,8 @@ function AppCore() {
   const voiceCall = useVoiceCall({
     onAsk: (request) => operateFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
+    // Work the call queued for Anton keeps it from ending as idle.
+    busy: () => callWorkRef.current.size > 0,
   });
   // Settings > Voice (lib/voice/voicePrefs.js): off hides every call button
   // and ends a call; a new voice moves a call to it at once, or, with no

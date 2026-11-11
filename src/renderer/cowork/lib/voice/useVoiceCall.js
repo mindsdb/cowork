@@ -21,6 +21,8 @@
 //   microphone, and hangs up after its line.
 // - `signOff` (the card's Mute) has Anton say a short goodbye, then folds the
 //   card away (`closing`) and hangs up.
+// - A call that goes quiet (nobody speaks and Anton has no work running) for
+//   IDLE_MS stops listening: the card folds away and the call ends.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startVoiceSession } from '../../api';
@@ -41,10 +43,15 @@ const LINE_QUIET_MS = 1500;
 const LINE_MAX_MS = 12000;
 // The card's fold (voice-call.css .is-closing).
 export const FOLD_MS = 360;
+// A call this long with nobody speaking and no work running ends by itself.
+export const IDLE_MS = 60_000;
+const IDLE_CHECK_MS = 5_000;
 
 const OPENINGS = {
-  task: 'Open casually in a few words, like "Hey, let me see what we got in this task", then say in one or two short sentences what this task is about and ask what they want to do next.',
-  fresh: 'Greet the user in one short sentence and ask what they would like to work on.',
+  // Mid-task the call opens silent: Anton has the task's context and waits
+  // for the person to ask for something.
+  task: null,
+  fresh: 'Say a short hi, a casual variation of "hi" in a few words, and nothing else. Then wait for the user.',
   switch: 'The user just switched you to a new voice. Say one short, playful line in it, like "How\'s this voice?", and nothing else.',
   preview: 'The user is trying out your voice. Say one short, friendly line so they can hear it, like "Hi, this is how I sound", and nothing else.',
   signOff: 'The user muted you to end the call. Say one short goodbye in your own words, a variation of "Got it, just click the call button whenever you need me next." Say nothing else.',
@@ -67,7 +74,7 @@ const eventId = (prefix) => `${prefix}_${Date.now().toString(36)}_${(eventSeq +=
  * `onAsk(request)` resolves with Anton's answer, or rejects. `context()`
  * returns background about the task, or ''.
  */
-export function useVoiceCall({ onAsk, context }) {
+export function useVoiceCall({ onAsk, context, busy }) {
   // idle | starting | live | ending | ended
   const [phase, setPhase] = useState('idle');
   const [notice, setNotice] = useState('');
@@ -85,10 +92,16 @@ export function useVoiceCall({ onAsk, context }) {
   const speakingTimer = useRef(null);
   // When Anton last said something, and the session's opening.
   const spoke = useRef(0);
+  // When anyone last spoke or Anton last had work, for the idle stop.
+  const lastActive = useRef(0);
+  const workingRef = useRef(false);
   const opening = useRef('call');
   const onAskRef = useRef(onAsk);
   const contextRef = useRef(context);
   onAskRef.current = onAsk;
+  // Whether the call has work running outside a delegation (a queued request).
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   contextRef.current = context;
 
   const cleanup = useCallback(() => {
@@ -121,6 +134,7 @@ export function useVoiceCall({ onAsk, context }) {
       return;
     }
     setWorking(true);
+    workingRef.current = true;
     let content;
     try {
       content = forTheAvatar(await onAskRef.current(request), { maxChars: MAX_SPOKEN_CHARS });
@@ -128,6 +142,8 @@ export function useVoiceCall({ onAsk, context }) {
       content = `Anton couldn't finish it: ${withoutPhoneNumbers(err?.message || 'something went wrong').slice(0, 300)}`;
     } finally {
       setWorking(false);
+      workingRef.current = false;
+      lastActive.current = Date.now();
     }
     send({ type: 'session.commentary.append', event_id: eventId('result'), delegation_id: delegationId, content });
   }, [send]);
@@ -140,11 +156,12 @@ export function useVoiceCall({ onAsk, context }) {
         const about = kind === 'preview' ? '' : withoutPhoneNumbers(contextRef.current?.() || '').slice(0, 1800);
         if (about) send({ type: 'session.thinking.append', event_id: eventId('context'), delegation_id: null, content: about });
         const line = kind === 'call' ? (about ? OPENINGS.task : OPENINGS.fresh) : OPENINGS[kind];
-        send({ type: 'session.instructions.append', event_id: eventId('greet'), delegation_id: null, content: line });
+        if (line) send({ type: 'session.instructions.append', event_id: eventId('greet'), delegation_id: null, content: line });
         if (kind === 'preview') void afterLine().then(() => foldAndEnd());
         break;
       }
       case 'session.input_transcript.delta': {
+        lastActive.current = Date.now();
         const delta = String(event.delta || '');
         heard.current.pending += delta;
         setCaptions((c) => ({ ...c, user: tail(c.last === 'user' ? c.user + delta : delta.trimStart()), last: 'user' }));
@@ -155,6 +172,7 @@ export function useVoiceCall({ onAsk, context }) {
         setCaptions((c) => ({ ...c, agent: tail(c.last === 'agent' ? c.agent + delta : delta.trimStart()), last: 'agent' }));
         setAgentSpeaking(true);
         spoke.current = Date.now();
+        lastActive.current = spoke.current;
         clearTimeout(speakingTimer.current);
         speakingTimer.current = setTimeout(() => setAgentSpeaking(false), 1200);
         break;
@@ -321,6 +339,22 @@ export function useVoiceCall({ onAsk, context }) {
     }
     await foldAndEnd();
   }, [afterLine, closing, foldAndEnd, send]);
+
+  // Quiet for IDLE_MS (nobody speaking, no work running): stop listening and
+  // fold the card away. A preview ends by itself; a sign-off is under way.
+  useEffect(() => {
+    if (phase !== 'live' || previewing || closing) return undefined;
+    lastActive.current = Date.now();
+    const timer = setInterval(() => {
+      if (workingRef.current || busyRef.current?.() || !call.current) return;
+      if (Date.now() - lastActive.current < IDLE_MS) return;
+      clearInterval(timer);
+      call.current.microphone?.getAudioTracks().forEach((t) => { t.enabled = false; });
+      setMicOn(false);
+      void foldAndEnd();
+    }, IDLE_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [phase, previewing, closing, foldAndEnd]);
 
   // Something to tell the person unasked (queued work finished): GPT-Live
   // says it in its own words when it can.

@@ -8,7 +8,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 vi.mock('../../api', () => ({ startVoiceSession: vi.fn() }));
 
 import { startVoiceSession } from '../../api';
-import { MAX_SPOKEN_CHARS, useVoiceCall, voiceStartFailure } from './useVoiceCall';
+import { IDLE_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceStartFailure } from './useVoiceCall';
 
 class FakeChannel {
   constructor() {
@@ -80,10 +80,18 @@ describe('a voice call', () => {
     act(() => peer.channel.emit({ type: 'session.started', session: { id: 'live_1' } }));
 
     expect(result.current.phase).toBe('live');
-    const [context, greet] = peer.channel.sent;
-    expect(context).toMatchObject({ type: 'session.thinking.append', delegation_id: null, content: 'The user is in a task called "Q3 sales".' });
+    // In a task it opens silent: the task's context only, no greeting.
+    expect(peer.channel.sent).toEqual([
+      expect.objectContaining({ type: 'session.thinking.append', delegation_id: null, content: 'The user is in a task called "Q3 sales".' }),
+    ]);
+  });
+
+  it('says a short hi on a blank task', async () => {
+    await started({ onAsk: vi.fn(), context: () => '' });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    const [greet] = peer.channel.sent;
     expect(greet).toMatchObject({ type: 'session.instructions.append', delegation_id: null });
-    expect(greet.content).toMatch(/let me see what we got in this task/);
+    expect(greet.content).toMatch(/short hi/);
   });
 
   it('starts in the voice asked for, and a switch hangs up at once and starts again in the new one', async () => {
@@ -206,5 +214,30 @@ describe('a voice call', () => {
     expect(result.current.phase).toBe('ended');
     expect(result.current.notice).toBe("Voice calls aren't available on this deployment.");
     expect(voiceStartFailure(Object.assign(new Error('x'), { name: 'NotAllowedError' }))).toMatch(/Allow the microphone/);
+  });
+});
+
+describe('a quiet call', () => {
+  it('stops listening and folds away after a minute with nobody speaking', async () => {
+    const { result } = await started({ onAsk: vi.fn(), context: () => '' });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(IDLE_MS - 10_000); });
+    act(() => peer.channel.emit({ type: 'session.input_transcript.delta', delta: 'hmm' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(IDLE_MS - 10_000); });
+    expect(result.current.closing).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(track.enabled).toBe(false);
+    expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+  });
+
+  it('stays while the call has work running', async () => {
+    let busy = true;
+    await started({ onAsk: vi.fn(), context: () => '', busy: () => busy });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(IDLE_MS + 20_000); });
+    expect(peer.channel.sent.some((e) => e.type === 'session.close')).toBe(false);
+    busy = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
   });
 });
