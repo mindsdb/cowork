@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { applyBrandIcons, applyFavicon, applyNavTitleColor } from './navBranding';
+import { applyBrandIcons, applyFavicon, applyNavTitleColor, applyOrgFavicon } from './navBranding';
+import { AUTH_IMAGE_HOST } from './orgBranding';
 import type { DeploymentBrand } from './deploymentBrand';
 
 describe('navBranding — applyNavTitleColor', () => {
@@ -105,5 +106,40 @@ describe('applyBrandIcons', () => {
     applyFavicon(null);
     expect(icon().getAttribute('href')).toBe('/brand/icon.png?v=1');
     expect(icon().hasAttribute('type')).toBe(false);
+  });
+});
+
+describe('applyOrgFavicon', () => {
+  const ORG_ICON = `https://${AUTH_IMAGE_HOST}/v1/organizations/org-1/branding/icon?v=a1`;
+  const icon = () => document.querySelector('link[rel="icon"]')!;
+
+  beforeEach(() => {
+    document.head.querySelectorAll('link').forEach((link) => link.remove());
+    document.head.innerHTML += '<link rel="icon" type="image/svg+xml" href="/minds-icon.svg">';
+  });
+
+  it("uses the org's icon from the auth host and puts the page's own back", () => {
+    applyOrgFavicon(ORG_ICON);
+    expect(icon().getAttribute('href')).toBe(ORG_ICON);
+    expect(icon().hasAttribute('type')).toBe(false);
+    applyOrgFavicon(null);
+    expect(icon().getAttribute('href')).toBe('/minds-icon.svg');
+    expect(icon().getAttribute('type')).toBe('image/svg+xml');
+  });
+
+  it.each(['https://images.globex.com/icon.png', `http://${AUTH_IMAGE_HOST}/icon.png`, 'data:image/png;base64,aWNvbg=='])(
+    'ignores %s',
+    (url) => {
+      applyOrgFavicon(url);
+      expect(icon().getAttribute('href')).toBe('/minds-icon.svg');
+    },
+  );
+
+  it('hands over to a Settings favicon and back without losing the page icon', () => {
+    applyOrgFavicon(ORG_ICON);
+    applyFavicon('data:image/png;base64,aWNvbg==');
+    expect(icon().getAttribute('href')).toBe('data:image/png;base64,aWNvbg==');
+    applyFavicon(null);
+    expect(icon().getAttribute('href')).toBe('/minds-icon.svg');
   });
 });
