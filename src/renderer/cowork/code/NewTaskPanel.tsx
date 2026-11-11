@@ -8,6 +8,7 @@ import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
+import { useTranslation } from '../../lib/i18n';
 import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem, TaskMode } from './api';
 import './task-control.css';
 import { effortOptions } from './reasoning';
@@ -75,6 +76,7 @@ export function NewTaskPanel({
   onConnectMindsHub?: () => Promise<void>;
   catalog?: CodingCatalog;
 }) {
+  const { t } = useTranslation('code');
   const [sourceLoading, setSourceLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [taskMode, setTaskMode] = useState<TaskMode>('build');
@@ -108,9 +110,9 @@ export function NewTaskPanel({
   useEffect(() => setPaletteIndex(0), [commandQuery]);
   const needsMindsHub = !!onConnectMindsHub
     && (mindsHubNotConnected(error) || (!error && !catalogError && draft.noCodingModels));
-  const readinessText = sourceLoading ? 'Loading issue or PR…' : planUnavailable && !engineLoading && !catalogError
-    ? 'Plan mode is unavailable here. Turn it off or choose a computer that supports it.'
-    : needsMindsHub && draft.noCodingModels ? 'Connect MindsHub to start a task.' : readinessMessage;
+  const readinessText = sourceLoading ? t('newTask.loadingSource') : planUnavailable && !engineLoading && !catalogError
+    ? t('newTask.planUnavailable')
+    : needsMindsHub && draft.noCodingModels ? t('newTask.connectToStart') : readinessMessage;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
     : readinessKind === 'folder'
@@ -143,13 +145,13 @@ export function NewTaskPanel({
         <div className="code-new-task__intro">
           <div className="code-new-task__heading">
             <span className="code-new-task__mark" aria-hidden="true">{Ico.code(20)}</span>
-            <h1>What should we build?</h1>
+            <h1>{t('newTask.heading')}</h1>
           </div>
         </div>
 
         <section
           className={`code-start-composer${draggingFiles ? ' is-dragging-files' : ''}`}
-          aria-label="Create coding task"
+          aria-label={t('newTask.composerAriaLabel')}
           onDragEnter={(event) => {
             if (event.dataTransfer.types.includes('Files')) {
               event.preventDefault();
@@ -168,7 +170,7 @@ export function NewTaskPanel({
             attachFiles(event.dataTransfer.files);
           }}
         >
-          {draggingFiles && <div className="code-drop-hint">Drop files to attach</div>}
+          {draggingFiles && <div className="code-drop-hint">{t('newTask.dropHint')}</div>}
           <div className="code-start-project-bar">
             <CodeProjectPicker
               projects={projects}
@@ -184,7 +186,7 @@ export function NewTaskPanel({
                 size="sm"
                 onClick={onOpenProjectSettings}
                 disabled={busy}
-                aria-label={`Edit ${selectedProject.name}`}
+                aria-label={t('newTask.editProject', { name: selectedProject.name })}
               >
                 {Ico.settings(14)}
               </Button>
@@ -196,10 +198,10 @@ export function NewTaskPanel({
                 onClick={() => void chooseStandaloneFolder()}
                 disabled={busy}
                 title={standaloneFolderPath || undefined}
-                aria-label={standaloneFolderPath ? `Change folder, currently ${standaloneFolderName}` : 'Choose folder'}
+                aria-label={standaloneFolderPath ? t('newTask.changeFolder', { name: standaloneFolderName }) : t('newTask.chooseFolder')}
               >
                 <span className="code-standalone-folder-picker__icon" aria-hidden="true">{Ico.folder(14)}</span>
-                <span className="code-standalone-folder-picker__label">{standaloneFolderName || 'Choose folder'}</span>
+                <span className="code-standalone-folder-picker__label">{standaloneFolderName || t('newTask.chooseFolder')}</span>
               </Button>
             )}
             {selectedProject && (
@@ -225,7 +227,7 @@ export function NewTaskPanel({
                   onComputerChange={setComputerId}
                   disabled={busy || executionLoading}
                   availableComputerIds={computers.map(computer => computer.id)}
-                  unavailableReason="Local resources"
+                  unavailableReason={t('newTask.localResources')}
                   onOpen={refreshComputers}
                 />
               </div>
@@ -264,8 +266,8 @@ export function NewTaskPanel({
               setPrompt(value);
             }}
             rows={6}
-            placeholder="Describe the change, important constraints, and how you want it verified…"
-            aria-label="Coding task"
+            placeholder={t('newTask.promptPlaceholder')}
+            aria-label={t('newTask.promptAriaLabel')}
             disabled={busy}
             autoFocus
             aria-keyshortcuts="Enter"
@@ -350,8 +352,8 @@ export function NewTaskPanel({
               options={availableEngines}
               variant="unstyled"
               size="sm"
-              ariaLabel="Coding agent"
-              menuLabel="Agent"
+              ariaLabel={t('newTask.agentAriaLabel')}
+              menuLabel={t('newTask.agentMenuLabel')}
               disabled={busy || engineLoading}
               loading={engineLoading}
               className="meta-pill code-composer-picker code-agent-picker"
@@ -363,10 +365,10 @@ export function NewTaskPanel({
               onOpenChange={refreshModels}
               variant="unstyled"
               className="meta-pill code-composer-picker code-model-picker"
-              ariaLabel="Choose model"
-              menuLabel="Model"
-              placeholder="Select model"
-              emptyText="No coding models available"
+              ariaLabel={t('newTask.modelAriaLabel')}
+              menuLabel={t('newTask.modelMenuLabel')}
+              placeholder={t('newTask.modelPlaceholder')}
+              emptyText={t('newTask.noModels')}
               disabled={busy || modelOptions.length === 0}
             />
             {effortLevels && (
@@ -376,9 +378,9 @@ export function NewTaskPanel({
                 options={effortOptions(effortLevels, selectedProject?.default_reasoning_effort)}
                 variant="unstyled"
                 size="sm"
-                ariaLabel="Reasoning effort"
-                menuLabel="Reasoning effort"
-                placeholder="Effort"
+                ariaLabel={t('newTask.effortLabel')}
+                menuLabel={t('newTask.effortLabel')}
+                placeholder={t('newTask.effortPlaceholder')}
                 disabled={busy}
                 className="meta-pill code-composer-picker code-effort-picker"
               />
@@ -392,15 +394,15 @@ export function NewTaskPanel({
               aria-describedby={readinessText ? 'code-start-readiness' : undefined}
             >
               {busy ? <Spinner className="text-sm" /> : Ico.send(14)}
-              {busy ? 'Starting…' : taskMode === 'plan' ? 'Start planning' : 'Start task'}
+              {busy ? t('newTask.starting') : taskMode === 'plan' ? t('newTask.startPlanning') : t('newTask.startTask')}
             </Button>
           </div>
         </section>
         {selectedProject && draft.repositorySetup && (
           <div className="code-repository-summary">
             <span>{Ico.code(12)}</span>
-            <span>{draft.repositorySetup.branch || 'Automatic task branches'}</span>
-            <span>{draft.repositorySetup.include_local_changes ? 'Local changes included' : 'Local changes excluded'}</span>
+            <span>{draft.repositorySetup.branch || t('newTask.automaticBranches')}</span>
+            <span>{draft.repositorySetup.include_local_changes ? t('newTask.localChangesIncluded') : t('newTask.localChangesExcluded')}</span>
           </div>
         )}
         <div className="code-start-status-slot">
@@ -419,7 +421,7 @@ export function NewTaskPanel({
         {onConnectMindsHub && needsMindsHub ? (
           <Alert variant="danger">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span>Code runs on MindsHub. Connect your MindsHub account to start a task.</span>
+              <span>{t('newTask.mindsHubRequired')}</span>
               <Button
                 size="sm"
                 variant="subtle"
@@ -433,7 +435,7 @@ export function NewTaskPanel({
                   }
                 }}
               >
-                {connecting ? 'Connecting…' : 'Connect MindsHub'}
+                {connecting ? t('newTask.connecting') : t('newTask.connectMindsHub')}
               </Button>
             </div>
           </Alert>

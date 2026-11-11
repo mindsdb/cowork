@@ -70,15 +70,17 @@ export function addonOutcome(result) {
   return { action: 'queue', reason };
 }
 
-/** The label under an add-on row, and whether "Move to queue" is offered. */
-export function addonRowLabel(state, agentLabel = 'Anton') {
+/** The label under an add-on row, as a `chat` catalog key under
+ *  `chatView.addon` (the row calls t() with `{ agent }`), and whether
+ *  "Move to queue" is offered. */
+export function addonRowLabel(state) {
   switch (state) {
-    case 'sending': return { label: 'Sending…', canMove: false };
-    case 'added': return { label: 'Added to current task', canMove: true };
-    case 'withdrawing': return { label: 'Moving to queue…', canMove: false };
-    case 'read': return { label: `Read by ${agentLabel || 'Anton'}`, canMove: false };
-    case 'returned': return { label: 'Moved to queue', canMove: false };
-    default: return { label: 'Added to current task', canMove: false };
+    case 'sending': return { key: 'sending', canMove: false };
+    case 'added': return { key: 'added', canMove: true };
+    case 'withdrawing': return { key: 'withdrawing', canMove: false };
+    case 'read': return { key: 'read', canMove: false };
+    case 'returned': return { key: 'returned', canMove: false };
+    default: return { key: 'added', canMove: false };
   }
 }
 

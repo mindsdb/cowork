@@ -1,6 +1,9 @@
 import { host } from '../../platform/host';
 import { authFetch } from '../api';
 import { downloadBlob } from './browserDownload';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.authenticatedResource.${key}`, { ns: 'projects', ...vars });
 
 const REVOKE_OPENED_BLOB_AFTER_MS = 60_000;
 
@@ -8,7 +11,7 @@ const REVOKE_OPENED_BLOB_AFTER_MS = 60_000;
    missing file (404) from other failures. */
 function fileRequestError(response) {
   const status = Number(response?.status) || 0;
-  return Object.assign(new Error(status ? `Could not load file (${status})` : 'Could not load file'), { status });
+  return Object.assign(new Error(status ? tr('loadFailedStatus', { status }) : tr('loadFailed')), { status });
 }
 
 function revokeLater(objectUrl, delay) {

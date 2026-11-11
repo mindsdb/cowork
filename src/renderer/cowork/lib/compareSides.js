@@ -3,6 +3,10 @@
 // message and whatever the agent answered to it.
 
 import { offeredModels } from './modelPickerOptions';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.compare.${key}`, { ns: 'projects', ...vars });
 
 export const SIDE_LABELS = ['a', 'b'];
 
@@ -119,12 +123,10 @@ export function unjudgeableReason(aTurns = [], bTurns = [], names = { a: 'A', b:
   const sides = { a: aTurns[turn], b: bTurns[turn] };
   const out = ['a', 'b'].filter((l) => isCreditFailure(sides[l]));
   if (out.length === 0) return null;
-  const who = out.length === 2 ? 'Both models' : names[out[0]];
   // Credits do not lift a budget, so a budget stop is never called running out of credits.
   const budget = out.every((l) => sides[l].failureCode === 'budget_exceeded');
-  return budget
-    ? `${who} hit your organization's budget before finishing, so this turn can't be judged.`
-    : `${who} ran out of credits before finishing, so this turn can't be judged.`;
+  if (out.length === 2) return budget ? tr('unjudgeable.bothBudget') : tr('unjudgeable.both');
+  return budget ? tr('unjudgeable.oneBudget', { name: names[out[0]] }) : tr('unjudgeable.one', { name: names[out[0]] });
 }
 
 /** How long a finished turn took, in ms, or null when either end is unknown. */
@@ -220,9 +222,9 @@ export const VERDICT_ORDER = ['a', 'b', 'tie', 'neither'];
 /** An option in "Which answer was better?": the model's name, or a non-answer. */
 export function verdictLabel(winner, names = { a: 'A', b: 'B' }) {
   if (winner === 'a' || winner === 'b') return names[winner];
-  if (winner === 'tie') return 'About the same';
-  if (winner === 'neither') return 'Neither';
-  return 'No verdict';
+  if (winner === 'tie') return tr('verdict.tie');
+  if (winner === 'neither') return tr('verdict.neither');
+  return tr('verdict.none');
 }
 
 /**
@@ -231,18 +233,18 @@ export function verdictLabel(winner, names = { a: 'A', b: 'B' }) {
  * in its project now.
  */
 export function sideStatus(turns = [], { busy = false, continued = false } = {}) {
-  if (continued) return { tone: 'muted', label: 'Continued as a task' };
-  if (busy) return { tone: 'working', label: 'Working' };
+  if (continued) return { tone: 'muted', label: tr('status.continued') };
+  if (busy) return { tone: 'working', label: tr('status.working') };
   const last = turns[turns.length - 1];
-  if (!last) return { tone: 'muted', label: 'Waiting' };
-  if (last.reply === 'running') return { tone: 'working', label: 'Working' };
-  if (last.reply === 'done') return { tone: 'done', label: 'Done' };
+  if (!last) return { tone: 'muted', label: tr('status.waiting') };
+  if (last.reply === 'running') return { tone: 'working', label: tr('status.working') };
+  if (last.reply === 'done') return { tone: 'done', label: tr('status.done') };
   if (isCreditFailure(last)) {
-    return { tone: 'failed', label: last.failureCode === 'budget_exceeded' ? 'Budget reached' : 'Out of credits' };
+    return { tone: 'failed', label: last.failureCode === 'budget_exceeded' ? tr('status.budgetReached') : tr('status.outOfCredits') };
   }
-  if (last.reply === 'failed' && last.failureCode === 'rate_limited') return { tone: 'failed', label: 'Rate limited' };
-  if (last.reply === 'failed') return { tone: 'failed', label: 'Failed' };
-  return { tone: 'muted', label: 'Stopped' };
+  if (last.reply === 'failed' && last.failureCode === 'rate_limited') return { tone: 'failed', label: tr('status.rateLimited') };
+  if (last.reply === 'failed') return { tone: 'failed', label: tr('status.failed') };
+  return { tone: 'muted', label: tr('status.stopped') };
 }
 
 /**
@@ -256,22 +258,23 @@ export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { 
   // A follow-up must come after the task both sides were given: until both
   // have loaded and the first prompt has gone out to both, nothing else goes.
   if (starting === 'loadFailed') {
-    return { message: "A side couldn't load. Retry it above before following up.", canSwitch: false };
+    return { message: tr('block.loadFailed'), canSwitch: false };
   }
-  if (starting === 'loading') return { message: 'You can follow up once both models have loaded.', canSwitch: false };
+  if (starting === 'loading') return { message: tr('block.loading'), canSwitch: false };
   if (starting === 'checkFailed') {
-    return { message: "Couldn't check whether a side is still working.", canSwitch: false, action: 'recheck' };
+    return { message: tr('block.checkFailed'), canSwitch: false, action: 'recheck' };
   }
-  if (starting === 'sending') return { message: 'Sending the task to both models…', canSwitch: false };
+  if (starting === 'sending') return { message: tr('block.sending'), canSwitch: false };
   if (starting === 'firstFailed') {
-    return { message: "The task hasn't reached either model yet. Try sending it again above.", canSwitch: false };
+    return { message: tr('block.firstFailed'), canSwitch: false };
   }
   // Both sides spend from one wallet, so once one side has stopped for want of
   // credits any follow-up would stop too. Blocks until the account can pay.
   if (outOfCredits.length > 0) {
-    const who = outOfCredits.length === 2 ? 'Both models' : names[outOfCredits[0]];
     return {
-      message: `${who} stopped because the balance ran out. Add funds to keep comparing.`,
+      message: outOfCredits.length === 2
+        ? tr('block.outOfCreditsBoth')
+        : tr('block.outOfCreditsOne', { name: names[outOfCredits[0]] }),
       canSwitch: false,
       action: 'addFunds',
     };
@@ -284,16 +287,16 @@ export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { 
   const nameOf = (l) => names[l];
   if (!canSwitch) {
     const working = SIDE_LABELS.filter((l) => sides[l]?.busy && !sides[l]?.continued);
-    if (working.length === 2) return { message: 'You can follow up when both models finish.', canSwitch };
-    if (working.length === 1) return { message: `You can follow up when ${nameOf(working[0])} finishes.`, canSwitch };
-    return { message: 'Both sides were continued as tasks, so this comparison takes no more messages.', canSwitch };
+    if (working.length === 2) return { message: tr('block.bothWorking'), canSwitch };
+    if (working.length === 1) return { message: tr('block.oneWorking', { name: nameOf(working[0]) }), canSwitch };
+    return { message: tr('block.bothContinued'), canSwitch };
   }
   const [side] = blocked;
   const other = nameOf(available[0]);
   if (sides[side]?.continued) {
-    return { message: `${nameOf(side)} was continued as a task. Send to ${other} only.`, canSwitch };
+    return { message: tr('block.sideContinued', { name: nameOf(side), other }), canSwitch };
   }
-  return { message: `${nameOf(side)} is still working. Send to ${other} only, or wait.`, canSwitch };
+  return { message: tr('block.sideWorking', { name: nameOf(side), other }), canSwitch };
 }
 
 /** The text of the first user message, or '' when there is none yet. */
@@ -342,7 +345,7 @@ export function compareCreditNotice(notices = []) {
   if (!notice) return null;
   const blocks = notices.some((n) => n?.kind === 'balance_empty');
   const body = notice.kind === 'balance_low'
-    ? `${notice.body} A comparison runs two models, so it uses about twice the credits of one task.`
+    ? `${notice.body} ${tr('twiceTheCredits')}`
     : notice.body;
   return { ...notice, body, blocks };
 }
@@ -356,8 +359,10 @@ export function turnsLabel(a = 0, b = 0, names = { a: 'A', b: 'B' }) {
   const turnsA = Number(a) || 0;
   const turnsB = Number(b) || 0;
   if (turnsA === turnsB) return { text: String(turnsA), title: undefined };
-  const count = (n) => `${n} ${n === 1 ? 'turn' : 'turns'}`;
-  return { text: `${turnsA} / ${turnsB}`, title: `${names.a}: ${count(turnsA)} · ${names.b}: ${count(turnsB)}` };
+  return {
+    text: `${turnsA} / ${turnsB}`,
+    title: tr('turnsTitle', { nameA: names.a, countA: turnsA, nameB: names.b, countB: turnsB }),
+  };
 }
 
 /**
@@ -396,8 +401,8 @@ export function sideCost(usage) {
   const text = formatEstimate(usage.estimatedCostUsd);
   if (text === null) return null;
   const notes = [];
-  if (usage.truncated) notes.push('The session was too long to count in full, so this is a minimum.');
-  if (usage.unpricedCalls) notes.push("Some calls couldn't be priced and are left out.");
+  if (usage.truncated) notes.push(tr('cost.truncated'));
+  if (usage.unpricedCalls) notes.push(tr('cost.unpriced'));
   const partial = notes.length > 0;
   return { text: partial ? `${text}+` : text, notes, partial };
 }
@@ -417,14 +422,18 @@ export function turnUsageRows(usage, turns = []) {
     label,
     time: ms === null ? null : formatDuration(ms),
     input: formatTokens(inputTokens(u)),
-    inputDetail: `${formatTokens(u?.inputTokens || 0)} new · ${formatTokens(u?.cachedInputTokens || 0)} cached · ${formatTokens(u?.cacheWriteTokens || 0)} written to cache`,
+    inputDetail: tr('usage.inputDetail', {
+      fresh: formatTokens(u?.inputTokens || 0),
+      cached: formatTokens(u?.cachedInputTokens || 0),
+      written: formatTokens(u?.cacheWriteTokens || 0),
+    }),
     output: formatTokens(u?.outputTokens || 0),
     tokens: formatTokens(usageTokens(u)),
-    cost: formatEstimate(u?.estimatedCostUsd) ?? 'not priced',
+    cost: formatEstimate(u?.estimatedCostUsd) ?? tr('usage.notPriced'),
   });
-  const rows = (usage.turns || []).map((t) => row(`Turn ${t.turn}`, t, turnDurationMs(turns[t.turn - 1])));
+  const rows = (usage.turns || []).map((t) => row(tr('usage.turn', { turn: t.turn }), t, turnDurationMs(turns[t.turn - 1])));
   const total = totalDurationMs(turns);
-  return [...rows, { ...row('Total', usage, total.counted ? total.total : null), total: true, cost: sideCost(usage)?.text ?? 'not priced' }];
+  return [...rows, { ...row(tr('usage.total'), usage, total.counted ? total.total : null), total: true, cost: sideCost(usage)?.text ?? tr('usage.notPriced') }];
 }
 
 /**

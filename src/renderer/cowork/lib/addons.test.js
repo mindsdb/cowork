@@ -53,10 +53,10 @@ describe('addonOutcome', () => {
 
 describe('addonRowLabel', () => {
   it('offers Move to queue only while added and unread', () => {
-    expect(addonRowLabel('added')).toEqual({ label: 'Added to current task', canMove: true });
-    expect(addonRowLabel('read', 'Anton')).toEqual({ label: 'Read by Anton', canMove: false });
-    expect(addonRowLabel('returned').label).toBe('Moved to queue');
-    expect(addonRowLabel('saved')).toEqual({ label: 'Added to current task', canMove: false });
+    expect(addonRowLabel('added')).toEqual({ key: 'added', canMove: true });
+    expect(addonRowLabel('read')).toEqual({ key: 'read', canMove: false });
+    expect(addonRowLabel('returned').key).toBe('returned');
+    expect(addonRowLabel('saved')).toEqual({ key: 'added', canMove: false });
     expect(addonRowLabel('sending').canMove).toBe(false);
     expect(addonRowLabel('withdrawing').canMove).toBe(false);
   });

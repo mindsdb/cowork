@@ -1,0 +1,609 @@
+{
+  "cardShell": {
+    "notice": "通知",
+    "question": "问题"
+  },
+  "chatView": {
+    "connectIntro": {
+      "clickToReopen": "点击重新打开表单",
+      "fillOutForm": "请在侧边面板中填写表单",
+      "cancel": "取消",
+      "disconnect": "断开连接"
+    },
+    "attachment": {
+      "connector": "连接器",
+      "image": "图片",
+      "file": "文件"
+    },
+    "turn": {
+      "metaDateTime": "{month}{day}日 {time}",
+      "deleting": "正在删除…",
+      "copyMessage": "复制消息",
+      "copyResponse": "复制回复",
+      "agentFallback": "智能体"
+    },
+    "incomplete": {
+      "spendCeiling": "已提前停止：此任务已达到 token 预算上限。",
+      "roundCap": "已提前停止：此任务已达到步骤上限。",
+      "handbackBudget": "已提前停止：任务完成前，自动继续的次数已用完。",
+      "handbackVerifierFailure": "已提前停止：智能体无法确认任务已完成。",
+      "handbackStuck": "已提前停止：智能体判断任务已陷入停滞。",
+      "retryExhausted": "已提前停止：任务反复失败。",
+      "questionUnanswered": "已提前停止：有问题未得到回答。",
+      "contentFilter": "已提前停止：模型的内容过滤器拦截了一条回复。",
+      "fallback": "未完成即已停止。"
+    },
+    "figureFile": {
+      "attachedFile": "附件",
+      "noteWithStep": "显示的是文件的当前内容。点击“打开步骤”可查看该步骤读取的内容。",
+      "note": "显示的是文件的当前内容，可能与该步骤读取的内容不同。"
+    },
+    "artifactCard": {
+      "fallbackTitle": "产物",
+      "showInFinder": "在访达中显示",
+      "showInFolder": "在文件夹中显示",
+      "openShared": "打开共享的产物",
+      "download": "下载",
+      "open": "打开",
+      "openPreview": "打开预览",
+      "noPreviewNoLink": "此产物无法预览，也还没有共享链接。",
+      "noDownloadableFile": "此产物尚无可下载的文件。",
+      "noFilePath": "无文件路径",
+      "deletedStatus": "此产物已删除。",
+      "noPathAvailable": "没有可用的产物文件路径。",
+      "couldNotOpen": "无法打开产物。",
+      "opened": "已打开。",
+      "shownInFinder": "已在访达中显示。",
+      "shownInFolder": "已在文件夹中显示。",
+      "couldNotShow": "无法显示产物。",
+      "downloading": "正在下载…",
+      "preview": "预览",
+      "previewInProduct": "在 {product} 中预览此产物",
+      "openSharedTooltip": "打开共享的产物",
+      "saveFileTooltip": "保存此产物的文件",
+      "previewPath": "预览 {path}",
+      "downloadPath": "下载 {path}",
+      "actionTarget": "{action}：{target}",
+      "sharedLink": "共享链接",
+      "sharedLinkTooltip": "在新标签页中打开共享的产物",
+      "openInDefaultApp": "用默认应用打开",
+      "deletedAriaLabel": "已删除的产物：{title}",
+      "thumbnailAlt": "产物缩略图",
+      "deletedTitle": "此产物已删除",
+      "liveArtifact": "实时产物",
+      "deletedBadge": "已删除"
+    },
+    "kinds": {
+      "provider": "提供商",
+      "billing": "账单",
+      "usage": "用量",
+      "connection": "连接",
+      "model": "模型",
+      "rateLimit": "速率限制",
+      "attachment": "附件",
+      "conversation": "对话",
+      "agent": "智能体",
+      "server": "服务器"
+    },
+    "cards": {
+      "taskStopped": "任务已停止",
+      "providerLimitBody": "已达到提供商的用量上限。开始其他任务前，请联系管理员。",
+      "addFunds": "充值",
+      "switchToAir": "切换到 MindsHub Air",
+      "balanceRanOut": "任务完成前你的余额已用完。开始其他任务前，请先充值。",
+      "balanceEmptyAirLeft": "你的余额为零，因此无法运行此模型。MindsHub Air 仍有免费额度可用。",
+      "providerUnavailableTitle": "提供商暂时不可用",
+      "providerPausedBody": "提供商已暂停处理请求。请稍后重试，或联系管理员。",
+      "freeAirPausedTitle": "免费的 MindsHub Air 已暂停",
+      "connectProviderTitle": "连接提供商，开始对话",
+      "providerSetupRequiredTitle": "需要设置提供商",
+      "connectProviderBody": "从 MindsHub 开始，即可获得 MindsHub Air 的免费额度，之后按用量付费。你也可以在“设置”中添加自己的 API 密钥。",
+      "providerSetupRequiredBody": "开始任务前，请让运营方配置模型提供商。",
+      "startForFree": "免费开始",
+      "openSettings": "打开设置",
+      "autoTopUpFailedTitle": "自动充值失败",
+      "autoTopUpFailedBody": "无法为你的余额充值。请充值或更新付款方式，以便任务继续运行。",
+      "rateLimitedTitle": "请求过于频繁",
+      "tryAgainIn": "{seconds} 秒后重试",
+      "tryAgain": "重试",
+      "adminSpendingLimitBody": "已达到管理员设置的支出上限。请联系管理员。",
+      "budgetUsedUpTitle": "你所在组织的预算已用完",
+      "viewBudgets": "查看预算"
+    },
+    "usageAlert": {
+      "freeLow": "Air 免费额度剩余 {percent}",
+      "freeLowRefills": "Air 免费额度剩余 {percent} · {time} 恢复",
+      "freeUsed": "Air 免费额度已用完 · 正在使用你的余额",
+      "freeUsedUntil": "Air 免费额度已用完 · {time} 前将使用你的余额"
+    },
+    "reconnect": {
+      "couldNotReconnect": "无法重新连接。请尝试退出登录后重新登录。",
+      "failed": "重新连接失败。",
+      "cannotAuthTitle": "提供商无法完成身份验证",
+      "reconnectedTitle": "已重新连接",
+      "reconnectTitle": "重新连接以继续",
+      "signInAgainTitle": "重新登录",
+      "updateKeyTitle": "更新你的 API 密钥",
+      "cannotAuthBody": "模型提供商拒绝了其凭据。请让运营方检查提供商配置。",
+      "reconnectedBody": "你的 MindsHub 会话已刷新。请重新发送消息以继续。",
+      "reconnectBody": "你的 MindsHub 会话已失效。重新连接即可继续，此对话不会丢失。",
+      "signInAgainBody": "你的 MindsHub 会话已失效。请打开“设置”重新登录。",
+      "updateKeyBody": "你的 {provider} API 密钥已失效。请在“设置”中更新后继续。",
+      "updateKeyBodyGeneric": "你的提供商 API 密钥已失效。请在“设置”中更新后继续。",
+      "reconnecting": "正在重新连接…",
+      "reconnect": "重新连接"
+    },
+    "model": {
+      "thisModel": "此模型",
+      "restrictedTitle": "{model} 已受限",
+      "unavailableTitle": "{model} 暂时不可用",
+      "askOperatorBody": "请让运营方检查已配置的模型及其访问权限。",
+      "restrictedBody": "你所在组织的管理员限制了此模型。请在“设置”中选择其他模型。",
+      "needsCreditsTitle": "{model} 需要积分",
+      "needsCreditsBody": "你的积分不足以使用此模型。请为余额充值后再使用。",
+      "disabledBody": "此模型已在你的工作区中关闭。请在“设置”中选择其他模型。",
+      "topUpBalance": "为余额充值"
+    },
+    "overloaded": {
+      "theModelProvider": "模型提供商",
+      "body": "{who} 出现临时故障，未能及时恢复。请稍后重试。",
+      "withFailover": "{base}MindsHub 会自动绕开此类提供商故障，让任务持续运行。",
+      "title": "{who} 出现临时问题"
+    },
+    "header": {
+      "expandPanel": "展开面板",
+      "collapsePanel": "收起面板",
+      "apps": "应用",
+      "connectAppsAndData": "连接应用和数据",
+      "projects": "项目",
+      "allProjects": "所有项目",
+      "openProject": "打开项目：{project}",
+      "taskMenu": "任务菜单"
+    },
+    "transcript": {
+      "loading": "正在加载…",
+      "loadEarlier": "加载更早的消息",
+      "thinking": "正在思考…",
+      "connect": "连接",
+      "streaming": "正在生成…",
+      "deletingExchange": "正在删除所选的问答。"
+    },
+    "queue": {
+      "status": "{count} 条排队中 · 正在等待 {agent}",
+      "remove": "从队列中移除"
+    },
+    "composer": {
+      "replyPlaceholder": "回复…"
+    },
+    "errors": {
+      "reference": "参考编号：{id}",
+      "modelNotFoundNamedTitle": "无法使用模型“{model}”",
+      "modelNotFoundTitle": "该模型不可用",
+      "modelNotFoundOperatorBody": "提供商无法提供已配置的模型。请让运营方检查模型配置。",
+      "modelNotFoundNamedBody": "你的设置指定了“{model}”，但此提供商不提供该模型，因此未发送任何内容。请在“设置”中从列表里选择一个模型。",
+      "modelNotFoundBody": "所选模型已被移除或不再提供。请在“设置”中切换到其他模型。",
+      "imageFormatTitle": "无法读取该图片",
+      "imageFormatBody": "所附图片的格式无法被模型处理。请将其转换为 PNG 或 JPEG 后重新发送。",
+      "contentRecoveryTitle": "已修复此对话中的一个问题",
+      "contentRecoveryBody": "由于内部格式问题，此对话中较早的一张图片无法发送给模型。它已被自动移除，你可以继续对话。",
+      "contentTooLargeTitle": "该图片太大",
+      "billingUnavailableTitle": "账单服务暂时不可用",
+      "billingUnavailableBody": "MindsHub 无法确认此请求的账单。这是暂时的，请稍后重试。",
+      "providerUnauthorizedBody": "提供商无法授权此请求。请稍后重试。",
+      "workerUnresponsiveTitle": "智能体未启动",
+      "workerUnresponsiveBody": "这轮对话没有到达智能体，因此没有执行任何操作。这是我们这边的故障，与你的请求无关。请稍后重试。",
+      "modelTimeoutTitle": "模型没有响应",
+      "modelTimeoutBody": "模型停止了输出，因此这轮对话已结束。请重试。如果问题持续出现，请在“设置”中选择其他模型。",
+      "modelTimeoutOperatorBody": "模型停止了输出，因此这轮对话已结束。请重试。如果问题持续出现，请让运营方检查模型配置。",
+      "turnLostTitle": "回答被中断",
+      "turnLostBody": "服务器在回答完成前停止了运行，因此回答到此为止。你的问题本身没有问题。请在服务器恢复后重试。",
+      "stalledTitle": "响应已停滞",
+      "stalledBody": "{product} 已收不到智能体的消息。回答可能仍在进行中，请等待其完成后再发送。",
+      "serverBusyTitle": "服务器繁忙",
+      "coworkUnavailableTitle": "服务器没有响应"
+    },
+    "addon": {
+      "sending": "正在发送…",
+      "added": "已添加到当前任务",
+      "withdrawing": "正在移到队列…",
+      "read": "{agent} 已读",
+      "returned": "已移到队列",
+      "moveToQueue": "移到队列",
+      "addToTask": "添加到当前任务",
+      "addingToTask": "正在添加到当前任务"
+    }
+  },
+  "composer": {
+    "placeholder": "老板好，今天有什么可以帮你？",
+    "removeMode": "移除“{mode}”模式",
+    "attachment": {
+      "connector": "连接器",
+      "image": "图片",
+      "file": "文件",
+      "queued": "排队中",
+      "remove": "移除附件"
+    },
+    "claudeCodeNotDetected": "Claude-Code：未在此电脑上检测到",
+    "model": {
+      "operatorDefaultTitle": "使用运营方设置的模型运行",
+      "routerTitle": "自动路由到此账户配置的模型",
+      "routerSettings": "路由设置",
+      "fixed": "此任务的模型已固定",
+      "model": "模型",
+      "connectProvider": "在“设置”中连接提供商后即可选择模型",
+      "choose": "选择模型",
+      "select": "选择模型",
+      "effort": "推理强度"
+    },
+    "slash": {
+      "openFilePicker": "打开文件选择器",
+      "ariaLabel": "技能和操作"
+    },
+    "errors": {
+      "attachFiles": "无法添加附件。",
+      "addGoogleDriveFiles": "无法添加 Google Drive 文件。",
+      "updateDatasource": "无法更新数据源设置。",
+      "send": "无法发送。"
+    },
+    "dropFiles": "拖放文件以添加附件",
+    "addContext": "添加上下文",
+    "menu": {
+      "attachFiles": "添加文件或照片",
+      "openingGoogleDrive": "正在打开 Google Drive…",
+      "addFromGoogleDrive": "从 Google Drive 添加文件",
+      "addFromSharePoint": "从 SharePoint 添加文件",
+      "browserTitle": "{agent} 可以在此任务中使用你的共享浏览器。关闭后从你的下一条消息起生效。",
+      "browser": "浏览器",
+      "browserOff": "为此任务关闭浏览器",
+      "browserOn": "为此任务开启浏览器",
+      "connectors": "连接器",
+      "connectorsHint": "关闭某个连接器后，从你在此对话中的下一条消息起生效。",
+      "noConnectors": "尚无连接器。请在 {link} 中添加。",
+      "connectAppsAndData": "连接应用和数据",
+      "enableConnector": "在此对话中启用 {name}",
+      "disableConnector": "在此对话中停用 {name}"
+    },
+    "stop": "停止生成",
+    "send": "发送",
+    "project": {
+      "fixed": "此任务的项目已固定",
+      "none": "无项目"
+    },
+    "chooseHarness": "选择运行环境"
+  },
+  "attachmentThumbnail": {
+    "open": "打开图片",
+    "openNamed": "打开图片：{name}"
+  },
+  "askUser": {
+    "announcement": "智能体正在提问",
+    "hintCustom": "…或在下方输入你自己的回答。",
+    "hintSelectOnly": "请从上方选择一个选项，输入的回复不会被接受。点击“跳过”可输入其他内容。",
+    "skip": "跳过",
+    "send": "发送",
+    "skipped": "已跳过。",
+    "timedOut": "未回答：已超时。",
+    "answered": "已回答：",
+    "noLongerActive": "此问题已失效。"
+  },
+  "codingTerminal": {
+    "unavailable": "此版本不支持内置终端。",
+    "couldNotStart": "无法启动 Claude Code。",
+    "exited": "Claude Code 已退出（代码 {code}）。"
+  },
+  "turnActions": {
+    "copy": "复制",
+    "editTooltip": "编辑并重新发送",
+    "editAriaLabel": "编辑并重新发送此消息",
+    "copied": "已复制",
+    "delete": "删除",
+    "copyFailed": "无法复制。请重试。"
+  },
+  "minimap": {
+    "ariaLabel": "对话轮次",
+    "message": "消息",
+    "goTo": "前往第 {index} 条消息：{snippet}"
+  },
+  "userTurn": {
+    "showMore": "显示更多",
+    "showLess": "收起"
+  },
+  "scroller": {
+    "scrollToLatest": "滚动到最新"
+  },
+  "duration": {
+    "seconds": "{seconds} 秒",
+    "minutesSeconds": "{minutes} 分 {seconds} 秒",
+    "hoursMinutes": "{hours} 小时 {minutes} 分",
+    "milliseconds": "{ms} 毫秒"
+  },
+  "thinking": {
+    "workingFor": "已工作 {duration}",
+    "hide": "隐藏思考过程",
+    "show": "显示思考过程",
+    "thinking": "正在思考…",
+    "workedFor": "工作了 {duration}",
+    "thoughtProcess": "思考过程",
+    "timedOutTitle": "{count, plural, other {# 个单元格超时，智能体已改用更小的步骤重试。展开即可查看是哪些单元格。}}",
+    "timedOutBadge": "{count} 个超时",
+    "cellTimedOutTitle": "此单元格已停止：超时或无响应。下一个单元格应更小，或将工作拆分到多个单元格中。",
+    "cellTimedOut": "已超时",
+    "cellErrorTitle": "此单元格以错误结束。",
+    "artifactBadge": "产物"
+  },
+  "phaseProgress": {
+    "thinking": {
+      "1": "已想清楚",
+      "2": "已理清思路",
+      "3": "已排好步骤",
+      "4": "已选定切入点",
+      "5": "已拟定方案"
+    },
+    "working": {
+      "1": "已逐步完成",
+      "2": "已算好数据",
+      "3": "已完成主要工作",
+      "4": "已汇总整合",
+      "5": "已顺藤摸瓜"
+    },
+    "reasoning": {
+      "1": "已整理好答案",
+      "2": "已融会贯通",
+      "3": "已提炼结果",
+      "4": "已撰写回复",
+      "5": "已让内容更易读"
+    },
+    "artifact": "已完成一个产物",
+    "empty": "智能体工作时，步骤会显示在这里。"
+  },
+  "scratchpad": {
+    "untitled": "未命名",
+    "toolCall": "工具调用",
+    "title": "草稿区",
+    "noSteps": "本轮没有步骤。",
+    "stepOf": "第 {index}/{total} 步",
+    "reason": "推理：",
+    "exec": "执行：",
+    "duration": "时长：",
+    "arguments": "参数",
+    "code": "代码",
+    "args": "参数",
+    "packages": "包：",
+    "output": "输出",
+    "stderr": "Stderr",
+    "hideArgs": "隐藏参数",
+    "showArgs": "显示参数",
+    "hideCode": "隐藏代码",
+    "showCode": "显示代码"
+  },
+  "figure": {
+    "kinds": {
+      "query": "查询",
+      "file": "文件",
+      "web": "网页",
+      "step": "步骤"
+    },
+    "states": {
+      "query": "来自查询",
+      "file": "来自文件",
+      "web": "来自网络",
+      "step": "来自步骤",
+      "none": "无来源",
+      "earlierAnswer": "引用自之前的回答"
+    },
+    "tableHint": "使用方向键在此表格中的数字间切换。",
+    "copied": "已复制",
+    "copyFailed": "无法复制",
+    "copy": "复制",
+    "opensInNewWindow": "（在新窗口中打开）",
+    "page": "第 {page} 页",
+    "copySql": "复制 SQL",
+    "request": "请求",
+    "copyRequest": "复制请求",
+    "viewFile": "查看文件",
+    "openStep": "打开步骤",
+    "ariaLabel": "{figure}，{state}",
+    "popoverTitle": "{figure} 的来源"
+  },
+  "markdown": {
+    "artifactLocalLinkTitle": "此文件位于“实时产物”面板中，请在那里打开或下载",
+    "linkBlocked": "链接已拦截：不支持的 URL 协议",
+    "opensInNewWindow": "（在新窗口中打开）",
+    "copied": "已复制",
+    "copy": "复制",
+    "scrollSideways": "横向滚动可查看该行的其余内容。",
+    "copyCode": "复制代码",
+    "copyLanguageCode": "复制 {language} 代码",
+    "form": {
+      "parseErrorTitle": "表单无法解析",
+      "parseErrorSubtitle": "智能体发送的表单规范不是有效的 JSON。",
+      "askRetry": "让智能体重试",
+      "dismiss": "关闭",
+      "preparing": "正在准备表单…",
+      "specDidNotParse": "表单规范无法解析。",
+      "useSidePanel": "请在侧边面板中让智能体重试。",
+      "openInSidePanel": "在侧边面板中打开",
+      "form": "表单",
+      "fillItOut": " — 请在侧边面板中填写 →"
+    },
+    "chart": {
+      "invalidSpec": "图表规范无效",
+      "intentUnsupported": "`chart` 意图格式需要后端编译端点（尚未接入）。完整配置请使用 `chartjs`。",
+      "missingType": "缺少图表类型",
+      "unsupportedType": "不支持的图表类型：“{type}”。支持的类型：{supported}。",
+      "invalidJson": "图表规范中的 JSON 无效",
+      "error": "错误：{error}"
+    }
+  },
+  "taskModes": {
+    "slides": {
+      "pillLabel": "制作幻灯片",
+      "chipLabel": "幻灯片",
+      "placeholder": "描述你的演示主题",
+      "samples": {
+        "0": "制作季度销售业绩仪表板",
+        "1": "分析竞争格局与市场定位",
+        "2": "自动生成每周团队状态报告",
+        "3": "调研新产品上市的市场机会",
+        "4": "根据上周的更新起草本周更新"
+      }
+    },
+    "website": {
+      "pillLabel": "构建网站",
+      "chipLabel": "网站",
+      "placeholder": "描述你想构建的网站",
+      "samples": {
+        "0": "为小企业搭建网店",
+        "1": "为新品发布制作落地页",
+        "2": "构建仪表板网站",
+        "3": "构建作品集网站",
+        "4": "构建公司博客"
+      }
+    },
+    "apps": {
+      "pillLabel": "开发应用",
+      "chipLabel": "开发应用",
+      "chipNoun": "应用",
+      "placeholder": "描述你想构建的应用",
+      "samples": {
+        "0": "构建员工入职流程应用",
+        "1": "构建费用报销与审批应用",
+        "2": "构建带打卡功能的健身追踪应用",
+        "3": "构建学习计划与进度追踪工具",
+        "4": "构建客户反馈收集应用",
+        "5": "构建报价单或发票生成器",
+        "6": "解释一个错误并给出修复建议",
+        "7": "构建习惯追踪器"
+      }
+    },
+    "spreadsheet": {
+      "pillLabel": "电子表格",
+      "chipLabel": "电子表格",
+      "placeholder": "上传电子表格进行分析，或从零开始创建",
+      "samples": {
+        "0": "优雅地追踪项目任务的全生命周期",
+        "1": "整理北美 AI 会议日程表",
+        "2": "创建收购尽职调查清单",
+        "3": "用 Hugging Face 数据对比主流 VLM 模型",
+        "4": "计算投资现金流的 IRR",
+        "5": "整理我的电子表格并生成图表"
+      }
+    },
+    "visualization": {
+      "pillLabel": "可视化",
+      "chipLabel": "可视化",
+      "placeholder": "上传你的数据，并告诉 Cowork 如何可视化",
+      "samples": {
+        "0": "用热力图展示每周销售活动",
+        "1": "生成客户流失分析与洞察",
+        "2": "追踪各部门的月度 KPI",
+        "3": "按细分市场分析竞争格局"
+      }
+    },
+    "wide-research": {
+      "pillLabel": "广度研究",
+      "chipLabel": "广度研究",
+      "placeholder": "描述一个想要并行研究的复杂项目",
+      "samples": {
+        "0": "开展全面的市场规模分析",
+        "1": "开展深度竞品对标研究",
+        "2": "研究新兴技术格局",
+        "3": "开展投资尽职调查研究",
+        "4": "研究客户画像与用户旅程地图",
+        "5": "总结一份文档并起草我的回复",
+        "6": "选择适合我电脑的本地模型",
+        "7": "看看我这周有哪些待办事项"
+      }
+    },
+    "games": {
+      "pillLabel": "制作游戏",
+      "chipLabel": "制作游戏",
+      "chipNoun": "游戏",
+      "placeholder": "描述你想制作的游戏",
+      "samples": {
+        "0": "经典贪吃蛇",
+        "1": "霓虹方块下落",
+        "2": "萤火虫记忆序列",
+        "3": "星空合成 2048",
+        "4": "点击操控纸飞机"
+      }
+    },
+    "examples": {
+      "chipLabel": "示例",
+      "placeholder": "选择一个示例，或描述你自己的任务"
+    },
+    "samplePrompts": "示例提示词",
+    "pillsAriaLabel": "任务类型"
+  },
+  "taskRows": {
+    "openProject": "打开 {project}",
+    "untitled": "未命名任务",
+    "actionsFor": "{title} 的操作",
+    "actionsForUntitled": "未命名任务的操作",
+    "running": "运行中",
+    "moveToProject": "移到项目…",
+    "delete": "删除",
+    "scheduledTask": "定时任务",
+    "runs": "{count, plural, other {# 次运行}}",
+    "openLatestRun": "打开最近一次运行"
+  },
+  "taskList": {
+    "title": "任务",
+    "emptyTitle": "此项目中还没有任务",
+    "emptyDescription": "在上方输入提示词即可开始。"
+  },
+  "browser": {
+    "close": "关闭浏览器",
+    "shared": "共享浏览器",
+    "title": "浏览器",
+    "unreachable": "无法访问浏览器",
+    "stopped": {
+      "keepsClosing": "浏览器视图不断关闭。请稍后重试。",
+      "noSlotTitle": "没有空闲的浏览器",
+      "noSlotDescription": "所有浏览器目前都在使用中。请过几分钟再试。",
+      "taskCapTitle": "你的浏览器已满",
+      "taskCapDescription": "你的浏览器已打开 {count} 个任务。"
+    },
+    "webPaneNote": "此窗格显示的内容以及你在此输入的内容（包括密码），在往返网站时都会经过 Cloudflare 和 MindsDB 的浏览器服务。{agent} 读取的页面内容和截图会发送给为你这一轮提供服务的模型提供商。",
+    "unexpectedAddress": "浏览器返回了意外的地址。",
+    "couldNotOpen": "无法打开浏览器。",
+    "hint": "你和 {agent} 共用此浏览器。在其中点击即可接管。",
+    "reload": "重新加载浏览器视图",
+    "tryAgain": "重试",
+    "slowTitle": "浏览器启动时间比平常长",
+    "slowDescription": "它可能仍在启动中。请重试，或关闭窗格，一分钟后再回来。",
+    "starting": "正在启动你的浏览器…",
+    "signIn": {
+      "title": "{site} 要求你登录",
+      "hint": "你的用户名和密码只会发送给此网站。",
+      "username": "用户名",
+      "password": "密码",
+      "cancel": "取消",
+      "submit": "登录"
+    },
+    "download": {
+      "where": "{folder} 中的“下载”文件夹",
+      "waiting": "此页面想将 {name} 下载到 {where}。",
+      "progressing": "正在下载 {name}…",
+      "completed": "{name} 已保存到 {where}。",
+      "cancelled": "{name} 未保存。",
+      "failed": "{name} 下载失败。",
+      "save": "保存",
+      "dontSave": "不保存"
+    },
+    "aNewTab": "新标签页",
+    "yourTurn": "轮到你操作 {site} 了。点击“完成”即可交还给 {agent}。",
+    "yourTurnReason": "轮到你操作 {site} 了：{reason}。点击“完成”即可交还给 {agent}。",
+    "agentUsing": "{agent} 正在使用。接管后即可自己操作。",
+    "pageReadsNote": "{agent} 读取的页面内容和截图会发送给为你这一轮提供服务的模型提供商。",
+    "back": "后退",
+    "forward": "前进",
+    "reloadPage": "重新加载页面",
+    "done": "完成",
+    "takeOver": "接管",
+    "newTab": "新标签页",
+    "closedTitle": "此任务的浏览器已关闭",
+    "closedDescription": "{agent} 需要时会重新打开它。",
+    "squeezed": "放大窗口以查看页面"
+  }
+}

@@ -13,6 +13,7 @@ import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
+import { currentServerLocale } from '../lib/i18n';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
@@ -71,7 +72,14 @@ function _untilAborted(promise, signal) {
 // COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
 // (src/main/app.ts). That token never reaches the renderer and is NOT the
 // Keycloak token, so nothing is attached here.
+//
+// Both: every request carries the UI language as X-Cowork-UI-Locale (one of
+// SUPPORTED_LOCALES), so cowork-server can tell Anton which language to fall
+// back to (ENG-4149). Its own header, not Accept-Language, which browsers send
+// on their own; and only while the language picker is on. A caller's own
+// header wins.
 export async function authFetch(url, options = {}) {
+  options = withUiLocale(options);
   if (host.isWeb) {
     const token = await _untilAborted(host.getAccessToken(), options.signal);
     if (token) {
@@ -90,6 +98,27 @@ export async function authFetch(url, options = {}) {
     throw new Error('The active organization changed; reload required');
   }
   return response;
+}
+
+function hasHeader(headers, name) {
+  if (!headers) return false;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) return headers.has(name);
+  const wanted = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === wanted);
+}
+
+export const UI_LOCALE_HEADER = 'X-Cowork-UI-Locale';
+
+export function withUiLocale(options = {}) {
+  if (hasHeader(options.headers, UI_LOCALE_HEADER)) return options;
+  const locale = currentServerLocale();
+  if (!locale) return options;
+  if (typeof Headers !== 'undefined' && options.headers instanceof Headers) {
+    const headers = new Headers(options.headers);
+    headers.set(UI_LOCALE_HEADER, locale);
+    return { ...options, headers };
+  }
+  return { ...options, headers: { ...(options.headers || {}), [UI_LOCALE_HEADER]: locale } };
 }
 
 /* Opt-in bound for a plain JSON request, so a dead server (a proxy holding

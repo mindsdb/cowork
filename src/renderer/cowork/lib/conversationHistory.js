@@ -11,7 +11,11 @@ import { foldAddonMessages } from './addons';
 import { rebaseFigureSources } from './figureSources';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
-const THINKING_PLACEHOLDER = 'Thinking...';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.conversationHistory.${key}`, { ns: 'projects', ...vars });
+const thinkingPlaceholder = () => tr('thinkingDots');
 
 export function stripStreaming(messages) {
   return messages.filter((m) => m.role !== '_streaming');
@@ -51,7 +55,7 @@ export function reconcileTaskMessages(messages, isLive, isServerInFlight = false
     const hasContent = messages.length > 0 && messages.some(
       (m) => m && (m.role === 'assistant' || m.role === '_streaming'),
     );
-    if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
+    if (!hasContent) return withThinkingPlaceholder(messages, { label: tr('runningTask') });
     return messages;
   }
   const cleaned = messages
@@ -90,7 +94,7 @@ export function withThinkingPlaceholder(messages, opts = {}) {
   // `_streaming` stub (primary render via the existing streaming
   // branch) carry the same string, so whichever lands in the
   // viewport reads consistently.
-  const label = opts.label || 'Thinking…';
+  const label = opts.label || tr('thinking');
   // Two rows:
   //   1. The activity placeholder — kept so any code path that
   //      consumes it (rail Progress card today, future surfaces) sees
@@ -160,11 +164,11 @@ export function describeActivity(event, agentName = 'Anton') {
 
   const phase = humanizeToken(event?.phase);
   const normalizedPhase = phase.toLowerCase();
-  if (normalizedPhase === 'reasoning') return THINKING_PLACEHOLDER;
-  if (normalizedPhase === 'reasoning done') return 'Finished reasoning';
-  if (normalizedPhase === 'context') return 'Updated context';
+  if (normalizedPhase === 'reasoning') return thinkingPlaceholder();
+  if (normalizedPhase === 'reasoning done') return tr('finishedReasoning');
+  if (normalizedPhase === 'context') return tr('updatedContext');
 
-  return phase ? `${agentName} is ${phase}` : `${agentName} is working`;
+  return phase ? tr('agentPhase', { agent: agentName, phase }) : tr('agentWorking', { agent: agentName });
 }
 
 // ─── Per-turn step persistence ───────────────────────────────────────────
@@ -363,7 +367,7 @@ export function hydrateMessagesFromServerEvents(messages) {
     if (reduced.status === 'error') {
       const failed = failedEventMeta(m.events);
       const code = failed?.code || null;
-      const errText = failed?.message || 'An unexpected error occurred.';
+      const errText = failed?.message || tr('unexpectedError');
       if (isAntonConfigError(errText, { code })) {
         out.push({ role: 'provider_required' });
       } else {

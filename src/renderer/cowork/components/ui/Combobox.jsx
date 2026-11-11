@@ -49,6 +49,7 @@ import { ChevronsUpDown, Check, Search } from 'lucide-react';
 import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
 import { useNativeOverlay } from '../../lib/nativeOverlay';
+import { useTranslation } from '../../../lib/i18n';
 import Spinner from './Spinner.jsx';
 import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
@@ -73,11 +74,11 @@ export function Combobox({
   filter,
   renderValue,
   footer,
-  placeholder = 'Select',
-  searchPlaceholder = 'Search',
-  searchAriaLabel = 'Search',
+  placeholder: placeholderProp,
+  searchPlaceholder: searchPlaceholderProp,
+  searchAriaLabel: searchAriaLabelProp,
   menuLabel,
-  emptyText = 'No results',
+  emptyText: emptyTextProp,
   variant = 'field',
   size = 'md',
   disabled = false,
@@ -100,6 +101,11 @@ export function Combobox({
   disableAnchorTracking = false,
   ...rest
 }) {
+  const { t } = useTranslation('shell');
+  const placeholder = placeholderProp === undefined ? t('ui.combobox.placeholder') : placeholderProp;
+  const searchPlaceholder = searchPlaceholderProp === undefined ? t('ui.combobox.search') : searchPlaceholderProp;
+  const searchAriaLabel = searchAriaLabelProp === undefined ? t('ui.combobox.search') : searchAriaLabelProp;
+  const emptyText = emptyTextProp === undefined ? t('ui.combobox.empty') : emptyTextProp;
   const entries = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
   // The controlled selection as an item object (Combobox deals in items,

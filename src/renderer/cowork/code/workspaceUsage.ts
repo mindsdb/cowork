@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { codingApi, type WorkspaceUsagePage } from './api';
+import i18n from '../../lib/i18n';
 
 // While the server is measuring, ask again every 2 seconds for the first
 // minute, then back off to every 30 seconds. A large workspace can take longer
@@ -14,10 +15,10 @@ export function measuringPollDelay(polls: number): number {
   return Math.min(MEASURING_POLL_MS * 2 ** (polls - MEASURING_FAST_POLLS + 1), MEASURING_SLOW_POLL_MS);
 }
 
-export const DISK_USAGE_EXPLANATION =
-  'Approximate storage Cowork keeps for this task: its workspace, comparison copy and recovery data. '
-  + 'Your own folder and the Git history worktrees share are not counted. On macOS copies share disk '
-  + 'with their source, so deleting a task can free much less than shown.';
+/** Tooltip explaining what the disk-usage figure counts, in the current language. */
+export function diskUsageExplanation(): string {
+  return i18n.t('workspaceUsage.explanation', { ns: 'code' });
+}
 
 export interface TaskDiskUsage {
   /** Null until the task has been measured. */
@@ -65,13 +66,22 @@ export interface DiskUsageRow {
  */
 export function diskUsageRows(usage: TaskDiskUsage | null): DiskUsageRow[] {
   if (!usage || usage.taskBytes === null) {
-    return [{ label: 'Storage', value: usage?.measuring || !usage ? 'Measuring…' : 'Not measured yet' }];
+    return [{
+      label: i18n.t('workspaceUsage.storage', { ns: 'code' }),
+      value: usage?.measuring || !usage ? i18n.t('workspaceUsage.measuring', { ns: 'code' }) : i18n.t('workspaceUsage.notMeasured', { ns: 'code' }),
+    }];
   }
-  const updating = usage.measuring ? ' · updating…' : '';
+  const size = formatBytes(usage.taskBytes);
   return [
-    { label: 'Storage', value: `~${formatBytes(usage.taskBytes)}${updating}` },
-    ...(usage.recoveryBytes > 0 ? [{ label: 'Recovery', value: `${formatBytes(usage.recoveryBytes)} of that` }] : []),
-    { label: 'All tasks', value: formatBytes(usage.totalBytes) },
+    {
+      label: i18n.t('workspaceUsage.storage', { ns: 'code' }),
+      value: usage.measuring ? i18n.t('workspaceUsage.taskSizeUpdating', { ns: 'code', size }) : i18n.t('workspaceUsage.taskSize', { ns: 'code', size }),
+    },
+    ...(usage.recoveryBytes > 0 ? [{
+      label: i18n.t('workspaceUsage.recovery', { ns: 'code' }),
+      value: i18n.t('workspaceUsage.recoveryOfThat', { ns: 'code', size: formatBytes(usage.recoveryBytes) }),
+    }] : []),
+    { label: i18n.t('workspaceUsage.allTasks', { ns: 'code' }), value: formatBytes(usage.totalBytes) },
   ];
 }
 

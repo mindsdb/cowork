@@ -1,3 +1,5 @@
+import i18n from '../../lib/i18n';
+
 export function parseCommandLine(value: string): string[] {
   const args: string[] = [];
   let current = '';
@@ -40,7 +42,7 @@ export function parseCommandLine(value: string): string[] {
     current += '\\';
     tokenStarted = true;
   }
-  if (quote) throw new Error('Close the quoted command argument.');
+  if (quote) throw new Error(i18n.t('commandLine.unclosedQuote', { ns: 'code' }));
   if (tokenStarted) args.push(current);
   return args;
 }

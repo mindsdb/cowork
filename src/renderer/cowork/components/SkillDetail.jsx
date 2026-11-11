@@ -17,13 +17,13 @@ import { Popover } from '@base-ui/react/popover';
 import Ico from './Icons';
 import { Badge, Button, Tooltip } from './ui';
 import { MarkdownContent } from './markdown/MarkdownContent';
-import { AudienceList, PERSON_NOT_LOADED, useRecipientItems } from './RecipientRows';
+import { AudienceList, personNotLoaded, useRecipientItems } from './RecipientRows';
 import { projectLabelByName } from '../lib/projectLabel';
 import { relativeAge } from '../lib/formatTime';
 import {
-  ALWAYS_ON_BADGE,
-  ALWAYS_ON_BADGE_HINT,
-  ONLY_ME_TITLE,
+  alwaysOnBadge,
+  alwaysOnBadgeHint,
+  onlyMeTitle,
   canEditSkill,
   everyoneAtLabel,
   isOrgSharingOn,
@@ -35,9 +35,9 @@ import {
 } from '../lib/orgSharing';
 import { useKnownPeople, useMindsHubTeams } from '../hooks/useOrgSharing';
 import { isSharedSkill } from '../lib/skillSharing';
+import { formatList, useTranslation } from '../../lib/i18n';
 
 const NO_IDS = [];
-export const SHARED_WITH_LABEL = 'Shared with';
 // How many names the compact audience spells out before "+N".
 const NAMES_SHOWN = 2;
 
@@ -54,17 +54,18 @@ function Property({ label, children, testId }) {
 /* Who owns an org skill: "You" for the caller's own (the server names only
    their address), else the owner named from their id. */
 function OwnerValue({ skill }) {
+  const { t } = useTranslation('library');
   const email = skillOwnerEmail(skill);
   const ownerId = typeof skill?.owner?.id === 'string' && skill.owner.id ? skill.owner.id : null;
   const known = useKnownPeople(!email && ownerId ? [ownerId] : NO_IDS);
-  if (email && canEditSkill(skill)) return <span title={email}>You</span>;
+  if (email && canEditSkill(skill)) return <span title={email}>{t('skillDetail.you')}</span>;
   if (email) return <span className="truncate" title={email}>{email}</span>;
   const person = known.people[0];
-  if (!person) return <span className="text-ink-3">Unknown</span>;
-  if (person.pending) return <span className="text-ink-3">Loading…</span>;
-  if (person.failed) return <span className="text-ink-3">{PERSON_NOT_LOADED}</span>;
+  if (!person) return <span className="text-ink-3">{t('skillDetail.unknown')}</span>;
+  if (person.pending) return <span className="text-ink-3">{t('recipients.loading')}</span>;
+  if (person.failed) return <span className="text-ink-3">{personNotLoaded()}</span>;
   const name = person.name || person.email;
-  if (!name) return <span className="text-ink-3">Unknown</span>;
+  if (!name) return <span className="text-ink-3">{t('skillDetail.unknown')}</span>;
   return <span className="truncate" title={person.email || name}>{name}</span>;
 }
 
@@ -73,6 +74,8 @@ function OwnerValue({ skill }) {
  * me", or the first names of a list with "+N", which opens the whole list.
  */
 function AudienceValue({ skill, orgName, teamsState: teamsProp }) {
+  const { t } = useTranslation('library');
+  const sharedWithLabel = t('recipients.sharedWith');
   const access = skillAccess(skill);
   const ownTeams = useMindsHubTeams(!teamsProp);
   const teamsState = teamsProp || ownTeams;
@@ -86,16 +89,17 @@ function AudienceValue({ skill, orgName, teamsState: teamsProp }) {
   );
 
   if (everyone) return <span className="truncate">{everyoneAtLabel(orgName)}</span>;
-  if (teamIds.length === 0 && access.allowedUserIds.length === 0) return <span>{ONLY_ME_TITLE}</span>;
+  if (teamIds.length === 0 && access.allowedUserIds.length === 0) return <span>{onlyMeTitle()}</span>;
 
   const names = listed.map((item) => item.primary);
   const rest = names.length - NAMES_SHOWN;
-  const compact = `${names.slice(0, NAMES_SHOWN).join(', ')}${rest > 0 ? ` +${rest}` : ''}`;
+  // A cut list ends in "+N", so only a whole one reads as a sentence list.
+  const compact = rest > 0 ? `${names.slice(0, NAMES_SHOWN).join(', ')} +${rest}` : formatList(names);
 
   return (
     <Popover.Root>
       <Popover.Trigger
-        aria-label={`${SHARED_WITH_LABEL}: ${compact}. Show everyone`}
+        aria-label={t('skillDetail.audienceAriaLabel', { names: compact })}
         className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-[6px] border-0 bg-transparent p-0 font-body text-[13px] leading-[20px] text-ink-2 hover:text-ink hover:underline hover:decoration-line hover:underline-offset-[3px] focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
         data-testid="skill-audience-summary"
       >
@@ -105,11 +109,11 @@ function AudienceValue({ skill, orgName, teamsState: teamsProp }) {
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="start" sideOffset={6} style={{ zIndex: 90 }}>
           <Popover.Popup
-            aria-label={SHARED_WITH_LABEL}
+            aria-label={sharedWithLabel}
             className="flex max-h-[min(360px,70vh)] flex-col overflow-hidden rounded-[12px] bg-surface font-body outline-none"
             style={{ width: 'min(320px, 92vw)', boxShadow: 'var(--sh-popup)' }}
           >
-            <div className="section-label px-4 pt-3 pb-1">{SHARED_WITH_LABEL}</div>
+            <div className="section-label px-4 pt-3 pb-1">{sharedWithLabel}</div>
             <div className="min-h-0 overflow-y-auto px-2 pb-2">
               <AudienceList
                 orgAllowed={access.orgAllowed}
@@ -117,7 +121,7 @@ function AudienceValue({ skill, orgName, teamsState: teamsProp }) {
                 userIds={access.allowedUserIds}
                 orgName={orgName}
                 teamsState={teamsState}
-                label={SHARED_WITH_LABEL}
+                label={sharedWithLabel}
                 limit={50}
                 flush={false}
               />
@@ -159,7 +163,9 @@ export default function SkillDetail({
   skill, projects = [], capabilities = null, orgName = null, teamsState = null, enabled = true, disabledForEveryone = false,
   actions = null, notes = null, sharingControl = null, canEdit = false, onEdit,
 }) {
-  const project = projectLabelByName(projects, skill.projects?.[0] || skill.project) || 'All projects';
+  const { t } = useTranslation('library');
+  const sharedWithLabel = t('recipients.sharedWith');
+  const project = projectLabelByName(projects, skill.projects?.[0] || skill.project) || t('skillDetail.allProjects');
   // Sharing in MindsHub mode is on where `capabilities`
   // (useSharingCapabilities' answer) says so.
   const orgSharingOn = isOrgSharingOn(capabilities);
@@ -183,8 +189,8 @@ export default function SkillDetail({
             {/* Off for everyone, by an editor, is said to every viewer; else
                 the caller's own off. */}
             {disabledForEveryone
-              ? <Badge variant="muted" size="md">Disabled for everyone</Badge>
-              : !enabled && <Badge variant="muted" size="md">Disabled</Badge>}
+              ? <Badge variant="muted" size="md">{t('skillDetail.disabledForEveryone')}</Badge>
+              : !enabled && <Badge variant="muted" size="md">{t('skillDetail.disabled')}</Badge>}
           </div>
           {skill.description && (
             <p className="m-0 max-w-[72ch] text-[14px] leading-[1.55] text-ink-3 select-text">
@@ -193,44 +199,44 @@ export default function SkillDetail({
           )}
         </div>
         {actions && (
-          <div role="group" aria-label="Skill actions" className="flex shrink-0 flex-wrap items-center gap-2 pt-1" data-testid="skill-detail-actions">
+          <div role="group" aria-label={t('skillDetail.actions')} className="flex shrink-0 flex-wrap items-center gap-2 pt-1" data-testid="skill-detail-actions">
             {actions}
           </div>
         )}
       </header>
 
       {/* ── Properties ── */}
-      <dl aria-label="Details" className="m-0 mt-4 flex min-w-0 flex-wrap items-center gap-x-7 gap-y-2" data-testid="skill-properties">
-        <Property label="Project" testId="skill-meta-project">
+      <dl aria-label={t('skillDetail.details')} className="m-0 mt-4 flex min-w-0 flex-wrap items-center gap-x-7 gap-y-2" data-testid="skill-properties">
+        <Property label={t('skillDetail.project')} testId="skill-meta-project">
           <span className="truncate select-text">{project}</span>
         </Property>
         {showAudience && (
-          <Property label={SHARED_WITH_LABEL} testId="skill-meta-audience">
+          <Property label={sharedWithLabel} testId="skill-meta-audience">
             <AudienceValue skill={skill} orgName={orgName} teamsState={teamsState} />
           </Property>
         )}
         {sharingControl && (
-          <Property label={SHARED_WITH_LABEL} testId="skill-meta-sharing">{sharingControl}</Property>
+          <Property label={sharedWithLabel} testId="skill-meta-sharing">{sharingControl}</Property>
         )}
         {sharedWithEveryone && (
-          <Property label={SHARED_WITH_LABEL} testId="skill-meta-sharing">Everyone</Property>
+          <Property label={sharedWithLabel} testId="skill-meta-sharing">{t('skillDetail.everyone')}</Property>
         )}
         {alwaysOn && (
           <Property testId="skill-meta-always-on">
-            <Tooltip content={ALWAYS_ON_BADGE_HINT}>
+            <Tooltip content={alwaysOnBadgeHint()}>
               <span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-[4px] text-accent focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2">
                 <span aria-hidden="true" className="inline-block h-[6px] w-[6px] rounded-full bg-accent" />
-                {ALWAYS_ON_BADGE}
+                {alwaysOnBadge()}
               </span>
             </Tooltip>
           </Property>
         )}
-        {skill.isBuiltin && <Property testId="skill-meta-builtin">Built-in</Property>}
+        {skill.isBuiltin && <Property testId="skill-meta-builtin">{t('skillDetail.builtIn')}</Property>}
         {showOwner && (
-          <Property label="Owner" testId="skill-meta-owner"><OwnerValue skill={skill} /></Property>
+          <Property label={t('skillDetail.owner')} testId="skill-meta-owner"><OwnerValue skill={skill} /></Property>
         )}
         {age && (
-          <Property label="Updated" testId="skill-meta-updated">
+          <Property label={t('skillDetail.updated')} testId="skill-meta-updated">
             <span title={updated || undefined}>{age}</span>
           </Property>
         )}
@@ -243,7 +249,7 @@ export default function SkillDetail({
         aria-labelledby="skill-instructions-title"
         className="mt-7 flex flex-col gap-3 border-t border-b-0 border-x-0 border-solid border-line pt-6"
       >
-        <h2 id="skill-instructions-title" className="m-0 font-body text-base font-semibold leading-[1.3] text-ink">Instructions</h2>
+        <h2 id="skill-instructions-title" className="m-0 font-body text-base font-semibold leading-[1.3] text-ink">{t('skillDetail.instructions')}</h2>
         {instructions ? (
           <div className="max-w-[760px] select-text" data-testid="skill-instructions">
             <MarkdownContent
@@ -254,11 +260,11 @@ export default function SkillDetail({
           </div>
         ) : (
           <div className="flex max-w-[760px] flex-col items-start gap-3 py-2" data-testid="skill-instructions-empty">
-            <p className="m-0 text-[13.5px] text-ink-3">This skill has no instructions yet.</p>
+            <p className="m-0 text-[13.5px] text-ink-3">{t('skillDetail.noInstructions')}</p>
             {canEdit && onEdit && (
               <Button variant="default" size="sm" onClick={onEdit}>
                 {Ico.edit(14)}
-                Add instructions
+                {t('skillDetail.addInstructions')}
               </Button>
             )}
           </div>
