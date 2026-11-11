@@ -4827,7 +4827,10 @@ function AppCore() {
   // first request. A click, so the browser plays the avatar's voice.
   // One call at a time: each start offers itself only while neither runs.
   const noCallRunning = facetime.phase === 'idle' && voiceCall.phase === 'idle';
-  const startVoiceCall = voiceAvailable && voicePrefs.enabled && noCallRunning
+  // Voice calls are for people signed in through MindsHub only: the call runs
+  // on their MindsHub account. Signed out, every call button is hidden.
+  const voiceOffered = ssoConnected && voicePrefs.enabled;
+  const startVoiceCall = voiceAvailable && voiceOffered && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
       voiceHistoryRef.current = [];
@@ -4838,7 +4841,7 @@ function AppCore() {
   // The top-right call icon (TopShortcuts): a click starts a voice call; while
   // one runs it shows that, and the call's card (in the sidebar) ends it.
   let voiceCallShortcut = null;
-  if (!voicePrefs.enabled) {
+  if (!voiceOffered && voiceCall.phase === 'idle') {
     voiceCallShortcut = null;
   } else if (voiceCall.phase !== 'idle' && voiceCall.phase !== 'ended') {
     voiceCallShortcut = { label: `On a call with ${agentLabel}`, live: true };

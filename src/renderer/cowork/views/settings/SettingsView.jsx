@@ -2034,7 +2034,8 @@ export default function SettingsView({
 
         <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
 
-        <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />
+        {/* Voice calls run on the person's MindsHub account. */}
+        {isSsoConnected && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
 
         {/* Not on hosted web yet: its turns run in a pod that doesn't receive
             these limits until the web time limit and the PR that sends them

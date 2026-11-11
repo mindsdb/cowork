@@ -46,3 +46,13 @@ it.each([
   renderSettings(signedIn);
   expect(await screen.findByText(pageContentLine('Cowork', { signedInToMindsHub: signedIn }))).toBeInTheDocument();
 });
+
+it.each([
+  ['shows Voice while the app is signed in to MindsHub', true],
+  ['hides Voice while the app is signed out', false],
+])('Settings %s', async (_case, signedIn) => {
+  renderSettings(signedIn);
+  await screen.findByText(pageContentLine('Cowork', { signedInToMindsHub: signedIn }));
+  if (signedIn) expect(screen.getByRole('switch', { name: 'Voice agent' })).toBeInTheDocument();
+  else expect(screen.queryByRole('switch', { name: 'Voice agent' })).not.toBeInTheDocument();
+});
