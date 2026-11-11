@@ -6,6 +6,7 @@ import { notifyOrganizationChanged } from '../lib/organizationChanges';
 import { purgeOrganizationScopedState } from '../lib/accountLocalState';
 import { clearDraftsForOrganizationSwitch } from '../lib/draftStore';
 import { clearCachedSettings } from '../lib/settingsCache';
+import { clearCachedOrgBranding } from '../lib/orgBrandingCache';
 
 /**
  * The MindsHub organizations this person belongs to, and which one is active in
@@ -160,6 +161,7 @@ export function useMindsOrgs(accountUser) {
             // half; the in-memory clear is what stops the same heap serving it.
             clearDraftsForOrganizationSwitch();
             clearCachedSettings();
+            clearCachedOrgBranding();
           }
           /**
            * The reload goes FIRST, and nothing may be put between it and the
