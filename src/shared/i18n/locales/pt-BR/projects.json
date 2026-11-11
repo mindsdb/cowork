@@ -578,6 +578,21 @@
     "reviewRun": "Revisar execução",
     "runAgain": "Executar novamente"
   },
+  "scheduleRunNotice": {
+    "untitled": "Tarefa agendada",
+    "failedTitle": "A tarefa agendada falhou",
+    "failedBody": "“{title}” não concluiu a última execução. Clique para revisar.",
+    "failedToast": "A tarefa agendada “{title}” não concluiu a última execução.",
+    "succeededTitle": "Tarefa agendada concluída",
+    "succeededBody": "“{title}” concluiu uma execução. Clique para abrir.",
+    "succeededToast": "A tarefa agendada “{title}” concluiu uma execução."
+  },
+  "scheduleNotifyMenu": {
+    "label": "Notificações",
+    "heading": "Notificar sobre",
+    "failed": "Execuções com falha",
+    "succeeded": "Execuções bem-sucedidas"
+  },
   "scheduleTaskModal": {
     "cadence": {
       "once": "Uma vez",

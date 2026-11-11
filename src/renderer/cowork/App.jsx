@@ -93,6 +93,7 @@ import { deriveUpdateBanner, restartUnderway } from '../../shared/update-banner'
 import { useSchedules } from './hooks/useSchedules';
 import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
+import { useScheduleRunNotifications } from './hooks/useScheduleRunNotifications';
 import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -5743,6 +5744,18 @@ function AppCore() {
     },
   );
 
+  // The same for a run that fails, or succeeds if the user asked to hear
+  // about those: a notification where the OS allows one, a toast otherwise.
+  // Clicking opens the task's page, which says why and offers the run.
+  const { prefs: scheduleNotifyPrefs, setPrefs: setScheduleNotifyPrefs } = useScheduleRunNotifications(scheduled, {
+    onOpen: (schedule) => {
+      setWorkspaceMode('cowork');
+      setSelectedScheduleId(schedule.id);
+      setRoute('schedule-detail');
+    },
+    toast: (notice) => toastManager.add(notice),
+  });
+
   // Stop a schedule's run in flight the way the chat's Stop does: cancel its
   // conversation's turn. The schedule list doesn't carry that conversation,
   // so it is read from the newest runs.
@@ -6431,6 +6444,8 @@ function AppCore() {
               setRoute('projects');
             }}
             unseenAutoPauses={unseenAutoPauses}
+            notifyPrefs={scheduleNotifyPrefs}
+            onNotifyPrefsChange={setScheduleNotifyPrefs}
             agentLabel={agentLabel}
           />
         )}

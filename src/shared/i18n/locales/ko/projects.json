@@ -578,6 +578,21 @@
     "reviewRun": "실행 검토",
     "runAgain": "다시 실행"
   },
+  "scheduleRunNotice": {
+    "untitled": "예약된 작업",
+    "failedTitle": "예약된 작업 실패",
+    "failedBody": "“{title}”의 최근 실행이 완료되지 않았습니다. 클릭하여 검토하세요.",
+    "failedToast": "예약된 작업 “{title}”의 최근 실행이 완료되지 않았습니다.",
+    "succeededTitle": "예약된 작업 완료",
+    "succeededBody": "“{title}”의 실행이 완료되었습니다. 클릭하여 여세요.",
+    "succeededToast": "예약된 작업 “{title}”의 실행이 완료되었습니다."
+  },
+  "scheduleNotifyMenu": {
+    "label": "알림",
+    "heading": "알림 받을 항목",
+    "failed": "실패한 실행",
+    "succeeded": "성공한 실행"
+  },
   "scheduleTaskModal": {
     "cadence": {
       "once": "한 번",

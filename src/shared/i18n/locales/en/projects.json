@@ -578,6 +578,21 @@
     "reviewRun": "Review run",
     "runAgain": "Run again"
   },
+  "scheduleRunNotice": {
+    "untitled": "Scheduled task",
+    "failedTitle": "Scheduled task failed",
+    "failedBody": "“{title}” didn’t finish its last run. Click to review.",
+    "failedToast": "Scheduled task “{title}” didn’t finish its last run.",
+    "succeededTitle": "Scheduled task finished",
+    "succeededBody": "“{title}” finished a run. Click to open it.",
+    "succeededToast": "Scheduled task “{title}” finished a run."
+  },
+  "scheduleNotifyMenu": {
+    "label": "Notifications",
+    "heading": "Notify me about",
+    "failed": "Failed runs",
+    "succeeded": "Successful runs"
+  },
   "scheduleTaskModal": {
     "cadence": {
       "once": "Once",

@@ -578,6 +578,21 @@
     "reviewRun": "Revisar ejecución",
     "runAgain": "Ejecutar de nuevo"
   },
+  "scheduleRunNotice": {
+    "untitled": "Tarea programada",
+    "failedTitle": "La tarea programada falló",
+    "failedBody": "«{title}» no terminó su última ejecución. Haz clic para revisarla.",
+    "failedToast": "La tarea programada «{title}» no terminó su última ejecución.",
+    "succeededTitle": "Tarea programada terminada",
+    "succeededBody": "«{title}» terminó una ejecución. Haz clic para abrirla.",
+    "succeededToast": "La tarea programada «{title}» terminó una ejecución."
+  },
+  "scheduleNotifyMenu": {
+    "label": "Notificaciones",
+    "heading": "Notificarme sobre",
+    "failed": "Ejecuciones fallidas",
+    "succeeded": "Ejecuciones correctas"
+  },
   "scheduleTaskModal": {
     "cadence": {
       "once": "Una vez",
