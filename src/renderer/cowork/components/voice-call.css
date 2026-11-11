@@ -111,3 +111,12 @@ body[data-skin="8bit"] .voice-call__text-btn { border-radius: 0; border-width: 2
   }
   .voice-call__x { top: 8px; right: 8px; }
 }
+
+/* Connecting: one line, no waves, until the session is live. */
+.voice-call.voice-call--connecting { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; padding-top: 11px; padding-bottom: 11px; animation: voice-call-in 220ms ease-out; }
+.voice-call__connecting { font-size: 12.5px; color: var(--ink-2); letter-spacing: 0.01em; }
+.voice-call__spin { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); animation: voice-call-spin .8s linear infinite; }
+@keyframes voice-call-spin { to { transform: rotate(360deg); } }
+@keyframes voice-call-in { from { opacity: 0; transform: translateY(4px); } }
+body[data-skin="8bit"] .voice-call__spin { border-radius: 0; animation: voice-call-blink 1s steps(2, jump-none) infinite; border: 0; background: var(--accent); width: 8px; height: 8px; }
+@media (prefers-reduced-motion: reduce) { .voice-call__spin, .voice-call.voice-call--connecting { animation: none; } }

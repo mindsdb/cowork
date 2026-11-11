@@ -31,6 +31,24 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
   if (call.previewing && (live || phase === 'starting')) status = `Trying ${voiceLabel(prefs.voice)}`;
   if (ended) status = notice || 'The call ended.';
 
+  // Until the session is live: one quiet line, no waves, so the card never
+  // looks like it listens before it can.
+  if (phase === 'starting') {
+    return (
+      <div
+        role="dialog"
+        aria-label={`Voice call with ${agentLabel}`}
+        className={`voice-call voice-call--connecting${docked ? ' voice-call--docked' : ''}`}
+      >
+        <span className="voice-call__spin" aria-hidden="true" />
+        <span className="voice-call__connecting" aria-live="polite">Connecting voice…</span>
+        <button type="button" className="voice-call__x" onClick={call.end} aria-label="End call" title="End call">
+          {Ico.close(12)}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       role="dialog"

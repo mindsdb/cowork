@@ -62,3 +62,15 @@ describe('the voice call card, signing off and voices', () => {
     expect(screen.getByText(/^Trying /)).toBeInTheDocument();
   });
 });
+
+describe('the voice call card while it connects', () => {
+  it('is one line with no waves until the session is live', async () => {
+    const c = call({ phase: 'starting', meters: { current: {} } });
+    const { container } = render(<VoiceCallWindow call={c} />);
+    expect(screen.getByText('Connecting voice…')).toBeInTheDocument();
+    expect(container.querySelector('canvas')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Mute/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'End call' }));
+    expect(c.end).toHaveBeenCalled();
+  });
+});
