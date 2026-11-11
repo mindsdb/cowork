@@ -24,7 +24,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Moda
 import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
-import ChatView from './views/ChatView';
+import ChatView, { warmBrowser } from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
 import TasksView from './views/TasksView';
@@ -153,7 +153,9 @@ import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { desktopTaskSession, latestBrowserSessionIdIn } from './lib/browserSession';
-import { getVoicePrefs, subscribeVoicePrefs, useVoicePrefs } from './lib/voice/voicePrefs';
+import { VOICES, getVoicePrefs, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
+import { warmBrowserForSession } from './lib/browserWarmUp';
+import { readBrowseStatus } from './lib/browseStatus';
 import { autoApprovePositionClick, isPositionClickCard } from './lib/browserApproval';
 import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
 import { Outlet } from 'react-router-dom';
@@ -3332,6 +3334,13 @@ function AppCore() {
     refreshData,
   });
   const codeAccountUser = useAccountUser(ssoConnected);
+  // Start the person's browser pod as soon as their web session opens
+  // (lib/browserWarmUp.js), not when a task first needs it.
+  const warmAccount = codeAccountUser?.sub ?? null;
+  useEffect(() => {
+    if (!host.isWeb || !warmAccount) return undefined;
+    return warmBrowserForSession({ warm: warmBrowser, readStatus: readBrowseStatus });
+  }, [warmAccount]);
   const codeSkillScopeKey = skillScopeKey(codeAccountUser);
 
   // undefined (never a real accountId or the null of "signed out") so the
@@ -4742,6 +4751,14 @@ function AppCore() {
       selectTask(task.id);
       setBrowserRequest({ taskId: task.id, sessionId, at: Date.now() });
       return `Showing the browser from "${task.title}".`;
+    },
+    // Saved like a pick in Settings; the prefs listener above moves the call
+    // to it, a moment later so this answer gets back first.
+    change_voice: ({ voice }) => {
+      if (!VOICES.some((v) => v.value === voice)) return `There is no voice called ${voice}.`;
+      if (getVoicePrefs().voice === voice) return `Already speaking as ${voiceLabel(voice)}.`;
+      setTimeout(() => setVoicePrefs({ voice }), 300);
+      return `Switching to ${voiceLabel(voice)}; the call reconnects in that voice.`;
     },
   };
   operateFromCallRef.current = (request) => runOperator({

@@ -9,7 +9,8 @@ const KEY = 'cowork.voiceCall';
 
 // GPT-Live's voices (the server keeps the same list, cowork.services.voice).
 export const VOICES = [
-  { value: 'marin', label: 'Marin', accent: 'North American · default' },
+  { value: 'cinder', label: 'Cinder', accent: 'Southern U.S. · default' },
+  { value: 'marin', label: 'Marin', accent: 'North American' },
   { value: 'cedar', label: 'Cedar', accent: 'North American' },
   { value: 'gleam', label: 'Gleam', accent: 'North American' },
   { value: 'meridian', label: 'Meridian', accent: 'North American' },
@@ -19,7 +20,6 @@ export const VOICES = [
   { value: 'quartz', label: 'Quartz', accent: 'Australian' },
   { value: 'ripple', label: 'Ripple', accent: 'Australian' },
   { value: 'delta', label: 'Delta', accent: 'Southern U.S.' },
-  { value: 'cinder', label: 'Cinder', accent: 'Southern U.S.' },
   { value: 'beacon', label: 'Beacon', accent: 'Filipino' },
   { value: 'bossa', label: 'Bossa', accent: 'Portuguese' },
   { value: 'tempo', label: 'Tempo', accent: 'Portuguese' },
@@ -33,7 +33,7 @@ export const VOICES = [
   { value: 'shida', label: 'Shida', accent: 'Japanese' },
   { value: 'noeul', label: 'Noeul', accent: 'Korean' },
 ];
-export const DEFAULT_VOICE = 'marin';
+export const DEFAULT_VOICE = 'cinder';
 
 const DEFAULTS = { enabled: true, voice: DEFAULT_VOICE };
 const listeners = new Set();
@@ -78,7 +78,7 @@ export function useVoicePrefs() {
 }
 
 export function voiceLabel(value) {
-  return VOICES.find((v) => v.value === value)?.label || 'Marin';
+  return VOICES.find((v) => v.value === value)?.label || 'Cinder';
 }
 
 // For tests: forget the cached read.

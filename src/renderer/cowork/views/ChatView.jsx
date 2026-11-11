@@ -1792,7 +1792,7 @@ export function redirectForTask(redirects, taskId) {
 }
 
 // Module-level so the per-task debounce survives switching tasks (ENG-3188).
-const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
+export const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
 
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
