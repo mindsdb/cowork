@@ -21,6 +21,7 @@ it.each([
   [{ confirmId: 'cf_1', reason: 'declined' }, '?reason=declined', { confirm_id: 'cf_1' }],
   [{ approvalId: 'ap_1', reason: 'ended' }, '?reason=ended', { approval_id: 'ap_1' }],
   [{ confirmId: 'cf_1' }, '', { confirm_id: 'cf_1' }],
+  [{ confirmId: 'cf_1', reason: 'a b&c' }, '?reason=a%20b%26c', { confirm_id: 'cf_1' }],
 ])('sends %o as the query %s and the body %o', async (args, query, body) => {
   const fetch = noContent();
 
