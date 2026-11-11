@@ -2,6 +2,7 @@ import Keycloak from 'keycloak-js';
 import { closeLiveAppPreviews, closeLiveAppPreviewsForSignOut } from '../cowork/lib/liveAppPreview';
 import {
   type MindsOrg,
+  brandIconFromAttributes,
   PERSONAL_ORG_LABEL,
   personalOrgName,
   rankMindsOrgs,
@@ -296,7 +297,10 @@ function normalizeOrganizations(payload: unknown, subject: string): MindsOrg[] |
       ?? (rawName === personalOrgName(subject)
         ? (sourceSlug && sourceName !== sourceSlug ? sourceName : null) ?? PERSONAL_ORG_LABEL
         : sourceName ?? rawName);
-    organizations.push(toMindsOrg({ id, name: displayName, slug: rawName }, subject));
+    organizations.push(toMindsOrg(
+      { id, name: displayName, slug: rawName, iconUrl: brandIconFromAttributes(source.attributes) },
+      subject,
+    ));
   }
   return rankMindsOrgs(organizations);
 }

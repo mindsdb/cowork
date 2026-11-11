@@ -65,13 +65,13 @@
 // since the footer is plain content, not a selectable item (see
 // ui/Combobox.jsx's `footer` slot docs).
 //
-// Option shape: { value, label, disabled?, locked?, restricted?, title?, tag?, note?, maker?, provider?, pin? }.
+// Option shape: { value, label, disabled?, locked?, restricted?, budgetReached?, title?, tag?, note?, maker?, provider?, pin? }.
 //   - `provider`: MindsHub's serving-vendor field (the ENG-1111 backend
 //     contract), which decides the section.
 //   - `maker`: explicit maker key, trusted over inference when present. It is
 //     the icon identity only, never the section.
 //   - `tag`: compact right-aligned pill on the row (availability: "Needs
-//     credits" or "Restricted"), kept out of the label so the trigger and the search see
+//     credits", "Restricted" or "Budget reached"), kept out of the label so the trigger and the search see
 //     the bare name.
 //   - `note`: muted "(latest)" text after the name on the row only, kept out
 //     of the label for the same reason.
@@ -82,6 +82,8 @@
 //   - `restricted`: an org admin's model rule blocks this model. Disabled,
 //     tagged "Restricted" with an explanatory `title`, and never `locked`, so
 //     no "Add credits" button attaches: credits cannot lift an admin rule.
+//   - `budgetReached`: the org's spending budget is used up. Disabled, tagged
+//     "Budget reached", never `locked`: credits do not raise a budget.
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
 //     at the top/bottom of the list (stale-pin and "Other…" entries).
 //     Pinned entries also bypass the search filter: "Other…" is the escape

@@ -246,7 +246,7 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
 // wants the in-page detail view to stay.
 
 function ProjectDetail({
-  project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
+  project, projects, tasks, scheduled, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
   model, onModelChange,
   effort, onEffortChange,
@@ -491,7 +491,6 @@ function ProjectDetail({
             <TaskList
               tasks={projectTasks}
               schedules={scheduled || []}
-              scheduleRunsIndex={scheduleRunsIndex}
               onSelectTask={onSelectTask}
               onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
@@ -544,7 +543,6 @@ export default function ProjectsView({
   // Flat sessionId → scheduleId map. Forwarded to TaskList so the
   // project view's task list collapses scheduled runs the same way
   // TasksView does.
-  scheduleRunsIndex = {},
   models = [],
   modelMeta,
   model,
@@ -787,7 +785,6 @@ export default function ProjectsView({
         projects={projects}
         tasks={tasks}
         scheduled={scheduled}
-        scheduleRunsIndex={scheduleRunsIndex}
         models={models}
         modelMeta={modelMeta}
         model={model}

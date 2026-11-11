@@ -46,6 +46,10 @@ export const IPC = {
   UPDATE_JOURNAL_DRAIN: 'update:journal-drain',
   UPDATE_JOURNAL_ACK: 'update:journal-ack',
 
+  // Renderer reports whether a scheduled run is in flight or about to fire;
+  // main holds off system sleep while it is (the display may still sleep).
+  SCHEDULE_KEEP_AWAKE: 'schedules:keep-awake',
+
   // Renderer awaits this before leaving the loading screen, so a boot-time
   // update (which restarts the sidecar) can't flash the chat UI first (ENG-749).
   BOOT_AWAIT_READY: 'boot:await-ready',
@@ -109,6 +113,11 @@ export const IPC = {
   // which is what the gateway reads to decide whose credits a turn spends.
   MINDSHUB_LIST_ORGS: 'mindshub:list-orgs',
   MINDSHUB_SWITCH_ORG: 'mindshub:switch-org',
+  // The org's logo and icon: the renderer sends the URLs it got
+  // from org-branding, main returns them as data: URIs and sets the app icon.
+  MINDSHUB_BRAND_IMAGES: 'mindshub:brand-images',
+  // Each org's switcher icon: org id → URL in, org id → data: URI out.
+  MINDSHUB_ORG_ICON_URIS: 'mindshub:org-icon-uris',
   // Pushed main → renderer whenever the MindsHub token store changes
   // (login, silent refresh, logout, definitive session death). The
   // renderer's signed-in indicator subscribes to this instead of

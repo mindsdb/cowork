@@ -75,6 +75,10 @@ export const SKILL_SECTIONS = ['mine', 'shared_with_me', 'team', 'org'];
 
 export const ORG_ADMIN_ONLY_HINT = 'Only admins can share with everyone in the organization';
 
+/** Every built-in role may share an artifact with everyone; only a custom role
+    that withholds `artifacts.share_org` locks it, so the lock names no role. */
+export const ORG_ARTIFACT_SHARE_WITHHELD_HINT = "Your role can't share with everyone in the organization";
+
 /** The lock on a control MindsHub has to allow, while it couldn't be asked. */
 export const MINDSHUB_UNREACHABLE_HINT = "Couldn't reach MindsHub";
 
@@ -129,7 +133,8 @@ export function canShareWithOrg(capabilities, kind) {
     MindsHub couldn't be asked, or the caller lacks the permission. */
 export function orgShareLockReason(capabilities, kind) {
   if (canShareWithOrg(capabilities, kind)) return null;
-  return permissionsUnknown(capabilities) ? MINDSHUB_UNREACHABLE_HINT : ORG_ADMIN_ONLY_HINT;
+  if (permissionsUnknown(capabilities)) return MINDSHUB_UNREACHABLE_HINT;
+  return kind === SHARED_KIND.ARTIFACT ? ORG_ARTIFACT_SHARE_WITHHELD_HINT : ORG_ADMIN_ONLY_HINT;
 }
 
 /* The audience cards both Share panels offer, private → public. The same

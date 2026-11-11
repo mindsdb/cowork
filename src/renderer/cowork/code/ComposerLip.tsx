@@ -28,12 +28,13 @@ export function MoreNotices({ count, onShow }: { count: number; onShow: () => vo
  * One status line that peeks out from behind the composer. It stays within
  * two lines; technical detail opens on request instead of growing the strip.
  */
-export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseModel, onAddCredits, onReopen, onDismiss }: {
+export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseModel, onAddCredits, onViewBudgets = () => {}, onReopen, onDismiss }: {
   notice: ComposerNotice;
   more?: number;
   onShowMore?: () => void;
   onChooseModel: () => void;
   onAddCredits: (billingTrigger: string) => void;
+  onViewBudgets?: () => void;
   onReopen: () => void;
   onDismiss: (key: string) => void;
 }) {
@@ -44,11 +45,12 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
   // Two controls at most: the step that unblocks the next send, then one
   // more as a plain button, or a menu when there are several.
   const primary = notice.addCredits ? { label: 'Add credits', onClick: () => onAddCredits(notice.billingTrigger || 'unknown') }
+    : notice.viewBudgets ? { label: 'View budgets', onClick: onViewBudgets }
     : notice.reopen ? { label: notice.reopening ? 'Reopening…' : 'Reopen task', onClick: onReopen, disabled: notice.reopening }
       : notice.chooseModel ? { label: 'Choose model', onClick: onChooseModel }
         : null;
   const others = [
-    ...(notice.addCredits && notice.chooseModel ? [{ label: 'Choose another model', button: 'Choose model', onClick: onChooseModel }] : []),
+    ...((notice.addCredits || notice.viewBudgets) && notice.chooseModel ? [{ label: 'Choose another model', button: 'Choose model', onClick: onChooseModel }] : []),
     ...(notice.detail ? [{ label: detailOpen ? 'Hide details' : 'Show details', button: 'Details', expanded: detailOpen, onClick: () => setDetailOpen((open) => !open) }] : []),
   ];
   const secondary = others.length === 1 ? { ...others[0], label: others[0].button } : null;

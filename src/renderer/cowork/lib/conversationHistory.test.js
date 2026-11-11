@@ -330,6 +330,17 @@ describe('hydrateMessagesFromServerEvents', () => {
     expect(out[0].steps.length).toBeGreaterThan(0);
   });
 
+  it('keeps when the turn ended, so a page of older messages shows the time it showed live', () => {
+    const out = hydrateMessagesFromServerEvents([
+      { role: 'assistant', content: 'Done', events: [
+        { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+        { ...ASK, at_ms: 2000 },
+        { type: 'response.completed', at_ms: 81000 },
+      ] },
+    ]);
+    expect(out[0]).toMatchObject({ startedAt: 1000, endedAt: 81000 });
+  });
+
   it('appends a plain error bubble after a non-config failure', () => {
     const out = hydrateMessagesFromServerEvents([
       { role: 'assistant', content: '', events: [{ type: 'response.failed', code: 'rate_limited', error: 'Too many requests' }] },

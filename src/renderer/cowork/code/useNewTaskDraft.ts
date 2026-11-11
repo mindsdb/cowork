@@ -366,6 +366,7 @@ export function useNewTaskDraft({
     /* An admin's model rule is not something credits unlock, so it never
        mentions them. */
     if (selectedModelOption?.restricted) return 'An admin restricted this model. Choose another model.';
+    if (selectedModelOption?.budgetReached) return "Your organization's budget is used up. Choose an available model or ask an owner or admin to raise it.";
     if (selectedModelOption?.locked) return 'Add credits or choose an available model.';
     if (enabledModelOptions.length === 0) return catalogError ? '' : NO_CODING_MODELS;
     if (!selectedModelValid) return 'Choose a model to continue.';

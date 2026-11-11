@@ -833,6 +833,9 @@ export default function Composer({
     try {
       await Promise.resolve(onAttachFiles(files));
       setOpenMenu(null);
+      // The picker's menu item unmounts with the menu, which leaves focus on
+      // the page, so Enter would do nothing until the reader clicks back in.
+      taRef.current?.focus();
     } catch (err) {
       setError(err.message || 'Could not attach files.');
     } finally {

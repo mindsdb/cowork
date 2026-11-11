@@ -16,6 +16,7 @@ import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapSe
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
+import { registerKeepAwakeHandlers } from './keep-awake';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
 import { installQuitSignalHandlers } from './quit-signals';
@@ -72,6 +73,7 @@ import {
 import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { usageEventsOn, writeUsageEventsPref } from './analytics-env';
 import { checkChannelConsistency } from './channels';
+import { loadDesktopBrandImages, loadOrgIconDataUris } from './org-branding';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
@@ -1251,6 +1253,21 @@ function setupIPC() {
 
   // Move this install to another organization: switch the session, mint and
   // commit a key there, remember the pick, and retire the key left behind.
+  // The org's logo and icon: the renderer sends the URLs it got
+  // from org-branding; the renderer's CSP loads no remote images, so main
+  // downloads them (auth host only, cached on disk) and returns data: URIs,
+  // setting the app icon on the way. null puts the stock icon back.
+  ipcMain.handle(IPC.MINDSHUB_BRAND_IMAGES, (_e, urls: unknown) => loadDesktopBrandImages(
+    urls && typeof urls === 'object' ? urls as Record<string, unknown> : null,
+    { stockIconPath: getIconPath(), cacheRoot: path.join(coworkHome(), 'org-branding') },
+  ));
+
+  // Each org's switcher icon, the same way: URLs in, data: URIs out.
+  ipcMain.handle(IPC.MINDSHUB_ORG_ICON_URIS, (_e, urls: unknown) => loadOrgIconDataUris(
+    urls,
+    { cacheRoot: path.join(coworkHome(), 'org-branding') },
+  ));
+
   ipcMain.handle(IPC.MINDSHUB_SWITCH_ORG, (_e, organizationId: string) =>
     switchMindsOrg(String(organizationId || '')));
 
@@ -1631,6 +1648,7 @@ function setupIPC() {
   // boot/periodic polling is started separately by initUpdater().
   registerUpdateHandlers(() => mainWindow);
   registerUpdateJournalHandlers();
+  registerKeepAwakeHandlers();
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds

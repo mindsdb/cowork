@@ -60,6 +60,17 @@ export function visibleFirstTake(firstTake) {
   return firstTake && !firstTake.cleared && firstTake.text ? firstTake : null;
 }
 
+/**
+ * When a turn that ran on screen ended, for its finished "Worked for" time.
+ * The live counter ticks on this machine's clock until the terminal event
+ * arrives, so the finished time runs at least that long: ending at the
+ * server's stamp alone would come out shorter by however late the event
+ * arrived, and the time would visibly drop as the turn finished.
+ */
+export function liveTurnEndedAt(endedAt, now = Date.now()) {
+  return Math.max(endedAt ?? 0, now);
+}
+
 export function initialStreamState() {
   return {
     responseId: null,
@@ -67,6 +78,8 @@ export function initialStreamState() {
     /** 'pending' | 'thinking' | 'streaming' | 'done' | 'error' */
     status: 'pending',
     startedAt: null,
+    /** When the turn finished, off its terminal event; null while it runs. */
+    endedAt: null,
     /** ThinkingStep[] in order */
     steps: [],
     /** Live "train of thought" text that isn't part of the final answer
@@ -546,6 +559,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'done',
+      endedAt: eventTs,
       currentThought: null,
       firstTake: CLEARED_TAKE,
       assistantMessageId: event.assistant_message_id ?? state.assistantMessageId,
@@ -578,12 +592,13 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     //                                 so it was a paywall impression with no
     //                                 impression event at all.
     //
-    // Four codes are deliberately NOT counted. `model_disabled` — an admin
+    // Five codes are deliberately NOT counted. `model_disabled` — an admin
     // turned the model off, and credits do not unlock it, so it is not upgrade
     // intent. `rate_limited` — a velocity limit was never upgrade intent, and
     // counting it would inflate the signal with users who already pay.
     // `free_serving_paused`: a fleet-wide pause of free Air, not this user's cap.
     // `model_restricted`: an org admin's model rule, which credits do not lift.
+    // `budget_exceeded`: the org's spent budget, which credits do not lift either.
     //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
@@ -597,6 +612,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'error',
+      endedAt: eventTs,
       error: event.error || event.message || 'Response failed',
       // Stable wire code (e.g. 'token_limit') so the renderer can show a
       // richer affordance — the out-of-credits card — instead of plain text.

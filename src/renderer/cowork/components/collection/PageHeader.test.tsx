@@ -20,11 +20,40 @@ describe('collection/PageHeader', () => {
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
   });
 
+  it('trail with a title puts the ancestors above an h1 and the actions beside it', () => {
+    render(
+      <PageHeader
+        crumbs={[{ label: 'Scheduled Tasks', onClick: () => {} }]}
+        title="Daily digest"
+        subtitle="Every day at 9:00 AM"
+        actions={<button>Run now</button>}
+      />,
+    );
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Scheduled Tasks');
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).not.toHaveTextContent('Daily digest');
+    expect(screen.getByRole('heading', { level: 1, name: 'Daily digest' })).toBeInTheDocument();
+    expect(screen.getByText('Every day at 9:00 AM')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run now' })).toBeInTheDocument();
+  });
+
   it('back shape renders a "← label" link that invokes onBack', () => {
     const onBack = vi.fn();
     render(<PageHeader onBack={onBack} backLabel="Skills" current="My skill" />);
     screen.getByRole('button', { name: '← Skills' }).click();
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  // ENG-3998: a `max-w-[64ch]` cap broke every description after ~64
+  // characters, short of the column edge. The column (beside the actions, or
+  // the full page) is the only width bound; happy-dom has no layout, so guard
+  // against any cap on the paragraph itself.
+  it('title shape lets a long description fill its column', () => {
+    const subtitle =
+      'Run a prompt on a schedule. Each run starts a fresh task, so you can review what happened on every occurrence.';
+    render(<PageHeader title="Scheduled Tasks" subtitle={subtitle} actions={<button>Schedule task</button>} />);
+    const p = screen.getByText(subtitle);
+    expect(p.className).not.toMatch(/(^|\s)max-w-/);
+    expect(p.style.maxWidth).toBe('');
   });
 
   it('renders the actions slot in both shapes', () => {
@@ -40,7 +69,7 @@ describe('collection/PageHeader', () => {
     const { container } = render(
       <PageHeader crumbs={[{ label: 'Scheduled Tasks', onClick: () => {} }]} current="test" />,
     );
-    const header = container.querySelector('header');
+    const header = container.querySelector('header')!;
     expect(header.className).not.toContain('border');
   });
 });

@@ -347,7 +347,7 @@ function _hydrateAssistantEvents(messages) {
     out.push({
       ...rest,
       ...(state.steps?.length > 0
-        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
+        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null, endedAt: rest.endedAt || state.endedAt || null }
         : {}),
       ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
@@ -1714,6 +1714,49 @@ export async function fetchHubUsage() {
   return { reachable: false };
 }
 
+/**
+ * The org's branding: its logo and icon URLs, its look, and whether
+ * the caller may edit it. The hosted server serves it in org mode; the
+ * desktop's local server passes it through to auth with the MindsHub
+ * credential, which rides in the same header as the hub calls. Either answers
+ * `enabled: false` outside an org or in a personal one. Rejects on failure so
+ * the caller can keep what it has (the cached answer) rather than painting
+ * stock.
+ */
+export async function fetchOrgBranding() {
+  if (!host.isElectron) requireOrgMode('Company branding');
+  return req('/org-branding', { headers: await hubHeaders() });
+}
+
+/**
+ * Each organization's icon for the org switcher: `{ reachable,
+ * orgs: [{ id, iconUrl }] }`, read by the server from auth's org list with
+ * the caller's credential. Null when the server has no such route or the read
+ * fails, so the menu falls back to the Keycloak attribute and initials.
+ */
+export async function fetchHubOrgIcons() {
+  try {
+    const data = await req('/hub/org-icons', { headers: await hubHeaders() });
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save the org's look (admins only; the server answers 403 otherwise). Takes
+ * the snake_case body (lib/orgBranding.ts appearancePayload) and resolves to
+ * the same body as fetchOrgBranding.
+ */
+export async function updateOrgAppearance(payload) {
+  if (!host.isElectron) requireOrgMode('Company branding');
+  return req('/org-branding/appearance', {
+    method: 'PUT',
+    headers: await hubHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
 // The lock-owning wrappers decide how to handle failure. A save must never
 // publish offline/mock defaults as if they were the canonical persisted values.
 async function readSettings({ validate = true } = {}) {
@@ -2686,6 +2729,25 @@ export function streamDataVaultSubmission({
   return ctrl;
 }
 
+// Answers to a custom connector's waiting connection test. Each id is single
+// use; a 404 means the test is no longer waiting and the form must be sent again.
+export function allowConnectorTestHost(approvalId) {
+  return req('/connectors/submissions/allow-private', {
+    method: 'POST', body: JSON.stringify({ approval_id: approvalId }),
+  });
+}
+
+export function confirmConnectorTest(confirmId) {
+  return req('/connectors/submissions/confirm', {
+    method: 'POST', body: JSON.stringify({ confirm_id: confirmId }),
+  });
+}
+
+export function cancelConnectorTest({ approvalId, confirmId } = {}) {
+  const body = approvalId ? { approval_id: approvalId } : { confirm_id: confirmId };
+  return req('/connectors/submissions/cancel', { method: 'POST', body: JSON.stringify(body) });
+}
+
 // Backwards-compatible non-streaming wrapper — kept so callers that
 // just need to stage values without streaming back can still do so.
 // (Currently unused by the form panel; might disappear in a cleanup.)
@@ -3409,11 +3471,13 @@ export async function recordTaskVisit(task, autoPin = false) {
   return req(`/pins/${encodeURIComponent(task.id)}/visit?${params.toString()}`, { method: 'POST' });
 }
 
+// Null when the list couldn't be read, so a caller can tell a failed read
+// from a server with no schedules.
 export async function fetchSchedules() {
   try {
     return await req('/schedules/');
   } catch {
-    return { schedules: [] };
+    return null;
   }
 }
 
@@ -3437,17 +3501,22 @@ export async function resumeSchedule(id) {
   return req(`/schedules/${encodeURIComponent(id)}/resume`, { method: 'POST' });
 }
 
-export async function runScheduleNow(id) {
-  return req(`/schedules/${encodeURIComponent(id)}/run-now`, { method: 'POST' });
+// `trial` runs it once without touching its schedule: the run neither uses
+// up a one-off nor makes the server skip the next slot as just run.
+export async function runScheduleNow(id, { trial = false } = {}) {
+  const query = trial ? '?trial=true' : '';
+  return req(`/schedules/${encodeURIComponent(id)}/run-now${query}`, { method: 'POST' });
 }
 
-export async function fetchScheduleRuns(id, { limit = 100 } = {}) {
+export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}) {
   // Returns { runs: [{ id, scheduleId, startedAt, finishedAt, durationMs,
   // status, error, conversationId, isManual }] }
-  // Newest first.
+  // Newest first. A failed read is an empty list, unless `strict`, where it
+  // throws so a caller acting on the list can say so.
   try {
     return await req(`/schedules/${encodeURIComponent(id)}/runs?limit=${encodeURIComponent(limit)}`);
-  } catch {
+  } catch (err) {
+    if (strict) throw err;
     return { schedule_id: id, runs: [] };
   }
 }

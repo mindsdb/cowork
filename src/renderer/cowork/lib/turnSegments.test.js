@@ -18,6 +18,12 @@ const shape = (segments) => segments.map((s) => {
 });
 
 describe('splitTurnSegments', () => {
+  it('ends only the last steps segment with the turn', () => {
+    const segments = splitTurnSegments([work('a'), question('ask:1', { answer: ANSWER, completedAt: 20 }), work('b', 30)], { startedAt: 10, endedAt: 90 });
+    expect(segments[0].endedAt).toBeUndefined();
+    expect(segments.at(-1)).toMatchObject({ startedAt: 20, endedAt: 90 });
+  });
+
   it('returns one steps segment when the turn has no questions', () => {
     const segments = splitTurnSegments([work('a'), work('b')], { startedAt: 10 });
     expect(shape(segments)).toEqual([['a', 'b']]);

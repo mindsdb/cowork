@@ -46,7 +46,7 @@ import { isActiveStatus, promptHistory } from './presentation';
 import { useComposerNotice } from './useComposerNotice';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { trackBillingOpened } from '../lib/analytics';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_BUDGETS_URL, consoleUrlFor } from '../../lib/mindsUrls';
 import { openCodeExternalUrl } from './shellLinks';
 import './code.css';
 
@@ -97,7 +97,7 @@ export default function CodeView({
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
   /** The signed-in account, used to prefill a Git identity when a commit needs one. */
-  account?: { name?: string | null; email?: string | null } | null;
+  account?: { name?: string | null; email?: string | null; orgId?: string | null; sub?: string | null } | null;
   skillScopeKey?: string;
   connections?: ConnectorConnection[];
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
@@ -543,6 +543,14 @@ export default function CodeView({
                       onAddCredits={(billingTrigger) => {
                         trackBillingOpened(billingTrigger, 'code');
                         void openCodeExternalUrl(MINDS_BILLING_URL);
+                      }}
+                      onViewBudgets={() => {
+                        trackBillingOpened('budget_exceeded', 'code');
+                        // The session's organization, so the console opens its Budgets tab.
+                        void openCodeExternalUrl(consoleUrlFor(MINDS_BUDGETS_URL, {
+                          organizationId: account?.orgId ?? null,
+                          subject: account?.sub ?? null,
+                        }));
                       }}
                       onReopen={() => void recoverTask(session.id)}
                       onDismiss={lip.dismiss}
