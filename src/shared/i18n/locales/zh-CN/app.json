@@ -1,0 +1,264 @@
+{
+  "common": {
+    "justNow": "刚刚",
+    "untitledTask": "未命名任务",
+    "newTask": "新建任务",
+    "delete": "删除",
+    "keep": "保留",
+    "cancel": "取消",
+    "connect": "连接"
+  },
+  "connect": {
+    "taskTitle": "连接 {name}",
+    "intro": "我们来连接 {name}。",
+    "thisConnector": "此连接器",
+    "followups": {
+      "fields": "对哪个字段有疑问？我很乐意解释。",
+      "credentials": "找不到凭据？尽管问我。",
+      "unclear": "有不清楚的地方就告诉我，我可以一步步带你完成。",
+      "fieldExpects": "想知道某个字段该填什么？我来说明。",
+      "steps": "想了解某个步骤的更多细节？尽管问我。",
+      "beforeSubmit": "提交前有问题吗？我随时都在。",
+      "deeper": "需要我更详细地解释某个字段吗？告诉我就行。",
+      "clarify": "填写前有任何疑问，我都可以帮你解答。",
+      "context": "想进一步了解某个字段，尽管问我。",
+      "setup": "对设置有疑问？我随时可以帮忙。"
+    }
+  },
+  "modify": {
+    "taskTitle": "修改 {name}",
+    "body": "更新“{name}”的凭据或设置。保存后将覆盖现有连接。",
+    "intro": "我们来更新 {name}。",
+    "chatRequest": "更新连接 {name}（{label}）。",
+    "savedValuesLabel": "当前保存的值",
+    "savedValuesDescription": "编辑此连接中存储的值。"
+  },
+  "disconnect": {
+    "title": "断开 {name}？",
+    "titleFallback": "断开此连接？",
+    "message": "已保存的 {engine} 连接及其存储的凭据将被删除。你之后可以重新连接。",
+    "confirm": "断开连接",
+    "busy": "正在断开…"
+  },
+  "oauth": {
+    "reconnectNeeded": "{engine} 连接需要重新连接：刷新令牌已过期。",
+    "refreshRetrying": "{engine} 连接刷新失败，正在自动重试。"
+  },
+  "askUser": {
+    "selectOnly": "这个问题需要从上方选项中选择一项。请选择一项；如果想输入其他内容，请点按“跳过”。",
+    "rejected": "该回答未被接受。请从提供的选项中选择。",
+    "sendFailed": "无法发送你的回答。请重试。",
+    "notAccepted": "该回答未被接受。请重新加载对话，查看问题的当前状态。"
+  },
+  "attachments": {
+    "needSavedConversation": "发送附件前，请先选择一个项目并使用已保存的对话。",
+    "waitForStart": "请等对话开始后再发送附件。",
+    "sendFailed": "无法发送附件。请重试。",
+    "notSent": "{count, plural, other {你的 # 个文件未发送，因为智能体先提出了一个问题。文件仍在附件中。}}"
+  },
+  "tasks": {
+    "stopFailed": "无法停止任务，它可能仍在运行。请检查网络连接后重试。",
+    "ownerOnly": "只有所有者才能在此共享项目中运行任务。",
+    "creating": "正在创建任务…",
+    "configuredPlanningModel": "已配置的规划模型",
+    "formSubmitFailed": "表单提交失败。",
+    "loadEarlierFailed": "无法加载更早的消息。请重试。"
+  },
+  "codeMode": {
+    "stopUnchecked": "代码模式已隐藏，但无法完整检查正在运行的任务。",
+    "stopFailed": "{count, plural, other {代码模式已隐藏，但有 # 个任务无法停止。}}",
+    "needFolder": "启动 Claude Code 前，请先选择一个带文件夹的项目。",
+    "needModel": "启动 Claude Code 前，请先选择一个模型。",
+    "noKey": "未配置 MindsHub API 密钥。使用代码模式前，请先通过 MindsHub 登录，或在“设置”中添加密钥。",
+    "createFailed": "无法创建 Claude Code 任务。"
+  },
+  "deleteTask": {
+    "title": "删除此任务？",
+    "message": "对话记录以及此任务的所有草稿区单元格都将被移除。此操作无法撤销。",
+    "failed": "无法删除此对话，它已回到你的列表中。请重试。"
+  },
+  "deleteTurn": {
+    "title": "删除这轮问答？",
+    "message": "这会从对话中同时移除你的问题和 {agent} 的回复。本轮生成的草稿区单元格、产物或记忆写入仍会保留在磁盘上。此操作无法撤销。",
+    "unconfirmedRefresh": "上次删除未能确认，因此现在将刷新此列表。请检查后，如仍需要再删除一次。",
+    "refreshFailed": "无法刷新此对话。删除其中任何其他内容前，请先重新加载。",
+    "messageChanged": "此消息在删除前已发生变化。请重试。",
+    "unconfirmedNoRefresh": "无法确认此次删除，也无法刷新对话。删除其中任何其他内容前，请先重新加载此对话。",
+    "deletedNoRefresh": "这轮问答已删除，但无法刷新对话，列表可能不是最新的。删除其中任何其他内容前，请先重新加载此对话。",
+    "unconfirmed": "无法确认此次删除。删除可能已经生效，因此在此对话中进行下一次删除前会先刷新对话。",
+    "failedWithReason": "无法删除这轮问答：{reason}",
+    "notDeletedAsShown": "服务器未按显示的内容删除这轮问答，因此已刷新对话。请检查后，如仍需要再删除一次。"
+  },
+  "deleteProject": {
+    "title": "删除项目“{name}”？",
+    "messageExternal": "项目及其对话将被移除。你的文件夹 {path} 会保留在原处，其中你自己的文件不受影响，但 Cowork 的 skills/ 和 .anton/ 文件夹会留在其中。此操作无法撤销。",
+    "message": "此项目下的所有对话、草稿区输出、记忆和产物都将从磁盘中移除。此操作无法撤销。",
+    "confirm": "删除项目",
+    "failed": "无法删除此项目，未移除任何内容。请重试。"
+  },
+  "display": {
+    "settings": "显示设置",
+    "toggleTheme": "切换深色/浅色模式"
+  },
+  "compare": {
+    "unavailableTitle": "此处无法使用“对比模型”",
+    "unavailableDescription": "此部署中没有可供选择的模型，因此无法对比。可选模型由你的运营方决定。"
+  },
+  "drive": {
+    "connectTitle": "连接 Google Drive？",
+    "connectMessage": "要从 Drive 添加文件，需要先连接你的 Google Drive 账户。",
+    "chooseAccountTitle": "选择 Google Drive 账户",
+    "chooseAccountSubtitle": "已连接多个 Google Drive 账户，请选择要使用的账户。"
+  },
+  "update": {
+    "updating": "正在更新...",
+    "updatingTo": "正在更新到 {version}...",
+    "almostThere": "马上就好..."
+  },
+  "router": {
+    "unavailableTitle": "此对话未能加载",
+    "unavailableDescription": "无法连接到服务器。你的链接仍然有效，恢复联网后请重试。",
+    "retrying": "正在重试…",
+    "tryAgain": "重试"
+  },
+  "shell": {
+    "welcome": "欢迎使用 {product}",
+    "setupErrorTitle": "无法完成设置",
+    "setupErrorBody": "提供商已保存，但无法应用你的模型。请检查网络连接后重试。",
+    "retrying": "正在重试…",
+    "retry": "重试",
+    "tryAgain": "重试",
+    "switchToLight": "切换到浅色主题",
+    "switchToDark": "切换到深色主题",
+    "toggleTheme": "切换颜色主题",
+    "dismiss": "关闭",
+    "dismissUntilNextLaunch": "关闭，下次启动前不再显示",
+    "serviceUnconfiguredTitle": "服务尚未配置",
+    "serviceUnavailableTitle": "服务不可用",
+    "serviceUnconfiguredBody": "请让管理员检查模型设置，然后重试。",
+    "serviceUnavailableBody": "服务器可能正在重启。请稍候片刻后重试。"
+  },
+  "ownership": {
+    "title": "这些数据属于谁？",
+    "intro": "这台电脑上有账户分开管理之前留下的数据，我们无法确定它们是否属于 {who}。",
+    "thisAccount": "此账户",
+    "credentials": "这不只是过去的对话。接管这些数据，也会一并接管此处保存的提供商 API 密钥，以及所有已连接数据源的凭据。",
+    "nothingDeleted": "无论如何选择，都不会删除任何内容。如果你选择重新开始，现有数据会留在这台电脑上，归其所有者使用。",
+    "startingFresh": "正在重新开始…",
+    "startFresh": "重新开始",
+    "restoring": "正在恢复…",
+    "mine": "这些数据是我的",
+    "accountChanged": "已登录的账户发生了变化。请重新登录后再回答。",
+    "claimFailed": "无法接管这些数据，未做任何更改。请重试。"
+  },
+  "updateBanner": {
+    "downloading": "正在下载更新…",
+    "downloadingPercent": "正在下载更新（{percent}%）",
+    "installing": "正在安装更新…",
+    "restartFailed": "上次重启失败",
+    "tryAgain": "重试",
+    "ready": "更新已就绪",
+    "readyVersion": "更新已就绪{hasVersion, select, yes {（{version}）} other {}}",
+    "restartNow": "立即重启",
+    "restart": "重启",
+    "readyAutoHint": "新版本{hasVersion, select, yes {（{version}）} other {}}已下载。立即重启即可使用，或在下次退出应用时自动安装。",
+    "appUpdateFailed": "应用更新失败",
+    "retry": "重试",
+    "download": "下载",
+    "appVersionAvailable": "有新的应用版本可用",
+    "newVersion": "有新版本可用{hasVersion, select, yes {（{version}）} other {}}",
+    "abortedHint": "上次重启失败。更新仍已下载，请重试重启。",
+    "abortedHintReason": "上次重启失败：{reason}。更新仍已下载，请重试重启。",
+    "debInstallStep": "在下载目录中运行 {command}",
+    "otaHint": "重新加载应用以完成更新{hasVersion, select, yes {（更新到 {version}）} other {}}。下次打开应用时也会自动应用。",
+    "otaFailed": "更新失败{hasVersion, select, yes {（{version}）} other {}}"
+  },
+  "shellSupport": {
+    "tooOld": {
+      "title": "此应用版本过旧，无法支持此版本的 Cowork",
+      "body": "已安装的应用外壳为 {installed}，最新版本为 {current}。在应用更新前，部分功能将隐藏。",
+      "restartToUpdate": "重启以更新",
+      "downloadUpdate": "下载更新",
+      "checking": "正在检查更新…",
+      "downloading": "正在下载…",
+      "downloadingPercent": "正在下载（{percent}%）",
+      "installing": "正在安装…",
+      "retryUpdate": "重试更新",
+      "downloadLatest": "下载最新版应用"
+    },
+    "osCapped": {
+      "minimum": "macOS {version} 或更高版本",
+      "belowFloorTitle": "请更新 macOS 以继续安全使用 Cowork",
+      "belowFloorBody": "如果有多人在这个 Mac 用户账户上登录 Cowork，此版本的应用并不安全：它可能会把一个账户的数据显示给下一个登录的人。新版本已修复此问题，但需要 {minimum}。",
+      "title": "你的 macOS 版本已无法接收应用更新",
+      "body": "这台 Mac 运行的是 macOS {major}。请更新到 {minimum} 以继续接收应用更新。随着时间推移，部分功能可能无法正常使用。"
+    }
+  },
+  "serverStatus": {
+    "exitCode": {
+      "stillStarting": "仍在启动",
+      "notApplicable": "不适用",
+      "stopped": "已停止",
+      "unknown": "未知",
+      "neverStarted": "从未启动"
+    },
+    "timeout": {
+      "headline": "应用停止等待时，后端仍在启动中。",
+      "firstLaunch": "这通常发生在安装后的首次启动：首次运行时会扫描整个 Python 环境，因此比之后的每次启动都慢得多。",
+      "reopen": "完全退出应用后重新打开。后端会重新启动，通常第二次就能正常运行。"
+    },
+    "exited": {
+      "headline": "后端已启动，但在完成启动前就退出了。"
+    },
+    "spawnError": {
+      "headline": "根本无法启动后端程序。",
+      "antivirus": "常见原因是杀毒软件或终端防护软件拦截了可执行文件。请允许 {product} 后端运行，然后重试。",
+      "reinstall": "如果不是这个原因，请重新运行安装程序以重新安装后端。"
+    },
+    "notInstalled": {
+      "headline": "后端尚未安装。",
+      "rerun": "请重新运行安装程序进行设置。"
+    },
+    "credentialClear": {
+      "headline": "后端无法移除你上次退出登录时的 API 密钥，因此已停止运行，而不会使用这些密钥。",
+      "reopen": "完全退出 {product} 后重新打开。后端会在每次启动时重试。",
+      "filesHeld": "如果仍然失败，可能是其他程序占用了 Cowork 数据文件夹中的文件。请关闭该程序，或重启电脑。"
+    },
+    "incompatible": {
+      "headline": "需要更新后端才能配合此版本的 {product} 使用。",
+      "reopen": "完全退出 {product} 后重新打开，以便安装并启动匹配的后端。",
+      "rerun": "如果更新未完成，请重新运行最新的安装程序。"
+    },
+    "notRunning": {
+      "headline": "后端未运行。",
+      "startBelow": "请在下方启动。"
+    },
+    "portHeld": "进程 {pid} 占用了端口 {port}。请关闭该进程（或重启电脑），然后重新启动后端。",
+    "copyLog": "如果仍然失败，请复制下方日志并发送给支持团队。",
+    "noLog": {
+      "timeout": "应用停止等待时，后端尚未输出任何内容，因此没有可发送的日志。",
+      "exited": "后端在输出任何内容前就已退出，日志中没有记录，因此没有可发送的日志。",
+      "spawnError": "程序从未运行，上方的启动错误是唯一的线索，没有可发送的日志。",
+      "notInstalled": "尚未运行任何内容，因此没有可发送的日志。",
+      "incompatible": "后端响应正常，但它是不兼容的旧版本，可能没有错误日志。",
+      "credentialClear": "后端在输出原因前就已停止，因此没有可发送的日志。",
+      "default": "尚未捕获任何日志，因此没有可发送的内容。"
+    }
+  },
+  "restartConfirm": {
+    "confirm": "仍然重启",
+    "cancel": "取消",
+    "unknownTitle": "立即重启？",
+    "unknownBody": "Cowork 无法确定是否有任务正在运行。重启会停止所有正在运行的任务。",
+    "title": "停止 {count, plural, other {# 个正在运行的任务}}并重启？",
+    "body": "重启会使任务在回答过程中停止。你也可以稍后在“设置”或更新横幅中重启。"
+  },
+  "bootStatus": {
+    "downloading": "正在下载最新更新…",
+    "finishing": "即将完成…",
+    "installing": "正在安装更新，Cowork 将重新打开…"
+  },
+  "orgs": {
+    "personal": "个人"
+  }
+}

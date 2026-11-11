@@ -244,3 +244,8 @@ body[data-skin="8bit"]:lang(ko) {
   --font-sans:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
     'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', monospace;
 }
+
+body[data-skin="8bit"]:lang(zh) {
+  --font-sans:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', monospace;
+}

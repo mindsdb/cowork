@@ -1,6 +1,6 @@
 # Translations (i18n)
 
-Cowork ships in English, Spanish (`es`), Brazilian Portuguese (`pt-BR`), German (`de`), French (`fr`), Japanese (`ja`) and Korean (`ko`). Tracking ticket: ENG-4149.
+Cowork ships in English, Spanish (`es`), Brazilian Portuguese (`pt-BR`), German (`de`), French (`fr`), Italian (`it`), Japanese (`ja`), Korean (`ko`) and Simplified Chinese (`zh-CN`). Tracking ticket: ENG-4149.
 
 **The rule:** every string a person reads goes through `t()`. When you add or change English, update every other locale in the same PR. CI (`npm run check:i18n`) fails otherwise. The `/i18n-sync` Claude Code skill does the translation work.
 

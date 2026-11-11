@@ -1,6 +1,6 @@
 ---
 name: i18n-sync
-description: bring every non-English locale (Spanish, Brazilian Portuguese, German, French, Japanese, Korean) up to date with English. use after adding or changing any user-visible UI text, when npm run check:i18n reports missing / stale / unlocked / mismatch issues, or when asked to translate the UI or add a language.
+description: bring every non-English locale (Spanish, Brazilian Portuguese, German, French, Italian, Japanese, Korean, Simplified Chinese) up to date with English. use after adding or changing any user-visible UI text, when npm run check:i18n reports missing / stale / unlocked / mismatch issues, or when asked to translate the UI or add a language.
 ---
 
 # Keep every language in step with English
@@ -24,7 +24,7 @@ Read `docs/i18n/README.md` (how strings work) and `docs/i18n/glossary.md` (fixed
 2. **Translate** in `src/shared/i18n/locales/<locale>/<namespace>.json`, keeping the same nesting as English.
    - Keep ICU structure exactly: `{name}`, `{count, plural, one {…} other {…}}`, `{kind, select, …}`. Spanish and Portuguese may add a `many` plural branch; Japanese uses only `other` (with a counter: `#件`); `other` is always required.
    - Read the neighbouring keys for context: a `title`, its `subtitle` and its `ariaLabel` describe the same control and must agree.
-   - Follow the glossary's tone (Spanish `tú`, neutral Latin American; Portuguese `você`, Brazilian; German Sie, French vous, Japanese です・ます, Korean 합니다체; each has its own glossary section). Keep product names (Anton, MindsHub, Cowork) and file types (PNG, KB) as is.
+   - Follow the glossary's tone (Spanish `tú`, neutral Latin American; Portuguese `você`, Brazilian; German Sie, French vous, Italian tu, Japanese です・ます, Korean 합니다체, Chinese 你; each has its own glossary section). Keep product names (Anton, MindsHub, Cowork) and file types (PNG, KB) as is.
    - Match length roughly. If a translation is much longer than English and the English is a button or tab label, prefer a shorter wording.
 3. **Add new glossary terms** to `docs/i18n/glossary.md` when you fix a translation for a product concept that will recur.
 4. **Record the translations.**

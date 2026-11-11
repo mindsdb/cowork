@@ -242,3 +242,85 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Repository / Folder / Branch / Pull request | 저장소 / 폴더 / 브랜치 / 풀 리퀘스트 |
 | Code Mode / Preview / Compare | 코드 모드 / 미리 보기 / 비교 |
 | Update / Restart | 업데이트 / 다시 시작 |
+
+## Italian (`it`)
+
+### Style
+
+| | Italian |
+|---|---|
+| Address | Informal **tu** (*Scegli…*, *il tuo tema*), like Apple's and Google's Italian UI |
+| Buttons and actions | Imperative, short (*Salva*, *Annulla*, *Carica logo*) |
+| Hints and instructions | Imperative with *tu* (*Scegli un colore…*) |
+| Capitalization | Sentence case |
+| Anglicisms | Keep the ones Italian software uses (*app*, *account*, *repository*, *branch*, *budget*, *backend*); translate the rest |
+| Quotes | « » for UI labels (*«Impostazioni»*), no inner spaces |
+| Length | Italian runs about 15% longer: keep buttons short |
+
+### Terms
+
+| English | Italian |
+|---|---|
+| Settings | Impostazioni |
+| Appearance / Theme / Light / Dark | Aspetto / Tema / Chiaro / Scuro |
+| Language / Match system | Lingua / Come il sistema |
+| Default / Custom | Predefinito / Personalizzato |
+| Agent / Task / Project | Agente / Attività / Progetto |
+| Artifact / Live app | Artefatto / App live |
+| Skill / Connector / Connection / Data source | Competenza / Connettore / Connessione / Origine dati |
+| Workspace / Organization | Area di lavoro / Organizzazione |
+| Owner / Admin / Member | Proprietario / Amministratore / Membro |
+| Sign in / Sign out / Account | Accedi / Esci / Account |
+| Model / Credits / Add funds | Modello / Crediti / Aggiungi fondi |
+| Free allowance / Budget / Usage | Quota gratuita / Budget / Utilizzo |
+| Memory | Memoria |
+| Schedule / Scheduled | Pianificazione / Pianificate |
+| Share / Upload / Download | Condividi / Carica / Scarica |
+| Save / Saved / Delete / Remove | Salva / Salvato / Elimina / Rimuovi |
+| Cancel / Close / Done / Retry | Annulla / Chiudi / Fine / Riprova |
+| Copy / Copied / Search | Copia / Copiato / Cerca |
+| Home / Recents | Home / Recenti |
+| Repository / Folder / Branch / Pull request | Repository / Cartella / Branch / Pull request |
+| Code Mode / Preview / Compare | Modalità codice / Anteprima / Confronta |
+| Update / Restart | Aggiornamento / Riavvia |
+
+## Simplified Chinese (`zh-CN`)
+
+### Style
+
+| | Simplified Chinese |
+|---|---|
+| Variant | Mainland Simplified Chinese. Traditional Chinese (zh-TW, zh-HK) is a separate locale, not yet shipped |
+| Address | **你** (not 您), like Apple's and Microsoft's Simplified Chinese UI |
+| Buttons and actions | Short verb or verb–object (*保存*, *删除*, *上传徽标*) |
+| Errors | Say what happened: *无法保存*, *连接失败* |
+| Punctuation | Full-width ，。：；？！（） in Chinese text; “ ” for quotes and UI labels; no ellipsis spaces (*正在保存…*) |
+| Spacing | One half-width space between Chinese and Latin words or digits (*使用 Anton 运行*, *3 个任务*), none next to full-width punctuation |
+| Plurals | Only the `other` branch, with a measure word (`{count, plural, other {# 个任务}}`, `# 项`, `# 次`, `# 位`) |
+
+### Terms
+
+| English | Simplified Chinese |
+|---|---|
+| Settings | 设置 |
+| Appearance / Theme / Light / Dark | 外观 / 主题 / 浅色 / 深色 |
+| Language / Match system | 语言 / 跟随系统 |
+| Default / Custom | 默认 / 自定义 |
+| Agent / Task / Project | 智能体 / 任务 / 项目 |
+| Artifact / Live app | 产物 / 实时应用 |
+| Skill / Connector / Connection / Data source | 技能 / 连接器 / 连接 / 数据源 |
+| Workspace / Organization | 工作区 / 组织 |
+| Owner / Admin / Member | 所有者 / 管理员 / 成员 |
+| Sign in / Sign out / Account | 登录 / 退出登录 / 账户 |
+| Model / Credits / Add funds | 模型 / 积分 / 充值 |
+| Free allowance / Budget / Usage | 免费额度 / 预算 / 用量 |
+| Memory | 记忆 |
+| Schedule / Scheduled | 定时 / 定时任务 |
+| Share / Upload / Download | 分享 / 上传 / 下载 |
+| Save / Saved / Delete / Remove | 保存 / 已保存 / 删除 / 移除 |
+| Cancel / Close / Done / Retry | 取消 / 关闭 / 完成 / 重试 |
+| Copy / Copied / Search | 复制 / 已复制 / 搜索 |
+| Home / Recents | 首页 / 最近 |
+| Repository / Folder / Branch / Pull request | 仓库 / 文件夹 / 分支 / 拉取请求 |
+| Code Mode / Preview / Compare | 代码模式 / 预览 / 对比 |
+| Update / Restart | 更新 / 重启 |

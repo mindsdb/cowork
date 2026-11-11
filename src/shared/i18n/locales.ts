@@ -8,7 +8,7 @@
 export const SOURCE_LOCALE = 'en' as const;
 
 /* Order is the order the Language picker shows them in. */
-export const SUPPORTED_LOCALES = ['en', 'es', 'pt-BR', 'de', 'fr', 'ja', 'ko'] as const;
+export const SUPPORTED_LOCALES = ['en', 'es', 'pt-BR', 'de', 'fr', 'it', 'ja', 'ko', 'zh-CN'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 /* Dev-only pseudo-locale: English text, accented and padded, so a string
@@ -25,8 +25,10 @@ export const LOCALE_NATIVE_NAMES: Record<AppLocale, string> = {
   'pt-BR': 'Português (Brasil)',
   de: 'Deutsch',
   fr: 'Français',
+  it: 'Italiano',
   ja: '日本語',
   ko: '한국어',
+  'zh-CN': '简体中文',
   [PSEUDO_LOCALE]: 'Ƥşḗŭḓǿ (en-XA)',
 };
 
@@ -37,18 +39,28 @@ export type LanguagePreference = AppLocale | typeof SYSTEM_PREFERENCE;
 /* Map any BCP-47 tag onto a supported locale, or null when we don't have
    that language. Region matters only where we ship a regional variant:
    every Portuguese maps to pt-BR, every Spanish to es (neutral Latin
-   American), every English to en; German, French, Japanese and Korean
-   map to de, fr, ja and ko whatever the region. */
+   American), every English to en; German, French, Italian, Japanese and
+   Korean map to de, fr, it, ja and ko whatever the region. Chinese maps to
+   Simplified (zh-CN) unless the tag asks for Traditional script (Hant) or a
+   Traditional region (TW, HK, MO): those get null, since English is a better
+   fallback for a Traditional reader than the other script. */
 export function normalizeLocale(tag: string | null | undefined): SupportedLocale | null {
   if (typeof tag !== 'string') return null;
-  const lang = tag.trim().toLowerCase().replace(/_/g, '-').split('-')[0];
+  const parts = tag.trim().toLowerCase().replace(/_/g, '-').split('-');
+  const lang = parts[0];
   if (lang === 'en') return 'en';
   if (lang === 'es') return 'es';
   if (lang === 'pt') return 'pt-BR';
   if (lang === 'de') return 'de';
   if (lang === 'fr') return 'fr';
+  if (lang === 'it') return 'it';
   if (lang === 'ja') return 'ja';
   if (lang === 'ko') return 'ko';
+  if (lang === 'zh') {
+    if (parts.includes('hans')) return 'zh-CN';
+    if (parts.some((p) => p === 'hant' || p === 'tw' || p === 'hk' || p === 'mo')) return null;
+    return 'zh-CN';
+  }
   return null;
 }
 

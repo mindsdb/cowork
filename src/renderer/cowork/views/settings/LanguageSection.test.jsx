@@ -70,6 +70,8 @@ describe('LanguageSection', () => {
     ['de', 'Einstellungen', 'Sprache', 'Deutsch'],
     ['fr', 'Paramètres', 'Langue', 'Français'],
     ['ko', '설정', '언어', '한국어'],
+    ['it', 'Impostazioni', 'Lingua', 'Italiano'],
+    ['zh-CN', '设置', '语言', '简体中文'],
   ])('switches to %s', async (locale, settings, language, nativeName) => {
     render(<><SettingsTitle /><LanguageSection /></>);
     await act(async () => { await setLanguagePreference(locale); });

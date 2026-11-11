@@ -1,0 +1,642 @@
+{
+  "collection": {
+    "filter": {
+      "label": "筛选",
+      "activeAriaLabel": "筛选，已启用 {count} 项",
+      "activeFilters": "已启用的筛选条件",
+      "removeAriaLabel": "移除“{label}”筛选条件",
+      "clear": "清除"
+    },
+    "search": "搜索",
+    "loading": "正在加载",
+    "noResultsFor": "没有与“{query}”相关的结果",
+    "noResults": "没有结果",
+    "clearSearch": "清除搜索",
+    "view": {
+      "grid": "网格",
+      "list": "列表",
+      "ariaLabel": "视图"
+    },
+    "back": "返回",
+    "breadcrumb": "路径导航",
+    "sort": "排序"
+  },
+  "attribution": {
+    "createdBy": "由 {name} 创建",
+    "lastModifiedBy": "最后由 {name} 修改"
+  },
+  "share": {
+    "shared": "已分享",
+    "share": "分享",
+    "whoCanUseSkill": "谁可以使用此技能",
+    "changeFailed": "无法更改此技能的使用者。",
+    "shareNamed": "分享 {name}",
+    "dismiss": "关闭",
+    "audienceLocked": "只有其所有者或管理员可以更改谁能使用它。",
+    "updating": "正在更新…",
+    "update": "更新"
+  },
+  "recipients": {
+    "directoryFailed": {
+      "unreachable": "无法加载你所在组织的通讯录",
+      "refused": "MindsHub 拒绝列出你所在组织的成员"
+    },
+    "teamsFailed": {
+      "unreachable": "无法加载你的团队。请稍后重试。",
+      "refused": "MindsHub 拒绝列出你的团队。"
+    },
+    "namesFailed": {
+      "unreachable": "无法加载部分姓名。",
+      "refused": "MindsHub 拒绝提供部分成员的姓名。"
+    },
+    "retry": "重试",
+    "label": {
+      "emails": "通过电子邮件添加成员",
+      "external": "添加团队、成员或电子邮件地址",
+      "org": "添加团队或成员"
+    },
+    "placeholder": {
+      "emails": "通过电子邮件添加成员…",
+      "external": "添加团队、成员或电子邮件地址…",
+      "org": "添加团队或成员…"
+    },
+    "team": "团队",
+    "teams": "团队",
+    "invite": "邀请 {email}",
+    "add": "添加 {email}",
+    "outside": "（{org} 外部）",
+    "peopleIn": "{org} 的成员",
+    "noOneElse": "{org} 中还没有其他成员。",
+    "invitePeople": "邀请成员 ↗",
+    "everyoneInOrgAdded": "{org} 中的所有人均已添加。",
+    "thatsYou": "这是你",
+    "onlyPeopleIn": "仅限 {org} 的成员",
+    "noMatches": "没有匹配项",
+    "everyoneAdded": "你可以添加的人均已添加。",
+    "truncated": "显示前 {count} 位成员。",
+    "suggestions": "建议",
+    "notAdded": "未添加：{list}",
+    "ariaLabel": "收件人",
+    "checking": "正在检查…",
+    "unknownTeam": "未知团队",
+    "personNotLoaded": "无法加载姓名",
+    "loading": "正在加载…",
+    "remove": "移除 {name}",
+    "removePerson": "移除成员",
+    "outsideOrg": "{org} 外部",
+    "removeTooltip": "移除",
+    "more": "还有 {count} 项",
+    "sharedWith": "分享对象",
+    "whoCanUseIt": "谁可以使用",
+    "reason": {
+      "notEmail": "不是电子邮件地址",
+      "self": "这是你",
+      "notInOrg": "不在 {org} 中",
+      "uncheckedUnreachable": "无法检查 {org} 的成员，请重试",
+      "uncheckedRefused": "MindsHub 拒绝检查 {org} 的成员",
+      "uncheckedThrottled": "MindsHub 正在限制请求，请一分钟后重试"
+    }
+  },
+  "skillCard": {
+    "noContent": "_无内容。_",
+    "skill": "技能",
+    "downloaded": "已下载",
+    "savedShared": "已保存并分享给所有人",
+    "savedToSkills": "已保存到你的技能",
+    "noPermission": "你无权替换此共享技能。",
+    "verifyFailed": "无法验证你是否有权替换此共享技能。请重试。",
+    "sharingKept": "已覆盖保存现有技能。使用者未发生变化：请在技能页面上设置。",
+    "saveFailed": "无法保存技能。",
+    "saved": "已保存",
+    "draft": "草稿 · 未保存",
+    "download": "下载技能",
+    "saving": "正在保存…",
+    "readOnly": "只读",
+    "save": "保存技能"
+  },
+  "skillDetail": {
+    "you": "你",
+    "unknown": "未知",
+    "audienceAriaLabel": "分享对象：{names}。显示所有人",
+    "allProjects": "所有项目",
+    "disabledForEveryone": "已为所有人停用",
+    "disabled": "已停用",
+    "actions": "技能操作",
+    "details": "详细信息",
+    "project": "项目",
+    "everyone": "所有人",
+    "builtIn": "内置",
+    "owner": "所有者",
+    "updated": "更新时间",
+    "instructions": "说明",
+    "noInstructions": "此技能还没有说明。",
+    "addInstructions": "添加说明"
+  },
+  "skillModal": {
+    "noEditPermission": "你无权编辑此共享技能。",
+    "unknownError": "未知错误",
+    "shareUpdateFailed": "技能已保存，但无法更新分享设置：{reason}。",
+    "shareCreateFailed": "技能已创建，但无法分享：{reason}。你可以从技能菜单中分享它。",
+    "editTitle": "编辑技能",
+    "addTitle": "添加技能",
+    "subtitle": "为技能填写名称、描述和说明。",
+    "ownSharedChangeNote": "此技能已分享，你的更改会在分享对象下次获得回答时生效。",
+    "label": "名称",
+    "description": "描述",
+    "descriptionPlaceholder": "根据近期工作生成每周状态报告。在被要求提供进展或进度总结时使用。",
+    "instructionsPlaceholder": "将我近期的工作总结为三个部分：成果、阻碍和下一步计划。语气专业但不生硬…",
+    "settings": "技能设置",
+    "ownerOnlyHint": "只有所有者可以更改谁能使用它",
+    "cancel": "取消",
+    "retrySharing": "重试分享",
+    "save": "保存",
+    "create": "创建"
+  },
+  "skills": {
+    "sharing": {
+      "updated": "已更新 {name} 的使用者。",
+      "alwaysOnDetail": "它包含在每个任务中，且只有其所有者可以更改。",
+      "readOnlyOrgNote": "你可以使用它，但无法更改。"
+    },
+    "sharedSkillNote": "此技能是他人分享给你的，无法在此处更改。",
+    "lockedHint": {
+      "sharedWithYou": "他人分享给你",
+      "adminOrCreator": "管理员或创建者"
+    },
+    "readOnly": {
+      "builtin": "内置技能为只读。",
+      "other": "只读 — 只有创建者或组织管理员可以更改此技能。"
+    },
+    "switch": {
+      "on": "开启：Anton 可以使用此技能",
+      "off": "关闭：Anton 将不使用此技能",
+      "onForMe": "为我开启：Anton 可以在你的任务中使用此技能",
+      "offForMe": "为我关闭：Anton 将不在你的任务中使用此技能",
+      "disabledForEveryoneHint": "已被编辑者为所有人停用",
+      "noPermission": "你无权启用或停用此技能。",
+      "ownSharedHint": "{label}。开启或关闭会对所有分享对象生效。"
+    },
+    "updatedAge": "更新于 {age}",
+    "sharedBy": "由 {email} 分享",
+    "sharedByPrefix": "由 {email} 分享。",
+    "upload": {
+      "failed": "无法上传技能。",
+      "title": "上传技能文件",
+      "subtitle": "上传 .md 或 .skill 文件以导入技能。",
+      "sizeKb": "{size} KB",
+      "dropHint": "拖放文件或点击上传",
+      "requirements": "文件要求",
+      "requirementMd": ".md 或 .skill 文件必须包含 YAML 格式的技能名称和描述",
+      "requirementZip": ".zip 文件必须包含 SKILL.md 文件",
+      "uploading": "正在上传…",
+      "upload": "上传"
+    },
+    "create": {
+      "write": "编写技能说明",
+      "cowork": "使用 {product} 创建",
+      "coworkPrefill": "我们用你的 /skill-creator 技能一起创建一个技能吧。先问问我这个技能应该做什么。",
+      "upload": "上传技能",
+      "button": "创建技能"
+    },
+    "sort": {
+      "name": "名称",
+      "recent": "最近"
+    },
+    "toast": {
+      "createdShared": "已创建并分享 {name}。",
+      "savedUpdatedSharing": "已保存 {name} 并更新了使用者。",
+      "savedSharedEveryone": "已保存 {name} 并分享给所有人。",
+      "savedStoppedSharing": "已保存 {name} 并停止分享。",
+      "saved": "已保存 {name}。",
+      "removed": "已移除 {name}。",
+      "removeFailed": "无法移除技能。",
+      "sharedEveryone": "已将 {name} 分享给所有人。",
+      "stoppedSharing": "已停止分享 {name}。",
+      "updateFailed": "无法更新技能。",
+      "onForEveryone": "已为所有人开启 {name}。",
+      "offForEveryone": "已为所有人关闭 {name}。"
+    },
+    "menu": {
+      "disableEveryone": "为所有人停用",
+      "enableEveryone": "为所有人启用",
+      "tryInChat": "在聊天中试用",
+      "edit": "编辑",
+      "noEditPermission": "你无权编辑此技能。",
+      "uninstall": "卸载",
+      "noUninstallPermission": "你无权卸载此技能。"
+    },
+    "sharedAriaLabel": "已分享：{name}",
+    "moreActionsFor": "{name} 的更多操作",
+    "moreActions": "更多操作",
+    "title": "技能",
+    "editNamed": "编辑 {name}",
+    "subtitle": "通过针对特定任务的技能扩展 {product} 的能力",
+    "searchPlaceholder": "搜索技能",
+    "countFiltered": "{shown} / {total} 个技能",
+    "count": "{count, plural, other {# 个技能}}",
+    "sharingSettings": "分享设置",
+    "empty": {
+      "title": "还没有已保存的技能",
+      "description": "编写技能、上传 SKILL.md，或让 {product} 为你创建一个。",
+      "action": "编写你的第一个技能"
+    },
+    "remove": {
+      "title": "移除技能“{name}”？",
+      "ownSharedNote": "此技能已分享，所有分享对象也将失去它。"
+    },
+    "disableEveryone": {
+      "title": "为所有分享对象关闭 {name}？",
+      "message": "在编辑者重新开启之前，Anton 不会在任何人的任务中使用它。"
+    }
+  },
+  "connections": {
+    "connect": "连接",
+    "sortEngine": "引擎",
+    "countFiltered": "{shown} / {total} 个连接",
+    "count": "{count, plural, other {# 个连接}}",
+    "drive": {
+      "noAccountEmail": "此连接没有记录账户电子邮件地址 — 请尝试重新连接。",
+      "pickerFailed": "无法打开 Drive 文件选择器。",
+      "title": "Drive 文件",
+      "intro": "此连接只能读取它自己创建的文件。在下方选择任意文件（可多选，也可选择整个共享云端硬盘），即可同样授予访问权限。",
+      "waiting": "已在浏览器中打开 — 请在那里选择文件，然后返回。返回后，确认访问权限可能需要几秒钟。",
+      "select": "从 Google Drive 选择文件",
+      "failed": "Google 实际上并未授予对{count, plural, other {这些文件}}的访问权限 — 请重新选择{count, plural, other {它们}}：",
+      "noFiles": "未选择任何文件。",
+      "granted": "已授予对 {count, plural, other {# 个文件}}的访问权限："
+    },
+    "reconnectRequired": "需要重新连接",
+    "expired": {
+      "own": "此连接的访问权限已过期或已被撤销。请重新连接以恢复访问，或从其卡片断开连接。",
+      "shared": "此连接的访问权限已过期或已被撤销。分享给你的人可以重新连接它。",
+      "operator": "此连接的访问权限已过期或已被撤销。你的运营方可以重新连接它。"
+    },
+    "sharedNote": "此连接是他人分享给你的，无法在此处更改。",
+    "operatorNote": "此连接由你的运营方提供，无法在此处更改。",
+    "lastUpdated": "上次更新",
+    "connected": "已连接",
+    "credentials": "凭据",
+    "secretSaved": "•••••••• 已保存",
+    "sharepoint": {
+      "title": "密钥和站点",
+      "intro": "更改此连接可读取的应用密钥或站点。{product} 会在保存前向 Microsoft 验证密钥。",
+      "edit": "编辑密钥和站点"
+    },
+    "toolAccess": {
+      "title": "工具访问权限",
+      "intro": "Anton 可以通过此连接的工具执行哪些操作。更改此项无需重新连接。",
+      "write": "读写",
+      "none": "无工具访问权限"
+    },
+    "close": "关闭",
+    "reconnectConfirm": {
+      "title": "重新连接 {name}？",
+      "sharepoint": "你将更新它的密钥和站点。在新密钥通过验证并保存之前，它会保持原样。",
+      "shared": "此连接已分享，请连接同一账户，以便为所有分享对象直接更新它。",
+      "own": "现有连接将被移除，你需要从头重新连接。"
+    },
+    "reconnect": "重新连接",
+    "theAgent": "智能体",
+    "title": "连接应用和数据",
+    "subtitle": "将 {agent} 连接到你已在使用的工具，并在其中自动完成工作。",
+    "searchPlaceholder": "搜索连接",
+    "empty": {
+      "title": "还没有连接任何应用",
+      "description": "连接器决定了 {agent} 如何与你协作。接入你已在使用的应用和数据库，{agent} 就会在其中自动完成工作。",
+      "action": "连接你的第一个应用"
+    },
+    "disconnectFailed": "无法断开连接",
+    "ok": "好"
+  },
+  "utilities": {
+    "title": "实用工具"
+  },
+  "memory": {
+    "title": "记忆",
+    "subtitle": "智能体可在各个任务中重复使用的个人资料、规则和经验。",
+    "scope": {
+      "global": "全局",
+      "deployment": "部署",
+      "projectMemory": "项目记忆",
+      "project": "项目 · {name}"
+    },
+    "readOnly": {
+      "deployment": "只读。这些规则由你的运营方为所有人设定，每个回答都会遵循。",
+      "ownAuto": "仅你可见。{product} 会在你工作时自动保存此内容，因此无法编辑。你可以删除它。",
+      "ownAutoEditTitle": "{product} 会自动保存此记忆，因此无法编辑。",
+      "shared": "只读。只有记忆的作者或组织管理员可以更改。"
+    },
+    "noEditPermission": "你无权编辑此共享记忆。",
+    "noDeletePermission": "你无权删除此共享记忆。",
+    "noCategory": "未选择记忆类别。",
+    "pickProject": "请为此记忆选择一个项目。",
+    "saved": "已保存“{name}”记忆。",
+    "saveFailed": "无法保存记忆。",
+    "delete": {
+      "title": "删除“{name}”记忆？",
+      "message": "这将清除已保存的内容。",
+      "confirm": "删除"
+    },
+    "deleted": "已删除“{name}”记忆。",
+    "deleteFailed": "无法删除记忆。",
+    "resetDone": "你的记忆已重置，所有已学到的内容均已清除。",
+    "resetFailed": "无法重置你的记忆。",
+    "reset": {
+      "title": "重置你的记忆？",
+      "message": "这将删除 {product} 为你学到的一切：你的个人资料、规则和经验，涵盖你的所有项目。你的下一个问题将从零开始。部署的规则会保留。此操作无法撤销。",
+      "confirm": "重置我的记忆",
+      "busy": "正在重置…"
+    },
+    "empty": "未找到记忆条目。",
+    "selectHint": "选择一个记忆条目以查看详情。",
+    "active": "· 生效中"
+  },
+  "publish": {
+    "title": "分享",
+    "subtitle": "智能体可使用 Minds 凭据分享的 HTML 产物。",
+    "sharing": "正在分享…",
+    "sharedUrl": "已分享：{url}",
+    "shared": "已分享。",
+    "failed": "分享失败。",
+    "copied": "已将 URL 复制到剪贴板。",
+    "copyFailed": "无法复制 — 请选中上方的 URL 手动复制。",
+    "notReady": "分享前，请先在“设置”中配置 Minds API 密钥。",
+    "copyUrl": "复制 URL",
+    "open": "打开",
+    "empty": "输出文件夹中未找到 HTML 产物。",
+    "history": "分享历史"
+  },
+  "connectionCard": {
+    "disconnectTitle": "断开 {engine}/{name}？",
+    "disconnectShared": "此连接已分享，所有分享对象也将失去它。在你的运营方停止分享之前，新连接无法使用它的名称。",
+    "customTitle": "{title}（自定义连接器）",
+    "repairHint": "。由旧版本保存。请断开后重新连接。",
+    "reconnectNeeded": "需要重新连接",
+    "managed": "托管",
+    "removeDatasource": "{name} 将被移除，其存储的凭据也会被删除。使用它的对话将失去访问权限。",
+    "disconnect": "断开连接",
+    "custom": "自定义",
+    "legacy": "由旧版本保存。请断开后重新连接。",
+    "activateLabel": "{action, select, view {查看} reconnect {重新连接} other {管理}} {title}：{subtitle}{hint}",
+    "removing": "正在移除…"
+  },
+  "datasource": {
+    "failed": "操作未成功。",
+    "ariaLabel": "{name} 连接",
+    "pending": "正在检查连接。你的凭据已加密存储；检查完成后此处会更新。",
+    "couldNotConnect": "无法连接",
+    "lastCheckFailed": "上次检查未成功。",
+    "host": "主机",
+    "port": "端口",
+    "database": "数据库",
+    "schema": "Schema",
+    "username": "用户名",
+    "certificateTrust": "证书信任",
+    "trust": {
+      "prefer": {
+        "label": "服务器支持时加密",
+        "note": "服务器支持时连接会加密，但不会验证服务器身份，因此凭据可能会发送给响应该地址的任何一方。"
+      },
+      "system": {
+        "label": "公共证书颁发机构",
+        "note": "连接已加密，并会检查服务器的证书和主机名。"
+      },
+      "custom_ca": {
+        "label": "你提供的 CA 证书",
+        "note": "连接已加密，并会根据你提供的证书颁发机构进行检查。"
+      },
+      "encrypted": {
+        "label": "加密，但不检查证书",
+        "note": "连接已加密，但不会验证服务器身份，因此凭据可能会发送给响应该地址的任何一方。"
+      },
+      "disabled": {
+        "label": "不加密",
+        "note": "连接未加密：凭据、查询及其返回的行都以明文传输，传输路径上的任何人都能读取。"
+      }
+    },
+    "passwordNote": "密码由服务器加密保存，之后不会再显示。查询以只读方式运行。",
+    "working": "正在处理…",
+    "tryAgain": "重试",
+    "removeTitle": "移除 {name}？",
+    "removeMessage": "存储的凭据将被删除，使用此连接的对话将失去访问权限。你之后可以再次添加。"
+  },
+  "connectorPicker": {
+    "category": {
+      "crm": "CRM",
+      "sales-engagement": "销售互动",
+      "enrichment": "潜在客户信息补全",
+      "marketing": "营销自动化",
+      "analytics": "产品和网站分析",
+      "ads": "广告",
+      "support": "客服与帮助台",
+      "customer-success": "客户成功",
+      "revenue-intel": "收入智能",
+      "communication": "沟通",
+      "productivity": "效率与项目管理",
+      "scheduling": "日程安排",
+      "forms": "表单",
+      "documents": "文档与电子签名",
+      "billing": "账单与支付",
+      "accounting": "会计",
+      "hr": "人力资源",
+      "files": "文件",
+      "mobility": "出行与配送",
+      "logistics": "物流与运输",
+      "ai": "AI API",
+      "web-search": "网页搜索",
+      "maps": "地图与地理编码",
+      "public-data": "公共数据 API",
+      "engineering": "工程与 DevOps",
+      "observability": "可观测性与监控",
+      "database": "数据库",
+      "vector-db": "向量数据库",
+      "data": "数据基础设施",
+      "cloud": "云服务提供商",
+      "other": "其他"
+    },
+    "buildCustom": "构建自定义连接器",
+    "buildCustomDescription": "连接未列出的系统。Anton 会和你一起完成设置。",
+    "loadFailed": "无法加载连接器",
+    "title": "连接器目录",
+    "searchPlaceholder": "搜索连接器 — gmail、postgres、slack…",
+    "searchAriaLabel": "搜索连接器",
+    "filterBy": "筛选条件",
+    "allCategories": "所有类别",
+    "sortBy": "排序方式",
+    "byCategory": "按类别",
+    "byName": "名称（A–Z）",
+    "cloudNote": {
+      "before": "更多连接器即将在这里上线。其余连接器现已可在",
+      "link": "Cowork 桌面应用",
+      "after": "中使用。"
+    },
+    "loading": "正在加载连接器…",
+    "noMatchQuery": "没有与“{query}”匹配的连接器",
+    "buildDescription": "Anton 可以和你一起构建：它会询问如何访问该系统，然后设置并测试连接。",
+    "buildFor": "为“{query}”构建自定义连接器",
+    "noMatchInCategory": {
+      "before": "此类别中没有与",
+      "after": "匹配的连接器。"
+    },
+    "noMatch": {
+      "before": "没有与",
+      "after": "匹配的连接器。"
+    },
+    "noneAvailable": "暂无可用的连接器。",
+    "cloudAvailable": "可在此使用（MindsHub Cloud）",
+    "available": "可用的连接器",
+    "featured": "精选",
+    "desktopOnly": "可在 Cowork 桌面应用中使用的连接器"
+  },
+  "sharepoint": {
+    "folderListFailed": "无法列出此文件夹的内容。",
+    "setup": {
+      "editTitle": "编辑 SharePoint 连接",
+      "connectTitle": "连接 SharePoint",
+      "subtitle": "{product} 会在保存前向 Microsoft 验证密钥。",
+      "loadFailed": "无法加载已保存的连接。",
+      "saveFailed": "无法保存 SharePoint。",
+      "help": "管理员需在 Microsoft Entra 中注册一个应用，授予 Graph 应用程序权限 Sites.Selected 并完成管理员同意，创建客户端密码，然后为该应用授予此处列出的每个站点的读取权限。",
+      "steps": "设置步骤",
+      "name": "连接名称",
+      "nameHelp": "字母和数字，可用单个 - 或 _ 连接。",
+      "labelHelp": "已保存的名称可以在此更改，但不能删除。",
+      "tenantId": "目录（租户）ID",
+      "clientId": "应用程序（客户端）ID",
+      "clientSecret": "客户端密码",
+      "secretSaved": "已保存。留空即保持不变。",
+      "sites": "站点地址",
+      "sitesHelp": "每行一个，例如 https://contoso.sharepoint.com/sites/team。",
+      "howTo": "操作指南 · SharePoint"
+    },
+    "import": {
+      "title": "从 SharePoint 添加文件",
+      "subtitle": "副本将放在 {project} 的顶层。",
+      "noSites": "此连接未指定任何站点。请在“自定义”中编辑它以添加站点。",
+      "connectionLoadFailed": "无法加载此连接。",
+      "noLibraries": "此站点没有文档库。",
+      "librariesFailed": "无法列出此站点的文档库。",
+      "failed": "导入失败。",
+      "connection": "连接",
+      "site": "站点",
+      "library": "文档库",
+      "treeAriaLabel": "SharePoint 文件和文件夹",
+      "picked": "已选择 {count} / {max} 项。所选文件夹中的文件也会计入 {max} 个文件的上限。",
+      "importing": "正在导入…",
+      "importInto": "导入到 {project}",
+      "collapse": "折叠 {name}",
+      "expand": "展开 {name}",
+      "pick": "选择 {name}",
+      "emptyFolder": "此文件夹为空。",
+      "loadMore": "加载更多",
+      "imported": "已导入 {count, plural, other {# 个文件}}。",
+      "skipped": "已跳过 {count, plural, other {# 项}}：",
+      "done": "完成"
+    }
+  },
+  "dataVault": {
+    "howTo": "操作指南",
+    "formCrashed": "表单面板出错：",
+    "theProvider": "提供商",
+    "hero": {
+      "authorize": "使用 {provider} 授权",
+      "helper": "在浏览器中打开 {provider} 授权 — 一键即可完成连接。"
+    },
+    "howToLink": "如何操作？",
+    "pending": {
+      "title": "正在检查连接",
+      "subtitle": "你的凭据已加密存储。",
+      "note": "这可能需要一点时间。结果将显示在“连接应用和数据”中，如果检查未成功，你可以在那里重试。"
+    },
+    "viewConnections": "查看连接",
+    "driveNote": "此连接可以访问它创建的文件，以及你自行选择的文件 — 在聊天的 + 菜单中使用“从 Google Drive 添加文件”，或在此连接的设置中使用“从 Google Drive 选择文件”。",
+    "viewConnectors": "查看连接器 →",
+    "required": "{field} 为必填项。",
+    "labelPlaceholder": "例如 prod-db",
+    "unskip": "取消跳过",
+    "skip": "跳过",
+    "skipped": "已跳过 — 智能体会自行处理这一项。",
+    "submit": "提交",
+    "saveChanges": "保存更改",
+    "howToTitle": "操作指南 · {name}",
+    "recommended": "推荐",
+    "otherOptions": "查看连接 {provider} 的其他方式",
+    "pickMethod": "选择连接方式：",
+    "backToOptions": "返回选项",
+    "saved": {
+      "now": "已保存到数据保险库。{product} 现在可以在任务中使用此连接。",
+      "can": "已保存到数据保险库。{product} 可以在任务中使用此连接。",
+      "agent": "已保存到数据保险库。智能体可以在任务中使用此连接。"
+    },
+    "providerConnected": "{provider} 已连接",
+    "oauth": {
+      "waiting": "正在等待 {provider} 登录…",
+      "noConfig": "没有“{engine}”的 OAuth 配置。",
+      "startFailedServer": "无法开始 {provider} 登录。服务器是否正在运行？",
+      "startFailed": "无法开始 {provider} 登录。",
+      "failed": "OAuth 流程失败。",
+      "signInFailed": "登录失败。请重试。",
+      "missingClientId": "缺少 OAuth 客户端 ID — 请填写下方的“Client ID”字段。",
+      "incompleteMeta": "连接器规范中的 OAuth 元数据不完整（auth_url / token_url / scopes）。",
+      "noBrowserDesktop": "此连接器无法在浏览器中授权（没有连接器 ID）。请使用桌面应用。",
+      "noBrowser": "此连接器无法在此网页界面中授权。",
+      "startFlowFailed": "无法开始 OAuth 流程。",
+      "expired": "登录在完成前已过期。请重试。",
+      "timeout": "等待 OAuth 登录完成时超时。"
+    },
+    "posthog": {
+      "project": "项目 {id}",
+      "none": "此个人 API 密钥无法访问任何 PostHog 项目。请手动输入项目 ID，或检查密钥的访问权限。",
+      "choose": "选择要连接的 PostHog 项目。",
+      "label": "PostHog 项目",
+      "help": "选择要连接的 PostHog 项目，或直接在“Project ID”字段中输入其数字 ID。",
+      "findFailed": "找不到 PostHog 项目。"
+    },
+    "saveFailed": "无法保存连接。",
+    "datasource": {
+      "retryNote": "选择“重试”会重新打开表单，需要再次输入密码。",
+      "ready": "{name} 已可在此工作区中使用。"
+    },
+    "staleVersion": "自你打开后，此连接已发生更改。请关闭并重新打开，以编辑当前版本。",
+    "submitFailed": "无法提交表单",
+    "closeForm": "关闭表单",
+    "testing": "正在测试连接…",
+    "connectionFailed": "连接失败",
+    "dismissStatus": "关闭状态信息",
+    "replace": {
+      "title": "此连接已存在",
+      "message": "已存在具有这些详细信息的 {provider} 连接。用此连接替换它，或取消以保留原连接。",
+      "messageLabeled": "已存在具有这些详细信息的 {provider} 连接（“{label}”）。用此连接替换它，或取消以保留原连接。",
+      "confirm": "替换"
+    },
+    "labelRequired": "名称为必填项。"
+  },
+  "legacyConnect": {
+    "shapeChecked": "已检查凭据格式。",
+    "missingFields": "缺少必填字段：{fields}",
+    "fieldsPresent": "必填字段已齐全。保存此连接后，智能体任务即可使用。",
+    "validateFailed": "无法验证数据源凭据。",
+    "saved": "已将 {name} 保存到数据保险库。",
+    "saveFailed": "无法保存数据源连接。",
+    "remove": {
+      "title": "移除数据源？",
+      "message": "{name} 将被移除。"
+    },
+    "removed": "已移除 {name}。",
+    "removeFailed": "无法移除数据源连接。",
+    "savedConnections": "已保存的连接",
+    "ready": "可用于数据源工具",
+    "savedInVault": "已保存在数据保险库中",
+    "empty": "未找到数据保险库连接。",
+    "authMethod": "身份验证方式",
+    "nameLabel": "连接名称（可选）",
+    "namePlaceholder": "连接名称（可选）",
+    "required": "必填：{fields}",
+    "none": "无",
+    "noFields": "已安装的注册表中，此引擎没有提供可编辑的凭据字段。",
+    "checking": "正在检查",
+    "checkFields": "检查字段",
+    "saving": "正在保存",
+    "saveConnection": "保存连接"
+  }
+}
