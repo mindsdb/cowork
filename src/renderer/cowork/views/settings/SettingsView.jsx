@@ -3,14 +3,14 @@ import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { isModelLocked, isModelRestricted } from '../../lib/modelCatalog';
+import { isModelLocked, isModelRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
 import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, PROBE_POLICY_UNAVAILABLE_SENTENCE, PROBE_RATE_LIMITED_SENTENCE } from '../../lib/providerStatus';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy } from '../../lib/usageWarnings';
+import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../../lib/usageWarnings';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
@@ -19,6 +19,7 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
@@ -127,6 +128,18 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       </div>
     );
   }
+  if (notice.kind === 'budget_reached') {
+    // Credits do not lift a budget, so the link goes to Budgets, not funds.
+    return (
+      <div className="text-[12px] leading-[1.6] grid gap-px">
+        <div>
+          <span className="text-danger">{`Your organization's budget is used up. ${budgetExceededCopy({ usage })}`} </span>
+          <ViewBudgetsLink>View budgets →</ViewBudgetsLink>
+        </div>
+        {byok}
+      </div>
+    );
+  }
   if (notice.kind === 'slow_down') {
     return (
       <div className="text-[12px] leading-[1.6] text-ink-3">
@@ -144,12 +157,28 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   return null;
 }
 
+/** The Budgets tab for this session's organization; credits do not lift a budget. */
+function ViewBudgetsLink({ children }) {
+  const budgetsUrl = useBudgetsUrl();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        trackBillingOpened('budget_notice');
+        return host.openExternal(budgetsUrl);
+      }}
+      className={LINK_BTN}
+    >{children}</button>
+  );
+}
+
 /* The line under a role's picker when the CURRENT model cannot run. The
    stored pin is never rewritten, so a wallet that drains, or an admin rule
    that lands, leaves the user sitting on a model they can no longer run. This
    names it and gives the way out. A restricted model has no billing way out,
-   so its line has no link. Exported for the visual fixture. */
-export function UnavailableModelHint({ label, restricted }) {
+   so its line has no link; a budget-stopped one links to Budgets. Exported
+   for the visual fixture. */
+export function UnavailableModelHint({ label, restricted, budgetReached = false }) {
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{label} is unavailable. Choose another model or contact your administrator.</div>;
   }
@@ -157,6 +186,14 @@ export function UnavailableModelHint({ label, restricted }) {
     return (
       <div className="text-[11.5px] text-ink-3">
         {label} is restricted by an admin in your organization. Choose another model.
+      </div>
+    );
+  }
+  if (budgetReached) {
+    return (
+      <div className="text-[11.5px] text-ink-3">
+        {label} can't run because your organization's budget is used up.{' '}
+        <ViewBudgetsLink>View budgets</ViewBudgetsLink>
       </div>
     );
   }
@@ -1874,6 +1911,7 @@ export default function SettingsView({
                                 <UnavailableModelHint
                                   label={displayModelLabel(curModel, settings.modelLabels || {})}
                                   restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                                  budgetReached={isModelBudgetReached(modelEnabled, settings.modelDisabledReasons, curModel)}
                                 />
                               )}
                             </>);

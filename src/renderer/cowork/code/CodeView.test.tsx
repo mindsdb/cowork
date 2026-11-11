@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => ({
   useCodingSession: vi.fn(),
   composerRender: vi.fn(),
   trackBillingOpened: vi.fn(),
-  openCodeExternalUrl: vi.fn(async () => true),
+  openCodeExternalUrl: vi.fn(async (_url: string) => true),
   create: vi.fn(),
 }));
 
@@ -311,6 +311,44 @@ describe('CodeView session-list reconciliation', () => {
 
     expect(mocks.trackBillingOpened).toHaveBeenCalledWith('included_allowance_exhausted', 'code');
     expect(mocks.openCodeExternalUrl).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it("opens the session organization's Budgets tab from View budgets in the composer lip", () => {
+    const failed: CodingSession = { ...session('task-1'), status: 'failed', run_status: 'failed', last_error: 'The turn failed.' };
+    const budget: CodingEvent = {
+      schema_version: 1,
+      seq: 1,
+      timestamp: '2026-08-21T09:05:00Z',
+      type: 'error',
+      title: '',
+      text: 'The turn failed.',
+      phase: 'failed',
+      data: { code: 'budget_exceeded', detail: 'upstream 402' },
+    };
+    mocks.useCodingSession.mockReturnValue({
+      session: failed,
+      events: [budget],
+      latestEvents: { error: { latest: budget } },
+      git: null,
+      diff: [],
+      loading: false,
+      error: '',
+      refresh: vi.fn(async () => {}),
+      refreshReview: vi.fn(async () => {}),
+    });
+    renderCode({
+      sessions: [failed],
+      selectedId: failed.id,
+      account: { name: 'Ian', email: 'ian@example.com', orgId: 'org-123', sub: 'user-9' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'View budgets' }));
+
+    expect(mocks.trackBillingOpened).toHaveBeenCalledWith('budget_exceeded', 'code');
+    const opened = new URL(mocks.openCodeExternalUrl.mock.calls[0][0]);
+    expect(opened.searchParams.get('tab')).toBe('budgets');
+    expect(opened.searchParams.get('organization')).toBe('org-123');
+    expect(opened.searchParams.get('subject')).toBe('user-9');
   });
 
   it('opens project history instead of starting a task when a project is selected', async () => {
