@@ -2987,7 +2987,8 @@ export async function voiceOperate(messages, snapshot) {
     method: 'POST',
     timeoutMs: 40_000,
     headers: await hubHeaders(),
-    body: JSON.stringify({ messages, snapshot }),
+    // The time zone, so the operator counts dates from the person's today.
+    body: JSON.stringify({ messages, snapshot, timezone: localTimeZone() || undefined }),
   });
 }
 

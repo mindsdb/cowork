@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles, voiceOperate } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -1975,5 +1975,22 @@ describe('SharePoint routes', () => {
     expect(err.message).toBe(detail);
     expect(err.status).toBe(status);
     expect(err.code).not.toBe('sharepoint_unavailable');
+  });
+});
+
+describe('voiceOperate', () => {
+  it("sends the browser's time zone so dates count from the person's today", async () => {
+    globalThis.fetch = vi.fn(async () => jsonRes({ content: 'Done.', tool_calls: [] }));
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    await voiceOperate([{ role: 'user', content: 'Flights the weekend after Thanksgiving.' }], 'Projects: general');
+
+    const [url, init] = globalThis.fetch.mock.calls[0];
+    expect(String(url)).toContain('/voice/operate');
+    expect(JSON.parse(init.body)).toEqual({
+      messages: [{ role: 'user', content: 'Flights the weekend after Thanksgiving.' }],
+      snapshot: 'Projects: general',
+      timezone: zone,
+    });
   });
 });
