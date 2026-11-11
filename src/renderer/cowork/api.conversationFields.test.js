@@ -17,6 +17,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
 vi.mock('./lib/analytics', () => ({ setAntonInstallId: vi.fn() }));
 
 import { fetchSessions, fetchSession } from './api';
+import { chatTaskRow } from './components/task/TaskRows';
 
 const jsonRes = (body) => ({
   ok: true,
@@ -60,7 +61,23 @@ describe('a task built from the conversation list', () => {
     expect(task.projectPath).toBe('/data/projects/general');
     expect(task.updatedAt).toBe('2026-11-07T10:00:00Z');
     expect(task.createdAt).toBe('2026-11-07T09:00:00Z');
-    expect(task.subtitle).not.toBe('');
+    expect(task.subtitle).toBe('');
+  });
+
+  it('shows one age on its task row, however long after the list loaded', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-07T10:05:30Z'));
+      global.fetch = vi.fn(async () => jsonRes({ conversations: [listItem()] }));
+      const [task] = await fetchSessions();
+
+      vi.setSystemTime(new Date('2026-11-07T10:15:30Z'));
+      const row = chatTaskRow(task);
+      expect(row.updatedAt).toBe('2026-11-07T10:00:00Z');
+      expect(row.subtitle).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('has no effort when the chat never saved one', async () => {

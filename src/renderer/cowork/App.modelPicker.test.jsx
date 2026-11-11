@@ -184,6 +184,25 @@ describe("the operator's model picker", () => {
     const stream = await send(user, 'Say hello again');
     expect(stream.kind).toBe('reply');
     expect(stream.opts.model).toBe(sent);
+    // A pin the picker no longer offers goes out as no model and keeps its pin.
+    expect(stream.opts.resetPicks).toEqual([]);
+  });
+
+  it('resets the saved model when a reopened conversation goes back to the operator default', async () => {
+    setMode('default');
+    spies.fetchSessions.mockResolvedValue([
+      { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general', model: 'opus-5-5' },
+    ]);
+    spies.fetchSessionResult.mockResolvedValue({ status: 'ok', task: savedTask('opus-5-5') });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText('Alpha task'));
+    await user.click(await screen.findByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: 'Operator default' }));
+    const stream = await send(user, 'Say hello again');
+    expect(stream.kind).toBe('reply');
+    expect(stream.opts.model).toBe(MODEL_ROUTER_ID);
+    expect(stream.opts.resetPicks).toEqual(['model']);
   });
 });
 

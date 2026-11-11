@@ -583,6 +583,19 @@ export default function App() {
   );
 }
 
+// The picks a send to `task` goes back to the default on: its own Model Router
+// or "Operator default" pick, and an effort the composer left on "Default"
+// (''). Both go out as no value, which cowork-server reads as "keep the saved
+// pick", as it must for a pinned model the picker no longer offers. Naming
+// them in reset_picks makes the server clear them, so a reload shows the
+// default too. A same-tick override sends a value, so it resets nothing.
+export function turnResetPicks(task, { modelOverride, effortOverride } = {}) {
+  return [
+    ...(!modelOverride && task?.model === MODEL_ROUTER_ID ? ['model'] : []),
+    ...(effortOverride == null && task?.reasoningEffort === '' ? ['reasoning_effort'] : []),
+  ];
+}
+
 // Cmd+K's starting list before anything is typed: the five most recently
 // updated tasks and the first three projects, from state App already holds.
 export function searchRecents(tasks, projects) {
@@ -4358,6 +4371,7 @@ function AppCore() {
       projectPath: taskProjectPath,
       model: taskModel,
       reasoningEffort: taskEffort,
+      resetPicks: turnResetPicks(targetTask, opts),
       attachmentIds,
       disabledConnections: disabledForSend,
       browserOff: browserOffForSend,

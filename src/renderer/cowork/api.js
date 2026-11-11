@@ -12,7 +12,6 @@ import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStre
 import { isAntonConfigError } from './lib/antonErrors';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
-import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
@@ -380,10 +379,9 @@ function _hydrateAssistantEvents(messages) {
 }
 
 function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
-  // Server stores conversations under <project>/.anton/episodes/ and
-  // returns the project NAME on each conversation meta. We carry both:
-  //   projectName — the canonical id from the server
-  //   projectPath — resolved later from the projects list (App.jsx)
+  // The server returns each conversation's project by name, id and folder:
+  // projectName, projectId and projectPath below. The id is the stable one;
+  // a rename changes the name.
   //
   // Each assistant message may carry an `events` array — the SSE log
   // captured server-side for that turn. Replaying it through the live
@@ -408,7 +406,9 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
   return {
     id: conv.id,
     title: conv.title || conv.preview || conv.id || 'Untitled task',
-    subtitle: relativeAge(conv.updatedAt || conv.createdAt) || '',
+    // The server sends no subtitle. A row ages from updatedAt when it renders;
+    // an age stamped here goes stale, and chatTaskRow shows it as a second line.
+    subtitle: '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
     // 'loading' until a real fetch resolves — every sidebar-listed
@@ -727,7 +727,7 @@ function idleWindowAfter(msg, idleTimeoutMs) {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
@@ -751,7 +751,8 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // picker (lib/modelPicker) sends a model, and App hands it only the
   // models that picker offers. With it off, all callers use
   // operator-configured role settings, including restored tasks.
-  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
+  const sendsPicks = PLATFORM_UI || modelPickerMode() !== 'off';
+  const sentModel = (sendsPicks && model && model !== MODEL_ROUTER_ID) ? model : null;
   // A per-task effort is available with platform UI on, and under the
   // operator's picker for an effort it lets users pick on the model this
   // question sends, a retried task's saved effort included. Omit the key
@@ -773,6 +774,10 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
           ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
+          // The picks this question goes back to the default on (App's
+          // turnResetPicks), so the server clears the saved ones. Only where
+          // this client sends picks at all, and only when there is one.
+          ...(sendsPicks && resetPicks.length ? { reset_picks: resetPicks } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
