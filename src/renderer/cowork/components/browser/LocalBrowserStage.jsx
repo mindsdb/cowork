@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { diagnostic } from '../../../../shared/diagnostics';
+import { BrowserNote } from './BrowserNote';
 import Ico from '../Icons';
 import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
@@ -276,7 +277,7 @@ export function LocalBrowserStage({ sessionId, agentLabel = 'Anton', onClose, fl
      pane at its narrowest. */
   const below = state && !closed && (
     <>
-    <p className="browser-panel__note">{note}</p>
+    <BrowserNote agentLabel={agentLabel}>{note}</BrowserNote>
     <div className="browser-panel__status" role="status">
       {state.loading && <Spinner />}
       <span className="browser-panel__site">{site || 'New tab'}</span>

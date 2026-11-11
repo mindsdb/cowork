@@ -6,6 +6,8 @@ import {
   browserApprovalIds,
   declineBrowserApproval,
   isBrowserApprovalCard,
+  isPositionClickCard,
+  POSITION_AUTO_APPROVE_MS,
   recordBrowserApproval,
 } from '../lib/browserApproval';
 import { host } from '../../platform/host';
@@ -50,6 +52,16 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   const promptId = useId();
 
   const settled = !reopened && (Boolean(answer) || expired || gone);
+
+  /* A position card is approved by the app (App.jsx approvePositionClicks):
+     it stays hidden, and shows only if that approval hasn't landed in time. */
+  const positionCard = !reopened && isPositionClickCard(q);
+  const [positionLate, setPositionLate] = useState(false);
+  useEffect(() => {
+    if (!positionCard || settled) return undefined;
+    const timer = setTimeout(() => setPositionLate(true), POSITION_AUTO_APPROVE_MS);
+    return () => clearTimeout(timer);
+  }, [positionCard, settled]);
 
   // Only a multi-line prompt is markdown: the ask_user tool asks for one
   // plain-text line, and markdown would lose text in it ("<div>" vanishes,
@@ -180,6 +192,8 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       ? { label: 'Send', onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
       : null,
   };
+
+  if (positionCard && (answer || !positionLate)) return null;
 
   return (
     // No kind row: the turn's "Question for you" step already names the card.

@@ -153,6 +153,7 @@ import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { desktopTaskSession, latestBrowserSessionIdIn } from './lib/browserSession';
+import { autoApprovePositionClick, isPositionClickCard } from './lib/browserApproval';
 import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
 import { Outlet } from 'react-router-dom';
 
@@ -263,7 +264,8 @@ function fireFirstResponse(result) {
  */
 export function pendingQuestionFor(steps) {
   const pending = (steps || []).filter(
-    (s) => s.badge === 'AskUser' && !s.data?.answer,
+    // A position card is answered by the app itself, never by typed text.
+    (s) => s.badge === 'AskUser' && !s.data?.answer && !isPositionClickCard(s.data),
   );
   if (pending.length === 0) return null;
   const last = pending[pending.length - 1];
@@ -1320,6 +1322,20 @@ function AppCore() {
   // time a question appears while messages are queued, hands them back to
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
+  // Clicks by position are approved for the person, once per card, and never
+  // shown (lib/browserApproval.js). A card the approval didn't land on shows
+  // after POSITION_AUTO_APPROVE_MS, so the person can still answer it.
+  const autoApprovedRef = useRef(new Set());
+  const approvePositionClicks = (taskIds, steps) => {
+    (steps || []).forEach((s) => {
+      const questionId = s.badge === 'AskUser' && !s.data?.answer ? s.data?.question_id : null;
+      if (!questionId || autoApprovedRef.current.has(questionId) || !isPositionClickCard(s.data)) return;
+      autoApprovedRef.current.add(questionId);
+      void autoApprovePositionClick({ conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer })
+        .catch(() => false);
+    });
+  };
+
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
     // Every stream's onEvent funnels through here (after dropping the events of
     // a superseded stream), so reaching this line means it delivered data.
@@ -1333,6 +1349,7 @@ function AppCore() {
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
+    approvePositionClicks(taskIds, steps);
     const plan = planQueueDrain(
       steps,
       taskIds,

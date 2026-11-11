@@ -95,3 +95,51 @@ export async function declineBrowserApproval(ids, decline = declineBrowserStep) 
     if (err?.status !== 404) diagnostic('renderer.cowork.lib.browserApproval', 'WARNING', 'browser_decline_failed', err);
   }
 }
+
+/* Clicks by position: the agent's browser asks once per page before it
+   clicks at a point its element list doesn't name. That card is only noise
+   for the person (the point is on the page the agent is already working on),
+   so the app approves it itself and never shows it. A step that commits
+   something (a purchase, a message, a deletion) keeps its card. */
+export const POSITION_APPROVE_DETAIL = 'Allow clicks by position on this page';
+
+/* How long a position card waits on the automatic approval before it shows,
+   so a failed one still reaches the person. */
+export const POSITION_AUTO_APPROVE_MS = 4000;
+
+/**
+ * Whether a question asks to approve clicks by position.
+ *
+ * @param {{ options?: Array<{ value?: string, detail?: string }> } | null | undefined} data
+ * @returns {boolean}
+ */
+export function isPositionClickCard(data) {
+  return (data?.options || []).some(
+    (o) => o?.value === BROWSER_APPROVE_VALUE && o?.detail === POSITION_APPROVE_DETAIL,
+  );
+}
+
+/**
+ * Approves a position card for the person: on the web the browser records
+ * the approval first, then the card is answered under the first of
+ * `conversationIds` the server knows.
+ *
+ * @param {{ conversationIds: string[], questionId: string, isWeb: boolean,
+ *   approve?: typeof approveBrowserStep,
+ *   submit: (conversationId: string, questionId: string, answer: object) => Promise<{ status?: string }> }} args
+ * @returns {Promise<boolean>} whether the card was answered
+ */
+export async function autoApprovePositionClick({ conversationIds, questionId, isWeb, approve = approveBrowserStep, submit }) {
+  if (isWeb && isBrowserApprovalCard(questionId)) {
+    const held = browserApprovalIds(questionId);
+    if (!held) return false;
+    const recorded = await recordBrowserApproval(held, approve);
+    if (!recorded.ok) return false;
+  }
+  for (const conversationId of conversationIds.filter(Boolean)) {
+    const result = await submit(conversationId, questionId, { values: [BROWSER_APPROVE_VALUE] });
+    if (result?.status === 'not_found') continue;
+    return result?.status !== 'error' && result?.status !== 'rejected';
+  }
+  return false;
+}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { BrowserNote } from './BrowserNote';
 import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
 import Spinner from '../ui/Spinner';
@@ -240,7 +241,7 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose, floating = 
   return (
     <BrowserFrame
       hint={`You and ${agentLabel} share this. Click in it to take over.`}
-      below={<p className="browser-panel__note">{webPaneNote(agentLabel)}</p>}
+      below={<BrowserNote agentLabel={agentLabel}>{webPaneNote(agentLabel)}</BrowserNote>}
       actions={<Button icon size="sm" variant="subtle" aria-label="Reload browser view" onClick={retry}>{Ico.reload(14)}</Button>}
       onClose={onClose}
       floating={floating}

@@ -149,6 +149,20 @@ describe('splitTurnSegments', () => {
   });
 });
 
+describe('position-click cards', () => {
+  const POSITION = [{ value: 'approve', label: 'Approve', detail: 'Allow clicks by position on this page' }];
+
+  it('drops an answered one, so the work around it stays one block', () => {
+    const steps = [work('a'), question('browser:approve:t:p', { answer: { status: 'answered', values: ['approve'] }, options: POSITION }), work('b')];
+    expect(shape(splitTurnSegments(steps))).toEqual([['a', 'b']]);
+  });
+
+  it('keeps one still waiting, in case the app could not approve it', () => {
+    const steps = [work('a'), question('browser:approve:t:p', { options: POSITION })];
+    expect(shape(splitTurnSegments(steps))).toEqual([['a'], 'Q:question-browser:approve:t:p', []]);
+  });
+});
+
 describe('liveSegmentIndex', () => {
   it('is the only segment when there are no questions', () => {
     expect(liveSegmentIndex(splitTurnSegments([work('a')]))).toBe(0);

@@ -32,6 +32,12 @@
 .browser-panel__download-text { flex: 1 1 12rem; min-width: 0; }
 /* What the person should know before typing into the pane. */
 .browser-panel__note { margin: 0; padding: 4px 12px 4px 15px; border-bottom: 1px solid var(--line); color: var(--ink-4); font-size: 11px; line-height: 1.4; }
+.browser-panel__note > summary { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; list-style: none; color: var(--ink-3); user-select: none; }
+.browser-panel__note > summary::-webkit-details-marker { display: none; }
+.browser-panel__note > summary::after { content: ''; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-1px) rotate(45deg); transition: transform .18s ease; }
+.browser-panel__note[open] > summary::after { transform: translateY(1px) rotate(-135deg); }
+.browser-panel__note > summary:hover { color: var(--ink); }
+.browser-panel__note > p { margin: 4px 0 2px; }
 
 /* A site's sign-in prompt, shown in place of the page while it waits. */
 .browser-panel__login { margin: auto; display: flex; flex-direction: column; gap: 8px; width: min(320px, 90%); }

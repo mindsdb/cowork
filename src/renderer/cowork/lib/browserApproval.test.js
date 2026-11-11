@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import approveFixture from '../__fixtures__/browser-router/approve.json';
 import {
+  autoApprovePositionClick,
+  isPositionClickCard,
+  POSITION_APPROVE_DETAIL,
   approvalRefusalText,
   browserApprovalIds,
   declineBrowserApproval,
@@ -84,5 +87,49 @@ describe('declineBrowserApproval', () => {
     ]) {
       await expect(declineBrowserApproval(ids, async () => { throw err; })).resolves.toBeUndefined();
     }
+  });
+});
+
+describe('position clicks', () => {
+  const POSITION = { options: [{ value: 'approve', label: 'Approve', detail: POSITION_APPROVE_DETAIL }, { value: 'cancel' }] };
+  const COMMIT = { options: [{ value: 'approve', label: 'Approve', detail: 'Take this step once' }] };
+
+  it('tells a position card from a commit card', () => {
+    expect(isPositionClickCard(POSITION)).toBe(true);
+    expect(isPositionClickCard(COMMIT)).toBe(false);
+    expect(isPositionClickCard(null)).toBe(false);
+  });
+
+  it('records the approval in the web browser before answering the card', async () => {
+    const order = [];
+    const approve = vi.fn(async () => { order.push('approve'); return { approved: true, pending_id: PENDING }; });
+    const submit = vi.fn(async () => { order.push('submit'); return { status: 'ok' }; });
+    const ok = await autoApprovePositionClick({
+      conversationIds: ['c1'], questionId: `browser:approve:t-abc:${PENDING}`, isWeb: true, approve, submit,
+    });
+    expect(ok).toBe(true);
+    expect(order).toEqual(['approve', 'submit']);
+    expect(submit).toHaveBeenCalledWith('c1', `browser:approve:t-abc:${PENDING}`, { values: ['approve'] });
+  });
+
+  it('leaves the card for the person when the browser refuses', async () => {
+    const approve = vi.fn(async () => { throw Object.assign(new Error('x'), { code: 'approval_lapsed' }); });
+    const submit = vi.fn();
+    const ok = await autoApprovePositionClick({
+      conversationIds: ['c1'], questionId: `browser:approve:t-abc:${PENDING}`, isWeb: true, approve, submit,
+    });
+    expect(ok).toBe(false);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('answers a desktop card directly, under the first id the server knows', async () => {
+    const approve = vi.fn();
+    const submit = vi.fn(async (cid) => (cid === 'pending-1' ? { status: 'not_found' } : { status: 'ok' }));
+    const ok = await autoApprovePositionClick({
+      conversationIds: [null, 'pending-1', 'c1'], questionId: 'ask:q1', isWeb: false, approve, submit,
+    });
+    expect(ok).toBe(true);
+    expect(approve).not.toHaveBeenCalled();
+    expect(submit).toHaveBeenLastCalledWith('c1', 'ask:q1', { values: ['approve'] });
   });
 });

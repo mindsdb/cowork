@@ -485,3 +485,25 @@ describe('AskUserCard', () => {
     });
   });
 });
+
+describe('AskUserCard position-click card', () => {
+  const POSITION = {
+    question_id: 'browser:approve:t-1:pa-1',
+    prompt: '**Approve clicks by position on this page?**\n\nclick at (500, 400)',
+    options: [{ value: 'approve', label: 'Approve', detail: 'Allow clicks by position on this page' }, { value: 'cancel', label: 'Cancel' }],
+  };
+  afterEach(() => vi.useRealTimers());
+
+  it('stays hidden while the app approves it, and shows if that does not land', () => {
+    vi.useFakeTimers();
+    const { container } = renderCard(POSITION);
+    expect(container).toBeEmptyDOMElement();
+    act(() => { vi.advanceTimersByTime(4000); });
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
+  });
+
+  it('never shows once answered', () => {
+    const { container } = renderCard({ ...POSITION, answer: { status: 'answered', values: ['approve'], text: '' } });
+    expect(container).toBeEmptyDOMElement();
+  });
+});
