@@ -10,7 +10,8 @@ import { Button, Spinner, Tooltip } from '../ui';
 import { ItemActions, ListItem, StatusDot } from '../collection';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
-import { scheduleStatusBadge } from './ScheduleStatusBadge';
+import { scheduleState, scheduleStatusBadge } from './ScheduleStatusBadge';
+import { describeWhen, whenFromDate } from '../../lib/scheduleWhen';
 
 function absoluteTime(iso) {
   if (!iso) return '';
@@ -25,6 +26,8 @@ function absoluteTime(iso) {
 function cadenceLabel(cadence) {
   return {
     once:     'One-off',
+    every_15_minutes: 'Every 15 min',
+    every_30_minutes: 'Every 30 min',
     hourly:   'Hourly',
     daily:    'Daily',
     weekdays: 'Weekdays',
@@ -34,7 +37,7 @@ function cadenceLabel(cadence) {
 
 export default function ScheduleRow({
   task, busy = false, projects = [], onOpenProject,
-  onOpen, onRunNow, onPause, onResume, onEdit, onDelete,
+  onOpen, onRunNow, onStopRun, onPause, onResume, onEdit, onDelete,
 }) {
   // Resolve the project name from the stored id (server keys by UUID, ENG-1255).
   const projectMatch = task.projectId
@@ -44,7 +47,6 @@ export default function ScheduleRow({
   // local because its rows match a project by name; this item resolves by
   // `task.projectId` above, so it needs the slug for nothing (ENG-1676).
   const projectDisplay = projectLabel(projectMatch) || '';
-  const missed = Number(task.missedRuns) || 0;
   const status = scheduleStatusBadge(task);
 
   // A fixed cap so a long name truncates. The row's meta sizes to its content
@@ -69,29 +71,37 @@ export default function ScheduleRow({
     </span>
   );
 
-  // Enabled tasks show the next run; paused ones show the cadence.
-  const when = (
-    <span title={task.enabled ? absoluteTime(task.nextRunAt) : undefined} className="whitespace-nowrap">
-      {task.enabled
-        ? <>Next <span className="text-ink-3">{relativeTime(task.nextRunAt) ?? '—'}</span></>
-        : cadenceLabel(task.cadence)}
-    </span>
-  );
-  // Badge variants (accent, muted, danger, success) are StatusDot tones.
+  // The schedule in words, then when it next runs: the row's second line.
+  const state = scheduleState(task);
+  const sentence = task.nextRunAt && !Number.isNaN(new Date(task.nextRunAt).getTime())
+    ? describeWhen(whenFromDate(task.nextRunAt, task.cadence))
+    : cadenceLabel(task.cadence);
+  const next = state === 'active' && !task.running ? relativeTime(task.nextRunAt) : null;
+  const description = next ? `${sentence} · next ${next}` : sentence;
+  // Badge variants (accent, muted, warning, danger, success) are StatusDot tones.
   const statusDot = <StatusDot tone={status.variant}>{status.label}</StatusDot>;
 
   return (
     <ListItem
       leading={Ico.clock(16)}
       title={task.title || 'Untitled schedule'}
-      description={task.prompt || undefined}
+      description={<span title={absoluteTime(task.nextRunAt) || undefined}>{description}</span>}
       onActivate={() => onOpen?.(task)}
       actions={(
           <>
-            <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
-              {busy ? <Spinner /> : Ico.send(14)}
-              Run
-            </Button>
+            {/* While a run is going there is nothing to start: the same
+                place stops it instead. */}
+            {task.running ? (
+              <Button variant="subtle" size="sm" onClick={() => onStopRun?.(task)} disabled={busy}>
+                {busy ? <Spinner /> : Ico.stop(12)}
+                Stop
+              </Button>
+            ) : (
+              <Button variant="subtle" size="sm" onClick={() => onRunNow?.(task)} disabled={busy}>
+                {busy ? <Spinner /> : Ico.play(12)}
+                Run
+              </Button>
+            )}
             <OverflowMenu
               items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
               disabled={busy}
@@ -104,10 +114,6 @@ export default function ScheduleRow({
       meta={(
         <>
           {project}
-          {/* Runs that slipped while the app was closed; cleared on the next run. */}
-          {missed > 0 && <span className="whitespace-nowrap">Missed {missed}</span>}
-          {task.enabled && <span>{cadenceLabel(task.cadence)}</span>}
-          {when}
           {statusDot}
         </>
       )}

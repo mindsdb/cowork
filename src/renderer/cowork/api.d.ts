@@ -24,7 +24,8 @@ export interface RecommendedModels {
    * only (never a custom endpoint). cowork-server relays any non-empty
    * `disabled_reason` string, so this is the raw relay: mergeRecommendedModels
    * narrows it with `knownModelDisabledReasons` before anything reads it.
-   * `model_restricted` renders "Restricted" with no credits action; any other
+   * `model_restricted` renders "Restricted" and `budget_exceeded` "Budget
+   * reached", both with no credits action; any other
    * known reason, an unknown one, or no entry renders "Needs credits".
    */
   modelDisabledReasons?: Record<string, string>;

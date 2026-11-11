@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8"><title>Fixture form</title></head>
+  <body style="margin:0;font:16px sans-serif">
+    <!-- Reports every input event to the fixture server, with isTrusted, so the
+         spec can see what the page saw. -->
+    <form id="form" style="padding:20px" onsubmit="event.preventDefault(); report({ type: 'submit', isTrusted: event.isTrusted })">
+      <label>Name <input id="name" autocomplete="off"></label><br><br>
+      <label>Password <input id="pw" type="password" value="hunter2"></label><br><br>
+      <label>Color <select id="color"><option value="r">Red</option><option value="b">Blue</option></select></label><br><br>
+      <button id="go" type="button">Go</button>
+      <button id="pop" type="button" onclick="window.open('/popup', '_blank')">Open popup</button>
+      <button id="ask" type="button" onclick="report({ type: 'confirmed', value: confirm('Sure?') })">Ask</button>
+    </form>
+    <div style="height:3000px"></div>
+    <button id="far">Far away</button>
+    <script>
+      function report(entry) {
+        navigator.sendBeacon('/log', JSON.stringify(entry));
+      }
+      for (const type of ['click', 'dblclick', 'keydown', 'keyup', 'input', 'change', 'wheel', 'mousedown']) {
+        document.addEventListener(type, (event) => report({
+          type,
+          isTrusted: event.isTrusted,
+          key: event.key || null,
+          target: event.target && event.target.id || null,
+        }), true);
+      }
+    </script>
+  </body>
+</html>

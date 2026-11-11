@@ -300,7 +300,7 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
 // `useSharingCapabilities` reads, `teams` is what `useMindsHubTeams`
 // returns and `orgName` is what `useSharingOrgName` returns. Off, there is
 // no "Everyone", and "Specific people" takes emails only. Without
-// `canShareArtifactsOrg` "Everyone" is grayed with the admin hint, or with
+// `canShareArtifactsOrg` "Everyone" is grayed with the role hint, or with
 // "Couldn't reach MindsHub" while MindsHub couldn't be asked.
 export function AccessChooser({
   value,
