@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ThinkingStep } from './ThinkingStep';
 
 // An in-progress step row must be the same height as a settled one, or the
@@ -68,5 +68,45 @@ describe('ThinkingStep — opening Note stand-in (ENG-3554)', () => {
     const step = { id: 'note-2', badge: 'Note', icon: 'note', status: 'completed', label: "Now I'll add the orbits.", startedAt: 0, completedAt: 0 };
     render(<ThinkingStep step={step} />);
     expect(screen.getByText("Now I'll add the orbits.")).toBeInTheDocument();
+  });
+});
+
+describe('ThinkingStep duration alignment (ENG-4196)', () => {
+  const lastMeta = () => {
+    const slot = screen.getByTestId('step-duration');
+    return { slot, isLast: slot.parentElement.lastElementChild === slot };
+  };
+
+  it('keeps the duration last, after a timed out badge', () => {
+    const { container } = render(
+      <ThinkingStep step={{ id: 's1', label: 'Run', status: 'completed', cellStatus: 'timeout', startedAt: 1000, completedAt: 113000 }} />,
+    );
+    const { slot, isLast } = lastMeta();
+    expect(slot).toHaveTextContent('1m 52s');
+    expect(isLast).toBe(true);
+    expect(container.textContent.indexOf('timed out')).toBeLessThan(container.textContent.indexOf('1m 52s'));
+  });
+
+  it('keeps the duration last, after an artifact badge', () => {
+    const { container } = render(
+      <ThinkingStep step={{ id: 's1', label: 'Save', badge: 'Artifact', status: 'completed', startedAt: 1000, completedAt: 4000 }} />,
+    );
+    expect(lastMeta().isLast).toBe(true);
+  });
+
+  it('removes the error dot from the layout once its fade ends', () => {
+    render(
+      <ThinkingStep step={{ id: 's1', label: 'Run', status: 'completed', cellStatus: 'error', startedAt: 1000, completedAt: 4000 }} />,
+    );
+    const dot = screen.getByTestId('step-error-dot');
+    expect(lastMeta().isLast).toBe(true);
+    fireEvent.animationEnd(dot);
+    expect(screen.queryByTestId('step-error-dot')).not.toBeInTheDocument();
+    expect(screen.getByTestId('step-duration')).toHaveTextContent('3s');
+  });
+
+  it('keeps an empty duration slot when there is no duration, so badges line up', () => {
+    render(<ThinkingStep step={{ id: 's1', label: 'Running code', status: 'in_progress' }} />);
+    expect(screen.getByTestId('step-duration')).toBeEmptyDOMElement();
   });
 });
