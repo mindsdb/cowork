@@ -102,7 +102,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
-         fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
+         fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer, sendAddon, withdrawAddon,
          fetchRecommendedModels, createConversation, revealSettingKey,
          SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections} from './api';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
@@ -126,7 +126,8 @@ import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened, trackAddonAdded, trackAddonQueued, trackAddonOverridden } from './lib/analytics';
+import { addonEligibility, addonOutcome, newlyReturnedAddons } from './lib/addons';
 import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
@@ -937,6 +938,12 @@ function AppCore() {
   const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text, attachments}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
+  // Add-ons (ENG-4194) whose text has already gone back to the queue — handed
+  // back unread at turn end, or moved there by the person — so a replayed
+  // `returned` event cannot queue the same words twice.
+  const handledAddonsRef = useRef(new Set());
+  // Their analytics must never break a send.
+  const noteAddon = (track) => { try { track(); } catch { /* ignore */ } };
   // `reconnectInFlight` is a mount-frozen useCallback (all its deps are
   // stable), so it cannot close over the render-fresh `drainNextQueuedMessage`
   // without also capturing a stale `handleSendInTask` (and its stale
@@ -1283,6 +1290,19 @@ function AppCore() {
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
+    // A message added to this turn that Anton never read before the turn ended
+    // comes back as `returned`: it runs as the next task, so nothing is lost.
+    // Queued here, before the stream's terminal drains the queue.
+    const returned = newlyReturnedAddons(steps, handledAddonsRef.current);
+    if (returned.length > 0) {
+      const queueId = taskIds.find(Boolean);
+      const owner = tasksRef.current.find((t) => taskIds.includes(t.id));
+      returned.forEach(({ addonId, text }) => {
+        handledAddonsRef.current.add(addonId);
+        enqueueMessage(queueId, text, [], owner?.disabledConnections || []);
+        noteAddon(() => trackAddonQueued('returned'));
+      });
+    }
     const plan = planQueueDrain(
       steps,
       taskIds,
@@ -4058,6 +4078,114 @@ function AppCore() {
   // repair), so analytics can tell it from one they typed.
   const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
 
+  // ── Messages sent while a turn runs (ENG-4194) ──────────────────────────
+  // The running turn's stream, when it can still take a message. Its
+  // `injectEvent` puts the app's own `response.addon` rows through the same
+  // reducer as the server's, so they render inside the turn where they joined.
+  const liveAddonCtrl = (taskId) => {
+    const ctrl = liveStreamsRef.current.get(taskId)?.ctrl;
+    return typeof ctrl?.injectEvent === 'function' ? ctrl : null;
+  };
+  const injectAddonEvent = (taskId, ev) => {
+    const ctrl = liveAddonCtrl(taskId);
+    if (!ctrl) return false;
+    ctrl.injectEvent({ type: 'response.addon', ...ev });
+    return true;
+  };
+  // Queue text that did not join the running turn. If that turn ended while we
+  // waited, its terminal drain has already run, so drain again.
+  const queueInsteadOfAddon = (taskId, text, disabledConnections) => {
+    enqueueMessage(taskId, text, [], disabledConnections || []);
+    if (!hasLiveTurnHere(taskId)) drainNextQueuedMessageRef.current?.(taskId);
+  };
+
+  // A composer send while this task's turn runs: show it in the turn at once
+  // as "Adding…", ask the server, then either keep it there or move it to the
+  // queue exactly as before. Not awaited by the send, so Enter never waits on
+  // Jev; the request gives up after a few seconds and queues.
+  const offerAddon = (taskId, text, disabledConnections) => {
+    const localKey = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    injectAddonEvent(taskId, { state: 'sending', local_key: localKey, text });
+    void (async () => {
+      const outcome = addonOutcome(await sendAddon(taskId, text));
+      if (outcome.action === 'added') {
+        noteAddon(() => trackAddonAdded(outcome.decidedBy, 'send'));
+        if (injectAddonEvent(taskId, {
+          state: 'added', local_key: localKey, addon_id: outcome.addonId, text, decided_by: outcome.decidedBy,
+        })) return;
+        // The turn's stream ended while the server was answering, so its
+        // `returned` event had nowhere to land. Take the message back; if it
+        // was never read it runs next, like any queued message.
+        const back = await withdrawAddon(taskId, outcome.addonId);
+        if (back?.status === 'withdrawn' && !handledAddonsRef.current.has(outcome.addonId)) {
+          handledAddonsRef.current.add(outcome.addonId);
+          queueInsteadOfAddon(taskId, text, disabledConnections);
+        }
+        return;
+      }
+      injectAddonEvent(taskId, { state: 'discarded', local_key: localKey });
+      noteAddon(() => trackAddonQueued(outcome.reason));
+      queueInsteadOfAddon(taskId, text, disabledConnections);
+    })();
+  };
+
+  // "Move to queue" on a message the running task has not read yet.
+  const handleMoveAddonToQueue = async (taskId, addonId, text, decidedBy) => {
+    if (!taskId || !addonId) return;
+    injectAddonEvent(taskId, { state: 'withdrawing', addon_id: addonId });
+    const result = await withdrawAddon(taskId, addonId);
+    const status = result?.status || 'error';
+    noteAddon(() => trackAddonOverridden('to_queue', status, decidedBy));
+    if (status === 'withdrawn') {
+      injectAddonEvent(taskId, { state: 'withdrawn', addon_id: addonId });
+      if (handledAddonsRef.current.has(addonId)) return;
+      handledAddonsRef.current.add(addonId);
+      const owner = tasksRef.current.find((t) => t.id === taskId);
+      queueInsteadOfAddon(taskId, text, owner?.disabledConnections);
+      return;
+    }
+    if (status === 'already_read') {
+      // Too late: Anton has it. Say so instead of offering the move again.
+      injectAddonEvent(taskId, { state: 'read', addon_id: addonId });
+      return;
+    }
+    injectAddonEvent(taskId, { state: 'added', addon_id: addonId, revert: true });
+    toastManager.add({ type: 'warning', title: 'Could not move that message to the queue. Please try again.' });
+  };
+
+  // "Add to current task" on a queued chip: the person overrides the queue, so
+  // the server adds it without asking Jev. Anything but `added` leaves it queued.
+  const handleAddQueuedToTask = async (taskId, itemId) => {
+    if (!taskId || !liveAddonCtrl(taskId)) return;
+    const item = (messageQueueRef.current[taskId] || []).find((q) => q.id === itemId);
+    if (!item || item.addonPending || (item.attachments || []).length > 0) return;
+    const setPending = (pending) => updateMessageQueue((prev) => {
+      if (!prev[taskId]) return prev;
+      return { ...prev, [taskId]: prev[taskId].map((q) => (q.id === itemId ? { ...q, addonPending: pending } : q)) };
+    });
+    setPending(true);
+    const outcome = addonOutcome(await sendAddon(taskId, item.text, { force: true }));
+    noteAddon(() => trackAddonOverridden('to_task', outcome.action === 'added' ? 'added' : outcome.reason));
+    if (outcome.action === 'added' && injectAddonEvent(taskId, {
+      state: 'added', addon_id: outcome.addonId, text: item.text, decided_by: outcome.decidedBy,
+    })) {
+      noteAddon(() => trackAddonAdded(outcome.decidedBy, 'queue'));
+      removeFromQueue(taskId, itemId);
+    } else {
+      setPending(false);
+      if (outcome.action === 'added') {
+        // Added, but the turn ended before we could show it: take it back so
+        // it runs from the queue rather than not at all — unless Anton already
+        // read it, when running it again would do the work twice.
+        const back = await withdrawAddon(taskId, outcome.addonId);
+        if (back?.status === 'already_read') removeFromQueue(taskId, itemId);
+      } else {
+        toastManager.add({ type: 'info', title: `${agentLabel || 'Anton'} could not take it now. It stays in the queue.` });
+      }
+    }
+    if (!hasLiveTurnHere(taskId)) drainNextQueuedMessageRef.current?.(taskId);
+  };
+
   // Send inside an existing task
   //
   // Answers `true` when the text is on its way — a stream started, or it was
@@ -4200,6 +4328,24 @@ function AppCore() {
     //      which may remove the new turn. The message waits, and that Stop or
     //      delete drains it once it has finished.
     if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current || hasLiveTurnHere(id)) {
+      // A message typed into a task that is working right now may belong to
+      // that task ("use the sales DB instead"): offer it to the running turn
+      // first (ENG-4194). Only the person's own composer sends: a drained or
+      // machine-written prompt (a repair) always queues, as before.
+      if (!opts.targetTask && !opts.skipPendingAnswer && hasLiveTurnHere(id)) {
+        const eligibility = addonEligibility({
+          conversationId: id,
+          text,
+          attachments: queuedAttachments ?? composerAttachments,
+          liveStream: Boolean(liveAddonCtrl(id)),
+          ending: stoppingRef.current.has(id) || deletingRef.current.has(id) || recoveringRef.current.has(id),
+        });
+        if (eligibility.ok) {
+          offerAddon(id, text, mutesForSend);
+          return true;
+        }
+        noteAddon(() => trackAddonQueued(eligibility.reason));
+      }
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
@@ -4566,6 +4712,9 @@ function AppCore() {
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
     if (!targetTask) return;
+    // Its "Add to current task" request is still out: sending it now as well
+    // could run it twice. That request drains again once it is answered.
+    if ((messageQueueRef.current[taskId] || [])[0]?.addonPending) return;
     const next = popQueueHead(taskId);
     if (!next) return;
     // handleSendInTask can reject (answer submit, or attachment resolution).
@@ -6230,6 +6379,8 @@ function AppCore() {
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
+            onAddQueuedToTask={(itemId) => handleAddQueuedToTask(currentTask?.id, itemId)}
+            onMoveAddonToQueue={(addonId, text, decidedBy) => handleMoveAddonToQueue(currentTask?.id, addonId, text, decidedBy)}
             onBack={() => {
               // Returning home = "new task in this project". Pre-select
               // the task's project so the home composer is ready to go.

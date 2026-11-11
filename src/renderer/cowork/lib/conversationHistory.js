@@ -7,6 +7,7 @@
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
 import { answerBody, initialStreamState, reduceStream } from './responseStreamAdapter';
+import { foldAddonMessages } from './addons';
 import { rebaseFigureSources } from './figureSources';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
@@ -270,6 +271,8 @@ export function reduceServerEvents(events, fallbackStartedAt) {
     // 'error' on response.failed — the authoritative "this turn
     // finished" signal from the detached stream buffer.
     status: state.status,
+    // The turn's response id, which a saved add-on names (ENG-4194).
+    responseId: state.responseId || null,
     incompleteReason: state.incompleteReason,
     // What the live turn showed as its answer: the last round's text, with
     // earlier rounds' narration in the steps as Notes (ENG-3554). The saved
@@ -348,6 +351,7 @@ export function hydrateMessagesFromServerEvents(messages) {
       : null;
     out.push({
       ...rest,
+      ...(reduced.responseId ? { _responseId: reduced.responseId } : {}),
       ...completeFlag,
       ...(reduced.incompleteReason ? { incompleteReason: reduced.incompleteReason } : {}),
       ...(reduced.steps.length > 0
@@ -378,7 +382,8 @@ export function hydrateMessagesFromServerEvents(messages) {
       }
     }
   }
-  return out;
+  // Messages added to a running turn (ENG-4194) render inside that turn.
+  return foldAddonMessages(out);
 }
 
 export function applySessionMessages(

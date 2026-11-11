@@ -1,3 +1,4 @@
+import { applyAddonEvent } from './addons';
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
 import { browserStep, withBrowserStep } from './browserSession';
 import { parseFigureSources } from './figureSources';
@@ -531,6 +532,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
    * without a model-wait line over it, and a reasoning delta starts a fresh
    * burst instead of appending to the status. */
   if (state.currentThought?.kind === 'model_wait'
+    // A message the person added is not news from the model.
+    && type !== 'response.addon'
     && !(type === 'response.in_progress'
       && event.thought_role === 'thought.progress'
       && event.phase === 'model_wait')) {
@@ -896,6 +899,15 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       };
     });
     return found ? { ...state, steps } : state;
+  }
+
+  /* A message the person sent while this turn ran (ENG-4194): added to the
+     running task, read by Anton, or handed back unread at turn end. The app
+     injects the same event for its own request (`sending`, then `added`), so
+     the row shows the moment Enter is pressed. See lib/addons.js. */
+  if (type === 'response.addon') {
+    const steps = applyAddonEvent(state.steps, event, eventTs);
+    return steps === state.steps ? state : { ...state, steps };
   }
 
   /* The figures of the final answer and the steps they came from. Sent once,

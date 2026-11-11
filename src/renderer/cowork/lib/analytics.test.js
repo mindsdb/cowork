@@ -1790,3 +1790,29 @@ describe('Compare Models events', () => {
     });
   });
 });
+
+describe('mid-task message events (ENG-4194)', () => {
+  it('addon_added says who decided and from where, never the text', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonAdded } = await importAnalytics();
+    trackAddonAdded('jev', 'send');
+    const { properties } = await sentEvent(fetchMock, 'addon_added');
+    expect(properties).toMatchObject({ decided_by: 'jev', via: 'send' });
+  });
+
+  it('addon_queued carries the reason', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonQueued } = await importAnalytics();
+    trackAddonQueued('timeout');
+    const { properties } = await sentEvent(fetchMock, 'addon_queued');
+    expect(properties).toMatchObject({ reason: 'timeout' });
+  });
+
+  it('addon_overridden carries the direction, the outcome and who had decided', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonOverridden } = await importAnalytics();
+    trackAddonOverridden('to_queue', 'withdrawn', 'jev');
+    const { properties } = await sentEvent(fetchMock, 'addon_overridden');
+    expect(properties).toMatchObject({ direction: 'to_queue', outcome: 'withdrawn', decided_by: 'jev' });
+  });
+});

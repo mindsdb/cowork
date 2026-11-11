@@ -141,6 +141,10 @@ const EVENTS = {
   COMPARISON_VERDICT_RECORDED:'comparison_verdict_recorded', // { comparison_id, turn_index, winner, winner_model?, other_model?, changed, ...cost }
   COMPARISON_CONTINUED:     'comparison_continued',     // { comparison_id, side, model, other_model, turns, carried_all, chose_winner?, ...cost }
   // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, cost_stale?, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same' (complete figures only)
+  // A message sent while a turn runs (ENG-4194). Never carries its text.
+  ADDON_ADDED:              'addon_added',              // { decided_by: 'jev'|'user', via: 'send'|'queue' } — joined the running task
+  ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
+  ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -894,6 +898,23 @@ export function trackComparisonStarted(comparison, { fileCount = 0, exampleId = 
     from_project: Boolean(comparison.sourceProjectId),
     file_count: fileCount,
     example_id: exampleId || undefined,
+  });
+}
+
+// Mid-task messages (ENG-4194). Ids and reasons only, never the text.
+export function trackAddonAdded(decidedBy, via) {
+  capture(EVENTS.ADDON_ADDED, { decided_by: decidedBy === 'user' ? 'user' : 'jev', via: via === 'queue' ? 'queue' : 'send' });
+}
+
+export function trackAddonQueued(reason) {
+  capture(EVENTS.ADDON_QUEUED, { reason: reason || 'unknown' });
+}
+
+export function trackAddonOverridden(direction, outcome, decidedBy) {
+  capture(EVENTS.ADDON_OVERRIDDEN, {
+    direction: direction === 'to_task' ? 'to_task' : 'to_queue',
+    outcome: outcome || 'unknown',
+    ...(decidedBy ? { decided_by: decidedBy } : {}),
   });
 }
 

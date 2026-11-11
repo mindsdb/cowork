@@ -66,6 +66,7 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
+import { addonRowLabel } from '../lib/addons';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
@@ -256,9 +257,55 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
+// The line under a message the person sent while Anton was working
+// (ENG-4194): where it went, and while Anton has not read it, a way to move it
+// to the queue instead.
+function AddonNote({ label, onMoveToQueue }) {
+  return (
+    <div className="flex items-center justify-end gap-2 font-body text-[12px] leading-[1.4] text-ink-3" data-testid="addon-note">
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className="text-ink-4">{Ico.arrowUpLeft(12)}</span>
+        {label}
+      </span>
+      {onMoveToQueue && (
+        <button
+          type="button"
+          onClick={onMoveToQueue}
+          className="py-0.5 px-2 rounded-full bg-transparent border border-solid border-line text-ink-2 font-body text-[12px] cursor-pointer hover:bg-surface-2 hover:text-ink transition-[background,color] duration-hover ease-[ease]"
+        >
+          Move to queue
+        </button>
+      )}
+    </div>
+  );
+}
+
+// A message added to the running task, inside the turn at the point it joined.
+// `onMoveToQueue` is only passed for the live turn.
+function AddonRow({ step, agentLabel, onMoveToQueue }) {
+  const data = step?.data || {};
+  const { label, canMove } = addonRowLabel(data.state, agentLabel);
+  return (
+    <div className={data.state === 'sending' || data.state === 'withdrawing' ? 'opacity-70 [transition:opacity_var(--dur-hover)_ease]' : undefined} data-testid="addon-row" data-addon-state={data.state}>
+      <UserTurn
+        content={data.text || ''}
+        turnId={step.id}
+        actions={(
+          <AddonNote
+            label={label}
+            onMoveToQueue={canMove && onMoveToQueue && data.addon_id
+              ? () => onMoveToQueue(data.addon_id, data.text || '', data.decided_by || null)
+              : null}
+          />
+        )}
+      />
+    </div>
+  );
+}
+
 // The user's side of a Cowork turn: the shared UserTurn bubble, plus the
 // attachments and artifact-repair card only Cowork messages carry.
-function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false }) {
+function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projectName, projectId, conversationId, turnId, streaming = false, deleting = false, addonLabel = null }) {
   // An "Address with agent" handoff is a machine prompt — ids, a base revision
   // and the raw thread JSON — so it renders as a card rather than as the wall of
   // identifiers it literally is. Null for every ordinary message.
@@ -312,13 +359,15 @@ function CoworkUserTurn({ content, attachments, onDelete, onEdit, isLast, projec
       align="right"
     />
   );
+  // A saved message that joined a running task but has no turn to sit in.
+  const shownActions = addonLabel ? <><AddonNote label={addonLabel} />{actions}</> : actions;
   return (
     <UserTurn
       content={content}
       turnId={turnId}
       deleting={deleting}
       attachments={attachmentRows}
-      actions={actions}
+      actions={shownActions}
     >
       {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
     </UserTurn>
@@ -589,7 +638,7 @@ function justFinished(message) {
   return typeof message?._justFinishedAt === 'number' && Date.now() - message._justFinishedAt < JUST_FINISHED_MS;
 }
 
-function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false }) {
+function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null }) {
   const segments = useMemo(
     () => splitTurnSegments(steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
     [steps, startedAt, endedAt, conversationLive, reopenable, reply],
@@ -615,6 +664,15 @@ function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conver
             id={prefixId(idPrefix, seg.step.id)}
             conversationId={conversationId}
           />
+        </div>,
+      );
+      prevWasCard = true;
+      return;
+    }
+    if (seg.kind === 'addon') {
+      out.push(
+        <div key={seg.key} style={{ marginTop: prevWasCard ? 12 : 8, marginBottom: 4 }}>
+          <AddonRow step={seg.step} agentLabel={agentLabel} onMoveToQueue={live ? onMoveAddonToQueue : null} />
         </div>,
       );
       prevWasCard = true;
@@ -1921,6 +1979,8 @@ export default function ChatView({
   // the active turn finishes.
   queuedMessages = [],
   onRemoveFromQueue,
+  onAddQueuedToTask,
+  onMoveAddonToQueue,
   agentLabel,
   // Conversation ids the server currently has an active producer for
   // (App.jsx's cross-client sync feed). Used to decide whether an
@@ -2676,6 +2736,7 @@ export default function ChatView({
                     onDelete={deleteThisTurn}
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
+                    addonLabel={m._addon ? addonRowLabel('saved', agentLabel).label : null}
                     onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
@@ -3282,6 +3343,7 @@ export default function ChatView({
                     // [] so a pick does not take the composer's staged files.
                     onAnswerAsMessage={(text) => onSend?.(text, [])}
                     onActivateStep={activateStep(messageKey(m, i))}
+                    agentLabel={agentLabel}
                     idPrefix={messageKey(m, i)}
                     // Only right after it finished live: reopening the task
                     // later shows the steps already folded.
@@ -3356,6 +3418,8 @@ export default function ChatView({
                   onAnswered={onQuestionAnswered}
                   onActivateStep={activateStep(streamingKey)}
                   idPrefix={streamingKey}
+                  agentLabel={agentLabel}
+                  onMoveAddonToQueue={onMoveAddonToQueue}
                   live={{
                     isActive: isThinkingActive(streamingMsg.streamStatus),
                     currentThought: streamingMsg.currentThought,
@@ -3419,9 +3483,26 @@ export default function ChatView({
                   <span
                     key={q.id}
                     title={q.text}
-                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-hover ease-[ease]"
+                    data-testid="queued-chip"
+                    aria-busy={q.addonPending || undefined}
+                    className={`inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color,opacity] duration-hover ease-[ease]${q.addonPending ? ' opacity-70' : ''}`}
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
+                    {/* The person's own override of the queue (ENG-4194), like
+                        the Coding view's Steer: only while this task's turn is
+                        running, and text only — files always wait. */}
+                    {q.addonPending ? (
+                      <span role="status" className="text-ink-3 text-[12px] px-1" aria-label="Adding to current task">…</span>
+                    ) : (onAddQueuedToTask && isStreaming && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && (
+                      <Tooltip content="Add to current task">
+                        <button
+                          type="button"
+                          onClick={() => onAddQueuedToTask(q.id)}
+                          aria-label="Add to current task"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] hover:text-accent"
+                        >{Ico.arrowUpLeft(12)}</button>
+                      </Tooltip>
+                    ))}
                     <Tooltip content="Remove from queue">
                       <button
                         type="button"
