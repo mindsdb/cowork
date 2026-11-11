@@ -6144,6 +6144,7 @@ function AppCore() {
       }
     },
     callShortcut: voiceCallShortcut,
+    accountUser: codeAccountUser,
     onShowBrowser: () => {
       if (route === 'task') setTaskBrowserSignal((n) => n + 1);
       else setOffTaskBrowserOpen(true);

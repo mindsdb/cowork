@@ -4,6 +4,8 @@ import Ico from './Icons';
 import { Badge } from './ui';
 import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import { ConfirmModal } from './ConfirmModal';
+import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 
 // Mobile chrome for the cowork SPA. Active at viewport widths < 640px
 // (see useBreakpoint.isMobile). Replaces the desktop sidebar + main
@@ -112,11 +114,16 @@ export default function MobileShell({
   callShortcut = null,
   // The browser icon beside it: opens the task's browser, or the blank one.
   onShowBrowser = null,
+  // The signed-in account (useAccountUser): the drawer's footer shows it and
+  // logs out. null when nobody is signed in to MindsHub.
+  accountUser = null,
   children,
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   // The drawer's Chat row lists the newest chats; See all opens the rest in place.
   const [allChats, setAllChats] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const { loggingOut, waitNote, logout } = useLogout();
   const [openSection, setOpenSection] = useState(null);
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
 
@@ -507,7 +514,34 @@ export default function MobileShell({
             </button>
           </div>
         </nav>
+
+        {/* Footer: who is signed in, and Log out, confirmed like the
+            desktop account menu's (useLogout). */}
+        {accountUser && (
+          <div className="mshell__drawer-foot">
+            <span className="mshell__drawer-account" title={accountUser.email || ''}>
+              {accountUser.email || accountUser.name || 'Signed in'}
+            </span>
+            <button type="button" className="mshell__logout" onClick={() => setLogoutOpen(true)}>
+              Log out
+            </button>
+          </div>
+        )}
       </aside>
+      <ConfirmModal
+        open={logoutOpen}
+        title={LOGOUT_CONFIRM_COPY.title}
+        message={LOGOUT_CONFIRM_COPY.message}
+        confirmLabel={LOGOUT_CONFIRM_COPY.confirmLabel}
+        cancelLabel="Cancel"
+        destructive
+        busy={loggingOut}
+        dismissableWhileBusy
+        note={waitNote}
+        busyLabel="Signing out…"
+        onConfirm={logout}
+        onClose={() => setLogoutOpen(false)}
+      />
     </div>
   );
 }

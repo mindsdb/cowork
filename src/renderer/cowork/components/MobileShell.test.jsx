@@ -70,3 +70,18 @@ describe('MobileShell — call button and recent chats', () => {
     expect(screen.getByRole('button', { name: 'Show fewer' })).toHaveAttribute('aria-expanded', 'true');
   });
 });
+
+describe('MobileShell — account footer', () => {
+  it('shows who is signed in and asks before logging out', async () => {
+    render(<MobileShell {...baseProps} accountUser={{ email: 'jorge@mindsdb.com' }}>content</MobileShell>);
+    await act(async () => { screen.getByRole('button', { name: /open menu/i }).click(); });
+    expect(screen.getByText('jorge@mindsdb.com')).toBeInTheDocument();
+    await act(async () => { screen.getByRole('button', { name: 'Log out' }).click(); });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('has no footer when nobody is signed in', () => {
+    render(<MobileShell {...baseProps}>content</MobileShell>);
+    expect(screen.queryByRole('button', { name: 'Log out' })).toBeNull();
+  });
+});
