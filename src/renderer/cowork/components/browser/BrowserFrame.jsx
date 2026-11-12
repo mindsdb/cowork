@@ -17,6 +17,19 @@ import { useTranslation } from '../../../lib/i18n';
    address row, and a Minimize button floating at its right end. */
 
 /**
+ * Whether the pane may move the keyboard into `element`: only when the
+ * person's focus is on the page body, on nothing, or already inside the
+ * pane's aside. A field or button elsewhere keeps its focus.
+ *
+ * @param {Element | null} element
+ * @returns {boolean}
+ */
+export function paneMayTakeFocus(element) {
+  const active = document.activeElement;
+  return !active || active === document.body || Boolean(element?.closest('.browser-panel')?.contains(active));
+}
+
+/**
  * @param {{
  *   hint: import('react').ReactNode,
  *   actions?: import('react').ReactNode,

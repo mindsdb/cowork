@@ -38,8 +38,14 @@ function frameWindow() {
   return frame.__testWindow;
 }
 
-function messageFrom(source, data) {
-  act(() => { window.dispatchEvent(new MessageEvent('message', { data, source })); });
+function messageFrom(source, data, ports) {
+  act(() => { window.dispatchEvent(new MessageEvent('message', { data, source, ports })); });
+}
+
+/* The MessagePort a viewer that takes tickets in place transfers with its
+   ready message. */
+function fakePort() {
+  return { postMessage: vi.fn(), close: vi.fn() };
 }
 
 async function flush() {
@@ -275,6 +281,79 @@ describe('BrowserPanel', () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
       expect(screen.queryByRole('button', { name: /open browser in a window/i })).toBeNull();
+    });
+  });
+
+  describe('the keyboard', () => {
+    it('gives the keyboard to a viewer that says it is ready with a port', async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      expect(document.activeElement).toBe(document.body);
+      const port = fakePort();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' }, [port]);
+      expect(document.activeElement).toBe(screen.getByTitle('Shared browser'));
+      expect(port.postMessage).toHaveBeenCalledWith({ type: 'browser-viewer-focus' });
+    });
+
+    it('takes no focus from a focused button outside the pane', async () => {
+      render(<><button type="button">Elsewhere</button><BrowserPanel sessionId="t-abc" onClose={() => {}} /></>);
+      await flush();
+      const button = screen.getByRole('button', { name: 'Elsewhere' });
+      button.focus();
+      const port = fakePort();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' }, [port]);
+      expect(document.activeElement).toBe(button);
+      expect(port.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('takes no focus for a ready with no port', async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it('takes no focus from a field the person types in', async () => {
+      render(<><textarea aria-label="Message" /><BrowserPanel sessionId="t-abc" onClose={() => {}} /></>);
+      await flush();
+      const field = screen.getByLabelText('Message');
+      field.focus();
+      const port = fakePort();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' }, [port]);
+      expect(document.activeElement).toBe(field);
+      expect(port.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('takes no focus while the start page covers the viewer, and gives it once a page opens', async () => {
+      render(<BrowserPanel sessionId="t-abc" startBlank agentLabel="Anton" onClose={() => {}} taskKey="t" onSend={vi.fn()} />);
+      await flush();
+      const port = fakePort();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' }, [port]);
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'about:blank' });
+      await flush();
+      expect(document.activeElement).toBe(document.body);
+      expect(port.postMessage).not.toHaveBeenCalled();
+
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://www.kayak.com/' });
+      await flush();
+      expect(document.activeElement).toBe(screen.getByTitle('Shared browser'));
+      expect(port.postMessage.mock.calls).toEqual([[{ type: 'browser-viewer-focus' }]]);
+    });
+
+    it('keeps the port open while its frame stays, and closes it when the frame goes', async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      const port = fakePort();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' }, [port]);
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://www.kayak.com/' });
+      await flush();
+      expect(port.close).not.toHaveBeenCalled();
+
+      // No browser slot is free: the pane stops and drops the frame.
+      messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 4503 });
+      await flush();
+      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(port.close).toHaveBeenCalledTimes(1);
     });
   });
 

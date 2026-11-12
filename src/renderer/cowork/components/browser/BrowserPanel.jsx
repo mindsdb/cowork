@@ -6,10 +6,11 @@ import EmptyState from '../ui/EmptyState';
 import Spinner from '../ui/Spinner';
 import { embedBrowser } from '../../api';
 import {
-  VIEWER_ASK, VIEWER_CLOSED, VIEWER_CONTROL, VIEWER_READY, VIEWER_URL, afterViewerClose, browserViewerTheme, viewerLinkFrom,
+  VIEWER_ASK, VIEWER_CLOSED, VIEWER_CONTROL, VIEWER_FOCUS, VIEWER_READY, VIEWER_URL,
+  afterViewerClose, browserViewerTheme, viewerLinkFrom,
 } from '../../lib/browserSession';
 import { host } from '../../../platform/host';
-import { BrowserFrame } from './BrowserFrame';
+import { BrowserFrame, paneMayTakeFocus } from './BrowserFrame';
 import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
 import i18n, { useTranslation } from '../../../lib/i18n';
@@ -131,6 +132,17 @@ function WebBrowserStage({
      pane is still waiting. */
   const [waitRound, setWaitRound] = useState(0);
   const frameRef = useRef(null);
+  /* The MessagePort the viewer gave with its ready, when it takes tickets
+     in place; null for a viewer that doesn't. */
+  const portRef = useRef(null);
+  /* A stable ref, so a re-render never detaches the frame: React passes null
+     only when the frame goes, and its port goes with it. */
+  const setFrame = useCallback((node) => {
+    frameRef.current = node;
+    if (node) return;
+    portRef.current?.close();
+    portRef.current = null;
+  }, []);
   /* Bumped by every mint and by hiding the tab, so an answer that arrives
      after a newer request, or after the tab hid, is dropped. */
   const mintSeq = useRef(0);
@@ -212,6 +224,9 @@ function WebBrowserStage({
       if (!frameWindow || event.source !== frameWindow) return;
       const type = event.data?.type;
       if (type === VIEWER_READY) {
+        const port = event.ports?.[0] ?? null;
+        if (portRef.current && portRef.current !== port) portRef.current.close();
+        portRef.current = port;
         readyRef.current = true;
         setViewerReady(true);
         setSlow(false);
@@ -286,6 +301,19 @@ function WebBrowserStage({
   const opening = startBlank && startsHere && waiting && !slow;
   const blankTab = isBlankPage(pageUrl) || (startBlank && !pageUrl);
   const startOver = startsHere && !error && (opening || (viewUrl && viewerReady && blankTab));
+  /* The keyboard goes to a viewer whose ready carried a port, unless the
+     start page covers it or the person's focus is elsewhere
+     (paneMayTakeFocus): when it is ready, and again each time the start page
+     leaves it. A viewer with no port gets no focus: it can't pass it to its
+     picture. */
+  const covered = Boolean(startOver);
+  useEffect(() => {
+    const frame = frameRef.current;
+    const port = portRef.current;
+    if (!viewerReady || covered || !frame || !port || !paneMayTakeFocus(frame)) return;
+    frame.focus({ preventScroll: true });
+    port.postMessage({ type: VIEWER_FOCUS });
+  }, [viewerReady, covered]);
   /* Once a page opens, the start page fades out rather than vanishing. */
   const [leaving, setLeaving] = useState(false);
   const shownRef = useRef(false);
@@ -319,7 +347,7 @@ function WebBrowserStage({
     >
       {viewUrl && !error && (
         <iframe
-          ref={frameRef}
+          ref={setFrame}
           onLoad={() => postTheme(frameRef.current)}
           key={frameKey}
           className={startBlank && !viewerReady ? 'browser-panel__view--pending' : undefined}

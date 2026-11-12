@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserFrame } from './BrowserFrame';
+import { BrowserFrame, paneMayTakeFocus } from './BrowserFrame';
 
 describe('BrowserFrame docked on a phone', () => {
   it('minimizes instead of closing, keeps the page mounted, and expands from its header', async () => {
@@ -49,5 +49,32 @@ describe("the pane's privacy note on a phone", () => {
   it('stays on the open pane, and folds away only with the bar', () => {
     expect(css).not.toMatch(/\.browser-panel\.is-docked \.browser-panel__note\s*\{\s*display:\s*none/);
     expect(css).toMatch(/\.browser-panel\.is-docked\.is-collapsed \.browser-panel__note\s*\{\s*display:\s*none/);
+  });
+});
+
+describe('paneMayTakeFocus', () => {
+  it('lets the pane take focus from the page body, from nothing, or from inside the pane, and never from elsewhere', () => {
+    render(
+      <>
+        <button type="button">Elsewhere</button>
+        <BrowserFrame hint="" onClose={vi.fn()}><iframe title="page" /><button type="button">Inside</button></BrowserFrame>
+      </>,
+    );
+    const frame = screen.getByTitle('page');
+    expect(document.activeElement).toBe(document.body);
+    expect(paneMayTakeFocus(frame)).toBe(true);
+
+    screen.getByRole('button', { name: 'Inside' }).focus();
+    expect(paneMayTakeFocus(frame)).toBe(true);
+
+    screen.getByRole('button', { name: 'Elsewhere' }).focus();
+    expect(paneMayTakeFocus(frame)).toBe(false);
+
+    Object.defineProperty(document, 'activeElement', { configurable: true, get: () => null });
+    try {
+      expect(paneMayTakeFocus(frame)).toBe(true);
+    } finally {
+      delete document.activeElement;
+    }
   });
 });
