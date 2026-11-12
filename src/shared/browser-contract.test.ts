@@ -107,6 +107,15 @@ describe('the browser contract fixtures', () => {
     expect(guard(example.body).ok).toBe(!example.refused);
   });
 
+  it("reads into_frame on the fixture's one step the person approved into a frame, and on no other step", () => {
+    const steps = all.filter(([file, , e]) => file === 'action.json' && e.kind === 'request');
+    const approved = steps.filter(([, , e]) => 'into_frame' in (e.body as Record<string, unknown>)).map(([, name]) => name);
+    expect(approved).toHaveLength(1);
+    for (const [, name, example] of steps) {
+      expect(parseStepRequest(example.body), name).toMatchObject({ ok: true, value: { intoFrame: approved.includes(name) } });
+    }
+  });
+
   it('refuses the take-back as person_only, not as a bad request', () => {
     const refused = parseControlRequest({ holder: 'agent', reason: '' });
     expect(refused).toMatchObject({ ok: false, personOnly: true });
