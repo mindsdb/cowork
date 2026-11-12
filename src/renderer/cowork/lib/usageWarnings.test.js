@@ -39,6 +39,9 @@ const usage = (over = {}) => ({
 // working when the allowance runs out and gets no figure at any number.
 const at = (percent) => ({ percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET });
 const unpaid = (over = {}) => usage({ balance: null, freeTokens: at(28), ...over });
+// A balance under the $5 line (ENG-4188/ENG-4208): the allowance running low
+// is still news to it, unlike to a balance that carries Air past it.
+const SHORT = { usd: 3.2, canConsume: true, hasToppedUp: true, alert: 'low' };
 
 const labels = (w) => w.actions.map((a) => a.label);
 
@@ -163,8 +166,9 @@ describe('deriveComposerWarning', () => {
     // spend. Only the standing figure goes, so a closed warning steps down to
     // nothing rather than to a figure they were never shown.
     const w = deriveComposerWarning(usage({
+      balance: SHORT,
       freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
-    }));
+    }), { model: 'mindshub_air' });
     expect(w.kind).toBe('free_low');
     expect(w.whenDismissed).toBeUndefined();
   });
@@ -211,7 +215,7 @@ describe('deriveComposerWarning', () => {
   });
 
   it('free tokens running low: names the count and what happens next, no top-up CTA', () => {
-    const w = deriveComposerWarning(usage({
+    const w = deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: 12.4, limit: 100, used: 87.6, remaining: 12.4, resetsAt: RESET },
     }));
     expect(w.kind).toBe('free_low');
@@ -223,10 +227,10 @@ describe('deriveComposerWarning', () => {
   it('free tokens low AND balance low on Air: says both and offers funds', () => {
     const w = deriveComposerWarning(usage({
       freeTokens: { percentRemaining: 12.4, limit: 100, used: 87.6, remaining: 12.4, resetsAt: RESET },
-      balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
+      balance: SHORT,
     }), { model: 'mindshub_air' });
     expect(w.kind).toBe('free_low');
-    expect(w.body).toContain('Your balance is low too ($8.42).');
+    expect(w.body).toContain('Your balance is low too ($3.20).');
     expect(labels(w)).toEqual(['View usage', 'Add funds']);
   });
 
@@ -325,12 +329,14 @@ describe('deriveComposerWarning', () => {
     // Under auth's $20 line but over $5: the router keeps quiet (ENG-4188).
     const shortOfTwenty = usage({ balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
     expect(deriveComposerWarning(shortOfTwenty, { model: 'model-router' })).toBeNull();
-    const lowFree = usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
-    expect(deriveComposerWarning(lowFree, { model: 'model-router' })?.kind).toBe('free_low');
+    const lowFree = usage({ balance: SHORT, freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
+    expect(deriveComposerWarning(lowFree, { model: 'model-router' })?.kind).toBe('balance_low');
+    // Free tokens low with a balance that carries Air: no bar (ENG-4208).
+    expect(deriveComposerWarning(usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } }), { model: 'mindshub_air' })).toBeNull();
   });
 
   it('accepts the catalog option object the views pass as `model`', () => {
-    const lowFree = usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
+    const lowFree = unpaid({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
     expect(deriveComposerWarning(lowFree, { model: { id: 'model-router', name: 'Model Router' } })?.kind).toBe('free_low');
     expect(deriveComposerWarning(lowFree, { model: { id: 'claude-sonnet-4' } })).toBeNull();
   });
@@ -447,18 +453,26 @@ describe('usageTransitions', () => {
   const free = (percent) => usage({
     freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
   });
+  const short = (percent) => usage({
+    balance: SHORT,
+    freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
+  });
+
+  it('keeps quiet about the allowance running low on a balance that carries Air (ENG-4208)', () => {
+    expect(usageTransitions(free(40), free(18))).toEqual([]);
+  });
 
   it('tells a running task when it crosses into the low band', () => {
-    expect(usageTransitions(free(40), free(18))).toEqual([
+    expect(usageTransitions(short(40), short(18))).toEqual([
       { kind: 'free_low', fractionLeft: 0.18, resetsAt: RESET },
     ]);
   });
 
   it('reports each step it crosses, not each poll', () => {
     // Draining inside one step is not news the task has not already had.
-    expect(usageTransitions(free(18), free(16))).toEqual([]);
+    expect(usageTransitions(short(18), short(16))).toEqual([]);
     // Crossing into the next one is.
-    expect(usageTransitions(free(18), free(8))).toEqual([
+    expect(usageTransitions(short(18), short(8))).toEqual([
       { kind: 'free_low', fractionLeft: 0.08, resetsAt: RESET },
     ]);
   });
@@ -493,7 +507,7 @@ describe('usageTransitions', () => {
 
   it('reports the deepest crossing too, not just the first two', () => {
     // 10% into 5%: the third mark, and the last one before free_used owns it.
-    expect(usageTransitions(free(8), free(4))).toEqual([
+    expect(usageTransitions(short(8), short(4))).toEqual([
       { kind: 'free_low', fractionLeft: 0.04, resetsAt: RESET },
     ]);
   });
@@ -767,7 +781,7 @@ describe('freeDismissStep', () => {
     // the key is opaque, and the only lost case is a task whose poll lands on
     // the edge exactly, which then reports on its next step instead.
     expect(freeDismissStep(FREE_TOKENS_LOW_FRACTION)).toBe(0);
-    const atEdge = deriveComposerWarning(usage({
+    const atEdge = deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: 20, limit: 100, used: 80, remaining: 20, resetsAt: RESET },
     }));
     expect(atEdge.kind).toBe('free_low');
@@ -775,7 +789,7 @@ describe('freeDismissStep', () => {
   });
 
   it('keys the free warning to the step, so one close does not hide it to zero', () => {
-    const at = (percent) => deriveComposerWarning(usage({
+    const at = (percent) => deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
     }));
     expect(at(18).dismissKey).toBe('free_low:1');
