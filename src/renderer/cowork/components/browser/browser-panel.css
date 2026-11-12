@@ -86,6 +86,29 @@ body[data-skin="8bit"] .browser-panel__blank-input { border: 2px solid var(--ink
    address row (so the address and Minimize stay in reach). */
 .browser-panel__blank-over { position: absolute; z-index: 1; inset: 49px 0 0; display: flex; padding: 24px 0; overflow: auto; background: var(--bg); }
 .browser-panel__blank-over--full { inset: 0; }
+/* The viewer's toolbar while a browser the person opened blank starts: the
+   same shape, so the real one takes its place without a jump, with a slow
+   sheen across the address. The viewer fades in once ready. */
+.browser-panel__stage iframe { transition: opacity .3s ease; }
+.browser-panel__stage iframe.browser-panel__view--pending { opacity: 0; }
+.browser-panel__ghostbar { position: absolute; z-index: 1; inset: 0 0 auto; height: 49px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); animation: browser-ghost-in .2s ease both; }
+.browser-panel__ghost-button { flex: none; width: 32px; height: 32px; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r-sm); opacity: .6; }
+.browser-panel__ghost-address { position: relative; flex: 1; min-width: 0; height: 32px; box-sizing: border-box; display: flex; align-items: center; padding: 0 10px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg); color: var(--ink-3); font-size: 14px; white-space: nowrap; }
+.browser-panel__ghost-address::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) 14%, transparent) 50%, transparent 70%); transform: translateX(-100%); animation: browser-ghost-sheen 1.6s ease-in-out infinite; }
+@keyframes browser-ghost-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes browser-ghost-sheen { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .browser-panel__ghost-address::after { animation: none; }
+  .browser-panel__ghostbar { animation: none; }
+  .browser-panel__stage iframe { transition: none; }
+}
+/* A phone's viewer: Reload and the address only, rounder and 16px. */
+@media (pointer: coarse) and (max-width: 767px) {
+  .browser-panel__ghostbar { padding: 6px 52px 6px 8px; }
+  .browser-panel__ghost-button:nth-child(-n+2) { display: none; }
+  .browser-panel__ghost-button { width: 36px; height: 36px; border-radius: 18px; }
+  .browser-panel__ghost-address { height: 36px; border-radius: 18px; padding: 0 14px; font-size: 16px; }
+}
 .browser-panel__blank-error { margin: 0; color: var(--danger); font-size: 12px; }
 body[data-skin="8bit"] .browser-panel__address { border: 2px solid var(--ink); border-radius: 0; }
 

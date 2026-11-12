@@ -8,7 +8,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 vi.mock('../../api', () => ({ startVoiceSession: vi.fn() }));
 
 import { startVoiceSession } from '../../api';
-import { IDLE_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceStartFailure } from './useVoiceCall';
+import { AWAY_MS, IDLE_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceStartFailure } from './useVoiceCall';
 
 class FakeChannel {
   constructor() {
@@ -230,14 +230,28 @@ describe('a quiet call', () => {
     expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
   });
 
-  it('stays while the call has work running', async () => {
-    let busy = true;
-    await started({ onAsk: vi.fn(), context: () => '', busy: () => busy });
+  it('hangs up after ten quiet seconds while Anton works, and says it is away', async () => {
+    const onAway = vi.fn();
+    await started({ onAsk: vi.fn(), context: () => '', busy: () => true, onAway });
     act(() => peer.channel.emit({ type: 'session.started' }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(IDLE_MS + 20_000); });
-    expect(peer.channel.sent.some((e) => e.type === 'session.close')).toBe(false);
-    busy = false;
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS - 3_000); });
+    act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: "I'll get back to you." }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS - 3_000); });
+    expect(onAway).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(onAway).toHaveBeenCalledTimes(1);
+    expect(track.enabled).toBe(false);
     expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+  });
+
+  it('calls back with the news as its opening line', async () => {
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
+    await act(() => hook.result.current.callBack('Flights from $212 on Saturday.', 'vesper'));
+    expect(startVoiceSession).toHaveBeenCalledWith('offer-sdp', 'vesper');
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    const greet = peer.channel.sent.find((e) => e.type === 'session.instructions.append');
+    expect(greet.content).toMatch(/calling the user back/);
+    expect(greet.content).toMatch(/Flights from \$212 on Saturday\./);
+    expect(hook.result.current.isOn()).toBe(true);
   });
 });

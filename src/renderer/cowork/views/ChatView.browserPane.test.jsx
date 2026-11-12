@@ -157,6 +157,26 @@ describe('ChatView shared browser pane', () => {
     expect(within(pane()).getByRole('button', { name: 'Call Anton' })).toBeInTheDocument();
   });
 
+  it('shows the pane with the start page at once while the browser opens, and keeps it closed if closed meanwhile', async () => {
+    let opened;
+    openBrowserAt.mockReturnValue(new Promise((resolve) => { opened = resolve; }));
+    const onSend = vi.fn();
+    render(<ChatView task={task('p-slow', [{ id: 'u1', role: 'user', content: 'Hi' }])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show browser' })); });
+
+    expect(within(pane()).getByRole('status', { name: 'Opening your browser' })).toBeInTheDocument();
+    expect(embedBrowser).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'What to look up' }), { target: { value: 'flights to Lisbon' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Go' })); });
+    expect(onSend).toHaveBeenCalledWith('Search the web in the browser for: flights to Lisbon');
+
+    await act(async () => { fireEvent.click(within(pane()).getByRole('button', { name: /close/i })); });
+    await act(async () => { opened({ session_id: 't-slow' }); });
+    expect(pane()).toBeNull();
+    expect(embedBrowser).not.toHaveBeenCalled();
+  });
+
   it("falls back to the start page when the task's browser can't open, which sends a search to Anton", async () => {
     openBrowserAt.mockRejectedValue(new Error('No browser is free'));
     const onSend = vi.fn();

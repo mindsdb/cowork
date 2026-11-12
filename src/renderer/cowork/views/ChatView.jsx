@@ -2159,7 +2159,14 @@ export default function ChatView({
   useEffect(() => {
     if (browserRequest?.taskId === task.id && browserRequest.sessionId) setShownBrowserId(browserRequest.sessionId);
   }, [browserRequest, task.id]);
+  /* Show browser on the web shows the pane at once: the start page while the
+     task's browser opens (`openingBrowser`), then that browser, on the blank
+     tab it opened (`blankOpenedId`). */
+  const [openingBrowser, setOpeningBrowser] = useState(false);
+  const [blankOpenedId, setBlankOpenedId] = useState(null);
+  useEffect(() => { setOpeningBrowser(false); setBlankOpenedId(null); }, [task.id]);
   const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
+  const openingBrowserOpen = !pane && openingBrowser && !browserOpen && host.isWeb;
   /* The top-right Show browser icon, in a task whose browser is off or could
      not open: a blank page that asks where to go. The real pane takes its
      place as soon as the turn's Browser step arrives. */
@@ -2167,7 +2174,7 @@ export default function ChatView({
   useEffect(() => { setBlankBrowser(false); }, [task.id]);
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
   const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
-  const browserPaneOpen = browserOpen || blankBrowserOpen;
+  const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
   /* On a phone the pane docks at the top of the chat (no taller than half
      the screen) and minimizes to its header instead of closing. It expands
      when Anton starts using the browser, and minimizes when the turn ends so
@@ -2241,7 +2248,10 @@ export default function ChatView({
   // no agent: through the server on the web, the app's own browser on the
   // desktop. The real pane then shows it.
   /** `url` null opens the task's browser on a blank tab, where the real pane shows the start page. */
+  // Bumped by closing the pane, so a browser still opening doesn't show after it.
+  const openSeqRef = useRef(0);
   const openUrlInTask = async (url) => {
+    const seq = openSeqRef.current;
     let sessionId;
     if (host.isWeb) {
       sessionId = (await openBrowserAt(task.id, url))?.session_id;
@@ -2249,7 +2259,12 @@ export default function ChatView({
       sessionId = await desktopTaskSession(task.id);
       await host.inAppBrowser.open(sessionId, url);
     }
-    if (sessionId) setShownBrowserId(sessionId);
+    if (seq !== openSeqRef.current) return sessionId;
+    if (sessionId) {
+      if (url === null) setBlankOpenedId(sessionId);
+      setShownBrowserId(sessionId);
+    }
+    setOpeningBrowser(false);
     return sessionId;
   };
   useEffect(() => {
@@ -2272,15 +2287,23 @@ export default function ChatView({
       setBlankBrowser(true);
       return;
     }
-    openUrlInTask(null).then((id) => { if (!id) setBlankBrowser(true); }, () => setBlankBrowser(true));
+    if (host.isWeb) setOpeningBrowser(true);
+    const seq = openSeqRef.current;
+    const fallBack = () => {
+      if (seq !== openSeqRef.current) return;
+      setOpeningBrowser(false);
+      setBlankBrowser(true);
+    };
+    openUrlInTask(null).then((id) => { if (!id) fallBack(); }, fallBack);
   };
   const browserNode = (
     <>
-      {browserOpen && (
+      {(browserOpen || openingBrowserOpen) && (
         <BrowserPanel
-          sessionId={shownBrowserId}
+          sessionId={browserOpen ? shownBrowserId : null}
+          startBlank={openingBrowserOpen || (browserOpen && shownBrowserId === blankOpenedId)}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
-          onClose={() => setShownBrowserId(null)}
+          onClose={() => { openSeqRef.current += 1; setOpeningBrowser(false); setShownBrowserId(null); }}
           extraActions={browserCallIcon}
           dock={browserDock}
           onControl={onBrowserControl}

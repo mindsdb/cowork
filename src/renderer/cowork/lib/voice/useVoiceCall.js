@@ -23,6 +23,9 @@
 //   card away (`closing`) and hangs up.
 // - A call that goes quiet (nobody speaks and Anton has no work running) for
 //   IDLE_MS stops listening: the card folds away and the call ends.
+// - While Anton works on the call's requests (`busy`), a quiet AWAY_MS hangs
+//   up the same way and calls `onAway`: the app calls back (`callBack`) when
+//   the work is done, rather than keeping the call open meanwhile.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startVoiceSession } from '../../api';
@@ -45,7 +48,9 @@ const LINE_MAX_MS = 12000;
 export const FOLD_MS = 360;
 // A call this long with nobody speaking and no work running ends by itself.
 export const IDLE_MS = 60_000;
-const IDLE_CHECK_MS = 5_000;
+// Quiet this long while Anton works: hang up, and call back with the result.
+export const AWAY_MS = 10_000;
+const IDLE_CHECK_MS = 1_000;
 
 const OPENINGS = {
   // Mid-task the call opens silent: Anton has the task's context and waits
@@ -54,6 +59,8 @@ const OPENINGS = {
   fresh: 'Say a short hi, a casual variation of "hi" in a few words, and nothing else. Then wait for the user.',
   switch: 'The user just switched you to a new voice. Say one short, playful line in it, like "How\'s this voice?", and nothing else.',
   preview: 'The user is trying out your voice. Say one short, friendly line so they can hear it, like "Hi, this is how I sound", and nothing else.',
+  callBack: (news) => 'You hung up while you worked and are calling the user back with the result. Say it now, in two or three '
+    + `short spoken sentences, starting with something like "Hey, it's done": ${news}`,
   signOff: 'The user muted you to end the call. Say one short goodbye in your own words, a variation of "Got it, just click the call button whenever you need me next." Say nothing else.',
 };
 
@@ -74,7 +81,7 @@ const eventId = (prefix) => `${prefix}_${Date.now().toString(36)}_${(eventSeq +=
  * `onAsk(request)` resolves with Anton's answer, or rejects. `context()`
  * returns background about the task, or ''.
  */
-export function useVoiceCall({ onAsk, context, busy }) {
+export function useVoiceCall({ onAsk, context, busy, onAway }) {
   // idle | starting | live | ending | ended
   const [phase, setPhase] = useState('idle');
   const [notice, setNotice] = useState('');
@@ -102,6 +109,10 @@ export function useVoiceCall({ onAsk, context, busy }) {
   // Whether the call has work running outside a delegation (a queued request).
   const busyRef = useRef(busy);
   busyRef.current = busy;
+  const onAwayRef = useRef(onAway);
+  onAwayRef.current = onAway;
+  // What a call-back says first.
+  const news = useRef('');
   contextRef.current = context;
 
   const cleanup = useCallback(() => {
@@ -155,7 +166,8 @@ export function useVoiceCall({ onAsk, context, busy }) {
         const kind = opening.current;
         const about = kind === 'preview' ? '' : withoutPhoneNumbers(contextRef.current?.() || '').slice(0, 1800);
         if (about) send({ type: 'session.thinking.append', event_id: eventId('context'), delegation_id: null, content: about });
-        const line = kind === 'call' ? (about ? OPENINGS.task : OPENINGS.fresh) : OPENINGS[kind];
+        const line = kind === 'call' ? (about ? OPENINGS.task : OPENINGS.fresh)
+          : kind === 'callBack' ? OPENINGS.callBack(news.current) : OPENINGS[kind];
         if (line) send({ type: 'session.instructions.append', event_id: eventId('greet'), delegation_id: null, content: line });
         if (kind === 'preview') void afterLine().then(() => foldAndEnd());
         break;
@@ -220,9 +232,10 @@ export function useVoiceCall({ onAsk, context, busy }) {
     await endRef.current?.();
   }, []);
 
-  const start = useCallback(async ({ voice: asked = null, kind = 'call' } = {}) => {
+  const start = useCallback(async ({ voice: asked = null, kind = 'call', say = '' } = {}) => {
     if (call.current) return;
     opening.current = kind;
+    news.current = withoutPhoneNumbers(String(say)).slice(0, MAX_SPOKEN_CHARS);
     setPhase('starting');
     setNotice('');
     setClosing(false);
@@ -346,9 +359,12 @@ export function useVoiceCall({ onAsk, context, busy }) {
     if (phase !== 'live' || previewing || closing) return undefined;
     lastActive.current = Date.now();
     const timer = setInterval(() => {
-      if (workingRef.current || busyRef.current?.() || !call.current) return;
-      if (Date.now() - lastActive.current < IDLE_MS) return;
+      // Mid-request: the answer to say is still coming.
+      if (workingRef.current || !call.current) return;
+      const away = Boolean(busyRef.current?.());
+      if (Date.now() - lastActive.current < (away ? AWAY_MS : IDLE_MS)) return;
       clearInterval(timer);
+      if (away) onAwayRef.current?.();
       call.current.microphone?.getAudioTracks().forEach((t) => { t.enabled = false; });
       setMicOn(false);
       void foldAndEnd();
@@ -364,6 +380,11 @@ export function useVoiceCall({ onAsk, context, busy }) {
     delegation_id: null,
     content: `Tell the user now, in one or two short sentences: ${withoutPhoneNumbers(String(text)).slice(0, MAX_SPOKEN_CHARS)}`,
   }), [send]);
+
+  // Calls the person back with what Anton finished while the call was down.
+  const callBack = useCallback((text, voice = null) => startRef.current?.({ voice, kind: 'callBack', say: text }), []);
+  // Whether a call is up or starting (for work that finishes later).
+  const isOn = useCallback(() => Boolean(call.current), []);
 
   const toggleMic = useCallback(() => {
     const tracks = call.current?.microphone?.getAudioTracks() || [];
@@ -382,7 +403,7 @@ export function useVoiceCall({ onAsk, context, busy }) {
 
   return {
     phase, notice, captions, agentSpeaking, working, micOn, meters, closing, voice, previewing,
-    start, end, toggleMic, announce, switchVoice, preview, signOff,
+    start, end, toggleMic, announce, switchVoice, preview, signOff, callBack, isOn,
     dismiss: () => { setPhase('idle'); setNotice(''); },
   };
 }

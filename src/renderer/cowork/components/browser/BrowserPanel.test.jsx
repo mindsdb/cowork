@@ -108,6 +108,36 @@ describe('BrowserPanel', () => {
       expect(isBlankPage('https://example.com/')).toBe(false);
     });
 
+    it('opened blank, shows the start page at once and keeps the same one through the swap to the viewer', async () => {
+      const onSend = vi.fn();
+      const { rerender } = render(<BrowserPanel sessionId={null} startBlank agentLabel="Anton" onClose={() => {}} taskKey="t" onSend={onSend} />);
+      await flush();
+      expect(screen.getByRole('status', { name: 'Opening your browser' })).toBeInTheDocument();
+      expect(embedBrowser).not.toHaveBeenCalled();
+      const field = screen.getByLabelText('What to look up');
+      fireEvent.change(field, { target: { value: 'half typed' } });
+
+      rerender(<BrowserPanel sessionId="t-abc" startBlank agentLabel="Anton" onClose={() => {}} taskKey="t" onSend={onSend} />);
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledWith('t-abc');
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
+      await flush();
+      // Ready before it says its address: still the blank tab, and the same field.
+      expect(screen.queryByRole('status', { name: 'Opening your browser' })).toBeNull();
+      expect(screen.getByLabelText('What to look up')).toBe(field);
+      expect(field.value).toBe('half typed');
+    });
+
+    it("sends a question typed in the viewer's address bar to the agent, from its own frame only", async () => {
+      const onSend = vi.fn();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Anton" onClose={() => {}} onSend={onSend} />);
+      await flush();
+      messageFrom({}, { type: 'browser-viewer-ask', text: 'stranger' });
+      messageFrom(frameWindow(), { type: 'browser-viewer-ask', text: '  ' });
+      messageFrom(frameWindow(), { type: 'browser-viewer-ask', text: 'cheap flights to Lisbon' });
+      expect(onSend.mock.calls).toEqual([['Search the web in the browser for: cheap flights to Lisbon']]);
+    });
+
     it("frames the link in the router's own embed answer", async () => {
       // cowork-server's fixture, on this page's origin: the pane reads the
       // fields the router sends, ticket_expires_at and lease_expires_at.

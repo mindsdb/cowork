@@ -9,7 +9,7 @@ import { VIEWER_CLOSED, VIEWER_READY, afterViewerClose, browserViewerTheme, view
 import { host } from '../../../platform/host';
 import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 import { BrowserFrame } from './BrowserFrame';
-import { BlankStartOver } from './BlankBrowserPanel';
+import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
 
 /* The person's browser beside the chat. The agent drives it through its
@@ -103,10 +103,12 @@ export function BrowserPanel(props) {
  */
 function WebBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
-  taskKey = '', onSend, onOpenUrl,
+  taskKey = '', onSend, onOpenUrl, startBlank = false,
 }) {
   const onControlRef = useRef(onControl);
   onControlRef.current = onControl;
+  const onSendRef = useRef(onSend);
+  onSendRef.current = onSend;
   const [viewUrl, setViewUrl] = useState(null);
   const [error, setError] = useState(/** @type {PaneStop | null} */ (null));
   const [hidden, setHidden] = useState(tabHidden);
@@ -130,6 +132,8 @@ function WebBrowserStage({
   const frameKey = `${viewUrl}:${generation}`;
 
   const mint = useCallback(async () => {
+    // Still opening: the session comes, and with it the link.
+    if (!sessionId) return;
     mintSeq.current += 1;
     const seq = mintSeq.current;
     setError(null);
@@ -210,6 +214,12 @@ function WebBrowserStage({
         setPageUrl(String(event.data?.url || '').slice(0, 2048));
         return;
       }
+      // A question typed in the viewer's address bar: the agent looks it up.
+      if (type === 'browser-viewer-ask') {
+        const text = String(event.data?.text || '').trim().slice(0, 2000);
+        if (text) onSendRef.current?.(browserRequestFor(text));
+        return;
+      }
       if (type === 'browser-viewer-control') {
         onControlRef.current?.(event.data?.holder === 'human' ? 'human' : 'agent', String(event.data?.reason || '').slice(0, 300));
         return;
@@ -255,6 +265,13 @@ function WebBrowserStage({
      brings keeps waiting, so the clock runs on; a ready viewer ends the wait,
      and the next wait starts a new clock. */
   const waiting = !hidden && !viewerReady && !error;
+  /* Opened blank by the person: the start page shows at once, over a stand-in
+     for the viewer's toolbar, while the browser opens underneath, and stays
+     on its blank tab. The viewer fades in when it is ready. */
+  const startsHere = Boolean(onSend || onOpenUrl);
+  const opening = startBlank && startsHere && waiting && !slow;
+  const blankTab = isBlankPage(pageUrl) || (startBlank && !pageUrl);
+  const startOver = startsHere && !error && (opening || (viewUrl && viewerReady && blankTab));
   useEffect(() => {
     if (!waiting) return undefined;
     const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);
@@ -276,6 +293,7 @@ function WebBrowserStage({
           ref={frameRef}
           onLoad={() => postTheme(frameRef.current)}
           key={frameKey}
+          className={startBlank && !viewerReady ? 'browser-panel__view--pending' : undefined}
           title="Shared browser"
           src={viewUrl}
           /* The browser router also sandboxes its viewer with a CSP
@@ -285,7 +303,15 @@ function WebBrowserStage({
           referrerPolicy="no-referrer"
         />
       )}
-      {viewUrl && !error && viewerReady && isBlankPage(pageUrl) && (onSend || onOpenUrl) && (
+      {opening && (
+        <div className="browser-panel__ghostbar" role="status" aria-label="Opening your browser">
+          <span className="browser-panel__ghost-button" />
+          <span className="browser-panel__ghost-button" />
+          <span className="browser-panel__ghost-button" />
+          <span className="browser-panel__ghost-address">Ask or type a URL</span>
+        </div>
+      )}
+      {startOver && (
         <BlankStartOver taskKey={taskKey} agentLabel={agentLabel} onSend={onSend} onOpenUrl={onOpenUrl} />
       )}
       {error ? (
@@ -297,7 +323,7 @@ function WebBrowserStage({
           description={error.description}
           action={{ label: 'Try again', onClick: retry }}
         />
-      ) : waiting && (
+      ) : waiting && !opening && (
         <div className="browser-panel__starting" role="status">
           {slow ? (
             <EmptyState

@@ -703,11 +703,16 @@ function AppCore() {
   const callScreenRef = useRef({});
   const callWorkRef = useRef(new Map());
   const voiceHistoryRef = useRef([]);
+  // The call hung up while Anton worked on its requests: it calls back with the result.
+  const callBackRef = useRef(false);
+  const callBackSeenRef = useRef({ canCallBack: false });
+  const [callBackPending, setCallBackPending] = useState(false);
   const voiceCall = useVoiceCall({
     onAsk: (request) => operateFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
-    // Work the call queued for Anton keeps it from ending as idle.
+    // Work running for the call: a quiet call hangs up and calls back once it's done.
     busy: () => callWorkRef.current.size > 0,
+    onAway: () => { callBackRef.current = true; setCallBackPending(true); },
   });
   // Settings > Voice (lib/voice/voicePrefs.js): off hides every call button
   // and ends a call; a new voice moves a call to it at once, or, with no
@@ -739,8 +744,11 @@ function AppCore() {
   /* Opens the off-task browser, at `url` or (null) on a blank tab, in a
      session of its own kept while the app runs, so the next address goes to
      the same tabs. */
+  // Bumped by closing it, so a browser still opening doesn't show after it.
+  const offTaskOpenSeqRef = useRef(0);
   const openOffTaskBrowser = async (url) => {
     offTaskBrowserIdRef.current ||= allocateConversationId();
+    const seq = offTaskOpenSeqRef.current;
     let sessionId;
     if (host.isWeb) {
       sessionId = (await openBrowserAt(offTaskBrowserIdRef.current, url))?.session_id;
@@ -748,14 +756,23 @@ function AppCore() {
       sessionId = await desktopTaskSession(offTaskBrowserIdRef.current);
       await host.inAppBrowser.open(sessionId, url);
     }
-    if (sessionId) setOffTaskBrowser({ sessionId });
+    if (sessionId && seq === offTaskOpenSeqRef.current) {
+      setOffTaskBrowser((was) => ({ sessionId, blank: url === null || Boolean(was?.blank) }));
+    }
     return sessionId;
+  };
+  const closeOffTaskBrowser = () => {
+    offTaskOpenSeqRef.current += 1;
+    setOffTaskBrowserOpen(false);
+    setOffTaskBrowser(null);
   };
   // Showing the browser opens the real one, as the agent's, with the start page over its blank tab.
   useEffect(() => {
     if (!offTaskBrowserOpen || offTaskBrowser) return;
     setOffTaskBlank(false);
-    openOffTaskBrowser(null).then((id) => { if (!id) setOffTaskBlank(true); }, () => setOffTaskBlank(true));
+    const seq = offTaskOpenSeqRef.current;
+    const fallBack = () => { if (seq === offTaskOpenSeqRef.current) setOffTaskBlank(true); };
+    openOffTaskBrowser(null).then((id) => { if (!id) fallBack(); }, fallBack);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offTaskBrowserOpen]);
   const sendFromOffTaskBrowser = (text) => {
@@ -4760,7 +4777,9 @@ function AppCore() {
   // resolves with Anton's answer once the turn ends.
   // The voice call's operator names the task (`taskId`), or asks for a new
   // one (`newTask`, in `project` when given).
-  askFromCallRef.current = async (request, { taskId = null, newTask = false, project = null } = {}) => {
+  // Sends the request and resolves once Anton has it: {taskId, finished}, where
+  // `finished` resolves with his answer when the turn ends.
+  const sendFromCall = async (request, { taskId = null, newTask = false, project = null } = {}) => {
     const callTaskId = newTask ? null : (taskId || facetimeTaskIdRef.current);
     const existing = callTaskId && tasksRef.current.find((t) => t.id === callTaskId);
     const id = existing ? existing.id : allocateConversationId();
@@ -4775,10 +4794,32 @@ function AppCore() {
       turn.cancel();
       throw new Error(`${agentLabel} couldn't take the request.`);
     }
-    const { content, error, finalId } = await turn.promise;
-    facetimeTaskIdRef.current = finalId || id;
-    if (error) throw new Error(String(error));
-    return content;
+    const finished = turn.promise.then(({ content, error, finalId }) => {
+      facetimeTaskIdRef.current = finalId || id;
+      if (error) throw new Error(String(error));
+      return content;
+    });
+    return { taskId: id, finished };
+  };
+  askFromCallRef.current = async (request, options) => (await sendFromCall(request, options)).finished;
+  /* Work the voice call gave Anton finished: said on the call while it is up,
+     or in a call back when the call hung up to wait for it. A call the person
+     ended themselves stays ended. */
+  const reportCallWork = (work, { content = '', error = '' }) => {
+    const title = tasksRef.current.find((t) => t.id === work.taskId)?.title;
+    const where = title ? ` in "${title}"` : '';
+    const news = error
+      ? `${agentLabel} couldn't finish "${work.request}"${where}: ${error}`
+      : `${agentLabel} finished "${work.request}"${where}: ${String(content || '').slice(0, 1200)}`;
+    if (voiceCall.isOn()) {
+      voiceCall.announce(news);
+      return;
+    }
+    if (!callBackRef.current) return;
+    callBackRef.current = false;
+    setCallBackPending(false);
+    const { canCallBack } = callBackSeenRef.current;
+    if (canCallBack) void voiceCall.callBack(news, getVoicePrefs().voice);
   };
   // What the call's avatar is told about the task at the start, as background.
   callContextRef.current = () => {
@@ -4829,14 +4870,22 @@ function AppCore() {
       const work = { request: String(request || ''), taskId: existing?.id || null };
       const key = Symbol('call work');
       callWorkRef.current.set(key, work);
+      let sent;
       try {
-        const answer = askFromCallRef.current(work.request, { taskId: existing?.id, newTask: !existing, project: inProject });
-        work.taskId = existing?.id || facetimeTaskIdRef.current;
-        work.done = answer.catch(() => {});
-        return await answer;
-      } finally {
+        sent = await sendFromCall(work.request, { taskId: existing?.id, newTask: !existing, project: inProject });
+      } catch (err) {
         callWorkRef.current.delete(key);
+        throw err;
       }
+      // The call doesn't wait for the answer: it hears it when it comes, or is called back with it.
+      work.taskId = sent.taskId;
+      work.done = sent.finished.then(
+        (content) => { callWorkRef.current.delete(key); reportCallWork(work, { content }); },
+        (err) => { callWorkRef.current.delete(key); reportCallWork(work, { error: err?.message || 'something went wrong' }); },
+      );
+      const title = tasksRef.current.find((t) => t.id === sent.taskId)?.title;
+      return `Sent to ${agentLabel}${title ? ` in "${title}"` : ' in a new task'}. Tell the user in a few words that `
+        + `${agentLabel} is on it and you'll get back to them when it's done. Don't wait for the answer.`;
     },
     queue_for_anton: async ({ request, task_id: taskId }) => {
       const busy = callBusy();
@@ -4846,14 +4895,15 @@ function AppCore() {
       // A send into a busy task waits its turn there (handleSendInTask's queue).
       const sent = await handleSendInTask(text, [], { targetTask: task });
       if (sent === false) throw new Error(`${agentLabel} couldn't take the request.`);
+      const work = { request: text, taskId: task.id };
+      const key = Symbol('queued call work');
+      callWorkRef.current.set(key, work);
       // When the work ahead ends, the next turn here is this one: say its gist then.
       void (async () => {
         await busy?.done;
         const { content, error } = await waitForTurnEnd(task.id).promise;
-        // Nothing goes out once the call has ended (announce sends on its open channel only).
-        voiceCall.announce(error
-          ? `${agentLabel} couldn't finish the queued request "${text}".`
-          : `${agentLabel} finished the queued request "${text}": ${String(content || '').slice(0, 1200)}`);
+        callWorkRef.current.delete(key);
+        reportCallWork(work, { content, error: error ? String(error) : '' });
       })();
       return busy
         ? `Queued in "${task.title}": ${agentLabel} does it right after "${busy.request}". You'll hear when it's done.`
@@ -4937,11 +4987,18 @@ function AppCore() {
   // Voice calls only where the LLM provider is MindsHub: the call runs on
   // MindsHub. With another provider every call button is hidden.
   const voiceOffered = llmViaMindsHub(settings) && voicePrefs.enabled;
+  // A call back needs voice calls on, and no video call running.
+  callBackSeenRef.current = { canCallBack: voiceAvailable && voiceOffered && facetime.phase === 'idle' };
   const startVoiceCall = voiceAvailable && voiceOffered && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
-      voiceHistoryRef.current = [];
-      callWorkRef.current.clear();
+      // Calling while a call back is due: the work goes on, and its result is said on this call.
+      if (!callBackRef.current) {
+        voiceHistoryRef.current = [];
+        callWorkRef.current.clear();
+      }
+      callBackRef.current = false;
+      setCallBackPending(false);
       void voiceCall.start({ voice: getVoicePrefs().voice });
     }
     : null;
@@ -4954,7 +5011,7 @@ function AppCore() {
     voiceCallShortcut = { label: `On a call with ${agentLabel}`, live: true };
   } else if (startVoiceCall) {
     voiceCallShortcut = {
-      label: `Call ${agentLabel}`,
+      label: callBackPending ? `${agentLabel} will call you back when it's done` : `Call ${agentLabel}`,
       onClick: () => { if (voiceCall.phase === 'ended') voiceCall.dismiss(); startVoiceCall(); },
     };
   } else {
@@ -7257,13 +7314,15 @@ function AppCore() {
 
       <FacetimeWindow call={facetime} agentLabel={agentLabel} />
       {!dockVoiceCall && !callInTaskOnPhone && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
-      {offTaskBrowserOpen && route !== 'task' && (offTaskBrowser ? (
+      {/* On the web the pane shows at once, with the start page, while the browser opens. */}
+      {offTaskBrowserOpen && route !== 'task' && (offTaskBrowser || (host.isWeb && !offTaskBlank) ? (
         <BrowserPanel
           floating
-          sessionId={offTaskBrowser.sessionId}
+          sessionId={offTaskBrowser?.sessionId ?? null}
+          startBlank={!offTaskBrowser || offTaskBrowser.blank}
           agentLabel={agentLabel}
           extraActions={<TopShortcuts call={voiceCallShortcut} />}
-          onClose={() => { setOffTaskBrowserOpen(false); setOffTaskBrowser(null); }}
+          onClose={closeOffTaskBrowser}
           taskKey={route}
           onOpenUrl={openOffTaskBrowser}
           onSend={sendFromOffTaskBrowser}
@@ -7276,7 +7335,7 @@ function AppCore() {
           extraActions={<TopShortcuts call={voiceCallShortcut} />}
           onOpenUrl={openOffTaskBrowser}
           onSend={sendFromOffTaskBrowser}
-          onClose={() => setOffTaskBrowserOpen(false)}
+          onClose={closeOffTaskBrowser}
         />
       ))}
 
