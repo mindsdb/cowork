@@ -438,22 +438,33 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
 
   const textOf = (el: Element): string => (el as HTMLElement).innerText ?? el.textContent ?? '';
 
+  /* Editable by CSS alone (-webkit-user-modify: read-write), which takes the
+     person's typing though no attribute says so and isContentEditable
+     answers false. */
+  const userModifiable = (el: Element): boolean => /^read-write/.test(styleOf(el).getPropertyValue('-webkit-user-modify'));
   /* Whether no read carries `el`'s text: a secret field's (an editor marked
      as a card field holds what the person typed as its text), or, in a frame
      a read reaches, an editor's, a whole editable document's included: what
      the person typed there is a field's value, which a frame read never
      carries. */
-  const hidesText = (el: Element): boolean => isSecret(el) || (el.ownerDocument !== doc && (editable(el) || contentEditable(el)));
+  const hidesText = (el: Element): boolean => isSecret(el) || (el.ownerDocument !== doc && (editable(el) || contentEditable(el) || userModifiable(el)));
   /* Whether `el` is such a field or inside one. */
   const inHiddenText = (el: Element): boolean => {
     for (let at: Element | null = el; at; at = at.parentElement) if (hidesText(at)) return true;
     return false;
   };
-  /* Whether an editor below `root`, or `root`'s own document body, holds
-     such text. */
-  const holdsHiddenText = (root: ParentNode): boolean =>
-    ((root as Document).body ? hidesText((root as Document).body) : false)
-    || Array.from(root.querySelectorAll('[contenteditable]')).some((el) => editable(el) && hidesText(el));
+  /* Whether `root`'s own document body, or an element below `root`, holds
+     such text: in the page, an editor marked secret; in a frame, any editor,
+     one that CSS alone makes editable (userModifiable) included, which no
+     attribute marks. */
+  const holdsHiddenText = (root: ParentNode): boolean => {
+    const body = (root as Document).body;
+    if (body && hidesText(body)) return true;
+    const inFrame = ((root as Node).ownerDocument ?? root) !== doc;
+    return inFrame
+      ? Array.from(root.querySelectorAll('*')).some(hidesText)
+      : Array.from(root.querySelectorAll('[contenteditable]')).some((el) => editable(el) && hidesText(el));
+  };
   /* The text of `node` and below it, such a field's subtree and `skip` left
      out. */
   const textWithoutHidden = (node: Node, skip: Node | null = null): string => {

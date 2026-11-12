@@ -119,6 +119,15 @@ async function startFixtureServer(): Promise<void> {
         .end(`<title>Unseen</title><style>body{margin:0}</style>${frames}<div style="${at(2)};background:#fff"></div>`
           + '<iframe src="/frame-inner" style="position:absolute;left:0;top:3000px;width:200px;height:120px;border:0"></iframe>');
     }
+    if (url.pathname === '/css-editor') {
+      /* A same-origin frame whose draft CSS alone makes editable. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Editor</title><p>Top</p><iframe src="/css-editor-inner" style="width:400px;height:200px;border:0"></iframe>');
+    }
+    if (url.pathname === '/css-editor-inner') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Inner</title><p>Compose</p><div tabindex="0">To: <div style="-webkit-user-modify:read-write;min-height:40px">CSS-DRAFT typed by the person</div></div><button>Send</button>');
+    }
     if (url.pathname === '/frame-inner') {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Inner</title><p>Get the weekly digest.</p><label>Email <input value="ada@example.test"></label><button>Subscribe</button>');
@@ -483,6 +492,15 @@ test('reads a same-origin frame, lists one from another site unread, and lists n
   expect(other).toMatchObject({ url: `${origin.replace('127.0.0.1', 'localhost')}/frame-inner`, read: false, box: { width: 400 } });
   expect([200, 201]).toContain(other.box.height);
   expect(JSON.stringify(snapshot)).not.toContain('ada@example.test');
+});
+
+test("reads no text of an editor that CSS alone makes editable in a same-origin frame, in its text or a name", async () => {
+  await openAt('/css-editor');
+  await expect.poll(async () => (await page()).frames.map((f: { read: boolean }) => f.read), { timeout: 10_000 }).toEqual([true]);
+  const [frame] = (await page()).frames;
+  expect(frame.text).toContain('Compose');
+  expect(frame.elements).toEqual([{ role: 'clickable', name: 'To:' }, { role: 'button', name: 'Send' }]);
+  expect(JSON.stringify(frame)).not.toContain('CSS-DRAFT');
 });
 
 test('reads a same-origin frame only where the person sees it, and lists the rest with their boxes, unread', async () => {

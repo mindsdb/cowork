@@ -947,6 +947,31 @@ describe('frames', () => {
     }
   });
 
+  it("carries no text of an editor that CSS alone makes editable, in the frame's text or in a name around it", async () => {
+    document.body.innerHTML = `<iframe id="mail" srcdoc="${`
+      <p>Compose</p>
+      <div id='card' tabindex='0'>To: <div id='draft' style='-webkit-user-modify: read-write'>css draft words</div></div>
+      <button>Send</button>`.replace(/"/g, '&quot;')}"></iframe>`;
+    await framesLoad();
+    place(document.getElementById('mail')!, 0, 0, 600, 400);
+    const inner = frameDoc('mail');
+    // Chromium takes typing there, though isContentEditable answers false.
+    expect(inner.getElementById('draft')!.isContentEditable).toBe(false);
+    inner.querySelectorAll('p, [tabindex], #draft, button').forEach((el, i) => place(el, 10, 10 + i * 30, 200, 20));
+    const restore = textBoxesFromParents(inner);
+    try {
+      const [frame] = snapshot(freshWorld()).frames;
+      expect(frame.read).toBe(true);
+      if (!frame.read) return;
+      expect(frame.text).toContain('Compose');
+      expect(frame.text).toContain('Send');
+      expect(frame.elements).toEqual([{ role: 'clickable', name: 'To:' }, { role: 'button', name: 'Send' }]);
+      expect(JSON.stringify(frame)).not.toMatch(/css draft words/);
+    } finally {
+      restore();
+    }
+  });
+
   it('never reads a frame that holds a secret, card-named or sign-in field, sits on a payment or sign-in host, is a consent page, is under 32 px, or comes after the fifth read', async () => {
     const frames: Array<[string, string, string]> = [
       ['password', '', "<input type='password'>"],
