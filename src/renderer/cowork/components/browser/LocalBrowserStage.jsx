@@ -143,7 +143,7 @@ export function downloadLine(download) {
 
 export function LocalBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null,
-  taskKey = '', onSend, onOpenUrl,
+  taskKey = '', onSend, onOpenUrl, onPageUrl = null,
 }) {
   const { t } = useTranslation('chat');
   const browser = host.inAppBrowser;
@@ -169,6 +169,11 @@ export function LocalBrowserStage({
   const signIn = state?.login ?? null;
   /* A blank tab (no address, nothing loading) gets the start page in the
      view's place, as on the web, so the view stays parked while it shows. */
+  // The page it shows, for whoever opened it (the off-task browser's carry-over).
+  const onPageUrlRef = useRef(onPageUrl);
+  onPageUrlRef.current = onPageUrl;
+  const shownUrl = state?.url ?? '';
+  useEffect(() => { onPageUrlRef.current?.(shownUrl); }, [shownUrl]);
   const startPage = Boolean(state) && !closed && !signIn && !state.url && !state.loading && Boolean(onSend || onOpenUrl);
   const mayDraw = !overlayOpen && !signIn && !startPage;
   // Whether the view may draw now, for the pane's effect below to read.

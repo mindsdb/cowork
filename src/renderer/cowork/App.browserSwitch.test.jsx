@@ -16,6 +16,7 @@ const spies = vi.hoisted(() => ({
   fetchBrowseStatus: vi.fn(),
   provisionBrowser: vi.fn(),
   embedBrowser: vi.fn(),
+  openBrowserAt: vi.fn(),
 }));
 
 const streams = [];
@@ -43,11 +44,12 @@ vi.mock('./api', async (importOriginal) => ({
   fetchBrowseStatus: (...args) => spies.fetchBrowseStatus(...args),
   provisionBrowser: (...args) => spies.provisionBrowser(...args),
   embedBrowser: (...args) => spies.embedBrowser(...args),
+  openBrowserAt: (...args) => spies.openBrowserAt(...args),
   updateSettings: vi.fn(async () => ({})),
   recordTaskVisit: vi.fn(async () => ({})),
   cancelResponse: vi.fn(async () => ({})),
   streamNewSession: (...args) => {
-    const handle = { kind: 'new', opts: args[args.length - 1], abort: vi.fn() };
+    const handle = { kind: 'new', text: args[0], opts: args[args.length - 1], abort: vi.fn() };
     streams.push(handle);
     return handle;
   },
@@ -111,6 +113,7 @@ beforeEach(() => {
   spies.fetchSessionResult.mockReset();
   spies.fetchBrowseStatus.mockReset();
   spies.provisionBrowser.mockReset().mockResolvedValue({ status: 'starting' });
+  spies.openBrowserAt.mockReset().mockResolvedValue({ session_id: 't-abc' });
   spies.embedBrowser.mockReset().mockResolvedValue({
     session_id: 't-abc',
     view_url: `${window.location.origin}/browser/sessions/t-abc/view?et=tok`,
@@ -210,5 +213,34 @@ describe('the Browser switch and pane through App', () => {
       expect(spies.embedBrowser).not.toHaveBeenCalled();
       expect(spies.provisionBrowser).not.toHaveBeenCalled();
     }
+  });
+
+  it('a task sent from Home with the browser beside it on a page is about that page, and opens its browser there', async () => {
+    spies.fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    const user = userEvent.setup();
+    const composer = await openHomeComposer(user);
+    await user.click(screen.getByRole('button', { name: 'Show browser' }));
+    // Beside Home, not over it: the composer stays usable.
+    const frame = await waitFor(() => {
+      const found = pane()?.querySelector('iframe');
+      if (!found) throw new Error('no viewer yet');
+      return found;
+    });
+    expect(pane()).not.toHaveClass('is-floating');
+    const win = { postMessage: vi.fn() };
+    Object.defineProperty(frame, 'contentWindow', { configurable: true, get: () => win });
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-ready' }, source: win }));
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-url', url: 'https://www.united.com/en/us' }, source: win }));
+    });
+
+    await user.click(composer);
+    await user.keyboard('Find nonstop flights to DC{Enter}');
+    await waitFor(() => expect(streams).toHaveLength(1));
+    const { text, opts } = streams[0];
+    expect(text).toMatch(/^Find nonstop flights to DC\n\n\[The browser beside this request/);
+    expect(text).toContain('https://www.united.com/en/us');
+    expect(opts.conversationId).toBeTruthy();
+    await waitFor(() => expect(spies.openBrowserAt).toHaveBeenCalledWith(opts.conversationId, 'https://www.united.com/en/us'));
   });
 });

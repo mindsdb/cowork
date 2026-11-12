@@ -145,3 +145,23 @@ body[data-skin="8bit"] .voice-call__spin { border-radius: 0; animation: voice-ca
 body[data-skin="8bit"] .voice-orb, body[data-skin="8bit"] .voice-orb__fill { border-radius: 0; }
 body[data-skin="8bit"] .voice-orb { border: 2px solid var(--ink); box-shadow: none; }
 @media (prefers-reduced-motion: reduce) { .voice-orb.is-working .voice-orb__fill { animation: none; } }
+
+/* The round button that starts a call (VoiceLauncher.jsx), where the card
+   appears: in the sidebar when docked, else in the card's corner. */
+.voice-launcher { position: fixed; z-index: 59; left: 16px; bottom: 16px; }
+.voice-launcher--docked { position: relative; left: auto; bottom: auto; margin: 8px 10px; display: flex; }
+.voice-launcher__button {
+  width: 44px; height: 44px; padding: 0; display: inline-grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--surface); color: var(--ink-2);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.10);
+  cursor: pointer; transition: transform 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.voice-launcher__button:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); transform: scale(1.04); }
+.voice-launcher__button:active { transform: scale(.96); }
+.voice-launcher__button[aria-disabled="true"] { opacity: .5; cursor: default; transform: none; }
+/* A call fading out, still listening: the button glows to bring it back. */
+.voice-launcher__button.is-live { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+@media (max-width: 640px) { .voice-launcher:not(.voice-launcher--docked) { left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); } }
+@media (prefers-reduced-motion: reduce) { .voice-launcher__button { transition: none; } }
+body[data-skin="8bit"] .voice-launcher__button { border: 2px solid var(--ink); border-radius: 0; }

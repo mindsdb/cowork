@@ -55,7 +55,9 @@ export async function runOperator({ request, history, snapshot, actions, operate
 export const isRunning = (task) => (task.messages || []).some((m) => m.role === '_streaming');
 
 /** What the operator is told about the screen: where the person is, projects and recent tasks. */
-export function describeScreen({ route, currentTask, selectedProject, projects, tasks, callTaskId = null, working = null, maxTasks = 30 }) {
+export function describeScreen({
+  route, currentTask, selectedProject, projects, tasks, callTaskId = null, working = null, browserPage = '', maxTasks = 30,
+}) {
   const lines = [];
   if (route === 'task' && currentTask) {
     lines.push(`On screen: the task "${currentTask.title || 'Untitled'}" (id ${currentTask.id}) in project "${currentTask.projectName || 'general'}".`);
@@ -64,6 +66,8 @@ export function describeScreen({ route, currentTask, selectedProject, projects, 
   } else {
     lines.push('On screen: Home. A request for work starts a new task.');
   }
+  // The browser beside Home or a project: a new task from here is about its page, and takes it along.
+  if (browserPage) lines.push(`The browser beside the page is open on ${browserPage}: a request for work is about it.`);
   const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
   if (callTask) lines.push(`The task this call last gave Anton work in: "${callTask.title || 'Untitled'}" (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}.`);
   if (working) {

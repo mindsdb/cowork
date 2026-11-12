@@ -107,13 +107,15 @@ export function BrowserPanel(props) {
  */
 function WebBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
-  taskKey = '', onSend, onOpenUrl, startBlank = false,
+  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null,
 }) {
   const { t } = useTranslation('chat');
   const onControlRef = useRef(onControl);
   onControlRef.current = onControl;
   const onSendRef = useRef(onSend);
   onSendRef.current = onSend;
+  const onPageUrlRef = useRef(onPageUrl);
+  onPageUrlRef.current = onPageUrl;
   const [viewUrl, setViewUrl] = useState(null);
   const [error, setError] = useState(/** @type {PaneStop | null} */ (null));
   const [hidden, setHidden] = useState(tabHidden);
@@ -216,7 +218,9 @@ function WebBrowserStage({
       }
       // Who holds the browser: 'human' when Anton handed it to the person.
       if (type === 'browser-viewer-url') {
-        setPageUrl(String(event.data?.url || '').slice(0, 2048));
+        const url = String(event.data?.url || '').slice(0, 2048);
+        setPageUrl(url);
+        onPageUrlRef.current?.(url);
         return;
       }
       // A question typed in the viewer's address bar: the agent looks it up.

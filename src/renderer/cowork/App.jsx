@@ -160,6 +160,7 @@ import { useNativeOverlay } from './lib/nativeOverlay';
 import FacetimeWindow from './components/FacetimeWindow';
 import { useFacetimeCall } from './lib/facetime/useFacetimeCall';
 import VoiceCallWindow from './components/VoiceCallWindow';
+import VoiceLauncher from './components/VoiceLauncher';
 import TopShortcuts from './components/TopShortcuts';
 import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
 import { BrowserPanel } from './components/browser/BrowserPanel';
@@ -492,6 +493,15 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
 // agent gets no signal at all that a message's "this file" refers to
 // one of them. Named explicitly here so Anton can resolve the
 // reference — same hidden-context pattern as describeConnectFormState.
+/** What the agent is told about the page open in the browser a new task was sent beside. */
+function describeOpenBrowserPage(url) {
+  return [
+    '[The browser beside this request — Anton-only context, do not echo back]',
+    `The user had this page open in the shared browser when they asked, so the request is about it: ${url}`,
+    'It is open in this task\'s browser now; read it there first.',
+  ].join('\n');
+}
+
 function describeGoogleDriveReferenceFiles(reference) {
   if (!reference?.length) return '';
   const lines = reference.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
@@ -752,6 +762,9 @@ function AppCore() {
   // The phone top bar's browser icon, in a task: ChatView opens its browser.
   const [taskBrowserSignal, setTaskBrowserSignal] = useState(0);
   const offTaskBrowserIdRef = useRef(null);
+  // The page the off-task browser shows (the viewer reports it): a new task
+  // sent beside it is about it, and takes it along.
+  const offTaskPageUrlRef = useRef('');
   // The off-task browser could not open: the standalone start page shows instead.
   const [offTaskBlank, setOffTaskBlank] = useState(false);
   /* Opens the off-task browser, at `url` or (null) on a blank tab, in a
@@ -776,6 +789,7 @@ function AppCore() {
   };
   const closeOffTaskBrowser = () => {
     offTaskOpenSeqRef.current += 1;
+    offTaskPageUrlRef.current = '';
     setOffTaskBrowserOpen(false);
     setOffTaskBrowser(null);
   };
@@ -3996,6 +4010,34 @@ function AppCore() {
   };
 
   // Send from the home screen — creates a new session
+  /* The page the browser beside Home or a project shows, when it is a real
+     page (not its blank start page): what a task sent from there is about. */
+  const carriedBrowserPage = () => {
+    const url = offTaskPageUrlRef.current;
+    if (!offTaskBrowserOpen || !(route === 'home' || route === 'projects')) return '';
+    return /^https?:\/\//i.test(url) ? url : '';
+  };
+  /* The new task's own browser opens at that page, and its view shows it;
+     the off-task pane closes, since the task now holds the page. */
+  const carryBrowserInto = async (taskId, url) => {
+    closeOffTaskBrowser();
+    try {
+      let sessionId;
+      if (host.isWeb) {
+        sessionId = (await openBrowserAt(taskId, url))?.session_id;
+      } else {
+        sessionId = await desktopTaskSession(taskId);
+        await host.inAppBrowser.open(sessionId, url);
+      }
+      if (sessionId) setBrowserRequest({ taskId, sessionId, at: Date.now() });
+    } catch {
+      // The task still knows the page; the agent opens it itself.
+    }
+  };
+
+  const carriedPageRef = useRef(null);
+  carriedPageRef.current = carriedBrowserPage;
+
   const handleSendFromHome = async (text, meta) => {
     if (!canRunProject(meta?.project) || (route === 'projects' && !canRunProject(selectedProject))) {
       throw new Error(tApp('tasks.ownerOnly'));
@@ -4067,8 +4109,11 @@ function AppCore() {
     const rawComposer = meta?.attachments ?? composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const suppliedConversationId = meta?.conversationId || null;
+    // The browser open beside Home or the project on a page: the task is
+    // about it, and its own browser opens there, so it needs its real id now.
+    const carried = carriedBrowserPage();
     const taskId = suppliedConversationId
-      || (hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`);
+      || (hasPendingFiles || carried ? allocateConversationId() : `tmp-${Date.now()}`);
     // Flag the not-yet-persisted id so the route loader renders from local
     // state instead of 404ing home.
     markOptimisticConversation(taskId);
@@ -4078,7 +4123,12 @@ function AppCore() {
       hasPendingFiles ? taskId : null,
       rawComposer,
     );
-    const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
+    const sendText = [
+      text,
+      reference.length ? describeGoogleDriveReferenceFiles(reference) : '',
+      carried ? describeOpenBrowserPage(carried) : '',
+    ].filter(Boolean).join('\n\n');
+    if (carried) void carryBrowserInto(taskId, carried);
     setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
@@ -4217,7 +4267,7 @@ function AppCore() {
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
-      conversationId: suppliedConversationId || (hasPendingFiles ? taskId : undefined),
+      conversationId: suppliedConversationId || (hasPendingFiles || carried ? taskId : undefined),
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
@@ -5261,6 +5311,7 @@ function AppCore() {
     history: voiceHistoryRef.current,
     snapshot: () => describeScreen({
       ...callScreenRef.current, tasks: tasksRef.current, callTaskId: facetimeTaskIdRef.current, working: callBusy(),
+      browserPage: carriedPageRef.current?.() || '',
     }),
     actions: callActions,
   });
@@ -5277,6 +5328,35 @@ function AppCore() {
       .slice(0, 100)
       .map((t) => ({ id: t.id, title: t.title }));
   }, [tasks, currentTask?.id, currentTask?.projectName]);
+  /* Show browser from Home or Projects: the task view's pane, beside the page
+     on a wide screen and over it otherwise, so the page stays usable. On the
+     web it shows at once, with the start page, while the browser opens. */
+  const offTaskPaneFloats = isNarrow || isMobile || !(route === 'home' || route === 'projects');
+  const offTaskPaneProps = {
+    floating: offTaskPaneFloats,
+    taskKey: route,
+    agentLabel,
+    onClose: closeOffTaskBrowser,
+    onOpenUrl: openOffTaskBrowser,
+    onSend: sendFromOffTaskBrowser,
+  };
+  const offTaskPane = offTaskBrowserOpen && route !== 'task' && (offTaskBrowser || (host.isWeb && !offTaskBlank) ? (
+    <BrowserPanel
+      {...offTaskPaneProps}
+      sessionId={offTaskBrowser?.sessionId ?? null}
+      startBlank={!offTaskBrowser || offTaskBrowser.blank}
+      onPageUrl={(url) => { offTaskPageUrlRef.current = url; }}
+    />
+  ) : offTaskBlank ? <BlankBrowserPanel {...offTaskPaneProps} /> : null);
+  const dockOffTask = Boolean(offTaskPane) && !offTaskPaneFloats;
+  // The same elements with the pane or without, so the page (and what is
+  // typed in its composer) stays as it is when the pane opens beside it.
+  const besideOffTask = (view) => (
+    <div className={`flex-1 min-h-0 ${dockOffTask ? 'grid grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : 'flex flex-col'}`}>
+      <div className="min-w-0 min-h-0 flex-1 flex flex-col">{view}</div>
+      {dockOffTask && offTaskPane}
+    </div>
+  );
   const noCallRunning = facetime.phase === 'idle' && voiceCall.phase === 'idle';
   // Voice calls only where the LLM provider is MindsHub: the call runs on
   // MindsHub. With another provider every call button is hidden.
@@ -5318,7 +5398,7 @@ function AppCore() {
     };
   }
   const offTaskShortcuts = (
-    <TopShortcuts onShowBrowser={() => setOffTaskBrowserOpen(true)} call={voiceCallShortcut} />
+    <TopShortcuts onShowBrowser={() => setOffTaskBrowserOpen(true)} />
   );
   // Where the call's card goes: in the sidebar above its footer while the
   // sidebar is docked open, floating in that corner otherwise.
@@ -6720,7 +6800,8 @@ function AppCore() {
         setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
       }
     },
-    callShortcut: voiceCallShortcut,
+    // The call starts from the round button where its card shows (VoiceLauncher), not the top bar.
+    callShortcut: null,
     accountUser: codeAccountUser,
     onShowBrowser: () => {
       if (route === 'task') setTaskBrowserSignal((n) => n + 1);
@@ -6905,7 +6986,12 @@ function AppCore() {
           updateBanner={updateBanner}
           onUpdateAction={handleUpdateAction}
           onDismissUpdate={dismissShellUpdate}
-          callCard={dockVoiceCall ? <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} /> : null}
+          callCard={dockVoiceCall ? (
+            <>
+              <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} />
+              <VoiceLauncher docked call={voiceCallShortcut} />
+            </>
+          ) : null}
           onStartChat={(text) => {
             // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
             // drawer. Close it like navigate/onOpenSchedule do, so the new
@@ -6976,7 +7062,7 @@ function AppCore() {
           hidden={effectiveWorkspaceMode !== 'cowork'}
           aria-hidden={effectiveWorkspaceMode !== 'cowork'}
         >
-        {route === 'home' && (
+        {route === 'home' && besideOffTask(
           <HomeView
             greeting={look.greeting}
             showDots={showDots}
@@ -7088,7 +7174,6 @@ function AppCore() {
             projectTasks={projectTasksForBrowsers}
             onOpenTaskBrowser={(id, sessionId) => { selectTask(id); setBrowserRequest({ taskId: id, sessionId, at: Date.now() }); }}
             openBrowserSignal={taskBrowserSignal}
-            callShortcut={voiceCallShortcut}
             phoneCallCard={callInTaskOnPhone ? <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} /> : null}
             phoneCall={callInTaskOnPhone ? voiceCall : null}
             browserSwitch={browserSwitchShown && currentTask
@@ -7181,7 +7266,7 @@ function AppCore() {
           />
         )}
 
-        {route === 'projects' && (
+        {route === 'projects' && besideOffTask(
           <ProjectsView
             projects={projects}
             selectedProject={selectedProjectForView}
@@ -7622,30 +7707,10 @@ function AppCore() {
 
       <FacetimeWindow call={facetime} agentLabel={agentLabel} />
       {!dockVoiceCall && !callInTaskOnPhone && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
-      {/* On the web the pane shows at once, with the start page, while the browser opens. */}
-      {offTaskBrowserOpen && route !== 'task' && (offTaskBrowser || (host.isWeb && !offTaskBlank) ? (
-        <BrowserPanel
-          floating
-          sessionId={offTaskBrowser?.sessionId ?? null}
-          startBlank={!offTaskBrowser || offTaskBrowser.blank}
-          agentLabel={agentLabel}
-          extraActions={<TopShortcuts call={voiceCallShortcut} />}
-          onClose={closeOffTaskBrowser}
-          taskKey={route}
-          onOpenUrl={openOffTaskBrowser}
-          onSend={sendFromOffTaskBrowser}
-        />
-      ) : offTaskBlank && (
-        <BlankBrowserPanel
-          floating
-          taskKey={route}
-          agentLabel={agentLabel}
-          extraActions={<TopShortcuts call={voiceCallShortcut} />}
-          onOpenUrl={openOffTaskBrowser}
-          onSend={sendFromOffTaskBrowser}
-          onClose={closeOffTaskBrowser}
-        />
-      ))}
+      {/* The call starts from a round button where its card shows. */}
+      {!dockVoiceCall && <VoiceLauncher call={voiceCallShortcut} />}
+      {/* Narrow, or off Home and Projects: the browser floats over the page. */}
+      {offTaskPane && !dockOffTask && offTaskPane}
 
       <ConfirmModal
         open={pendingDisconnect != null}

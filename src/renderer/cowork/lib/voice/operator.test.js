@@ -95,3 +95,12 @@ describe('the voice operator', () => {
     expect(describeSteps(tasks[1])).toContain('Its answer: Booked.');
   });
 });
+
+
+describe('describeScreen with the browser open beside the page', () => {
+  it('says which page, so a request from here is about it', () => {
+    const text = describeScreen({ route: 'home', projects: [], tasks: [], browserPage: 'https://www.united.com/en/us' });
+    expect(text).toContain('The browser beside the page is open on https://www.united.com/en/us: a request for work is about it.');
+    expect(describeScreen({ route: 'home', projects: [], tasks: [] })).not.toContain('browser beside');
+  });
+});
