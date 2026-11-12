@@ -350,7 +350,9 @@ describe('BrowserSettingsSection', () => {
       expect(await screen.findByText(webDisclosure('Cowork'))).toBeInTheDocument();
       expect(webDisclosure('Cowork')).toMatch(/websites see MindsDB's addresses/);
       expect(webDisclosure('Cowork')).toMatch(/asks you before a step that submits, buys, sends or deletes/);
-      expect(screen.getByText(WEB_SIGN_INS)).toBeInTheDocument();
+      // Sign-ins and what the model provider sees are on the switch, on hover.
+      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      expect(await screen.findByText(WEB_SIGN_INS)).toBeInTheDocument();
       expect(WEB_SIGN_INS).toMatch(/every organization you belong to, until they go 90 days unused or you sign out of all sites in Settings\.$/);
       // No deletion with the MindsHub account runs, so the line promises none.
       expect(WEB_SIGN_INS).not.toMatch(/delet/i);
@@ -361,6 +363,8 @@ describe('BrowserSettingsSection', () => {
 
     it('names no provider by sign-in on the web', async () => {
       renderSection({}, vi.fn(), { signedInToMindsHub: true });
+      await screen.findByText(webDisclosure('Cowork'));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
       expect(await screen.findByText(`${pageContentLine('Cowork')} ${WEB_JEV_LINE}`)).toBeInTheDocument();
       expect(screen.queryByText(/MindsHub when you're signed in/)).not.toBeInTheDocument();
     });
@@ -413,7 +417,8 @@ describe('BrowserSettingsSection', () => {
       expect(await screen.findByText(desktopDisclosure('Cowork'))).toBeInTheDocument();
       expect(desktopDisclosure('Cowork')).toMatch(/your own connection, and no MindsDB server carries your browsing/);
       expect(desktopDisclosure('Cowork')).toMatch(/Cowork's code runs as you and can read this browser's sign-ins/);
-      expect(screen.getByText(DESKTOP_SIGN_INS)).toBeInTheDocument();
+      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      expect(await screen.findByText(DESKTOP_SIGN_INS)).toBeInTheDocument();
       // Session cookies end when the app quits, so the line promises no more than the site keeps.
       expect(DESKTOP_SIGN_INS).toMatch(/until the site signs you out or you sign out of all sites in Settings\. Some sites sign you out when the app quits\.$/);
       expect(screen.getByText(pageContentLine('Cowork'))).toBeInTheDocument();
@@ -425,6 +430,8 @@ describe('BrowserSettingsSection', () => {
       renderSection({}, vi.fn(), { signedInToMindsHub: true });
       const line = pageContentLine('Cowork', { signedInToMindsHub: true });
       expect(line).toBe("When Cowork reads a page, its text and a screenshot go to the model provider that serves your turn, MindsHub when you're signed in.");
+      await screen.findByText(desktopDisclosure('Cowork'));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
       expect(await screen.findByText(line)).toBeInTheDocument();
     });
 

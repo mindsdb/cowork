@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
 
 /* The desktop names MindsHub on the browser's model-provider line while the
@@ -44,6 +45,8 @@ it.each([
   ['names no provider while the app is signed out', false],
 ])('the browser group %s', async (_case, signedIn) => {
   renderSettings(signedIn);
+  // On the browser switch, on hover.
+  await userEvent.hover(await screen.findByRole('switch', { name: 'Shared browser' }));
   expect(await screen.findByText(pageContentLine('Cowork', { signedInToMindsHub: signedIn }))).toBeInTheDocument();
 });
 
@@ -57,7 +60,7 @@ it.each([
     onThemeChange={vi.fn()} onSkinChange={vi.fn()} onCustomThemeChange={vi.fn()}
     agentLabel="Cowork" serverOnline section="agent" onSectionChange={vi.fn()} isSsoConnected={false}
   />);
-  await screen.findByText(pageContentLine('Cowork', { signedInToMindsHub: false }));
+  await screen.findByRole('switch', { name: 'Shared browser' });
   if (shown) expect(screen.getByRole('switch', { name: 'Voice agent' })).toBeInTheDocument();
   else expect(screen.queryByRole('switch', { name: 'Voice agent' })).not.toBeInTheDocument();
 });

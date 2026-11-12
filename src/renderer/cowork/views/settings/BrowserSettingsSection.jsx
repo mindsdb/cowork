@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Section, SettingsGroup } from './settingsLayout';
 import { setBrowserPrefs, useBrowserPrefs } from '../../lib/browserPrefs';
 import { Switch } from '../../components/ui/Switch';
+import { Tooltip } from '../../components/ui/Tooltip';
 import Button from '../../components/ui/Button';
 import { signOutOfBrowserSites } from '../../api';
 import { readBrowseStatus } from '../../lib/browseStatus';
@@ -183,6 +184,19 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     </Section>
   );
 
+  const browserHelp = (
+    <div className="flex flex-col gap-2 max-w-[340px] text-left">
+      <p className="m-0">
+        <strong>{t('browser.signInsTitle')}</strong>{' '}
+        <span>{inApp ? t('browser.desktopSignIns') : t('browser.webSignIns')}</span>
+      </p>
+      <p className="m-0">
+        <strong>{t('browser.providerSeesTitle')}</strong>{' '}
+        <span>{inApp ? pageContentLine(agentLabel, { signedInToMindsHub }) : `${pageContentLine(agentLabel)} ${t('browser.webJevLine')}`}</span>
+      </p>
+    </div>
+  );
+
   const browserSwitch = (
     <Switch
       checked={settings.browserEnabled ?? true}
@@ -196,7 +210,10 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     browserGroup = (
       <SettingsGroup title={t('browser.sharedBrowser')}>
         <Section title={t('browser.useSharedBrowser')} subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
-          {browserSwitch}
+          {/* What stays signed in and what the model provider sees: on the switch, on hover. */}
+          <Tooltip content={browserHelp}>
+            <span className="inline-flex">{browserSwitch}</span>
+          </Tooltip>
         </Section>
         <Section title="Approve browser steps" subtitle={approveStepsHelp(agentLabel)}>
           <Switch
@@ -205,12 +222,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
             aria-label="Approve browser steps"
           />
         </Section>
-                <Section title={t('browser.signInsTitle')} subtitle={inApp ? t('browser.desktopSignIns') : t('browser.webSignIns')} />
         {signOutRow}
-        <Section
-          title={t('browser.providerSeesTitle')}
-          subtitle={inApp ? pageContentLine(agentLabel, { signedInToMindsHub }) : `${pageContentLine(agentLabel)} ${t('browser.webJevLine')}`}
-        />
       </SettingsGroup>
     );
   } else if (refused) {
