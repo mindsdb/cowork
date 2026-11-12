@@ -335,7 +335,12 @@
     "reported": "{count, plural, one {L’aperçu a signalé # erreur} other {L’aperçu a signalé # erreurs}}",
     "line": "ligne {line}",
     "title": "Erreurs d’aperçu",
-    "ariaLabel": "Erreurs d’aperçu, {count}"
+    "ariaLabel": "Erreurs d’aperçu, {count}",
+    "kind": {
+      "rejection": "Rejet de promesse non géré",
+      "console": "Erreur de console",
+      "http": "Erreur du serveur"
+    }
   },
   "liveAppPreview": {
     "failure": "Impossible de se connecter à cette application. Rechargez pour réessayer ou ouvrez-la dans votre navigateur.",

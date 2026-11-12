@@ -335,7 +335,12 @@
     "reported": "{count, plural, other {プレビューで#件のエラーが報告されました}}",
     "line": "{line}行目",
     "title": "プレビューのエラー",
-    "ariaLabel": "プレビューのエラー、{count}件"
+    "ariaLabel": "プレビューのエラー、{count}件",
+    "kind": {
+      "rejection": "処理されていない Promise の拒否",
+      "console": "コンソールエラー",
+      "http": "サーバーエラー"
+    }
   },
   "liveAppPreview": {
     "failure": "このアプリに接続できませんでした。再読み込みしてもう一度お試しいただくか、ブラウザで開いてください。",

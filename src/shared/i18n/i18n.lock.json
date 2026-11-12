@@ -18325,6 +18325,108 @@
       "text": "abc0bfcb018f"
     }
   },
+  "artifacts:previewErrors.kind.console": {
+    "de": {
+      "from": "d5cca3974e75",
+      "text": "22773a2dfa5f"
+    },
+    "es": {
+      "from": "d5cca3974e75",
+      "text": "5eb715f9f9f2"
+    },
+    "fr": {
+      "from": "d5cca3974e75",
+      "text": "eed708419b9e"
+    },
+    "it": {
+      "from": "d5cca3974e75",
+      "text": "6f44937ee15a"
+    },
+    "ja": {
+      "from": "d5cca3974e75",
+      "text": "c2723f2ea985"
+    },
+    "ko": {
+      "from": "d5cca3974e75",
+      "text": "9a79da0bed78"
+    },
+    "pt-BR": {
+      "from": "d5cca3974e75",
+      "text": "107d3b57750e"
+    },
+    "zh-CN": {
+      "from": "d5cca3974e75",
+      "text": "908beefcd8be"
+    }
+  },
+  "artifacts:previewErrors.kind.http": {
+    "de": {
+      "from": "dfe0c2e802b1",
+      "text": "90c07cdd3b21"
+    },
+    "es": {
+      "from": "dfe0c2e802b1",
+      "text": "30690609f7e9"
+    },
+    "fr": {
+      "from": "dfe0c2e802b1",
+      "text": "dfbbeda66c28"
+    },
+    "it": {
+      "from": "dfe0c2e802b1",
+      "text": "9b30647e9c58"
+    },
+    "ja": {
+      "from": "dfe0c2e802b1",
+      "text": "bdcbc98819aa"
+    },
+    "ko": {
+      "from": "dfe0c2e802b1",
+      "text": "bc7865932054"
+    },
+    "pt-BR": {
+      "from": "dfe0c2e802b1",
+      "text": "a004005771b0"
+    },
+    "zh-CN": {
+      "from": "dfe0c2e802b1",
+      "text": "24ad6a3d73e9"
+    }
+  },
+  "artifacts:previewErrors.kind.rejection": {
+    "de": {
+      "from": "0c6568ef14c4",
+      "text": "6c6b411030cd"
+    },
+    "es": {
+      "from": "0c6568ef14c4",
+      "text": "1067e7b7c39c"
+    },
+    "fr": {
+      "from": "0c6568ef14c4",
+      "text": "5063f1dfb5e5"
+    },
+    "it": {
+      "from": "0c6568ef14c4",
+      "text": "5f0b476dae74"
+    },
+    "ja": {
+      "from": "0c6568ef14c4",
+      "text": "58115ca5dc49"
+    },
+    "ko": {
+      "from": "0c6568ef14c4",
+      "text": "c88619dc1959"
+    },
+    "pt-BR": {
+      "from": "0c6568ef14c4",
+      "text": "2451ea220aec"
+    },
+    "zh-CN": {
+      "from": "0c6568ef14c4",
+      "text": "238bd68f8ccb"
+    }
+  },
   "artifacts:previewErrors.line": {
     "de": {
       "from": "29e158eafb93",

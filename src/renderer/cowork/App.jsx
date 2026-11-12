@@ -50,6 +50,7 @@ import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { handleArtifactCheckEvent } from './lib/artifactCheck';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -2561,6 +2562,8 @@ function AppCore() {
                   // possible later if we see network overhead.
       onEvent(ev) {
         if (!isCurrentStream(taskId, ctrl)) return;
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([taskId], streamState.steps);
@@ -3962,6 +3965,8 @@ function AppCore() {
         if (!isCurrentStream(resolvedId, sessionCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, taskId], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
@@ -4493,6 +4498,8 @@ function AppCore() {
         // fresh id; the new value rides on `response.created`.
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -4844,6 +4851,8 @@ function AppCore() {
         // A custom connector's test waiting on the user: its id goes to the
         // panel's own store, never into the stream state or the message.
         if (applyConnectorTestEvent(resolvedId || id, ev)) return;
+        // A preview check is answered here and left out of the steps.
+        handleArtifactCheckEvent(ev);
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);

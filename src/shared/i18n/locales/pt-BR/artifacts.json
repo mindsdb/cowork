@@ -335,7 +335,12 @@
     "reported": "{count, plural, one {A visualização relatou # erro} other {A visualização relatou # erros}}",
     "line": "linha {line}",
     "title": "Erros da visualização",
-    "ariaLabel": "Erros da visualização, {count}"
+    "ariaLabel": "Erros da visualização, {count}",
+    "kind": {
+      "rejection": "Rejeição de promise não tratada",
+      "console": "Erro no console",
+      "http": "Erro do servidor"
+    }
   },
   "liveAppPreview": {
     "failure": "Não foi possível conectar a este app. Recarregue para tentar novamente ou abra-o no navegador.",

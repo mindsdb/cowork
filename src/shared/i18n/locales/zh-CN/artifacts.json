@@ -335,7 +335,12 @@
     "reported": "{count, plural, other {预览报告了 # 个错误}}",
     "line": "第 {line} 行",
     "title": "预览错误",
-    "ariaLabel": "预览错误，{count} 个"
+    "ariaLabel": "预览错误，{count} 个",
+    "kind": {
+      "rejection": "未处理的 Promise 拒绝",
+      "console": "控制台错误",
+      "http": "服务器错误"
+    }
   },
   "liveAppPreview": {
     "failure": "无法连接到此应用。请重新加载以重试，或在浏览器中打开。",

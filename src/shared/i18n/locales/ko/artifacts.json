@@ -335,7 +335,12 @@
     "reported": "{count, plural, other {미리 보기에서 오류 #개가 보고되었습니다}}",
     "line": "{line}행",
     "title": "미리 보기 오류",
-    "ariaLabel": "미리 보기 오류, {count}개"
+    "ariaLabel": "미리 보기 오류, {count}개",
+    "kind": {
+      "rejection": "처리되지 않은 Promise 거부",
+      "console": "콘솔 오류",
+      "http": "서버 오류"
+    }
   },
   "liveAppPreview": {
     "failure": "이 앱에 연결하지 못했습니다. 다시 불러와서 다시 시도하거나 브라우저에서 여세요.",

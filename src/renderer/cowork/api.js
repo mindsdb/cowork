@@ -1278,6 +1278,25 @@ export async function submitAnswer(conversationId, questionId, answer) {
   }
 }
 
+/**
+ * Answer a preview check the running turn asked for (`response.artifact_check`,
+ * ENG-4207). `body` is `{ status: 'passed' | 'failed' | 'unavailable', errors,
+ * ms }`. Never throws: a lost answer only makes the server wait out the
+ * check's own timeout, so there is nothing for the caller to do about it.
+ */
+export async function submitArtifactCheck(checkId, body) {
+  if (!checkId) return { status: 'not_found' };
+  try {
+    return await req(`/artifacts/checks/${encodeURIComponent(checkId)}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+  } catch (err) {
+    return { status: err?.status === 404 ? 'not_found' : 'error' };
+  }
+}
+
 /** Keep the running turn's response id on its stream handle (ENG-4194). */
 function noteResponseId(ctrl, msg) {
   if (msg?.type === 'response.created' && msg.response?.id) ctrl.responseId = String(msg.response.id);

@@ -60,6 +60,7 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
@@ -820,6 +821,20 @@ export function ArtifactViewer({
     if (saved) onReload();
     return saved;
   }, [onReload, workspace.save]);
+
+  // The agent's preview check (ENG-4207): while this viewer shows an iframe
+  // preview, a check for its slug reloads it here and reports what it saw.
+  // Not gated on previewUrl/previewDoc: a reload clears both for a moment,
+  // and the check must not lose its viewer to its own reload. Live apps,
+  // documents, images and text have no diagnostics to report, so a check for
+  // them answers "unavailable".
+  usePreviewCheckTarget({
+    slug: artifact?.slug || artifactFolder.split(/[\\/]/).filter(Boolean).pop() || '',
+    enabled: open && hasPreviewSource && !isImage && !isText && !showDocumentPreview && !liveAppView,
+    reload: onReload,
+    iframeReady,
+    errors: diagnostics.errors,
+  });
 
   if (!open || !artifact) return null;
 

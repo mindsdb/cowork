@@ -335,7 +335,12 @@
     "reported": "{count, plural, one {L’anteprima ha segnalato # errore} other {L’anteprima ha segnalato # errori}}",
     "line": "riga {line}",
     "title": "Errori dell’anteprima",
-    "ariaLabel": "Errori dell’anteprima, {count}"
+    "ariaLabel": "Errori dell’anteprima, {count}",
+    "kind": {
+      "rejection": "Rifiuto di promise non gestito",
+      "console": "Errore della console",
+      "http": "Errore del server"
+    }
   },
   "liveAppPreview": {
     "failure": "Impossibile connettersi a questa app. Ricarica per riprovare oppure aprila nel browser.",

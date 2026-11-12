@@ -335,7 +335,12 @@
     "reported": "{count, plural, one {The preview reported # error} other {The preview reported # errors}}",
     "line": "line {line}",
     "title": "Preview errors",
-    "ariaLabel": "Preview errors, {count}"
+    "ariaLabel": "Preview errors, {count}",
+    "kind": {
+      "rejection": "Unhandled promise rejection",
+      "console": "Console error",
+      "http": "Server error"
+    }
   },
   "liveAppPreview": {
     "failure": "Couldn't connect to this app. Reload to try again, or open it in your browser.",

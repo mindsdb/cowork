@@ -335,7 +335,12 @@
     "reported": "{count, plural, one {La vista previa informó # error} other {La vista previa informó # errores}}",
     "line": "línea {line}",
     "title": "Errores de la vista previa",
-    "ariaLabel": "Errores de la vista previa, {count}"
+    "ariaLabel": "Errores de la vista previa, {count}",
+    "kind": {
+      "rejection": "Rechazo de promesa no gestionado",
+      "console": "Error de consola",
+      "http": "Error del servidor"
+    }
   },
   "liveAppPreview": {
     "failure": "No se pudo conectar con esta app. Recarga para reintentar o ábrela en tu navegador.",

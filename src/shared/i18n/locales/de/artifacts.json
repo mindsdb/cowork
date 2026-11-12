@@ -335,7 +335,12 @@
     "reported": "{count, plural, one {Die Vorschau hat # Fehler gemeldet} other {Die Vorschau hat # Fehler gemeldet}}",
     "line": "Zeile {line}",
     "title": "Vorschaufehler",
-    "ariaLabel": "Vorschaufehler, {count}"
+    "ariaLabel": "Vorschaufehler, {count}",
+    "kind": {
+      "rejection": "Unbehandelte Promise-Ablehnung",
+      "console": "Konsolenfehler",
+      "http": "Serverfehler"
+    }
   },
   "liveAppPreview": {
     "failure": "Verbindung zu dieser App nicht möglich. Laden Sie neu, um es erneut zu versuchen, oder öffnen Sie sie im Browser.",
