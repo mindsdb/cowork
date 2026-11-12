@@ -104,3 +104,14 @@ describe('describeScreen with the browser open beside the page', () => {
     expect(describeScreen({ route: 'home', projects: [], tasks: [] })).not.toContain('browser beside');
   });
 });
+
+describe('describeScreen with an artifact open', () => {
+  it('names it, its type and the start of its text, before the task list', () => {
+    const text = describeScreen({
+      route: 'task', currentTask: { id: 't1', title: 'Q3' }, projects: [], tasks: [{ id: 't1', title: 'Q3' }],
+      artifacts: [{ title: 'Q3 brief', type: 'html', text: 'Revenue grew\n\n12% in Q3.' }],
+    });
+    expect(text).toContain('Open artifact: "Q3 brief" (html). The start of its visible text:\n| Revenue grew 12% in Q3.');
+    expect(text.indexOf('Open artifact')).toBeLessThan(text.indexOf('Recent tasks'));
+  });
+});

@@ -11,6 +11,7 @@
 // never sees a request land between a tool call and its result.
 
 import { voiceOperate } from '../../api';
+import { describeArtifacts } from './screenArtifacts';
 
 export const MAX_ROUNDS = 6;
 const MAX_HISTORY = 40;
@@ -52,9 +53,13 @@ export async function runOperator({ request, history, snapshot, actions, operate
 
 export const isRunning = (task) => (task.messages || []).some((m) => m.role === '_streaming');
 
-/** What the operator is told about the screen: where the person is, projects and recent tasks. */
+/**
+ * What the operator is told about the screen: where the person is, an open
+ * artifact (`artifacts`, from screenArtifacts.js: its title, type and the
+ * start of its text), projects and recent tasks.
+ */
 export function describeScreen({
-  route, currentTask, selectedProject, projects, tasks, callTaskId = null, working = null, browserPage = '', maxTasks = 30,
+  route, currentTask, selectedProject, projects, tasks, callTaskId = null, working = null, browserPage = '', artifacts = [], maxTasks = 30,
 }) {
   const lines = [];
   if (route === 'task' && currentTask) {
@@ -67,6 +72,8 @@ export function describeScreen({
   // The browser beside Home or a project: a new task from here takes its page
   // along. Only the site's origin, never text the site chose.
   if (browserPage) lines.push(`The browser beside the page is open on a page from ${browserPage}; a new task from here opens it too.`);
+  // Before the task list, so the server's cut of a long snapshot keeps it.
+  lines.push(...describeArtifacts(artifacts));
   const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
   if (callTask) lines.push(`The task this call last gave Anton work in: "${callTask.title || 'Untitled'}" (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}.`);
   if (working) {

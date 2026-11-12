@@ -166,6 +166,7 @@ import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
+import { artifactsOnScreen } from './lib/voice/screenArtifacts';
 import {
   desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
 } from './lib/browserSession';
@@ -5203,6 +5204,7 @@ function AppCore() {
     snapshot: () => describeScreen({
       ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callBusy(),
       browserPage: pageOriginForContext(carriedPageRef.current?.() || ''),
+      artifacts: artifactsOnScreen(),
     }),
     actions: callActions,
   });

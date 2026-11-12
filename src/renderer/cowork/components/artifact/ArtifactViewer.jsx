@@ -63,6 +63,7 @@ import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
+import { htmlText, showArtifactOnScreen } from '../../lib/voice/screenArtifacts';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -496,6 +497,27 @@ export function ArtifactViewer({
   const textExt = isText
     ? ((artifact?.ext || '').toLowerCase() || artifactExtension(actionPath))
     : '';
+
+  /* What a voice call's operator reads of this artifact while it is open
+     (lib/voice/screenArtifacts.js): its title, its type and the text it
+     shows, read when the operator asks. */
+  const onScreenRef = useRef(null);
+  onScreenRef.current = { artifact, textPreview, previewDoc, textExt };
+  useEffect(() => {
+    if (!open || !artifact) return undefined;
+    return showArtifactOnScreen(() => {
+      const { artifact: shown, textPreview: text, previewDoc: doc, textExt: ext } = onScreenRef.current;
+      if (!shown) return null;
+      let visible = text?.content || '';
+      if (!visible) {
+        try { visible = iframeRef.current?.contentDocument?.body?.innerText || ''; } catch { visible = ''; }
+      }
+      if (!visible && doc) visible = htmlText(doc);
+      const type = shown.type || (ext || artifactExtension(shown.path || '')).replace(/^\./, '');
+      return { title: shown.title || shown.path?.split('/').pop() || '', type, text: visible };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, artifact?.path]);
   /*
    * With live apps on, a full-stack app shares through "Share with…" on its
    * card, and cowork-server refuses to publish one as a page, so the header
