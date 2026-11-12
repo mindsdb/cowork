@@ -187,8 +187,8 @@ export function ArtifactViewerHeader({
           </div>
         )}
         {showStats && (
-          <Tooltip content={stats.open ? 'Hide stats' : 'Stats'}>
-            <IconButton aria-label="Stats" onClick={stats.onToggle} active={!!stats.open}>
+          <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
+            <IconButton aria-label={t('stats.toggle.show')} onClick={stats.onToggle} active={!!stats.open}>
               {Ico.chartColumn(16)}
             </IconButton>
           </Tooltip>

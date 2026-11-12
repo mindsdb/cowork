@@ -9,12 +9,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchPublishStats, publishTargetPath, setPublishTracking } from '../../../api';
 import { loadArtifactStats, setArtifactTracking } from '../../../lib/artifactWorkspaceApi';
 import { useOrgMode } from '../../../../lib/orgMode';
+import i18n from '../../../../lib/i18n';
 
 export function toStatsError(e) {
   return {
     status: typeof e?.status === 'number' ? e.status : null,
     code: e?.code || null,
-    message: e?.message || 'Could not load stats.',
+    message: e?.message || i18n.t('artifacts:stats.errors.loadFailed'),
   };
 }
 

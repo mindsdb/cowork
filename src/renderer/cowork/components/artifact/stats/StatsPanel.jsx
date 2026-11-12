@@ -7,26 +7,25 @@ import { Switch } from '../../ui/Switch';
 import { relativeAge } from '../../../lib/formatTime';
 import { XIcon } from '../comments/icons';
 import { StatsChart } from './StatsChart';
-
-const RECONNECT = 'Reconnect MindsHub to see stats.';
+import i18n, { useTranslation } from '../../../../lib/i18n';
 
 // Stable fallback: StatsChart rebuilds the chart whenever `daily` changes identity.
 const NO_DAYS = [];
 
 // Refusals with a known cause. Only a transient outage is worth a Retry.
 const CODED_ERRORS = {
-  stats_owned_by_other_account: { message: 'Stats are not available for this account.', retry: false },
-  stats_unavailable: { message: 'Stats are not available for this artifact.', retry: false },
-  publish_credential_missing: { message: RECONNECT, retry: false },
-  publish_credential_rejected: { message: RECONNECT, retry: false },
-  stats_temporarily_unavailable: { message: 'Stats are temporarily unavailable.', retry: true },
+  stats_owned_by_other_account: { key: 'otherAccount', retry: false },
+  stats_unavailable: { key: 'unavailable', retry: false },
+  publish_credential_missing: { key: 'reconnect', retry: false },
+  publish_credential_rejected: { key: 'reconnect', retry: false },
+  stats_temporarily_unavailable: { key: 'temporarilyUnavailable', retry: true },
 };
 
 export function describeStatsError(error) {
   if (!error) return null;
   const coded = error.code ? CODED_ERRORS[error.code] : null;
-  if (coded) return coded;
-  const message = error.message || 'Could not load stats.';
+  if (coded) return { message: i18n.t(`artifacts:stats.errors.${coded.key}`), retry: coded.retry };
+  const message = error.message || i18n.t('artifacts:stats.errors.loadFailed');
   // Billing and organization refusals do not change on a retry.
   if (error.status === 402) return { message, retry: false };
   if (error.status === 403 && error.code && error.code !== 'permission_denied') {
@@ -59,9 +58,10 @@ function Metric({ label, value, hint = '' }) {
 }
 
 function StatsSkeleton() {
+  const { t } = useTranslation('artifacts');
   const block = 'rounded-[8px] bg-surface-2 animate-pulse motion-reduce:animate-none';
   return (
-    <div role="status" aria-label="Loading stats" className="flex flex-col gap-2">
+    <div role="status" aria-label={t('stats.loading')} className="flex flex-col gap-2">
       <div className={`h-[22px] ${block}`} />
       <div className="grid grid-cols-2 gap-2">
         {[0, 1, 2, 3].map((i) => <div key={i} className={`h-[54px] ${block}`} />)}
@@ -72,6 +72,7 @@ function StatsSkeleton() {
 }
 
 function StatsFailure({ failure, onRetry }) {
+  const { t } = useTranslation('artifacts');
   return (
     <div
       role="alert"
@@ -79,19 +80,20 @@ function StatsFailure({ failure, onRetry }) {
         text-[12px] leading-[16px] text-ink-2"
     >
       <span>{failure.message}</span>
-      {failure.retry && <Button size="sm" onClick={onRetry}>Retry</Button>}
+      {failure.retry && <Button size="sm" onClick={onRetry}>{t('stats.retry')}</Button>}
     </div>
   );
 }
 
 function ViewersTable({ viewers }) {
+  const { t } = useTranslation('artifacts');
   return (
     <div className="shrink-0 overflow-x-auto">
       <table className="w-full border-collapse text-[12px] leading-[16px]">
         <thead>
           <tr className="text-left text-ink-3">
-            <th scope="col" className="py-1 pr-2 font-medium">Email</th>
-            <th scope="col" className="whitespace-nowrap py-1 font-medium">Last seen</th>
+            <th scope="col" className="py-1 pr-2 font-medium">{t('stats.viewers.email')}</th>
+            <th scope="col" className="whitespace-nowrap py-1 font-medium">{t('stats.viewers.lastSeen')}</th>
           </tr>
         </thead>
         <tbody>
@@ -118,6 +120,7 @@ function ViewersTable({ viewers }) {
 }
 
 function StatsContent({ data, trackingBusy, accessMode, accessLoaded, onToggleTracking }) {
+  const { t } = useTranslation('artifacts');
   const viewers = Array.isArray(data.viewers) ? data.viewers : [];
   const daily = Array.isArray(data.daily) ? data.daily : NO_DAYS;
   const tracking = data.tracking === true;
@@ -127,10 +130,10 @@ function StatsContent({ data, trackingBusy, accessMode, accessLoaded, onToggleTr
     <>
       <div className="flex shrink-0 flex-col gap-1">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[13px] font-medium leading-[18px] text-ink">Track views</span>
+          <span className="text-[13px] font-medium leading-[18px] text-ink">{t('stats.trackViews')}</span>
           <Switch
             size="sm"
-            aria-label="Track views"
+            aria-label={t('stats.trackViews')}
             checked={tracking}
             disabled={trackingBusy}
             onCheckedChange={(next) => onToggleTracking?.(next)}
@@ -138,38 +141,38 @@ function StatsContent({ data, trackingBusy, accessMode, accessLoaded, onToggleTr
         </div>
         {!tracking && (
           <span className="text-[12px] leading-[16px] text-ink-3">
-            Tracking is off. Turn it on to start counting views.
+            {t('stats.trackingOff')}
           </span>
         )}
       </div>
       {hasViews ? (
         <>
           <div className="grid shrink-0 grid-cols-2 gap-2">
-            <Metric label="Views (30 days)" value={data.views_in_period ?? 0} />
+            <Metric label={t('stats.metrics.viewsInPeriod')} value={data.views_in_period ?? 0} />
             {(viewers.length > 0 || restricted) && (
-              <Metric label="Unique viewers (30 days)" value={data.unique_viewers ?? viewers.length} />
+              <Metric label={t('stats.metrics.uniqueViewers')} value={data.unique_viewers ?? viewers.length} />
             )}
-            <Metric label="Total views" value={data.total_views ?? 0} />
+            <Metric label={t('stats.metrics.totalViews')} value={data.total_views ?? 0} />
             <Metric
-              label="Last viewed"
+              label={t('stats.metrics.lastViewed')}
               value={relativeAge(data.last_viewed) || '—'}
               hint={exactTime(data.last_viewed)}
             />
           </div>
           <div className="flex shrink-0 flex-col gap-1">
             <StatsChart daily={daily} />
-            <span className="text-[11px] leading-[14px] text-ink-4">Days in UTC</span>
+            <span className="text-[11px] leading-[14px] text-ink-4">{t('stats.daysInUtc')}</span>
           </div>
           {viewers.length > 0 ? (
             <ViewersTable viewers={viewers} />
           ) : (!restricted && accessLoaded && (
             <span className="text-[12px] leading-[16px] text-ink-3">
-              Viewer names are recorded only when sharing is restricted.
+              {t('stats.viewers.restrictedOnly')}
             </span>
           ))}
         </>
       ) : (
-        <div className="py-6 text-center text-[12px] leading-[16px] text-ink-4">No views yet</div>
+        <div className="py-6 text-center text-[12px] leading-[16px] text-ink-4">{t('stats.noViews')}</div>
       )}
     </>
   );
@@ -186,6 +189,7 @@ export function StatsPanel({
   onRetry,
   onClose,
 }) {
+  const { t } = useTranslation('artifacts');
   const failure = describeStatsError(error);
   return (
     <div
@@ -194,11 +198,11 @@ export function StatsPanel({
       style={{ animation: 'cw-comments-panel-in var(--dur-layout) var(--ease-out)' }}
     >
       <div className="flex shrink-0 items-center justify-between">
-        <span className="text-[18px] font-semibold leading-[28px] text-ink">Stats</span>
-        <Tooltip content="Close stats panel">
+        <span className="text-[18px] font-semibold leading-[28px] text-ink">{t('stats.title')}</span>
+        <Tooltip content={t('stats.close')}>
           <button
             type="button"
-            aria-label="Close stats panel"
+            aria-label={t('stats.close')}
             className="w-[24px] h-[24px] flex items-center justify-center bg-transparent border-0
               rounded-[6px] p-0 cursor-pointer text-ink-3 transition-colors
               hover:text-ink hover:bg-surface-2"

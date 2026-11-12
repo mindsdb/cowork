@@ -630,5 +630,38 @@
         "prompt": "Schreiben Sie eine Ankündigung für einen neuen Dunkelmodus in einer Notiz-App in drei Versionen: einen Tweet unter 280 Zeichen, eine freundliche E-Mail unter 120 Wörtern und einen Changelog-Eintrag unter 50 Wörtern. Jede Version soll zu ihrem Kanal passen."
       }
     }
+  },
+  "stats": {
+    "toggle": {
+      "show": "Statistiken",
+      "hide": "Statistiken ausblenden"
+    },
+    "title": "Statistiken",
+    "close": "Statistikbereich schließen",
+    "loading": "Statistiken werden geladen",
+    "retry": "Erneut versuchen",
+    "trackViews": "Aufrufe zählen",
+    "trackingOff": "Die Zählung ist deaktiviert. Aktivieren Sie sie, um Aufrufe zu zählen.",
+    "metrics": {
+      "viewsInPeriod": "Aufrufe (30 Tage)",
+      "uniqueViewers": "Eindeutige Besucher (30 Tage)",
+      "totalViews": "Aufrufe gesamt",
+      "lastViewed": "Zuletzt aufgerufen"
+    },
+    "daysInUtc": "Tage in UTC",
+    "chartLabel": "Aufrufe pro Tag",
+    "viewers": {
+      "email": "E-Mail",
+      "lastSeen": "Zuletzt gesehen",
+      "restrictedOnly": "Namen von Besuchern werden nur bei eingeschränkter Freigabe erfasst."
+    },
+    "noViews": "Noch keine Aufrufe",
+    "errors": {
+      "otherAccount": "Für dieses Konto sind keine Statistiken verfügbar.",
+      "unavailable": "Für dieses Artefakt sind keine Statistiken verfügbar.",
+      "reconnect": "Verbinden Sie MindsHub erneut, um Statistiken zu sehen.",
+      "temporarilyUnavailable": "Statistiken sind vorübergehend nicht verfügbar.",
+      "loadFailed": "Statistiken konnten nicht geladen werden."
+    }
   }
 }

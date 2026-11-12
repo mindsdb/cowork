@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 
+import { useTranslation } from '../../../../lib/i18n';
+
 // Canvas cannot resolve var(). Theme tokens are defined on body, not :root,
 // so they are read from the canvas itself, which inherits them.
 function themeColor(element, name, fallback) {
@@ -13,6 +15,7 @@ function themeColor(element, name, fallback) {
 const NO_DAYS = [];
 
 export function StatsChart({ daily = NO_DAYS }) {
+  const { t } = useTranslation('artifacts');
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -66,7 +69,7 @@ export function StatsChart({ daily = NO_DAYS }) {
   // Chart.js responsive mode sizes the canvas from a positioned parent.
   return (
     <div className="relative h-[120px]">
-      <canvas ref={canvasRef} role="img" aria-label="Views per day" />
+      <canvas ref={canvasRef} role="img" aria-label={t('stats.chartLabel')} />
     </div>
   );
 }
