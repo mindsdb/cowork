@@ -43,6 +43,7 @@ import { computeHeroView, orderMethods, providerNameFromSpec } from './methodHer
 import { connectorWebsite } from '../../lib/connectorWebsites';
 import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
+import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -206,6 +207,7 @@ export function DataVaultForm({
   userLabel, onUserLabelChange, onFieldChange,
   hideHeader = false, onUseBrowser,
 }) {
+  const { t } = useTranslation('library');
   // ── Multi-method shape ──────────────────────────────────────────
   // A form can either be single-method (top-level `fields[]` array,
   // legacy shape) or multi-method (`methods[]` array of method
@@ -387,23 +389,35 @@ export function DataVaultForm({
             }}
           >{Ico.link(20)}</span>
           <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
-            <div className="s-h3">{spec.title || 'Checking the connection'}</div>
+            <div className="s-h3">{spec.title || t('dataVault.pending.title')}</div>
             <div className="text-sm text-ink-3 leading-[1.5]">
-              {spec.subtitle || 'Your credentials are stored encrypted.'}
+              {spec.subtitle || t('dataVault.pending.subtitle')}
             </div>
           </div>
         </div>
         <Alert variant="info">
-          This can take a moment. The result shows up on Connect Apps and Data, where you can retry it if the
-          check does not succeed.
+          {t('dataVault.pending.note')}
         </Alert>
         <div className="flex justify-end gap-2">
           <Button variant="default" onClick={() => onAction?.({ id: 'cancel', kind: 'cancel', values: {}, skipped: [] })}>
-            Close
+            {t('connections.close')}
           </Button>
           <Button variant="primary" onClick={() => onAction?.({ id: 'view_connectors', kind: 'primary', values: {}, skipped: [] })}>
-            View connections
+            {t('dataVault.viewConnections')}
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // A custom connector saved before connection tests existed can never pass
+  // one, so its stored form is not offered; the agent has to build it again.
+  if (spec._needs_rebuild && !spec._is_success) {
+    return (
+      <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
+        <Alert variant="info">{t('dataVault.needsRebuild.body')}</Alert>
+        <div className="flex justify-end">
+          <Button variant="subtle" onClick={() => onAction?.({ id: 'dismiss', kind: 'cancel' })}>{t('dataVault.needsRebuild.close')}</Button>
         </div>
       </div>
     );
@@ -427,7 +441,7 @@ export function DataVaultForm({
             }}
           >{Ico.check(20)}</span>
           <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
-            <div className="s-h3">{spec.title || 'Connected'}</div>
+            <div className="s-h3">{spec.title || t('connections.connected')}</div>
             {spec.subtitle && (
               <div className="text-sm text-ink-3 leading-[1.5]">
                 {spec.subtitle}
@@ -437,7 +451,7 @@ export function DataVaultForm({
         </div>
         {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
           <Alert variant="info">
-            This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
+            {t('dataVault.driveNote')}
           </Alert>
         )}
         <div className="flex justify-end gap-2">
@@ -453,8 +467,8 @@ export function DataVaultForm({
           {(spec.actions && spec.actions.length > 0
             ? spec.actions
             : [
-                { id: 'dismiss', label: 'Close', kind: 'cancel' },
-                { id: 'view_connectors', label: 'View connectors →', kind: 'primary' },
+                { id: 'dismiss', label: t('connections.close'), kind: 'cancel' },
+                { id: 'view_connectors', label: t('dataVault.viewConnectors'), kind: 'primary' },
               ]
           ).map((a) => (
             <Button
@@ -530,10 +544,10 @@ export function DataVaultForm({
       const labelMissing = userLabelRequired && String(userLabel ?? '').trim() === '';
       if (missing.length || labelMissing) {
         const errors = Object.fromEntries(
-          missing.map((field) => [field.name, `${field.label || field.name} is required.`]),
+          missing.map((field) => [field.name, t('dataVault.required', { field: field.label || field.name })]),
         );
         setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
-        setUserLabelError(labelMissing ? 'Label is required.' : '');
+        setUserLabelError(labelMissing ? t('dataVault.labelRequired') : '');
         requestAnimationFrame(() => {
           // The Label sits above the fields, so it is the first one missing.
           if (labelMissing) {
@@ -594,7 +608,7 @@ export function DataVaultForm({
         <div className="flex items-center gap-3">
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} connectorId={spec._connector_id || spec.engine} />
           <div className="min-w-0 flex-1">
-            <div className="s-h3">{spec.title || 'Connect'}</div>
+            <div className="s-h3">{spec.title || t('connections.connect')}</div>
           </div>
         </div>
       )}
@@ -608,7 +622,7 @@ export function DataVaultForm({
               name stays "Label"; aria-required carries the meaning. */}
           <div className="flex items-baseline">
             <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
-              Label
+              {t('skillModal.label')}
             </label>
             {userLabelRequired && (
               <span aria-hidden="true" className="text-[12px] text-danger ml-[3px]">*</span>
@@ -622,7 +636,7 @@ export function DataVaultForm({
             onChange={updateUserLabel}
             disabled={busy}
             aria-required={userLabelRequired || undefined}
-            placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
+            placeholder={spec.engine || spec._connector_id || t('dataVault.labelPlaceholder')}
           />
           {userLabelRequired && userLabelError && (
             <div className="text-[11.5px] text-danger">{userLabelError}</div>
@@ -722,7 +736,7 @@ export function DataVaultForm({
                     disabled={busy}
                     className="bg-transparent border-0 p-0 text-xs text-ink-4"
                     style={{ cursor: busy ? 'not-allowed' : 'pointer' }}
-                  >{isSkipped ? 'unskip' : 'skip'}</button>
+                  >{isSkipped ? t('dataVault.unskip') : t('dataVault.skip')}</button>
                 )}
               </div>
               {!isSkipped && (
@@ -735,7 +749,7 @@ export function DataVaultForm({
                 />
               )}
               {isSkipped && (
-                <div className="px-[10px] py-2 rounded-[7px] bg-surface-2 border border-dashed border-line-2 text-ink-4 text-[12px] font-[family-name:var(--font-body)] italic">Skipped — the agent will figure this one out.</div>
+                <div className="px-[10px] py-2 rounded-[7px] bg-surface-2 border border-dashed border-line-2 text-ink-4 text-[12px] font-[family-name:var(--font-body)] italic">{t('dataVault.skipped')}</div>
               )}
               {(requiredErrors[f.name] || f.error) && !isSkipped && (
                 <div className="text-[11.5px] text-danger">{requiredErrors[f.name] || f.error}</div>
@@ -800,7 +814,7 @@ export function DataVaultForm({
               type="button"
               onClick={onClick}
               className={sharedClass}
-            >How to?</button>
+            >{t('dataVault.howToLink')}</button>
           ) : (
             <a
               href={m.help_url}
@@ -808,18 +822,18 @@ export function DataVaultForm({
               rel="noopener noreferrer"
               onClick={onClick}
               className={sharedClass}
-            >How to?</a>
+            >{t('dataVault.howToLink')}</a>
           );
         })()}
         <div className="flex gap-2 flex-wrap">
-        {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: 'Submit', kind: 'primary' }]).map((a) => {
+        {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: t('dataVault.submit'), kind: 'primary' }]).map((a) => {
           // Modify mode swaps the primary action's label to make
           // the destination explicit — "Save changes" reads as an
           // overwrite, "Connect" implies a fresh attachment. Only
           // touches the visible label; the action id + kind go
           // through unchanged so server-side handling is identical.
           const label = (spec._modify && a.kind === 'primary')
-            ? 'Save changes'
+            ? t('dataVault.saveChanges')
             : a.label;
           return (
             <Button
@@ -846,7 +860,7 @@ export function DataVaultForm({
               // rather than "dead."
               className={a.kind === 'primary' && busy ? 'is-busy' : undefined}
             >
-              {a.kind === 'primary' && busy ? 'Working…' : label}
+              {a.kind === 'primary' && busy ? t('datasource.working') : label}
             </Button>
           );
         })}
@@ -861,7 +875,7 @@ export function DataVaultForm({
           stacking context) so the docs read as a centered modal. */}
       <HowToModal
         open={formHowToOpen}
-        title={`How to · ${(activeMethod || spec)?.label || 'Connect'}`}
+        title={t('dataVault.howToTitle', { name: (activeMethod || spec)?.label || t('connections.connect') })}
         content={(activeMethod || spec)?.how_to || ''}
         onClose={() => setFormHowToOpen(false)}
       />
@@ -902,6 +916,7 @@ function BrowserInstead({ spec, busy, onUseBrowser }) {
 }
 
 function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }) {
+  const { t } = useTranslation('library');
   // When a method exposes `how_to` markdown, clicking the help
   // affordance opens an in-app modal instead of an external URL.
   // We hold the active method so the modal can show its title.
@@ -962,7 +977,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
           <FormLogo logo={spec?.logo} logoUrl={spec?.logo_url} color={spec?.logo_color} connectorId={spec?._connector_id || spec?.engine} />
           <span className="flex flex-col gap-[2px] min-w-0 flex-[1_1_auto] [overflow-wrap:anywhere] [word-break:break-word]">
             <span className="font-semibold text-[14.5px] text-ink">
-              {busy ? 'Working…' : label}
+              {busy ? t('datasource.working') : label}
             </span>
             {helper && !busy && (
               <span className="text-[11.5px] font-normal text-ink-3 leading-[1.35]">
@@ -977,7 +992,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
               type="button"
               onClick={handleHelp}
               className="self-start text-[11.5px] text-accent bg-transparent border-0 p-0 cursor-pointer font-medium font-[inherit] no-underline hover:underline"
-            >How to?</button>
+            >{t('dataVault.howToLink')}</button>
           ) : (
             <a
               href={hero.help_url}
@@ -985,7 +1000,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
               rel="noopener noreferrer"
               onClick={handleHelp}
               className="self-start text-[11.5px] text-accent font-medium no-underline hover:underline"
-            >How to?</a>
+            >{t('dataVault.howToLink')}</a>
           )
         )}
       </div>
@@ -1067,7 +1082,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
                   variant="accent"
                   size="sm"
                   className="uppercase tracking-[0.04em]"
-                >Recommended</Badge>
+                >{t('dataVault.recommended')}</Badge>
               )}
             </div>
             {m.description && (
@@ -1091,7 +1106,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
                   }}
                   className="self-start mt-[2px] text-[11.5px] text-accent bg-transparent border-0 p-0 cursor-pointer font-medium font-[inherit] no-underline hover:underline"
                 >
-                  How to?
+                  {t('dataVault.howToLink')}
                 </button>
               ) : (
                 <a
@@ -1106,7 +1121,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
                   }}
                   className="self-start mt-[2px] text-[11.5px] text-accent no-underline font-medium rounded-[4px] hover:underline"
                 >
-                  How to?
+                  {t('dataVault.howToLink')}
                 </a>
               )
             )}
@@ -1128,7 +1143,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
               panelClassName="pt-2"
               title={(
                 <span className="inline-flex items-center justify-center gap-1 w-full text-[11.5px] text-ink-3">
-                  See other options to connect {providerName}
+                  {t('dataVault.otherOptions', { provider: providerName })}
                   <span
                     className="inline-flex transition-transform duration-layout group-data-[panel-open]:rotate-180"
                     aria-hidden
@@ -1148,7 +1163,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
         // No recommended method — fall back to today's flat card list.
         <>
           <div className="text-sm text-ink-3 mb-[2px]">
-            Pick how you want to connect:
+            {t('dataVault.pickMethod')}
           </div>
           {orderedMethods.map(renderCard)}
         </>
@@ -1158,7 +1173,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
 
       <HowToModal
         open={!!howToFor}
-        title={howToFor ? `How to · ${howToFor.label || howToFor.id}` : 'How to'}
+        title={howToFor ? t('dataVault.howToTitle', { name: howToFor.label || howToFor.id }) : t('dataVault.howTo')}
         content={howToFor?.how_to || ''}
         onClose={() => setHowToFor(null)}
       />
@@ -1175,6 +1190,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy, onUseBrowser }
 // below and the back affordance is left-aligned, button-like, and
 // obvious.
 function MethodBreadcrumb({ method, onChange, busy }) {
+  const { t } = useTranslation('library');
   return (
     <button
       type="button"
@@ -1204,7 +1220,7 @@ function MethodBreadcrumb({ method, onChange, busy }) {
         display: 'inline-flex', alignItems: 'center', gap: 4,
       }}>
         <span aria-hidden>{'←'}</span>
-        Back to options
+        {t('dataVault.backToOptions')}
       </span>
       <span style={{
         color: 'var(--ink-4)', fontFamily: FONT_BODY, fontSize: 12,

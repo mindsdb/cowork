@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import Ico from '../Icons';
 import Button from '../ui/Button';
 import './browser-panel.css';
+import { useTranslation } from '../../../lib/i18n';
 
 /* The browser pane's frame, shared by the web viewer and the desktop's own
    browser: the chat's right-hand column (or, below the inline width, a panel
@@ -30,6 +31,7 @@ import './browser-panel.css';
  */
 export function BrowserFrame({ hint, actions = null, below = null, stageRef, onClose, floating = false, extraActions = null, dock = null, children }) {
   const close = dock ? (dock.collapsed ? () => {} : dock.onToggle) : onClose;
+  const { t } = useTranslation('chat');
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === 'Escape' && event.target === document.body) close();
@@ -41,10 +43,10 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
   const collapsed = Boolean(dock?.collapsed);
   return (
     <>
-      {!dock && <button type="button" className={`browser-panel-scrim${floating ? ' is-floating' : ''}`} aria-label="Close browser" onClick={onClose} />}
+      {!dock && <button type="button" className={`browser-panel-scrim${floating ? ' is-floating' : ''}`} aria-label={t('browser.close')} onClick={onClose} />}
       <aside
         className={`browser-panel${floating && !dock ? ' is-floating' : ''}${dock ? ' is-docked' : ''}${collapsed ? ' is-collapsed' : ''}`}
-        aria-label="Shared browser"
+        aria-label={t('browser.shared')}
       >
         {dock && !collapsed && (
           <button type="button" className="browser-panel__dock-min" aria-label="Minimize browser" onClick={dock.onToggle}>
@@ -63,7 +65,7 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
           <div className="browser-panel__heading">
             <span className="browser-panel__icon">{Ico.globe(14)}</span>
             <div className="browser-panel__heading-text">
-              <div className="browser-panel__title">Browser</div>
+              <div className="browser-panel__title">{t('browser.title')}</div>
               <div className="browser-panel__hint">{hint}</div>
             </div>
           </div>
@@ -82,7 +84,7 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
                 {collapsed ? Ico.chevDown(14) : <span className="browser-panel__minus" aria-hidden="true" />}
               </Button>
             ) : (
-              <Button icon size="sm" variant="subtle" aria-label="Close browser" onClick={onClose}>{Ico.close(14)}</Button>
+              <Button icon size="sm" variant="subtle" aria-label={t('browser.close')} onClick={onClose}>{Ico.close(14)}</Button>
             )}
           </div>
         </header>

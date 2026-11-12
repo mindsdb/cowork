@@ -1,6 +1,10 @@
 // Pure button-decision logic for turn-error cards, extracted from ChatView so
 // the invariants are unit-testable without rendering.
 import { PLATFORM_UI } from '../../lib/deployment';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.turnError.${key}`, { ns: 'projects', ...vars });
 
 // ProviderOverloadedCard (ENG-673): a transient provider incident that outlasted
 // anton's retry budget. The MindsHub failover nudge is the ENG-514 guardrail's crux:
@@ -18,14 +22,14 @@ import { PLATFORM_UI } from '../../lib/deployment';
 // so the failover CTA still appears — never the reverse (which would wrongly
 // suppress it for a BYOK user).
 export function providerOverloadedButtons({ reconnectable, onRetry, onOpenSettings }) {
-  const retry = { label: 'Try again', onClick: () => onRetry?.(), disabled: !onRetry };
+  const retry = { label: tr('tryAgain'), onClick: () => onRetry?.(), disabled: !onRetry };
   if (!PLATFORM_UI || reconnectable) {
     // Managed: Retry is the only action, so it's primary.
     return [{ ...retry, primary: true }];
   }
   // BYOK/direct: MindsHub failover is primary, Retry secondary.
   return [
-    { label: 'Set up MindsHub', onClick: () => onOpenSettings?.('agent'), primary: true },
+    { label: tr('setUpMindsHub'), onClick: () => onOpenSettings?.('agent'), primary: true },
     retry,
   ];
 }

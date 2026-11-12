@@ -2,6 +2,7 @@ import MobileShell from './MobileShell';
 import Ico from './Icons';
 import { Tooltip } from './ui';
 import { host } from '../../platform/host';
+import { useTranslation } from '../../lib/i18n';
 
 // The desktop/tablet shell chrome, extracted from App.jsx: the floating
 // "reopen sidebar" hamburger and the <main> content column (which owns the
@@ -23,6 +24,7 @@ export default function AppShell({
   mobileShellProps,
   children,
 }) {
+  const { t } = useTranslation('shell');
   const mainEl = (
     <main style={{
       flex: 1, minWidth: 0, minHeight: 0,
@@ -50,10 +52,10 @@ export default function AppShell({
       {/* Floating hamburger — reopens a collapsed desktop sidebar (Cowork
           task or any Code surface). Absolute over the window frame; DOM
           order doesn't matter since it's positioned. */}
-      <Tooltip content="Open sidebar">
+      <Tooltip content={t('appShell.openSidebar')}>
         <button
           onClick={onOpenSidebar}
-          aria-label="Open sidebar"
+          aria-label={t('appShell.openSidebar')}
           className="icon-btn"
           style={{
             position: 'absolute',

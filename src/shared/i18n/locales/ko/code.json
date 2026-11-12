@@ -1,0 +1,1595 @@
+{
+  "reviewPanel": {
+    "ariaLabel": "변경 사항 검토",
+    "closeAriaLabel": "검토 패널 닫기",
+    "resizeAriaLabel": "검토 패널 크기 조정",
+    "eyebrow": "작업 결과",
+    "title": "변경 사항 검토",
+    "tabsAriaLabel": "검토 섹션",
+    "tabs": {
+      "changes": "변경 사항",
+      "deliver": "전달"
+    },
+    "summary": {
+      "changedFiles": "{count, plural, other {변경된 파일 #개}}",
+      "trackingUnavailable": "변경 내용을 추적할 수 없음",
+      "unchanged": "작업 트리 변경 없음"
+    },
+    "empty": {
+      "directTitle": "변경 사항을 검토하려면 폴더를 여세요",
+      "title": "아직 검토할 변경 사항이 없습니다",
+      "directDescription": "직접 연결한 폴더에는 Git 기준점이 없어 {product}에서 인라인 diff를 만들 수 없습니다.",
+      "description": "에이전트가 작업하는 동안 파일 변경 사항이 여기에 모입니다."
+    },
+    "deliver": {
+      "heading": "이 작업 전달",
+      "project": "프로젝트",
+      "branch": "브랜치",
+      "openOriginalFolder": "원본 폴더 열기",
+      "openIsolatedCopy": "격리된 사본 열기",
+      "openOriginal": "원본 열기"
+    },
+    "sourceChanged": {
+      "title": "이 작업을 시작할 때 원본에 로컬 변경 사항이 있었습니다",
+      "body": "해당 변경 사항은 원본 폴더에 그대로 남아 있습니다. {product}에서 적용하기 전에 충돌 여부를 확인합니다."
+    },
+    "reconcile": {
+      "title": "원본 변경 사항 조정",
+      "body": "에이전트가 격리된 사본에 두 버전을 모두 보존하게 한 다음 다시 검토하세요.",
+      "action": "에이전트로 해결"
+    },
+    "checks": {
+      "title": "프로젝트 검사",
+      "run": "검사 실행",
+      "adopt": "최신 프로젝트 명령 사용",
+      "failed": "프로젝트 검사 {total}개 중 {failed}개가 실패했습니다. 출력 내용은 작업 활동에서 확인하세요.",
+      "passed": "{count, plural, other {프로젝트 검사 #개를 통과했습니다.}}",
+      "none": "이 작업에는 프로젝트 검사가 없습니다. 이 프로젝트에서 시작한 작업은 프로젝트 설정에 저장된 명령을 사용합니다.",
+      "noValidationCommands": "프로젝트 설정에 이 작업 폴더의 검증 명령이 없어 검사할 항목이 없습니다. 이제 실행 작업 {count, plural, other {#개}}를 사용할 수 있습니다.",
+      "noCommands": "프로젝트 설정에 아직 이 작업 폴더의 명령이 없습니다. 설정에서 검증 명령을 추가한 다음 다시 사용하세요."
+    },
+    "applyLocally": {
+      "title": "로컬에 적용",
+      "tooltip": "검토한 변경 사항을 원본 폴더에 다시 복사합니다",
+      "applied": "적용됨",
+      "appliedNotice": "검토한 변경 사항을 원본 폴더에 적용했습니다.",
+      "nothingToApply": "이 작업은 이미 선택한 폴더에서 진행되므로 적용할 내용이 없습니다."
+    },
+    "git": {
+      "title": "Git 옵션",
+      "branchLabel": "작업 워크트리에 브랜치 만들기",
+      "create": "만들기",
+      "commitLabel": "작업 변경 사항 모두 커밋",
+      "commitPlaceholder": "변경 내용 설명",
+      "commit": "커밋"
+    },
+    "applyConfirm": {
+      "title": "원본 폴더에 변경 사항을 적용할까요?",
+      "message": "검토한 작업 변경 사항으로 {target}을(를) 업데이트할까요? 충돌이 발견되면 {product}에서 폴더를 변경하기 전에 중단합니다.",
+      "confirm": "변경 사항 적용",
+      "error": "변경 사항을 적용하지 못했습니다. 다시 시도하세요."
+    }
+  },
+  "fileReview": {
+    "staged": "스테이징됨",
+    "unstaged": "스테이징 안 됨",
+    "committed": "커밋됨",
+    "stage": "스테이징",
+    "unstage": "스테이징 취소",
+    "askCodex": "Codex에 요청",
+    "discardAriaLabel": "{path}의 변경 사항 취소",
+    "noteAriaLabel": "{path} 검토 메모",
+    "notePlaceholder": "이 파일에서 무엇을 변경해야 하나요?",
+    "toSend": "키를 눌러 보내기",
+    "cancel": "취소",
+    "sendToCodex": "Codex로 보내기",
+    "discardConfirm": {
+      "title": "이 파일의 변경 사항을 취소할까요?",
+      "message": "{path} 파일이 현재 작업 버전으로 되돌아갑니다. 이 작업은 취소할 수 없습니다.",
+      "confirm": "변경 사항 취소"
+    }
+  },
+  "reviewFileCard": {
+    "binary": "바이너리 파일이 변경됨",
+    "noTextualDiff": "텍스트 diff 없음"
+  },
+  "diffPatch": {
+    "ariaLabel": "파일 diff",
+    "selectLine": "{line}행 선택",
+    "selectRemovedLine": "삭제된 {line}행 선택",
+    "selectedLines": "선택한 행",
+    "line": "{line}행",
+    "lines": "{start}–{end}행"
+  },
+  "filesPanel": {
+    "ariaLabel": "작업 파일",
+    "closeAriaLabel": "파일 패널 닫기",
+    "resizeAriaLabel": "파일 패널 크기 조정",
+    "eyebrow": "작업 컨텍스트",
+    "title": "파일",
+    "folderMenuAriaLabel": "프로젝트 폴더",
+    "resourceAriaLabel": "리소스: {name}",
+    "searchPlaceholder": "작업 파일 검색",
+    "loading": "불러오는 중…",
+    "empty": {
+      "title": "사용할 수 있는 작업 파일이 없습니다",
+      "description": "이 컴퓨터에는 이 작업용으로 준비된 작업 사본이 없습니다."
+    },
+    "noMatches": {
+      "title": "일치하는 항목 없음",
+      "description": "파일 이름, 기호 또는 코드의 구문으로 검색해 보세요."
+    },
+    "back": "뒤로",
+    "folderEmpty": "이 폴더는 비어 있습니다.",
+    "backToFiles": "파일",
+    "lineWindow": "{total}행 중 {start}–{end}행",
+    "linesAriaLabel": "{name}의 행",
+    "pagesAriaLabel": "파일 페이지",
+    "previous": "이전",
+    "next": "다음",
+    "selectedLine": "{start}행",
+    "selectedLines": "{start}–{end}행",
+    "wholeFile": "파일 전체",
+    "addToPrompt": "프롬프트에 추가",
+    "errors": {
+      "loadFiles": "파일을 불러오지 못했습니다.",
+      "openFolder": "이 폴더를 열지 못했습니다.",
+      "search": "검색하지 못했습니다.",
+      "openFile": "이 파일을 열지 못했습니다."
+    }
+  },
+  "previewPanel": {
+    "ariaLabel": "실시간 미리 보기",
+    "closeAriaLabel": "미리 보기 닫기",
+    "eyebrow": "프로젝트 작업",
+    "title": "미리 보기",
+    "reloadAriaLabel": "미리 보기 새로 고침",
+    "openInBrowserAriaLabel": "브라우저에서 미리 보기 열기",
+    "unavailable": "미리 보기를 사용할 수 없습니다",
+    "widthAriaLabel": "미리 보기 너비",
+    "responsiveAriaLabel": "반응형 미리 보기",
+    "tabletAriaLabel": "태블릿 미리 보기",
+    "mobileAriaLabel": "모바일 미리 보기",
+    "frameTitle": "프로젝트 미리 보기",
+    "empty": {
+      "title": "아직 로컬 미리 보기가 없습니다",
+      "description": "작업의 개발 포트에서 수신 대기하는 프로젝트 작업을 실행하세요."
+    }
+  },
+  "draftPullRequest": {
+    "status": {
+      "merged": "병합됨",
+      "closed": "닫힘",
+      "draft": "초안",
+      "changesRequested": "변경 요청됨",
+      "checksFailing": "검사 실패",
+      "readyToMerge": "병합 준비 완료",
+      "checksRunning": "검사 실행 중",
+      "open": "열림",
+      "draftCreated": "초안 생성됨"
+    },
+    "item": {
+      "needsCommit": "커밋 필요",
+      "noChanges": "변경 사항 없음",
+      "readyFor": "{branch} 대상 준비 완료",
+      "baseBranch": "기본 브랜치",
+      "unavailable": "사용할 수 없음"
+    },
+    "review": {
+      "approved": "리뷰 승인됨",
+      "changesRequested": "변경 요청됨",
+      "pending": "리뷰 대기 중"
+    },
+    "ci": {
+      "passing": "검사 통과",
+      "failing": "검사 실패",
+      "running": "검사 실행 중"
+    },
+    "checkState": "{state, select, passing {통과} failing {실패} pending {대기 중} other {{state}}}",
+    "updatedAt": "{time} 업데이트됨",
+    "checks": "검사",
+    "reviewFeedback": "리뷰 피드백",
+    "reviewer": "리뷰어",
+    "fixWithAgent": "에이전트로 수정",
+    "resolve": "해결",
+    "markReady": "준비 완료로 표시",
+    "addressFeedback": "피드백 반영",
+    "fixChecks": "검사 수정",
+    "merge": "병합",
+    "automationOptions": {
+      "fixFailingChecks": "실패한 검사 수정",
+      "fixFailingChecksHint": "{count, plural, other {실패당 에이전트 시도 최대 #회}}",
+      "markReady": "준비 완료로 표시",
+      "markReadyHint": "검사 통과 후",
+      "merge": "병합",
+      "mergeHint": "승인 및 검사 통과 후",
+      "completeLinkedIssues": "연결된 이슈 완료",
+      "completeLinkedIssuesHint": "최종 업데이트 및 모든 병합 후",
+      "archiveTask": "작업 보관",
+      "archiveTaskHint": "모든 병합 후"
+    },
+    "loadError": "GitHub 전달을 준비하지 못했습니다.",
+    "sectionAriaLabel": "GitHub로 마무리",
+    "title": "GitHub로 마무리",
+    "summary": {
+      "published": "{count, plural, other {#개 게시됨}}",
+      "toResolve": "{count, plural, other {해결할 항목 #개}}",
+      "ready": "{count, plural, other {#개 준비됨}}"
+    },
+    "automation": "자동화",
+    "automationAriaLabel": "전달 자동화",
+    "refreshAriaLabel": "풀 리퀘스트 새로 고침",
+    "attempt": {
+      "created": "{count, plural, other {#개 생성됨}}",
+      "failed": "{count, plural, other {#개 실패}}",
+      "failureHint": "문제가 있는 저장소를 해결한 다음 다시 시도하세요. 이미 생성된 초안은 다시 만들지 않습니다."
+    },
+    "allMerged": "모든 풀 리퀘스트가 병합되었습니다.",
+    "archiveTask": "작업 보관",
+    "githubAccount": "GitHub 계정",
+    "connected": "이 프로젝트에 연결됨",
+    "addAccount": "이 프로젝트에 계정 추가",
+    "addGithub": "GitHub 추가",
+    "commitMessagePlaceholder": "커밋 메시지",
+    "commitRepositories": "{count, plural, other {저장소 #개 커밋}}",
+    "githubAccountAriaLabel": "GitHub 계정",
+    "titlePlaceholder": "풀 리퀘스트 제목",
+    "bodyPlaceholder": "리뷰어를 위한 추가 설명(선택 사항)…",
+    "repositories": "저장소",
+    "selectedOf": "{total}개 중 {selected}개",
+    "includeAriaLabel": "{name} 포함",
+    "into": "{branch}(으)로",
+    "editOverride": "제목 또는 설명 편집",
+    "createDrafts": "{count, plural, other {초안 풀 리퀘스트 #개 만들기}}",
+    "createConfirm": {
+      "title": "{count, plural, other {초안 풀 리퀘스트 #개를 만들까요?}}",
+      "message": "선택한 작업 브랜치를 푸시한 다음 표시된 순서대로 초안을 만듭니다. 기존 초안은 변경되지 않습니다.",
+      "confirm": "초안 만들기"
+    },
+    "mergeConfirm": {
+      "title": "{name}을(를) 병합할까요?",
+      "message": "GitHub에서 저장소의 기본 병합 방식으로 이 풀 리퀘스트를 병합합니다. 여기에서는 되돌릴 수 없습니다.",
+      "confirm": "풀 리퀘스트 병합"
+    },
+    "resolveConfirm": {
+      "title": "이 리뷰 스레드를 해결할까요?",
+      "message": "이 GitHub 리뷰 대화를 해결됨으로 표시합니다. 스레드는 GitHub 기록에 계속 표시됩니다.",
+      "confirm": "스레드 해결"
+    },
+    "readyConfirm": {
+      "title": "{name}을(를) 준비 완료로 표시할까요?",
+      "pullRequest": "풀 리퀘스트",
+      "message": "초안 상태를 해제하고 GitHub에서 리뷰를 요청합니다.",
+      "confirm": "준비 완료로 표시"
+    }
+  },
+  "sourceUpdate": {
+    "ariaLabel": "연결된 작업 업데이트",
+    "title": "연결된 작업",
+    "completeIssue": "이슈 완료",
+    "cancel": "취소",
+    "postAnother": "하나 더 게시",
+    "postUpdate": "업데이트 게시",
+    "needsAttention": "확인 필요",
+    "completed": "완료됨",
+    "posted": "게시됨",
+    "placeholder": "{target}에 대한 업데이트 작성…",
+    "progress": "진행 상황",
+    "finalResult": "최종 결과",
+    "typeAriaLabel": "업데이트 유형",
+    "useLatestSummary": "최신 요약 사용",
+    "postTo": "{provider}에 게시",
+    "completeConfirm": {
+      "title": "{target}을(를) 완료할까요?",
+      "issue": "이슈",
+      "linearMessage": "이 Linear 이슈를 팀의 완료 상태로 옮깁니다.",
+      "githubMessage": "이 GitHub 이슈를 닫습니다. 토론과 기록은 계속 확인할 수 있습니다.",
+      "confirm": "이슈 완료"
+    }
+  },
+  "repositoryLocalChanges": {
+    "ariaLabel": "{name} 로컬 변경 사항",
+    "heading": "{count, plural, other {{name}에 로컬 변경 사항 #개가 있습니다}}",
+    "hideDiff": "diff 숨기기",
+    "viewDiff": "diff 보기",
+    "moreFiles": "{count, plural, other {파일 #개 더 있음}}",
+    "loadError": "로컬 변경 사항을 불러오지 못했습니다. 다시 시도하세요.",
+    "closeAndRetry": "닫고 다시 시도",
+    "binary": "바이너리 파일이 변경되었습니다.",
+    "noChanges": "남은 로컬 변경 사항이 없습니다. 새로 고쳐 이 패널을 업데이트하세요."
+  },
+  "deliveryAutomation": {
+    "error": "전달 자동화를 계속할 수 없습니다."
+  },
+  "developerTools": {
+    "comments": "{count, plural, other {댓글 #개}}",
+    "attachments": "{count, plural, other {첨부 파일 #개}}"
+  },
+  "workspaceUsage": {
+    "explanation": "Cowork가 이 작업을 위해 보관하는 대략적인 저장 공간입니다(워크스페이스, 비교용 사본, 복구 데이터). 사용자 폴더와 워크트리가 공유하는 Git 기록은 포함되지 않습니다. macOS에서는 사본이 원본과 디스크 공간을 공유하므로 작업을 삭제해도 표시된 것보다 훨씬 적은 공간만 확보될 수 있습니다.",
+    "storage": "저장 공간",
+    "measuring": "측정 중…",
+    "notMeasured": "아직 측정되지 않음",
+    "taskSize": "약 {size}",
+    "taskSizeUpdating": "약 {size} · 업데이트 중…",
+    "recovery": "복구 데이터",
+    "recoveryOfThat": "그중 {size}",
+    "allTasks": "모든 작업"
+  },
+  "repositorySetup": {
+    "invalidBranch": "{example} 같은 Git 브랜치 이름을 사용하세요."
+  },
+  "gitIdentity": {
+    "saveFailed": "Git 사용자 정보를 저장하지 못했습니다.",
+    "title": "Git에 사용자 정보가 필요합니다",
+    "body": "이 컴퓨터에서 커밋하려면 이름과 이메일이 필요합니다. 한 번 저장하면 커밋이 다시 실행됩니다. Git에 이미 있는 정보는 유지됩니다.",
+    "namePlaceholder": "이름",
+    "nameAriaLabel": "Git 커밋에 사용할 이름",
+    "emailAriaLabel": "Git 커밋에 사용할 이메일",
+    "saving": "저장 중…",
+    "save": "저장 후 커밋"
+  },
+  "deleteProject": {
+    "title": "이 코드 프로젝트를 삭제할까요?",
+    "message": "프로젝트 구성이 삭제됩니다. 원본 폴더는 변경되지 않습니다. 코딩 작업이 있는 프로젝트는 삭제할 수 없습니다.",
+    "confirm": "프로젝트 삭제",
+    "deleting": "삭제 중…",
+    "failed": "이 코드 프로젝트를 삭제하지 못했습니다."
+  },
+  "renameTask": {
+    "failed": "이 코딩 작업의 이름을 바꾸지 못했습니다.",
+    "title": "코딩 작업 이름 바꾸기",
+    "label": "작업 이름",
+    "cancel": "취소",
+    "rename": "이름 바꾸기"
+  },
+  "recovery": {
+    "title": "작업 다시 열기",
+    "subtitle": "이 작업을 다시 열 위치를 선택하세요. 그런 다음 메시지를 보내 중단된 작업을 계속하세요.",
+    "computerAriaLabel": "작업을 재개할 컴퓨터",
+    "recommended": "권장",
+    "savedCopy": "저장된 작업 사본",
+    "freshCopy": "새 작업 사본",
+    "empty": {
+      "title": "온라인 상태인 호환 컴퓨터가 없습니다",
+      "body": "원래 컴퓨터를 온라인으로 전환하거나 호환되는 다른 컴퓨터를 연결하세요."
+    },
+    "recreateWarning": "저장된 저장소 리비전에서 시작합니다. 이전 컴퓨터에서 푸시하지 않은 변경 사항은 작업과 함께 옮겨지지 않습니다.",
+    "cancel": "취소",
+    "reopening": "다시 여는 중…",
+    "startFresh": "새 사본으로 시작"
+  },
+  "projectResources": {
+    "title": "코드",
+    "errors": {
+      "chooseFolder": "해당 폴더를 선택하지 못했습니다.",
+      "duplicateResource": "해당 리소스는 이미 이 프로젝트에 있습니다.",
+      "inspectFolder": "해당 폴더를 확인하지 못했습니다.",
+      "invalidUrl": "{example} 같은 Git 저장소 URL을 입력하세요.",
+      "duplicateRepository": "해당 저장소는 이미 이 프로젝트에 있습니다."
+    },
+    "status": {
+      "offline": "{computer} 오프라인",
+      "computerOffline": "컴퓨터 오프라인",
+      "anyComputer": "모든 컴퓨터",
+      "only": "{computer}만",
+      "onlyThisComputer": "이 컴퓨터만"
+    },
+    "baseBranch": "기본 브랜치",
+    "baseBranchPlaceholder": "저장소 기본값",
+    "commands": "명령",
+    "optional": "(선택 사항)",
+    "setup": "설정",
+    "setupAriaLabel": "설정 명령",
+    "validate": "검증",
+    "validateAriaLabel": "검증 명령",
+    "run": "실행",
+    "runAriaLabel": "실행 명령",
+    "remove": "제거",
+    "removeAriaLabel": "{name} 제거",
+    "adding": "추가하는 중…",
+    "addFolder": "폴더 추가",
+    "addRepository": "저장소 추가",
+    "chooseFolder": "폴더 선택",
+    "runsOnThisComputer": "이 컴퓨터에서 실행",
+    "cloneRepository": "저장소 복제",
+    "runsOnAnyComputer": "모든 컴퓨터에서 실행"
+  },
+  "projectConnectedTools": {
+    "title": "커넥터",
+    "usedByRepository": " · 저장소에서 사용 중",
+    "reconnect": "다시 연결",
+    "manage": "커넥터 관리",
+    "empty": "GitHub 또는 Linear를 연결하면 이슈에서 작업을 시작하고 풀 리퀘스트를 전달할 수 있습니다.",
+    "open": "커넥터 열기"
+  },
+  "projectConnections": {
+    "backToSettings": "프로젝트 설정으로 돌아가기",
+    "backToTask": "작업으로 돌아가기"
+  },
+  "projectActions": {
+    "settings": "프로젝트 설정",
+    "delete": "프로젝트 삭제",
+    "noTask": "프로젝트 작업을 실행하기 전에 코딩 작업을 여세요."
+  },
+  "projectDefaults": {
+    "invalidEnvironmentLine": "환경 변수 줄은 NAME=value 형식이어야 합니다: {line}"
+  },
+  "projectSettings": {
+    "title": "프로젝트 설정",
+    "newTitle": "새 코드 프로젝트",
+    "subtitle": "이 프로젝트의 작업은 프로젝트의 코드, 커넥터, 기본값을 공유합니다.",
+    "name": "프로젝트 이름",
+    "skills": "스킬",
+    "teamSetup": {
+      "title": "팀 설정",
+      "summary": "{branch} · {count}개 포함",
+      "updateAvailable": "업데이트 있음",
+      "checkForUpdates": "업데이트 확인",
+      "reviewUpdate": "업데이트 검토",
+      "newerRevision": "새로운 팀 설정 리비전이 있습니다.",
+      "applyUpdate": "업데이트 적용",
+      "includedGuidance": "포함된 지침",
+      "includedCount": "{total}개 중 {enabled}개",
+      "details": "세부 정보",
+      "source": "소스",
+      "revision": "리비전",
+      "checking": "확인 중…",
+      "openSource": "소스 열기",
+      "openLocalCopy": "로컬 사본 열기"
+    },
+    "defaults": {
+      "title": "작업 기본값",
+      "agent": "에이전트",
+      "agentAriaLabel": "기본 코딩 에이전트",
+      "model": "모델",
+      "modelAriaLabel": "기본 코딩 모델",
+      "modelPlaceholder": "모델 선택",
+      "noModels": "사용할 수 있는 코딩 모델이 없습니다",
+      "reasoning": "추론",
+      "reasoningAriaLabel": "기본 추론 수준",
+      "permissions": "권한",
+      "permissionsAriaLabel": "기본 코딩 권한"
+    },
+    "environment": {
+      "title": "환경",
+      "ports": "개발 포트",
+      "portsHelp": "각 작업은 이름마다 별도의 사용 가능한 포트를 받습니다.",
+      "variables": "환경 변수",
+      "variablesHelp": "이 프로젝트의 모든 작업에 표시됩니다. 비밀 정보는 여기에 넣지 마세요."
+    },
+    "errors": {
+      "inspectPlaybook": "팀 플레이북을 확인하지 못했습니다.",
+      "checkAvailability": "리소스 사용 가능 여부를 확인하지 못했습니다.",
+      "nameRequired": "이 코드 프로젝트의 이름을 입력하세요.",
+      "resourceRequired": "저장소나 폴더를 하나 이상 추가하세요.",
+      "save": "이 코드 프로젝트를 저장하지 못했습니다.",
+      "checkTeamSetup": "팀 설정 업데이트를 확인하지 못했습니다.",
+      "applyTeamSetup": "팀 설정 업데이트를 적용하지 못했습니다.",
+      "updateGuidance": "팀 설정 지침을 업데이트하지 못했습니다.",
+      "openRepository": "해당 저장소를 열지 못했습니다."
+    },
+    "cancel": "취소",
+    "saving": "저장 중…",
+    "creating": "만드는 중…",
+    "save": "변경 사항 저장",
+    "create": "프로젝트 만들기"
+  },
+  "runtimeControls": {
+    "tryAgain": "다시 시도하세요.",
+    "title": "작업 설정",
+    "subtitle": "이 설정은 이 코딩 작업의 이후 대화 턴에 적용됩니다.",
+    "model": "모델",
+    "modelAriaLabel": "작업 모델",
+    "reasoning": "추론",
+    "modelDefault": "모델 기본값",
+    "reasoningAriaLabel": "추론 수준",
+    "effortPlaceholder": "수준",
+    "permissions": "권한",
+    "permissionsAriaLabel": "작업 권한",
+    "personality": "성격",
+    "personalityAriaLabel": "에이전트 성격",
+    "personalities": {
+      "pragmatic": "실용적",
+      "friendly": "친근함",
+      "none": "성격 없음"
+    },
+    "fast": {
+      "title": "빠른 모드",
+      "description": "모델이 지원하는 경우 우선순위 추론을 사용합니다.",
+      "ariaLabel": "빠른 추론"
+    },
+    "network": {
+      "title": "네트워크 액세스",
+      "includedWithFullAccess": "전체 액세스에 포함됩니다.",
+      "description": "명령이 외부 서비스에 접근하도록 허용합니다."
+    },
+    "webSearch": {
+      "title": "웹 검색",
+      "description": "필요할 때 코딩 에이전트가 웹을 검색하도록 허용합니다."
+    },
+    "folders": {
+      "title": "추가 폴더",
+      "description": "이 작업이 관련된 로컬 폴더에서도 작업하도록 허용합니다.",
+      "add": "폴더 추가",
+      "removeAriaLabel": "추가 폴더 {path} 제거"
+    },
+    "sandbox": {
+      "title": "Windows 샌드박스",
+      "checking": "확인 중…",
+      "unknown": "알 수 없음",
+      "unavailable": "사용할 수 없음",
+      "setupStarted": "설정 시작됨",
+      "setupFailed": "설정 실패",
+      "ready": "준비됨",
+      "setUp": "설정"
+    },
+    "applyFailed": "작업 설정을 적용하지 못했습니다",
+    "cancel": "취소",
+    "apply": "적용"
+  },
+  "extensions": {
+    "alsoInstalled": "{location}에도 설치됨",
+    "alsoInstalledAt": "{location}에도 설치됨 · {path}",
+    "loadFailed": "작업 확장 프로그램을 불러오지 못했습니다.",
+    "title": "작업 확장 프로그램",
+    "subtitle": "이 폴더, Codex 스킬, Cowork 스킬 라이브러리에서 불러온 기능입니다.",
+    "typesAriaLabel": "확장 프로그램 유형",
+    "tabs": {
+      "skills": "스킬",
+      "mcp_servers": "MCP",
+      "plugins": "플러그인",
+      "apps": "앱",
+      "hooks": "훅"
+    },
+    "refreshAriaLabel": "작업 확장 프로그램 새로 고침",
+    "loading": "{tab, select, skills {스킬을} mcp_servers {MCP를} plugins {플러그인을} apps {앱을} hooks {훅을} other {확장 프로그램을}} 불러오는 중…",
+    "empty": "이 작업에 활성화된 {tab, select, skills {스킬이} mcp_servers {MCP가} plugins {플러그인이} apps {앱이} hooks {훅이} other {확장 프로그램이}} 없습니다.",
+    "sourceErrors": "일부 확장 프로그램 소스를 확인하지 못했습니다",
+    "config": {
+      "title": "코드 모드 구성",
+      "description": "이 비공개 Codex 구성은 코딩 작업 간에 공유됩니다. 프로젝트의 {file} 파일은 자동으로 위에 적용됩니다.",
+      "open": "구성 열기"
+    }
+  },
+  "projects": {
+    "viewTasks": "{name}의 작업 보기",
+    "resourceCount": "{count, plural, other {리소스 #개}}",
+    "actionsAriaLabel": "{name} 작업",
+    "title": "프로젝트",
+    "subtitle": "코딩 작업이 공유하는 저장소, 폴더, 스킬, 기본값입니다.",
+    "new": "새 프로젝트",
+    "search": "프로젝트 검색",
+    "sort": {
+      "updated": "최근 업데이트순",
+      "name": "이름"
+    },
+    "empty": {
+      "title": "아직 프로젝트가 없습니다",
+      "description": "프로젝트를 만들어 관련 저장소와 폴더를 한곳에 모으세요.",
+      "action": "첫 프로젝트 만들기"
+    },
+    "listAriaLabel": "코드 프로젝트",
+    "loadFailed": "코드 프로젝트를 불러오지 못했습니다."
+  },
+  "projectPicker": {
+    "resourceCount": "{count, plural, other {리소스 #개}}",
+    "noProject": "프로젝트 없음",
+    "localFolder": "로컬 폴더",
+    "projects": "프로젝트",
+    "newProject": "새 프로젝트",
+    "search": "프로젝트 검색",
+    "noResults": "프로젝트를 찾을 수 없습니다",
+    "ariaLabel": "코드 프로젝트",
+    "menuLabel": "프로젝트"
+  },
+  "skills": {
+    "origin": {
+      "all": "모든 소스",
+      "team": "팀",
+      "personal": "내 항목"
+    },
+    "kind": {
+      "instructions": "지침",
+      "workflow": "워크플로",
+      "skill": "스킬"
+    },
+    "unversioned": "버전 없음",
+    "cancel": "취소",
+    "close": "닫기",
+    "save": "저장",
+    "saving": "저장 중…",
+    "usedBy": "{count, plural, other {프로젝트 #개에서 사용 중}}",
+    "updateAvailable": "업데이트 있음",
+    "addSource": {
+      "title": "팀 소스 추가",
+      "subtitle": "스킬, 지침 또는 워크플로가 담긴 Git 저장소를 연결하세요.",
+      "repositoryLabel": "저장소 또는 폴더",
+      "choose": "선택",
+      "nameLabel": "이름",
+      "optional": "선택 사항",
+      "namePlaceholder": "엔지니어링 표준",
+      "branchLabel": "브랜치",
+      "repositoryRequired": "Git 저장소를 선택하거나 URL을 입력하세요.",
+      "addFailed": "해당 팀 소스를 추가하지 못했습니다.",
+      "folderFailed": "해당 폴더를 선택하지 못했습니다.",
+      "adding": "추가하는 중…",
+      "add": "소스 추가"
+    },
+    "projects": {
+      "title": "프로젝트 선택",
+      "subtitle": "선택한 코드 프로젝트의 작업에서 사용할 수 있게 합니다.",
+      "folders": "{count, plural, other {폴더 #개}}",
+      "empty": "팀 스킬을 할당하기 전에 코드 프로젝트를 만드세요."
+    },
+    "source": {
+      "fallbackTitle": "팀 소스",
+      "repository": "저장소",
+      "itemsUnit": "{count, plural, other {개 항목}}",
+      "projectsUnit": "{count, plural, other {개 프로젝트}}",
+      "openRepository": "저장소 열기",
+      "checkUpdates": "업데이트 확인",
+      "update": "소스 업데이트",
+      "remove": "소스 제거"
+    },
+    "view": {
+      "title": "스킬",
+      "subtitle": "내 워크플로와 팀의 엔지니어링 표준을 코드 작업에서 바로 사용할 수 있습니다.",
+      "addPersonal": "개인 스킬 추가",
+      "searchPlaceholder": "스킬 검색",
+      "noMatch": "검색과 일치하는 스킬이 없습니다.",
+      "emptyPersonal": {
+        "title": "아직 개인 스킬이 없습니다",
+        "description": "지침을 작성하거나 SKILL.md를 가져오세요. Git 저장소는 필요하지 않습니다.",
+        "action": "첫 스킬 추가"
+      },
+      "emptyTeam": {
+        "title": "아직 팀 소스가 없습니다",
+        "description": "Git 저장소를 연결하여 여러 프로젝트에서 엔지니어링 표준을 공유하세요."
+      },
+      "emptyView": "이 보기에 스킬이 없습니다.",
+      "viewItem": "{name} 보기",
+      "moreActions": "{name} 추가 작업",
+      "edit": "편집",
+      "delete": "삭제",
+      "projectCount": "{count, plural, other {프로젝트 #개}}",
+      "available": "사용 가능",
+      "disabled": "사용 안 함",
+      "sourceFilter": "소스",
+      "itemCount": "{count, plural, other {항목 #개}}",
+      "needsAttention": "확인 필요",
+      "sourceDetails": "소스 세부 정보",
+      "sourceUnavailable": "소스를 사용할 수 없음 — 자세한 내용을 보려면 여세요.",
+      "noItemsMatch": "이 검색과 일치하는 항목이 없습니다.",
+      "noSharedItems": "공유된 항목이 없습니다.",
+      "personalDescription": "코드 모드에서 사용할 수 있는 개인 스킬",
+      "builtInDescription": "MindsHub에서 관리하는 엔지니어링 스킬"
+    },
+    "errors": {
+      "updateProjects": "프로젝트 스킬을 업데이트하지 못했습니다.",
+      "updateSource": "해당 소스를 업데이트하지 못했습니다.",
+      "openRepository": "해당 저장소를 열지 못했습니다.",
+      "removeSource": "해당 소스를 제거하지 못했습니다.",
+      "deleteSkill": "해당 스킬을 삭제하지 못했습니다.",
+      "loadLibrary": "스킬 라이브러리를 불러오지 못했습니다."
+    },
+    "removeConfirm": {
+      "title": "팀 소스를 제거할까요?",
+      "message": "{name}이(가) 이 스킬 라이브러리에서 제거됩니다. Git 저장소는 변경되지 않습니다.",
+      "busy": "제거하는 중…"
+    },
+    "deleteConfirm": {
+      "title": "개인 스킬을 삭제할까요?",
+      "message": "{name}이(가) 라이브러리에서 제거됩니다. 기존 작업은 저장된 사본을 유지합니다.",
+      "confirm": "스킬 삭제",
+      "busy": "삭제 중…"
+    }
+  },
+  "personalSkill": {
+    "saveFailed": "이 스킬을 저장하지 못했습니다. 다시 시도하세요.",
+    "errors": {
+      "fileType": "SKILL.md 또는 .skill 텍스트 파일을 선택하세요.",
+      "fileTooLarge": "120KB보다 작은 스킬을 선택하세요.",
+      "fileUnreadable": "이 파일을 읽지 못했습니다. UTF-8 텍스트 스킬을 선택하세요.",
+      "instructionsTooLong": "지침은 120KB 미만이어야 합니다."
+    },
+    "fields": {
+      "name": "이름",
+      "namePlaceholder": "예: 내 TypeScript 검토",
+      "description": "사용 시점",
+      "descriptionHelp": "에이전트가 이 스킬이 필요한 때를 알아차리는 데 도움이 됩니다.",
+      "descriptionPlaceholder": "TypeScript 변경 사항의 명확성과 안정적인 오류 처리를 검토합니다.",
+      "instructions": "지침",
+      "instructionsHelp": "에이전트가 따라야 할 단계와 기준을 작성하거나 붙여 넣으세요.",
+      "instructionsPlaceholder": "먼저 변경된 파일을 읽으세요…",
+      "available": "에이전트가 사용 가능",
+      "keepRestrictions": "기존 프로젝트 제한은 유지됩니다.",
+      "availableHint": "이 컴퓨터의 새 코드 작업에서 사용할 수 있습니다."
+    },
+    "editTitle": "개인 스킬 편집",
+    "addTitle": "개인 스킬 추가",
+    "subtitle": "내 코드 작업용입니다. Git 저장소가 필요하지 않습니다.",
+    "loading": "스킬을 불러오는 중…",
+    "tryAgain": "다시 시도",
+    "tabs": {
+      "ariaLabel": "개인 스킬 추가",
+      "write": "지침 작성",
+      "import": "파일 가져오기"
+    },
+    "import": {
+      "fileAriaLabel": "스킬 파일",
+      "title": "직접 만든 SKILL.md 가져오기",
+      "description": "이름, 설명, 지침이 담긴 텍스트 파일을 선택하세요. 파일은 코드 스킬에 복사되며 원본 파일은 변경되지 않습니다.",
+      "chooseAnother": "다른 파일 선택",
+      "choose": "파일 선택",
+      "limits": "SKILL.md 또는 .skill · 최대 120KB"
+    },
+    "cancel": "취소",
+    "saving": "저장 중…",
+    "saveChanges": "변경 사항 저장",
+    "add": "스킬 추가",
+    "discard": {
+      "title": "변경 사항을 취소할까요?",
+      "message": "저장하지 않은 스킬 변경 사항이 사라집니다.",
+      "confirm": "변경 사항 취소",
+      "cancel": "계속 편집"
+    }
+  },
+  "skillDetail": {
+    "loadFailed": "이 스킬을 불러오지 못했습니다.",
+    "rendered": "렌더링됨",
+    "viewSource": "소스 보기",
+    "files": "파일"
+  },
+  "projectSkills": {
+    "heading": {
+      "added": "{count, plural, other {스킬 #개 추가됨}}",
+      "choose": "스킬 선택",
+      "included": "{count, plural, other {스킬 #개 포함됨}}"
+    },
+    "summary": {
+      "selected": "{count}개 선택됨",
+      "available": "{count}개 사용 가능",
+      "included": "{count}개 포함됨",
+      "none": "사용할 수 있는 코드 스킬 없음"
+    },
+    "footer": {
+      "selected": "이 프로젝트에 {count}개 선택됨",
+      "maintained": "{count, plural, other {관리형 스킬 #개가 자동으로 포함됨}}",
+      "default": "모든 작업에 제공할 지침을 선택하세요"
+    },
+    "loadingEngineering": "엔지니어링 스킬을 불러오는 중…",
+    "search": "코드 스킬 검색",
+    "loading": "스킬을 불러오는 중…",
+    "maintained": "MindsHub 관리",
+    "included": "포함됨",
+    "empty": "아직 이 조직에서 사용할 수 있는 코드 스킬이 없습니다.",
+    "openSkills": "스킬 열기"
+  },
+  "connectors": {
+    "title": "커넥터",
+    "subtitle": "개발자 도구를 한 번 연결하면 모든 코드 프로젝트에 추가할 수 있습니다.",
+    "ariaLabel": "코드 커넥터",
+    "providers": {
+      "github": "이슈에서 작업을 시작하고, 초안 풀 리퀘스트를 만들고, 리뷰와 검사를 확인합니다.",
+      "linear": "Linear 이슈에서 작업을 시작하고 진행 상황을 해당 이슈에 게시합니다."
+    },
+    "usage": {
+      "none": "프로젝트에서 사용하지 않음",
+      "used": "{count, plural, other {프로젝트 #개에서 사용 중}}"
+    },
+    "errors": {
+      "loadOptions": "{provider} 연결 옵션을 불러오지 못했습니다.",
+      "connect": "{provider}에 연결하지 못했습니다.",
+      "validate": "이 자격 증명을 확인하지 못했습니다.",
+      "postConnect": "연결되었지만 코드 모드 업데이트를 완료하지 못했습니다: {reason}",
+      "postConnectFallback": "커넥터를 다시 열어 보세요.",
+      "disconnect": "이 계정의 연결을 해제하지 못했습니다."
+    },
+    "returnProject": {
+      "before": "여기에서 연결한 계정은",
+      "after": "에 추가됩니다. 필요한 만큼 연결한 다음 돌아가세요."
+    },
+    "returnTask": "계정을 연결한 다음 작업으로 돌아가세요.",
+    "backToTask": "작업으로 돌아가기",
+    "status": {
+      "reconnect": "{count, plural, other {계정 #개 · 다시 연결 필요}}",
+      "connectedCount": "{count}개 연결됨",
+      "notConnected": "연결되지 않음",
+      "reconnectNeeded": "다시 연결 필요",
+      "connected": "연결됨"
+    },
+    "connecting": "연결하는 중…",
+    "addAccount": "계정 추가",
+    "connect": "연결",
+    "browser": {
+      "title": "브라우저에서 계속하세요",
+      "hint": "{provider} 인증이 완료되면 여기로 돌아오세요."
+    },
+    "cancel": "취소",
+    "reconnecting": "다시 연결하는 중…",
+    "reconnect": "다시 연결",
+    "credential": {
+      "title": "{provider} 연결",
+      "githubSubtitle": "이 로컬 빌드에서는 개인 액세스 토큰을 사용하세요.",
+      "linearSubtitle": "이 로컬 빌드에서는 개인 API 키를 사용하세요."
+    },
+    "disconnect": {
+      "action": "연결 해제",
+      "title": "{name}의 연결을 해제할까요?",
+      "titleFallback": "이 계정의 연결을 해제할까요?",
+      "message": "이 계정을 사용하는 프로젝트는 참조를 유지하지만, 다시 연결할 때까지 코드 모드에서 이 계정으로 읽거나 게시할 수 없습니다."
+    }
+  },
+  "commandPalette": {
+    "skillFallback": "MindsHub 스킬",
+    "view": "보기",
+    "ariaLabel": "스킬 및 명령",
+    "search": "스킬 및 명령 검색",
+    "skillsSection": "MindsHub 스킬",
+    "commandsSection": "{agent} 명령",
+    "empty": "일치하는 스킬 또는 명령이 없습니다"
+  },
+  "sidebarSessions": {
+    "title": "코드 작업",
+    "noProject": "프로젝트 없음",
+    "errors": {
+      "pin": "이 작업을 고정하지 못했습니다.",
+      "unpin": "이 작업의 고정을 해제하지 못했습니다."
+    },
+    "untitled": "제목 없는 코딩 작업",
+    "untitledLower": "제목 없는 코딩 작업",
+    "rowAriaLabel": "{title}, {status}{unread, select, yes {, 읽지 않음} other {}}, {repository}, {updated}",
+    "actionsFor": "{name} 작업 메뉴",
+    "organize": "정리",
+    "organizeAriaLabel": "코딩 작업 정리",
+    "projects": "프로젝트",
+    "taskList": "작업 목록",
+    "sort": "정렬",
+    "priority": "우선순위",
+    "lastUpdated": "마지막 업데이트",
+    "searchPlaceholder": "작업 찾기",
+    "searchAriaLabel": "코딩 작업 찾기",
+    "noMatch": "검색과 일치하는 코딩 작업이 없습니다.",
+    "empty": "코딩 작업을 시작하면 대화와 변경 사항이 여기에 보관됩니다.",
+    "pinned": "고정됨",
+    "archived": "보관됨"
+  },
+  "tasksView": {
+    "status": {
+      "all": "모든 상태",
+      "attention": "확인 필요",
+      "inProgress": "진행 중",
+      "completed": "완료됨",
+      "failed": "실패",
+      "readyOrStopped": "준비됨 또는 중지됨"
+    },
+    "sort": {
+      "updated": "최근 업데이트순",
+      "created": "최근 생성순",
+      "title": "제목"
+    },
+    "unavailableProject": "사용할 수 없는 프로젝트",
+    "filters": {
+      "project": "프로젝트",
+      "allProjects": "모든 프로젝트",
+      "status": "상태"
+    },
+    "allTasks": "모든 작업",
+    "projectSubtitle": "이 프로젝트의 코딩 작업입니다.",
+    "projectActions": "{name} 작업 메뉴",
+    "newTask": "새 작업",
+    "search": "작업 검색",
+    "count": "{count, plural, other {작업 #개}}",
+    "filteredCount": "작업 {total}개 중 {shown}개",
+    "noMatch": "일치하는 작업이 없습니다",
+    "clearFilters": "필터 지우기",
+    "emptyArchived": {
+      "title": "보관된 작업이 없습니다",
+      "description": "보관한 작업이 여기에 표시됩니다."
+    },
+    "empty": {
+      "title": "아직 작업이 없습니다",
+      "description": "작업에는 하나의 코딩 대화와, 그 대화가 폴더나 저장소에 적용한 변경 사항이 담깁니다.",
+      "action": "첫 작업 시작하기"
+    },
+    "projectTasks": "프로젝트 작업"
+  },
+  "taskMenu": {
+    "errors": {
+      "archive": "이 작업을 보관하지 못했습니다.",
+      "restore": "이 작업을 복원하지 못했습니다.",
+      "delete": "이 작업을 삭제하지 못했습니다."
+    },
+    "stopFirst": "먼저 진행 중인 턴을 중지하세요.",
+    "pin": "고정",
+    "unpin": "고정 해제",
+    "rename": "이름 바꾸기",
+    "archive": "보관",
+    "restore": "복원",
+    "delete": "삭제",
+    "deleteConfirm": {
+      "title": "이 코딩 작업을 삭제할까요?",
+      "message": "작업 기록과 격리된 작업 사본이 삭제됩니다. 원본 파일은 그대로 유지됩니다.",
+      "confirm": "작업 삭제"
+    }
+  },
+  "taskList": {
+    "loadFailed": "코딩 작업을 불러오지 못했습니다."
+  },
+  "taskActions": {
+    "refreshFailed": "{completed} 작업 목록을 새로 고치지 못했습니다: {reason}",
+    "tryAgainShortly": "잠시 후 다시 시도하세요",
+    "operationFailed": "코딩 작업을 수행하지 못했습니다.",
+    "completed": {
+      "operation": "작업이 완료되었지만",
+      "started": "작업이 시작되었지만",
+      "forked": "작업이 포크되었지만",
+      "archived": "작업이 보관되었지만",
+      "restored": "작업이 복원되었지만"
+    },
+    "errors": {
+      "start": "이 작업을 시작하지 못했습니다.",
+      "fork": "이 코딩 작업을 포크하지 못했습니다.",
+      "update": "이 코딩 작업을 업데이트하지 못했습니다."
+    }
+  },
+  "taskAttention": {
+    "answer": "작업에 답변이 필요합니다.",
+    "approval": "작업에 승인이 필요합니다.",
+    "plan": "계획을 검토할 준비가 되었습니다.",
+    "failed": "작업을 계속하려면 확인이 필요합니다.",
+    "finished": "코딩 작업이 완료되었습니다.",
+    "bar": {
+      "ariaLabel": "작업 알림",
+      "unavailable": "이 창에서는 데스크톱 알림을 사용할 수 없습니다.",
+      "denied": "알림을 받으려면 시스템 설정에서 MindsHub 알림을 허용하세요.",
+      "failed": "알림을 켜지 못했습니다. ‘확인 필요’에서 결정이 필요한 항목을 계속 확인할 수 있습니다.",
+      "needsYou": "{count, plural, other {작업 #개에서 확인 필요 →}}",
+      "on": "알림 켜짐",
+      "off": "자리 비움 시 알림"
+    }
+  },
+  "catalog": {
+    "loadAgentsFailed": "코딩 에이전트를 불러오지 못했습니다.",
+    "loadModelsFailed": "코딩 모델을 불러오지 못했습니다."
+  },
+  "newTask": {
+    "heading": "무엇을 만들까요?",
+    "composerAriaLabel": "코딩 작업 만들기",
+    "dropHint": "파일을 놓아 첨부",
+    "editProject": "{name} 편집",
+    "changeFolder": "폴더 변경, 현재 {name}",
+    "chooseFolder": "폴더 선택",
+    "localResources": "로컬 리소스",
+    "promptPlaceholder": "변경할 내용, 중요한 제약 조건, 검증 방법을 설명하세요…",
+    "promptAriaLabel": "코딩 작업",
+    "agentAriaLabel": "코딩 에이전트",
+    "agentMenuLabel": "에이전트",
+    "modelAriaLabel": "모델 선택",
+    "modelMenuLabel": "모델",
+    "modelPlaceholder": "모델 선택",
+    "noModels": "사용 가능한 코딩 모델이 없습니다",
+    "effortLabel": "추론 수준",
+    "effortPlaceholder": "수준",
+    "starting": "시작하는 중…",
+    "startPlanning": "계획 시작",
+    "startTask": "작업 시작",
+    "automaticBranches": "자동 작업 브랜치",
+    "localChangesIncluded": "로컬 변경 사항 포함",
+    "localChangesExcluded": "로컬 변경 사항 제외",
+    "loadingSource": "이슈 또는 PR을 불러오는 중…",
+    "planUnavailable": "여기서는 계획 모드를 사용할 수 없습니다. 계획 모드를 끄거나 이를 지원하는 컴퓨터를 선택하세요.",
+    "connectToStart": "작업을 시작하려면 MindsHub에 연결하세요.",
+    "mindsHubRequired": "코드는 MindsHub에서 실행됩니다. 작업을 시작하려면 MindsHub 계정을 연결하세요.",
+    "connecting": "연결하는 중…",
+    "connectMindsHub": "MindsHub 연결"
+  },
+  "newTaskDraft": {
+    "folderUnavailable": "{name}을(를) 사용할 수 없습니다. 프로젝트 설정에서 제거한 후 다시 추가하세요.",
+    "baseBranchMissing": "{name}에서 기본 브랜치 {branch}을(를) 찾을 수 없습니다. {location, select, setup {‘저장소 및 폴더’} other {프로젝트 설정}}에서 업데이트하세요.",
+    "sourcePromptOne": "{id} 작업 진행: {title}",
+    "sourcePromptMany": "{count, plural, other {연결된 작업 항목 #개를 진행하세요.}}",
+    "foldersCheckFailed": "이 프로젝트의 폴더를 확인하지 못했습니다.",
+    "engineUnavailable": "사용할 수 없음",
+    "folderGone": "해당 폴더를 더 이상 사용할 수 없습니다. 다른 폴더를 선택하세요.",
+    "folderAccessFailed": "해당 폴더에 액세스하지 못했습니다.",
+    "folderChooseFailed": "해당 폴더를 선택하지 못했습니다.",
+    "readiness": {
+      "startingTask": "작업을 시작하는 중…",
+      "loadingAgent": "코딩 에이전트를 불러오는 중…",
+      "checkingResources": "프로젝트 리소스를 확인하는 중…",
+      "checkingFolder": "폴더를 확인하는 중…",
+      "findingComputer": "사용 가능한 컴퓨터를 찾는 중…",
+      "addResource": "프로젝트 설정에서 이 프로젝트에 저장소나 폴더를 추가하세요.",
+      "noComputer": "이 작업을 실행할 수 있는 컴퓨터가 없습니다.",
+      "noAgent": "사용 가능한 코딩 에이전트가 없습니다.",
+      "modelRestricted": "관리자가 이 모델을 제한했습니다. 다른 모델을 선택하세요.",
+      "addCredits": "크레딧을 추가하거나 사용 가능한 모델을 선택하세요.",
+      "noModels": "사용 가능한 코딩 모델이 없습니다.",
+      "chooseModel": "계속하려면 모델을 선택하세요.",
+      "chooseFolder": "계속하려면 폴더를 선택하세요.",
+      "budgetReached": "조직의 예산을 모두 사용했습니다. 사용 가능한 모델을 선택하거나 소유자 또는 관리자에게 예산 증액을 요청하세요."
+    }
+  },
+  "executionTarget": {
+    "thisComputer": "이 컴퓨터",
+    "readyNow": "{platform} · 지금 사용 가능",
+    "offline": "{platform} · 오프라인",
+    "activeTasks": "{platform} · {count, plural, other {진행 중인 작업 #개}}",
+    "ready": "{platform} · 준비됨",
+    "localFolder": "로컬 폴더",
+    "unavailable": "사용할 수 없음",
+    "computers": "컴퓨터",
+    "cloudDescription": "관리형 온디맨드 컴퓨팅",
+    "comingSoon": "출시 예정",
+    "runOn": "작업 실행 위치",
+    "capacityIssue": "지금 이 작업을 실행할 수 있는 온라인 컴퓨터가 없습니다.",
+    "offlineIssue": "{name}이(가) 있는 컴퓨터가 오프라인 상태입니다.",
+    "findFailed": "이 컴퓨터를 찾지 못했습니다.",
+    "checkFailed": "이 작업을 실행할 수 있는 위치를 확인하지 못했습니다."
+  },
+  "permissions": {
+    "ariaLabel": "코딩 권한",
+    "menuLabel": "권한",
+    "readOnly": {
+      "label": "읽기 전용",
+      "title": "파일을 변경하지 않고 살펴보고 설명합니다."
+    },
+    "supervised": {
+      "label": "먼저 확인",
+      "title": "승인이 필요한 명령 전에 일시 중지합니다."
+    },
+    "workspace": {
+      "label": "워크스페이스 자동",
+      "title": "이 작업의 격리된 사본 안에서 자율적으로 작업합니다."
+    },
+    "fullAccess": {
+      "label": "전체 액세스",
+      "title": "파일 시스템 제한 없이 자율적으로 작업합니다."
+    }
+  },
+  "branchSelect": {
+    "loadFailed": "브랜치를 불러오지 못했습니다. 다시 시도하려면 선택기를 여세요.",
+    "ariaLabel": "{name} 시작 기준",
+    "placeholder": "기본 브랜치",
+    "searchPlaceholder": "브랜치 찾기…",
+    "menuLabel": "시작 기준"
+  },
+  "repositoryPicker": {
+    "resultsAriaLabel": "GitHub 저장소",
+    "private": "비공개",
+    "public": "공개",
+    "archivedSuffix": " · 보관됨",
+    "added": "추가됨",
+    "add": "추가",
+    "searchingMore": "저장소를 더 검색하는 중…",
+    "loading": "저장소를 불러오는 중…",
+    "noMatches": "일치하는 저장소가 없습니다.",
+    "noRepositories": "이 연결에서 사용할 수 있는 저장소가 없습니다.",
+    "tryAgain": "다시 시도",
+    "manageConnection": "연결 관리",
+    "loadMore": "저장소 더 불러오기",
+    "ariaLabel": "Git 저장소 추가",
+    "title": "GitHub 저장소",
+    "close": "저장소 선택기 닫기",
+    "accountAriaLabel": "GitHub 계정",
+    "accountMenuLabel": "계정",
+    "reconnectHint": "저장소를 둘러보려면 GitHub에 다시 연결하세요.",
+    "connectHint": "GitHub를 연결하면 저장소에서 선택할 수 있습니다.",
+    "reconnect": "GitHub 다시 연결",
+    "connect": "GitHub 연결",
+    "searchPlaceholder": "저장소 검색…",
+    "searchAriaLabel": "저장소 검색",
+    "missingHint": "저장소가 보이지 않나요? 이 연결에 해당 저장소에 대한 액세스 권한이 필요할 수 있습니다.",
+    "manageAccess": "액세스 관리",
+    "pasteUrl": "저장소 URL 붙여넣기",
+    "urlAriaLabel": "Git 저장소 URL",
+    "loadFailed": "저장소를 불러오지 못했습니다. 다시 시도하세요."
+  },
+  "taskRepositories": {
+    "checkFailed": "저장소를 확인하지 못했습니다. 새로 고쳐 다시 시도하세요.",
+    "ariaLabel": "저장소 및 폴더",
+    "resources": "{count, plural, other {리소스 #개}}",
+    "localChanges": "로컬 변경 사항"
+  },
+  "repositoryDrawer": {
+    "branchExists": "이미 있는 브랜치입니다. 새 작업 브랜치 이름을 선택하세요.",
+    "remoteCheckFailed": "원격 브랜치를 확인하지 못했습니다.",
+    "retryApply": "{message} 다시 시도하려면 다시 적용하세요.",
+    "newTask": "새 작업",
+    "title": "저장소 및 폴더",
+    "remoteNotice": "작업 브랜치를 설정하고 로컬 변경 사항을 포함하려면 이 컴퓨터를 선택하세요. 리소스 선택은 어느 컴퓨터에서나 가능합니다.",
+    "branchLabel": "이 작업의 새 브랜치",
+    "optional": "선택 사항",
+    "branchHint": "선택한 각 저장소에 생성됩니다. 비워 두면 이름이 자동으로 지정됩니다.",
+    "includeInTask": "이 작업에 포함",
+    "startFrom": "시작 기준",
+    "computerOffline": "{name} 오프라인",
+    "requiredComputer": "필요한 컴퓨터",
+    "onlyOn": "{name}에서만 사용 가능",
+    "linkedComputer": "연결된 컴퓨터",
+    "include": "{name} 포함",
+    "localFolder": "로컬 폴더 · 이 작업에 복사됨",
+    "onSelectedComputer": "선택한 컴퓨터에서",
+    "onThisComputer": "이 컴퓨터: {branch}",
+    "onThisComputerClean": "이 컴퓨터: {branch} · 변경 사항 없음",
+    "checkingRepository": "저장소를 확인하는 중…",
+    "statusUnavailable": "상태를 확인할 수 없음",
+    "checkingRepositories": "저장소를 확인하는 중…",
+    "checkoutStatus": "로컬 체크아웃 상태",
+    "refresh": "새로 고침",
+    "localChanges": "로컬 변경 사항",
+    "committedTitle": "커밋된 코드에서 시작",
+    "committedHint": "로컬 변경 사항은 이 컴퓨터에 그대로 둡니다.",
+    "includeTitle": "내 로컬 변경 사항 포함",
+    "includeHint": "이 작업에 복사하고 원본은 유지합니다.",
+    "count": "{repositories, plural, other {저장소 #개}} · {folders, plural, other {폴더 #개}}",
+    "checkingBranches": "브랜치를 확인하는 중…",
+    "apply": "작업에 적용"
+  },
+  "workItemPicker": {
+    "justNow": "방금",
+    "hours": "{count}시간",
+    "days": "{count}일",
+    "ariaLabel": "기존 작업 항목에서 시작",
+    "title": "작업 항목에서 시작",
+    "searchSubtitle": "이슈 및 풀 리퀘스트 검색",
+    "recentSubtitle": "최근 업데이트되었고 나에게 할당됨",
+    "close": "작업 항목 선택기 닫기",
+    "providerAriaLabel": "개발자 도구",
+    "accountAriaLabel": "{provider} 계정",
+    "accountMenuLabel": "계정",
+    "searchPlaceholder": "{provider} 검색",
+    "searchAriaLabel": "{provider} 작업 항목 검색",
+    "resultsAriaLabel": "{provider} 작업 항목",
+    "finding": "작업 항목을 찾는 중…",
+    "noMatches": "일치하는 작업 항목이 없습니다.",
+    "noAssigned": "할당된 작업 항목이 없습니다.",
+    "linkPlaceholder": "또는 이슈나 풀 리퀘스트 링크 붙여넣기",
+    "linkAriaLabel": "이슈 또는 풀 리퀘스트 링크",
+    "adding": "추가하는 중…",
+    "add": "추가",
+    "connectHint": "기존 작업 항목에서 시작하려면 GitHub 또는 Linear를 연결하세요.",
+    "openConnectors": "커넥터 열기"
+  },
+  "taskSourceLinks": {
+    "invalidLink": "GitHub 또는 Linear의 이슈나 풀 리퀘스트 링크를 붙여넣으세요.",
+    "chooseAccount": "사용할 {provider} 계정을 선택하세요.",
+    "loadFailed": "해당 작업 항목을 불러오지 못했습니다.",
+    "searchFailed": "연결된 작업 항목을 검색하지 못했습니다.",
+    "linkedAriaLabel": "연결된 작업 항목",
+    "remove": "{label} 제거",
+    "addAnother": "이슈 또는 PR 추가",
+    "add": "이슈 또는 PR 추가"
+  },
+  "activity": {
+    "phrase": {
+      "edit": "{count, plural, other {파일 #개 편집}}",
+      "command": "{count, plural, other {명령 #개 실행}}",
+      "read": "{count, plural, other {파일 #개 읽음}}",
+      "search": "{count, plural, other {#회 검색}}",
+      "list": "{count, plural, other {폴더 #개 목록 조회}}",
+      "tool": "{count, plural, other {도구 #개 사용}}",
+      "plan": "계획 업데이트",
+      "compact": "컨텍스트 압축",
+      "retry": "{count, plural, other {#회 재시도}}"
+    },
+    "askedForApproval": "승인 요청함",
+    "thoughtItThrough": "충분히 생각함",
+    "agentActivity": "에이전트 활동",
+    "aFile": "파일",
+    "planStep": "계획 단계",
+    "stepPosition": "{total}단계 중 {step}단계",
+    "live": {
+      "editingFile": "{name} 편집 중",
+      "editingFiles": "파일 편집 중",
+      "compacting": "컨텍스트 압축 중",
+      "calling": "{tool} 호출 중",
+      "using": "{tool} 사용 중",
+      "usingTool": "도구 사용 중",
+      "reading": "{name} 읽는 중",
+      "searchingFor": "‘{query}’ 검색 중",
+      "searching": "검색 중",
+      "listing": "파일 목록 조회 중",
+      "running": "{command} 실행 중",
+      "reconnecting": "다시 연결하는 중…",
+      "thinking": "생각하는 중…"
+    },
+    "step": {
+      "edited": "편집",
+      "files": "{count, plural, other {파일 #개}}",
+      "updatedPlan": "계획 업데이트",
+      "planProgress": "· {total}개 중 {done}개 완료",
+      "retried": "재시도",
+      "retryTarget": "(연결이 끊어진 후)",
+      "retryTargetAttempt": "(연결이 끊어진 후, {attempt})",
+      "askedToRun": "실행 요청",
+      "compacted": "컨텍스트 압축",
+      "viewed": "보기",
+      "anImage": "이미지",
+      "called": "호출",
+      "used": "사용",
+      "aTool": "도구",
+      "read": "읽기",
+      "searchedFor": "검색",
+      "searched": "검색",
+      "listed": "목록 조회",
+      "filesWord": "파일",
+      "ran": "실행",
+      "created": "생성",
+      "deleted": "삭제"
+    }
+  },
+  "presentation": {
+    "status": {
+      "ready": "준비됨",
+      "working": "작업 중",
+      "needsApproval": "승인 필요",
+      "completed": "완료됨",
+      "stopped": "중지됨",
+      "interrupted": "중단됨",
+      "failed": "실패",
+      "preparing": "준비 중",
+      "needsAttention": "확인 필요",
+      "paused": "일시 중지됨",
+      "reopening": "다시 여는 중",
+      "computerOffline": "컴퓨터 오프라인",
+      "answerNeeded": "답변 필요",
+      "reviewPlan": "계획 검토",
+      "planning": "계획 중"
+    },
+    "relative": {
+      "now": "지금",
+      "minutes": "{count}분",
+      "hours": "{count}시간",
+      "days": "{count}일"
+    },
+    "replaces": "{skills} 대체"
+  },
+  "reasoning": {
+    "levels": {
+      "none": "없음",
+      "minimal": "최소",
+      "low": "낮음",
+      "medium": "보통",
+      "high": "높음",
+      "xhigh": "매우 높음",
+      "max": "최대"
+    },
+    "levelEffort": "추론 수준: {level}",
+    "projectDefault": "프로젝트 기본값",
+    "modelDefault": "모델 기본값",
+    "default": "기본값",
+    "defaultEffort": "기본 추론 수준"
+  },
+  "timeline": {
+    "failed": "실패",
+    "exitCode": "종료 코드 {code}",
+    "failedCount": "{count, plural, other {#개 실패}}",
+    "workedFor": "{duration} 동안 작업함",
+    "worked": "작업함",
+    "turnChanges": {
+      "ariaLabel": "이 턴에서 변경된 파일",
+      "edited": "{count, plural, other {파일 #개 편집됨}}",
+      "review": "검토",
+      "more": "외 {count}개"
+    },
+    "preparingWorkspace": "작업 워크스페이스를 준비하는 중…",
+    "preparingPlan": "탐색하고 계획을 준비하는 중…",
+    "plan": {
+      "heading": "계획",
+      "preparing": "에이전트가 계획을 준비하는 중…"
+    },
+    "childWork": {
+      "ariaLabel": "Codex 병렬 작업",
+      "label": "병렬 작업",
+      "worker": "Codex 워커",
+      "working": "작업 중",
+      "stopped": "중지됨",
+      "done": "완료"
+    },
+    "copyMessage": "메시지 복사",
+    "copyResponse": "응답 복사",
+    "agentMessageAriaLabel": "코딩 에이전트 메시지",
+    "record": {
+      "approvalDenied": "승인 거부됨",
+      "approvalResolved": "승인 처리됨",
+      "followUpDelivered": "후속 지시 전달됨",
+      "requestRejected": "요청 거부됨",
+      "taskStatus": "작업 상태"
+    },
+    "failureDetails": "실패 세부 정보",
+    "showEarlier": "이전 업데이트 {count}개 보기"
+  },
+  "externalLink": {
+    "unsafeRepository": "해당 저장소 주소는 안전하지 않아 열 수 없습니다.",
+    "openRepositoryFailed": "해당 저장소를 열지 못했습니다."
+  },
+  "commandLine": {
+    "unclosedQuote": "따옴표로 묶은 명령 인수를 닫으세요."
+  },
+  "queuedResume": {
+    "failed": "대기 중인 지시를 재개하지 못했습니다."
+  },
+  "session": {
+    "refreshFailed": "이 코딩 작업을 새로 고치지 못했습니다.",
+    "liveDisconnected": "실시간 업데이트 연결이 끊어졌습니다. 다시 연결하는 중…",
+    "loadFailed": "이 코딩 작업을 불러오지 못했습니다.",
+    "historyReconnecting": "작업 기록을 다시 연결하는 중…"
+  },
+  "codeView": {
+    "resumeFailed": "작업을 재개하지 못했습니다.",
+    "recoveryOptionsFailed": "복구 옵션을 불러오지 못했습니다.",
+    "projectActionFailed": "프로젝트 작업을 시작하지 못했습니다.",
+    "loadingTasks": "코딩 작업을 불러오는 중…",
+    "restoringTask": "작업을 복원하는 중…",
+    "steerTimeout": "작업이 제시간에 방향 수정을 받아들이지 않았습니다. 대기 중인 승인이 있으면 먼저 처리한 후 다시 시도하세요.",
+    "stopTimeout": "작업이 제시간에 중지 요청을 확인하지 않았습니다. 다시 시도하세요.",
+    "commandUnavailable": "이 빌드에서는 아직 /{command} 컨트롤을 사용할 수 없습니다.",
+    "projectCommandsNotUpdated": "프로젝트 명령이 업데이트되지 않았습니다.",
+    "restoreFailed": "이 코딩 작업을 복원하지 못했습니다.",
+    "applyBlocked": "현재 턴이 끝난 후 변경 사항을 적용할 수 있습니다"
+  },
+  "api": {
+    "serviceStartFailed": "로컬 Code 서비스를 시작하지 못했습니다.",
+    "requestFailed": "코딩 요청 실패({status})",
+    "outdatedBackend": "이 데스크톱 빌드는 코드 모드를 지원하지 않는 이전 백엔드에 연결되어 있습니다. 버전이 맞는 cowork-server 빌드로 앱을 다시 시작하세요."
+  },
+  "composer": {
+    "checkingModes": "사용 가능한 작업 모드를 확인하는 중…",
+    "modeUnavailable": "이 작업 모드는 사용할 수 없습니다. 보내기 전에 모드를 변경하세요.",
+    "dropHint": "파일을 놓아 첨부",
+    "placeholder": {
+      "queueWhileWaiting": "에이전트가 기다리는 동안 후속 지시를 대기열에 추가…",
+      "steer": "현재 작업 방향 수정…",
+      "followUp": "이번 턴 이후의 후속 지시 추가…",
+      "notStarted": "계속하려면 새 작업을 시작하세요",
+      "recoverable": "작업을 다시 연 후 계속할 방법을 알려 주세요…",
+      "refinePlan": "계획 다듬기…",
+      "anotherChange": "다른 변경 요청…"
+    },
+    "inputAriaLabel": "후속 지시",
+    "whenBuilding": "빌드 시:",
+    "permissionsLocked": "현재 턴이 끝난 후 권한을 변경할 수 있습니다",
+    "stopAriaLabel": "코딩 에이전트 중지",
+    "stop": "중지",
+    "deliveryAriaLabel": "지시 전달 방식",
+    "queue": "대기열",
+    "steer": "방향 수정",
+    "steerAriaLabel": "현재 턴 방향 수정",
+    "queueAriaLabel": "지시를 대기열에 추가",
+    "sendAriaLabel": "후속 지시 보내기",
+    "send": "보내기"
+  },
+  "promptQueue": {
+    "ariaLabel": "대기 중인 지시",
+    "queued": "{count, plural, =0 {대기 중} other {대기 중 · 파일 #개}}",
+    "steerAriaLabel": "대기 중인 지시 {position}(으)로 방향 수정",
+    "steer": "방향 수정",
+    "removeAriaLabel": "대기 중인 지시 {position} 제거"
+  },
+  "slashMenu": {
+    "ariaLabel": "코드 명령",
+    "label": "명령"
+  },
+  "mentionMenu": {
+    "ariaLabel": "작업 파일",
+    "label": "이 작업의 파일 및 폴더"
+  },
+  "composerAddMenu": {
+    "ariaLabel": "추가",
+    "triggerAriaLabel": "프롬프트에 추가",
+    "heading": "추가",
+    "planMode": "계획 모드",
+    "planUnavailable": "현재 턴이 끝난 후 사용 가능",
+    "files": "파일 및 폴더",
+    "planOffAriaLabel": "계획 모드 끄기",
+    "plan": "계획"
+  },
+  "composerLip": {
+    "showMore": "{count, plural, other {알림 #개 더 보기}}",
+    "addCredits": "크레딧 추가",
+    "reopening": "다시 여는 중…",
+    "reopen": "작업 다시 열기",
+    "chooseModel": "모델 선택",
+    "chooseAnotherModel": "다른 모델 선택",
+    "hideDetails": "세부 정보 숨기기",
+    "showDetails": "세부 정보 보기",
+    "details": "세부 정보",
+    "moreOptions": "옵션 더 보기",
+    "dismiss": "닫기",
+    "viewBudgets": "예산 보기"
+  },
+  "composerNotices": {
+    "thisModel": "이 모델",
+    "insufficientCredits": {
+      "title": "{model}에 크레딧이 필요합니다",
+      "body": "크레딧을 추가하거나 다른 모델을 선택한 후 이 작업을 계속하세요."
+    },
+    "authFailed": {
+      "title": "로그인 정보가 이 서버와 일치하지 않습니다",
+      "body": "다시 로그인하거나 로그인한 환경으로 다시 전환한 후 이 작업을 계속하세요."
+    },
+    "modelUnavailable": {
+      "title": "{model}을(를) 사용할 수 없습니다",
+      "body": "다른 모델을 선택한 후 이 작업을 계속하세요."
+    },
+    "rateLimited": {
+      "title": "MindsHub에 요청이 너무 많이 들어오고 있습니다",
+      "body": "이번 턴이 중지되었습니다. 잠시 기다린 후 이 작업을 계속하세요."
+    },
+    "allowanceExhausted": {
+      "title": "포함된 제공량을 모두 사용했습니다",
+      "body": "지금 계속하려면 크레딧을 추가하거나, 제공량이 다시 채워질 때까지 기다린 후 이 작업을 계속하세요."
+    },
+    "freeAirPaused": {
+      "title": "무료 MindsHub Air가 일시 중지되었습니다",
+      "body": "일일 예산이 초기화되면 다시 사용할 수 있습니다. 지금 계속하려면 크레딧을 추가하거나 다른 모델을 선택하세요."
+    },
+    "notStarted": {
+      "title": "작업이 시작되지 않았습니다",
+      "body": "워크스페이스를 준비하지 못해 에이전트가 실행되지 않았습니다. 문제가 해결되면 새 작업을 시작하세요."
+    },
+    "reopening": {
+      "title": "작업을 다시 여는 중",
+      "body": "작업 파일에 다시 연결하는 중…"
+    },
+    "paused": {
+      "title": "작업 일시 중지됨",
+      "offlineBody": "작업 컴퓨터의 연결이 끊어졌습니다. 대화는 안전하게 보존됩니다. 해당 컴퓨터에서 다시 열거나 호환되는 다른 컴퓨터를 선택하세요.",
+      "interruptedBody": "턴이 완료되기 전에 중지되었습니다. 다시 열면 작업 사본이 복원됩니다. 중단된 작업을 계속하려면 메시지를 보내세요."
+    },
+    "restoreError": {
+      "title": "이 작업의 워크스페이스를 다시 열지 못했습니다",
+      "body": "{error}. 작업 내용은 계속 저장되어 있습니다. 문제가 해결되면 다시 시도하세요."
+    },
+    "released": {
+      "body": "디스크 공간을 절약하기 위해 이 작업의 워크스페이스를 정리했습니다. 작업을 계속하거나 검토하면 모든 변경 사항과 함께 다시 생성됩니다."
+    },
+    "kept": {
+      "body": "{reason}. 따라서 아직 디스크를 사용하고 있습니다."
+    },
+    "budgetExceeded": {
+      "title": "조직의 예산을 모두 사용했습니다",
+      "body": "소유자 또는 관리자가 ‘예산’에서 한도를 늘릴 수 있습니다. 또는 사용 가능한 모델을 선택해 이 작업을 계속하세요."
+    }
+  },
+  "planModeCommand": {
+    "label": "계획 모드",
+    "turnOn": "계획 모드 켜기",
+    "turnOff": "계획 모드 끄기"
+  },
+  "taskBar": {
+    "originalFolder": "원본 폴더",
+    "isolatedFolders": "{count, plural, other {격리된 폴더 #개}}",
+    "isolatedCopy": "격리된 사본",
+    "allProjectFiles": "모든 프로젝트 파일",
+    "allProjectFolders": "{count, plural, other {프로젝트 폴더 #개 전체}}",
+    "selectedFolders": "{count, plural, other {선택한 폴더 #개}}",
+    "openOriginalFolder": "원본 폴더 열기",
+    "openIsolatedCopy": "격리된 사본 열기",
+    "forkTask": "작업 포크",
+    "taskSettings": "작업 설정",
+    "detailsMenuAriaLabel": "작업 사본 및 작업 세부 정보",
+    "showDetailsAriaLabel": "{label} 작업 세부 정보 보기",
+    "details": {
+      "title": "작업 구성",
+      "files": "파일",
+      "branch": "브랜치",
+      "computer": "컴퓨터",
+      "agent": "에이전트",
+      "model": "모델",
+      "folder": "폴더"
+    },
+    "runAndPreviewAriaLabel": "실행 및 미리 보기",
+    "runAction": "{action} 실행",
+    "startingAction": "{action} 시작하는 중",
+    "starting": "시작하는 중…",
+    "run": "실행",
+    "runMenuAriaLabel": "프로젝트 작업 실행",
+    "chooseActionAriaLabel": "실행할 프로젝트 작업 선택",
+    "previewRunning": "실행 중인 프로젝트 미리 보기",
+    "previewUnavailable": "미리 보기를 사용하려면 프로젝트를 실행하세요",
+    "preview": "미리 보기",
+    "surfacesAriaLabel": "작업 화면",
+    "files": "파일",
+    "terminal": "터미널",
+    "reviewChanges": "변경 사항 검토",
+    "review": "검토",
+    "taskActionsAriaLabel": "코딩 작업 메뉴"
+  },
+  "terminal": {
+    "status": {
+      "running": "실행 중",
+      "disconnected": "연결 끊김",
+      "ready": "준비됨",
+      "exited": "종료됨",
+      "exitedWithCode": "종료됨(코드 {code})"
+    },
+    "errors": {
+      "open": "터미널을 열지 못했습니다.",
+      "actionTerminal": "프로젝트 작업은 시작되었지만 해당 터미널을 열지 못했습니다.",
+      "refresh": "터미널 목록을 새로 고치지 못했습니다.",
+      "create": "터미널을 만들지 못했습니다.",
+      "rename": "터미널 이름을 바꾸지 못했습니다.",
+      "close": "터미널을 닫지 못했습니다.",
+      "stop": "터미널을 중지하지 못했습니다.",
+      "restart": "터미널을 다시 시작하지 못했습니다.",
+      "write": "터미널에 쓰지 못했습니다.",
+      "interrupted": "터미널 연결이 중단되었습니다. 다시 연결하려면 탭을 전환하거나 패널을 다시 여세요.",
+      "unavailable": "터미널을 사용할 수 없습니다."
+    },
+    "ariaLabel": "작업 터미널",
+    "resize": "터미널 크기 조정",
+    "tabs": "터미널 탭",
+    "renameAriaLabel": "{label} 이름 바꾸기",
+    "renameHint": "두 번 클릭하여 이름 바꾸기",
+    "tabAriaLabel": "{label}, {status}",
+    "closeAriaLabel": "{label} 닫기",
+    "limit": "작업당 최대 {max}개의 터미널",
+    "new": "새 터미널",
+    "stopHint": "탭을 닫지 않고 이 터미널 중지",
+    "stop": "터미널 중지",
+    "restart": "다시 시작",
+    "hide": "터미널 패널 숨기기",
+    "opening": "터미널을 여는 중…",
+    "empty": "열려 있는 터미널이 없습니다",
+    "output": "터미널 출력"
+  },
+  "planDecision": {
+    "error": "계속하지 못했습니다. 다시 시도하세요.",
+    "label": "계획 검토",
+    "kind": "계획 준비됨",
+    "cancelRevision": "수정 취소",
+    "revise": "계획 수정",
+    "update": "계획 업데이트",
+    "build": "계획대로 빌드",
+    "buildTooltip": "이 작업에서 선택한 권한으로 빌드합니다",
+    "question": "이 계획대로 빌드를 시작할까요?",
+    "changesAriaLabel": "계획 변경 사항",
+    "changesPlaceholder": "계획에서 무엇을 바꿔야 하나요?"
+  },
+  "question": {
+    "error": "답변을 보내지 못했습니다. 다시 시도하세요.",
+    "label": "에이전트 질문",
+    "kind": "{count, plural, other {질문 #개}}",
+    "sending": "보내는 중…",
+    "continue": "계속",
+    "privateAnswer": "비공개 답변",
+    "ownAnswer": "또는 직접 답변 작성",
+    "yourAnswer": "내 답변"
+  },
+  "approval": {
+    "kinds": {
+      "command": {
+        "label": "터미널",
+        "question": "이 명령을 실행할까요?"
+      },
+      "fileChange": {
+        "label": "파일 변경",
+        "question": "보호된 파일을 수정할까요?"
+      },
+      "network": {
+        "label": "액세스",
+        "question": "추가 액세스 권한을 부여할까요?"
+      },
+      "elevated": {
+        "label": "상승된 권한",
+        "question": "상승된 권한으로 작업을 승인할까요?"
+      }
+    },
+    "deny": "거부",
+    "alwaysAllow": "항상 허용",
+    "alwaysAllowTooltip": "지금 허용하고, 이 작업이 끝날 때까지 비슷한 명령도 허용합니다",
+    "label": "승인 필요",
+    "kind": "승인",
+    "allowOnce": "한 번 허용",
+    "fallbackQuestion": "에이전트에 승인이 필요합니다"
+  },
+  "promptReferences": {
+    "desktopOnly": "로컬 파일 첨부는 데스크톱 앱에서 사용할 수 있습니다.",
+    "ariaLabel": "첨부된 컨텍스트",
+    "removeAriaLabel": "{name} 제거"
+  }
+}

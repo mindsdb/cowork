@@ -6,6 +6,7 @@ import Tooltip from '../components/ui/Tooltip';
 import { codingApi, type TerminalPage, type TerminalTabState } from './api';
 import { TerminalScreen } from './TerminalScreen';
 import { getTerminalShellPreference } from './terminalPreferences';
+import i18n, { useTranslation } from '../../lib/i18n';
 
 
 const MAX_TERMINALS = 12;
@@ -38,14 +39,17 @@ function ensureTerminalTabs(sessionId: string): Promise<TerminalTabState[]> {
 
 
 function statusLabel(state: Pick<TerminalTabState, 'status' | 'exit_code'>): string {
-  if (state.status === 'running') return 'Running';
-  if (state.status === 'failed') return 'Disconnected';
-  if (state.status === 'stopped') return 'Ready';
-  return `Exited${state.exit_code == null ? '' : ` with code ${state.exit_code}`}`;
+  if (state.status === 'running') return i18n.t('terminal.status.running', { ns: 'code' });
+  if (state.status === 'failed') return i18n.t('terminal.status.disconnected', { ns: 'code' });
+  if (state.status === 'stopped') return i18n.t('terminal.status.ready', { ns: 'code' });
+  return state.exit_code == null
+    ? i18n.t('terminal.status.exited', { ns: 'code' })
+    : i18n.t('terminal.status.exitedWithCode', { ns: 'code', code: state.exit_code });
 }
 
 
 export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { sessionId: string; focusTerminalId?: string | null; onClose: () => void }) {
+  const { t } = useTranslation('code');
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const expectedDisconnectsRef = useRef(new Set<string>());
   const focusRefreshRef = useRef('');
@@ -82,7 +86,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
     }).catch((reason) => {
       if (disposed) return;
       loadedSessionRef.current = sessionId;
-      setError(reason instanceof Error ? reason.message : 'Could not open the terminal.');
+      setError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.open', { ns: 'code' }));
       setLoading(false);
     });
     return () => { disposed = true; };
@@ -107,14 +111,14 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
     void codingApi.terminals(sessionId).then(({ items }) => {
       if (disposed) return;
       if (!items.some((tab) => tab.id === focusTerminalId)) {
-        setError('The project action started, but its terminal could not be opened.');
+        setError(i18n.t('terminal.errors.actionTerminal', { ns: 'code' }));
         return;
       }
       setTabs(items);
       setSelectedId(focusTerminalId);
     }).catch((reason) => {
       if (disposed) return;
-      setError(reason instanceof Error ? reason.message : 'Could not refresh the terminal list.');
+      setError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.refresh', { ns: 'code' }));
     });
     return () => { disposed = true; };
   }, [focusTerminalId, loading, sessionId, tabs]);
@@ -151,7 +155,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
       setTabs((current) => [...current, tab]);
       setSelectedId(tab.id);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not create a terminal.');
+      setError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.create', { ns: 'code' }));
     } finally {
       setBusy(false);
     }
@@ -178,7 +182,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
       const updated = await codingApi.renameTerminal(sessionId, terminalId, label);
       setTabs((current) => current.map((tab) => tab.id === terminalId ? updated : tab));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not rename the terminal.');
+      setError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.rename', { ns: 'code' }));
     } finally {
       renameSavingRef.current = false;
     }
@@ -200,7 +204,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
         return remaining;
       });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not close the terminal.');
+      setError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.close', { ns: 'code' }));
     } finally {
       setBusy(false);
       window.setTimeout(() => expectedDisconnectsRef.current.delete(terminalId), 1_000);
@@ -220,7 +224,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
       // must not overwrite it.
       if (nextState.status !== 'running') updateState(selected.id, nextState);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not stop the terminal.');
+      setError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.stop', { ns: 'code' }));
     } finally {
       setBusy(false);
       window.setTimeout(() => expectedDisconnectsRef.current.delete(selected.id), 1_000);
@@ -242,19 +246,19 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
       updateState(selected.id, nextState);
       setScreenGeneration((value) => value + 1);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not restart the terminal.');
+      setError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.restart', { ns: 'code' }));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <section className="code-terminal" style={{ height }} aria-label="Task terminals">
+    <section className="code-terminal" style={{ height }} aria-label={t('terminal.ariaLabel')}>
       <div
         className="code-terminal__resize"
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Resize terminal"
+        aria-label={t('terminal.resize')}
         tabIndex={0}
         onKeyDown={(event) => {
           if (event.key === 'ArrowUp') setHeight((value) => Math.min(520, value + 20));
@@ -278,14 +282,14 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
         }}
       />
       <header className="code-terminal__header">
-        <div className="code-terminal__tabs" role="tablist" aria-label="Terminal tabs">
+        <div className="code-terminal__tabs" role="tablist" aria-label={t('terminal.tabs')}>
           <span className="code-terminal__mark" aria-hidden="true">{Ico.code(14)}</span>
           {tabs.map((tab) => (
             <div key={tab.id} className={`code-terminal__tab${tab.id === selectedId ? ' is-active' : ''}`}>
               {renamingId === tab.id ? (
                 <input
                   autoFocus
-                  aria-label={`Rename ${tab.label}`}
+                  aria-label={t('terminal.renameAriaLabel', { label: tab.label })}
                   value={renameValue}
                   maxLength={48}
                   onChange={(event) => setRenameValue(event.target.value)}
@@ -303,12 +307,12 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
                   }}
                 />
               ) : (
-                <Tooltip content="Double-click to rename">
+                <Tooltip content={t('terminal.renameHint')}>
                   <button
                     type="button"
                     role="tab"
                     aria-selected={tab.id === selectedId}
-                    aria-label={`${tab.label}, ${statusLabel(tab)}`}
+                    aria-label={t('terminal.tabAriaLabel', { label: tab.label, status: statusLabel(tab) })}
                     onClick={() => setSelectedId(tab.id)}
                     onDoubleClick={() => beginRename(tab)}
                     onContextMenu={(event) => { event.preventDefault(); beginRename(tab); }}
@@ -324,7 +328,7 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
                 size="xxs"
                 variant="subtle"
                 className="code-terminal__tab-close"
-                aria-label={`Close ${tab.label}`}
+                aria-label={t('terminal.closeAriaLabel', { label: tab.label })}
                 disabled={busy}
                 onClick={() => void deleteTerminal(tab.id)}
               >
@@ -333,13 +337,13 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
             </div>
           ))}
           {/* The hint lives on a wrapper: disabled .btn drops pointer events. */}
-          <Tooltip content={tabs.length >= MAX_TERMINALS ? `Up to ${MAX_TERMINALS} terminals per task` : 'New terminal'}>
+          <Tooltip content={tabs.length >= MAX_TERMINALS ? t('terminal.limit', { max: MAX_TERMINALS }) : t('terminal.new')}>
             <span className="code-terminal__new">
               <Button
                 icon
                 size="sm"
                 variant="subtle"
-                aria-label="New terminal"
+                aria-label={t('terminal.new')}
                 disabled={busy || tabs.length >= MAX_TERMINALS}
                 onClick={() => void addTerminal()}
               >
@@ -350,18 +354,18 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
         </div>
         <div className="code-terminal__actions">
           {selected?.status === 'running' ? (
-            <Tooltip content="Stop this terminal without closing its tab">
+            <Tooltip content={t('terminal.stopHint')}>
               <Button size="sm" variant="subtle" disabled={busy} onClick={() => void stop()}>
-                {Ico.stop(12)} Stop terminal
+                {Ico.stop(12)} {t('terminal.stop')}
               </Button>
             </Tooltip>
           ) : selected && selected.status !== 'stopped' && (
             <Button size="sm" variant="subtle" disabled={busy} onClick={() => void restart()}>
-              {Ico.refresh(12)} Restart
+              {Ico.refresh(12)} {t('terminal.restart')}
             </Button>
           )}
-          <Tooltip content="Hide terminal panel">
-            <Button icon size="sm" variant="subtle" onClick={onClose} aria-label="Hide terminal panel">
+          <Tooltip content={t('terminal.hide')}>
+            <Button icon size="sm" variant="subtle" onClick={onClose} aria-label={t('terminal.hide')}>
               {Ico.close(14)}
             </Button>
           </Tooltip>
@@ -379,8 +383,8 @@ export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { s
         />
       ) : (
         <div className="code-terminal__empty">
-          <span>{loading || !sessionLoaded ? 'Opening terminal…' : 'No terminals open'}</span>
-          {!loading && sessionLoaded && <Button size="sm" variant="subtle" onClick={() => void addTerminal()}>{Ico.plus(12)} New terminal</Button>}
+          <span>{loading || !sessionLoaded ? t('terminal.opening') : t('terminal.empty')}</span>
+          {!loading && sessionLoaded && <Button size="sm" variant="subtle" onClick={() => void addTerminal()}>{Ico.plus(12)} {t('terminal.new')}</Button>}
         </div>
       )}
     </section>

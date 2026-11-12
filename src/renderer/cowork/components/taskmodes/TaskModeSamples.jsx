@@ -1,4 +1,6 @@
 import Ico from '../Icons';
+import { useTranslation } from '../../../lib/i18n';
+import { sampleLabel } from './taskModes';
 
 // Sample prompts for a selected task mode (ENG-1594). Two presentations,
 // mirroring Manus: 'cards' (a labelled grid — slides, visualization) and
@@ -13,12 +15,13 @@ import Ico from '../Icons';
 // literals in each ternary branch — Tailwind's scanner can't see through
 // interpolation.
 export default function TaskModeSamples({ mode, onPick }) {
+  const { t } = useTranslation('chat');
   const isCards = mode.samplesVariant === 'cards';
   return (
     <div className="mt-[28px] w-full max-w-[var(--composer-max-width,640px)]">
       {isCards && (
         <div className="mx-[2px] mb-3 text-[13px] font-semibold text-[var(--text-strong)] opacity-0 [animation:fadein-up_var(--dur-layout)_var(--ease-out)_var(--dur-stagger)_both]">
-          Sample prompts
+          {t('taskModes.samplePrompts')}
         </div>
       )}
       <div className={isCards ? 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[10px]' : 'flex flex-col'}>
@@ -32,7 +35,7 @@ export default function TaskModeSamples({ mode, onPick }) {
               : 'group flex w-full cursor-pointer items-center gap-3 border-0 border-b border-solid border-line bg-transparent px-1 py-[13px] text-left [font-family:inherit] text-[13.5px] text-[var(--frost-700)] last:border-b-0 opacity-0 [animation:fadein-up_var(--dur-layout)_var(--ease-out)_var(--stagger)_both] [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease] active:bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:text-[var(--text-strong)]'}
             onClick={() => onPick(sample.prompt)}
           >
-            <span className="min-w-0 flex-1">{sample.label}</span>
+            <span className="min-w-0 flex-1">{sampleLabel(sample)}</span>
             <span
               className={isCards
                 ? 'mt-auto inline-flex shrink-0 self-end text-[var(--frost-500)] opacity-70 [transition:opacity_var(--dur-hover)_ease,color_var(--dur-hover)_ease] [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-[var(--frost-700)] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100'

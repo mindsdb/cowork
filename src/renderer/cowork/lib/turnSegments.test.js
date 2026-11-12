@@ -229,3 +229,14 @@ describe('splitTurnSegments — tool messages', () => {
     expect(liveSegmentIndex(segments)).toBe(4);
   });
 });
+
+describe('splitTurnSegments — added messages (ENG-4194)', () => {
+  const added = (id) => ({ id, badge: 'Addon', status: 'completed', completedAt: 5, data: { text: 'also Q3', state: 'added' } });
+
+  it('renders an added message as its own boundary, with the live header below it', () => {
+    const segments = splitTurnSegments([work('a'), added('ad1'), work('b')]);
+    expect(segments.map((s) => s.kind)).toEqual(['steps', 'addon', 'steps']);
+    expect(segments[1].step.id).toBe('ad1');
+    expect(liveSegmentIndex(segments)).toBe(2);
+  });
+});

@@ -37,18 +37,22 @@
 // rather than highlighting options the user may not have picked.
 //
 // A tool's message to the user (a `Message` step) is a boundary too: it renders
-// as an agent message between the work before and after it.
+// as an agent message between the work before and after it. So is a message
+// the person added to the running task (an `Addon` step, ENG-4194): it renders
+// as their own row at the point it joined.
 
 import { isAutoApprovedCard } from './browserApproval';
 
 const isQuestion = (step) => step?.badge === 'AskUser';
 const isMessage = (step) => step?.badge === 'Message';
+const isAddon = (step) => step?.badge === 'Addon';
 
 /**
  * Returns, in event order:
  *   { kind: 'steps', key, steps, startedAt, endedAt? }
  *   { kind: 'question', key, step, expired, reopened, lateAnswer }
  *   { kind: 'message', key, step }
+ *   { kind: 'addon', key, step }
  * Always starts and ends with a steps segment, and puts one (possibly empty)
  * between any two boundaries (questions or messages), so callers can always
  * pick the live one.
@@ -81,12 +85,13 @@ export function splitTurnSegments(steps, { startedAt = null, endedAt = null, con
   for (const step of list) {
     // An answered position card was the app's own approval: nothing to show.
     if (isQuestion(step) && step.data?.answer && isAutoApprovedCard(step.data)) continue;
-    if (!isQuestion(step) && !isMessage(step)) {
+    if (!isQuestion(step) && !isMessage(step) && !isAddon(step)) {
       current.steps.push(step);
       continue;
     }
     pushSteps(current);
-    segments.push(isMessage(step)
+    if (isAddon(step)) segments.push({ kind: 'addon', key: step.id, step });
+    else segments.push(isMessage(step)
       ? { kind: 'message', key: step.id, step }
       : {
         kind: 'question',

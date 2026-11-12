@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type RefObject } from 'react';
 
 import Tooltip from '../ui/Tooltip';
+import { useTranslation } from '../../../lib/i18n';
 
 // Below this many user turns a conversation fits in a glance; no map.
 export const MINIMAP_MIN_TURNS = 3;
@@ -97,6 +98,7 @@ export function TurnMinimap({
   scrollRef: RefObject<HTMLDivElement | null>;
   version: number;
 }) {
+  const { t } = useTranslation('chat');
   const [turns, setTurns] = useState<MinimapTurn[]>([]);
   const [active, setActive] = useState(0);
   // The tick under the pointer; each tick's distance from it sets its length.
@@ -150,7 +152,7 @@ export function TurnMinimap({
   return (
     <nav
       className={`chat-minimap${turns.length > 24 ? ' is-dense' : ''}${pointed != null ? ' is-pointed' : ''}`}
-      aria-label="Conversation turns"
+      aria-label={t('minimap.ariaLabel')}
       style={{
         '--minimap-inset': `${fit.inset}px`,
         '--minimap-peak': `${fit.peak}px`,
@@ -168,7 +170,7 @@ export function TurnMinimap({
           className="chat-minimap__card"
           content={(
             <span className="chat-minimap__preview">
-              <span className="chat-minimap__prompt">{turn.snippet || 'Message'}</span>
+              <span className="chat-minimap__prompt">{turn.snippet || t('minimap.message')}</span>
               {turn.answer && <span className="chat-minimap__answer">{turn.answer}</span>}
             </span>
           )}
@@ -176,7 +178,7 @@ export function TurnMinimap({
           <button
             type="button"
             className={`chat-minimap__tick${i === active ? ' is-active' : ''}`}
-            aria-label={`Go to message ${i + 1}: ${turn.snippet}`}
+            aria-label={t('minimap.goTo', { index: i + 1, snippet: turn.snippet })}
             aria-current={i === active ? 'location' : undefined}
             style={pointed != null ? { '--tick-distance': Math.abs(i - pointed) } as CSSProperties : undefined}
             onPointerEnter={() => setPointed(i)}

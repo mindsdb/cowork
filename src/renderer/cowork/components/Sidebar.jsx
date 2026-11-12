@@ -19,6 +19,7 @@ import WorkspaceModeSwitch from './WorkspaceModeSwitch';
 import { surfaceCopy } from '../lib/surface';
 import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
 import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../../shared/product-name';
+import { sharedTranslator, useTranslation } from '../../lib/i18n';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -47,6 +48,7 @@ const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
 function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
+  const { t } = useTranslation('shell');
   return (
     <button
       ref={elementRef}
@@ -66,13 +68,14 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
         <Badge variant="muted" size="xs">{badge}</Badge>
       )}
       {comingSoon && (
-        <Badge variant="muted" size="xs">Soon</Badge>
+        <Badge variant="muted" size="xs">{t('sidebar.soon')}</Badge>
       )}
     </button>
   );
 }
 
 function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
+  const { t } = useTranslation('shell');
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -125,7 +128,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           size="sm"
           value={draft}
           onChange={setDraft}
-          aria-label="Rename task"
+          aria-label={t('sidebar.renameTask')}
           autoFocus
           onFocus={(e) => { try { e.target.select(); } catch {} }}
           onClick={(e) => e.stopPropagation()}
@@ -147,7 +150,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
       ) : (
       <button className={`recent-item${selected ? ' is-selected' : ''} relative flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
         <span className={`recent-row__title flex-1 min-w-0${showKebab && !slotAtRest ? ' is-clipped' : ''}`}>
-          {task.title || 'Untitled'}
+          {task.title || t('recents.untitled')}
           {/* Schedule-group entries — append a muted "· N runs"
               suffix so the title still reads clean while the count
               is visually separated from the schedule name. Painted
@@ -158,7 +161,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             return (
               <span className="text-ink-4 font-normal ml-1.5 whitespace-nowrap">
                 <span className="text-ink-5 mr-1">·</span>
-                {n} {n === 1 ? 'run' : 'runs'}
+                {t('sidebar.runs', { count: n })}
               </span>
             );
           })()}
@@ -179,15 +182,15 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             {isActive ? (
               <span
                 className="pulse-dot inline-block w-[7px] h-[7px] mr-[7.5px] rounded-full bg-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--sage-500)_18%,transparent)]"
-                title={`${agentLabel || 'Anton'} is working on this task`}
-                aria-label="Active"
+                title={t('sidebar.agentWorking', { agent: agentLabel || 'Anton' })}
+                aria-label={t('sidebar.active')}
               />
             ) : age}
           </span>
           <span
             ref={triggerRef}
             role="button"
-            aria-label="Task menu"
+            aria-label={t('sidebar.taskMenu')}
             onClick={openMenu}
             className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex w-[22px] h-[22px] items-center justify-center text-ink-3 rounded-[5px] cursor-pointer hover:bg-surface-2 hover:text-ink [transition:opacity_var(--dur-hover)_ease,background_var(--dur-hover)_ease,color_var(--dur-hover)_ease]"
             style={{ opacity: showKebab ? 1 : 0, pointerEvents: showKebab ? 'auto' : 'none' }}
@@ -312,6 +315,7 @@ export default function Sidebar({
   artifactTipOpen = false,
   onArtifactTipDismiss,
 }) {
+  const { t } = useTranslation('shell');
   const codeRoute = activeWorkspace === 'code';
   // Signed-in account identity (null when signed out) — decides whether the
   // footer shows the account row + user menu or the plain Settings row.
@@ -373,6 +377,7 @@ export default function Sidebar({
   const _scheduleById = new Map((schedules || []).map((s) => [s?.id, s]));
   const _resolveSchedId = (t) => t?.scheduledId || null;
 
+  const scheduledTaskFallback = t('sidebar.scheduledTask');
   const recentsAll = (() => {
     const out = [];
     const groups = new Map(); // scheduleId → synthesised group entry
@@ -385,7 +390,7 @@ export default function Sidebar({
       let g = groups.get(sid);
       if (!g) {
         const sched = _scheduleById.get(sid);
-        const baseTitle = sched?.title || t.title || 'Scheduled task';
+        const baseTitle = sched?.title || t.title || scheduledTaskFallback;
         g = {
           id: `sched:${sid}`,
           title: baseTitle,
@@ -525,14 +530,14 @@ export default function Sidebar({
             {(() => {
               const canToggle = typeof onToggleCollapsed === 'function';
               return (
-                <Tooltip content={canToggle ? `${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}  (${shortcut('B')})` : ''}>
+                <Tooltip content={canToggle ? `${collapsed ? t('sidebar.expand') : t('sidebar.collapse')}  (${shortcut('B')})` : ''}>
                   <button
                     className="icon-btn [-webkit-app-region:no-drag] origin-center"
                     onClick={canToggle ? onToggleCollapsed : undefined}
                     disabled={!canToggle}
                     aria-hidden={canToggle ? undefined : 'true'}
                     tabIndex={canToggle ? undefined : -1}
-                    aria-label={canToggle ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : undefined}
+                    aria-label={canToggle ? (collapsed ? t('sidebar.expand') : t('sidebar.collapse')) : undefined}
                     style={{
                       // All dynamic (canToggle-gated), plus `transition` stays
                       // inline: .icon-btn sets its own `transition: background
@@ -562,11 +567,11 @@ export default function Sidebar({
                 </Tooltip>
               );
             })()}
-            <Tooltip content={`Search  (${shortcut('K')})`}>
+            <Tooltip content={`${t('search.ariaLabel')}  (${shortcut('K')})`}>
               <button
                 className="icon-btn [-webkit-app-region:no-drag]"
                 onClick={onOpenSearch}
-                aria-label="Search"
+                aria-label={t('search.ariaLabel')}
               >
                 {Ico.search(16)}
               </button>
@@ -631,7 +636,7 @@ export default function Sidebar({
             style={{ gap: 9 }}
           >
             {Ico.plus(14)}
-            <span className="flex-1 text-left font-medium">{codeRoute ? 'New code task' : 'New task'}</span>
+            <span className="flex-1 text-left font-medium">{codeRoute ? t('sidebar.newCodeTask') : t('sidebar.newTask')}</span>
             <Kbd>{shortcut('N')}</Kbd>
           </Button>
         </div>
@@ -641,11 +646,11 @@ export default function Sidebar({
             product look like the same action. */}
         {!codeRoute && (
           <div className="nav-list px-2.5 flex flex-col gap-px">
-            <NavItem icon={Ico.folder(16)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-            <NavItem icon={Ico.clock(16)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+            <NavItem icon={Ico.folder(16)}  label={t('sidebar.nav.projects')} onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
+            <NavItem icon={Ico.clock(16)}   label={t('sidebar.nav.scheduled')} onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
             <NavItem
               icon={Ico.sparkle(16)}
-              label="Live Artifacts"
+              label={t('sidebar.nav.artifacts')}
               elementRef={artifactsNavRef}
               onClick={() => {
                 // Opening the artifacts view IS the tip's goal — count it
@@ -665,7 +670,7 @@ export default function Sidebar({
                 live "you have N connections" indicator. */}
             <NavItem
               icon={Ico.link(16)}
-              label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
+              label={connectorsCount > 0 ? t('sidebar.nav.connectedApps') : t('sidebar.nav.connectApps')}
               onClick={() => onNavigate('customize')}
               active={activeRoute === 'customize'}
               badge={showCounters ? (connectorsCount || null) : null}
@@ -683,25 +688,25 @@ export default function Sidebar({
             <div className="nav-list px-2.5 flex flex-col gap-px code-sidebar-nav">
               <NavItem
                 icon={Ico.folder(16)}
-                label="Projects"
+                label={t('sidebar.nav.projects')}
                 onClick={onOpenCodingProjects}
                 active={activeCodeRoute === 'projects'}
               />
               <NavItem
                 icon={Ico.list(16)}
-                label="All tasks"
+                label={t('sidebar.nav.allTasks')}
                 onClick={onOpenCodingTasks}
                 active={activeCodeRoute === 'tasks'}
               />
               <NavItem
                 icon={Ico.link(16)}
-                label="Connectors"
+                label={t('sidebar.nav.connectors')}
                 onClick={onOpenCodingConnectors}
                 active={activeCodeRoute === 'connectors'}
               />
               <NavItem
                 icon={Ico.cube(16)}
-                label="Skills"
+                label={t('sidebar.nav.skills')}
                 onClick={onOpenCodingSkills}
                 active={activeCodeRoute === 'skills'}
               />
@@ -725,12 +730,12 @@ export default function Sidebar({
             as a category alongside Pinned / Recent instead of a drawn
             box (fewer edges). Labels name what the user OWNS (plural
             collections) rather than the engine's abstract concepts. */}
-        <div className="section-label">Agent</div>
+        <div className="section-label">{t('sidebar.agent')}</div>
         <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.brain(16)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
-          <NavItem icon={Ico.cube(16)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
+          <NavItem icon={Ico.brain(16)} label={t('sidebar.nav.memories')} onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+          <NavItem icon={Ico.cube(16)}  label={t('sidebar.nav.skillsLibrary')} onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
           {showCompare && (
-            <NavItem icon={Ico.columns(16)} label="Compare Models" onClick={() => onNavigate('compare')} active={activeRoute === 'compare'} />
+            <NavItem icon={Ico.columns(16)} label={t('sidebar.nav.compare')} onClick={() => onNavigate('compare')} active={activeRoute === 'compare'} />
           )}
         </div>
 
@@ -738,7 +743,7 @@ export default function Sidebar({
             section just wastes rail space. */}
         {pinnedTasks.length > 0 && (
           <>
-            <div className="section-label">Pinned</div>
+            <div className="section-label">{t('sidebar.pinned')}</div>
             <div className="px-2.5 flex flex-col gap-px">
               {pinnedTasks.map((task) => (
                 <RecentItem
@@ -775,8 +780,8 @@ export default function Sidebar({
           onMouseEnter={() => setRecentsHeadingHover(true)}
           onMouseLeave={() => setRecentsHeadingHover(false)}
         >
-          <span className="flex-1">Recent tasks</span>
-          <Tooltip content="View all tasks">
+          <span className="flex-1">{t('search.recentTasks')}</span>
+          <Tooltip content={t('sidebar.viewAllTasks')}>
             <button
               type="button"
               className="recents-viewall bg-transparent border-0 p-0 font-[family-name:var(--font-body)] text-xs tracking-[0.02em] normal-case"
@@ -790,7 +795,7 @@ export default function Sidebar({
                 pointerEvents: recentsHeadingHover ? 'auto' : 'none',
               }}
             >
-              View all →
+              {t('sidebar.viewAll')}
             </button>
           </Tooltip>
         </div>
@@ -802,7 +807,7 @@ export default function Sidebar({
           {tasksStatus === 'loading' && tasksWithPin.length === 0 && (
             // Skeleton rows rather than a spinner: the list is about to be
             // rows, so reserving their shape avoids the jump when they land.
-            <div aria-busy="true" aria-label="Loading tasks" className="flex flex-col gap-px">
+            <div aria-busy="true" aria-label={t('sidebar.loadingTasks')} className="flex flex-col gap-px">
               {[0, 1, 2, 3, 4].map((i) => (
                 <div key={i} className="px-2.5 py-2">
                   <div
@@ -817,7 +822,7 @@ export default function Sidebar({
             // Distinct from "No tasks yet" on purpose: an empty list after a
             // failed fetch reads as lost work, which is the bug this fixes.
             <div role="alert" className="px-2.5 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
-              <div>Couldn&rsquo;t load your tasks.</div>
+              <div>{t('sidebar.loadFailed')}</div>
               {onRetryTasks && (
                 <button
                   type="button"
@@ -825,14 +830,14 @@ export default function Sidebar({
                   className="mt-1 bg-transparent border-0 p-0 underline cursor-pointer text-xs"
                   style={{ color: 'inherit' }}
                 >
-                  Retry
+                  {t('loadStatus.retry')}
                 </button>
               )}
             </div>
           )}
           {tasksStatus === 'ready' && tasksWithPin.length === 0 && (
             <div className="px-2.5 py-3 text-xs" style={{ color: 'var(--text-secondary, #6b7280)' }}>
-              <div>No tasks yet</div>
+              <div>{t('sidebar.noTasks')}</div>
               {/* Where a returning user looks for missing work. The two apps
                   keep separate work by design, so the honest answer is to
                   point at the other one, not to imply the work is gone. */}
@@ -873,7 +878,7 @@ export default function Sidebar({
               onClick={() => setRecentsModalOpen(true)}
               className="recents-show-more mt-1.5 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-between gap-2 hover:bg-surface-2 hover:border-line hover:text-ink [transition:background_var(--dur-hover)_ease,color_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease]"
             >
-              <span>Show more</span>
+              <span>{t('sidebar.showMore')}</span>
               <span className="text-xs tabular-nums text-ink-4">
                 +{recentsAll.length - recents.length}
               </span>
@@ -911,7 +916,11 @@ export default function Sidebar({
           if (updateBanner.dismissible) {
             return (
               <div className={box}>
-                <Tooltip content={`A new version of ${STOCK_PRODUCT_NAME} is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and ${updateBanner.debInstaller ? debInstallStep(updateBanner.version) : 'open it to update'}`}>
+                <Tooltip content={t(updateBanner.version ? 'sidebar.update.manualTooltipVersion' : 'sidebar.update.manualTooltip', {
+                  product: STOCK_PRODUCT_NAME,
+                  version: updateBanner.version,
+                  step: updateBanner.debInstaller ? debInstallStep(updateBanner.version, sharedTranslator('app')) : t('sidebar.update.openToUpdate'),
+                })}>
                   <button
                     type="button"
                     onClick={() => onUpdateAction?.(updateBanner.action)}
@@ -920,11 +929,11 @@ export default function Sidebar({
                     {dot}{label}{action}
                   </button>
                 </Tooltip>
-                <Tooltip content="Dismiss">
+                <Tooltip content={t('ui.toast.dismiss')}>
                   <button
                     type="button"
                     onClick={onDismissUpdate}
-                    aria-label="Dismiss update notice"
+                    aria-label={t('sidebar.update.dismiss')}
                     className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-base leading-none shrink-0"
                   >
                     ×
@@ -980,7 +989,7 @@ export default function Sidebar({
               gets the plain Settings row; only the pill is gated. */}
           {showsStatusPill ? (
               <>
-                <Tooltip content="Backend status — click for details">
+                <Tooltip content={t('sidebar.status.details')}>
                   <button
                     type="button"
                     className={
@@ -988,28 +997,30 @@ export default function Sidebar({
                       (serverBusy ? ' is-busy' : '')
                     }
                     onClick={onShowServerHelp}
-                    aria-label="Backend status — click for details"
+                    aria-label={t('sidebar.status.details')}
                   >
                     <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
                     <span className="status-text">
-                      <span className="status-text__faded">backend ·</span>{' '}
+                      <span className="status-text__faded">{t('sidebar.status.backend')}</span>{' '}
                       {serverBusy ? (
                         <>
-                          <span className="status-text__live">{serverBusyKind}</span>{' '}
+                          <span className="status-text__live">{serverBusyKind === 'stopping' ? t('sidebar.status.stopping')
+                            : serverBusyKind === 'starting' ? t('sidebar.status.starting')
+                            : serverBusyKind}</span>{' '}
                           <Spinner />
                         </>
                       ) : (
-                        <span className="status-text__faded">offline</span>
+                        <span className="status-text__faded">{t('sidebar.status.offline')}</span>
                       )}
                     </span>
                   </button>
                 </Tooltip>
-                <Tooltip content="Settings">
+                <Tooltip content={t('sidebar.settings')}>
                   <button
                     ref={workspaceReturnFocusRef}
                     className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                     onClick={() => onNavigate('settings:backend')}
-                    aria-label="Settings"
+                    aria-label={t('sidebar.settings')}
                   >
                     {Ico.settings(14)}
                   </button>
@@ -1031,12 +1042,12 @@ export default function Sidebar({
                     directly, so this only adds value here. Display
                     settings (theme/8-bit/coding mode) moved to the
                     floating corner button — see App.jsx. */}
-                <Tooltip content="Settings">
+                <Tooltip content={t('sidebar.settings')}>
                   <button
                     ref={workspaceReturnFocusRef}
                     className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
                     onClick={() => onNavigate('settings')}
-                    aria-label="Open Settings"
+                    aria-label={t('sidebar.openSettings')}
                   >
                     {Ico.settings(16)}
                   </button>
@@ -1047,10 +1058,10 @@ export default function Sidebar({
                 ref={workspaceReturnFocusRef}
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                 onClick={() => onNavigate('settings')}
-                aria-label="Settings"
+                aria-label={t('sidebar.settings')}
               >
                 <span className="inline-flex shrink-0">{Ico.settings(14)}</span>
-                <span>Settings</span>
+                <span>{t('sidebar.settings')}</span>
               </button>
             )}
         </div>

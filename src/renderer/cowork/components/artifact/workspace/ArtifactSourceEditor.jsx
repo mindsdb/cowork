@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { MarkdownContent } from '../../markdown/MarkdownContent';
 import { ArtifactHtmlVisualEditor } from './ArtifactHtmlVisualEditor';
+import { useTranslation } from '../../../../lib/i18n';
 
 function extensionOf(path) {
   const match = String(path || '').toLowerCase().match(/\.[a-z0-9]+$/);
@@ -16,6 +17,7 @@ export function ArtifactSourceEditor({
   loadImage = null,
   onTextSelection,
 }) {
+  const { t } = useTranslation('artifacts');
   const editorRef = useRef(null);
   const ext = extensionOf(source?.path);
   const isMarkdown = ext === '.md';
@@ -60,15 +62,15 @@ export function ArtifactSourceEditor({
 
   return (
     <div className={`artifact-source-workbench ${isMarkdown ? 'is-split' : ''}`}>
-      <section className="artifact-source-pane" aria-label="Artifact source">
+      <section className="artifact-source-pane" aria-label={t('sourceEditor.source')}>
         <div className="artifact-pane-label section-label">
-          <span>Source</span>
+          <span>{t('sourceEditor.sourceLabel')}</span>
           <code>{source.path}</code>
         </div>
         <textarea
           ref={editorRef}
           className="artifact-source-textarea"
-          aria-label={`Edit ${source.path}`}
+          aria-label={t('sourceEditor.editAriaLabel', { path: source.path })}
           spellCheck={isMarkdown}
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -76,8 +78,8 @@ export function ArtifactSourceEditor({
         />
       </section>
       {isMarkdown && (
-        <section className="artifact-render-pane" aria-label="Markdown preview">
-          <div className="artifact-pane-label section-label"><span>Preview</span><em>Updates as you type</em></div>
+        <section className="artifact-render-pane" aria-label={t('sourceEditor.markdownPreview')}>
+          <div className="artifact-pane-label section-label"><span>{t('sourceEditor.preview')}</span><em>{t('sourceEditor.live')}</em></div>
           <div className="artifact-markdown-preview">
             <MarkdownContent text={value} id={`${source.artifactId}:draft`} loadImage={loadImage} />
           </div>

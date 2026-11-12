@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import i18n from '../../lib/i18n';
 import { codingApi, type CodingSession } from './api';
 import { isAppVisible, subscribeAppVisibility } from './useAppVisible';
 
@@ -104,7 +105,7 @@ export function useCodeTaskList({
     try {
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.');
+      setError(reason instanceof Error ? reason.message : i18n.t('taskList.loadFailed', { ns: 'code' }));
     } finally {
       setLoading(false);
     }
@@ -113,7 +114,7 @@ export function useCodeTaskList({
   useEffect(() => {
     if (!active) return undefined;
     load()
-      .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.'))
+      .catch((reason) => setError(reason instanceof Error ? reason.message : i18n.t('taskList.loadFailed', { ns: 'code' })))
       .finally(() => setLoading(false));
     let polls = 0;
     const refresh = (activeOnly = false) => {

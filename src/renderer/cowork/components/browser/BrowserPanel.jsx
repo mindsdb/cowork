@@ -7,10 +7,10 @@ import Spinner from '../ui/Spinner';
 import { embedBrowser } from '../../api';
 import { VIEWER_CLOSED, VIEWER_READY, afterViewerClose, browserViewerTheme, viewerLinkFrom } from '../../lib/browserSession';
 import { host } from '../../../platform/host';
-import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 import { BrowserFrame } from './BrowserFrame';
 import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The person's browser beside the chat. The agent drives it through its
    browser tool; the person watches, and can click and type in it at any time
@@ -49,15 +49,16 @@ export const STARTING_TIMEOUT_MS = 90_000;
  * @typedef {{ title: string, description: string }} PaneStop
  */
 
-const UNREACHABLE = "The browser isn't reachable";
+const unreachable = () => i18n.t('browser.unreachable', { ns: 'chat' });
 
 /* What the pane says when it stops asking for links after a close. A full
-   browser is still reachable, so its two stops get titles of their own. */
-/** @type {Record<'keeps-closing' | 'no-browser-slot' | 'task-cap', PaneStop>} */
+   browser is still reachable, so its two stops get titles of their own.
+   Built when the pane stops, in the language of that moment. */
+/** @type {Record<'keeps-closing' | 'no-browser-slot' | 'task-cap', () => PaneStop>} */
 const STOPPED = {
-  'keeps-closing': { title: UNREACHABLE, description: 'The browser view keeps closing. Try again in a moment.' },
-  'no-browser-slot': { title: 'No browser is free', description: 'Every browser is busy right now. Try again in a few minutes.' },
-  'task-cap': { title: 'Your browser is full', description: 'Your browser already has 4 tasks open.' },
+  'keeps-closing': () => ({ title: unreachable(), description: i18n.t('browser.stopped.keepsClosing', { ns: 'chat' }) }),
+  'no-browser-slot': () => ({ title: i18n.t('browser.stopped.noSlotTitle', { ns: 'chat' }), description: i18n.t('browser.stopped.noSlotDescription', { ns: 'chat' }) }),
+  'task-cap': () => ({ title: i18n.t('browser.stopped.taskCapTitle', { ns: 'chat' }), description: i18n.t('browser.stopped.taskCapDescription', { ns: 'chat', count: 4 }) }),
 };
 
 function tabHidden() {
@@ -90,7 +91,7 @@ export function isBlankPage(url) {
 }
 
 export function webPaneNote(agentLabel) {
-  return `What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site. ${agentLabel}'s page reads and screenshots go to the model provider that serves your turn. ${WEB_JEV_LINE} ${WEB_SIGN_INS}`;
+  return `${i18n.t('browser.webPaneNote', { ns: 'chat', agent: agentLabel })} ${i18n.t('settingsTools:browser.webJevLine')} ${i18n.t('settingsTools:browser.webSignIns')}`;
 }
 
 /**
@@ -108,6 +109,7 @@ function WebBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
   taskKey = '', onSend, onOpenUrl, startBlank = false,
 }) {
+  const { t } = useTranslation('chat');
   const onControlRef = useRef(onControl);
   onControlRef.current = onControl;
   const onSendRef = useRef(onSend);
@@ -145,13 +147,13 @@ function WebBrowserStage({
     let failure = '';
     try {
       link = viewerLinkFrom(await embedBrowser(sessionId), sessionId);
-      if (!link) failure = 'The browser returned an unexpected address.';
+      if (!link) failure = i18n.t('browser.unexpectedAddress', { ns: 'chat' });
     } catch (err) {
-      failure = err?.message || 'Could not open the browser.';
+      failure = err?.message || i18n.t('browser.couldNotOpen', { ns: 'chat' });
     }
     if (seq !== mintSeq.current) return;
     if (failure) {
-      setError({ title: UNREACHABLE, description: failure });
+      setError({ title: unreachable(), description: failure });
       return;
     }
     mintedAt.current = Date.now();
@@ -242,7 +244,7 @@ function WebBrowserStage({
       }
       mintSeq.current += 1;
       setViewUrl(null);
-      setError(STOPPED[next.stop]);
+      setError(STOPPED[next.stop]?.() ?? null);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -298,9 +300,9 @@ function WebBrowserStage({
 
   return (
     <BrowserFrame
-      hint={`You and ${agentLabel} share this. Click in it to take over.`}
+      hint={t('browser.hint', { agent: agentLabel })}
       below={<BrowserNote agentLabel={agentLabel}>{webPaneNote(agentLabel)}</BrowserNote>}
-      actions={<Button icon size="sm" variant="subtle" aria-label="Reload browser view" onClick={retry}>{Ico.reload(14)}</Button>}
+      actions={<Button icon size="sm" variant="subtle" aria-label={t('browser.reload')} onClick={retry}>{Ico.reload(14)}</Button>}
       onClose={onClose}
       floating={floating}
       extraActions={extraActions}
@@ -312,7 +314,7 @@ function WebBrowserStage({
           onLoad={() => postTheme(frameRef.current)}
           key={frameKey}
           className={startBlank && !viewerReady ? 'browser-panel__view--pending' : undefined}
-          title="Shared browser"
+          title={t('browser.shared')}
           src={viewUrl}
           /* The browser router also sandboxes its viewer with a CSP
              header; leaving out allow-same-origin keeps this frame an
@@ -339,7 +341,7 @@ function WebBrowserStage({
           icon={Ico.globe(20)}
           title={error.title}
           description={error.description}
-          action={{ label: 'Try again', onClick: retry }}
+          action={{ label: t('browser.tryAgain'), onClick: retry }}
         />
       ) : waiting && !opening && (
         <div className="browser-panel__starting" role="status">
@@ -348,14 +350,14 @@ function WebBrowserStage({
               size="sm"
               className="browser-panel__empty"
               icon={Ico.globe(20)}
-              title="Your browser is taking longer than usual"
-              description="It may still be starting. Try again, or close the pane and come back in a minute."
-              action={{ label: 'Try again', onClick: retry }}
+              title={t('browser.slowTitle')}
+              description={t('browser.slowDescription')}
+              action={{ label: t('browser.tryAgain'), onClick: retry }}
             />
           ) : (
             <div className="browser-panel__loading">
               <Spinner />
-              <span>Starting your browser…</span>
+              <span>{t('browser.starting')}</span>
             </div>
           )}
         </div>

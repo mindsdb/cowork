@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { submitAnswer } from '../api';
 import {
   BROWSER_APPROVE_VALUE,
-  UNREADABLE_APPROVAL,
+  unreadableApproval,
   browserApprovalIds,
   declineBrowserApproval,
   isBrowserApprovalCard,
@@ -17,6 +17,7 @@ import ChatCardShell from './ChatCardShell';
 import { cn } from '../lib/cn';
 import Ico from './Icons';
 import Kbd from './ui/Kbd';
+import { useTranslation } from '../../lib/i18n';
 
 // An option button. Hover is `enabled:` only and the cursor resets when
 // disabled: `hover:` also matches a disabled button, and globals.css gives
@@ -39,6 +40,7 @@ const OPTION_SELECTED = 'bg-accent-bg text-ink font-medium';
  * broker waits on it, so a pick goes out as a normal message instead.
  */
 export default function AskUserCard({ step, conversationId, onAnswered, onAnswerAsMessage, expired = false, reopened = false, lateAnswer = null }) {
+  const { t } = useTranslation('chat');
   const q = step?.data || {};
   const answer = lateAnswer || q.answer || null;
   const isMany = q.select === 'many';
@@ -100,8 +102,8 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
   // the options group's aria-labelledby instead.
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
-    setAnnouncement(settled ? '' : 'The agent is asking a question');
-  }, [settled]);
+    setAnnouncement(settled ? '' : t('askUser.announcement'));
+  }, [settled, t]);
 
   const send = async (payload) => {
     if (settled || busy) return;
@@ -120,7 +122,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       const held = browserApprovalIds(q.question_id);
       const approving = payload.values?.length === 1 && payload.values[0] === BROWSER_APPROVE_VALUE;
       if (approving && !held) {
-        setRefusal(UNREADABLE_APPROVAL);
+        setRefusal(unreadableApproval());
         setBusy(false);
         return;
       }
@@ -186,13 +188,13 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
     leading: (
       <span className="font-body text-xs leading-snug text-ink-4">
         {q.allow_custom || reopened
-          ? '…or type your own answer below.'
-          : 'Pick an option above — a typed reply won\'t be accepted. Skip to type something else.'}
+          ? t('askUser.hintCustom')
+          : t('askUser.hintSelectOnly')}
       </span>
     ),
-    secondary: reopened ? null : { label: 'Skip', onClick: () => send({ skipped: true }), disabled: busy },
+    secondary: reopened ? null : { label: t('askUser.skip'), onClick: () => send({ skipped: true }), disabled: busy },
     primary: isMany
-      ? { label: 'Send', onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
+      ? { label: t('askUser.send'), onClick: () => send({ values: picked }), disabled: picked.length === 0 || busy }
       : null,
   };
 
@@ -206,18 +208,18 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       actions={actions}
       footer={settled ? (
         <>
-          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">Skipped.</div> : null}
-          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">No answer — timed out.</div> : null}
+          {answer?.status === 'cancelled' ? <div className="text-xs text-ink-4">{t('askUser.skipped')}</div> : null}
+          {answer?.status === 'timeout' ? <div className="text-xs text-ink-4">{t('askUser.timedOut')}</div> : null}
           {/* Body text, not a status caption: a composer-typed answer is not
               echoed as a user message anywhere else. The bold prefix (styled
               like markdown bold) sets it apart from the prompt, which uses the
               same prose style. */}
           {answerText ? (
             <MarkdownPlainText>
-              <strong className="font-semibold text-ink">Answered:</strong> {answerText}
+              <strong className="font-semibold text-ink">{t('askUser.answered')}</strong> {answerText}
             </MarkdownPlainText>
           ) : null}
-          {expired || gone ? <div className="text-xs text-ink-4">This question is no longer active.</div> : null}
+          {expired || gone ? <div className="text-xs text-ink-4">{t('askUser.noLongerActive')}</div> : null}
         </>
       ) : null}
     >
