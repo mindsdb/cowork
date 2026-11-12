@@ -571,7 +571,7 @@ describe('ElectronTab', () => {
       });
     }
 
-    it('answers at once a step that started no request, with whether the page changed', async () => {
+    it('answers at once a step that changed nothing and started no request; one that changed the page in place waits for it to go quiet', async () => {
       const { tab, contents } = setup();
       vi.useFakeTimers();
       try {
@@ -581,8 +581,11 @@ describe('ElectronTab', () => {
         expect(worldCalls(contents, 'changeMark')).toHaveLength(1);
         onFirstKey(contents, () => contents.pageChanges(2));
         const changing = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(SETTLE_QUIET_MS - 50);
+        expect(changing.outcome).toBeNull();
         await vi.advanceTimersByTimeAsync(400);
         expect(changing.outcome).toEqual({ changed: true });
+        expect(changing.at).toBeGreaterThanOrEqual(SETTLE_QUIET_MS);
       } finally {
         vi.useRealTimers();
       }
@@ -607,6 +610,72 @@ describe('ElectronTab', () => {
         await vi.advanceTimersByTimeAsync(300);
         expect(step.outcome).toEqual({ changed: true });
         expect(step.at).toBeGreaterThanOrEqual(2_500 + SETTLE_QUIET_MS);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps waiting after a step changed the page in place, for a request the page starts a moment later', async () => {
+      const { tab, contents, requests } = setup();
+      onFirstKey(contents, () => {
+        // A spinner first, then the fetch behind it.
+        contents.pageChanges();
+        setTimeout(() => requests.sent(mainFrameRequest(contents, 45)), 250);
+        setTimeout(() => {
+          requests.ended(mainFrameRequest(contents, 45));
+          contents.pageChanges();
+        }, 2_000);
+      });
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(2_000 + SETTLE_QUIET_MS - 100);
+        expect(step.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(400);
+        expect(step.outcome).toEqual({ changed: true });
+        expect(step.at).toBeGreaterThanOrEqual(2_000 + SETTLE_QUIET_MS);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("counts the quiet from the page's last change, so a page that keeps changing after its request ends settles at SETTLE_MAX_MS", async () => {
+      const { tab, contents, requests } = setup();
+      let ticking: NodeJS.Timeout | undefined;
+      onFirstKey(contents, () => {
+        requests.sent(mainFrameRequest(contents, 46));
+        setTimeout(() => requests.ended(mainFrameRequest(contents, 46)), 100);
+        ticking = setInterval(() => contents.pageChanges(), 100);
+      });
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(SETTLE_MAX_MS - 200);
+        expect(step.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(600);
+        expect(step.outcome).toEqual({ changed: true });
+        expect(step.at).toBeGreaterThanOrEqual(SETTLE_MAX_MS);
+      } finally {
+        clearInterval(ticking);
+        vi.useRealTimers();
+      }
+    });
+
+    it('waits while the page marks itself busy, its request done, up to SETTLE_MAX_MS', async () => {
+      const { tab, contents, requests } = setup();
+      onFirstKey(contents, () => {
+        requests.sent(mainFrameRequest(contents, 47));
+        setTimeout(() => requests.ended(mainFrameRequest(contents, 47)), 100);
+        contents.change.busy = true;
+      });
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(SETTLE_MAX_MS - 200);
+        expect(step.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(600);
+        expect(step.outcome).toEqual({ changed: false });
+        expect(step.at).toBeGreaterThanOrEqual(SETTLE_MAX_MS);
       } finally {
         vi.useRealTimers();
       }

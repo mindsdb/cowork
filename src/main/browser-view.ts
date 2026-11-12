@@ -19,9 +19,10 @@
  * input stops, and its waits, a navigation's included, answer 409
  * human_in_control.
  *
- * Each step settles before it answers (`act`). A step that started a
- * main-frame request or a navigation waits until those requests are done and
- * the page has gone quiet; one that started neither answers at once. The
+ * Each step settles before it answers (`act`). A step that changed the page,
+ * or started a main-frame request or a navigation, waits until those requests
+ * are done and the page has gone quiet; one that started none of them answers
+ * at once. The
  * step's change watch (browser-page-script.ts) and the profile's request count
  * (RequestsInFlight in browser-profile.ts) say whether it changed what the
  * page shows.
@@ -73,10 +74,10 @@ import type { TabFactory, TabHooks, TabView, ViewBounds } from './browser-sessio
 export const NAVIGATION_WAIT_MS = 30_000;
 const MAX_ELEMENTS = 300;
 
-/* A step's settle: how long it looks for a request or a navigation the step
-   started before it answers as an in-place step, how often it then reads the
-   page, how long a read of the change watch may take, and how much of the
-   step's budget it leaves for the answer. */
+/* A step's settle: how long it waits before it first looks for what the
+   step started (a change, a request or a navigation), how often it then
+   reads the page, how long a read of the change watch may take, and how much
+   of the step's budget it leaves for the answer. */
 const SETTLE_PROBE_MS = 150;
 const SETTLE_POLL_MS = 100;
 const CHANGE_START_MS = 500;
@@ -488,11 +489,13 @@ export class ElectronTab implements TabView {
   }
 
   /*
-   * The step's settle, after its input. A step that started a main-frame
-   * request or a navigation waits until those requests are done and the page
-   * has shown no change for SETTLE_QUIET_MS (a page that marks itself
+   * The step's settle, after its input. A step that started nothing (no
+   * change the watch counted, no main-frame request, no navigation) answers
+   * at once. Any other waits until the page's main-frame requests are done
+   * and it has shown no change for SETTLE_QUIET_MS (a page that marks itself
    * aria-busy keeps waiting), at most SETTLE_MAX_MS, and always inside the
-   * step's budget; one that started neither answers at once. Then: true when
+   * step's budget: a change in place may be a spinner before a fetch the
+   * page sends a moment later. Then: true when
    * the step navigated or the watch counted a change, null when the page
    * couldn't be watched or may have changed where the watch can't see (a
    * hover's :hover too), false otherwise. The person taking over ends it at
@@ -511,26 +514,22 @@ export class ElectronTab implements TabView {
 
     await pause(SETTLE_PROBE_MS);
     if (signal.aborted) return null;
-    const sent = (this.requests.of(this.contentsId)?.sent ?? 0) > 0;
+    if (this.contents.isLoadingMainFrame()) await Promise.race([this.stoppedLoading(deadline - Date.now()), takenOver]);
+    // A new document gets its own watch, and the quiet counts from there.
+    if (navigated() && !signal.aborted && !this.contents.isLoadingMainFrame()) {
+      await Promise.race([this.tryInWorld({ kind: 'changeStart', token: watch.token }, CHANGE_START_MS), takenOver]);
+      watch.watchStartedAt = Date.now();
+    }
     let last: ChangeMark | null = null;
-    if (!sent && !navigated() && !this.contents.isLoadingMainFrame()) {
+    while (!signal.aborted) {
       last = await mark();
-    } else {
-      if (this.contents.isLoadingMainFrame()) await Promise.race([this.stoppedLoading(deadline - Date.now()), takenOver]);
-      // A new document gets its own watch, and the quiet counts from there.
-      if (navigated() && !signal.aborted && !this.contents.isLoadingMainFrame()) {
-        await Promise.race([this.tryInWorld({ kind: 'changeStart', token: watch.token }, CHANGE_START_MS), takenOver]);
-        watch.watchStartedAt = Date.now();
-      }
-      while (!signal.aborted) {
-        last = await mark();
-        const requests = this.requests.of(this.contentsId);
-        const now = Date.now();
-        const lastChange = Math.max(watch.watchStartedAt, requests?.lastEndedAt ?? 0, last ? now - last.sinceLastMs : 0);
-        const quiet = !requests?.pending && !last?.busy && now - lastChange >= SETTLE_QUIET_MS;
-        if (quiet || now >= deadline) break;
-        await pause(SETTLE_POLL_MS);
-      }
+      const requests = this.requests.of(this.contentsId);
+      if (!last?.changes && !requests?.sent && !navigated()) break;
+      const now = Date.now();
+      const lastChange = Math.max(watch.watchStartedAt, requests?.lastEndedAt ?? 0, last ? now - last.sinceLastMs : 0);
+      const quiet = !requests?.pending && !last?.busy && now - lastChange >= SETTLE_QUIET_MS;
+      if (quiet || now >= deadline) break;
+      await pause(SETTLE_POLL_MS);
     }
     if (signal.aborted) return null;
     if (navigated()) return true;
