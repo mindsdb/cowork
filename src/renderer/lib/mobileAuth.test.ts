@@ -105,6 +105,7 @@ function setup(overrides: {
   keycloak?: Partial<MobileAdapterKeycloak>;
   beforeLogout?: () => Promise<void>;
   beforeLogoutTimeoutMs?: number;
+  forgetSession?: () => Promise<void>;
 } = {}) {
   const keycloak: MobileAdapterKeycloak = {
     createLoginUrl: vi.fn(async () => 'https://auth.example/login?state=s1'),
@@ -130,6 +131,7 @@ function setup(overrides: {
     fetch: fetchMock as unknown as typeof fetch,
     beforeLogout: overrides.beforeLogout,
     beforeLogoutTimeoutMs: overrides.beforeLogoutTimeoutMs,
+    forgetSession: overrides.forgetSession,
   });
   return { adapter, keycloak, authenticate, replayCallback, navigate, fetchMock };
 }
@@ -236,6 +238,25 @@ describe('createMobileShellAdapter', () => {
     await adapter.logout({ redirectUri: PAGE });
 
     expect(order).toEqual(['beforeLogout', 'end-session', 'clearToken']);
+  });
+
+  it('forgets the saved session before leaving, even when ending the session fails', async () => {
+    const order: string[] = [];
+    const forgetSession = vi.fn(async () => { order.push('forget'); });
+    const { adapter, keycloak, fetchMock, navigate } = setup({ keycloak: { refreshToken: 'rt-1' }, forgetSession });
+    fetchMock.mockRejectedValueOnce(new Error('offline'));
+    vi.mocked(keycloak.clearToken).mockImplementation(() => { order.push('clearToken'); });
+    navigate.mockImplementation(() => { order.push('navigate'); });
+
+    await adapter.logout({ redirectUri: PAGE });
+
+    expect(order).toEqual(['clearToken', 'forget', 'navigate']);
+  });
+
+  it('still leaves when forgetting the session fails', async () => {
+    const { adapter, navigate } = setup({ forgetSession: async () => { throw new Error('locked'); } });
+    await adapter.logout({ redirectUri: PAGE });
+    expect(navigate).toHaveBeenCalledWith(PAGE);
   });
 
   it('signs out even when beforeLogout fails', async () => {

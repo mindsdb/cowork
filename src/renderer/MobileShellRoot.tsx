@@ -3,8 +3,10 @@
 // A browser logs in on load by redirecting to Keycloak (web-main.tsx). The app
 // can't: that would open the system browser sheet the moment it starts. So it
 // initializes Keycloak without `onLoad`, and until the user is signed in shows
-// a sign-in screen whose buttons open the sheet (lib/mobileAuth.ts). A shell
-// older than MIN_SHELL_VERSION gets an update screen and nothing else.
+// a sign-in screen whose buttons open the sheet (lib/mobileAuth.ts). A session
+// saved by an earlier launch is restored first, so a returning user goes
+// straight in (lib/mobileSession.ts). A shell older than MIN_SHELL_VERSION
+// gets an update screen and nothing else.
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { ReactKeycloakProvider, useKeycloak } from '@react-keycloak/web';
@@ -17,6 +19,7 @@ import { MIN_SHELL_VERSION, shellNeedsUpdate, type MobileShell } from './lib/mob
 import { WelcomeLoading } from './WelcomeLoading';
 import { mobilePush, mobilePushSignedIn } from './lib/mobilePush';
 import { MobilePushPrompt } from './MobilePushPrompt';
+import type { RestoreResult } from './lib/mobileSession';
 
 const SIGN_IN_FAILED = 'We could not sign you in. Please try again.';
 
@@ -112,32 +115,62 @@ function SignedInGate({ children }: { children: ReactNode }) {
   );
 }
 
+type KeycloakTokens = { token?: string; refreshToken?: string; idToken?: string };
+
+/** Keeps the signed-in session across launches (lib/mobileSession.ts). */
+export interface MobileShellSession {
+  restore(): Promise<RestoreResult>;
+  save(tokens: KeycloakTokens): Promise<void>;
+  forget(): Promise<void>;
+}
+
 export interface MobileShellRootProps {
   shell: MobileShell;
   authClient: Keycloak;
   initOptions: Record<string, unknown>;
-  onTokens?: (tokens: { token?: string }) => void;
+  onTokens?: (tokens: KeycloakTokens) => void;
+  session?: MobileShellSession | null;
   children: ReactNode;
 }
 
-export function MobileShellRoot({ shell, authClient, initOptions, onTokens, children }: MobileShellRootProps) {
+export function MobileShellRoot({ shell, authClient, initOptions, onTokens, session, children }: MobileShellRootProps) {
   // The provider never leaves its loading view when init() rejects (a failed
   // code exchange, Keycloak unreachable), so catch that here.
   const [initFailed, setInitFailed] = useState(false);
+  const needsUpdate = shellNeedsUpdate(shell.version, MIN_SHELL_VERSION);
+  const [restored, setRestored] = useState<RestoreResult | null>(session ? null : { kind: 'none' });
 
-  if (shellNeedsUpdate(shell.version, MIN_SHELL_VERSION)) {
+  useEffect(() => {
+    if (!session || needsUpdate) return undefined;
+    let current = true;
+    session.restore()
+      .catch((): RestoreResult => ({ kind: 'none' }))
+      .then((result) => { if (current) setRestored(result); });
+    return () => { current = false; };
+  }, [session, needsUpdate]);
+
+  if (needsUpdate) {
     return <ShellUpdateRequired platform={shell.platform} />;
   }
-  if (initFailed) return <ShellSignIn auth={authClient} failed />;
+  // Keycloak unreachable with a session saved: offer a retry, which reloads
+  // and restores again, rather than signing the user out.
+  if (initFailed || restored?.kind === 'unavailable') return <ShellSignIn auth={authClient} failed />;
+  if (!restored) return <WelcomeLoading />;
 
+  const tokens = restored.kind === 'restored' ? restored.session : null;
   return (
     <ReactKeycloakProvider
       authClient={authClient}
-      initOptions={initOptions}
+      initOptions={tokens ? { ...initOptions, ...tokens } : initOptions}
       LoadingComponent={<WelcomeLoading />}
-      onTokens={onTokens}
+      onTokens={(next) => {
+        onTokens?.(next);
+        if (next.refreshToken) void session?.save(next);
+      }}
       onEvent={(event) => {
         if (event === 'onInitError') setInitFailed(true);
+        // Signed out, or Keycloak ended the session: nothing to restore.
+        if (event === 'onAuthLogout') void session?.forget();
       }}
     >
       <SignedInGate>{children}</SignedInGate>

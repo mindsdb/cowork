@@ -24,6 +24,7 @@ import {
 import { MINDS_KEYCLOAK_URL } from './mindsUrls';
 import { isMobileShell } from './mobileShell';
 import { MOBILE_KEYCLOAK_CLIENT_ID, createMobileShellAdapter } from './mobileAuth';
+import { clearMobileSession, getMobileSessionStore, restoreMobileSession, saveMobileSession } from './mobileSession';
 
 // Single source of truth for the Keycloak host lives in mindsUrls.ts so the
 // login flow and the sign-up link (MINDS_REGISTER_URL) always agree on the
@@ -58,10 +59,27 @@ keycloak.onAuthError = () => {
 export { keycloak };
 
 /** The keycloak-js adapter for the mobile app; null in a browser. */
+const realmOidcUrl = `${MINDS_KEYCLOAK_URL.replace(/\/$/, '')}/realms/mindsdb/protocol/openid-connect`;
+
+/** Restore, save and forget the app's signed-in session across launches. */
+export const mobileSession = isMobileShell
+  ? {
+    restore: () => restoreMobileSession({
+      store: getMobileSessionStore(),
+      tokenUrl: `${realmOidcUrl}/token`,
+      clientId: MOBILE_KEYCLOAK_CLIENT_ID,
+    }),
+    save: (tokens: { token?: string; refreshToken?: string; idToken?: string }) =>
+      saveMobileSession(getMobileSessionStore(), tokens),
+    forget: () => clearMobileSession(getMobileSessionStore()),
+  }
+  : null;
+
 export const mobileShellAdapter = isMobileShell
   ? createMobileShellAdapter({
     keycloak,
-    logoutUrl: `${MINDS_KEYCLOAK_URL.replace(/\/$/, '')}/realms/mindsdb/protocol/openid-connect/logout`,
+    logoutUrl: `${realmOidcUrl}/logout`,
+    forgetSession: () => clearMobileSession(getMobileSessionStore()),
     // Stop this phone's push notifications for the user signing out, while
     // the access token can still authenticate the call. Imported lazily:
     // mobilePush pulls in the API client, which reaches back here through host.ts.

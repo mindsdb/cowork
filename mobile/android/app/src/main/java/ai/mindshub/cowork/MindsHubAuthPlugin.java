@@ -23,6 +23,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  *
  * <p>Rejection codes: {@code CANCELLED} (the user came back to the app without finishing sign-in),
  * {@code IN_PROGRESS}, {@code INVALID_ARGUMENT}, {@code FAILED}.
+ *
+ * <p>{@code loadSession()}, {@code saveSession({ session })} and {@code clearSession()} keep the
+ * signed-in session (an opaque string from the web app) encrypted on the device, so the next launch
+ * can restore it. See {@link SessionStore}.
  */
 @CapacitorPlugin(name = "MindsHubAuth")
 public class MindsHubAuthPlugin extends Plugin {
@@ -40,6 +44,41 @@ public class MindsHubAuthPlugin extends Plugin {
     /** True once the activity paused after the Custom Tab was launched. */
     private boolean leftAppForBrowser;
     private Runnable pendingCancel;
+
+    @PluginMethod
+    public void loadSession(PluginCall call) {
+        String session = sessionStore().load();
+        JSObject result = new JSObject();
+        if (session != null) {
+            result.put("session", session);
+        }
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void saveSession(PluginCall call) {
+        String session = call.getString("session");
+        if (session == null || session.isEmpty()) {
+            call.reject("saveSession needs a `session`", "INVALID_ARGUMENT");
+            return;
+        }
+        try {
+            sessionStore().save(session);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not save the session", "FAILED", e);
+        }
+    }
+
+    @PluginMethod
+    public void clearSession(PluginCall call) {
+        sessionStore().clear();
+        call.resolve();
+    }
+
+    private SessionStore sessionStore() {
+        return new SessionStore(getContext());
+    }
 
     @PluginMethod
     public void authenticate(PluginCall call) {
