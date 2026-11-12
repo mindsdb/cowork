@@ -61,6 +61,7 @@ vi.mock('../platform/host', async (importOriginal) => {
 });
 
 import App from './App';
+import { listCustomConnections } from './api';
 import { setOrgMode } from '../lib/orgMode';
 
 const QUOTES = { id: 7, connector_id: 'acme_quotes', name: 'Acme Quotes', status: 'verified' };
@@ -91,5 +92,17 @@ describe('the composer connection toggles in cloud', () => {
     await act(async () => { window.dispatchEvent(new CustomEvent('anton:connections-changed')); });
 
     await waitFor(() => expect(screen.getByTestId('toggles').textContent).toContain('acme_rates:Rates'));
+  });
+});
+
+describe('the composer connection toggles on desktop', () => {
+  it('stay the OAuth connections, with no custom connection fetched', async () => {
+    setOrgMode(false);
+    vi.mocked(listCustomConnections).mockClear();
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId('toggles').textContent).toBe('gmail:Work mail'));
+    expect(listCustomConnections).not.toHaveBeenCalled();
   });
 });
