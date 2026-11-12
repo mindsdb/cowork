@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
@@ -41,24 +41,25 @@ describe('DecisionModelSettingsGroup', () => {
   it('signed in to MindsHub, is just Jev, for everyone, with nothing to set up', () => {
     render(<Form initial={{ routing: { canSetDecisionModel: false }, planningProvider: 'minds-cloud' }} />);
     expect(screen.getByText('Jev')).toBeInTheDocument();
-    expect(screen.getByText(/runs on MindsHub Inference/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Learn more/ })).toHaveAttribute(
-      'href', 'https://docs.mindshub.ai/inference/decision-models',
-    );
+    expect(screen.getByText('Used to route and decide actions in the agent.')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Endpoint URL')).not.toBeInTheDocument();
   });
 
   it('on MindsHub keeps the fields of a decision model the organization already set', () => {
     render(<Form initial={{ routing: ADMIN, planningProvider: 'minds-cloud', decisionModelUrl: 'https://decide.example.test/d' }} />);
     expect(screen.getByLabelText('Endpoint URL')).toHaveValue('https://decide.example.test/d');
-    expect(screen.queryByText(/runs on MindsHub Inference/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Jev')).not.toBeInTheDocument();
   });
 
   it('follows the MindsHub sign-in it is given over the LLM provider', () => {
     render(<Form initial={{ routing: ADMIN, planningProvider: 'minds-cloud' }} />);
     cleanup();
     render(<DecisionModelSettingsGroup settings={{ routing: ADMIN, planningProvider: 'minds-cloud' }} setSetting={() => {}} mindsConnected={false} embedded />);
+    expect(screen.queryByLabelText('Endpoint URL')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(screen.getByLabelText('Endpoint URL')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('edits the endpoint, key and model name in the draft and tests them', async () => {

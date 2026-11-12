@@ -204,9 +204,10 @@
     "failed": "Das Entscheidungsmodell hat nicht wie erwartet geantwortet ({error}). Prüfen Sie Endpunkt und Schlüssel.",
     "untested": "Das Entscheidungsmodell konnte nicht getestet werden. Versuchen Sie es noch einmal.",
     "remove": "Entfernen",
-    "viaMindsHub": "Wählt die Browserschritte von {agent} und welche Nachrichten den vollen Agenten brauchen. Läuft auf MindsHub Inference, bei dem Sie angemeldet sind.",
-    "learnMore": "Mehr erfahren",
     "jev": "Jev",
-    "modelLabel": "Modell:"
+    "modelLabel": "Modell:",
+    "subtitle": "Wird verwendet, um Anfragen zu routen und Aktionen im Agenten zu entscheiden.",
+    "showMore": "Mehr anzeigen",
+    "showLess": "Weniger anzeigen"
   }
 }

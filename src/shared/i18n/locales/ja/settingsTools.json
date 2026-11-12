@@ -204,9 +204,10 @@
     "failed": "判定モデルが想定どおりに応答しませんでした ({error})。エンドポイントとキーを確認してください。",
     "untested": "判定モデルをテストできませんでした。もう一度お試しください。",
     "remove": "削除",
-    "viaMindsHub": "{agent} のブラウザ操作と、どのメッセージにフルエージェントが必要かを選びます。サインイン済みの MindsHub Inference で動作します。",
-    "learnMore": "詳細",
     "jev": "Jev",
-    "modelLabel": "モデル:"
+    "modelLabel": "モデル:",
+    "subtitle": "エージェントでのルーティングとアクションの判断に使われます。",
+    "showMore": "さらに表示",
+    "showLess": "表示を減らす"
   }
 }

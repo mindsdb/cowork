@@ -204,9 +204,10 @@
     "failed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
     "untested": "无法测试决策模型。请重试。",
     "remove": "移除",
-    "viaMindsHub": "选择 {agent} 的浏览器步骤，并判断哪些消息需要完整代理。它在你已登录的 MindsHub Inference 上运行。",
-    "learnMore": "了解更多",
     "jev": "Jev",
-    "modelLabel": "模型："
+    "modelLabel": "模型：",
+    "subtitle": "用于在代理中路由和决定操作。",
+    "showMore": "显示更多",
+    "showLess": "收起"
   }
 }

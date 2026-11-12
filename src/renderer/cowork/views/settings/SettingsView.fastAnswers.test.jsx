@@ -171,6 +171,9 @@ describe('the Decision model group', () => {
     for (const routing of [undefined, { mode: 'jev' }, { mode: 'jev', canSetDecisionModel: true }]) {
       const { unmount } = render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing })} />);
       expect(await screen.findByText('Planning model')).toBeInTheDocument();
+      // Folded under Show more after the coding model.
+      expect(screen.queryByText('Decision model')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
       expect(screen.getByText('Decision model')).toBeInTheDocument();
       expect(screen.getByText('Jev')).toBeInTheDocument();
       expect(screen.queryByLabelText('Endpoint URL')).toBeNull();
@@ -184,6 +187,7 @@ describe('the Decision model group', () => {
       const { unmount } = render(<Harness initial={settingsFor('openai-compatible', local, { routing })} />);
       expect(await screen.findByText('Planning model')).toBeInTheDocument();
       expect(screen.queryByText('Decision model')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
       unmount();
     }
   });
@@ -197,7 +201,8 @@ describe('the Decision model group', () => {
       customTheme={{}} onCustomThemeChange={vi.fn()} agentLabel="Anton"
       section="agent" onSectionChange={vi.fn()} shellUpdate={null} onDownloadShellUpdate={vi.fn()}
     />);
-    expect(await screen.findByText('Decision model')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(screen.getByText('Decision model')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Endpoint URL'), { target: { value: 'https://decide.example.test/d' } });
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'own-key' } });
     fireEvent.click(await screen.findByRole('button', { name: /^Save settings$/ }));

@@ -204,9 +204,10 @@
     "failed": "The decision model didn't answer as expected ({error}). Check the endpoint and key.",
     "untested": "Couldn't test the decision model. Try again.",
     "remove": "Remove",
-    "viaMindsHub": "Picks {agent}'s browser steps and which messages need the full agent. It runs on MindsHub Inference, which you're signed in to.",
-    "learnMore": "Learn more",
     "jev": "Jev",
-    "modelLabel": "Model:"
+    "modelLabel": "Model:",
+    "subtitle": "Used to route and decide actions in the agent.",
+    "showMore": "Show more",
+    "showLess": "Show less"
   }
 }

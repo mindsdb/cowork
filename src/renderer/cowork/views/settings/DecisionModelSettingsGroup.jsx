@@ -3,11 +3,11 @@ import { Section, SettingsGroup } from './settingsLayout';
 import Button from '../../components/ui/Button';
 import { Field, Input } from '../../components/ui';
 import { testDecisionModel } from '../../api';
+import { ChevronDown } from 'lucide-react';
 import { useTranslation } from '../../../lib/i18n';
 import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
 import ModelSelect from '../../components/ModelSelect.jsx';
 
-const DECISION_MODELS_DOCS = 'https://docs.mindshub.ai/inference/decision-models';
 
 /* Settings > Agent > Decision model, beside the LLM provider and its keys.
 
@@ -31,7 +31,8 @@ const DECISION_MODELS_DOCS = 'https://docs.mindshub.ai/inference/decision-models
    through MindsHub Inference, a single row that says so. An organization
    that already set its own keeps the fields, to change or remove it.
 
-   `embedded` renders the rows alone, for the Model router card. */
+   `embedded` renders the rows alone, for the Model router card, folded
+   under a Show more after the coding model. */
 
 export const DEFAULT_DECISION_MODEL = 'jev';
 
@@ -44,7 +45,24 @@ export default function DecisionModelSettingsGroup({
 }) {
   const { t } = useTranslation('settingsTools');
   const [test, setTest] = useState({ busy: false, ok: null, note: '' });
-  const wrap = (rows) => (embedded ? rows : <SettingsGroup title={t('decisionModel.title')}>{rows}</SettingsGroup>);
+  const [expanded, setExpanded] = useState(false);
+  const wrap = (rows) => {
+    if (!embedded) return <SettingsGroup title={t('decisionModel.title')}>{rows}</SettingsGroup>;
+    return (
+      <>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 self-start mt-1 px-0 py-1 border-0 bg-transparent text-sm text-ink-3 hover:text-ink cursor-pointer"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? t('decisionModel.showLess') : t('decisionModel.showMore')}
+          <ChevronDown size={14} aria-hidden="true" className={expanded ? 'rotate-180' : ''} />
+        </button>
+        {expanded && rows}
+      </>
+    );
+  };
 
   const url = (settings.decisionModelUrl ?? '').trim();
   const key = settings.decisionModelApiKey ?? '';
@@ -56,8 +74,8 @@ export default function DecisionModelSettingsGroup({
     // A row like the planning and coding models: its picker has the one
     // decision model MindsHub serves, Jev.
     return wrap(
-      <Section title={t('decisionModel.title')} subtitle={t('decisionModel.viaMindsHub', { agent: agentLabel })}>
-        <div className="grid gap-2 min-w-[240px]">
+      <Section title={t('decisionModel.title')} subtitle={t('decisionModel.subtitle')}>
+        <div className="grid gap-1 min-w-[240px]">
           <label className="grid gap-1">
             <span className="text-xs font-bold text-ink tracking-[0.02em]">{t('decisionModel.modelLabel')}</span>
             <ModelSelect
@@ -67,12 +85,6 @@ export default function DecisionModelSettingsGroup({
               aria-label={t('decisionModel.title')}
             />
           </label>
-          <a
-            href={DECISION_MODELS_DOCS}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11.5px] text-accent no-underline whitespace-nowrap"
-          >{t('decisionModel.learnMore')} ↗</a>
         </div>
       </Section>,
     );

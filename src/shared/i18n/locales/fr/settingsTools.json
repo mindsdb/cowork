@@ -204,9 +204,10 @@
     "failed": "Le modèle de décision n'a pas répondu comme prévu ({error}). Vérifiez l'endpoint et la clé.",
     "untested": "Impossible de tester le modèle de décision. Réessayez.",
     "remove": "Supprimer",
-    "viaMindsHub": "Choisit les étapes du navigateur de {agent} et les messages qui nécessitent l'agent complet. Il fonctionne sur MindsHub Inference, auquel vous êtes connecté.",
-    "learnMore": "En savoir plus",
     "jev": "Jev",
-    "modelLabel": "Modèle :"
+    "modelLabel": "Modèle :",
+    "subtitle": "Sert à router et à décider des actions dans l'agent.",
+    "showMore": "Afficher plus",
+    "showLess": "Afficher moins"
   }
 }
