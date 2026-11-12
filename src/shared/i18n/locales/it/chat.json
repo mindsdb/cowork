@@ -615,5 +615,22 @@
     "closedTitle": "Il browser di questa attività è chiuso",
     "closedDescription": "{agent} lo riaprirà quando ne avrà bisogno.",
     "squeezed": "Allarga la finestra per vedere la pagina"
+  },
+  "videoCall": {
+    "dialogLabel": "Videochiamata con {agent}",
+    "show": "Mostra la videochiamata con {agent}",
+    "starting": "Chiamata ad Anton…",
+    "preparing": "Anton si sta preparando. Può volerci fino a mezzo minuto.",
+    "ended": "La chiamata è terminata.",
+    "close": "Chiudi",
+    "aiBadge": "IA",
+    "yourCamera": "La tua fotocamera",
+    "working": "{agent} ci sta lavorando…",
+    "mute": "Disattiva microfono",
+    "unmute": "Attiva microfono",
+    "cameraOff": "Disattiva fotocamera",
+    "cameraOn": "Attiva fotocamera",
+    "minimize": "Riduci a icona",
+    "hangUp": "Riattacca"
   }
 }

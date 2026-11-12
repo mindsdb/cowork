@@ -40221,6 +40221,516 @@
       "text": "331af79f34e7"
     }
   },
+  "chat:videoCall.aiBadge": {
+    "de": {
+      "from": "11fb682be0a0",
+      "text": "fd184691f986"
+    },
+    "es": {
+      "from": "11fb682be0a0",
+      "text": "a75d067fa44b"
+    },
+    "fr": {
+      "from": "11fb682be0a0",
+      "text": "a75d067fa44b"
+    },
+    "it": {
+      "from": "11fb682be0a0",
+      "text": "a75d067fa44b"
+    },
+    "ja": {
+      "from": "11fb682be0a0",
+      "text": "11fb682be0a0"
+    },
+    "ko": {
+      "from": "11fb682be0a0",
+      "text": "11fb682be0a0"
+    },
+    "pt-BR": {
+      "from": "11fb682be0a0",
+      "text": "a75d067fa44b"
+    },
+    "zh-CN": {
+      "from": "11fb682be0a0",
+      "text": "11fb682be0a0"
+    }
+  },
+  "chat:videoCall.cameraOff": {
+    "de": {
+      "from": "2050f56db225",
+      "text": "ecd1635b7590"
+    },
+    "es": {
+      "from": "2050f56db225",
+      "text": "568261c019f6"
+    },
+    "fr": {
+      "from": "2050f56db225",
+      "text": "8bc18e6471d3"
+    },
+    "it": {
+      "from": "2050f56db225",
+      "text": "407e4fc092b6"
+    },
+    "ja": {
+      "from": "2050f56db225",
+      "text": "cf02986ad65f"
+    },
+    "ko": {
+      "from": "2050f56db225",
+      "text": "4cc549f5a817"
+    },
+    "pt-BR": {
+      "from": "2050f56db225",
+      "text": "7c45822ed364"
+    },
+    "zh-CN": {
+      "from": "2050f56db225",
+      "text": "6941fa50f54b"
+    }
+  },
+  "chat:videoCall.cameraOn": {
+    "de": {
+      "from": "95e9fb569c93",
+      "text": "c8bbc673e1f3"
+    },
+    "es": {
+      "from": "95e9fb569c93",
+      "text": "7c63b8e2d038"
+    },
+    "fr": {
+      "from": "95e9fb569c93",
+      "text": "02991d2dde4f"
+    },
+    "it": {
+      "from": "95e9fb569c93",
+      "text": "589723bb086a"
+    },
+    "ja": {
+      "from": "95e9fb569c93",
+      "text": "67abcc5bc619"
+    },
+    "ko": {
+      "from": "95e9fb569c93",
+      "text": "20d15b64c318"
+    },
+    "pt-BR": {
+      "from": "95e9fb569c93",
+      "text": "3703b3d1fbfb"
+    },
+    "zh-CN": {
+      "from": "95e9fb569c93",
+      "text": "fe582aebd5e7"
+    }
+  },
+  "chat:videoCall.close": {
+    "de": {
+      "from": "7d9eb7acb13e",
+      "text": "b808f6e97075"
+    },
+    "es": {
+      "from": "7d9eb7acb13e",
+      "text": "aeccae342e4b"
+    },
+    "fr": {
+      "from": "7d9eb7acb13e",
+      "text": "711e5f2e198d"
+    },
+    "it": {
+      "from": "7d9eb7acb13e",
+      "text": "32d4079b315b"
+    },
+    "ja": {
+      "from": "7d9eb7acb13e",
+      "text": "f6c244f98893"
+    },
+    "ko": {
+      "from": "7d9eb7acb13e",
+      "text": "1e8c10206f5b"
+    },
+    "pt-BR": {
+      "from": "7d9eb7acb13e",
+      "text": "0f2bd88ef0ac"
+    },
+    "zh-CN": {
+      "from": "7d9eb7acb13e",
+      "text": "3fd47edce45b"
+    }
+  },
+  "chat:videoCall.dialogLabel": {
+    "de": {
+      "from": "03f08517ab00",
+      "text": "a87dbee1a1ce"
+    },
+    "es": {
+      "from": "03f08517ab00",
+      "text": "5982bb79419a"
+    },
+    "fr": {
+      "from": "03f08517ab00",
+      "text": "36246453ae22"
+    },
+    "it": {
+      "from": "03f08517ab00",
+      "text": "5d49613c2c38"
+    },
+    "ja": {
+      "from": "03f08517ab00",
+      "text": "c10bd6696ad3"
+    },
+    "ko": {
+      "from": "03f08517ab00",
+      "text": "4c4b5ec324f2"
+    },
+    "pt-BR": {
+      "from": "03f08517ab00",
+      "text": "821138879e9c"
+    },
+    "zh-CN": {
+      "from": "03f08517ab00",
+      "text": "e6ceae7d5643"
+    }
+  },
+  "chat:videoCall.ended": {
+    "de": {
+      "from": "d7c235b4a9af",
+      "text": "16442fc49317"
+    },
+    "es": {
+      "from": "d7c235b4a9af",
+      "text": "4273196002e1"
+    },
+    "fr": {
+      "from": "d7c235b4a9af",
+      "text": "533c33483f7b"
+    },
+    "it": {
+      "from": "d7c235b4a9af",
+      "text": "130b9049716a"
+    },
+    "ja": {
+      "from": "d7c235b4a9af",
+      "text": "93fe3c74309f"
+    },
+    "ko": {
+      "from": "d7c235b4a9af",
+      "text": "42a6b7f973c6"
+    },
+    "pt-BR": {
+      "from": "d7c235b4a9af",
+      "text": "fc27d37f2443"
+    },
+    "zh-CN": {
+      "from": "d7c235b4a9af",
+      "text": "e896be3d36ef"
+    }
+  },
+  "chat:videoCall.hangUp": {
+    "de": {
+      "from": "07d2a79b7d6a",
+      "text": "f481f5fc1dbc"
+    },
+    "es": {
+      "from": "07d2a79b7d6a",
+      "text": "328a1774139c"
+    },
+    "fr": {
+      "from": "07d2a79b7d6a",
+      "text": "67c06154af5d"
+    },
+    "it": {
+      "from": "07d2a79b7d6a",
+      "text": "2dfe460f8c38"
+    },
+    "ja": {
+      "from": "07d2a79b7d6a",
+      "text": "6ec0ca1e6955"
+    },
+    "ko": {
+      "from": "07d2a79b7d6a",
+      "text": "12f115a61f36"
+    },
+    "pt-BR": {
+      "from": "07d2a79b7d6a",
+      "text": "4ff6da3720e7"
+    },
+    "zh-CN": {
+      "from": "07d2a79b7d6a",
+      "text": "225253bfa59c"
+    }
+  },
+  "chat:videoCall.minimize": {
+    "de": {
+      "from": "d72e311c4dda",
+      "text": "7efe2cbb94d0"
+    },
+    "es": {
+      "from": "d72e311c4dda",
+      "text": "3fc5f90b27f1"
+    },
+    "fr": {
+      "from": "d72e311c4dda",
+      "text": "2896a21cf475"
+    },
+    "it": {
+      "from": "d72e311c4dda",
+      "text": "7abc98ee379f"
+    },
+    "ja": {
+      "from": "d72e311c4dda",
+      "text": "ac29e57a46f4"
+    },
+    "ko": {
+      "from": "d72e311c4dda",
+      "text": "d92ed316d7ed"
+    },
+    "pt-BR": {
+      "from": "d72e311c4dda",
+      "text": "3fc5f90b27f1"
+    },
+    "zh-CN": {
+      "from": "d72e311c4dda",
+      "text": "ac29e57a46f4"
+    }
+  },
+  "chat:videoCall.mute": {
+    "de": {
+      "from": "8dd6857baf02",
+      "text": "ebe98d7263f0"
+    },
+    "es": {
+      "from": "8dd6857baf02",
+      "text": "8953cc8c3228"
+    },
+    "fr": {
+      "from": "8dd6857baf02",
+      "text": "adf95471a387"
+    },
+    "it": {
+      "from": "8dd6857baf02",
+      "text": "f6c9c701a844"
+    },
+    "ja": {
+      "from": "8dd6857baf02",
+      "text": "c7fe7a921e36"
+    },
+    "ko": {
+      "from": "8dd6857baf02",
+      "text": "9b5760f8263d"
+    },
+    "pt-BR": {
+      "from": "8dd6857baf02",
+      "text": "8953cc8c3228"
+    },
+    "zh-CN": {
+      "from": "8dd6857baf02",
+      "text": "7db2e189ecb0"
+    }
+  },
+  "chat:videoCall.preparing": {
+    "de": {
+      "from": "1491507a768b",
+      "text": "952a4f676561"
+    },
+    "es": {
+      "from": "1491507a768b",
+      "text": "ca0483af7a4f"
+    },
+    "fr": {
+      "from": "1491507a768b",
+      "text": "0160d20f2075"
+    },
+    "it": {
+      "from": "1491507a768b",
+      "text": "fe2ce299c23a"
+    },
+    "ja": {
+      "from": "1491507a768b",
+      "text": "561d59dc76e4"
+    },
+    "ko": {
+      "from": "1491507a768b",
+      "text": "a0d7eb954004"
+    },
+    "pt-BR": {
+      "from": "1491507a768b",
+      "text": "7dac6f3d416d"
+    },
+    "zh-CN": {
+      "from": "1491507a768b",
+      "text": "44471d45163f"
+    }
+  },
+  "chat:videoCall.show": {
+    "de": {
+      "from": "0d956b6fb6eb",
+      "text": "4fb917c0430d"
+    },
+    "es": {
+      "from": "0d956b6fb6eb",
+      "text": "db96b31552b9"
+    },
+    "fr": {
+      "from": "0d956b6fb6eb",
+      "text": "618ec36de25f"
+    },
+    "it": {
+      "from": "0d956b6fb6eb",
+      "text": "44b43c66c12e"
+    },
+    "ja": {
+      "from": "0d956b6fb6eb",
+      "text": "9f326787ad42"
+    },
+    "ko": {
+      "from": "0d956b6fb6eb",
+      "text": "2d55d987216d"
+    },
+    "pt-BR": {
+      "from": "0d956b6fb6eb",
+      "text": "1962f7330e3a"
+    },
+    "zh-CN": {
+      "from": "0d956b6fb6eb",
+      "text": "d6a308ce7f74"
+    }
+  },
+  "chat:videoCall.starting": {
+    "de": {
+      "from": "8f286444e14f",
+      "text": "940caf161b3c"
+    },
+    "es": {
+      "from": "8f286444e14f",
+      "text": "f7aafeb377b4"
+    },
+    "fr": {
+      "from": "8f286444e14f",
+      "text": "08be974656c3"
+    },
+    "it": {
+      "from": "8f286444e14f",
+      "text": "59476dbaad0b"
+    },
+    "ja": {
+      "from": "8f286444e14f",
+      "text": "473f4d3d1f18"
+    },
+    "ko": {
+      "from": "8f286444e14f",
+      "text": "6edf262b3882"
+    },
+    "pt-BR": {
+      "from": "8f286444e14f",
+      "text": "081a28372ef4"
+    },
+    "zh-CN": {
+      "from": "8f286444e14f",
+      "text": "1a90c3fe5fe8"
+    }
+  },
+  "chat:videoCall.unmute": {
+    "de": {
+      "from": "ce4ee4efc5e3",
+      "text": "8dfb05273d66"
+    },
+    "es": {
+      "from": "ce4ee4efc5e3",
+      "text": "0f74c8026236"
+    },
+    "fr": {
+      "from": "ce4ee4efc5e3",
+      "text": "0a1c24cdff9d"
+    },
+    "it": {
+      "from": "ce4ee4efc5e3",
+      "text": "abdeb9d3a214"
+    },
+    "ja": {
+      "from": "ce4ee4efc5e3",
+      "text": "a0a45e78c5f1"
+    },
+    "ko": {
+      "from": "ce4ee4efc5e3",
+      "text": "325e9c351fae"
+    },
+    "pt-BR": {
+      "from": "ce4ee4efc5e3",
+      "text": "2c42f42f33a1"
+    },
+    "zh-CN": {
+      "from": "ce4ee4efc5e3",
+      "text": "8d01732e7477"
+    }
+  },
+  "chat:videoCall.working": {
+    "de": {
+      "from": "a4ad055c9218",
+      "text": "71b8d475a083"
+    },
+    "es": {
+      "from": "a4ad055c9218",
+      "text": "4bfeb42f9139"
+    },
+    "fr": {
+      "from": "a4ad055c9218",
+      "text": "a73182ce6574"
+    },
+    "it": {
+      "from": "a4ad055c9218",
+      "text": "ffaf3413f1e3"
+    },
+    "ja": {
+      "from": "a4ad055c9218",
+      "text": "cd11fda7d502"
+    },
+    "ko": {
+      "from": "a4ad055c9218",
+      "text": "6d04d82eab83"
+    },
+    "pt-BR": {
+      "from": "a4ad055c9218",
+      "text": "468e00a9f2dc"
+    },
+    "zh-CN": {
+      "from": "a4ad055c9218",
+      "text": "3b293cbba356"
+    }
+  },
+  "chat:videoCall.yourCamera": {
+    "de": {
+      "from": "e9e78ed15b85",
+      "text": "abd6ace10e94"
+    },
+    "es": {
+      "from": "e9e78ed15b85",
+      "text": "997f059fb0be"
+    },
+    "fr": {
+      "from": "e9e78ed15b85",
+      "text": "f4072e00988f"
+    },
+    "it": {
+      "from": "e9e78ed15b85",
+      "text": "1d7babdfb707"
+    },
+    "ja": {
+      "from": "e9e78ed15b85",
+      "text": "8c71c152f654"
+    },
+    "ko": {
+      "from": "e9e78ed15b85",
+      "text": "d8eb72921255"
+    },
+    "pt-BR": {
+      "from": "e9e78ed15b85",
+      "text": "ed2e4192d344"
+    },
+    "zh-CN": {
+      "from": "e9e78ed15b85",
+      "text": "e53c8be82141"
+    }
+  },
   "code:activity.aFile": {
     "de": {
       "from": "7365d029861e",

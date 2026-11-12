@@ -615,5 +615,22 @@
     "closedTitle": "This task's browser is closed",
     "closedDescription": "{agent} opens it again when it needs it.",
     "squeezed": "Make the window bigger to see the page"
+  },
+  "videoCall": {
+    "dialogLabel": "Video call with {agent}",
+    "show": "Show the video call with {agent}",
+    "starting": "Calling Anton…",
+    "preparing": "Anton is getting ready. This can take up to half a minute.",
+    "ended": "The call ended.",
+    "close": "Close",
+    "aiBadge": "AI",
+    "yourCamera": "Your camera",
+    "working": "{agent} is working on it…",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "cameraOff": "Turn camera off",
+    "cameraOn": "Turn camera on",
+    "minimize": "Minimize",
+    "hangUp": "Hang up"
   }
 }

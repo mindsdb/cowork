@@ -615,5 +615,22 @@
     "closedTitle": "O navegador desta tarefa está fechado",
     "closedDescription": "{agent} o abre de novo quando precisar.",
     "squeezed": "Aumente a janela para ver a página"
+  },
+  "videoCall": {
+    "dialogLabel": "Chamada de vídeo com {agent}",
+    "show": "Mostrar a chamada de vídeo com {agent}",
+    "starting": "Ligando para Anton…",
+    "preparing": "Anton está se preparando. Isso pode levar até meio minuto.",
+    "ended": "A chamada terminou.",
+    "close": "Fechar",
+    "aiBadge": "IA",
+    "yourCamera": "Sua câmera",
+    "working": "{agent} está trabalhando nisso…",
+    "mute": "Silenciar",
+    "unmute": "Ativar microfone",
+    "cameraOff": "Desligar a câmera",
+    "cameraOn": "Ligar a câmera",
+    "minimize": "Minimizar",
+    "hangUp": "Desligar"
   }
 }
