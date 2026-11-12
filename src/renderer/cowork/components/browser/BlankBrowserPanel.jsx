@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import Button from '../ui/Button';
 import { BrowserFrame } from './BrowserFrame';
@@ -24,6 +24,9 @@ export function blankLineFor(key = '') {
   return BLANK_LINES[hash % BLANK_LINES.length];
 }
 
+// How long an address typed here may take to replace the start page.
+export const OPEN_WAIT_MS = 20_000;
+
 /** What the agent is asked for a search the person typed. */
 export function browserRequestFor(text) {
   return `Search the web in the browser for: ${text.trim()}`;
@@ -34,6 +37,10 @@ export function browserRequestFor(text) {
 function useBlankGo({ agentLabel, browserOn, onSend, onOpenUrl }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  // Bumped by each address sent, so only the latest one's wait can give up.
+  const openSeq = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
   const usable = browserOn && (onSend || onOpenUrl);
   const go = async (text) => {
     const wanted = text.trim();
@@ -44,6 +51,14 @@ function useBlankGo({ agentLabel, browserOn, onSend, onOpenUrl }) {
       setBusy(`Opening ${url}…`);
       try {
         await onOpenUrl(url);
+        // The page replaces this start page once it loads; if it never does,
+        // the field comes back rather than waiting for good.
+        const asked = ++openSeq.current;
+        setTimeout(() => {
+          if (asked !== openSeq.current || !mounted.current) return;
+          setBusy('');
+          setError('That page is taking a while. Try again, or type it in the address bar.');
+        }, OPEN_WAIT_MS);
       } catch (err) {
         setError(err?.message || 'Couldn’t open that page.');
         setBusy('');
@@ -95,11 +110,15 @@ function BlankStart({ taskKey, agentLabel, browserOn, state, autoFocus = true })
  * @param {{ taskKey?: string, agentLabel?: string, onSend?: (text: string) => void,
  *   onOpenUrl?: (url: string) => Promise<void> }} props
  */
-export function BlankStartOver({ taskKey = '', agentLabel = 'Anton', onSend, onOpenUrl, inset = true }) {
+export function BlankStartOver({ taskKey = '', agentLabel = 'Anton', onSend, onOpenUrl, inset = true, leaving = false }) {
   const state = useBlankGo({ agentLabel, browserOn: true, onSend, onOpenUrl });
   // `inset` leaves the web viewer's own toolbar showing above it; the desktop's is the pane's.
+  // `leaving`: a page opened, and it fades out over it.
   return (
-    <div className={`browser-panel__blank-over${inset ? '' : ' browser-panel__blank-over--full'}`}>
+    <div
+      className={`browser-panel__blank-over${inset ? '' : ' browser-panel__blank-over--full'}${leaving ? ' is-leaving' : ''}`}
+      aria-hidden={leaving || undefined}
+    >
       <BlankStart taskKey={taskKey} agentLabel={agentLabel} browserOn state={state} autoFocus={false} />
     </div>
   );

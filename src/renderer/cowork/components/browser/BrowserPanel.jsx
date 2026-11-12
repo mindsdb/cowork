@@ -82,6 +82,9 @@ function postTheme(frame) {
    tell who holds the browser (the viewer posts only that it is ready or
    closed), so the sign-in line always shows. */
 /** A tab with nothing in it yet, which the start page covers. */
+// How long the start page takes to fade out once a page opens (browser-panel.css).
+export const START_FADE_MS = 250;
+
 export function isBlankPage(url) {
   return url === 'about:blank' || url === 'chrome://newtab/' || url === 'chrome://new-tab-page/';
 }
@@ -272,6 +275,21 @@ function WebBrowserStage({
   const opening = startBlank && startsHere && waiting && !slow;
   const blankTab = isBlankPage(pageUrl) || (startBlank && !pageUrl);
   const startOver = startsHere && !error && (opening || (viewUrl && viewerReady && blankTab));
+  /* Once a page opens, the start page fades out rather than vanishing. */
+  const [leaving, setLeaving] = useState(false);
+  const shownRef = useRef(false);
+  useEffect(() => {
+    if (startOver) {
+      shownRef.current = true;
+      setLeaving(false);
+      return undefined;
+    }
+    if (!shownRef.current) return undefined;
+    shownRef.current = false;
+    setLeaving(true);
+    const timer = setTimeout(() => setLeaving(false), START_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [startOver]);
   useEffect(() => {
     if (!waiting) return undefined;
     const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);
@@ -311,8 +329,8 @@ function WebBrowserStage({
           <span className="browser-panel__ghost-address">Ask or type a URL</span>
         </div>
       )}
-      {startOver && (
-        <BlankStartOver taskKey={taskKey} agentLabel={agentLabel} onSend={onSend} onOpenUrl={onOpenUrl} />
+      {(startOver || leaving) && (
+        <BlankStartOver taskKey={taskKey} agentLabel={agentLabel} onSend={onSend} onOpenUrl={onOpenUrl} leaving={!startOver} />
       )}
       {error ? (
         <EmptyState

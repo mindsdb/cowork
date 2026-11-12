@@ -86,6 +86,9 @@ body[data-skin="8bit"] .browser-panel__blank-input { border: 2px solid var(--ink
    address row (so the address and Minimize stay in reach). */
 .browser-panel__blank-over { position: absolute; z-index: 1; inset: 49px 0 0; display: flex; padding: 24px 0; overflow: auto; background: var(--bg); }
 .browser-panel__blank-over--full { inset: 0; }
+.browser-panel__blank-over { transition: opacity .25s ease; }
+.browser-panel__blank-over.is-leaving { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .browser-panel__blank-over { transition: none; } }
 /* The viewer's toolbar while a browser the person opened blank starts: the
    same shape, so the real one takes its place without a jump, with a slow
    sheen across the address. The viewer fades in once ready. */

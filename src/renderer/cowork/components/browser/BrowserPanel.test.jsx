@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 const embedBrowser = vi.fn();
 vi.mock('../../api', () => ({ embedBrowser: (...args) => embedBrowser(...args) }));
 
-import { BrowserPanel, STARTING_TIMEOUT_MS, isBlankPage, webPaneNote } from './BrowserPanel';
+import { BrowserPanel, START_FADE_MS, STARTING_TIMEOUT_MS, isBlankPage, webPaneNote } from './BrowserPanel';
 import { QUICK_CLOSE_MS } from '../../lib/browserSession';
 import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 
@@ -103,6 +103,9 @@ describe('BrowserPanel', () => {
       expect(onSend).toHaveBeenCalledWith('Search the web in the browser for: flights to Lisbon');
       messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://www.kayak.com/' });
       await flush();
+      // It fades out over the page, then goes.
+      expect(screen.getByLabelText('What to look up').closest('.browser-panel__blank-over')).toHaveClass('is-leaving');
+      await act(async () => { vi.advanceTimersByTime(START_FADE_MS); });
       expect(screen.queryByLabelText('What to look up')).toBeNull();
       expect(isBlankPage('chrome://newtab/')).toBe(true);
       expect(isBlankPage('https://example.com/')).toBe(false);
