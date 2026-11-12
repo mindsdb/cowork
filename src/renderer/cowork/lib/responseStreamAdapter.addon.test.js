@@ -18,10 +18,12 @@ describe('responseStreamAdapter — response.addon', () => {
     rememberOwnAddon('ad1');
   });
 
-  it('shows no live row for an add-on another client sent', () => {
+  it('shows the live row of an add-on another client sent, not as this client\'s (ENG-4208)', () => {
     __resetOwnAddonsForTests();
     const state = reduceAll([tool('t1', 10), addon('added'), addon('returned')]);
-    expect(state.steps.some((s) => s.badge === 'Addon')).toBe(false);
+    const rows = state.steps.filter((s) => s.badge === 'Addon');
+    expect(rows.map((s) => s.data.state)).toEqual(['returned']);
+    expect(rows[0].data.own).toBeFalsy();
   });
 
   it('adds an Addon step at the point it joined the turn', () => {

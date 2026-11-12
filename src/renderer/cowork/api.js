@@ -755,17 +755,24 @@ function idleWindowAfter(msg, idleTimeoutMs) {
   return timeoutS * 1000 + idleTimeoutMs;
 }
 
+// The controller a turn's stream hands back (ENG-4194): an AbortController
+// that also lets the app put its own `response.addon` rows through this
+// stream's reducer (`injectEvent`), so they sit in the turn exactly where server
+// events do, and carries the running turn's response id, which an add-on
+// request names (set once `response.created` arrives).
+function turnStreamController(onEvent) {
+  const ctrl = new AbortController();
+  ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
+  ctrl.responseId = null;
+  return ctrl;
+}
+
 // Streams a /v1/responses request. Maps OpenAI-style typed events to the
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
-  const ctrl = new AbortController();
-  // Lets the app put its own `response.addon` rows (ENG-4194) through this
-  // stream's reducer, so they sit in the turn exactly where server events do.
-  ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
-  // The running turn's response id, which an add-on request names.
-  ctrl.responseId = null;
+  const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -992,12 +999,7 @@ export function tailInFlight(conversationId, {
   idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
-  const ctrl = new AbortController();
-  // Lets the app put its own `response.addon` rows (ENG-4194) through this
-  // stream's reducer, so they sit in the turn exactly where server events do.
-  ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
-  // The running turn's response id, which an add-on request names.
-  ctrl.responseId = null;
+  const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -2715,12 +2717,7 @@ export function streamDataVaultSubmission({
   idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
-  const ctrl = new AbortController();
-  // Lets the app put its own `response.addon` rows (ENG-4194) through this
-  // stream's reducer, so they sit in the turn exactly where server events do.
-  ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
-  // The running turn's response id, which an add-on request names.
-  ctrl.responseId = null;
+  const ctrl = turnStreamController(onEvent);
   /*
    * Same idle timer as _streamResponse. Without it a submission that never
    * answers keeps its conversation's stream record forever, and every message
