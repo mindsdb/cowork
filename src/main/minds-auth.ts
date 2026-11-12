@@ -1666,6 +1666,12 @@ function scheduleRefreshAt(expiresAt: number): void {
  * while the barrier stayed armed, so `POST /api/v1/responses` kept being held
  * its full bound and cancelled until the backed-off retry next came round. */
 export async function handOffMindsCredentialToStartedSidecar(): Promise<boolean> {
+  // A start can come long after the token was issued: a first-run install sits
+  // between sign-in and this call, and the refresh timer may have missed its
+  // slot across a sleep or a failed exchange. Handing over the expired token
+  // would make the next turn fail at the gateway, so refresh it first, as boot
+  // does. A refresh that fails keeps its own retry; the push below still runs.
+  if (getRefreshToken() && isAccessTokenExpired()) await refreshTokensOnly();
   const usable = await syncUsableMindsCredential({ invalidateCatalog: true });
   if (usable) {
     cancelCredentialHandoffRetry();

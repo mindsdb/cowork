@@ -194,6 +194,35 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(isMindsResumeCredentialGateActive()).toBe(false);
   });
 
+  it('refreshes an expired token before handing it to a started sidecar', async () => {
+    // A first-run install can outlast the access token. The sidecar must not
+    // come up holding the expired one, or the first turn fails at the gateway.
+    (isAccessTokenExpired as Mock).mockReturnValueOnce(true);
+    const fetch = mockFetchOnce(async () => jsonResponse(200, {
+      access_token: 'at-after-install',
+      expires_in: 300,
+      refresh_token: 'rt-after-install',
+    }));
+
+    await expect(handOffMindsCredentialToStartedSidecar()).resolves.toBe(true);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(saveTokens).toHaveBeenCalledWith('at-after-install', 300, 'rt-after-install');
+    const saveOrder = (saveTokens as Mock).mock.invocationCallOrder[0];
+    const lastPushOrder = (syncUsableMindsCredential as Mock).mock.invocationCallOrder.at(-1)!;
+    expect(saveOrder).toBeLessThan(lastPushOrder);
+    expect(syncUsableMindsCredential).toHaveBeenLastCalledWith({ invalidateCatalog: true });
+  });
+
+  it('does not refresh a live token when a sidecar starts', async () => {
+    const fetch = mockFetchOnce(async () => jsonResponse(500, {}));
+
+    await expect(handOffMindsCredentialToStartedSidecar()).resolves.toBe(true);
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
+  });
+
   it('retries a failed sidecar PUT without rotating the Keycloak token again', async () => {
     const fetch = mockFetchOnce(async () => jsonResponse(200, {
       access_token: 'at-new',
