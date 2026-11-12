@@ -48,9 +48,11 @@
  * going quiet, so an animation can't hold a step. Focus doesn't count.
  *
  * A page read lists every child frame a click can land in, a transparent
- * one included, with its content box, and reads the ones it may: a shown,
- * same-origin frame, big enough, within the read cap, on no payment, sign-in
- * or consent address, and holding no secret, card or sign-in field. A read
+ * one included, with its content box, and reads the ones it may: a
+ * same-origin frame the person sees (in view, not faint, masked, blended or
+ * filtered out of sight, and found by a hit test), big enough, within the
+ * read cap, on no payment, sign-in or consent address, and holding no
+ * secret, card or sign-in field. A read
  * frame's elements have no id and no field value, and no editor's text
  * reaches its text or a name there. A frame from another site can't be read
  * from here: Electron runs this world only in the view's own process. Its
@@ -703,27 +705,82 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase())
     || ['name', 'id', 'aria-label', 'placeholder'].some((attr) => CARD_FIELD_NAME.test(el.getAttribute(attr) || ''))));
 
+  /* An element's parent as it is drawn: the slot it is assigned to, its
+     parent, or a shadow root's host. */
+  const drawnParent = (el: Element): Element | null =>
+    el.assignedSlot ?? el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null);
+  /* What an element draws reaches the person at this opacity or under, its
+     own and its ancestors' multiplied, as the web pod's FAINT_OPACITY. */
+  const FAINT_OPACITY = 0.1;
+  /* The opacity a filter's opacity() functions draw with ("opacity(5%)"). */
+  const filterOpacity = (filter: string): number => Array.from(filter.matchAll(/opacity\(\s*([\d.]+)(%?)\s*\)/g))
+    .reduce((drawn, [, value, percent]) => drawn * Math.min(1, Number(value) / (percent ? 100 : 1)), 1);
+  /* The functions a computed filter applies, by name ("blur", "url"), not
+     the colors inside them. */
+  const filterFunctions = (filter: string): string[] => {
+    const names: string[] = [];
+    let depth = 0;
+    for (const [token, name] of filter.matchAll(/([a-z-]*)\(|\)/g)) {
+      if (token === ')') depth -= 1;
+      else if (depth++ === 0) names.push(name);
+    }
+    return names;
+  };
+  /* Filter functions that leave what an element draws readable: they tint
+     or shade it. opacity() counts toward FAINT_OPACITY. */
+  const READABLE_FILTERS = new Set(['opacity', 'grayscale', 'sepia', 'saturate', 'hue-rotate', 'drop-shadow']);
+  /* Whether `el`, though in view, draws so the person can't read it: it or
+     an ancestor draws too faint (FAINT_OPACITY), through a mask image,
+     blended with what lies behind it, or through a filter that darkens,
+     brightens, blurs, inverts or flattens it (any but READABLE_FILTERS), as
+     the web pod's isFaint and isObscured weigh it. */
+  const drawnUnreadable = (el: Element): boolean => {
+    let opacity = 1;
+    for (let at: Element | null = el; at; at = drawnParent(at)) {
+      const style = styleOf(at);
+      const filter = style.filter || '';
+      if (['mask-image', '-webkit-mask-image'].some((name) => !['', 'none'].includes(style.getPropertyValue(name)))) return true;
+      if (style.mixBlendMode && style.mixBlendMode !== 'normal') return true;
+      if (filterFunctions(filter).some((name) => !READABLE_FILTERS.has(name))) return true;
+      opacity *= Number(style.opacity || '1') * filterOpacity(filter);
+    }
+    return opacity <= FAINT_OPACITY;
+  };
+  /* Whether a hit test finds `owner` over its frame's content box `box`: at
+     the middle, or a corner a quarter in, of its part in view, the points
+     the web pod tries. An element laid over the whole frame takes every one. */
+  const hitsOwner = (owner: Element, box: Box): boolean => {
+    const [left, top] = [Math.max(box.x, 0), Math.max(box.y, 0)];
+    const [right, bottom] = [Math.min(box.x + box.width, viewport.width), Math.min(box.y + box.height, viewport.height)];
+    const [dx, dy] = [(right - left) / 4, (bottom - top) / 4];
+    const points = [[(left + right) / 2, (top + bottom) / 2], [left + dx, top + dy], [right - dx, top + dy], [left + dx, bottom - dy], [right - dx, bottom - dy]];
+    return points.some(([x, y]) => hitAt(Math.floor(x), Math.floor(y)) === owner);
+  };
+
   /* The frames among `owners` a click can land in, transparent ones
-     included, on-screen first, each read when the rules let it: a shown,
-     same-origin frame at least `minPx` each way, within the first `read`
-     frames read, on no payment, sign-in or consent address (its src's or its
-     document's), and holding no private field. */
+     included, on-screen first, each read when the rules let it: a
+     same-origin frame the person sees (in view, not drawn unreadable, and
+     found by a hit test there, so a page can't carry a frame it hides off
+     screen, under a box or behind its own CSS), at least `minPx` each way,
+     within the first `read` frames read, on no payment, sign-in or consent
+     address (its src's or its document's), and holding no private field. */
   const readFrames = (owners: Element[], rules: FrameReadRules): RawFrame[] => {
     const placed = owners
       .filter((owner) => takesClicks(owner, boxOf(owner)))
       .map((owner) => {
         const box = contentBox(owner);
-        return { owner, box, offscreen: !inView(box), seen: shown(owner, boxOf(owner)) };
+        return { owner, box, offscreen: !inView(box) };
       });
     let reads = 0;
-    return [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen, seen }): RawFrame => {
+    return [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen }): RawFrame => {
       const inner = frameDocOf(owner);
       const src = sourceOf(owner);
       const url = inner ? String(inner.location?.href || src) : src;
       const refusedAddress = (address: string) =>
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
-      if (!inner || !seen || reads >= rules.read || box.width < rules.minPx || box.height < rules.minPx
-        || refusedAddress(src) || refusedAddress(url) || holdsPrivateField(inner)) {
+      if (!inner || offscreen || reads >= rules.read || box.width < rules.minPx || box.height < rules.minPx
+        || refusedAddress(src) || refusedAddress(url) || drawnUnreadable(owner) || !hitsOwner(owner, box)
+        || holdsPrivateField(inner)) {
         return { url, read: false, box, offscreen };
       }
       reads += 1;

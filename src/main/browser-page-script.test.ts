@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ELEMENTS_PER_FRAME, TEXT_PER_FRAME } from '../shared/browser-contract';
 import { pageShape, problems } from '../../tests/browser-contract-shapes';
 import {
@@ -100,6 +100,24 @@ function hitTestBy(at: (x: number, y: number) => Element | null): () => void {
   const original = document.elementFromPoint;
   document.elementFromPoint = at;
   return () => { document.elementFromPoint = original; };
+}
+
+/* A hit test by the boxes a test places: the last frame owner in page order
+   whose box holds the point, or the host of an open shadow root that holds
+   one there, whose shadow root then answers its own hit test. */
+function hitTestByBoxes(): () => void {
+  const hitIn = (root: Document | ShadowRoot) => (x: number, y: number): Element | null => {
+    const holds = (el: Element) => {
+      const box = el.getBoundingClientRect();
+      return x >= box.left && x < box.right && y >= box.top && y < box.bottom;
+    };
+    const hits = Array.from(root.querySelectorAll('*')).filter((el) =>
+      (['iframe', 'frame', 'object', 'embed'].includes(el.localName) && holds(el)) || (!!el.shadowRoot && !!hitIn(el.shadowRoot)(x, y)));
+    const hit = hits.at(-1) ?? null;
+    if (hit?.shadowRoot) Object.defineProperty(hit.shadowRoot, 'elementFromPoint', { configurable: true, value: hitIn(hit.shadowRoot) });
+    return hit;
+  };
+  return hitTestBy(hitIn(document));
 }
 
 const SIGN_IN = `
@@ -688,6 +706,10 @@ describe('the isolated-world page read', () => {
 });
 
 describe('frames', () => {
+  let restoreHits = () => {};
+  beforeEach(() => { restoreHits = hitTestByBoxes(); });
+  afterEach(() => restoreHits());
+
   it('lists every shown frame, on-screen first, with its address, its content box and whether it is in view', async () => {
     document.body.innerHTML = `
       <iframe id="below" src="https://ads.example.test/banner?id=7"></iframe>
@@ -742,6 +764,43 @@ describe('frames', () => {
       { x: 10, y: 120, width: 300, height: 100 },
       { x: 10, y: 230, width: 300, height: 100 },
     ]);
+  });
+
+  it('reads a same-origin frame only where the person sees it: in view, not faint, masked, blended or filtered out of sight, and found by a hit test; the rest stay listed with their boxes', async () => {
+    // Each case alone on its page: the frame's own style, and the style of a box around it.
+    const cases: Array<[string, string, string, boolean]> = [
+      ['shown', '', '', true],
+      ['tinted', 'filter: grayscale(1) drop-shadow(0 0 2px rgb(0, 0, 0))', '', true],
+      ['covered', '', '', false],
+      ['below', '', '', false],
+      ['faint', 'opacity: 0.05', '', false],
+      ['faint around', 'opacity: 0.4', 'opacity: 0.2', false],
+      ['faded', 'filter: opacity(5%)', '', false],
+      ['masked', 'mask-image: linear-gradient(transparent, transparent)', '', false],
+      ['darkened', 'filter: brightness(0)', '', false],
+      ['blurred', 'filter: blur(40px)', '', false],
+      ['inverted around', '', 'filter: invert(1) brightness(0)', false],
+      ['blended', 'mix-blend-mode: multiply', '', false],
+    ];
+    const byBoxes = document.elementFromPoint;
+    for (const [name, style, around, read] of cases) {
+      document.body.innerHTML = `<div id="around" style="${around}"><iframe id="f" style="${style}" srcdoc="<p>Inside the frame</p>"></iframe></div><div id="cover"></div>`;
+      await framesLoad();
+      const y = name === 'below' ? window.innerHeight + 50 : 100;
+      place(document.getElementById('around')!, 0, y, 300, 40);
+      place(document.getElementById('f')!, 0, y, 300, 40);
+      // A box laid over the whole frame: a hit test there finds the box.
+      const cover = document.getElementById('cover')!;
+      if (name === 'covered') place(cover, 0, y, 300, 40);
+      const restoreCover = hitTestBy((x, at) => (name === 'covered' ? cover : byBoxes.call(document, x, at)));
+      try {
+        const [frame] = snapshot(freshWorld()).frames;
+        expect.soft(frame, name).toMatchObject({ url: 'about:srcdoc', read, box: { x: 0, y, width: 300, height: 40 } });
+        expect.soft(JSON.stringify(frame).includes('Inside the frame'), name).toBe(read);
+      } finally {
+        restoreCover();
+      }
+    }
   });
 
   it("reads a same-origin frame's controls and text with no ids and no field values; a select keeps its value", async () => {

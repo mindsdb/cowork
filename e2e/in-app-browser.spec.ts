@@ -97,6 +97,20 @@ async function startFixtureServer(): Promise<void> {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end(`<title>Frames</title><p>Top text</p><iframe src="/frame-inner" style="width:400px;height:200px"></iframe><iframe src="${other}/frame-inner" style="width:400px;height:200px"></iframe>`);
     }
+    if (url.pathname === '/unseen-frames') {
+      /* Same-origin frames in view, in DOM order: two the person sees (one
+         tinted grey), then one under a box, a faint one, a masked one, a
+         darkened one, a blurred one and one inside a box that inverts and
+         darkens it, then one below the view. */
+      const styles = ['', 'filter:grayscale(1)', '', 'opacity:0.05', 'mask-image:linear-gradient(transparent,transparent)', 'filter:brightness(0)', 'filter:blur(40px)', ''];
+      const at = (i: number) => `position:absolute;left:${(i % 4) * 200}px;top:${Math.floor(i / 4) * 130}px;width:200px;height:120px;border:0;margin:0`;
+      const frames = styles.map((style, i) => (i === 7
+        ? `<div style="${at(i)};filter:invert(1) brightness(0)"><iframe src="/frame-inner" style="width:200px;height:120px;border:0"></iframe></div>`
+        : `<iframe src="/frame-inner" style="${at(i)};${style}"></iframe>`)).join('');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Unseen</title><style>body{margin:0}</style>${frames}<div style="${at(2)};background:#fff"></div>`
+          + '<iframe src="/frame-inner" style="position:absolute;left:0;top:3000px;width:200px;height:120px;border:0"></iframe>');
+    }
     if (url.pathname === '/frame-inner') {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Inner</title><p>Get the weekly digest.</p><label>Email <input value="ada@example.test"></label><button>Subscribe</button>');
@@ -376,6 +390,15 @@ test('reads a same-origin frame, lists one from another site unread, and lists n
   expect(other).toMatchObject({ url: `${origin.replace('127.0.0.1', 'localhost')}/frame-inner`, read: false, box: { width: 400 } });
   expect([200, 201]).toContain(other.box.height);
   expect(JSON.stringify(snapshot)).not.toContain('ada@example.test');
+});
+
+test('reads a same-origin frame only where the person sees it, and lists the rest with their boxes, unread', async () => {
+  await openAt('/unseen-frames');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(9);
+  const snapshot = await page();
+  expect(snapshot.frames.map((f: { read: boolean }) => f.read)).toEqual([true, true, false, false, false, false, false, false, false]);
+  expect(snapshot.frames.map((f: { offscreen?: boolean }) => f.offscreen ?? false)).toEqual([false, false, false, false, false, false, false, false, true]);
+  expect(snapshot.frames.every((f: { box: { width: number } | null }) => f.box !== null && f.box.width >= 200)).toBe(true);
 });
 
 test('refuses a click by number on a control something covers, and presses nothing', async () => {
