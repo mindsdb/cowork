@@ -33,10 +33,10 @@ describe('LanguageHeaderSelect', () => {
     expect(screen.getByRole('combobox', { name: 'Idioma' })).toHaveTextContent('Español');
   });
 
-  it('hides the header picker outside the translation preview', () => {
+  it('shows the header picker in production builds too', () => {
     vi.stubEnv('DEV', false);
-    const { container } = render(<LanguageHeaderSelect />);
-    expect(container).toBeEmptyDOMElement();
+    render(<LanguageHeaderSelect />);
+    expect(screen.getByRole('combobox', { name: 'Language' })).toBeTruthy();
   });
 
   it('switches to Japanese, with the picker named in Japanese', async () => {

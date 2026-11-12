@@ -1,6 +1,5 @@
 import { Select } from '../../components/ui';
 import {
-  languagePickerEnabled,
   setLanguagePreference,
   systemLanguages,
   useLanguagePreference,
@@ -17,8 +16,7 @@ import {
 /* The language picker (ENG-4149), in the Settings modal's header so it is
    reachable from every section. The choice is stored on this device and
    applies at once: the app re-renders in the new language with no reload.
-   Hidden until the translation rollout opens it up (see
-   languagePickerEnabled). Each language is listed by its own name, so a
+   Each language is listed by its own name, so a
    person who can't read the current UI language can still find theirs. */
 function useLanguagePicker() {
   const { t } = useTranslation('settings');
@@ -43,7 +41,6 @@ function useLanguagePicker() {
 /* "Language: Español ⌄" */
 export function LanguageHeaderSelect() {
   const { t, preference, options, choose } = useLanguagePicker();
-  if (!languagePickerEnabled()) return null;
   return (
     <Select
       variant="pill"
