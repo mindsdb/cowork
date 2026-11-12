@@ -101,6 +101,41 @@ async function startFixtureServer(): Promise<void> {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Inner</title><p>Get the weekly digest.</p><label>Email <input value="ada@example.test"></label><button>Subscribe</button>');
     }
+    if (url.pathname === '/buy') {
+      /* Another site's page that records every click it gets, as a one-click
+         Buy would act on it. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Buy</title><style>html,body{margin:0;height:100%}button{width:100%;height:100%}</style><button>Buy now</button>'
+          + '<script>addEventListener("click", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "frame-click", isTrusted: e.isTrusted }) }))</script>');
+    }
+    if (url.pathname === '/wrapped-frame') {
+      /* Another site's frame inside a control that is listed with a number,
+         and the same page behind an object and an embed that name themselves
+         as controls. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      const box = 'display:block;width:400px;height:120px;border:0;margin:0';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Wrapped</title><div tabindex="0" aria-label="More info" style="${box}"><iframe src="${buy}" style="${box}"></iframe></div>`
+          + `<object data="${buy}" type="text/html" role="button" aria-label="Dismiss" style="${box}"></object>`
+          + `<embed src="${buy}" type="text/html" tabindex="0" title="Close" style="${box}">`);
+    }
+    if (url.pathname === '/clear-frame') {
+      /* Another site's frame drawn fully transparent over a button. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      const at = 'position:absolute;left:0;top:0;width:300px;height:100px;border:0;margin:0';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Clear</title><button style="${at}">Under</button><iframe src="${buy}" style="${at};opacity:0"></iframe>`);
+    }
+    if (url.pathname === '/moving-frame') {
+      /* Another site's frame that slides over the button once the pointer
+         moves on the page. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Moving</title><style>body{margin:0}</style>'
+          + '<button onclick="document.title = \'clicked\'" style="position:absolute;left:0;top:200px;width:300px;height:100px">Go</button>'
+          + `<iframe id="f" src="${buy}" style="position:absolute;left:600px;top:0;width:300px;height:100px;border:0"></iframe>`
+          + '<script>addEventListener("pointermove", () => { const f = document.getElementById("f"); f.style.left = "0px"; f.style.top = "200px"; }, { once: true })</script>');
+    }
     if (url.pathname === '/covered') {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Covered</title><button onclick="document.title = \'clicked\'">Under</button><div style="position:fixed;inset:0;background:rgba(0,0,0,0.3)">Cookie banner</div>');
@@ -303,8 +338,11 @@ test('reads a same-origin frame, lists one from another site unread, and lists n
   expect(same).toMatchObject({ url: `${origin}/frame-inner`, read: true, truncated: false });
   expect(same.text).toContain('Get the weekly digest.');
   expect(same.elements).toEqual([{ role: 'textbox', name: 'Email' }, { role: 'button', name: 'Subscribe' }]);
-  expect(same.box).toMatchObject({ width: 400, height: 200 });
-  expect(other).toMatchObject({ url: `${origin.replace('127.0.0.1', 'localhost')}/frame-inner`, read: false, box: { width: 400, height: 200 } });
+  // Boxes round outward, so an edge between two pixels takes both.
+  expect(same.box).toMatchObject({ width: 400 });
+  expect([200, 201]).toContain(same.box.height);
+  expect(other).toMatchObject({ url: `${origin.replace('127.0.0.1', 'localhost')}/frame-inner`, read: false, box: { width: 400 } });
+  expect([200, 201]).toContain(other.box.height);
   expect(JSON.stringify(snapshot)).not.toContain('ada@example.test');
 });
 
@@ -314,6 +352,44 @@ test('refuses a click by number on a control something covers, and presses nothi
   expect(reply.status).toBe(409);
   expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('is covered by another element') });
   expect((await page()).title).toBe('Covered');
+});
+
+test("lists no object or embed as an element, and refuses a click by number that would land in a control's own frame", async () => {
+  await openAt('/wrapped-frame');
+  /* The three owners with their boxes, and the embed's frame again with
+     none: an embed never says whether it holds a frame, so the frame tree's
+     extra child can't be placed, which holds every click by position here. */
+  await expect.poll(async () => (await page()).frames.map((f: { box: unknown }) => f.box === null), { timeout: 10_000 }).toEqual([false, false, false, true]);
+  const snapshot = await page();
+  expect(snapshot.elements.map((e: { name: string }) => e.name)).toEqual(['More info']);
+  const reply = await act({ action: 'click', element: await element('More info') });
+  expect(reply.status, reply.body.toString()).toBe(409);
+  expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  // Long enough for a click that landed to have been recorded.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+});
+
+test('lists a transparent frame laid over a control, with its box, unread', async () => {
+  await openAt('/clear-frame');
+  const other = origin.replace('127.0.0.1', 'localhost');
+  await expect.poll(async () => (await page()).frames, { timeout: 10_000 }).toEqual([
+    { url: `${other}/buy`, read: false, box: { x: 0, y: 0, width: 300, height: 100 } },
+  ]);
+});
+
+test('refuses a click whose point a frame slides over as the pointer arrives, by number and by position, and presses nothing', async () => {
+  await openAt('/moving-frame');
+  const byNumber = await act({ action: 'click', element: await element('Go') });
+  expect(byNumber.status, byNumber.body.toString()).toBe(409);
+  expect(byNumber.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  await openAt('/moving-frame');
+  const byPosition = await act({ action: 'click', x: 20, y: 220, coords: 'page' });
+  expect(byPosition.status, byPosition.body.toString()).toBe(409);
+  expect(byPosition.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+  expect((await page()).title).toBe('Moving');
 });
 
 test('turns shared workers off, since their WebSockets skip the request listener', async () => {
