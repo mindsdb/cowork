@@ -78,10 +78,11 @@ const secretBoxes = (depth = SECRET_SEARCH_DEPTH): FoundSecrets =>
 const framesByUrl = (page: RawSnapshot): Record<string, RawFrame> => Object.fromEntries(page.frames.map((f) => [f.url, f]));
 
 /* happy-dom gives a text node no boxes, so each text node here takes its
-   parent element's box, as Chromium gives a line of text its own. */
-function textBoxesFromParents(): () => void {
-  const original = document.createRange;
-  document.createRange = () => {
+   parent element's box, as Chromium gives a line of text its own: in this
+   document, or in a frame's. */
+function textBoxesFromParents(doc: Document = document): () => void {
+  const original = doc.createRange;
+  doc.createRange = () => {
     let node: Node | null = null;
     return {
       selectNodeContents: (target: Node) => { node = target; },
@@ -91,7 +92,7 @@ function textBoxesFromParents(): () => void {
       },
     } as unknown as Range;
   };
-  return () => { document.createRange = original; };
+  return () => { doc.createRange = original; };
 }
 
 /* happy-dom has no hit test, so each test says what lies at each point. */
@@ -755,12 +756,19 @@ describe('frames', () => {
     await framesLoad();
     place(document.getElementById('news')!, 0, 0, 600, 400);
     const inner = frameDoc('news');
-    inner.querySelectorAll('input, textarea, [contenteditable], select, button').forEach((el, i) => place(el, 10, 10 + i * 30, 200, 20));
+    inner.querySelectorAll('p, input, textarea, [contenteditable], select, button').forEach((el, i) => place(el, 10, 10 + i * 30, 200, 20));
     // What the person typed, which no element of a frame carries.
     (inner.getElementById('note') as HTMLTextAreaElement).value = 'typed words';
     (inner.getElementById('email') as HTMLInputElement).value = 'ada@example.test';
     const world = freshWorld();
-    const [frame] = snapshot(world).frames;
+    const restore = textBoxesFromParents(inner);
+    const [frame] = (() => {
+      try {
+        return snapshot(world).frames;
+      } finally {
+        restore();
+      }
+    })();
     expect(frame).toMatchObject({ url: 'about:srcdoc', read: true, truncated: false });
     expect(frame.read && frame.elements).toEqual([
       { role: 'textbox', name: 'Email' },
@@ -771,8 +779,38 @@ describe('frames', () => {
       { role: 'button', name: 'Subscribe' },
     ]);
     expect(frame.read && frame.text).toContain('Get the weekly digest.');
-    expect(JSON.stringify(frame)).not.toMatch(/ada@example\.test|typed words/);
+    expect(JSON.stringify(frame)).not.toMatch(/ada@example\.test|typed words|draft words/);
     expect(world.ids.size).toBe(0);
+  });
+
+  it("carries no editor's text, what the person typed there, in the frame's text or as an unlabelled editor's name", async () => {
+    document.body.innerHTML = `<iframe id="mail" srcdoc="${`
+      <p>Write to us.</p>
+      <div id='labelled' contenteditable aria-label='Message'>draft words</div>
+      <div id='bare' contenteditable>bare words</div>
+      <div id='card' tabindex='0'>Reply: <span contenteditable>inline words</span></div>
+      <button id='send' aria-labelledby='bare'></button>`.replace(/"/g, '&quot;')}"></iframe>`;
+    await framesLoad();
+    place(document.getElementById('mail')!, 0, 0, 600, 400);
+    const inner = frameDoc('mail');
+    inner.querySelectorAll('p, [contenteditable], [tabindex], button').forEach((el, i) => place(el, 10, 10 + i * 30, 200, 20));
+    const restore = textBoxesFromParents(inner);
+    try {
+      const [frame] = snapshot(freshWorld()).frames;
+      expect(frame.read).toBe(true);
+      if (!frame.read) return;
+      expect(frame.text).toContain('Write to us.');
+      expect(frame.elements).toEqual([
+        { role: 'textbox', name: 'Message' },
+        { role: 'textbox', name: '' },
+        { role: 'clickable', name: 'Reply:' },
+        { role: 'textbox', name: '' },
+        { role: 'button', name: '' },
+      ]);
+      expect(JSON.stringify(frame)).not.toMatch(/draft words|bare words|inline words/);
+    } finally {
+      restore();
+    }
   });
 
   it('never reads a frame that holds a secret, card-named or sign-in field, sits on a payment or sign-in host, is a consent page, is under 32 px, or comes after the fifth read', async () => {

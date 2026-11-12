@@ -50,10 +50,12 @@
  * A page read lists every child frame a click can land in, a transparent
  * one included, with its content box, and reads the ones it may: a shown,
  * same-origin frame, big enough, within the read cap, on no payment, sign-in
- * or consent address, and holding no secret, card or sign-in field. A read frame's elements have no id and no
- * field value. A frame from another site can't be read from here: Electron
- * runs this world only in the view's own process. Its page read stays out of
- * reach; browser-frames.ts reads the focus and the secret fields in there
+ * or consent address, and holding no secret, card or sign-in field. A read
+ * frame's elements have no id and no field value, and no editor's text
+ * reaches its text or a name there. A frame from another site can't be read
+ * from here: Electron runs this world only in the view's own process. Its
+ * page read stays out of reach; browser-frames.ts reads the focus and the
+ * secret fields in there
  * through the debugger, in that frame's own isolated world. `secretBoxes`
  * finds what every screenshot blacks out.
  */
@@ -426,39 +428,48 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
 
   const textOf = (el: Element): string => (el as HTMLElement).innerText ?? el.textContent ?? '';
 
-  /* Whether `el` is a secret editor or inside one: its editing host, the
-     nearest element whose contenteditable makes it editable, is secret. */
-  const inSecretEditor = (el: Element): boolean => {
-    const host = el.closest('[contenteditable]');
-    return !!host && editable(host) && isSecret(host);
+  /* Whether no read carries `el`'s text: a secret field's (an editor marked
+     as a card field holds what the person typed as its text), or, in a frame
+     a read reaches, an editor's, a whole editable document's included: what
+     the person typed there is a field's value, which a frame read never
+     carries. */
+  const hidesText = (el: Element): boolean => isSecret(el) || (el.ownerDocument !== doc && (editable(el) || contentEditable(el)));
+  /* Whether `el` is such a field or inside one. */
+  const inHiddenText = (el: Element): boolean => {
+    for (let at: Element | null = el; at; at = at.parentElement) if (hidesText(at)) return true;
+    return false;
   };
-  const holdsSecretEditor = (root: ParentNode): boolean =>
-    Array.from(root.querySelectorAll('[contenteditable]')).some((el) => editable(el) && isSecret(el));
-  /* The text of `node` and below it, a secret field's subtree and `skip`
-     left out. */
-  const textWithoutSecrets = (node: Node, skip: Node | null = null): string => {
+  /* Whether an editor below `root`, or `root`'s own document body, holds
+     such text. */
+  const holdsHiddenText = (root: ParentNode): boolean =>
+    ((root as Document).body ? hidesText((root as Document).body) : false)
+    || Array.from(root.querySelectorAll('[contenteditable]')).some((el) => editable(el) && hidesText(el));
+  /* The text of `node` and below it, such a field's subtree and `skip` left
+     out. */
+  const textWithoutHidden = (node: Node, skip: Node | null = null): string => {
     let text = '';
     const walk = (at: Node) => {
       if (at === skip) return;
       if (at.nodeType === 3) text += at.textContent || '';
-      else if (at.nodeType !== 1 || !isSecret(at as Element)) at.childNodes.forEach(walk);
+      else if (at.nodeType !== 1 || !hidesText(at as Element)) at.childNodes.forEach(walk);
     };
     walk(node);
     return text;
   };
-  /* An element's text as a name may show it: none for a secret editor, and
-     a secret field inside it left out. With no secret editor inside, it is
-     `source` as before, so ordinary names don't change. */
+  /* An element's text as a name may show it: none for a secret field or a
+     frame's editor (hidesText) or anything inside one, and with one inside
+     it, the text around it. With none inside, it is `source` as before, so
+     ordinary names don't change. */
   const shownText = (el: Element, source: 'innerText' | 'textContent'): string => {
-    if (inSecretEditor(el)) return '';
-    if (holdsSecretEditor(el)) return textWithoutSecrets(el);
+    if (inHiddenText(el)) return '';
+    if (holdsHiddenText(el)) return textWithoutHidden(el);
     return source === 'innerText' ? textOf(el) : el.textContent ?? '';
   };
 
   /* A label's own words: a label that wraps its control would otherwise name a
      list box after every option in it. */
   const labelText = (label: Element, control: Element): string =>
-    (inSecretEditor(label) ? '' : textWithoutSecrets(label, control));
+    (inHiddenText(label) ? '' : textWithoutHidden(label, control));
 
   const nameOf = (el: Element, role: string): string => {
     const aria = clean(el.getAttribute('aria-label'), 120);
@@ -570,10 +581,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
 
   /*
    * The page's text in reading order, the light DOM innerText reads, with
-   * secret fields and editors left out. `above` holds the text nodes whose
-   * every line sits above the view, or above a scrolled box they are in;
-   * `shown` the rest. Rects come from a detached Range, so nothing is
-   * selected, scrolled or focused.
+   * secret fields and editors, and a frame's editors, left out (hidesText).
+   * `above` holds the text nodes whose every line sits above the view, or
+   * above a scrolled box they are in; `shown` the rest. Rects come from a
+   * detached Range, so nothing is selected, scrolled or focused.
    */
   const textByView = (d: Document): { all: string; shown: string; above: string } => {
     const all: string[] = [];
@@ -595,7 +606,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       }
       if (node.nodeType !== 1) return;
       const el = node as Element;
-      if (UNREAD_TEXT.has(tagOf(el)) || isSecret(el)) return;
+      if (UNREAD_TEXT.has(tagOf(el)) || hidesText(el)) return;
       const style = styleOf(el);
       if (style.display === 'none') return;
       const check = (el as Element & { checkVisibility?: () => boolean }).checkVisibility;
@@ -616,13 +627,13 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
    * scrolled, or whose text fits, reads as innerText always has. Scrolled
    * past what fits, it starts at the top of the view after a leading '…',
    * and the start of the text above the view follows when the budget allows.
-   * A secret editor's text is never in it.
+   * A secret editor's text is never in it, nor, in a frame, any editor's.
    */
   const pageText = (d: Document, maxText: number): string => {
     if (maxText <= 0) return '';
     const full = fullText(d);
     const scrolled = scrolledAway(d);
-    const secret = holdsSecretEditor(d);
+    const secret = holdsHiddenText(d);
     if (!secret && (full.length <= maxText || !scrolled)) return cut(full, maxText);
     const { all, shown: inView, above } = textByView(d);
     const everything = clean(all, Infinity);
