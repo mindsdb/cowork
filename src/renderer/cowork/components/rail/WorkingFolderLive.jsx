@@ -47,7 +47,7 @@ import {
 import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
-import { reportAccessChanged, shareSnapshot } from '../../lib/artifactShareAnalytics';
+import { reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { stopSharingNotice } from '../artifact/publish/linkLeftLive';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -420,7 +420,7 @@ export function WorkingFolderLive({
       let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl })) {
         leftLive = stopSharingNotice(await unpublishArtifact(a.path));
-        reportAccessChanged(a, { entry: 'rail_delete', before: shareSnapshot(a), after: shareSnapshot(null) });
+        reportWithdrawal(a, { entry: 'rail_delete', before: shareSnapshot(a), leftLive: !!leftLive });
       }
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete

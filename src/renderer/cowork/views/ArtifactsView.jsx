@@ -55,7 +55,7 @@ import { AUDIENCE_CHOICE } from '../lib/orgSharing';
 import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
 import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
 import {
-  reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, shareSnapshot,
+  reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal, shareSnapshot,
 } from '../lib/artifactShareAnalytics';
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
@@ -925,7 +925,7 @@ export default function ArtifactsView({
     setPhase(artifact.path, 'unpublishing');
     try {
       const leftLive = stopSharingNotice(await unpublishArtifact(publishTargetPath(artifact)));
-      reportAccessChanged(artifact, { entry: 'list', before: shareSnapshot(artifact), after: shareSnapshot(null) });
+      reportWithdrawal(artifact, { entry: 'list', before: shareSnapshot(artifact), leftLive: !!leftLive });
       updateOne({ ...artifact, publishedUrl: '' });
       // Without the platform UI the deployment decides where shares live,
       // so the toast names no service.
@@ -981,7 +981,7 @@ export default function ArtifactsView({
       let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl })) {
         leftLive = stopSharingNotice(await unpublishArtifact(artifact.path));
-        reportAccessChanged(artifact, { entry: 'list_delete', before: shareSnapshot(artifact), after: shareSnapshot(null) });
+        reportWithdrawal(artifact, { entry: 'list_delete', before: shareSnapshot(artifact), leftLive: !!leftLive });
       }
       await deleteArtifactAndSync(artifact);
       showToast(leftLive ? { kind: 'warning', message: leftLive } : { kind: 'ok', message: t('artifactsView.deleted') });

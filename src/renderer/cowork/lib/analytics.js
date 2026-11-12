@@ -47,7 +47,7 @@ const EVENTS = {
   // save that leaves it reaching only its owner, sends nothing. was_shared is
   // null when the panel didn't know the audience before the save.
   ARTIFACT_ACCESS_CHANGED:  'artifact_access_changed',  // { report_id, was_shared, is_shared, was_audience, audience: 'unpublished'|'public'|'password'|'only_me'|'organization'|'specific'|'unknown', org_wide, team_count, people_count, notified }
-  ARTIFACT_ACCESS_CHANGE_FAILED: 'artifact_access_change_failed', // { reason: 'share_org_not_allowed'|'owned_by_other'|'error' } — never counted as a share
+  ARTIFACT_ACCESS_CHANGE_FAILED: 'artifact_access_change_failed', // { reason: 'share_org_not_allowed'|'owned_by_other'|'left_live'|'error' } — never counted as a share; 'left_live' is a Stop sharing or delete whose page the server could not take down, so nobody lost access
   ARTIFACT_LINK_COPIED:     'artifact_link_copied',     // {} — only when the copy succeeded
   ARTIFACT_DOWNLOADED:      'artifact_downloaded',      // { kind: 'file'|'export', format? ('pdf'|'docx'|'html', exports only) } — only when the file was saved
   AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id?, entry_placement? } — only on the first task within 30 min of a console handoff

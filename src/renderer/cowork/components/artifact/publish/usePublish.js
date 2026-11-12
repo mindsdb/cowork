@@ -34,6 +34,7 @@ import {
   UNKNOWN_SHARE_SNAPSHOT,
   reportAccessChangeFailed,
   reportAccessChanged,
+  reportWithdrawal,
   shareSnapshot,
 } from '../../../lib/artifactShareAnalytics';
 import i18n from '../../../../lib/i18n';
@@ -360,8 +361,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     const before = beforeSaveRef.current;
     try {
       const r = await unpublishArtifact(targetPath);
-      reportAccessChanged(artifact, { entry: 'viewer', before, after: shareSnapshot(null) });
       const left = stopSharingNotice(r);
+      reportWithdrawal(artifact, { entry: 'viewer', before, leftLive: !!left });
       setNotice(left);
       setLinkOwnerRecorded(null);
       setPublishedUrl('');

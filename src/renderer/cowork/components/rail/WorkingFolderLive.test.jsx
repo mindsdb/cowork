@@ -59,9 +59,11 @@ vi.mock('../../lib/artifactDownload', () => ({
 }));
 // The sharing analytics run for real down to the sink.
 const trackArtifactAccessChanged = vi.hoisted(() => vi.fn());
+const trackArtifactAccessChangeFailed = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/analytics', async (importOriginal) => ({
   ...(await importOriginal()),
   trackArtifactAccessChanged,
+  trackArtifactAccessChangeFailed,
 }));
 // The shared document gate, stubbed per test.
 const canPreviewDocument = vi.fn(() => false);
@@ -936,6 +938,7 @@ describe('deleting from the rail on Desktop', () => {
   beforeEach(() => {
     hostState.isWeb = false; hostState.isElectron = true; hostState.localApi = true;
     trackArtifactAccessChanged.mockClear();
+    trackArtifactAccessChangeFailed.mockClear();
     unpublishArtifact.mockReset().mockResolvedValue({});
     deleteArtifactAndSync.mockReset().mockResolvedValue(undefined);
   });
@@ -957,6 +960,16 @@ describe('deleting from the rail on Desktop', () => {
       entry: 'rail_delete',
       before: expect.objectContaining({ shared: true, audience: 'public' }),
       after: expect.objectContaining({ shared: false, audience: 'unpublished' }),
+    }));
+  });
+
+  it('records a page the server could not take down as a failed attempt, not a pull-back', async () => {
+    unpublishArtifact.mockResolvedValue({ status: 'ok', takenDown: false, liveLink: 'https://view.example/r/a', reason: 'no_owner_record' });
+    await deleteFromRail(draft({ publishedUrl: SHARED_URL, accessMode: 'public' }));
+
+    expect(trackArtifactAccessChanged).not.toHaveBeenCalled();
+    expect(trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({
+      entry: 'rail_delete', reason: 'left_live',
     }));
   });
 

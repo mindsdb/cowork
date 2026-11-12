@@ -206,6 +206,19 @@ describe('on Desktop', () => {
     })]);
   });
 
+  it('records a Stop sharing that left the page live as a failed attempt, not a pull-back', async () => {
+    apiMock.unpublishArtifact.mockResolvedValue({ status: 'ok', takenDown: false, liveLink: 'https://view.example/r/a', reason: 'no_owner_record' });
+    const published = { ...LOCAL, publishedUrl: 'https://share/x', accessMode: 'public' };
+    const { result } = renderHook(() => usePublish(published, { enabled: true }));
+
+    await act(async () => { await result.current.unpublish(); });
+
+    expect(analytics.trackArtifactAccessChanged).not.toHaveBeenCalled();
+    expect(analytics.trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({
+      entry: 'viewer', reason: 'left_live',
+    }));
+  });
+
   it('records nothing when a save fails, except the failure', async () => {
     apiMock.publishArtifact.mockRejectedValue(new Error('network down'));
     const { result } = renderHook(() => usePublish(LOCAL, { enabled: true }));

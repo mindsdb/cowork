@@ -79,7 +79,7 @@ vi.mock('./ArtifactViewerBody', () => ({
 }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
-const shareReport = vi.hoisted(() => ({ reportAccessChanged: vi.fn() }));
+const shareReport = vi.hoisted(() => ({ reportWithdrawal: vi.fn() }));
 vi.mock('../../lib/artifactShareAnalytics', async (importOriginal) => ({ ...(await importOriginal()), ...shareReport }));
 vi.mock('../ConfirmModal', () => ({
   ConfirmModal: ({ open, onConfirm }) => (open ? <button onClick={onConfirm}>Confirm delete</button> : null),
@@ -133,18 +133,25 @@ describe('published artifact deletion from the viewer', () => {
   it('records deleting a shared artifact on Desktop as a pull-back', async () => {
     setOrgMode(false);
     await deleteFromViewer();
-    expect(shareReport.reportAccessChanged).toHaveBeenCalledTimes(1);
-    expect(shareReport.reportAccessChanged.mock.calls[0][1]).toMatchObject({
+    expect(shareReport.reportWithdrawal).toHaveBeenCalledTimes(1);
+    expect(shareReport.reportWithdrawal.mock.calls[0][1]).toMatchObject({
       entry: 'viewer_delete',
       before: { shared: true, audience: 'public' },
-      after: { shared: false, audience: 'unpublished' },
+      leftLive: false,
     });
+  });
+
+  it('records a delete that left the page live as a failed attempt, not a pull-back', async () => {
+    setOrgMode(false);
+    unpublishArtifact.mockResolvedValueOnce({ status: 'ok', takenDown: false, liveLink: 'https://view.example/r/a', reason: 'no_owner_record' });
+    await deleteFromViewer();
+    expect(shareReport.reportWithdrawal.mock.calls[0][1]).toMatchObject({ entry: 'viewer_delete', leftLive: true });
   });
 
   it('records nothing on Web, where the server takes the page down', async () => {
     setOrgMode(true);
     await deleteFromViewer();
-    expect(shareReport.reportAccessChanged).not.toHaveBeenCalled();
+    expect(shareReport.reportWithdrawal).not.toHaveBeenCalled();
   });
 
   it('stays open and says so when the deleted artifact\'s page is still live', async () => {

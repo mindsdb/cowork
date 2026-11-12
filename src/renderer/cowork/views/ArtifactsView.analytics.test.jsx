@@ -33,6 +33,7 @@ const report = vi.hoisted(() => ({
   reportAccessChanged: vi.fn(),
   reportAccessChangeFailed: vi.fn(),
   reportLinkCopied: vi.fn(),
+  reportWithdrawal: vi.fn(),
 }));
 vi.mock('../lib/artifactShareAnalytics', async (importOriginal) => ({ ...(await importOriginal()), ...report }));
 
@@ -101,12 +102,30 @@ describe('Artifacts page sharing analytics', () => {
     render(<ArtifactsView artifacts={[published]} onArtifactChanged={vi.fn()} />);
     openMenuItem('Stop sharing');
 
-    await waitFor(() => expect(report.reportAccessChanged).toHaveBeenCalledTimes(1));
-    expect(report.reportAccessChanged.mock.calls[0][1]).toMatchObject({
+    await waitFor(() => expect(report.reportWithdrawal).toHaveBeenCalledTimes(1));
+    expect(report.reportWithdrawal.mock.calls[0][1]).toMatchObject({
       entry: 'list',
       before: { shared: true, audience: 'public' },
-      after: { shared: false, audience: 'unpublished' },
+      leftLive: false,
     });
+  });
+
+  it('records a Stop sharing or delete that left the page live as a failed attempt', async () => {
+    api.unpublishArtifact.mockResolvedValue({ status: 'ok', takenDown: false, liveLink: 'https://view.example/r/a', reason: 'no_owner_record' });
+    api.deleteArtifact.mockResolvedValue(undefined);
+    render(<ArtifactsView artifacts={[published]} onArtifactChanged={vi.fn()} />);
+    openMenuItem('Stop sharing');
+    await waitFor(() => expect(report.reportWithdrawal).toHaveBeenCalledTimes(1));
+    expect(report.reportWithdrawal.mock.calls[0][1]).toMatchObject({ entry: 'list', leftLive: true });
+  });
+
+  it('records a delete that left the page live as left live', async () => {
+    api.unpublishArtifact.mockResolvedValue({ status: 'ok', takenDown: false, liveLink: 'https://view.example/r/a', reason: 'no_owner_record' });
+    api.deleteArtifact.mockResolvedValue(undefined);
+    render(<ArtifactsView artifacts={[published]} onArtifactChanged={vi.fn()} />);
+    openMenuItem('Delete');
+    await waitFor(() => expect(report.reportWithdrawal).toHaveBeenCalledTimes(1));
+    expect(report.reportWithdrawal.mock.calls[0][1]).toMatchObject({ entry: 'list_delete', leftLive: true });
   });
 
   it('records deleting a shared artifact as a pull-back from the delete', async () => {
@@ -115,9 +134,9 @@ describe('Artifacts page sharing analytics', () => {
     render(<ArtifactsView artifacts={[published]} onArtifactChanged={vi.fn()} />);
     openMenuItem('Delete');
 
-    await waitFor(() => expect(report.reportAccessChanged).toHaveBeenCalledTimes(1));
-    expect(report.reportAccessChanged.mock.calls[0][1]).toMatchObject({
-      entry: 'list_delete', before: { shared: true }, after: { shared: false, audience: 'unpublished' },
+    await waitFor(() => expect(report.reportWithdrawal).toHaveBeenCalledTimes(1));
+    expect(report.reportWithdrawal.mock.calls[0][1]).toMatchObject({
+      entry: 'list_delete', before: { shared: true }, leftLive: false,
     });
   });
 

@@ -13,6 +13,7 @@ import {
   isReportableAccessChange,
   reportAccessChanged,
   reportDownloaded,
+  reportWithdrawal,
   shareSnapshot,
 } from './artifactShareAnalytics';
 
@@ -127,6 +128,18 @@ describe('reporting', () => {
     const snap = shareSnapshot({ publishedUrl: URL, accessMode: 'public' });
     expect(reportAccessChanged(artifact, { entry: 'viewer', before: snap, after: snap })).toBe(false);
     expect(analytics.trackArtifactAccessChanged).not.toHaveBeenCalled();
+  });
+
+  it('reports a withdrawal as a pull-back only when the page came down', () => {
+    const before = shareSnapshot({ publishedUrl: URL, accessMode: 'public' });
+    reportWithdrawal(artifact, { entry: 'list', before, leftLive: true });
+    expect(analytics.trackArtifactAccessChanged).not.toHaveBeenCalled();
+    expect(analytics.trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({ entry: 'list', reason: 'left_live' }));
+
+    reportWithdrawal(artifact, { entry: 'list', before, leftLive: false });
+    expect(analytics.trackArtifactAccessChanged).toHaveBeenCalledWith(expect.objectContaining({
+      before: expect.objectContaining({ shared: true }), after: expect.objectContaining({ shared: false, audience: 'unpublished' }),
+    }));
   });
 
   it('never lets an analytics failure reach the action it reports on', () => {

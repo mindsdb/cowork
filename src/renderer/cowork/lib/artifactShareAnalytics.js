@@ -136,6 +136,20 @@ export function reportAccessChanged(artifact, { entry, before, after, reportId =
   return true;
 }
 
+/**
+ * Stop sharing, or the unpublish before a delete, came back. `leftLive` is
+ * whether the server answered that the page is still up (stopSharingNotice's
+ * non-empty answer): then nobody lost access, so it is a failed attempt, not a
+ * pull-back.
+ */
+export function reportWithdrawal(artifact, { entry, before, leftLive = false }) {
+  if (leftLive) {
+    reportAccessChangeFailed(artifact, { entry, reason: 'left_live' });
+    return;
+  }
+  reportAccessChanged(artifact, { entry, before, after: shareSnapshot(null) });
+}
+
 /** A save that failed; `reason` from publishFailureReason. */
 export function reportAccessChangeFailed(artifact, { entry, reason }) {
   safely(() => trackArtifactAccessChangeFailed({ ...ref(artifact, entry), reason }));
