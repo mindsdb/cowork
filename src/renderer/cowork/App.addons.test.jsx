@@ -369,6 +369,8 @@ describe('Why a message was queued', () => {
     await user.hover(chip);
     expect(await screen.findByText(new RegExp(phrase))).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/\bjev\b/i);
+    // One tooltip, not the reason and the browser's own on top of each other.
+    expect(screen.getByTestId('queued-chip')).not.toHaveAttribute('title');
   });
 });
 

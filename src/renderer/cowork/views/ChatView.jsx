@@ -3515,7 +3515,9 @@ export default function ChatView({
                 {queuedMessages.map((q) => (
                   <span
                     key={q.id}
-                    title={q.text}
+                    // The full text on hover, unless the chip has a reason to
+                    // show there: two tooltips at once overlap (ENG-4194).
+                    title={queuedReasonKey(q.queuedReason) ? undefined : q.text}
                     data-testid="queued-chip"
                     aria-busy={q.addonPending || undefined}
                     className={`inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color,opacity] duration-hover ease-[ease]${q.addonPending ? ' opacity-70' : ''}`}
