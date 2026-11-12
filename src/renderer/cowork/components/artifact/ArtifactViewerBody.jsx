@@ -114,6 +114,7 @@ export function ArtifactViewerBody({
     iframeReady,
     setIframeReady,
     onReload,
+    reloadPhase = 'idle',
   } = preview;
   const {
     layer,
@@ -268,7 +269,17 @@ export function ArtifactViewerBody({
           }}
         />
       )}
-      {(loading || !(previewUrl || previewDoc) || !iframeReady) && <PreviewPlaceholder />}
+      {/* Under the reload cover the page reloads unseen: no placeholder
+          flashes in between, the cover itself is the wait. */}
+      {(loading || !(previewUrl || previewDoc) || !iframeReady) && reloadPhase === 'idle' && <PreviewPlaceholder />}
+      {reloadPhase !== 'idle' && (
+        <div
+          className="artifact-preview-reload-cover"
+          data-phase={reloadPhase}
+          data-testid="preview-reload-cover"
+          aria-hidden="true"
+        />
+      )}
     </>
   );
 

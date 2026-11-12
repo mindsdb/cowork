@@ -89,8 +89,10 @@ function undoErrorMessage(error) {
  *   after it (lib/quickEditPrompt chatReplyFor).
  * @param {() => { model: string | null, reasoningEffort: string | null }} [opts.picks]
  *   The model and effort the bar's picker holds, as the request sends them.
- * @param {() => void | Promise<void>} opts.onApplied  A new revision landed
- *   (applied or undone): reload the workspace and the preview.
+ * @param {(opts?: { previewFresh?: boolean }) => void | Promise<void>} opts.onApplied
+ *   A new revision landed (applied or undone): reload the workspace and the
+ *   preview. `previewFresh` when the edit's own preview check already
+ *   reloaded the preview after its last write, so it needs no second reload.
  * @param {() => void} [opts.onStale]  The server refused a stale revision.
  */
 export function useQuickEdit(artifact, {
@@ -154,6 +156,11 @@ export function useQuickEdit(artifact, {
     setRunning(true);
     const live = () => controllerRef.current === controller && !controller.signal.aborted;
     let finished = false;
+    // Whether the open preview shows the edit's last write: a preview check
+    // that ran (reloaded and looked) since the editor last wrote.
+    let previewFresh = false;
+    let writes = 0;
+    let lastCheck = null;
 
     const handOff = async (summary) => {
       const chatPrompt = quickEditChatPrompt(artifact, message);
@@ -183,7 +190,8 @@ export function useQuickEdit(artifact, {
             editId: typeof done.editId === 'string' && done.editId ? done.editId : null,
             undoable: done.undoable === true && !!done.editId,
           });
-          await depsRef.current.onApplied?.();
+          if (lastCheck) await lastCheck;
+          await depsRef.current.onApplied?.({ previewFresh });
           break;
         case 'noop':
           patchReply(replyId, { state: 'noop', summary });
@@ -242,13 +250,19 @@ export function useQuickEdit(artifact, {
               });
               break;
             case 'progress':
+              if (event.stage === 'writing' || event.stage === 'fixing') { writes += 1; previewFresh = false; }
               patchReply(replyId, { stage: typeof event.stage === 'string' ? event.stage : null });
               break;
-            case 'check_request':
+            case 'check_request': {
               patchReply(replyId, { stage: 'checking' });
               // Not awaited: the server waits for the answer, the stream does not.
-              void answerArtifactCheck(event);
+              const writesAtCheck = writes;
+              lastCheck = answerArtifactCheck(event).then((status) => {
+                // Only a check that reloaded and saw the latest write counts.
+                if (writes === writesAtCheck && (status === 'passed' || status === 'failed')) previewFresh = true;
+              });
               break;
+            }
             case 'done':
               finished = true;
               settling = settle(event);

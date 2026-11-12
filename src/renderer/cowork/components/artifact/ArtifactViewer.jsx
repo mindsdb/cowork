@@ -67,6 +67,7 @@ import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
+import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
@@ -900,10 +901,18 @@ export function ArtifactViewer({
   // and the check must not lose its viewer to its own reload. Live apps,
   // documents, images and text have no diagnostics to report, so a check for
   // them answers "unavailable".
+  const framedPreview = open && hasPreviewSource && !isImage && !isText && !showDocumentPreview && !liveAppView;
+  // A quick edit's reloads (its preview check, the applied edit, its Undo)
+  // cover the preview while it reloads instead of flashing it blank
+  // (usePreviewReloadTransition). Other reloads stay as they were.
+  const previewReload = usePreviewReloadTransition({ enabled: framedPreview, iframeReady });
+  const reloadPreviewSmoothly = useCallback(() => {
+    void previewReload.reload(onReload);
+  }, [onReload, previewReload.reload]);
   usePreviewCheckTarget({
     slug: artifact?.slug || artifactFolder.split(/[\\/]/).filter(Boolean).pop() || '',
-    enabled: open && hasPreviewSource && !isImage && !isText && !showDocumentPreview && !liveAppView,
-    reload: onReload,
+    enabled: framedPreview,
+    reload: reloadPreviewSmoothly,
     iframeReady,
     errors: diagnostics.errors,
   });
@@ -956,13 +965,23 @@ export function ArtifactViewer({
     },
     // As after a Source save: the host hears of the new content (its card
     // and any URL it derives), and the preview reloads in the same render.
-    onApplied: async () => {
-      onReload();
-      reportChange({ ...artifact, mtime: Date.now() / 1000 });
+    onApplied: async ({ previewFresh = false } = {}) => {
       // The server keeps the edit (or its undo) in the chat's quick-edit card;
       // the open chat fetches it again to show it.
       if (conversationId) requestConversationRefresh(conversationId);
-      try { await workspace.load(); } catch { /* the preview already shows the change */ }
+      const loading = workspace.load().catch(() => { /* the preview shows the change either way */ });
+      // The edit's own preview check already reloaded the preview after its
+      // last write: a second reload would only flash the same page.
+      if (!previewFresh) {
+        // As after a Source save: the host hears of the new content and the
+        // preview reloads, in one render, behind the reload cover. Not
+        // awaited: the bar is free again while the cover fades.
+        void previewReload.reload(() => {
+          onReload();
+          reportChange({ ...artifact, mtime: Date.now() / 1000 });
+        });
+      }
+      await loading;
     },
     onStale: () => { void workspace.load(); },
   });
@@ -1281,6 +1300,8 @@ export function ArtifactViewer({
     iframeReady,
     setIframeReady,
     onReload,
+    // The quick-edit reload cover: 'idle' | 'covering' | 'waiting' | 'revealing'.
+    reloadPhase: previewReload.phase,
   };
   const bodyReview = {
     layer,

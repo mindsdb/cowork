@@ -679,4 +679,78 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(within(thread()).queryByText('Not this one.')).toBeNull();
     });
   });
+
+  describe('the preview reload after an applied edit', () => {
+    const loads = () => workspaceApi.loadArtifactDraftDocument.mock.calls.length;
+    const check = { type: 'check_request', check_id: 'acheck:r', artifact_slug: 'launch-brief', timeout_s: 20 };
+
+    it('reloads the preview behind the cover when no check already did', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      const before = loads();
+
+      ask('Make the title blue');
+
+      expect(await screen.findByTestId('preview-reload-cover')).toBeInTheDocument();
+      await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 2000 });
+    });
+
+    it("does not reload again when the edit's own preview check reloaded after its last write", async () => {
+      answerArtifactCheck.mockResolvedValueOnce('passed');
+      workspaceApi.streamQuickEdit.mockImplementation(plays(
+        { type: 'progress', stage: 'writing' }, check, applied,
+      ));
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      const before = loads();
+
+      ask('Make the title blue');
+
+      await within(thread()).findByText('Made the title blue.');
+      expect(answerArtifactCheck).toHaveBeenCalledTimes(1);
+      await new Promise((resolve) => { setTimeout(resolve, 400); });
+      expect(loads()).toBe(before);
+      expect(screen.queryByTestId('preview-reload-cover')).toBeNull();
+      expect(workspaceMock.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads when the editor wrote again after the check', async () => {
+      answerArtifactCheck.mockResolvedValueOnce('failed');
+      workspaceApi.streamQuickEdit.mockImplementation(async (_a, _b, { onEvent }) => {
+        onEvent({ type: 'progress', stage: 'writing' });
+        onEvent(check);
+        await Promise.resolve();
+        await Promise.resolve();
+        onEvent({ type: 'progress', stage: 'fixing' });
+        onEvent(applied);
+      });
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      const before = loads();
+
+      ask('Make the title blue');
+
+      await waitFor(() => expect(loads()).toBe(before + 1), { timeout: 2000 });
+    });
+
+    it('reloads without a cover under reduced motion', async () => {
+      const original = window.matchMedia;
+      window.matchMedia = vi.fn((query) => ({ matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} }));
+      try {
+        workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+        renderViewer();
+        await screen.findByTitle('Launch brief');
+        const before = loads();
+
+        ask('Make the title blue');
+
+        await waitFor(() => expect(loads()).toBe(before + 1));
+        expect(screen.queryByTestId('preview-reload-cover')).toBeNull();
+      } finally {
+        window.matchMedia = original;
+      }
+    });
+  });
 });
+

@@ -175,14 +175,14 @@ describe('artifact checks', () => {
       const run = vi.fn(async () => ({ status: 'failed', errors: [ERROR] }));
       registerPreviewCheckTarget('clock', { run });
 
-      await expect(answerArtifactCheck(request, { submit, now })).resolves.toBe(true);
+      await expect(answerArtifactCheck(request, { submit, now })).resolves.toBe('failed');
 
       expect(run).toHaveBeenCalledWith({ deadlineMs: 1000 + 19000 });
       expect(submit).toHaveBeenCalledWith('acheck:quick', { status: 'failed', errors: [ERROR], ms: 0 });
     });
 
     it('answers "unavailable" when no preview of the artifact is open', async () => {
-      await answerArtifactCheck(request, { submit, now });
+      await expect(answerArtifactCheck(request, { submit, now })).resolves.toBe('unavailable');
 
       expect(submit).toHaveBeenCalledWith('acheck:quick', { status: 'unavailable', errors: [], ms: 0 });
     });
@@ -191,8 +191,8 @@ describe('artifact checks', () => {
       registerPreviewCheckTarget('clock', { run: async () => ({ status: 'passed' }) });
 
       await answerArtifactCheck(request, { submit, now });
-      await expect(answerArtifactCheck(request, { submit, now })).resolves.toBe(false);
-      await expect(answerArtifactCheck({ artifact_slug: 'clock' }, { submit, now })).resolves.toBe(false);
+      await expect(answerArtifactCheck(request, { submit, now })).resolves.toBeNull();
+      await expect(answerArtifactCheck({ artifact_slug: 'clock' }, { submit, now })).resolves.toBeNull();
 
       expect(submit).toHaveBeenCalledTimes(1);
     });

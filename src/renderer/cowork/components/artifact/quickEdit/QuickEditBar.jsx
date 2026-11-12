@@ -8,7 +8,7 @@
 // Closing the viewer shows that chat, so the bar offers "Open in chat" only
 // while the turn waits for an answer there.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../../Icons';
 import { ArrowUpIcon } from '../comments/icons';
 import { Spinner, Tooltip } from '../../ui';
@@ -17,6 +17,32 @@ import { chatReplyFor } from '../../../lib/quickEditPrompt';
 import { useTranslation } from '../../../../lib/i18n';
 
 const MAX_HEIGHT = 120; // px — ~5 lines before the textarea scrolls
+// The thread grows to this, then scrolls (same as .artifact-quick-edit-thread).
+const MAX_THREAD_HEIGHT = 168;
+
+/*
+ * Motion (ENG-4227): the thread's height follows its content through a
+ * measured height transition (--dur-layout, --ease-out), so it grows instead
+ * of snapping, and each message enters once with a short fade and rise
+ * (.is-entering, removed on animationend so a streaming update never starts
+ * it again). Both run on --dur-layout, which prefers-reduced-motion sets to
+ * 0ms, and the reduced-motion rule drops the rise.
+ */
+function useThreadHeight(innerRef, active) {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!active || !el) { setHeight(0); return undefined; }
+    const measure = () => setHeight(Math.min(el.scrollHeight, MAX_THREAD_HEIGHT));
+    // A frame later, so a thread that just appeared grows from nothing.
+    const frame = requestAnimationFrame(measure);
+    if (typeof ResizeObserver === 'undefined') return () => cancelAnimationFrame(frame);
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [innerRef, active]);
+  return height;
+}
 const KNOWN_STAGES = new Set(['reading', 'writing', 'checking', 'fixing']);
 
 // A quiet action under a reply: icon and label in ink-3, filled on hover, the
@@ -148,6 +174,17 @@ export function QuickEditBar({ controller, disabledReason = '', onOpenChat, chat
   const [text, setText] = useState('');
   const taRef = useRef(null);
   const threadRef = useRef(null);
+  const threadInnerRef = useRef(null);
+  const threadHeight = useThreadHeight(threadInnerRef, messages.length > 0);
+  // Messages whose entrance has played: they never get .is-entering again.
+  const enteredRef = useRef(new Set());
+  const [, setEnteredCount] = useState(0);
+  const entered = useCallback((id) => {
+    if (enteredRef.current.has(id)) return;
+    enteredRef.current.add(id);
+    setEnteredCount(enteredRef.current.size);
+  }, []);
+  const entryClass = (id) => (enteredRef.current.has(id) ? '' : ' is-entering');
 
   const grow = useCallback(() => {
     const ta = taRef.current;
@@ -162,7 +199,7 @@ export function QuickEditBar({ controller, disabledReason = '', onOpenChat, chat
   useEffect(() => {
     const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, threadHeight]);
 
   const blocked = running || !!disabledReason;
   const canSend = !blocked && !!text.trim();
@@ -178,11 +215,20 @@ export function QuickEditBar({ controller, disabledReason = '', onOpenChat, chat
   return (
     <div className="artifact-quick-edit" aria-label={t('quickEdit.ariaLabel')} role="region">
       {messages.length > 0 && (
-        <div className="artifact-quick-edit-thread" ref={threadRef} aria-live="polite">
+        <div className="artifact-quick-edit-thread" ref={threadRef} aria-live="polite" style={{ height: threadHeight }}>
+          <div className="artifact-quick-edit-thread-inner" ref={threadInnerRef}>
           {messages.map((m) => (m.role === 'user' ? (
-            <div key={m.id} className="artifact-quick-edit-msg is-user">{m.text}</div>
+            <div
+              key={m.id}
+              className={`artifact-quick-edit-msg is-user${entryClass(m.id)}`}
+              onAnimationEnd={() => entered(m.id)}
+            >{m.text}</div>
           ) : (
-            <div key={m.id} className="artifact-quick-edit-msg is-reply">
+            <div
+              key={m.id}
+              className={`artifact-quick-edit-msg is-reply${entryClass(m.id)}`}
+              onAnimationEnd={(e) => { if (e.target === e.currentTarget) entered(m.id); }}
+            >
               <ReplyStatus
                 reply={m}
                 canUndo={m.id === undoableId}
@@ -194,6 +240,7 @@ export function QuickEditBar({ controller, disabledReason = '', onOpenChat, chat
               />
             </div>
           )))}
+          </div>
         </div>
       )}
       {disabledReason && (

@@ -293,7 +293,18 @@
 /* Quick edit bar (ENG-4227): sits under Preview where the review composer
    sits in the inbox, with its thread growing upward to a short scroll. */
 .artifact-quick-edit { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--line); background: var(--surface); }
-.artifact-quick-edit-thread { max-height: 168px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 4px; }
+.artifact-quick-edit-thread { max-height: 168px; overflow-y: auto; overflow-x: hidden; flex-shrink: 0; transition: height var(--dur-layout) var(--ease-out); }
+.artifact-quick-edit-thread-inner { display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 4px; }
+/* A message enters once: fade and a 5px rise, ~200ms ease-out. */
+@keyframes artifact-quick-edit-msg-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes artifact-quick-edit-msg-fade { from { opacity: 0; } to { opacity: 1; } }
+.artifact-quick-edit-msg.is-entering { animation: artifact-quick-edit-msg-in var(--dur-layout) var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) {
+  .artifact-quick-edit-msg.is-entering { animation-name: artifact-quick-edit-msg-fade; }
+}
 .artifact-quick-edit-msg { max-width: 82%; padding: 6px 10px; border-radius: 12px; font: 13px/1.45 var(--font-body); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .artifact-quick-edit-msg.is-user { align-self: flex-end; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
 .artifact-quick-edit-msg.is-reply { align-self: flex-start; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; background: var(--surface-2); color: var(--ink-2); font-size: var(--text-sm); }
@@ -317,3 +328,21 @@
 .artifact-quick-edit-muted { color: var(--ink-4); }
 .artifact-quick-edit-error { color: var(--danger); }
 .artifact-quick-edit-hint { font: 12px/1.4 var(--font-body); padding: 0 4px; }
+
+/* The quick-edit reload cover (usePreviewReloadTransition): fades in to the
+   page's background, holds while the preview reloads, fades out to reveal
+   it. The page background, not a fixed colour, so it is near-white in light
+   and near-black in dark. */
+@keyframes artifact-preview-cover-in { from { opacity: 0; } to { opacity: 1; } }
+.artifact-preview-reload-cover {
+  position: absolute; inset: 0; z-index: 3;
+  background: var(--bg, var(--surface-2));
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 250ms var(--ease-out);
+}
+.artifact-preview-reload-cover[data-phase="covering"] { animation: artifact-preview-cover-in 180ms var(--ease-in-out) both; }
+.artifact-preview-reload-cover[data-phase="revealing"] { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .artifact-preview-reload-cover { transition: none; animation: none; }
+}

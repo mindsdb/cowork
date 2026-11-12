@@ -112,18 +112,19 @@ export function handleArtifactCheckEvent(ev, { submit = submitArtifactCheck, now
  * Answer a check that arrived on another stream than a conversation's: a
  * quick edit's `check_request` (ENG-4227) carries the same
  * `{ check_id, artifact_slug, timeout_s }` and is answered the same way, by
- * the open viewer for that slug, through the same POST. Resolves once the
- * answer was sent (or skipped as a duplicate); never rejects.
+ * the open viewer for that slug, through the same POST. Resolves to the
+ * status answered ('passed' | 'failed' | 'unavailable'; the first two mean
+ * the preview was reloaded and checked), or null for a duplicate or an
+ * unreadable request; never rejects.
  *
  * @param {{ check_id?: string, artifact_slug?: string, timeout_s?: number }} data
  * @param {{ submit?: typeof submitArtifactCheck, now?: () => number }} [deps]
  */
 export async function answerArtifactCheck(data, { submit = submitArtifactCheck, now = Date.now } = {}) {
   const check = parseArtifactCheck({ ...(data || {}), type: ARTIFACT_CHECK_EVENT });
-  if (!check || taken.has(check.checkId)) return false;
+  if (!check || taken.has(check.checkId)) return null;
   remember(check.checkId);
-  await runCheck(check, submit, now);
-  return true;
+  return runCheck(check, submit, now);
 }
 
 async function runCheck({ checkId, slug, timeoutS }, submit, now) {
@@ -131,7 +132,7 @@ async function runCheck({ checkId, slug, timeoutS }, submit, now) {
   const entry = targets.get(slug);
   if (!entry) {
     await answer(submit, checkId, { status: 'unavailable', errors: [], ms: 0 });
-    return;
+    return 'unavailable';
   }
   const budgetMs = Math.max(0, timeoutS * 1000 - DEADLINE_MARGIN_MS);
   let timer;
@@ -147,6 +148,7 @@ async function runCheck({ checkId, slug, timeoutS }, submit, now) {
   const status = ['passed', 'failed', 'unavailable'].includes(outcome?.status) ? outcome.status : 'unavailable';
   const errors = status === 'failed' && Array.isArray(outcome.errors) ? outcome.errors : [];
   await answer(submit, checkId, { status, errors, ms: Math.max(0, Math.round(now() - startedAt)) });
+  return status;
 }
 
 /** Test helper: forget every registration and every check id taken. */
