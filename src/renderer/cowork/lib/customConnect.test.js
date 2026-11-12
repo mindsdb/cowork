@@ -32,6 +32,7 @@ describe('the custom connect form', () => {
     expect(address).toMatchObject({ label: 'API address', required: true, placeholder: '' });
     expect(address.default).toBeUndefined();
     expect(address.description).toMatch(/provider's documentation/);
+    expect(address.description).toMatch(/^Only the host .* with no path or version\.$/);
     expect(spec.fields[1].description).toBe('Use https://api.acme.example');
     expect(spec.form_warning).toMatch(/Anton wrote the field names and help/);
     expect(spec._custom_connect).toEqual({ connectorId: 'acme_crm', label: 'Acme CRM', hasCheck: true });
@@ -103,6 +104,24 @@ describe('a refused connect', () => {
     expect(describeConnectFailure(err)).toBe(
       'The provider refused these credentials. The provider answered 401. It said: {"error":"bad key ***"}',
     );
+  });
+
+  it('names a check path the provider does not have, and suggests the version', () => {
+    const err = Object.assign(new Error(''), {
+      code: 'check_path_not_found',
+      body: { detail: { code: 'check_path_not_found', provider_status: 404, excerpt: '{"message":"Route not found"}' } },
+    });
+
+    expect(describeConnectFailure(err)).toBe(
+      "The provider has no such path. The connector's paths may be missing a version such as /v2; ask Anton to build the connector again."
+      + ' The provider answered 404. It said: {"message":"Route not found"}',
+    );
+  });
+
+  it.each(['provider_error', 'check_not_protected'])('keeps the version hint off %s', (code) => {
+    const err = Object.assign(new Error(''), { code, body: { detail: { provider_status: 500, excerpt: '' } } });
+
+    expect(describeConnectFailure(err)).not.toMatch(/version/);
   });
 
   it('explains a check that ignores the key', () => {
