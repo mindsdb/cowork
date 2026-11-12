@@ -27,14 +27,15 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useLiveApps } from '../../../lib/liveApps';
-import { NO_PREVIEW_DOWNLOADED_NOTE, artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
-import { SHARE_LIVE_APP_LABEL, canShareLiveApp, isLiveAppCard } from '../../lib/liveAppSharing';
+import { noPreviewDownloadedNote, artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { shareLiveAppLabel, canShareLiveApp, isLiveAppCard } from '../../lib/liveAppSharing';
 import { liveAppLines, liveAppOpenAddress } from '../../lib/liveAppState';
 import { useLiveAppStates } from '../../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../artifacts/LiveAppShareDialog';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
 import { railArtifactRows } from '../../lib/railArtifacts';
 import { RailShowMore } from './RailShowMore';
+import { useTranslation } from '../../../lib/i18n';
 
 // How many rows the Artifacts list shows before "+ N more".
 const RAIL_COLLAPSED_ROWS = 6;
@@ -95,6 +96,7 @@ export function WorkingFolderLive({
   receivedCopy = null,
   onReceivedCopyShown,
 }) {
+  const { t } = useTranslation('shell');
   const orgMode = useOrgMode();
   const liveApps = useLiveApps();
   // Re-read when a turn starts or ends; the end is when the agent launches an app.
@@ -156,9 +158,12 @@ export function WorkingFolderLive({
 
   // The request is scoped server-side, so the response is already this
   // project's list; `railArtifactRows` picks what the rail shows.
+  // The streaming poll returns a fresh array every 3s; keep the current one
+  // when nothing in it changed, so the rail and its viewer sync do not re-run.
   const applyArtifacts = (list, ticket) => {
     if (ticket !== loadVersion.current) return;
-    setArtifacts(Array.isArray(list) ? list : []);
+    const next = Array.isArray(list) ? list : [];
+    setArtifacts((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
   };
 
   // Must stay above the project-switch effect: on a move to another project's
@@ -311,7 +316,7 @@ export function WorkingFolderLive({
     return [
       // The document types preview first wherever the shared gate allows them.
       canPreviewDocument(a, host) && {
-        label: 'Preview',
+        label: t('rail.artifacts.preview'),
         icon: (Ico.eye?.(13) || Ico.sparkle(14)),
         disabled: busy,
         onClick: () => {
@@ -321,19 +326,19 @@ export function WorkingFolderLive({
         },
       },
       canOpenLocalFile && {
-        label: 'Open in OS',
+        label: t('rail.artifacts.openInOs'),
         icon: (Ico.externalLink || Ico.upload)(13),
         disabled: busy,
         onClick: () => openArtifactExternal(a),
       },
       canOpenTab && {
-        label: 'Open in new tab',
+        label: t('rail.artifacts.openInNewTab'),
         icon: (Ico.externalLink || Ico.upload)(13),
         disabled: busy,
         onClick: () => (liveAppAddress ? openLiveApp(liveAppAddress) : openArtifactExternal(a)),
       },
       canDownload && {
-        label: 'Download',
+        label: t('rail.artifacts.download'),
         icon: Ico.download(14),
         disabled: busy,
         /* Clears both lines as it starts, like a row click, so an earlier
@@ -341,11 +346,11 @@ export function WorkingFolderLive({
         onClick: async () => {
           setRowError('');
           setRowNote('');
-          if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
+          if (!(await downloadArtifactFile(a))) setRowError(t('rail.artifacts.noServableFile'));
         },
       },
       canShareLiveApp(a, liveApps) && {
-        label: SHARE_LIVE_APP_LABEL,
+        label: shareLiveAppLabel(),
         icon: Ico.userPlus(14),
         disabled: busy,
         onClick: () => setShareTarget(a),
@@ -353,7 +358,7 @@ export function WorkingFolderLive({
       // Confirm first, like the project-file, upload, task and project deletes.
       a.capabilities?.canEdit !== false && { divider: true },
       a.capabilities?.canEdit !== false && {
-        label: 'Delete', icon: Ico.trash(14), danger: true, disabled: busy,
+        label: t('common.delete'), icon: Ico.trash(14), danger: true, disabled: busy,
         onClick: () => setPendingDeleteArtifact(a),
       },
     ].filter(Boolean);
@@ -382,16 +387,16 @@ export function WorkingFolderLive({
       }
       /* Nothing to open and nothing to save: an unshared fullstack app, whose
          draft is only its shell index.html, or a card with no primary file. */
-      setRowError('This artifact has no servable file yet.');
+      setRowError(t('rail.artifacts.noServableFile'));
       return;
     }
     try {
       const result = await host.openPath(a.path);
       if (result && result.ok === false) {
-        setRowError(result.reason || 'Could not open file.');
+        setRowError(result.reason || t('rail.artifacts.openFailed'));
       }
     } catch (e) {
-      setRowError(e?.message || 'Could not open file.');
+      setRowError(e?.message || t('rail.artifacts.openFailed'));
     }
   };
 
@@ -421,7 +426,7 @@ export function WorkingFolderLive({
       // The page itself is still open to anyone with its link.
       if (leftLive) setRowNote(leftLive);
     } catch (e) {
-      setRowError(e?.message || 'Delete failed.');
+      setRowError(e?.message || t('rail.artifacts.deleteFailed'));
       // Restore the row on failure.
       setArtifacts((prev) => prev.find((r) => r.path === previous.path) ? prev : [previous, ...prev]);
     } finally {
@@ -470,9 +475,9 @@ export function WorkingFolderLive({
       /* Nothing here renders the file and nobody shared it: its bytes are
          still one request away, and the note says why it saved. */
       if (await downloadArtifactFile(artifact)) {
-        setRowNote(NO_PREVIEW_DOWNLOADED_NOTE);
+        setRowNote(noPreviewDownloadedNote());
       } else {
-        setRowError('This artifact has no servable file yet.');
+        setRowError(t('rail.artifacts.noServableFile'));
       }
     } else if (target === 'os') {
       onOpen(artifact.path);
@@ -513,8 +518,7 @@ export function WorkingFolderLive({
       </div>
       {rows.length === 0 ? (
         <p className="text-sm text-ink-4 px-1 pb-1">
-          No artifacts yet — the agent will save dashboards, reports, and
-          datasets here as it produces them.
+          {t('rail.artifacts.empty')}
         </p>
       ) : (
         <div ref={listRef} className="flex flex-col gap-0.5">
@@ -531,7 +535,7 @@ export function WorkingFolderLive({
                 {i > 0 && i === currentCount && (
                   <div
                     role="separator"
-                    aria-label="Other artifacts in this project"
+                    aria-label={t('rail.artifacts.otherInProject')}
                     className="h-px bg-[var(--border-0)] my-1 mx-1"
                   />
                 )}
@@ -546,7 +550,7 @@ export function WorkingFolderLive({
                       onOpenArtifact(a);
                     }
                   }}
-                  title={`${a.path}${isPublished ? ` · published` : ''}${authorship ? ` · ${authorship.label}` : ''}`}
+                  title={`${a.path}${isPublished ? ` · ${t('rail.artifacts.published')}` : ''}${authorship ? ` · ${authorship.label}` : ''}`}
                   className={clsx(
                     'group relative grid items-center gap-2 rounded-md px-1 py-1 text-left',
                     'cursor-pointer transition-colors hover:bg-surface-2',
@@ -614,7 +618,7 @@ export function WorkingFolderLive({
                       <OverflowMenu
                         open={menuOpen}
                         onOpenChange={(next) => setOpenMenuPath(next ? a.path : null)}
-                        ariaLabel="Artifact actions"
+                        ariaLabel={t('rail.artifacts.actionsAriaLabel')}
                         icon={Ico.moreVert(14)}
                         width={180}
                         items={menuItemsFor(a)}
@@ -648,10 +652,10 @@ export function WorkingFolderLive({
 
       <ConfirmModal
         open={!!pendingDeleteArtifact}
-        title={`Delete "${pendingDeleteArtifact?.title || pendingDeleteArtifact?.path?.split('/').pop() || 'artifact'}"?`}
-        message="The artifact will be permanently deleted, and sharing will stop first if it's currently shared. This can't be undone."
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        title={t('rail.artifacts.deleteTitle', { name: pendingDeleteArtifact?.title || pendingDeleteArtifact?.path?.split('/').pop() || t('rail.artifacts.deleteFallbackName') })}
+        message={t('rail.artifacts.deleteMessage')}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.keep')}
         destructive
         onClose={() => setPendingDeleteArtifact(null)}
         onConfirm={() => {

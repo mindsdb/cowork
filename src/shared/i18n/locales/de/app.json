@@ -1,0 +1,268 @@
+{
+  "common": {
+    "justNow": "gerade eben",
+    "untitledTask": "Unbenannte Aufgabe",
+    "newTask": "Neue Aufgabe",
+    "delete": "Löschen",
+    "keep": "Behalten",
+    "cancel": "Abbrechen",
+    "connect": "Verbinden"
+  },
+  "connect": {
+    "taskTitle": "{name} verbinden",
+    "intro": "Verbinden wir {name}.",
+    "thisConnector": "Dieser Connector",
+    "followups": {
+      "fields": "Haben Sie eine Frage zu einem der Felder? Ich erkläre es gern.",
+      "credentials": "Brauchen Sie Hilfe beim Finden Ihrer Zugangsdaten? Fragen Sie einfach.",
+      "unclear": "Wenn etwas unklar ist, sagen Sie Bescheid – ich führe Sie gern durch.",
+      "fieldExpects": "Sie möchten wissen, was ein bestimmtes Feld erwartet? Ich erkläre es Ihnen.",
+      "steps": "Möchten Sie zu einem der Schritte mehr erfahren? Fragen Sie einfach.",
+      "beforeSubmit": "Haben Sie vor dem Absenden noch Fragen? Ich bin da.",
+      "deeper": "Soll ich eines der Felder ausführlicher erklären? Sagen Sie Bescheid.",
+      "clarify": "Ich kläre gern alle Fragen, bevor Sie das Formular ausfüllen.",
+      "context": "Wenn Sie mehr Kontext zu einem Feld möchten, fragen Sie einfach.",
+      "setup": "Fragen zur Einrichtung? Ich helfe Ihnen gern."
+    }
+  },
+  "modify": {
+    "taskTitle": "{name} bearbeiten",
+    "body": "Aktualisieren Sie die Zugangsdaten oder Einstellungen für „{name}“ – beim Speichern wird die bestehende Verbindung überschrieben.",
+    "intro": "Aktualisieren wir {name}.",
+    "chatRequest": "Verbindung {name} ({label}) aktualisieren.",
+    "savedValuesLabel": "Aktuell gespeicherte Werte",
+    "savedValuesDescription": "Bearbeiten Sie die für diese Verbindung gespeicherten Werte."
+  },
+  "disconnect": {
+    "title": "{name} trennen?",
+    "titleFallback": "Diese Verbindung trennen?",
+    "message": "Die gespeicherte {engine}-Verbindung und ihre gespeicherten Zugangsdaten werden gelöscht. Sie können sie später erneut verbinden.",
+    "confirm": "Trennen",
+    "busy": "Wird getrennt…"
+  },
+  "oauth": {
+    "reconnectNeeded": "Die {engine}-Verbindung muss neu hergestellt werden – das Aktualisierungstoken ist abgelaufen.",
+    "refreshRetrying": "Die {engine}-Verbindung konnte nicht aktualisiert werden – neuer Versuch erfolgt automatisch."
+  },
+  "askUser": {
+    "selectOnly": "Für diese Frage ist eine der obigen Optionen nötig. Wählen Sie eine aus oder klicken Sie auf „Überspringen“, wenn Sie etwas anderes eingeben möchten.",
+    "rejected": "Diese Antwort wurde abgelehnt. Wählen Sie eine der angebotenen Optionen.",
+    "sendFailed": "Ihre Antwort konnte nicht gesendet werden. Bitte versuchen Sie es erneut.",
+    "notAccepted": "Diese Antwort wurde nicht angenommen. Laden Sie die Unterhaltung neu, um den aktuellen Stand der Frage zu sehen."
+  },
+  "attachments": {
+    "needSavedConversation": "Wählen Sie ein Projekt und verwenden Sie eine gespeicherte Unterhaltung, bevor Sie Dateianhänge senden.",
+    "waitForStart": "Warten Sie, bis diese Unterhaltung begonnen hat, bevor Sie Dateianhänge senden.",
+    "sendFailed": "Ihr Anhang konnte nicht gesendet werden. Bitte versuchen Sie es erneut.",
+    "notSent": "{count, plural, one {Ihre Datei wurde nicht gesendet – der Agent hat zuerst eine Frage gestellt. Sie ist weiterhin angehängt.} other {Ihre # Dateien wurden nicht gesendet – der Agent hat zuerst eine Frage gestellt. Sie sind weiterhin angehängt.}}"
+  },
+  "tasks": {
+    "stopFailed": "Die Aufgabe konnte nicht gestoppt werden – möglicherweise läuft sie noch. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+    "ownerOnly": "Nur der Inhaber kann in diesem geteilten Projekt Aufgaben ausführen.",
+    "creating": "Aufgabe wird erstellt…",
+    "configuredPlanningModel": "Konfiguriertes Planungsmodell",
+    "formSubmitFailed": "Formular konnte nicht gesendet werden.",
+    "loadEarlierFailed": "Ältere Nachrichten konnten nicht geladen werden. Versuchen Sie es erneut."
+  },
+  "codeMode": {
+    "stopUnchecked": "Der Code-Modus ist ausgeblendet, aber laufende Aufgaben konnten nicht vollständig geprüft werden.",
+    "stopFailed": "{count, plural, one {Der Code-Modus ist ausgeblendet, aber eine Aufgabe konnte nicht gestoppt werden.} other {Der Code-Modus ist ausgeblendet, aber # Aufgaben konnten nicht gestoppt werden.}}",
+    "needFolder": "Wählen Sie ein Projekt mit Ordner, bevor Sie Claude Code starten.",
+    "needModel": "Wählen Sie ein Modell, bevor Sie Claude Code starten.",
+    "noKey": "Kein MindsHub-API-Schlüssel konfiguriert – melden Sie sich mit MindsHub an oder fügen Sie in den Einstellungen einen Schlüssel hinzu, bevor Sie den Code-Modus verwenden.",
+    "createFailed": "Die Claude Code-Aufgabe konnte nicht erstellt werden."
+  },
+  "deleteTask": {
+    "title": "Diese Aufgabe löschen?",
+    "message": "Der Unterhaltungsverlauf und alle Scratchpad-Zellen dieser Aufgabe werden entfernt. Dies kann nicht rückgängig gemacht werden.",
+    "failed": "Dieser Chat konnte nicht gelöscht werden. Er ist wieder in Ihrer Liste; versuchen Sie es erneut."
+  },
+  "deleteTurn": {
+    "title": "Diesen Austausch löschen?",
+    "message": "Dadurch werden sowohl Ihre Frage als auch die Antwort von {agent} aus der Unterhaltung entfernt. Scratchpad-Zellen, Artefakte oder Gedächtniseinträge, die dabei entstanden sind, bleiben auf dem Datenträger. Dies kann nicht rückgängig gemacht werden.",
+    "unconfirmedRefresh": "Der letzte Löschvorgang hier wurde nicht bestätigt, daher wird diese Liste jetzt aktualisiert. Prüfen Sie sie und löschen Sie erneut, falls nötig.",
+    "refreshFailed": "Diese Unterhaltung konnte nicht aktualisiert werden. Laden Sie sie neu, bevor Sie darin etwas anderes löschen.",
+    "messageChanged": "Diese Nachricht hat sich geändert, bevor sie gelöscht werden konnte. Versuchen Sie es erneut.",
+    "unconfirmedNoRefresh": "Dieser Löschvorgang konnte nicht bestätigt und die Unterhaltung nicht aktualisiert werden. Laden Sie diese Unterhaltung neu, bevor Sie darin etwas anderes löschen.",
+    "deletedNoRefresh": "Dieser Austausch wurde gelöscht, aber die Unterhaltung konnte nicht aktualisiert werden, daher ist die Liste möglicherweise veraltet. Laden Sie diese Unterhaltung neu, bevor Sie darin etwas anderes löschen.",
+    "unconfirmed": "Dieser Löschvorgang konnte nicht bestätigt werden. Möglicherweise war er trotzdem erfolgreich, daher wird diese Unterhaltung vor dem nächsten Löschen darin aktualisiert.",
+    "failedWithReason": "Dieser Austausch konnte nicht gelöscht werden: {reason}",
+    "notDeletedAsShown": "Der Server hat diesen Austausch nicht wie angezeigt gelöscht, daher wurde die Unterhaltung aktualisiert. Prüfen Sie sie und löschen Sie erneut, falls nötig."
+  },
+  "deleteProject": {
+    "title": "Projekt „{name}“ löschen?",
+    "messageExternal": "Das Projekt und seine Unterhaltungen werden entfernt. Ihr Ordner {path} bleibt, wo er ist, und Ihre eigenen Dateien darin bleiben unberührt; die Cowork-Ordner skills/ und .anton/ verbleiben jedoch darin. Dies kann nicht rückgängig gemacht werden.",
+    "message": "Alle Unterhaltungen, Scratchpad-Ausgaben, Gedächtnisinhalte und Artefakte dieses Projekts werden vom Datenträger entfernt. Dies kann nicht rückgängig gemacht werden.",
+    "confirm": "Projekt löschen",
+    "failed": "Dieses Projekt konnte nicht gelöscht werden. Es wurde nichts entfernt; versuchen Sie es erneut."
+  },
+  "display": {
+    "settings": "Anzeigeeinstellungen",
+    "toggleTheme": "Zwischen hellem und dunklem Modus wechseln"
+  },
+  "compare": {
+    "unavailableTitle": "Modelle vergleichen ist hier nicht verfügbar",
+    "unavailableDescription": "In dieser Bereitstellung stehen keine Modelle zur Auswahl, daher gibt es nichts zu vergleichen. Welche Modelle Sie auswählen können, legt Ihr Betreiber fest."
+  },
+  "drive": {
+    "connectTitle": "Google Drive verbinden?",
+    "connectMessage": "Sie müssen Ihr Google Drive-Konto verbinden, um Dateien aus Drive hinzuzufügen.",
+    "chooseAccountTitle": "Google Drive-Konto auswählen",
+    "chooseAccountSubtitle": "Mehrere Google Drive-Konten sind verbunden – wählen Sie aus, welches verwendet werden soll."
+  },
+  "update": {
+    "updating": "Wird aktualisiert...",
+    "updatingTo": "Aktualisierung auf {version}...",
+    "almostThere": "Gleich geschafft..."
+  },
+  "router": {
+    "unavailableTitle": "Diese Unterhaltung wurde nicht geladen",
+    "unavailableDescription": "Der Server war nicht erreichbar. Ihr Link ist weiterhin gültig – versuchen Sie es erneut, sobald Sie wieder online sind.",
+    "retrying": "Neuer Versuch…",
+    "tryAgain": "Erneut versuchen"
+  },
+  "shell": {
+    "welcome": "Willkommen bei {product}",
+    "setupErrorTitle": "Einrichtung konnte nicht abgeschlossen werden",
+    "setupErrorBody": "Ihr Anbieter ist gespeichert, aber Ihr Modell konnte nicht übernommen werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+    "retrying": "Neuer Versuch…",
+    "retry": "Erneut versuchen",
+    "tryAgain": "Erneut versuchen",
+    "switchToLight": "Zum hellen Design wechseln",
+    "switchToDark": "Zum dunklen Design wechseln",
+    "toggleTheme": "Farbdesign wechseln",
+    "dismiss": "Ausblenden",
+    "dismissUntilNextLaunch": "Bis zum nächsten Start ausblenden",
+    "serviceUnconfiguredTitle": "Der Dienst ist noch nicht konfiguriert",
+    "serviceUnavailableTitle": "Der Dienst ist nicht verfügbar",
+    "serviceUnconfiguredBody": "Bitten Sie Ihren Administrator, die Modelleinstellungen zu prüfen, und versuchen Sie es dann erneut.",
+    "serviceUnavailableBody": "Der Server wird möglicherweise neu gestartet. Warten Sie einen Moment und versuchen Sie es dann erneut."
+  },
+  "ownership": {
+    "title": "Wem gehören diese Daten?",
+    "intro": "Auf diesem Computer befinden sich Daten aus der Zeit, bevor Konten getrennt geführt wurden, und wir können nicht feststellen, ob sie zu {who} gehören.",
+    "thisAccount": "diesem Konto",
+    "credentials": "Es sind nicht nur frühere Chats. Wenn Sie sie übernehmen, übernehmen Sie auch die hier gespeicherten API-Schlüssel der Anbieter und die Zugangsdaten aller verbundenen Datenquellen.",
+    "nothingDeleted": "In keinem Fall wird etwas gelöscht. Wenn Sie neu beginnen, bleiben die vorhandenen Daten für die Person, der sie gehören, auf diesem Computer.",
+    "startingFresh": "Neuer Start…",
+    "startFresh": "Neu beginnen",
+    "restoring": "Wird wiederhergestellt…",
+    "mine": "Das sind meine Daten",
+    "accountChanged": "Das angemeldete Konto hat sich geändert. Melden Sie sich erneut an, um diese Frage zu beantworten.",
+    "claimFailed": "Diese Daten konnten nicht übernommen werden. Es wurde nichts geändert – versuchen Sie es erneut."
+  },
+  "updateBanner": {
+    "downloading": "Update wird heruntergeladen…",
+    "downloadingPercent": "Update wird heruntergeladen ({percent} %)",
+    "installing": "Update wird installiert…",
+    "restartFailed": "Letzter Neustartversuch fehlgeschlagen",
+    "tryAgain": "Erneut versuchen",
+    "ready": "Update bereit",
+    "readyVersion": "Update bereit{hasVersion, select, yes { ({version})} other {}}",
+    "restartNow": "Jetzt neu starten",
+    "restart": "Neu starten",
+    "readyAutoHint": "Die neue Version{hasVersion, select, yes { ({version})} other {}} ist heruntergeladen. Starten Sie jetzt neu, um sie zu verwenden, oder sie wird automatisch installiert, wenn Sie die App das nächste Mal beenden.",
+    "appUpdateFailed": "App-Update fehlgeschlagen",
+    "retry": "Erneut versuchen",
+    "download": "Herunterladen",
+    "appVersionAvailable": "Neue App-Version verfügbar",
+    "newVersion": "Neue Version verfügbar{hasVersion, select, yes { ({version})} other {}}",
+    "abortedHint": "Der letzte Neustartversuch ist fehlgeschlagen. Das Update ist weiterhin heruntergeladen. Versuchen Sie es erneut, um neu zu starten.",
+    "abortedHintReason": "Letzter Neustartversuch fehlgeschlagen: {reason}. Das Update ist weiterhin heruntergeladen. Versuchen Sie es erneut, um neu zu starten.",
+    "debInstallStep": "führen Sie {command} in dem Ordner aus, in den Sie die Datei heruntergeladen haben",
+    "otaHint": "Lädt die App neu, um das Update{hasVersion, select, yes { auf {version}} other {}} abzuschließen. Es wird auch automatisch angewendet, wenn Sie die App das nächste Mal öffnen.",
+    "otaFailed": "Update fehlgeschlagen{hasVersion, select, yes { ({version})} other {}}"
+  },
+  "shellSupport": {
+    "tooOld": {
+      "title": "Diese App ist zu alt für diese Version von Cowork",
+      "body": "Installiert ist App-Shell {installed}, aktuell ist {current}. Einige Funktionen sind ausgeblendet, bis die App aktualisiert wird.",
+      "restartToUpdate": "Neu starten zum Aktualisieren",
+      "downloadUpdate": "Update herunterladen",
+      "checking": "Suche nach Updates…",
+      "downloading": "Wird heruntergeladen…",
+      "downloadingPercent": "Wird heruntergeladen ({percent} %)",
+      "installing": "Wird installiert…",
+      "retryUpdate": "Update erneut versuchen",
+      "downloadLatest": "Neueste App herunterladen"
+    },
+    "osCapped": {
+      "minimum": "macOS {version} oder neuer",
+      "belowFloorTitle": "Aktualisieren Sie macOS, um Cowork weiterhin sicher zu nutzen",
+      "belowFloorBody": "Diese App-Version ist nicht sicher, wenn sich mehr als eine Person in diesem Mac-Benutzerkonto bei Cowork anmeldet: Sie kann die Daten eines Kontos der nächsten Person anzeigen, die sich anmeldet. Neuere Versionen beheben das, erfordern aber {minimum}.",
+      "title": "Ihre macOS-Version erhält keine App-Updates mehr",
+      "body": "Auf diesem Mac läuft macOS {major}. Aktualisieren Sie auf {minimum}, um weiterhin App-Updates zu erhalten. Einige Funktionen könnten mit der Zeit nicht mehr funktionieren."
+    }
+  },
+  "serverStatus": {
+    "exitCode": {
+      "stillStarting": "startet noch",
+      "notApplicable": "nicht zutreffend",
+      "stopped": "gestoppt",
+      "unknown": "unbekannt",
+      "neverStarted": "nie gestartet"
+    },
+    "timeout": {
+      "headline": "Das Backend startete noch, als die App aufgehört hat zu warten.",
+      "firstLaunch": "Das ist meist der erste Start nach einer Installation: Die gesamte Python-Umgebung wird beim ersten Ausführen geprüft, was deutlich länger dauert als jeder spätere Start.",
+      "reopen": "Beenden Sie die App vollständig und öffnen Sie sie erneut. Das Backend startet dann neu und läuft normalerweise beim zweiten Versuch."
+    },
+    "exited": {
+      "headline": "Das Backend wurde gestartet und hat sich beendet, bevor es vollständig hochgefahren war."
+    },
+    "spawnError": {
+      "headline": "Das Backend-Programm konnte überhaupt nicht gestartet werden.",
+      "antivirus": "Meist blockiert eine Antiviren- oder Endpoint-Schutzsoftware die ausführbare Datei; lassen Sie das {product}-Backend zu und versuchen Sie es erneut.",
+      "reinstall": "Falls das nicht die Ursache ist, führen Sie das Installationsprogramm erneut aus, um das Backend neu zu installieren."
+    },
+    "notInstalled": {
+      "headline": "Das Backend ist noch nicht installiert.",
+      "rerun": "Führen Sie das Installationsprogramm erneut aus, um es einzurichten."
+    },
+    "credentialClear": {
+      "headline": "Das Backend konnte die API-Schlüssel Ihrer letzten Abmeldung nicht entfernen und wurde daher gestoppt, statt sie zu verwenden.",
+      "reopen": "Beenden Sie {product} vollständig und öffnen Sie es erneut. Das Backend versucht es bei jedem Start erneut.",
+      "filesHeld": "Wenn der Fehler weiterhin auftritt, hält möglicherweise ein anderes Programm Dateien im Cowork-Datenordner geöffnet; schließen Sie es oder starten Sie den Computer neu."
+    },
+    "incompatible": {
+      "headline": "Das Backend muss für diese Version von {product} aktualisiert werden.",
+      "reopen": "Beenden Sie {product} vollständig und öffnen Sie es erneut, damit das passende Backend installiert und gestartet werden kann.",
+      "rerun": "Wenn das Update nicht abgeschlossen wird, führen Sie das neueste Installationsprogramm erneut aus."
+    },
+    "notRunning": {
+      "headline": "Das Backend läuft nicht.",
+      "startBelow": "Starten Sie es unten."
+    },
+    "portHeld": "Prozess {pid} belegt Port {port}. Beenden Sie ihn (oder starten Sie den Computer neu) und starten Sie das Backend erneut.",
+    "copyLog": "Wenn der Fehler weiterhin auftritt, kopieren Sie das Protokoll unten und senden Sie es an den Support.",
+    "noLog": {
+      "timeout": "Das Backend hatte noch nichts ausgegeben, als die App aufgehört hat zu warten, daher gibt es kein Protokoll zum Senden.",
+      "exited": "Im Protokoll wurde nichts erfasst, weil das Backend abgestürzt ist, bevor es etwas ausgegeben hat, daher gibt es kein Protokoll zum Senden.",
+      "spawnError": "Das Programm wurde nie ausgeführt, daher ist der Startfehler oben der einzige Hinweis; es gibt kein Protokoll zum Senden.",
+      "notInstalled": "Es wurde noch nichts ausgeführt, daher gibt es kein Protokoll zum Senden.",
+      "incompatible": "Das Backend hat normal geantwortet, ist aber eine ältere, inkompatible Version; möglicherweise gibt es kein Fehlerprotokoll.",
+      "credentialClear": "Das Backend wurde gestoppt, bevor es den Grund ausgegeben hat, daher gibt es kein Protokoll zum Senden.",
+      "default": "Es wurde noch kein Protokoll erfasst, daher gibt es nichts zu senden."
+    }
+  },
+  "restartConfirm": {
+    "confirm": "Trotzdem neu starten",
+    "cancel": "Abbrechen",
+    "unknownTitle": "Jetzt neu starten?",
+    "unknownBody": "Cowork kann nicht feststellen, ob Aufgaben laufen. Ein Neustart stoppt alle laufenden Aufgaben.",
+    "title": "{count, plural, one {# laufende Aufgabe} other {# laufende Aufgaben}} stoppen und neu starten?",
+    "body": "Ein Neustart stoppt die Aufgaben mitten in der Antwort. Sie können auch später über die Einstellungen oder das Update-Banner neu starten."
+  },
+  "bootStatus": {
+    "downloading": "Neuestes Update wird heruntergeladen…",
+    "finishing": "Wird abgeschlossen…",
+    "installing": "Update wird installiert – Cowork wird neu geöffnet…"
+  },
+  "orgs": {
+    "personal": "Persönlich"
+  },
+  "addon": {
+    "moveFailed": "Die Nachricht konnte nicht in die Warteschlange verschoben werden. Bitte versuchen Sie es erneut.",
+    "stayQueued": "{agent} kann sie gerade nicht annehmen. Sie bleibt in der Warteschlange."
+  }
+}

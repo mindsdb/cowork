@@ -2,6 +2,9 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { describe, expect, it, vi } from 'vitest';
 
+import { ipcRenderer } from 'electron';
+import type { InAppBrowserBridge } from '../shared/browser-contract';
+import { IPC } from '../shared/ipc-channels';
 import { mainWindowWebPreferences } from './main-window-preferences';
 
 const exposed = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
@@ -19,6 +22,53 @@ describe('the preload flag', () => {
     vi.resetModules();
     await import('./preload');
     expect(exposed.current?.supportsDocumentPreview).toBe(true);
+  });
+});
+
+describe('the in-app browser in the preload', () => {
+  it.each([
+    ['39.8.10', false],
+    ['43.2.0', false],
+    ['44.0.0', true],
+    ['45.2.3', true],
+    [undefined, false],
+  ])('on Electron %s exposes the pane: %s', async (version, supported) => {
+    const { inAppBrowserExposure } = await import('./preload');
+    const browser = {} as InAppBrowserBridge;
+    expect(inAppBrowserExposure(version, browser)).toEqual({ supportsInAppBrowser: supported, browser: supported ? browser : undefined });
+  });
+
+  it("exposes the pane by this shell's own Electron version", async () => {
+    // Node runs the tests, so there is no Electron version: below the floor.
+    vi.resetModules();
+    await import('./preload');
+    expect(exposed.current?.supportsInAppBrowser).toBe(false);
+    expect(exposed.current?.browser).toBeUndefined();
+    Object.defineProperty(process.versions, 'electron', { value: '45.2.3', configurable: true });
+    try {
+      vi.resetModules();
+      await import('./preload');
+      expect(exposed.current?.supportsInAppBrowser).toBe(true);
+      expect(exposed.current?.browser).toMatchObject({ ready: expect.any(Function), clearData: expect.any(Function) });
+    } finally {
+      delete (process.versions as Record<string, unknown>).electron;
+    }
+  });
+});
+
+describe('the in-app browser registration in the preload', () => {
+  it('hands the renderer each registration main reports, until it stops listening', async () => {
+    vi.resetModules();
+    await import('./preload');
+    const onBrowserRegistered = exposed.current?.onBrowserRegistered as (cb: () => void) => () => void;
+    const cb = vi.fn();
+    const stop = onBrowserRegistered(cb);
+    const [channel, listener] = (ipcRenderer.on as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
+    expect(channel).toBe(IPC.BROWSER_REGISTERED);
+    (listener as () => void)();
+    expect(cb).toHaveBeenCalledTimes(1);
+    stop();
+    expect(ipcRenderer.removeListener).toHaveBeenCalledWith(IPC.BROWSER_REGISTERED, listener);
   });
 });
 

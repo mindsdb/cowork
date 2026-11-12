@@ -106,7 +106,7 @@ const EVENTS = {
   // prefix exists to stop the unprefixed name reading as authoritative, and
   // ENG-2206 remains open for a subject carried on the gateway denial itself.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav' and 'usage_settings' are NOT upgrade intent. 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
@@ -135,6 +135,17 @@ const EVENTS = {
   CODE_VIEW_OPENED:         'code_view_opened',         // {}  first switch into the Code workspace per launch
   CODE_TASK_STARTED:        'code_task_started',        // { task_id, origin: 'new'|'fork', engine_id, model, reasoning_effort?, permission_mode, task_mode, workspace_kind, in_project, computer_is_local, attachment_count, source_context_count }
   CODE_TASK_START_FAILED:   'code_task_start_failed',   // { origin, engine_id?, model?, in_project?, code, status? }
+  // Compare Models. Model ids, counts and costs only: never a prompt or title.
+  COMPARE_VIEW_OPENED:      'compare_view_opened',      // {}  first open of Compare Models per launch
+  COMPARISON_STARTED:       'comparison_started',       // { comparison_id, model_a, model_b, effort_a?, effort_b?, from_project, file_count, example_id? }
+  COMPARISON_FOLLOW_UP_SENT:'comparison_follow_up_sent',// { comparison_id, target: 'both'|'a'|'b', turn_index }
+  COMPARISON_VERDICT_RECORDED:'comparison_verdict_recorded', // { comparison_id, turn_index, winner, winner_model?, other_model?, changed, ...cost }
+  COMPARISON_CONTINUED:     'comparison_continued',     // { comparison_id, side, model, other_model, turns, carried_all, chose_winner?, ...cost }
+  // ...cost: cost_a_usd?, cost_b_usd?, cost_total_usd?, cost_partial, cost_stale?, tokens_a?, tokens_b?, cheaper_side?: 'a'|'b'|'same' (complete figures only)
+  // A message sent while a turn runs (ENG-4194). Never carries its text.
+  ADDON_ADDED:              'addon_added',              // { decided_by: 'jev'|'user', via: 'send'|'queue' } — joined the running task
+  ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
+  ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -780,6 +791,9 @@ export function trackTurnFailed(conversationId, event) {
 //   free_serving_paused       free MindsHub Air is paused for everyone by the
 //                             daily spend fuse; NOT paired with token_cap_hit,
 //                             because it is not this user's cap
+//   budget_exceeded           the org's spending budget is used up; "View
+//                             budgets" opens the Budgets tab. NOT paired with
+//                             token_cap_hit: credits do not lift a budget
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
 //   model_disabled            legacy admin-disabled model; credits do not unlock it
 //   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect
@@ -794,6 +808,9 @@ export function trackTurnFailed(conversationId, event) {
 //                             back included_allowance_exhausted
 //   free_air_paused_notice    Settings, after a minds-cloud provider test hit
 //                             the daily free-Air spend fuse; not this user's cap
+//   budget_notice             Settings, after a minds-cloud provider test came
+//                             back budget_exceeded, or the hint under a current
+//                             model the spent budget stops
 //   locked_model_hint         Settings, the "<model> needs credits" hint under a
 //                             model the wallet cannot pay for
 //   nav                       the Billing & Usage item in the user menu
@@ -867,6 +884,100 @@ export function trackCodeTaskStartFailed(origin, input, reason) {
     in_project: input ? Boolean(input.projectId) : undefined,
     code: (reason && typeof reason.code === 'string' && reason.code) || 'unknown',
     status: reason && typeof reason.status === 'number' ? reason.status : undefined,
+  });
+}
+
+// Compare Models, from first open to Continue: who finds it, which model pairs
+// people try, whether the cheaper side wins or ties, and whether a comparison
+// turns into a real task. Model ids, counts and costs only, never a prompt or
+// a title. `cost` is comparisonCostProps(usage) from lib/compareSides.
+let compareViewOpenedThisLaunch = false;
+export function trackCompareViewOpened() {
+  if (compareViewOpenedThisLaunch) return;
+  compareViewOpenedThisLaunch = true;
+  capture(EVENTS.COMPARE_VIEW_OPENED);
+}
+
+export function trackComparisonStarted(comparison, { fileCount = 0, exampleId = null } = {}) {
+  if (!comparison?.id) return;
+  const [a, b] = comparison.sides || [];
+  capture(EVENTS.COMPARISON_STARTED, {
+    comparison_id: comparison.id,
+    model_a: a?.model || 'unknown',
+    model_b: b?.model || 'unknown',
+    effort_a: a?.reasoningEffort || undefined,
+    effort_b: b?.reasoningEffort || undefined,
+    from_project: Boolean(comparison.sourceProjectId),
+    file_count: fileCount,
+    example_id: exampleId || undefined,
+  });
+}
+
+// Mid-task messages (ENG-4194). Ids and reasons only, never the text.
+export function trackAddonAdded(decidedBy, via) {
+  capture(EVENTS.ADDON_ADDED, { decided_by: decidedBy === 'user' ? 'user' : 'jev', via: via === 'queue' ? 'queue' : 'send' });
+}
+
+// Reasons are reported from a fixed list: the server's own reason strings are
+// not ours to forward as-is, and anything new reads as 'unknown'.
+const ADDON_QUEUED_REASONS = new Set([
+  // The app's own.
+  'empty', 'attachments', 'no_conversation', 'no_live_stream', 'turn_ending',
+  'not_found', 'unsupported', 'timeout', 'error', 'returned',
+  // The server's `queued` reasons.
+  'jev', 'next_task', 'low_confidence', 'new_request', 'jev_off', 'jev_error', 'jev_timeout',
+  'too_many', 'too_large', 'rate_limited', 'busy', 'internal', 'redis_error', 'pod_timeout',
+]);
+const ADDON_OVERRIDE_OUTCOMES = new Set([
+  'added', 'withdrawn', 'already_read', ...ADDON_QUEUED_REASONS,
+]);
+
+const allowed = (value, list) => (list.has(value) ? value : 'unknown');
+
+export function trackAddonQueued(reason) {
+  capture(EVENTS.ADDON_QUEUED, { reason: allowed(reason, ADDON_QUEUED_REASONS) });
+}
+
+export function trackAddonOverridden(direction, outcome, decidedBy) {
+  capture(EVENTS.ADDON_OVERRIDDEN, {
+    direction: direction === 'to_task' ? 'to_task' : 'to_queue',
+    outcome: allowed(outcome, ADDON_OVERRIDE_OUTCOMES),
+    ...(decidedBy ? { decided_by: decidedBy === 'user' ? 'user' : 'jev' } : {}),
+  });
+}
+
+export function trackComparisonFollowUpSent(comparisonId, target, turnIndex) {
+  if (!comparisonId) return;
+  capture(EVENTS.COMPARISON_FOLLOW_UP_SENT, { comparison_id: comparisonId, target, turn_index: turnIndex });
+}
+
+export function trackComparisonVerdictRecorded(comparisonId, { turnIndex, winner, models = {}, changed = false, cost = {} }) {
+  if (!comparisonId) return;
+  const picked = winner === 'a' || winner === 'b';
+  capture(EVENTS.COMPARISON_VERDICT_RECORDED, {
+    comparison_id: comparisonId,
+    turn_index: turnIndex,
+    winner,
+    winner_model: picked ? models[winner] : undefined,
+    other_model: picked ? models[winner === 'a' ? 'b' : 'a'] : undefined,
+    changed,
+    ...cost,
+    cheaper_won: picked && cost.cheaper_side && cost.cheaper_side !== 'same' ? cost.cheaper_side === winner : undefined,
+  });
+}
+
+export function trackComparisonContinued(comparisonId, { side, models = {}, turns, carriedAll, verdict = null, cost = {} }) {
+  if (!comparisonId) return;
+  capture(EVENTS.COMPARISON_CONTINUED, {
+    comparison_id: comparisonId,
+    side,
+    model: models[side],
+    other_model: models[side === 'a' ? 'b' : 'a'],
+    turns,
+    carried_all: carriedAll,
+    chose_winner: verdict === 'a' || verdict === 'b' ? verdict === side : undefined,
+    ...cost,
+    chose_cheaper: cost.cheaper_side && cost.cheaper_side !== 'same' ? cost.cheaper_side === side : undefined,
   });
 }
 
@@ -1153,6 +1264,7 @@ export function resetDeviceIdentity() {
   mergeInFlight.clear();
   // The next account's first Code visit is its own.
   codeViewOpenedThisLaunch = false;
+  compareViewOpenedThisLaunch = false;
   try {
     window.localStorage.removeItem(DEVICE_ID_KEY);
     window.localStorage.removeItem(IDENTITY_MERGED_KEY);

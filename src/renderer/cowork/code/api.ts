@@ -1,3 +1,4 @@
+import i18n from '../../lib/i18n';
 import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
 import type { RepositoryStatus, TaskRepositorySetup } from './repositorySetupModels';
@@ -772,12 +773,12 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
     if (!isElectron || (method !== 'GET' && method !== 'HEAD')) throw error;
     const recovered = await serverStart();
     if (!recovered.running) {
-      throw new Error(recovered.error || 'The local Code service could not start.');
+      throw new Error(recovered.error || i18n.t('api.serviceStartFailed', { ns: 'code' }));
     }
     response = await fetch(url, request);
   }
   if (!response.ok) {
-    let detail = `Coding request failed (${response.status})`;
+    let detail = i18n.t('api.requestFailed', { ns: 'code', status: String(response.status) });
     try {
       const body = await response.json();
       if (typeof body?.detail === 'string') detail = body.detail;
@@ -785,7 +786,7 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
       // Preserve the status-based message when an intermediary returns HTML.
     }
     if (response.status === 404 && detail === 'Not Found') {
-      detail = 'This desktop build is connected to an older backend that does not support Code Mode. Restart the app with the matching cowork-server build.';
+      detail = i18n.t('api.outdatedBackend', { ns: 'code' });
     }
     const error = new Error(detail) as CodingRequestError;
     error.status = response.status;
@@ -803,7 +804,7 @@ async function ensureCodeService(): Promise<void> {
   if (!isElectron) return;
   const result = await serverStart();
   if (!result.running) {
-    throw new Error(result.error || 'The local Code service could not start.');
+    throw new Error(result.error || i18n.t('api.serviceStartFailed', { ns: 'code' }));
   }
 }
 
@@ -1023,10 +1024,12 @@ export function openCodingEventStream(
   after: number,
   onEvent: (event: CodingEvent) => void,
   onError: () => void,
+  onOpen?: () => void,
 ): () => void {
   if (fixtureCodingApi) return () => {};
   const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/stream?after=${after}`;
   const source = new EventSource(url);
+  if (onOpen) source.onopen = onOpen;
   source.addEventListener('coding-event', (raw) => {
     try {
       const parsed: unknown = JSON.parse((raw as MessageEvent).data);

@@ -4,6 +4,7 @@ import Ico from './Icons';
 import { Badge } from './ui';
 import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import { useTranslation } from '../../lib/i18n';
 
 // Mobile chrome for the cowork SPA. Active at viewport widths < 640px
 // (see useBreakpoint.isMobile). Replaces the desktop sidebar + main
@@ -11,24 +12,26 @@ import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 // Views (HomeView, ChatView, ProjectsView, etc.) render unchanged
 // inside `children` — only the chrome around them swaps.
 
+// `label` is a message key; translated at render.
 const SECTIONS = [
-  { key: 'projects',  label: 'Projects',       route: 'projects' },
-  { key: 'scheduled', label: 'Scheduled Tasks', route: 'scheduled' },
-  { key: 'artifacts', label: 'Live Artifacts',  route: 'artifacts' },
-  { key: 'tasks',     label: 'Tasks',           route: 'tasks' },
+  { key: 'projects',  label: 'sidebar.nav.projects',  route: 'projects' },
+  { key: 'scheduled', label: 'sidebar.nav.scheduled', route: 'scheduled' },
+  { key: 'artifacts', label: 'sidebar.nav.artifacts', route: 'artifacts' },
+  { key: 'tasks',     label: 'mobile.tasks',          route: 'tasks' },
 ];
 
-function titleForRoute(route, { selectedProject, currentTask } = {}) {
-  if (route === 'home') return selectedProject?.name ? `New task · ${projectLabel(selectedProject)}` : 'New task';
-  if (route === 'task') return currentTask?.title || 'Conversation';
-  if (route === 'projects') return projectLabel(selectedProject) || 'Projects';
-  if (route === 'scheduled' || route === 'schedule-detail') return 'Scheduled';
-  if (route === 'artifacts') return 'Artifacts';
-  if (route === 'tasks') return 'Tasks';
-  if (route === 'customize') return 'Connect';
-  if (route === 'settings') return 'Settings';
-  if (route === 'memory') return 'Memories';
-  if (route === 'skills') return 'Skills';
+function titleForRoute(t, route, { selectedProject, currentTask } = {}) {
+  if (route === 'home') return selectedProject?.name ? t('mobile.titles.newTaskIn', { project: projectLabel(selectedProject) }) : t('sidebar.newTask');
+  if (route === 'task') return currentTask?.title || t('mobile.titles.conversation');
+  if (route === 'projects') return projectLabel(selectedProject) || t('sidebar.nav.projects');
+  if (route === 'scheduled' || route === 'schedule-detail') return t('mobile.titles.scheduled');
+  if (route === 'artifacts') return t('rail.artifacts.title');
+  if (route === 'tasks') return t('mobile.tasks');
+  if (route === 'customize') return t('mobile.titles.connect');
+  if (route === 'settings') return t('sidebar.settings');
+  if (route === 'memory') return t('sidebar.nav.memories');
+  if (route === 'skills') return t('sidebar.nav.skills');
+  if (route === 'compare') return t('sidebar.nav.compare');
   return productName(STOCK_PRODUCT_NAME);
 }
 
@@ -97,6 +100,8 @@ export default function MobileShell({
   onNewProject,          // () — open the "New project" modal (via projects route)
   navTitle = null,       // Settings → Appearance → Sidebar title override
   navLogo = null,        // Settings → Appearance → Sidebar logo override
+  navLogoWide = false,   // the org's wordmark logo, not a square icon
+  navTitleHidden = false, // the org chose logo only: no title, not even the product name
   // Top-bar theme toggle, opposite the hamburger — the desktop
   // floating-toggle-row has no room on mobile, and the coding-mode toggle
   // that sits beside it there is dropped entirely rather than given a
@@ -106,6 +111,7 @@ export default function MobileShell({
   onToggleTheme,
   children,
 }) {
+  const { t } = useTranslation('shell');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [openSection, setOpenSection] = useState(null);
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
@@ -190,7 +196,7 @@ export default function MobileShell({
     onNewTask?.();
   }, [closeDrawer, onNewTask]);
 
-  const title = titleForRoute(route, { selectedProject, currentTask });
+  const title = titleForRoute(t, route, { selectedProject, currentTask });
 
   // FAB is the universal "create" affordance on mobile. Hidden on:
   //   • 'task'      — the chat composer already covers "new message".
@@ -208,7 +214,7 @@ export default function MobileShell({
         <button
           type="button"
           className={`mshell__hamburger ${drawerOpen ? 'is-open' : ''}`}
-          aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
+          aria-label={drawerOpen ? t('mobile.closeMenu') : t('mobile.openMenu')}
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen((v) => !v)}
         >
@@ -223,7 +229,7 @@ export default function MobileShell({
           <button
             type="button"
             className="mshell__theme-toggle"
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={theme === 'dark' ? t('mobile.switchToLight') : t('mobile.switchToDark')}
             onClick={onToggleTheme}
           >
             {theme === 'dark' ? Ico.sun(16) : Ico.moon(16)}
@@ -256,9 +262,9 @@ export default function MobileShell({
             >
               <span className="mshell__fab-menu-icon">{Ico.plus(16)}</span>
               <span className="mshell__fab-menu-text">
-                <span className="mshell__fab-menu-primary">New task</span>
+                <span className="mshell__fab-menu-primary">{t('sidebar.newTask')}</span>
                 {fabProject && (
-                  <span className="mshell__fab-menu-secondary">in {fabProject.name}</span>
+                  <span className="mshell__fab-menu-secondary">{t('mobile.inProject', { project: fabProject.name })}</span>
                 )}
               </span>
             </button>
@@ -273,14 +279,14 @@ export default function MobileShell({
             >
               <span className="mshell__fab-menu-icon">{Ico.folder(16)}</span>
               <span className="mshell__fab-menu-text">
-                <span className="mshell__fab-menu-primary">New project</span>
+                <span className="mshell__fab-menu-primary">{t('mobile.newProject')}</span>
               </span>
             </button>
           </div>
           <button
             type="button"
             className={`mshell__fab ${fabMenuOpen ? 'is-open' : ''}`}
-            aria-label={fabMenuOpen ? 'Close create menu' : 'Create new'}
+            aria-label={fabMenuOpen ? t('mobile.closeCreateMenu') : t('mobile.createNew')}
             aria-expanded={fabMenuOpen}
             aria-haspopup="menu"
             onClick={() => setFabMenuOpen((v) => !v)}
@@ -303,14 +309,14 @@ export default function MobileShell({
         <div className="mshell__drawer-head">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             {(navLogo || brandLogoUrl()) && (
-              <img src={navLogo || brandLogoUrl()} alt="" aria-hidden="true" className="mshell__drawer-logo" />
+              <img src={navLogo || brandLogoUrl()} alt="" aria-hidden="true" className={navLogoWide ? 'mshell__drawer-logo mshell__drawer-logo--wide' : 'mshell__drawer-logo'} />
             )}
-            <span className="mshell__drawer-title">{navTitle || productName(STOCK_PRODUCT_NAME)}</span>
+            {!navTitleHidden && <span className="mshell__drawer-title">{navTitle || productName(STOCK_PRODUCT_NAME)}</span>}
           </div>
           <button
             type="button"
             className="mshell__close"
-            aria-label="Close menu"
+            aria-label={t('mobile.closeMenu')}
             onClick={closeDrawer}
           >
             {Ico.close(16)}
@@ -328,8 +334,8 @@ export default function MobileShell({
               onClick={() => handleNavigate('home')}
             >
               <span className="mshell-row__text">
-                <span className="mshell-row__primary">Chat</span>
-                <span className="mshell-row__secondary">Start or continue a conversation</span>
+                <span className="mshell-row__primary">{t('mobile.chat')}</span>
+                <span className="mshell-row__secondary">{t('mobile.chatSubtitle')}</span>
               </span>
               <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
             </button>
@@ -342,7 +348,7 @@ export default function MobileShell({
             if (section.key === 'projects') {
               count = projectsList.length;
               content = projectsList.length === 0 ? (
-                <div className="mshell-empty">No projects yet.</div>
+                <div className="mshell-empty">{t('mobile.noProjects')}</div>
               ) : projectsList.map((p) => {
                 const projTasks = tasksForProject(tasksList, p);
                 return (
@@ -350,8 +356,8 @@ export default function MobileShell({
                     key={p.name || p.path}
                     primary={projectLabel(p) || p.path}
                     secondary={projTasks.length === 0
-                      ? 'Tap to start chatting'
-                      : `${projTasks.length} ${projTasks.length === 1 ? 'task' : 'tasks'}`}
+                      ? t('mobile.tapToStart')
+                      : t('mobile.taskCount', { count: projTasks.length })}
                     onClick={() => handleProjectTap(p)}
                   />
                 );
@@ -359,11 +365,11 @@ export default function MobileShell({
             } else if (section.key === 'scheduled') {
               count = schedulesList.length;
               content = schedulesList.length === 0 ? (
-                <div className="mshell-empty">No scheduled tasks.</div>
+                <div className="mshell-empty">{t('mobile.noScheduled')}</div>
               ) : schedulesList.map((s) => (
                 <ListRow
                   key={s.id}
-                  primary={s.title || s.name || 'Schedule'}
+                  primary={s.title || s.name || t('mobile.schedule')}
                   secondary={s.cron || s.schedule || ''}
                   onClick={() => handleScheduleTap(s.id)}
                 />
@@ -371,11 +377,11 @@ export default function MobileShell({
             } else if (section.key === 'artifacts') {
               count = artifactsList.length;
               content = artifactsList.length === 0 ? (
-                <div className="mshell-empty">No live artifacts.</div>
+                <div className="mshell-empty">{t('mobile.noArtifacts')}</div>
               ) : (
                 <ListRow
-                  primary="View all artifacts"
-                  secondary={`${artifactsList.length} total`}
+                  primary={t('mobile.viewAllArtifacts')}
+                  secondary={t('mobile.total', { count: artifactsList.length })}
                   onClick={() => handleNavigate('artifacts')}
                 />
               );
@@ -385,20 +391,20 @@ export default function MobileShell({
               const recent = tasksList.slice(0, 12);
               count = tasksList.length;
               content = recent.length === 0 ? (
-                <div className="mshell-empty">No tasks yet.</div>
+                <div className="mshell-empty">{t('mobile.noTasks')}</div>
               ) : (
                 <>
-                  {recent.map((t) => (
+                  {recent.map((task) => (
                     <ListRow
-                      key={t.id}
-                      primary={t.title || 'Untitled task'}
-                      secondary={projectLabelByName(projects, t.projectName) || ''}
-                      onClick={() => handleTaskTap(t.id)}
+                      key={task.id}
+                      primary={task.title || t('mobile.untitledTask')}
+                      secondary={projectLabelByName(projects, task.projectName) || ''}
+                      onClick={() => handleTaskTap(task.id)}
                     />
                   ))}
                   {tasksList.length > recent.length && (
                     <ListRow
-                      primary="See all tasks"
+                      primary={t('mobile.seeAllTasks')}
                       onClick={() => handleNavigate('tasks')}
                     />
                   )}
@@ -409,7 +415,7 @@ export default function MobileShell({
               <AccordionRow
                 key={section.key}
                 open={isOpen}
-                label={section.label}
+                label={t(section.label)}
                 count={count}
                 onToggle={() => handleSectionTap(section)}
               >
@@ -431,7 +437,7 @@ export default function MobileShell({
               className="mshell-accordion__head"
               onClick={() => handleNavigate('customize')}
             >
-              <span className="mshell-accordion__label">Connect Apps and Data</span>
+              <span className="mshell-accordion__label">{t('sidebar.nav.connectApps')}</span>
               <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
             </button>
           </div>
@@ -444,7 +450,7 @@ export default function MobileShell({
               className="mshell-accordion__head"
               onClick={() => handleNavigate('settings')}
             >
-              <span className="mshell-accordion__label">Settings</span>
+              <span className="mshell-accordion__label">{t('sidebar.settings')}</span>
               <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
             </button>
           </div>

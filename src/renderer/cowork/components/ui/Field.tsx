@@ -1,6 +1,7 @@
 import { cloneElement, isValidElement, useId } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { cn } from '../../lib/cn';
+import { useTranslation } from '../../../lib/i18n';
 
 // Form field wrapper — standardizes the label + control + help/error layout
 // and the `htmlFor` / `aria-describedby` / `aria-invalid` wiring that ~10+
@@ -39,6 +40,7 @@ export interface FieldProps {
 }
 
 export function Field({ label, help, error, required, optional, heading, htmlFor, children, className }: FieldProps) {
+  const { t } = useTranslation('shell');
   const generatedId = useId();
 
   // Wire id + aria onto a single control child. Anything that isn't a single
@@ -88,7 +90,7 @@ export function Field({ label, help, error, required, optional, heading, htmlFor
         <label htmlFor={controlId} className={heading ? headingClass : 'mb-1.5 text-sm font-medium text-ink-2'}>
           {label}
           {required && <span className="text-danger"> *</span>}
-          {optional && <span className="font-normal text-ink-4"> (optional)</span>}
+          {optional && <span className="font-normal text-ink-4"> {t('ui.field.optional')}</span>}
         </label>
       )}
       {control}

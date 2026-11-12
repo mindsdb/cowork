@@ -5,6 +5,7 @@ import { Textarea } from '../components/ui/Input';
 import Kbd from '../components/ui/Kbd';
 import { ConfirmModal } from '../components/ConfirmModal';
 import type { DiffFile } from './api';
+import { useTranslation } from '../../lib/i18n';
 
 export type ReviewFileAction = 'stage' | 'unstage' | 'discard';
 
@@ -21,6 +22,7 @@ export function FileReviewControls({
   onAgentNote: (note: string) => Promise<void>;
   selectionLabel?: string;
 }) {
+  const { t } = useTranslation('code');
   const [commenting, setCommenting] = useState(false);
   const [note, setNote] = useState('');
   const [discardOpen, setDiscardOpen] = useState(false);
@@ -47,15 +49,15 @@ export function FileReviewControls({
   return (
     <div className="code-file-review">
       <div className="code-file-review__toolbar">
-        <span className={`code-file-review__state${file.staged ? ' is-staged' : ''}`}>{selectionLabel || (file.staged ? 'Staged' : file.unstaged ? 'Unstaged' : 'Committed')}</span>
+        <span className={`code-file-review__state${file.staged ? ' is-staged' : ''}`}>{selectionLabel || (file.staged ? t('fileReview.staged') : file.unstaged ? t('fileReview.unstaged') : t('fileReview.committed'))}</span>
         <div className="code-file-review__actions">
-          {file.unstaged && <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => void run(() => onAction('stage'))}>Stage</Button>}
-          {file.staged && <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => void run(() => onAction('unstage'))}>Unstage</Button>}
+          {file.unstaged && <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => void run(() => onAction('stage'))}>{t('fileReview.stage')}</Button>}
+          {file.staged && <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => void run(() => onAction('unstage'))}>{t('fileReview.unstage')}</Button>}
           <Button size="xs" variant="subtle" disabled={busy || localBusy} onClick={() => setCommenting((current) => !current)}>
-            {Ico.code(12)} Ask Codex
+            {Ico.code(12)} {t('fileReview.askCodex')}
           </Button>
           {canMutate && (
-            <Button icon size="xs" variant="danger" aria-label={`Discard changes to ${file.path}`} disabled={busy || localBusy} onClick={() => setDiscardOpen(true)}>
+            <Button icon size="xs" variant="danger" aria-label={t('fileReview.discardAriaLabel', { path: file.path })} disabled={busy || localBusy} onClick={() => setDiscardOpen(true)}>
               {Ico.trash(12)}
             </Button>
           )}
@@ -67,8 +69,8 @@ export function FileReviewControls({
             value={note}
             rows={3}
             autoFocus
-            aria-label={`Review note for ${file.path}`}
-            placeholder="What should change in this file?"
+            aria-label={t('fileReview.noteAriaLabel', { path: file.path })}
+            placeholder={t('fileReview.notePlaceholder')}
             onChange={setNote}
             onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
               if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') void sendNote();
@@ -76,17 +78,17 @@ export function FileReviewControls({
             }}
           />
           <div>
-            <span><Kbd>Ctrl/⌘</Kbd> <Kbd>↵</Kbd> to send</span>
-            <Button size="xs" variant="subtle" disabled={localBusy} onClick={() => setCommenting(false)}>Cancel</Button>
-            <Button size="xs" variant="tinted" disabled={!note.trim() || localBusy} onClick={() => void sendNote()}>Send to Codex</Button>
+            <span><Kbd>Ctrl/⌘</Kbd> <Kbd>↵</Kbd> {t('fileReview.toSend')}</span>
+            <Button size="xs" variant="subtle" disabled={localBusy} onClick={() => setCommenting(false)}>{t('fileReview.cancel')}</Button>
+            <Button size="xs" variant="tinted" disabled={!note.trim() || localBusy} onClick={() => void sendNote()}>{t('fileReview.sendToCodex')}</Button>
           </div>
         </div>
       )}
       <ConfirmModal
         open={discardOpen}
-        title="Discard this file’s changes?"
-        message={`${file.path} will return to the current task version. This cannot be undone.`}
-        confirmLabel="Discard changes"
+        title={t('fileReview.discardConfirm.title')}
+        message={t('fileReview.discardConfirm.message', { path: file.path })}
+        confirmLabel={t('fileReview.discardConfirm.confirm')}
         destructive
         busy={localBusy}
         onClose={() => setDiscardOpen(false)}

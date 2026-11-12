@@ -11,6 +11,7 @@ import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 import { Tooltip } from './cowork/components/ui/Tooltip';
 import { host, type AccountOwnershipQuestion, type ShellAutoUpdateSnapshot } from './platform/host';
 import { ShellTooOldNotice } from './ShellTooOldNotice';
+import { ShellOsCappedNotice } from './ShellOsCappedNotice';
 import type { ShellSupportVerdict } from '../shared/shell-support';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
@@ -25,6 +26,7 @@ import { deriveBootStatus } from '../shared/boot-status';
 import { PLATFORM_UI } from './lib/deployment';
 import { checkServiceReady } from './lib/serviceReady';
 import ServiceUnavailable from './ServiceUnavailable';
+import { sharedTranslator, useTranslation } from './lib/i18n';
 import './styles.css';
 
 // Onboarding flow:
@@ -70,6 +72,7 @@ function MoonIcon({ size = 16 }: { size?: IconSize }) {
 }
 
 export default function App() {
+  const { t } = useTranslation('app');
   // Code fixtures are a development-only visual QA surface. Let them bypass
   // first-run/auth routing so interrupted, approval, failure, dense, and
   // responsive states stay deterministic even on a clean local profile.
@@ -102,7 +105,7 @@ export default function App() {
   // stranded shell update.
   const [otaPhase, setOtaPhase] = useState<string | null>(null);
   const [shellAuto, setShellAuto] = useState<ShellAutoUpdateSnapshot | null>(null);
-  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase }, shell: { phase: shellAuto?.phase ?? null } });
+  const bootStatus = deriveBootStatus({ ota: { phase: otaPhase }, shell: { phase: shellAuto?.phase ?? null } }, sharedTranslator('app'));
   // ENG-1047: is the installed shell inside the supported desktop window? The
   // UI hot-updates while the shell waits for a relaunch, so a newer UI on a
   // shell weeks old is routine — and until now silent. Resolved once per
@@ -110,6 +113,7 @@ export default function App() {
   // Dismissal is this mount's state only, so the notice is back next launch.
   const [shellSupport, setShellSupport] = useState<ShellSupportVerdict | null>(null);
   const [tooOldDismissed, setTooOldDismissed] = useState(false);
+  const [osCappedDismissed, setOsCappedDismissed] = useState(false);
   useEffect(() => {
     let cancelled = false;
     host.getShellSupport()
@@ -326,8 +330,8 @@ export default function App() {
       // the history was theirs, with nothing said about why it is not.
       setOwnershipError(
         reason === 'account-changed'
-          ? 'The signed-in account changed. Sign in again to answer this.'
-          : 'Could not take that data. Nothing was changed — try again.',
+          ? t('ownership.accountChanged')
+          : t('ownership.claimFailed'),
       );
       return;
     }
@@ -338,7 +342,7 @@ export default function App() {
     // screen, and the conversation caches behind it, came from the other
     // database.
     window.location.reload();
-  }, [ownership]);
+  }, [ownership, t]);
 
   const isMac = host.isMac();
   const isArcadePage = page !== 'terminal';
@@ -379,6 +383,14 @@ export default function App() {
         />
       )}
 
+      {page !== 'loading' && shellSupport?.status === 'os-capped' && !osCappedDismissed && (
+        <ShellOsCappedNotice
+          verdict={shellSupport}
+          onDismiss={() => setOsCappedDismissed(true)}
+          topOffset={isMac ? 40 : 12}
+        />
+      )}
+
       {page === 'auth' && (
         PLATFORM_UI
           ? <OnboardingScreen onComplete={handleAuthComplete} />
@@ -393,16 +405,16 @@ export default function App() {
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 18, padding: 24, textAlign: 'center' }}
         >
           <OrbitMorph state="thinking" size={72} />
-          <div className="arc-welcome-title">Couldn't finish setup</div>
+          <div className="arc-welcome-title">{t('shell.setupErrorTitle')}</div>
           <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)', maxWidth: 380 }}>
-            Your provider is saved, but we couldn't apply your model. Check your connection, then try again.
+            {t('shell.setupErrorBody')}
           </div>
           <button
             className="arc-btn"
             disabled={retrying}
             onClick={async () => { setRetrying(true); try { await handlePostAuth(); } finally { setRetrying(false); } }}
           >
-            {retrying ? 'Retrying…' : 'Retry'}
+            {retrying ? t('shell.retrying') : t('shell.retry')}
           </button>
         </div>
       )}
@@ -419,10 +431,10 @@ export default function App() {
           prior visit) still renders in it, there's just no control to
           switch into/out of it from onboarding. */}
       {isArcadePage && (
-        <Tooltip content={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
+        <Tooltip content={theme === 'dark' ? t('shell.switchToLight') : t('shell.switchToDark')}>
           <button
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            aria-label="Toggle colour theme"
+            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            aria-label={t('shell.toggleTheme')}
             className="arcade-theme-toggle"
             style={{ zIndex: 200 }}
           >

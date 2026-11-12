@@ -11,6 +11,17 @@
 
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
+import i18n, { currentLocale } from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.usage.${key}`, { ns: 'projects', ...vars });
+
+/* The viewer's locale for dates and times; English (and the pseudo-locale)
+   format as en-US, as they always have. */
+function dateLocale() {
+  const locale = currentLocale();
+  return locale === 'en' || locale === 'en-XA' ? 'en-US' : locale;
+}
 
 // Free tokens read as "running low" once this fraction or less remains. The
 // console alerts at 80% used; this is the same line from the other side.
@@ -26,11 +37,11 @@ export const FREE_TOKENS_LOW_FRACTION = 0.2;
 const FREE_DISMISS_STEPS_FRACTION = [FREE_TOKENS_LOW_FRACTION, 0.1, 0.05];
 
 export const USAGE_ACTIONS = Object.freeze({
-  viewUsage: { key: 'viewUsage', label: 'View usage' },
-  addFunds: { key: 'addFunds', label: 'Add funds' },
-  setUpAutoTopUp: { key: 'setUpAutoTopUp', label: 'Set up auto top up' },
-  manageAutoTopUp: { key: 'manageAutoTopUp', label: 'Manage auto top up' },
-  updatePaymentMethod: { key: 'updatePaymentMethod', label: 'Update payment method' },
+  viewUsage: { key: 'viewUsage', get label() { return tr('actions.viewUsage'); } },
+  addFunds: { key: 'addFunds', get label() { return tr('actions.addFunds'); } },
+  setUpAutoTopUp: { key: 'setUpAutoTopUp', get label() { return tr('actions.setUpAutoTopUp'); } },
+  manageAutoTopUp: { key: 'manageAutoTopUp', get label() { return tr('actions.manageAutoTopUp'); } },
+  updatePaymentMethod: { key: 'updatePaymentMethod', get label() { return tr('actions.updatePaymentMethod'); } },
 });
 
 /** Where an action opens in the console. Every wallet control the console
@@ -61,6 +72,23 @@ function dismissStep(value, marks) {
 /** Which step of the low band a balance sits in: $18 is 0, $9 is 1, $0.50 is 4. */
 export function balanceDismissStep(usd) {
   return dismissStep(usd, BALANCE_DISMISS_STEPS_USD);
+}
+
+/* Below this balance the wallet is worth a word to someone who did not pick a
+   paid model, that is the router or Air running on the wallet once the free
+   allowance is used up (ENG-4188). Above it they just keep working: the
+   allowance running out changes nothing they need to act on, and saying so
+   every five hours trains them to ignore the bar. An explicit paid pick still
+   hears from auth's own low line ($20), since every turn it sends is billed. */
+export const AIR_ON_BALANCE_WARN_USD = 5;
+
+/** Whether the wallet comfortably carries MindsHub Air once the allowance is
+ *  gone: AIR_ON_BALANCE_WARN_USD or more, or an auto top up that is working
+ *  and will refill it. Nothing to tell such an account (ENG-4188). */
+export function balanceCarriesAir(balance, autoTopUp) {
+  if (!balance || isBalanceEmpty(balance)) return false;
+  if (autoTopUp?.enabled && autoTopUp.status === 'ok') return true;
+  return Number(balance.usd) >= AIR_ON_BALANCE_WARN_USD;
 }
 
 /** How far down the allowance has stepped, from the fraction still left: 40%
@@ -99,7 +127,7 @@ export function formatResetDate(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric' });
 }
 
 /** When the allowance next refills, on the viewer's clock: "2:15 PM", or
@@ -115,12 +143,12 @@ export function formatResetTime(iso, now = new Date()) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   if (d.getTime() <= now.getTime()) return null;
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const time = d.toLocaleTimeString(dateLocale(), { hour: 'numeric', minute: '2-digit' });
   const sameLocalDay = d.getFullYear() === now.getFullYear()
     && d.getMonth() === now.getMonth()
     && d.getDate() === now.getDate();
   if (sameLocalDay) return time;
-  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
+  return `${d.toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
 // `available`: Air can run on the free tokens right now. -1 is auth's uncapped
@@ -148,6 +176,11 @@ function freeState(free) {
    the same way. It names no cause and no size. */
 export const NO_FREE_GRANT_SENTENCE =
   'This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.';
+
+/** NO_FREE_GRANT_SENTENCE in the viewer's language. */
+export function noFreeGrantSentence() {
+  return tr('noFreeGrant');
+}
 
 /**
  * @typedef {'has_room' | 'spent' | 'no_grant' | 'no_figure'} FreeAllowanceStatus
@@ -201,13 +234,10 @@ export function isBalanceEmpty(balance) {
 export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   const free = freeAllowanceState(usage);
   if (free.status === 'no_grant') {
-    return `${NO_FREE_GRANT_SENTENCE} Your balance is empty, so add funds to continue.`;
+    return tr('allowanceStop.noGrant', { noGrant: noFreeGrantSentence() });
   }
-  const stopped = 'Your free MindsHub Air allowance is used up and your balance is empty.';
   const time = formatResetTime(resetAt || free.resetsAt);
-  return time
-    ? `${stopped} Add funds to keep working, or wait for it to refill at ${time}.`
-    : `${stopped} Add funds to keep working.`;
+  return time ? tr('allowanceStop.withTime', { time }) : tr('allowanceStop.noTime');
 }
 
 /** What a stop on auth's daily free-Air spend fuse says (`free_serving_paused`
@@ -217,8 +247,18 @@ export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
  *  from a cowork-server that predates it, say) the sentence names the event
  *  instead. */
 export function freeServingPausedCopy(resetAt) {
-  const until = formatResetTime(resetAt) || 'the daily budget resets';
-  return `Free MindsHub Air is paused for everyone until ${until}. This doesn't use your allowance. Add funds to keep working now.`;
+  const until = formatResetTime(resetAt);
+  return until ? tr('freeServingPaused.until', { until }) : tr('freeServingPaused.dailyReset');
+}
+
+/** What a stop on the org's spent budget says (`budget_exceeded`), after a
+ *  lead naming the budget, for the stopped-task card and the Settings notice.
+ *  Credits do not lift it, so it never asks for funds; Air is named only while
+ *  the hub read shows its free allowance has room. */
+export function budgetExceededCopy({ usage = null } = {}) {
+  return freeAllowanceState(usage).status === 'has_room'
+    ? tr('budgetExceeded.airHasRoom')
+    : tr('budgetExceeded.raise');
 }
 
 /** Whether a bar descriptor is something to WARN about, as opposed to the
@@ -240,9 +280,10 @@ function isExplicitPaidModel(model) {
   return !!model && model !== MINDSHUB_AIR_MODEL_ID && model !== MODEL_ROUTER_ID;
 }
 
-function resetClause(free, lead) {
+/* `${key}WithTime` with the refill time, or `${key}` when none is quotable. */
+function withResetTime(free, key, vars) {
   const time = formatResetTime(free?.resetsAt);
-  return time ? `${lead} at ${time}` : lead;
+  return time ? tr(`${key}WithTime`, { ...vars, time }) : tr(key, vars);
 }
 
 /* The standing allowance figure: what the bar says when nothing is wrong, to
@@ -254,21 +295,21 @@ function resetClause(free, lead) {
    useStandingFigureHidden for how long that holds. */
 function restingFigure(free, f, { balanceEmpty = false } = {}) {
   const resets = formatResetTime(free.resetsAt);
-  let body = resets ? `Resets at ${resets}.` : 'Air runs on these until they are used up.';
+  let body = resets ? tr('resting.resetsAt', { time: resets }) : tr('resting.noReset');
   const actions = [USAGE_ACTIONS.viewUsage];
   // An empty wallet is true and actionable from the moment it empties, so it
   // is said here rather than appearing as a surprise clause on the warning
   // once the grant crosses 20%. The tone stays neutral: while the grant can
   // still pay, nothing is blocked and this is not a stop sign.
   if (balanceEmpty) {
-    body += ' Your balance is empty.';
+    body += ` ${tr('balanceEmptySentence')}`;
     actions.push(USAGE_ACTIONS.addFunds);
   }
   return {
     kind: 'free_at_rest',
     tone: 'resting',
     resting: true,
-    title: `${formatPercentShort(f.fractionLeft)} of your free allowance left`,
+    title: tr('percentLeft', { percent: formatPercentShort(f.fractionLeft) }),
     body,
     actions,
   };
@@ -320,20 +361,20 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     return {
       kind: 'auto_top_up_failed',
       tone: 'danger',
-      title: 'Auto top up failed',
-      body: "We couldn't charge your card. Add funds or update your payment method.",
+      title: tr('autoTopUpFailed.title'),
+      body: tr('autoTopUpFailed.body'),
       actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.updatePaymentMethod],
     };
   }
 
   if (balanceEmptyStopsNextTask) {
     const body = freeInUse && f.out
-      ? `Your free allowance is used up too. Add funds, or wait for it to ${resetClause(free, 'refill')}.`
-      : 'Add funds to start another task.';
+      ? withResetTime(free, 'balanceEmpty.freeUsedToo')
+      : tr('balanceEmpty.body');
     return {
       kind: 'balance_empty',
       tone: 'danger',
-      title: 'Balance empty',
+      title: tr('balanceEmpty.title'),
       body,
       actions: auto?.enabled
         ? [USAGE_ACTIONS.addFunds]
@@ -341,17 +382,19 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     };
   }
 
-  if (balanceLow && paidInUse) {
-    const title = 'Balance running low';
+  // Only an explicit paid pick hears about the balance from auth's $20 line;
+  // the router and Air wait until it is actually short (ENG-4188).
+  if (balanceLow && paidInUse && (isPaidModel || !balanceCarriesAir(balance, auto))) {
+    const title = tr('balanceLow.title');
     // Closing the bar hides this step only; the next step down asks again.
     const dismissKey = `balance_low:${balanceDismissStep(balance.usd)}`;
     if (auto?.enabled && auto.status === 'ok') {
       const target = auto.rechargeToUsd != null ? formatUsd(auto.rechargeToUsd) : null;
       const floor = auto.thresholdUsd != null ? formatUsd(auto.thresholdUsd) : null;
-      const detail = target && floor
-        ? `Auto top up refills it to ${target} when it drops below ${floor}.`
-        : 'Auto top up will cover it.';
-      return { kind: 'balance_low', dismissKey, tone: 'warning', title, body: `${usd} left. ${detail}`, actions: [] };
+      const body = target && floor
+        ? tr('balanceLow.autoRefills', { usd, target, floor })
+        : tr('balanceLow.autoCovers', { usd });
+      return { kind: 'balance_low', dismissKey, tone: 'warning', title, body, actions: [] };
     }
     if (auto?.enabled && auto.status === 'pending_action') {
       return {
@@ -359,7 +402,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
         dismissKey,
         tone: 'warning',
         title,
-        body: `${usd} left. Auto top up is waiting on your bank.`,
+        body: tr('balanceLow.autoPending', { usd }),
         actions: [],
       };
     }
@@ -369,7 +412,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
         dismissKey,
         tone: 'warning',
         title,
-        body: `${usd} left and auto top up is paused to stay within its monthly cap. Add funds to keep going.`,
+        body: tr('balanceLow.autoCapReached', { usd }),
         actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.manageAutoTopUp],
       };
     }
@@ -378,30 +421,39 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       dismissKey,
       tone: 'warning',
       title,
-      body: `${usd} left. Add funds or turn on auto top up.`,
+      body: tr('balanceLow.body', { usd }),
       actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.setUpAutoTopUp],
     };
   }
 
+  // A healthy wallet just carries Air until the refill: no bar (ENG-4188).
+  if (freeInUse && f.out && balanceCarriesAir(balance, auto)) return null;
+
   if (freeInUse && f.out) {
-    const left = usd ? ` (${usd} left)` : '';
     return {
       kind: 'free_used',
       tone: 'info',
-      title: 'Free allowance used up',
-      body: `MindsHub Air is on your balance${left} until your allowance ${resetClause(free, 'refills')}.`,
+      title: tr('freeUsed.title'),
+      body: usd ? withResetTime(free, 'freeUsed.bodyWithUsd', { usd }) : withResetTime(free, 'freeUsed.body'),
       actions: [USAGE_ACTIONS.viewUsage],
     };
   }
 
+  // The allowance running low is not news to someone whose balance carries
+  // Air past it: that is what the balance is for (ENG-4208, as ENG-4188 did
+  // for the allowance running out).
+  if (freeInUse && f.low && balanceCarriesAir(balance, auto)) return null;
+
   if (freeInUse && f.low) {
-    let body = `After that, MindsHub Air uses your balance ${resetClause(free, 'until your allowance refills')}.`;
+    let body = withResetTime(free, 'freeLow.body');
     const actions = [USAGE_ACTIONS.viewUsage];
     if (balanceEmpty) {
-      body += ' Your balance is empty.';
+      body += ` ${tr('balanceEmptySentence')}`;
       actions.push(USAGE_ACTIONS.addFunds);
-    } else if (balanceLow) {
-      body += ` Your balance is low too (${usd}).`;
+    } else if (balanceUsable) {
+      // Past the return above, a usable balance is under the line: say how
+      // much cash is left, since that is what runs out next.
+      body += ` ${tr('freeLow.balanceLowToo', { usd })}`;
       actions.push(USAGE_ACTIONS.addFunds);
     }
     return {
@@ -415,7 +467,7 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       // most. With a balance to fall through to there is no figure to step
       // down to, so the close hides the bar until the next step asks again.
       ...(balanceUsable ? {} : { whenDismissed: restingFigure(free, f, { balanceEmpty }) }),
-      title: `${formatPercentShort(f.fractionLeft)} of your free allowance left`,
+      title: tr('percentLeft', { percent: formatPercentShort(f.fractionLeft) }),
       body,
       actions,
     };
@@ -458,7 +510,8 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   const before = freeState(prev.freeTokens);
   const after = freeState(next.freeTokens);
   const spendsFree = !isExplicitPaidModel(pickedModelId(modelIn));
-  if (!before.out && after.out && spendsFree) {
+  // A task on a healthy wallet keeps going on it; that is not news (ENG-4188).
+  if (!before.out && after.out && spendsFree && !balanceCarriesAir(next.balance, next.autoTopUp)) {
     out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
   }
   // A long task can cross the low band and empty it without the composer bar
@@ -474,6 +527,7 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   // They stay because the step comparison carrying all of that alone does not
   // read as the rule it enforces.
   if (!before.out && !after.out && after.low && spendsFree
+      && !balanceCarriesAir(next.balance, next.autoTopUp)
       && before.fractionLeft !== null && after.fractionLeft !== null
       && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
     out.push({

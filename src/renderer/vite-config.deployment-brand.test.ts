@@ -6,6 +6,7 @@ import { createServer, type ViteDevServer } from 'vite';
 
 import { withDeploymentBrand } from '../shared/deployment-brand';
 import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
+import { withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 
 // Loads the real renderer config as a dev server for each kind of build and
 // checks which of them put the deployment brand's tags in the web page.
@@ -71,7 +72,7 @@ describe('the deployment brand in the web page', () => {
     expect(html).toContain('<!-- cowork-deployment-brand:start -->');
     expect(html).toContain('<script src="/brand/brand.js"></script>');
     expect(html).toContain('<link rel="stylesheet" href="/brand/brand.css" />');
-    expect(cspOf(html)).toBe(cspOf(withDraftLinkFrameSources(withDeploymentBrand(page('index-web.html')))));
+    expect(cspOf(html)).toBe(cspOf(withOrgBrandImageSources(withDraftLinkFrameSources(withDeploymentBrand(page('index-web.html'))))));
   }, 30_000);
 
   it('stays out of other pages the web dev server serves', async () => {

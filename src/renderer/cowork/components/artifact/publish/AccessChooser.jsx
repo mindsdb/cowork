@@ -22,16 +22,17 @@ import Ico from '../../Icons';
 import { Tooltip } from '../../ui';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
+import i18n, { useTranslation } from '../../../../lib/i18n';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
 import AudiencePanel, { everyoneOption, onlyMeOption, specificOption } from '../../AudiencePanel';
 import {
   AUDIENCE_CHOICE,
-  EVERYONE_AT_DESC,
-  ONLY_ME_DESC,
-  ONLY_ME_TITLE,
+  everyoneAtDesc,
+  onlyMeDesc,
+  onlyMeTitle,
   SHARED_KIND,
-  SPECIFIC_DESC,
-  SPECIFIC_TITLE,
+  specificDesc,
+  specificTitle,
   everyoneAtLabel,
   isOrgSharingOn,
   isOwnerOnlyAccess,
@@ -242,29 +243,49 @@ function buildBaseAccessPayload(draft) {
 // internet.
 const SHARED_TOKEN_PUBLISH = !PLATFORM_UI && hasSharedPublishToken();
 
+const accessText = (key) => i18n.t(`publish.access.${key}`, { ns: 'artifacts' });
+
+/* Titles and descriptions are getters, so each read follows the current
+   language. */
 export const ACCESS_LABELS = {
   public: {
     icon: Ico.globe,
-    title: 'Public',
-    desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL' : 'Anyone on the internet with the URL',
+    get title() { return accessText('publicTitle'); },
+    get desc() { return accessText(SHARED_TOKEN_PUBLISH ? 'publicDescShared' : 'publicDesc'); },
   },
   password: {
     icon: Ico.lock,
-    title: 'Password protected',
-    desc: SHARED_TOKEN_PUBLISH ? 'Anyone with the URL and the password' : 'Anyone on the internet with the password',
+    get title() { return accessText('passwordTitle'); },
+    get desc() { return accessText(SHARED_TOKEN_PUBLISH ? 'passwordDescShared' : 'passwordDesc'); },
   },
   // Restricted, to an audience the artifact doesn't know.
-  restricted: { icon: Ico.people, title: 'Restricted', desc: "Who can open the link isn't known yet" },
+  restricted: {
+    icon: Ico.people,
+    get title() { return accessText('restrictedTitle'); },
+    get desc() { return accessText('restrictedDesc'); },
+  },
   // Without sharing in MindsHub mode: people by email.
   specificPeople: {
     icon: Ico.people,
-    title: 'Specific people',
-    desc: 'Only the people you list',
+    get title() { return accessText('specificTitle'); },
+    get desc() { return accessText('specificDesc'); },
   },
   // With sharing in MindsHub mode.
-  specific: { icon: Ico.people, title: SPECIFIC_TITLE, desc: SPECIFIC_DESC[SHARED_KIND.ARTIFACT] },
-  org: { icon: Ico.building, title: everyoneAtLabel(null), desc: EVERYONE_AT_DESC },
-  private: { icon: Ico.lock, title: ONLY_ME_TITLE, desc: ONLY_ME_DESC[SHARED_KIND.ARTIFACT] },
+  specific: {
+    icon: Ico.people,
+    get title() { return specificTitle(); },
+    get desc() { return specificDesc(SHARED_KIND.ARTIFACT); },
+  },
+  org: {
+    icon: Ico.building,
+    get title() { return everyoneAtLabel(null); },
+    get desc() { return everyoneAtDesc(); },
+  },
+  private: {
+    icon: Ico.lock,
+    get title() { return onlyMeTitle(); },
+    get desc() { return onlyMeDesc(SHARED_KIND.ARTIFACT); },
+  },
 };
 
 /** The label for an artifact's access as the summary card shows it. */
@@ -300,7 +321,7 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
 // `useSharingCapabilities` reads, `teams` is what `useMindsHubTeams`
 // returns and `orgName` is what `useSharingOrgName` returns. Off, there is
 // no "Everyone", and "Specific people" takes emails only. Without
-// `canShareArtifactsOrg` "Everyone" is grayed with the admin hint, or with
+// `canShareArtifactsOrg` "Everyone" is grayed with the role hint, or with
 // "Couldn't reach MindsHub" while MindsHub couldn't be asked.
 export function AccessChooser({
   value,
@@ -309,6 +330,7 @@ export function AccessChooser({
   onSubmit,
   sharing = null,
 }) {
+  const { t } = useTranslation('artifacts');
   const draft = value;
   // Several patches can land in one event, so each builds on the last rather
   // than on this render's draft.
@@ -353,7 +375,7 @@ export function AccessChooser({
 
   return (
     <AudiencePanel
-      ariaLabel="Who can access your app"
+      ariaLabel={t('publish.whoCanAccess')}
       value={draft.mode}
       onValueChange={(m) => set({ mode: m })}
       options={options}
@@ -368,12 +390,12 @@ export function AccessChooser({
             onChange={(e) => set({ password: e.target.value })}
             onKeyDown={(e) => { if (e.key === 'Enter' && isAccessDraftValid(draft)) onSubmit?.(); }}
             autoFocus
-            placeholder="Add a password"
+            placeholder={t('publish.addPassword')}
             className={BARE_INPUT}
           />
-          <Tooltip content={draft._reveal ? 'Hide' : 'Show'}>
+          <Tooltip content={draft._reveal ? t('publish.hide') : t('publish.show')}>
             <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
-              aria-label={draft._reveal ? 'Hide password' : 'Show password'}
+              aria-label={draft._reveal ? t('publish.hidePassword') : t('publish.showPassword')}
               className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
               {draft._reveal ? Ico.eyeOff(16) : Ico.eye(16)}
             </button>

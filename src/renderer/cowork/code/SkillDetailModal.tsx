@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { useTranslation } from '../../lib/i18n';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
@@ -30,10 +31,10 @@ function parseSkillContent(content: string): ParsedSkillContent {
   return { metadata, body: content.slice(closing + 4).trimStart() };
 }
 
-function kindLabel(kind: SkillLibraryItem['kind']): string {
-  if (kind === 'instructions') return 'Instructions';
-  if (kind === 'workflow') return 'Workflow';
-  return 'Skill';
+function kindLabel(kind: SkillLibraryItem['kind'], t: (key: string) => string): string {
+  if (kind === 'instructions') return t('skills.kind.instructions');
+  if (kind === 'workflow') return t('skills.kind.workflow');
+  return t('skills.kind.skill');
 }
 
 export function SkillDetailModal({
@@ -43,6 +44,7 @@ export function SkillDetailModal({
   item: SkillLibraryItem | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation('code');
   const [document, setDocument] = useState<SkillLibraryDocument | null>(null);
   const [requestedFile, setRequestedFile] = useState<{ itemId: string; path?: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,7 +66,7 @@ export function SkillDetailModal({
       .catch((reason) => {
         if (currentRequest !== requestId.current) return;
         setDocument(null);
-        setError(reason instanceof Error ? reason.message : 'Could not load this skill.');
+        setError(reason instanceof Error ? reason.message : t('skillDetail.loadFailed'));
       })
       .finally(() => {
         if (currentRequest === requestId.current) setLoading(false);
@@ -79,29 +81,29 @@ export function SkillDetailModal({
   const parsed = useMemo(() => parseSkillContent(document?.content || ''), [document?.content]);
   const displayedDocument = document?.item.id === item?.id ? document : null;
   const subtitle = item
-    ? `${item.source_name} · ${kindLabel(item.kind)}${item.version ? ` · ${item.version.slice(0, 8)}` : ''}`
+    ? `${item.source_name} · ${kindLabel(item.kind, t)}${item.version ? ` · ${item.version.slice(0, 8)}` : ''}`
     : '';
 
   return (
     <Modal open={!!item} onClose={onClose} size="md" labelledBy="skill-detail-title" maxHeight="min(760px, 88vh)">
       <ModalHeader
         id="skill-detail-title"
-        title={item?.name || 'Skill'}
+        title={item?.name || t('skills.kind.skill')}
         subtitle={subtitle}
         onClose={onClose}
         right={displayedDocument && !loading ? (
           <Button size="sm" variant="subtle" onClick={() => setShowSource((value) => !value)}>
-            {Ico.code(14)} {showSource ? 'Rendered' : 'View source'}
+            {Ico.code(14)} {showSource ? t('skillDetail.rendered') : t('skillDetail.viewSource')}
           </Button>
         ) : undefined}
       />
       <ModalBody padding="0" background="var(--bg)">
         {loading && !displayedDocument ? (
-          <div className="code-skill-detail__state" role="status"><Spinner /> Loading skill…</div>
+          <div className="code-skill-detail__state" role="status"><Spinner /> {t('personalSkill.loading')}</div>
         ) : error ? (
           <div className="code-skill-detail__state is-error">
             <Alert variant="danger">{error}</Alert>
-            <Button size="sm" variant="subtle" onClick={() => setRetryToken((value) => value + 1)}>Try again</Button>
+            <Button size="sm" variant="subtle" onClick={() => setRetryToken((value) => value + 1)}>{t('personalSkill.tryAgain')}</Button>
           </div>
         ) : displayedDocument ? (
           <article className="code-skill-detail">
@@ -114,8 +116,8 @@ export function SkillDetailModal({
                   options={displayedDocument.files.map((path) => ({ value: path, label: path }))}
                   variant="unstyled"
                   size="sm"
-                  menuLabel="Files"
-                  ariaLabel="Skill file"
+                  menuLabel={t('skillDetail.files')}
+                  ariaLabel={t('personalSkill.import.fileAriaLabel')}
                   className="code-skill-detail__file-picker"
                 />
               ) : <code>{displayedDocument.selected_path}</code>}

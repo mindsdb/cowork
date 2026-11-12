@@ -48,12 +48,14 @@ import {
 } from './cowork/lib/organizationCacheIdentity';
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
+import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin, seedBrandDefaults } from './lib/skins';
 import { DEPLOYMENT_BRAND } from './lib/deploymentBrand';
 import { applyBrandIcons } from './lib/navBranding';
 import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
+import { whenI18nReady } from './lib/i18n';
 
 (() => {
   applyBrandIcons(DEPLOYMENT_BRAND);
@@ -73,6 +75,8 @@ import { WelcomeLoading, applyArcadePreset } from './WelcomeLoading';
 // Before the redirect below drops the query string: a console link's
 // ?from=console&mode=…&sample=… has to outlive the Keycloak round trip.
 captureConsoleHandoff();
+// Same for a link into Settings (?settings=appearance&section=branding).
+captureSettingsDeepLink();
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
@@ -95,25 +99,28 @@ function bindOrganizationCacheTokens(tokens: { token?: string }) {
 
 const root = document.getElementById('root')!;
 
-createRoot(root).render(
-  <StrictMode>
-    {legacyTenant || codeFixture ? (
-      // Access is gated upstream; render directly without a Keycloak login.
-      <App />
-    ) : (
-      // LoadingComponent holds the mount until keycloak.init() resolves. Without
-      // it the provider renders App immediately, App's boot effect probes
-      // /api/v1/health before `authenticated` is set, getAccessToken() returns
-      // null so no Bearer is attached, the auth ingress 401s the probe, and
-      // resolveBootTarget lands a signed-in user on the auth screen.
-      <ReactKeycloakProvider
-        authClient={keycloak}
-        initOptions={initOptions}
-        LoadingComponent={<WelcomeLoading />}
-        onTokens={bindOrganizationCacheTokens}
-      >
+// Load the user's language before the first paint (bounded, never rejects).
+void whenI18nReady().then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      {legacyTenant || codeFixture ? (
+        // Access is gated upstream; render directly without a Keycloak login.
         <App />
-      </ReactKeycloakProvider>
-    )}
-  </StrictMode>
-);
+      ) : (
+        // LoadingComponent holds the mount until keycloak.init() resolves. Without
+        // it the provider renders App immediately, App's boot effect probes
+        // /api/v1/health before `authenticated` is set, getAccessToken() returns
+        // null so no Bearer is attached, the auth ingress 401s the probe, and
+        // resolveBootTarget lands a signed-in user on the auth screen.
+        <ReactKeycloakProvider
+          authClient={keycloak}
+          initOptions={initOptions}
+          LoadingComponent={<WelcomeLoading />}
+          onTokens={bindOrganizationCacheTokens}
+        >
+          <App />
+        </ReactKeycloakProvider>
+      )}
+    </StrictMode>
+  );
+});

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 
+import { useTranslation } from '../../lib/i18n';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
@@ -17,19 +18,20 @@ function matchesQuery(item: SkillLibraryItem, normalized: string): boolean {
     .includes(normalized);
 }
 
-function countLabel(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? '' : 's'}`;
-}
-
 function joinedSummary(...parts: string[]): string {
   return parts.filter(Boolean).join(' · ');
 }
 
-function skillPickerHeading(selectedCount: number, teamCount: number, maintainedCount: number): string {
-  if (selectedCount) return `${countLabel(selectedCount, 'skill')} added`;
-  if (teamCount) return 'Choose skills';
-  if (maintainedCount) return `${countLabel(maintainedCount, 'skill')} included`;
-  return 'Choose skills';
+function skillPickerHeading(
+  t: (key: string, values?: Record<string, unknown>) => string,
+  selectedCount: number,
+  teamCount: number,
+  maintainedCount: number,
+): string {
+  if (selectedCount) return t('projectSkills.heading.added', { count: selectedCount });
+  if (teamCount) return t('projectSkills.heading.choose');
+  if (maintainedCount) return t('projectSkills.heading.included', { count: maintainedCount });
+  return t('projectSkills.heading.choose');
 }
 
 function toggleProjectSkill(
@@ -67,6 +69,7 @@ export function ProjectSkillSelector({
   onChange: (sources: ProjectSkillSource[]) => void;
   onOpenSkills: () => void;
 }) {
+  const { t } = useTranslation('code');
   const [query, setQuery] = useState('');
   const teamItems = useMemo(
     () => items.filter((item) => item.origin === 'team' && item.source_id),
@@ -104,17 +107,17 @@ export function ProjectSkillSelector({
     ? `${selectedNames.slice(0, 2).join(', ')}${selectedNames.length > 2 ? ` +${selectedNames.length - 2}` : ''}`
     : '';
   const selectionSummary = selectedNameSummary
-    || (selectedCount ? `${selectedCount} selected` : '')
+    || (selectedCount ? t('projectSkills.summary.selected', { count: selectedCount }) : '')
     || joinedSummary(
-      teamItems.length ? `${teamItems.length} available` : '',
-      maintainedItems.length ? `${maintainedItems.length} included` : '',
+      teamItems.length ? t('projectSkills.summary.available', { count: teamItems.length }) : '',
+      maintainedItems.length ? t('projectSkills.summary.included', { count: maintainedItems.length }) : '',
     )
-    || 'No Code skills available';
-  const pickerHeading = skillPickerHeading(selectedCount, teamItems.length, maintainedItems.length);
+    || t('projectSkills.summary.none');
+  const pickerHeading = skillPickerHeading(t, selectedCount, teamItems.length, maintainedItems.length);
   const footerSummary = joinedSummary(
-    selectedCount ? `${selectedCount} selected for this project` : '',
-    maintainedItems.length ? `${countLabel(maintainedItems.length, 'maintained skill')} included automatically` : '',
-  ) || 'Choose the guidance every task should receive';
+    selectedCount ? t('projectSkills.footer.selected', { count: selectedCount }) : '',
+    maintainedItems.length ? t('projectSkills.footer.maintained', { count: maintainedItems.length }) : '',
+  ) || t('projectSkills.footer.default');
   const hasMatches = groups.length > 0 || visibleMaintainedItems.length > 0;
 
   return (
@@ -130,7 +133,7 @@ export function ProjectSkillSelector({
         <span className="code-project-skill-picker__icon" aria-hidden="true">{Ico.cube(16)}</span>
         <span className="code-project-skill-picker__summary">
           <strong>{pickerHeading}</strong>
-          <small>{loading ? 'Loading engineering skills…' : selectionSummary}</small>
+          <small>{loading ? t('projectSkills.loadingEngineering') : selectionSummary}</small>
         </span>
         <span className="code-project-skill-picker__chevron" aria-hidden="true">{Ico.chevDown(12)}</span>
       </summary>
@@ -139,12 +142,12 @@ export function ProjectSkillSelector({
         {teamItems.length + maintainedItems.length > 0 && (
           <label className="code-project-skill-picker__search">
             <span aria-hidden="true">{Ico.search(14)}</span>
-            <Input value={query} onChange={setQuery} placeholder="Search Code skills" aria-label="Search Code skills" />
+            <Input value={query} onChange={setQuery} placeholder={t('projectSkills.search')} aria-label={t('projectSkills.search')} />
           </label>
         )}
 
         {loading ? (
-          <div className="code-project-skill-picker__message">Loading skills…</div>
+          <div className="code-project-skill-picker__message">{t('projectSkills.loading')}</div>
         ) : error ? (
           <div className="code-project-skill-picker__message is-error">{error}</div>
         ) : hasMatches ? (
@@ -175,14 +178,14 @@ export function ProjectSkillSelector({
             ))}
             {visibleMaintainedItems.length > 0 && (
               <section>
-                <header>MindsHub maintained</header>
+                <header>{t('projectSkills.maintained')}</header>
                 {visibleMaintainedItems.map((item) => (
                   <div className="code-project-skill-picker__included" key={item.id}>
                     <span>
                       <strong>{item.name}</strong>
                       <small>{item.description || item.path}</small>
                     </span>
-                    <em>Included</em>
+                    <em>{t('projectSkills.included')}</em>
                   </div>
                 ))}
               </section>
@@ -190,8 +193,8 @@ export function ProjectSkillSelector({
           </div>
         ) : (
           <div className="code-project-skill-picker__message code-project-skill-picker__empty">
-            <span>{query.trim() ? 'No skills match your search.' : 'No Code skills are available to this organisation yet.'}</span>
-            {!query.trim() && <Button size="sm" variant="subtle" onClick={onOpenSkills}>Open Skills</Button>}
+            <span>{query.trim() ? t('skills.view.noMatch') : t('projectSkills.empty')}</span>
+            {!query.trim() && <Button size="sm" variant="subtle" onClick={onOpenSkills}>{t('projectSkills.openSkills')}</Button>}
           </div>
         )}
 

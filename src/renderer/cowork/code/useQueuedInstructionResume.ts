@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import i18n from '../../lib/i18n';
 
 import { codingApi, type CodingSession } from './api';
 import { isActiveStatus } from './presentation';
@@ -44,7 +45,7 @@ export function useQueuedInstructionResume(
         }
         entry.failures += 1;
         if (currentKey.current === key) {
-          onError(reason instanceof Error ? reason.message : 'Could not resume the queued instruction.');
+          onError(reason instanceof Error ? reason.message : i18n.t('queuedResume.failed', { ns: 'code' }));
         }
         window.setTimeout(() => {
           if (attempts.current.get(key) !== entry) return;

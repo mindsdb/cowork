@@ -3,10 +3,12 @@ import Ico from '../../Icons';
 import { Button } from '../../ui';
 import { ArtifactHtmlComparison } from './ArtifactHtmlComparison';
 import { createHtmlVisualComparisonDocuments } from './htmlVisualEditorDocument';
+import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
+import i18n, { useTranslation } from '../../../../lib/i18n';
 
 function labelOf(revision, fallback) {
   if (!revision) return fallback;
-  return `Revision ${revision.number}`;
+  return i18n.t('comparison.revision', { ns: 'artifacts', number: revision.number });
 }
 
 function changedLines(beforeContent, afterContent) {
@@ -67,6 +69,7 @@ export function ArtifactComparison({
   onAccept,
   onReject,
 }) {
+  const { t } = useTranslation('artifacts');
   const beforeRef = useRef(null);
   const afterRef = useRef(null);
   const [showSource, setShowSource] = useState(false);
@@ -77,12 +80,18 @@ export function ArtifactComparison({
     [afterContent, beforeContent],
   );
   const htmlComparison = isHtmlComparison(contentType, comparison?.before, comparison?.after);
+  const documentUrl = absoluteDraftUrl(baseUrl);
   const visualModel = useMemo(
     () => (htmlComparison
-      ? createHtmlVisualComparisonDocuments(beforeContent, afterContent, { baseUrl })
+      ? createHtmlVisualComparisonDocuments(beforeContent, afterContent, { baseUrl: documentUrl })
       : null),
-    [afterContent, baseUrl, beforeContent, htmlComparison],
+    [afterContent, documentUrl, beforeContent, htmlComparison],
   );
+  // Only an open HTML comparison has documents to inline; the component stays
+  // mounted while no comparison is open.
+  const frameUrl = comparison && visualModel ? documentUrl : '';
+  const inlinedBefore = useInlinedFrameDocument(visualModel?.before ?? '', frameUrl);
+  const inlinedAfter = useInlinedFrameDocument(visualModel?.after ?? '', frameUrl);
 
   useEffect(() => {
     for (const node of [beforeRef.current, afterRef.current]) {
@@ -98,21 +107,22 @@ export function ArtifactComparison({
   const before = comparison.before;
   const after = comparison.after;
   const changeCount = visualModel ? visualModel.changes.length : changes.count;
-  const changeUnit = visualModel ? 'text change' : 'changed line';
-  const changeLabel = `${changeCount} ${changeUnit}${changeCount === 1 ? '' : 's'}`;
-  const beforeLabel = labelOf(before, 'Earlier');
-  const afterLabel = labelOf(after, 'Current');
+  const changeLabel = visualModel
+    ? t('comparison.textChanges', { count: changeCount })
+    : t('comparison.changedLines', { count: changeCount });
+  const beforeLabel = labelOf(before, t('comparison.earlier'));
+  const afterLabel = labelOf(after, t('comparison.current'));
 
   return (
     <div className="artifact-compare" role="dialog" aria-modal="true" aria-labelledby="artifact-compare-title">
       <header className="artifact-compare-header">
         <div>
           <div className="artifact-compare-kicker">
-            <span className="section-label">{isAgent ? 'Agent suggestion' : 'Revision history'}</span>
+            <span className="section-label">{isAgent ? t('comparison.agentSuggestion') : t('comparison.revisionHistory')}</span>
             {changeCount > 0 && <span className="artifact-compare-change-count">{changeLabel}</span>}
           </div>
           <h3 id="artifact-compare-title">
-            {isAgent ? 'Review the change before resolving' : `Compare ${labelOf(before, 'earlier draft')}`}
+            {isAgent ? t('comparison.reviewChange') : t('comparison.compareWith', { label: labelOf(before, t('comparison.earlierDraft')) })}
           </h3>
         </div>
         <div className="artifact-compare-header-actions">
@@ -122,10 +132,10 @@ export function ArtifactComparison({
               className="artifact-compare-advanced"
               onClick={() => setShowSource((current) => !current)}
             >
-              {showSource ? 'Visual comparison' : 'Advanced'}
+              {showSource ? t('comparison.visual') : t('comparison.advanced')}
             </button>
           )}
-          <button type="button" aria-label="Close comparison" onClick={onClose}>
+          <button type="button" aria-label={t('comparison.close')} onClick={onClose}>
             {Ico.close(16)}
           </button>
         </div>
@@ -134,13 +144,16 @@ export function ArtifactComparison({
         <ArtifactHtmlComparison
           key={`${before?.id || 'before'}:${after?.id || 'after'}`}
           model={visualModel}
+          beforeDocument={inlinedBefore.content}
+          afterDocument={inlinedAfter.content}
+          pending={inlinedBefore.pending || inlinedAfter.pending}
           beforeLabel={beforeLabel}
           afterLabel={afterLabel}
         />
       ) : (
         <div className="artifact-compare-grid">
           <section>
-            <div className="artifact-compare-label section-label">Before · {beforeLabel}</div>
+            <div className="artifact-compare-label section-label">{t('comparison.beforeLabel', { label: beforeLabel })}</div>
             <DiffSource
               lines={changes.before}
               start={changes.beforeStart}
@@ -149,7 +162,7 @@ export function ArtifactComparison({
             />
           </section>
           <section>
-            <div className="artifact-compare-label section-label">After · {afterLabel}</div>
+            <div className="artifact-compare-label section-label">{t('comparison.afterLabel', { label: afterLabel })}</div>
             <DiffSource
               lines={changes.after}
               start={changes.afterStart}
@@ -162,12 +175,12 @@ export function ArtifactComparison({
       <footer className="artifact-compare-footer">
         {isAgent ? (
           <>
-            <Button variant="subtle" disabled={busy} onClick={onReject}>Reject & restore</Button>
-            <Button disabled={busy} onClick={onAccept}>{Ico.check(14)} Accept & resolve</Button>
+            <Button variant="subtle" disabled={busy} onClick={onReject}>{t('comparison.reject')}</Button>
+            <Button disabled={busy} onClick={onAccept}>{Ico.check(14)} {t('comparison.accept')}</Button>
           </>
         ) : (
           <Button disabled={busy} onClick={() => onRestore?.(before?.id)}>
-            Restore as new revision
+            {t('comparison.restore')}
           </Button>
         )}
       </footer>

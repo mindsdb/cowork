@@ -19,6 +19,10 @@ import {
   readAudienceRequest,
   skillAccessRequest,
 } from './sharingContract';
+import i18n from '../../lib/i18n';
+
+/** Sharing copy in the reader's language, read when it is shown. */
+const tr = (key, vars) => i18n.t(`messages.orgSharing.${key}`, { ns: 'projects', ...vars });
 
 /** What sharing allows on a build without it, and until the server says:
     nothing, so every sharing surface stays hidden. Nothing about it is
@@ -68,29 +72,40 @@ export function teamsUnknown(capabilities) {
   return capabilities?.teamsKnown === false;
 }
 
-/** "1 person", "3 people". */
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+/** "1 person", "3 people": `what` is teams, people or outsideEmails. */
+const plural = (count, what) => tr(`counts.${what}`, { count });
 
 export const SKILL_SECTIONS = ['mine', 'shared_with_me', 'team', 'org'];
 
 export const ORG_ADMIN_ONLY_HINT = 'Only admins can share with everyone in the organization';
+export const orgAdminOnlyHint = () => tr('orgAdminOnlyHint');
+
+/** Every built-in role may share an artifact with everyone; only a custom role
+    that withholds `artifacts.share_org` locks it, so the lock names no role. */
+export const ORG_ARTIFACT_SHARE_WITHHELD_HINT = "Your role can't share with everyone in the organization";
+export const orgArtifactShareWithheldHint = () => tr('orgArtifactShareWithheldHint');
 
 /** The lock on a control MindsHub has to allow, while it couldn't be asked. */
 export const MINDSHUB_UNREACHABLE_HINT = "Couldn't reach MindsHub";
+export const mindsHubUnreachableHint = () => tr('mindsHubUnreachableHint');
 
 /** The page-level line for the same, with Retry beside it. */
 export const MINDSHUB_UNREACHABLE_PERMISSIONS = "Couldn't reach MindsHub to check what you can share.";
+export const mindsHubUnreachablePermissions = () => tr('mindsHubUnreachablePermissions');
 
 /** The detail note on a skill shared with everyone that the caller can't
     change while their permissions couldn't be read. */
 export const MINDSHUB_UNREACHABLE_EDIT = "Couldn't reach MindsHub to check whether you can change it.";
+export const mindsHubUnreachableEdit = () => tr('mindsHubUnreachableEdit');
 
 /** The Skills page's line while the caller's teams couldn't be read: the
     skills shared with their teams are left out until they can. */
 export const MINDSHUB_UNREACHABLE_TEAMS = "Couldn't reach MindsHub to load your teams, so skills shared with them aren't listed.";
+export const mindsHubUnreachableTeams = () => tr('mindsHubUnreachableTeams');
 
 /** A MindsHub read's line while MindsHub limits how often the caller asks. */
 export const MINDSHUB_THROTTLED = 'MindsHub is limiting requests. Try again in a minute.';
+export const mindsHubThrottled = () => tr('mindsHubThrottled');
 
 /**
  * What a surface says about a MindsHub read that got no answer, by why
@@ -102,7 +117,7 @@ export const MINDSHUB_THROTTLED = 'MindsHub is limiting requests. Try again in a
  * @param {import('./sharingContract').MindsHubFailure | null | undefined} failure
  * @param {{ unreachable: string, refused: string, throttled?: string }} copy
  */
-export function mindsHubFailureText(failure, { unreachable, refused, throttled = MINDSHUB_THROTTLED }) {
+export function mindsHubFailureText(failure, { unreachable, refused, throttled = mindsHubThrottled() }) {
   if (failure === MINDSHUB_ERROR_CODE.THROTTLED) return throttled;
   if (failure === MINDSHUB_ERROR_CODE.REFUSED) return refused;
   return unreachable;
@@ -129,7 +144,8 @@ export function canShareWithOrg(capabilities, kind) {
     MindsHub couldn't be asked, or the caller lacks the permission. */
 export function orgShareLockReason(capabilities, kind) {
   if (canShareWithOrg(capabilities, kind)) return null;
-  return permissionsUnknown(capabilities) ? MINDSHUB_UNREACHABLE_HINT : ORG_ADMIN_ONLY_HINT;
+  if (permissionsUnknown(capabilities)) return mindsHubUnreachableHint();
+  return kind === SHARED_KIND.ARTIFACT ? orgArtifactShareWithheldHint() : orgAdminOnlyHint();
 }
 
 /* The audience cards both Share panels offer, private → public. The same
@@ -145,49 +161,58 @@ export const AUDIENCE_CHOICE = Object.freeze({
 
 /** The private choice's title, on every surface. */
 export const ONLY_ME_TITLE = 'Only me';
+export const onlyMeTitle = () => tr('onlyMeTitle');
 /** Its second line, for a skill and for an artifact. */
 export const ONLY_ME_DESC = Object.freeze({
   [SHARED_KIND.SKILL]: 'Nobody else can use it',
   [SHARED_KIND.ARTIFACT]: 'Nobody else can open this',
 });
+export const onlyMeDesc = (kind) => tr(kind === SHARED_KIND.ARTIFACT ? 'onlyMeDesc.artifact' : 'onlyMeDesc.skill');
 /** "Specific teams and people", and its second line: an artifact also takes
     outside emails. */
 export const SPECIFIC_TITLE = 'Specific teams and people';
+export const specificTitle = () => tr('specificTitle');
 export const SPECIFIC_DESC = Object.freeze({
   [SHARED_KIND.SKILL]: 'Pick teams or colleagues',
   [SHARED_KIND.ARTIFACT]: 'Pick teams, colleagues or outside emails',
 });
+export const specificDesc = (kind) => tr(kind === SHARED_KIND.ARTIFACT ? 'specificDesc.artifact' : 'specificDesc.skill');
 
 /* A skill shared with teams or with everyone is recalled when it's relevant
    to a task. Someone allowed to may make it "always on": part of every task
    for everyone it reaches. The server enforces who may; these mirror it. */
 export const ALWAYS_ON_LABEL = 'Always include in every task';
+export const alwaysOnLabel = () => tr('alwaysOnLabel');
 /** What "always on" does for a skill (`name`), on or off: the switch's help
     line, and the toast once a save changes only it. */
-export const alwaysOnHelp = (on, name = 'this skill') => (on
-  ? `Anton will include ${name} in every task.`
-  : `Anton will use ${name} only when it's relevant.`);
+export const alwaysOnHelp = (on, name = tr('thisSkill')) => tr(on ? 'alwaysOnHelp.on' : 'alwaysOnHelp.off', { name });
 export const ALWAYS_ON_ORG_ADMIN_HINT = 'Only admins can make a skill shared with everyone always on';
+export const alwaysOnOrgAdminHint = () => tr('alwaysOnOrgAdminHint');
 export const ALWAYS_ON_EDITOR_HINT = 'Only people who can edit this skill can change this';
+export const alwaysOnEditorHint = () => tr('alwaysOnEditorHint');
 export const ALWAYS_ON_BADGE = 'Always on';
+export const alwaysOnBadge = () => tr('alwaysOnBadge');
 export const ALWAYS_ON_BADGE_HINT = "Part of every task for everyone it's shared with";
+export const alwaysOnBadgeHint = () => tr('alwaysOnBadgeHint');
 
 /** "Everyone at Acme", or "Everyone in the organization" when no name is
     known (sharingOrgName). */
 export function everyoneAtLabel(orgName) {
-  return orgName ? `Everyone at ${orgName}` : 'Everyone in the organization';
+  return orgName ? tr('everyoneAt', { org: orgName }) : tr('everyoneInOrganization');
 }
 
 /** The second line under "Everyone at ‹org›", wherever it shows. */
 export const EVERYONE_AT_DESC = 'Anyone in your organization';
+export const everyoneAtDesc = () => tr('everyoneAtDesc');
 
 /** The org's name for running text, or "your organization". */
 export function orgNameOrGeneric(orgName) {
-  return orgName || 'your organization';
+  return orgName || tr('yourOrganization');
 }
 
 /** The primary line of a person MindsHub doesn't know. */
 export const UNKNOWN_PERSON = 'Unknown person';
+export const unknownPerson = () => tr('unknownPerson');
 
 /* Every org has a default team everyone is in ("All members"). The server
    maps it to sharing with everyone, so sharing never lists it as a team:
@@ -268,14 +293,14 @@ export function personInitials(person) {
  */
 export function recipientSummary({ teamIds = [], userIds = [], emails = [] } = {}, { orgName = null, emailsOnly = false, allowExternal = true } = {}) {
   if (emailsOnly) {
-    return emails.length ? plural(emails.length, 'person', 'people') : 'Add at least one email.';
+    return emails.length ? plural(emails.length, 'people') : tr('recipients.addEmail');
   }
   const parts = [];
-  if (teamIds.length) parts.push(plural(teamIds.length, 'team', 'teams'));
-  if (userIds.length) parts.push(plural(userIds.length, 'person', 'people'));
-  if (emails.length) parts.push(`${emails.length} outside ${orgNameOrGeneric(orgName)}`);
+  if (teamIds.length) parts.push(plural(teamIds.length, 'teams'));
+  if (userIds.length) parts.push(plural(userIds.length, 'people'));
+  if (emails.length) parts.push(tr('recipients.outside', { count: emails.length, org: orgNameOrGeneric(orgName) }));
   if (parts.length) return parts.join(' · ');
-  return allowExternal ? 'Add at least one team, person or email.' : 'Add at least one team or person.';
+  return allowExternal ? tr('recipients.addTeamPersonOrEmail') : tr('recipients.addTeamOrPerson');
 }
 
 /** The audience of a skill shared with nobody. */
@@ -313,9 +338,9 @@ export function isSkillAlwaysOn(skill) {
 export function alwaysOnLockReason(access, { capabilities = null, canEdit = false } = {}) {
   if (access.orgAllowed) {
     if (canShareWithOrg(capabilities, SHARED_KIND.SKILL)) return null;
-    return permissionsUnknown(capabilities) ? MINDSHUB_UNREACHABLE_HINT : ALWAYS_ON_ORG_ADMIN_HINT;
+    return permissionsUnknown(capabilities) ? mindsHubUnreachableHint() : alwaysOnOrgAdminHint();
   }
-  if (access.allowedTeamIds.length > 0) return canEdit ? null : ALWAYS_ON_EDITOR_HINT;
+  if (access.allowedTeamIds.length > 0) return canEdit ? null : alwaysOnEditorHint();
   return null;
 }
 
@@ -408,12 +433,12 @@ export function skillAudienceBadge(skill, { teams = [], orgName = null } = {}) {
   const teamIds = access.allowedTeamIds;
   if (teamIds.length === 1) {
     const team = teams.find((t) => t.id === teamIds[0]);
-    parts.push(team ? `Team: ${team.display_name}` : '1 team');
+    parts.push(team ? tr('teamBadge', { team: team.display_name }) : plural(1, 'teams'));
   } else if (teamIds.length > 1) {
-    parts.push(`${teamIds.length} teams`);
+    parts.push(plural(teamIds.length, 'teams'));
   }
   const people = access.allowedUserIds.length;
-  if (people) parts.push(people === 1 ? '1 person' : `${people} people`);
+  if (people) parts.push(plural(people, 'people'));
   return parts.length ? parts.join(' · ') : null;
 }
 
@@ -421,9 +446,9 @@ export function skillAudienceBadge(skill, { teams = [], orgName = null } = {}) {
    server's `section`): everyone, else a team, else "Yours" (the caller's own,
    shared with nobody or only with people), else "Shared with me". */
 const SECTION_TITLES = {
-  mine: () => 'Yours',
-  shared_with_me: () => 'Shared with me',
-  team: () => 'My teams',
+  mine: () => tr('sections.mine'),
+  shared_with_me: () => tr('sections.sharedWithMe'),
+  team: () => tr('sections.team'),
   org: (orgName) => everyoneAtLabel(orgName),
 };
 
@@ -444,7 +469,7 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
     title: SECTION_TITLES[id](orgName),
     skills: buckets[id],
   }));
-  groups.push({ id: 'builtin', title: 'Built-in', skills: buckets.builtin });
+  groups.push({ id: 'builtin', title: tr('sections.builtin'), skills: buckets.builtin });
   return groups.filter((group) => group.skills.length > 0);
 }
 
@@ -474,17 +499,18 @@ export function isOwnerOnlyAccess(artifact) {
 /** "2 teams and 3 people", "1 team, 2 people and 1 outside email"; null for none. */
 export function audienceCountsPhrase({ teams = 0, people = 0, outside = 0 } = {}) {
   const parts = [];
-  if (teams) parts.push(plural(teams, 'team', 'teams'));
-  if (people) parts.push(plural(people, 'person', 'people'));
-  if (outside) parts.push(plural(outside, 'outside email', 'outside emails'));
+  if (teams) parts.push(plural(teams, 'teams'));
+  if (people) parts.push(plural(people, 'people'));
+  if (outside) parts.push(plural(outside, 'outsideEmails'));
   if (parts.length === 0) return null;
   if (parts.length === 1) return parts[0];
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  if (parts.length === 2) return tr('list.two', { first: parts[0], second: parts[1] });
+  return tr('list.three', { first: parts[0], second: parts[1], third: parts[2] });
 }
 
 /** "Shared with everyone at Acme" / "… in the organization". */
 export function sharedWithEveryoneHint(orgName) {
-  return orgName ? `Shared with everyone at ${orgName}` : 'Shared with everyone in the organization';
+  return orgName ? tr('share.everyoneAt', { org: orgName }) : tr('share.everyoneInOrganization');
 }
 
 /**
@@ -501,8 +527,8 @@ export function skillShareState(skill, { teams = [], orgName = null } = {}) {
     teams: withoutDefaultTeam(access.allowedTeamIds, teams).length,
     people: access.allowedUserIds.length,
   });
-  if (!phrase) return { shared: false, kind: 'private', hint: ONLY_ME_DESC[SHARED_KIND.SKILL] };
-  return { shared: true, kind: 'specific', hint: `Shared with ${phrase}` };
+  if (!phrase) return { shared: false, kind: 'private', hint: onlyMeDesc(SHARED_KIND.SKILL) };
+  return { shared: true, kind: 'specific', hint: tr('share.with', { phrase }) };
 }
 
 /** A restricted artifact whose audience hasn't been read yet: no claim
@@ -519,13 +545,13 @@ export const ARTIFACT_SHARE_UNKNOWN = Object.freeze({ shared: false, kind: 'unkn
 export function artifactShareState(artifact, {
   orgSharing = false, orgName = null, teams = [], audienceKnown = true,
 } = {}) {
-  if (!artifact?.publishedUrl) return { shared: false, kind: 'private', hint: 'Not shared yet' };
+  if (!artifact?.publishedUrl) return { shared: false, kind: 'private', hint: tr('share.notYet') };
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
-  if (mode === 'public') return { shared: true, kind: 'public', hint: 'Public link: anyone with the URL can open it' };
-  if (mode === 'password') return { shared: true, kind: 'password', hint: 'Password protected' };
+  if (mode === 'public') return { shared: true, kind: 'public', hint: tr('share.public') };
+  if (mode === 'password') return { shared: true, kind: 'password', hint: tr('share.password') };
   const audience = audienceKnown ? readArtifactAudience(artifact) : null;
   if (!audience) return ARTIFACT_SHARE_UNKNOWN;
-  if (isOwnerOnlyAccess(artifact)) return { shared: false, kind: 'private', hint: ONLY_ME_DESC[SHARED_KIND.ARTIFACT] };
+  if (isOwnerOnlyAccess(artifact)) return { shared: false, kind: 'private', hint: onlyMeDesc(SHARED_KIND.ARTIFACT) };
   if (orgSharing && (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams))) {
     return { shared: true, kind: 'org', hint: sharedWithEveryoneHint(orgName) };
   }
@@ -536,5 +562,5 @@ export function artifactShareState(artifact, {
       outside: audience.emails.length,
     })
     : audienceCountsPhrase({ people: audience.emails.length });
-  return { shared: true, kind: 'specific', hint: phrase ? `Shared with ${phrase}` : 'Shared' };
+  return { shared: true, kind: 'specific', hint: phrase ? tr('share.with', { phrase }) : tr('share.shared') };
 }

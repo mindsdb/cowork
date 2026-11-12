@@ -65,6 +65,7 @@ import { useArtifactStats } from './stats/useArtifactStats';
 import { useStatsUiEnabled } from './stats/statsUiAccess';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
+import { useTranslation } from '../../../lib/i18n';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -114,16 +115,8 @@ function isSameArtifact(a, b) {
    happens to the text: a save keeps it unless the save fails, and a revision
    restore replaces it. So that prompt says the edits may be lost. */
 const CLOSE_PROMPTS = {
-  unsaved: {
-    title: 'Discard changes?',
-    message: 'Your unsaved edits to this artifact will be lost.',
-    confirmLabel: 'Discard changes',
-  },
-  saving: {
-    title: 'Close while saving?',
-    message: 'A save is still in progress. If you close now, your unsaved edits may be lost.',
-    confirmLabel: 'Close anyway',
-  },
+  unsaved: 'viewer.closePrompt.unsaved',
+  saving: 'viewer.closePrompt.saving',
 };
 
 export function ArtifactViewer({
@@ -136,6 +129,7 @@ export function ArtifactViewer({
   conversationId = null,
   resolveRepairConversation = null,
 }) {
+  const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
   const liveApps = useLiveApps();
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
@@ -290,7 +284,7 @@ export function ArtifactViewer({
   }, [open, artifact?.id]);
 
   const notifyUnreadFeedback = useCallback(() => {
-    setFeedbackNotice('New feedback arrived. Open Review to see the issue.');
+    setFeedbackNotice(t('viewer.newFeedback'));
   }, []);
 
   useEffect(() => {
@@ -497,14 +491,14 @@ export function ArtifactViewer({
           await workspace.cancelRepair(requested.repair.id);
           // `false` has several causes (no provider, a project this user can't
           // run, a chat deleted meanwhile), so the message names none of them.
-          setErr("The agent couldn't start on this comment. Check that an agent provider is connected and that you can run tasks in this project, then try again.");
+          setErr(t('viewer.agentCouldNotStart'));
         }
       }
     } catch (requestError) {
       if (requestError?.status === 422 && requestError?.detail?.repairId) {
         setBlockedBy(requestError.detail);
       } else {
-        setErr(requestError?.message || 'Could not send this comment to the agent');
+        setErr(requestError?.message || t('viewer.sendToAgentFailed'));
       }
     } finally {
       setRepairBusy(false);
@@ -617,7 +611,7 @@ export function ArtifactViewer({
     if (!hasPreviewSource) {
       setPreviewUrl('');
       setTextPreview(null);
-      setErr(disabledReason || 'This artifact does not have a local file path.');
+      setErr(disabledReason || t('viewer.noLocalPath'));
       return;
     }
     setLoading(true);
@@ -646,7 +640,7 @@ export function ArtifactViewer({
         .then((data) => {
           if (cancelled) return;
           if (!data || typeof data.content !== 'string') {
-            throw new Error('Preview returned no content');
+            throw new Error(t('viewer.noContent'));
           }
           setTextPreview({
             content: data.content,
@@ -712,7 +706,7 @@ export function ArtifactViewer({
             // Links off reruns this effect, which then takes the srcdoc path.
             if (await withdrawDraftLinks(e)) return;
             if (cancelled) return;
-            setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
+            setErr(draftPreviewErrorMessage(e, t('viewer.loadDraftFailed')));
           })
           .finally(() => { if (!cancelled) setLoading(false); });
         return () => {
@@ -772,8 +766,9 @@ export function ArtifactViewer({
             // The files the draft loads from its folder can't carry the token
             // either, so inline them with it. The inliner never reads above the
             // draft's own folder, so that folder is its root. If inlining fails,
-            // the draft still shows as it loaded. Goes once drafts are served
-            // by signed link (ENG-3215).
+            // the draft still shows as it loaded. This branch is removed once
+            // drafts are served by signed link; the inliner stays, because the
+            // HTML editor and the revision comparison use it too.
             const html = await inlineHtmlFromApi(doc.content, {
               rootUrl: draftDirectoryUrl(fetchUrl),
               filePath: draftFileName(fetchUrl),
@@ -796,7 +791,7 @@ export function ArtifactViewer({
         })
         .catch((e) => {
           if (cancelled) return;
-          setErr(draftPreviewErrorMessage(e, 'Could not load this draft'));
+          setErr(draftPreviewErrorMessage(e, t('viewer.loadDraftFailed')));
         })
         .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; reading.abort(); };
@@ -804,11 +799,11 @@ export function ArtifactViewer({
     mountArtifactPreview(actionPath)
       .then(async ({ kind, url, artifactDir, port, proxyUrl, backendRunning, launchError }) => {
         if (kind === 'proxy') {
-          if (!artifactDir) throw new Error('Preview mount returned no artifact dir');
+          if (!artifactDir) throw new Error(t('viewer.noArtifactDir'));
           if (backendRunning === false) {
-            throw new Error(launchError || 'Backend failed to start');
+            throw new Error(launchError || t('viewer.backendFailed'));
           }
-          if (!proxyUrl) throw new Error('Preview proxy unavailable');
+          if (!proxyUrl) throw new Error(t('viewer.proxyUnavailable'));
           let iframeUrl = proxyUrl;
           try {
             const u = new URL(proxyUrl);
@@ -828,7 +823,7 @@ export function ArtifactViewer({
           if (typeof port === 'number') setBackendPort(port);
           return;
         }
-        if (!url) throw new Error('Preview mount returned no URL');
+        if (!url) throw new Error(t('viewer.noMountUrl'));
         if (cancelled) return;
         setPreviewKind('static');
         // Bake the inert comment bridge into the first URL whenever the card
@@ -846,7 +841,7 @@ export function ArtifactViewer({
         // stale `!pub.publishedUrl` guard), which raced with refresh() and
         // clobbered the just-loaded restricted access list back to "public".
       })
-      .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load artifact'); })
+      .catch((e) => { if (!cancelled) setErr(e?.message || t('viewer.loadFailed')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -901,9 +896,9 @@ export function ArtifactViewer({
     if (!canOpenLocalFile) return;
     try {
       const res = await host.openPath(artifactFolder || actionPath);
-      if (res && res.ok === false) setErr(res.reason || 'Could not open folder.');
+      if (res && res.ok === false) setErr(res.reason || t('viewer.openFolderFailed'));
     } catch (e) {
-      setErr(e?.message || 'Could not open folder.');
+      setErr(e?.message || t('viewer.openFolderFailed'));
     }
   };
 
@@ -912,11 +907,11 @@ export function ArtifactViewer({
   const onOpenOS = async () => {
     if (isBackendArtifact && canOpenLocalFile) {
       if (!backendPort) {
-        setErr('Backend port not available yet — preview is still loading.');
+        setErr(t('viewer.portNotReady'));
         return;
       }
       try { await host.openExternal(`http://127.0.0.1:${backendPort}`); }
-      catch (e) { setErr(e?.message || 'Open failed'); }
+      catch (e) { setErr(e?.message || t('viewer.openFailed')); }
       return;
     }
     if (!canOpenLocalFile) {
@@ -926,21 +921,21 @@ export function ArtifactViewer({
         : (pub.publishedUrl || '');
       if (url) {
         try { await host.openExternal(url); }
-        catch (e) { setErr(e?.message || 'Open failed'); }
+        catch (e) { setErr(e?.message || t('viewer.openFailed')); }
         return;
       }
-      setErr('This artifact is served from a remote server and has no open URL yet.');
+      setErr(t('viewer.remoteNoUrl'));
       return;
     }
     if (!hasActionPath) {
-      setErr(disabledReason || 'This artifact does not have a local file path.');
+      setErr(disabledReason || t('viewer.noLocalPath'));
       return;
     }
     try {
       const result = await host.openPath(actionPath);
-      if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
+      if (result && result.ok === false) throw new Error(result.reason || t('viewer.openArtifactFailed'));
     } catch (e) {
-      setErr(e?.message || 'Open failed');
+      setErr(e?.message || t('viewer.openFailed'));
     }
   };
 
@@ -948,7 +943,7 @@ export function ArtifactViewer({
   // while there is one.
   const onOpenLiveApp = async () => {
     try { await host.openExternal(liveAppAddress); }
-    catch (e) { setErr(e?.message || 'Open failed'); }
+    catch (e) { setErr(e?.message || t('viewer.openFailed')); }
   };
 
   // Launch asks the agent in a chat of the app's project, which launches it
@@ -956,10 +951,10 @@ export function ArtifactViewer({
   const onLaunchLiveApp = async () => {
     try {
       const started = await onAddressWithAgent({ artifact, prompt: launchLiveAppPrompt(artifact), conversationId });
-      if (started === false) setErr("The agent couldn't launch this app. Check that an agent provider is connected and that you can run tasks in this project, then try again.");
+      if (started === false) setErr(t('viewer.agentCouldNotLaunch'));
       else onClose?.();
     } catch (e) {
-      setErr(e?.message || 'Could not ask the agent to launch this app');
+      setErr(e?.message || t('viewer.askLaunchFailed'));
     }
   };
 
@@ -997,7 +992,7 @@ export function ArtifactViewer({
     setTabError('');
     const tab = host.openPendingTab();
     if (!tab) {
-      setTabError('The browser blocked the new tab. Allow pop-ups for this site and try again.');
+      setTabError(t('viewer.popupBlocked'));
       return;
     }
     try {
@@ -1007,7 +1002,7 @@ export function ArtifactViewer({
       tab.close();
       await withdrawDraftLinks(e);
       if (openRef.current && isSameArtifact(artifactRef.current, clicked)) {
-        setTabError(draftPreviewErrorMessage(e, 'Could not open this artifact in a browser.'));
+        setTabError(draftPreviewErrorMessage(e, t('viewer.openInBrowserFailed')));
       }
     }
   };
@@ -1046,7 +1041,7 @@ export function ArtifactViewer({
     if (draftLinkRef) return openDraftLinkInTab(draftLinkRef);
     if (!browserTabUrl) return;
     host.openExternal(browserTabUrl).catch(() => {
-      setErr('Could not open this artifact in a browser.');
+      setErr(t('viewer.openInBrowserFailed'));
     });
   };
 
@@ -1055,14 +1050,14 @@ export function ArtifactViewer({
   // authenticated draft URL on an org deployment (ENG-2044).
   const onDownload = async () => {
     if (!(await downloadArtifactFile(artifact, { actionPath }))) {
-      setErr(disabledReason || 'This artifact has no downloadable file yet.');
+      setErr(disabledReason || t('viewer.noDownload'));
     }
   };
 
   const onTrash = () => {
     if (pub.busy || deleteBusy) return;
     if (!hasActionPath) {
-      setErr(disabledReason || 'This artifact does not have a local file path.');
+      setErr(disabledReason || t('viewer.noLocalPath'));
       return;
     }
     setConfirmDelete(true);
@@ -1094,7 +1089,7 @@ export function ArtifactViewer({
       onClose?.();
     } catch (e) {
       setConfirmDelete(false);
-      setErr(e?.message || 'Delete failed');
+      setErr(e?.message || t('viewer.deleteFailed'));
     } finally {
       setDeleteBusy(false);
     }
@@ -1167,7 +1162,7 @@ export function ArtifactViewer({
     fetchFile: (url, signal) => fetchAuthenticatedResponse(url, { signal }),
     download: () => downloadArtifactFile(artifact, { actionPath }),
     openInDefaultApp: onOpenOS,
-    onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, 'Could not load this file')),
+    onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, t('viewer.loadFileFailed'))),
   } : null;
   const previewModel = {
     draftUrl: draftPreviewUrl,
@@ -1255,7 +1250,7 @@ export function ArtifactViewer({
       {(workspace.error || workspace.conflict) && (
         <div className="artifact-workspace-notice" role="alert">
           {workspace.conflict
-            ? 'This draft changed elsewhere. Your text is still here; reload the latest revision before saving.'
+            ? t('viewer.conflict')
             : workspace.error}
         </div>
       )}
@@ -1264,7 +1259,7 @@ export function ArtifactViewer({
       )}
       {draftLinkExpired && (
         <button type="button" className="artifact-feedback-notice" onClick={onReload}>
-          {Ico.reload(14)} <span>This preview&apos;s link has expired, so pages and files it opens from now on may not load. Reload to get a new link.</span>
+          {Ico.reload(14)} <span>{t('viewer.linkExpired')}</span>
         </button>
       )}
       {feedbackNotice && (
@@ -1287,8 +1282,8 @@ export function ArtifactViewer({
         <div className="artifact-repair-notice" role="status">
           <span>
             {workspace.repairSuperseded
-              ? 'An agent suggestion from before your last edit is still open.'
-              : 'An agent suggestion is waiting on your decision.'}
+              ? t('viewer.suggestionSuperseded')
+              : t('viewer.suggestionWaiting')}
             {repairNoticeError ? ` ${repairNoticeError}` : ''}
           </span>
           <button
@@ -1300,25 +1295,25 @@ export function ArtifactViewer({
               try {
                 await workspace.refreshRepair();
               } catch (noticeError) {
-                setRepairNoticeError(noticeError?.message || 'Could not open that suggestion.');
+                setRepairNoticeError(noticeError?.message || t('viewer.openSuggestionFailed'));
               } finally {
                 setRepairBusy(false);
               }
             }}
           >
-            View change
+            {t('viewer.viewChange')}
           </button>
           <button
             type="button"
             disabled={repairBusy}
             onClick={() => setPendingDiscard({ repairId: workspace.repair.id })}
           >
-            Discard
+            {t('revisionBar.discard')}
           </button>
           <button
             type="button"
             className="artifact-repair-notice-dismiss"
-            aria-label="Dismiss"
+            aria-label={t('publish.dismiss')}
             onClick={() => setDismissedRepairId(workspace.repair.id)}
           >
             {Ico.close(12)}
@@ -1331,20 +1326,20 @@ export function ArtifactViewer({
         <div className="artifact-repair-notice" role="status">
           <span>
             {blockedComment
-              ? `An agent suggestion for “${blockedComment}” is still waiting on a decision.`
-              : 'An agent suggestion on this file is still waiting on a decision.'}
+              ? t('viewer.blockedFor', { comment: blockedComment })
+              : t('viewer.blockedFile')}
           </span>
           <button
             type="button"
             disabled={repairBusy}
             onClick={() => setPendingDiscard({ repairId: blockedBy.repairId, clearBlocker: true })}
           >
-            Discard the pending suggestion
+            {t('viewer.discardPending')}
           </button>
           <button
             type="button"
             className="artifact-repair-notice-dismiss"
-            aria-label="Dismiss"
+            aria-label={t('publish.dismiss')}
             onClick={() => setBlockedBy(null)}
           >
             {Ico.close(12)}
@@ -1362,10 +1357,9 @@ export function ArtifactViewer({
 
       <ConfirmModal
         open={!!pendingDiscard}
-        title="Discard this suggestion?"
-        message={'The agent\'s change stays in this artifact\'s history, but the '
-          + 'suggestion is closed and will not be applied.'}
-        confirmLabel="Discard"
+        title={t('viewer.discardTitle')}
+        message={t('viewer.discardMessage')}
+        confirmLabel={t('revisionBar.discard')}
         destructive
         busy={repairBusy}
         error={repairNoticeError}
@@ -1378,7 +1372,7 @@ export function ArtifactViewer({
             if (pendingDiscard.clearBlocker) setBlockedBy(null);
             setPendingDiscard(null);
           } catch (discardError) {
-            setRepairNoticeError(discardError?.message || 'Could not discard that suggestion.');
+            setRepairNoticeError(discardError?.message || t('viewer.discardFailed'));
           } finally {
             setRepairBusy(false);
           }
@@ -1387,10 +1381,10 @@ export function ArtifactViewer({
 
       <ConfirmModal
         open={!!closePrompt}
-        title={closePrompt?.title}
-        message={closePrompt?.message}
-        confirmLabel={closePrompt?.confirmLabel}
-        cancelLabel="Keep editing"
+        title={closePrompt ? t(`${closePrompt}.title`) : undefined}
+        message={closePrompt ? t(`${closePrompt}.message`) : undefined}
+        confirmLabel={closePrompt ? t(`${closePrompt}.confirmLabel`) : undefined}
+        cancelLabel={t('viewer.keepEditing')}
         destructive
         onClose={() => setClosePrompt(null)}
         onConfirm={() => {
@@ -1402,12 +1396,12 @@ export function ArtifactViewer({
       {/* Delete confirmation */}
       <ConfirmModal
         open={confirmDelete}
-        title="Delete artifact?"
-        message={`"${title}" will be permanently deleted. This cannot be undone.`}
-        confirmLabel="Delete"
+        title={t('viewer.deleteTitle')}
+        message={t('viewer.deleteMessage', { title })}
+        confirmLabel={t('common.delete')}
         destructive
         busy={deleteBusy}
-        busyLabel="Deleting…"
+        busyLabel={t('status.deleting')}
         onConfirm={onConfirmDelete}
         onClose={() => { if (!deleteBusy) setConfirmDelete(false); }}
       />

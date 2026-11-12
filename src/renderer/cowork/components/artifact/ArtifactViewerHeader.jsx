@@ -10,6 +10,7 @@ import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
 import { ArtifactExportMenu } from './export/ArtifactExportMenu';
+import { useTranslation } from '../../../lib/i18n';
 
 export function ArtifactViewerHeader({
   title,
@@ -24,6 +25,7 @@ export function ArtifactViewerHeader({
   diagnostics,
   onClose,
 }) {
+  const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
   const {
     enabled: commentsEnabled,
@@ -74,12 +76,12 @@ export function ArtifactViewerHeader({
   const openDisabled = !hasActionPath || (isBackendArtifact && !backendPort);
   const openMenuItems = [
     ...(canDownload ? [{
-      label: 'Download',
+      label: t('documentPreview.download'),
       icon: Ico.download(14),
       onClick: onDownload,
     }] : []),
     ...(canOpenLocalFile ? [{
-      label: host.isMac() ? 'Show in Finder' : 'Show in folder',
+      label: host.isMac() ? t('header.showInFinder') : t('header.showInFolder'),
       icon: Ico.openFolder(14),
       onClick: onOpenFolder,
     }] : []),
@@ -89,26 +91,26 @@ export function ArtifactViewerHeader({
      workspace would otherwise read "Refresh", and a refresh never makes it
      editable. The workspace hook sets `previewOnly` with its reason. */
   const editDisabledReason = workspace.previewOnly
-    ? workspace.unsupportedReason || 'This artifact cannot be edited here'
+    ? workspace.unsupportedReason || t('header.cannotEdit')
     : !workspace.supported
-      ? 'Refresh the artifact to load editing tools'
+      ? t('header.refreshForEditing')
       : workspaceLoading
-        ? 'Loading editing tools…'
+        ? t('header.loadingEditing')
         : workspace.capabilities?.canEdit === false
-          ? 'Only the artifact owner can edit'
+          ? t('modeTabs.editDisabled')
           // "Too old to edit" and "never shared with you" both land in the
           // `unsupported` status; the hook names which one so the tooltip doesn't
           // send the user looking in the wrong place.
-          : workspace.unsupportedReason || 'This artifact cannot be edited here';
+          : workspace.unsupportedReason || t('header.cannotEdit');
   const reviewDisabledReason = workspace.previewOnly
-    ? workspace.unsupportedReason || 'Review is not available for this artifact'
+    ? workspace.unsupportedReason || t('modeTabs.reviewDisabled')
     : !workspace.supported
-      ? 'Refresh the artifact to load review tools'
+      ? t('header.refreshForReview')
       : workspaceLoading
-        ? 'Loading review tools…'
+        ? t('header.loadingReview')
         : workspace.commentsOffReason
           || workspace.unsupportedReason
-          || 'Review is not available for this artifact';
+          || t('modeTabs.reviewDisabled');
   return (
     <div className="artifact-viewer-topbar" style={{
       flex: '0 0 auto',
@@ -153,8 +155,8 @@ export function ArtifactViewerHeader({
             nothing is worse than no button. Hidden on web, too, for a file a
             tab would save instead of show. */}
         {canOpenInBrowserTab && canOpenAsTab && (
-          <Tooltip content="Open in a browser tab">
-            <IconButton aria-label="Open in a browser tab" onClick={onOpenInBrowserTab}>
+          <Tooltip content={t('header.openInTab')}>
+            <IconButton aria-label={t('header.openInTab')} onClick={onOpenInBrowserTab}>
               {Ico.arrowUpRight(16)}
             </IconButton>
           </Tooltip>
@@ -166,11 +168,11 @@ export function ArtifactViewerHeader({
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {commentsEnabled && (
           <div style={{ position: 'relative' }}>
-            <Tooltip content={commentsOpen ? 'Hide comments' : 'Comments'}>
+            <Tooltip content={commentsOpen ? t('header.hideComments') : t('comments.panel.title')}>
               <IconButton
                 aria-label={comments.unreadCount > 0
-                  ? `Comments, ${comments.unreadCount} unread`
-                  : 'Comments'}
+                  ? t('header.commentsUnread', { count: comments.unreadCount })
+                  : t('comments.panel.title')}
                 onClick={toggleComments}
                 active={commentsOpen}
               >
@@ -209,8 +211,8 @@ export function ArtifactViewerHeader({
             where the ⋯ menu is hidden. Desktop opens the file in its default
             app instead, and keeps Download in the Open button's menu. */}
         {host.isWeb && canDownload && (
-          <Tooltip content="Download">
-            <IconButton aria-label="Download" onClick={onDownload}>
+          <Tooltip content={t('documentPreview.download')}>
+            <IconButton aria-label={t('documentPreview.download')} onClick={onDownload}>
               {Ico.download(16)}
             </IconButton>
           </Tooltip>
@@ -220,22 +222,22 @@ export function ArtifactViewerHeader({
             <Button
               size="sm"
               disabled={openDisabled}
-              title={isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined}
+              title={isBackendArtifact && !backendPort ? t('header.waitingForPort') : undefined}
               onClick={onOpenOS}
               style={openMenuItems.length > 0 ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 } : undefined}
             >
-              {Ico.externalLink(14)} Open
+              {Ico.externalLink(14)} {t('documentPreview.open')}
             </Button>
             {openMenuItems.length > 0 && (
               <Menu
-                ariaLabel="Open options"
+                ariaLabel={t('header.openOptions')}
                 align="end"
                 width={190}
                 trigger={
                   <Button
                     size="sm"
                     icon
-                    aria-label="More ways to open"
+                    aria-label={t('header.moreWaysToOpen')}
                     style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 }}
                   >
                     {Ico.chevDown(14)}
@@ -261,34 +263,35 @@ export function ArtifactViewerHeader({
             from the browser-tab arrow, which shows whenever either exists. */}
         {!orgMode && (
           <Menu
-            ariaLabel="Artifact actions"
+            ariaLabel={t('header.artifactActions')}
             align="end"
             width={190}
             trigger={
-              <IconButton aria-label="More actions">
+              <IconButton aria-label={t('header.moreActions')}>
                 {Ico.moreVert(16)}
               </IconButton>
             }
             items={[
               {
-                label: 'Reload preview',
+                label: t('header.reloadPreview'),
                 icon: Ico.reload(14),
                 disabled: !hasActionPath,
                 onClick: onReload,
               },
               { divider: true },
               {
-                label: 'Delete',
+                label: t('common.delete'),
+                key: 'delete',
                 icon: Ico.trash(14),
                 danger: true,
                 disabled: deleteBusy || !hasActionPath || !canManage,
                 onClick: onTrash,
               },
-            ].filter((item) => canManage || item.label !== 'Delete')}
+            ].filter((item) => canManage || item.key !== 'delete')}
           />
         )}
-        <Tooltip content="Close">
-          <IconButton onClick={onClose} aria-label="Close">{Ico.close(16)}</IconButton>
+        <Tooltip content={t('header.close')}>
+          <IconButton onClick={onClose} aria-label={t('header.close')}>{Ico.close(16)}</IconButton>
         </Tooltip>
       </div>
     </div>
