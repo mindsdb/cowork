@@ -6,7 +6,7 @@ import VoiceCallWindow from './VoiceCallWindow';
 function call(over = {}) {
   return {
     phase: 'live', notice: '', captions: { user: '', agent: '', last: null }, agentSpeaking: false,
-    working: false, micOn: true, start: vi.fn(), end: vi.fn(), toggleMic: vi.fn(), signOff: vi.fn(), dismiss: vi.fn(),
+    working: false, micOn: true, start: vi.fn(), end: vi.fn(), hangUp: vi.fn(), toggleMic: vi.fn(), signOff: vi.fn(), dismiss: vi.fn(),
     ...over,
   };
 }
@@ -41,7 +41,7 @@ describe('the voice call card', () => {
     const c = call();
     const { rerender } = render(<VoiceCallWindow call={c} />);
     await userEvent.click(screen.getByRole('button', { name: 'End call' }));
-    expect(c.end).toHaveBeenCalled();
+    expect(c.hangUp).toHaveBeenCalled();
 
     rerender(<VoiceCallWindow call={c} docked />);
     expect(screen.getByRole('dialog')).toHaveClass('voice-call--docked');
@@ -79,6 +79,6 @@ describe('the voice call card while it connects', () => {
     expect(container.querySelector('canvas')).toBeNull();
     expect(screen.queryByRole('button', { name: /Mute/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'End call' }));
-    expect(c.end).toHaveBeenCalled();
+    expect(c.hangUp).toHaveBeenCalled();
   });
 });

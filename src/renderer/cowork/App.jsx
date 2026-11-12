@@ -5191,6 +5191,11 @@ function AppCore() {
       setTimeout(() => setVoicePrefs({ voice }), 300);
       return `Switching to ${voiceLabel(voice)}; the call reconnects in that voice.`;
     },
+    // The person asked to hang up: the card's X, once the goodbye is said.
+    hang_up: () => {
+      if (!voiceCall.hangUpAfterAnswer()) return 'There is no call to hang up.';
+      return 'Hanging up once your answer is said: say only a brief goodbye, or nothing.';
+    },
   };
   operateFromCallRef.current = (request) => runOperator({
     request,

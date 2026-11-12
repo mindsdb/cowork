@@ -10,8 +10,11 @@
 // - `onAsk(request)` sends it to Anton the way a typed message goes and
 //   resolves with Anton's answer, which goes back as `session.commentary.append`
 //   for GPT-Live to say (its 500-token limit: forTheAvatar trims it).
-// - Hang-up stops the microphone at once, then sends `session.close` and waits
-//   briefly for `session.closed`, so the session ends and its usage is final.
+// - `end` sends `session.close` and waits briefly for `session.closed`, so the
+//   session ends and its usage is final; the microphone stops with the call.
+//   The person's own hang-up (`hangUp`: the card's X, or asking the call to
+//   hang up, `hangUpAfterAnswer`) stops the microphone at once first. A call
+//   that fades out keeps listening until it really ends.
 // - `meters` holds an AnalyserNode for each voice ({agent, user}), for the
 //   card's sound waves. Listening only: the audio element plays the voice.
 // - A session's voice is fixed when it starts, so `switchVoice` hangs up at
@@ -207,6 +210,11 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     }
     if (call.current !== asking) return;
     send({ type: 'session.commentary.append', event_id: eventId('result'), delegation_id: delegationId, content });
+    // The person asked to hang up (hangUpAfterAnswer): the goodbye, then the card's X.
+    if (asking.hangUpAfter) {
+      await afterLineRef.current?.(asking);
+      await foldAndEndRef.current?.(asking);
+    }
   }, [send]);
 
   // Back from fading out: someone spoke, or the person clicked the call button.
@@ -313,6 +321,9 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
 
   const startRef = useRef(null);
   const endRef = useRef(null);
+  const afterLineRef = useRef(afterLine);
+  afterLineRef.current = afterLine;
+  const foldAndEndRef = useRef(null);
   // Folds the card, then hangs up `owner`: a call that replaced it since (a
   // voice switch) is not this one's to end.
   const foldAndEnd = useCallback(async (owner) => {
@@ -323,6 +334,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     if (call.current !== owner) return;
     await endRef.current?.();
   }, []);
+  foldAndEndRef.current = foldAndEnd;
 
   const start = useCallback(async ({ voice: asked = null, kind = 'call', say = '' } = {}) => {
     if (call.current) return;
@@ -418,9 +430,6 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     setPhase('ending');
     const ending = call.current;
     ending.ending = true;
-    // The microphone goes off now, not when the session confirms it closed.
-    ending.microphone?.getTracks().forEach((t) => t.stop());
-    setMicOn(false);
     if (send({ type: 'session.close' })) {
       // session.closed cleans up; this is the backstop, for this call only: a
       // call started since (a call-back) is not this one's to end.
@@ -432,6 +441,29 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   }, [cleanup, send]);
   startRef.current = start;
   endRef.current = end;
+
+  // The microphone of `owner` goes off now, not when the session confirms it closed.
+  const stopMicrophone = useCallback((owner) => {
+    owner?.microphone?.getTracks().forEach((t) => t.stop());
+    setMicOn(false);
+  }, []);
+
+  // The person hangs up (the card's X): the microphone stops at once.
+  const hangUp = useCallback(async () => {
+    stopMicrophone(call.current);
+    await end();
+  }, [end, stopMicrophone]);
+
+  // The person asked the call to hang up: the microphone stops at once, and
+  // the call ends as the X ends it once the answer (a goodbye) is said.
+  const hangUpAfterAnswer = useCallback(() => {
+    const owner = call.current;
+    if (!owner) return false;
+    owner.ending = true;
+    owner.hangUpAfter = true;
+    stopMicrophone(owner);
+    return true;
+  }, [stopMicrophone]);
 
   // Hangs up at once and starts again in `voice`, which says a short line
   // (`kind` 'switch' on a call, 'preview' with no call).
@@ -468,7 +500,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     if (phase !== 'live' || previewing || closing) return undefined;
     lastActive.current = Date.now();
     const timer = setInterval(() => {
-      if (workingRef.current || !call.current || lingeringRef.current || analyzingRef.current) return;
+      if (workingRef.current || !call.current || call.current.ending || lingeringRef.current || analyzingRef.current) return;
       const limit = awayArmed.current ? AWAY_MS : IDLE_MS;
       if (Date.now() - lastActive.current < limit) return;
       lingeringRef.current = true;
@@ -549,7 +581,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
 
   return {
     phase, notice, captions, agentSpeaking, working, micOn, meters, closing, voice, previewing,
-    lingering, analyzing, start, end, toggleMic, announce, switchVoice, preview, signOff, callBack, isOn, armAway, resume,
+    lingering, analyzing, start, end, hangUp, hangUpAfterAnswer, toggleMic, announce, switchVoice, preview, signOff, callBack, isOn, armAway, resume,
     dismiss: () => { setPhase('idle'); setNotice(''); },
   };
 }
