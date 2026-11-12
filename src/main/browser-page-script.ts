@@ -159,9 +159,13 @@ export interface ViewPoint {
 }
 
 /** How a page read reads its child frames: the contract's limits and host
-    lists. A screenshot's read passes none and reads no frame. */
+    lists. A screenshot's read passes none and reads no frame. The page's
+    world reads up to `candidates` frames, and ElectronTab.read keeps the
+    first `read` of them its look finds the person sees (browser-view.ts),
+    so a frame the look leaves unread takes none of those reads. */
 export interface FrameReadRules {
   read: number;
+  candidates: number;
   elements: number;
   text: number;
   minPx: number;
@@ -171,6 +175,7 @@ export interface FrameReadRules {
 
 export const FRAME_READ_RULES: FrameReadRules = {
   read: FRAMES_READ,
+  candidates: 2 * FRAMES_READ,
   elements: ELEMENTS_PER_FRAME,
   text: TEXT_PER_FRAME,
   minPx: FRAME_MIN_READ_PX,
@@ -890,10 +895,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      drawn unreadable, and found by a hit test at most of its sample points,
      so a page can't carry a frame it hides off screen, under a box, behind
      its own CSS, or behind a cover with holes),
-     within the first `read` frames read, on no payment, sign-in or consent
-     address (its src's or its document's), and holding no private field.
-     ElectronTab.read then looks at what the page draws over each frame read
-     (browser-view.ts). */
+     within the first `candidates` frames read, on no payment, sign-in or
+     consent address (its src's or its document's), and holding no private
+     field. ElectronTab.read then looks at what the page draws over each
+     frame read, and keeps the first `read` it finds seen (browser-view.ts). */
   const readFrames = (owners: Element[], rules: FrameReadRules): RawFrame[] => {
     const placed = owners
       .filter((owner) => takesClicks(owner, boxOf(owner)))
@@ -910,7 +915,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
       const shownWidth = Math.min(box.x + box.width, viewport.width) - Math.max(box.x, 0);
       const shownHeight = Math.min(box.y + box.height, viewport.height) - Math.max(box.y, 0);
-      if (!inner || offscreen || reads >= rules.read || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
+      if (!inner || offscreen || reads >= rules.candidates || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
         || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || drawnUnreadable(owner)
         || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
         return { url, read: false, box, offscreen };

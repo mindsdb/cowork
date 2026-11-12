@@ -1065,7 +1065,7 @@ describe('frames', () => {
     }
   });
 
-  it('never reads a frame that holds a secret, card-named or sign-in field, sits on a payment or sign-in host, is a consent page, is under 32 px, or comes after the fifth read', async () => {
+  it('never reads a frame that holds a secret, card-named or sign-in field, sits on a payment or sign-in host, is a consent page, is under 32 px, or comes after the tenth read, twice the five the look then keeps', async () => {
     const frames: Array<[string, string, string]> = [
       ['password', '', "<input type='password'>"],
       ['card', '', "<input name='cardnumber' placeholder='Card'>"],
@@ -1076,13 +1076,13 @@ describe('frames', () => {
       ['google', 'https://accounts.google.com/signin', '<p>Choose an account</p>'],
       ['consent', 'https://auth.example.test/oauth2/authorize?client_id=1&amp;response_type=code', '<p>Allow access</p>'],
       ['tiny', '', '<p>Tiny</p>'],
-      ...[1, 2, 3, 4, 5, 6].map((n): [string, string, string] => [`plain${n}`, '', `<p>Plain ${n}</p>`]),
+      ...Array.from({ length: 11 }, (_, i): [string, string, string] => [`plain${i + 1}`, '', `<p>Plain ${i + 1}</p>`]),
     ];
     document.body.innerHTML = frames.map(([id, src, body]) => `<iframe id="${id}"${src ? ` src="${src}"` : ''} srcdoc="${body}"></iframe>`).join('');
     await framesLoad();
-    frames.forEach(([id], i) => place(document.getElementById(id)!, 0, i * 40, id === 'tiny' ? 400 : 300, id === 'tiny' ? 20 : 36));
+    frames.forEach(([id], i) => place(document.getElementById(id)!, 0, i * 38, id === 'tiny' ? 400 : 300, id === 'tiny' ? 20 : 36));
     const page = snapshot(freshWorld());
-    expect(page.frames.map((f) => f.read)).toEqual([...frames.slice(0, 9).map(() => false), true, true, true, true, true, false]);
+    expect(page.frames.map((f) => f.read)).toEqual([...frames.slice(0, 9).map(() => false), ...Array(10).fill(true), false]);
     expect(JSON.stringify(page)).not.toMatch(/4242|Choose an account|Allow access|Card/);
   });
 

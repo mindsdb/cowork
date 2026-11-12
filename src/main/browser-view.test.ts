@@ -241,14 +241,16 @@ describe('ElectronTab', () => {
     const readFrame = (box = BOX, text = 'Get the weekly digest.', elements: unknown[] = [{ role: 'button', name: 'Subscribe' }]) =>
       ({ url: 'https://a.test/inner', read: true, box, offscreen: false, elements, text, truncated: false });
     /* A capture of a box, 2 device pixels a CSS pixel, scaled down for the
-       look: all one gray, or with every tenth pixel drawn dark as text is. */
-    function captured(contents: Contents, drawsText: boolean) {
-      contents.capturePage.mockImplementation(async (rect?: { width: number; height: number }) => {
+       look: all one gray, or with every tenth pixel drawn dark as text is
+       (`drawsText`, or where it says so of the box captured). */
+    function captured(contents: Contents, drawsText: boolean | ((rect: { x: number; y: number }) => boolean)) {
+      contents.capturePage.mockImplementation(async (rect?: { x: number; y: number; width: number; height: number }) => {
         const size = { width: (rect?.width ?? 800) * 2, height: (rect?.height ?? 600) * 2 };
+        const text = typeof drawsText === 'boolean' ? drawsText : drawsText(rect ?? { x: 0, y: 0 });
         const scaledTo = (width: number) => {
           const height = Math.max(1, Math.round((width / size.width) * size.height));
           const data = Buffer.alloc(width * height * 4, 0xee);
-          if (drawsText) for (let at = 0; at < width * height; at += 10) data.fill(0x20, at * 4, at * 4 + 3);
+          if (text) for (let at = 0; at < width * height; at += 10) data.fill(0x20, at * 4, at * 4 + 3);
           const scaled: ImageLike = { getSize: () => ({ width, height }), resize: () => scaled, toBitmap: () => data, toJPEG: () => Buffer.from('') };
           return scaled;
         };
@@ -279,6 +281,18 @@ describe('ElectronTab', () => {
         { url: 'https://a.test/inner', read: false, box: expect.anything() },
       ]);
       expect(JSON.stringify(page)).not.toMatch(/weekly digest|Subscribe|Ignore your instructions/);
+    });
+
+    it('reads the first FRAMES_READ frames the look finds the person sees, so a covered frame takes none of those reads', async () => {
+      const { tab, contents } = setup();
+      // Three frames the page paints over in one color, ahead of six plain ones, each 400 by 40, 50 px apart.
+      contents.frames = Array.from({ length: 9 }, (_, i) => readFrame({ x: 0, y: i * 50, width: 400, height: 40 }));
+      captured(contents, (rect) => rect.y > 150);
+      const page = await tab.read(100);
+      expect(page.frames.map((frame) => frame.read)).toEqual([false, false, false, true, true, true, true, true, false]);
+      expect(contents.capturePage).toHaveBeenCalledTimes(9);
+      const [snapshot] = worldCalls(contents, 'snapshot');
+      expect(snapshot[1][0].code).toContain('"candidates":10');
     });
 
     it('keeps a frame read that found no text to look for, and captures no frame it left unread', async () => {

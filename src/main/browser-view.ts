@@ -121,6 +121,9 @@ function withTimeout<T>(work: Promise<T>, ms: number, onTimeout: () => Error): P
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/* A frame as a page read lists it, with nothing the world read there. */
+const unread = (frame: RawFrame): RawFrame => ({ url: frame.url, read: false, box: frame.box, offscreen: frame.offscreen });
+
 const tookOver = () => new BridgeError('human_in_control', 'The person took over the browser.');
 
 /* What Electron's loadURL rejects with: Chromium's error name, and the
@@ -360,9 +363,19 @@ export class ElectronTab implements TabView {
     return count(main, 0);
   }
 
+  /* The page's world reads up to FRAME_READ_RULES.candidates frames; the
+     first FRAME_READ_RULES.read (FRAMES_READ) the look keeps read stay read,
+     on-screen first and in page order, as the world listed them, so a frame
+     the look leaves unread takes none of those reads, as on the web pod. */
   async read(maxText: number): Promise<PageSnapshot> {
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
-    const frames = await Promise.all(raw.frames.map((frame) => this.lookAtFrame(frame, raw.viewport)));
+    const looked = await Promise.all(raw.frames.map((frame) => this.lookAtFrame(frame, raw.viewport)));
+    let reads = 0;
+    const frames = looked.map((frame) => {
+      if (!frame.read) return frame;
+      reads += 1;
+      return reads <= FRAME_READ_RULES.read ? frame : unread(frame);
+    });
     return pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls());
   }
 
@@ -373,15 +386,15 @@ export class ElectronTab implements TabView {
      shadow or outline, or one marked pointer-events: none, and a box all one
      color is such a cover's. The frame's part in view, a CSS pixel in from
      each edge, is captured from the composited page and scaled down
-     (frameLook): one small capture a frame read, FRAMES_READ at most a page
-     read. A look that fails, or takes longer than FRAME_LOOK_MS, leaves the
-     frame unread, and so does one that finds the box one color. A read that
-     found no text has nothing to look for. */
+     (frameLook): one small capture a frame read, FRAME_READ_RULES.candidates
+     at most a page read, all at once. A look that fails, or takes longer
+     than FRAME_LOOK_MS, leaves the frame unread, and so does one that finds
+     the box one color. A read that found no text has nothing to look for. */
   private async lookAtFrame(frame: RawFrame, viewport: { width: number; height: number }): Promise<RawFrame> {
     if (!frame.read || !(frame.text.trim() || frame.elements.some((element) => element.name.trim()))) return frame;
     const shows = await withTimeout(this.frameShows(frame.box, viewport), FRAME_LOOK_MS, () => new Error('the frame was not captured in time'))
       .catch(() => false);
-    return shows ? frame : { url: frame.url, read: false, box: frame.box, offscreen: frame.offscreen };
+    return shows ? frame : unread(frame);
   }
 
   /* Whether the part in view of a frame's box (viewport CSS pixels) shows
