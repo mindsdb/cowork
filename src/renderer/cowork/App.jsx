@@ -5089,7 +5089,19 @@ function AppCore() {
     callBackRef.current = false;
     setCallBackPending(false);
     const { canCallBack } = callBackSeenRef.current;
-    if (canCallBack) void voiceCall.callBack(news, getVoicePrefs().voice);
+    if (!canCallBack) return;
+    // In a tab out of sight the call would start unheard: it waits for the person to come back.
+    const callBackNow = () => void voiceCall.callBack(news, getVoicePrefs().voice);
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+      callBackNow();
+      return;
+    }
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      document.removeEventListener('visibilitychange', onVisible);
+      if (!voiceCall.isOn()) callBackNow();
+    };
+    document.addEventListener('visibilitychange', onVisible);
   };
   // What the call's avatar is told about the task at the start, as background.
   callContextRef.current = () => {

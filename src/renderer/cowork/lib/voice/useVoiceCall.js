@@ -64,8 +64,14 @@ const OPENINGS = {
   fresh: 'Say a short hi, a casual variation of "hi" in a few words, and nothing else. Then wait for the user.',
   switch: 'The user just switched you to a new voice. Say one short, playful line in it, like "How\'s this voice?", and nothing else.',
   preview: 'The user is trying out your voice. Say one short, friendly line so they can hear it, like "Hi, this is how I sound", and nothing else.',
-  callBack: (news) => 'You hung up while you worked and are calling the user back with the result. Say it now, in two or three '
-    + `short spoken sentences, starting with something like "Hey, it's done": ${news}`,
+  callBack: (news, lastSaid) => [
+    'You hung up while Anton worked and are calling the user back with the result.',
+    lastSaid ? `The last thing you said before hanging up was: "${lastSaid}". Pick up from there.` : '',
+    'Tell them the result now, in two or three short spoken sentences, starting with something like "Hey, it\'s done".',
+    'Then ask whether they need anything else, suggesting one fitting next step if one stands out.',
+    'If they say no, say only something like "OK, just ping me if you need me."',
+    `The result: ${news}`,
+  ].filter(Boolean).join(' '),
   signOff: 'The user muted you to end the call. Say one short goodbye in your own words, a variation of "Got it, just click the call button whenever you need me next." Say nothing else.',
 };
 
@@ -122,8 +128,15 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   busyRef.current = busy;
   const onAwayRef = useRef(onAway);
   onAwayRef.current = onAway;
-  // What a call-back says first.
+  // What a call-back says first, and the last thing the call said before it hung up.
   const news = useRef('');
+  const lastSaid = useRef('');
+  // Anton's line so far, since the person last spoke.
+  const agentLine = useRef('');
+  // A call-back before its first word: the card says it is analyzing, and the
+  // microphone stays off until Anton speaks.
+  const [analyzing, setAnalyzing] = useState(false);
+  const analyzingRef = useRef(false);
   contextRef.current = context;
 
   const cleanup = useCallback(() => {
@@ -133,6 +146,8 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     clearTimeout(lingerTimer.current);
     lingeringRef.current = false;
     setLingering(false);
+    analyzingRef.current = false;
+    setAnalyzing(false);
     if (!current) return;
     current.microphone?.getTracks().forEach((t) => t.stop());
     try { current.channel?.close(); } catch { /* already closed */ }
@@ -190,13 +205,14 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         const about = kind === 'preview' ? '' : withoutPhoneNumbers(contextRef.current?.() || '').slice(0, 1800);
         if (about) send({ type: 'session.thinking.append', event_id: eventId('context'), delegation_id: null, content: about });
         const line = kind === 'call' ? (about ? OPENINGS.task : OPENINGS.fresh)
-          : kind === 'callBack' ? OPENINGS.callBack(news.current) : OPENINGS[kind];
+          : kind === 'callBack' ? OPENINGS.callBack(news.current, lastSaid.current) : OPENINGS[kind];
         if (line) send({ type: 'session.instructions.append', event_id: eventId('greet'), delegation_id: null, content: line });
         if (kind === 'preview') void afterLine().then(() => foldAndEnd());
         break;
       }
       case 'session.input_transcript.delta': {
         wake();
+        agentLine.current = '';
         lastActive.current = Date.now();
         const delta = String(event.delta || '');
         heard.current.pending += delta;
@@ -206,6 +222,14 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
       case 'session.output_transcript.delta': {
         wake();
         const delta = String(event.delta || '');
+        agentLine.current = (agentLine.current + delta).slice(-400);
+        if (analyzingRef.current) {
+          // Anton is speaking: from here the person can answer.
+          analyzingRef.current = false;
+          setAnalyzing(false);
+          call.current?.microphone?.getAudioTracks().forEach((t) => { t.enabled = true; });
+          setMicOn(true);
+        }
         setCaptions((c) => ({ ...c, agent: tail(c.last === 'agent' ? c.agent + delta : delta.trimStart()), last: 'agent' }));
         setAgentSpeaking(true);
         spoke.current = Date.now();
@@ -262,6 +286,9 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     opening.current = kind;
     news.current = withoutPhoneNumbers(String(say)).slice(0, MAX_SPOKEN_CHARS);
     awayArmed.current = kind === 'callBack';
+    analyzingRef.current = kind === 'callBack';
+    setAnalyzing(kind === 'callBack');
+    agentLine.current = '';
     setPhase('starting');
     setNotice('');
     setClosing(false);
@@ -269,7 +296,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     setPreviewing(kind === 'preview');
     setCaptions({ user: '', agent: '', last: null });
     setWorking(false);
-    setMicOn(kind !== 'preview');
+    setMicOn(kind !== 'preview' && kind !== 'callBack');
     heard.current = { pending: '', lastTurn: '' };
     let mine = null;
     try {
@@ -305,6 +332,8 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         const microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (call.current !== mine) { microphone.getTracks().forEach((t) => t.stop()); return; }
         mine.microphone = microphone;
+        // A call-back listens only once Anton starts speaking.
+        if (analyzingRef.current) microphone.getAudioTracks().forEach((t) => { t.enabled = false; });
         meters.current = { ...meters.current, user: meter(microphone) };
         microphone.getAudioTracks().forEach((t) => peer.addTrack(t, microphone));
       }
@@ -343,9 +372,11 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   const end = useCallback(async () => {
     if (!call.current) { setPhase('idle'); return; }
     setPhase('ending');
+    const ending = call.current;
     if (send({ type: 'session.close' })) {
-      // session.closed cleans up; this is the backstop.
-      setTimeout(() => { if (call.current) { cleanup(); setPhase('idle'); } }, CLOSE_WAIT_MS);
+      // session.closed cleans up; this is the backstop, for this call only: a
+      // call started since (a call-back) is not this one's to end.
+      setTimeout(() => { if (call.current === ending) { cleanup(); setPhase('idle'); } }, CLOSE_WAIT_MS);
     } else {
       cleanup();
       setPhase('idle');
@@ -387,7 +418,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     if (phase !== 'live' || previewing || closing) return undefined;
     lastActive.current = Date.now();
     const timer = setInterval(() => {
-      if (workingRef.current || !call.current || lingeringRef.current) return;
+      if (workingRef.current || !call.current || lingeringRef.current || analyzingRef.current) return;
       const limit = awayArmed.current ? AWAY_MS : IDLE_MS;
       if (Date.now() - lastActive.current < limit) return;
       lingeringRef.current = true;
@@ -395,7 +426,11 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
       clearTimeout(lingerTimer.current);
       lingerTimer.current = setTimeout(() => {
         if (!lingeringRef.current || !call.current) return;
-        if (busyRef.current?.()) onAwayRef.current?.();
+        if (busyRef.current?.()) {
+          // What the call-back picks up from.
+          lastSaid.current = agentLine.current.trim().slice(-300);
+          onAwayRef.current?.();
+        }
         call.current.microphone?.getAudioTracks().forEach((t) => { t.enabled = false; });
         setMicOn(false);
         void endRef.current?.();
@@ -419,7 +454,9 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     type: 'session.instructions.append',
     event_id: eventId('announce'),
     delegation_id: null,
-    content: `Tell the user now, in one or two short sentences: ${withoutPhoneNumbers(String(text)).slice(0, MAX_SPOKEN_CHARS)}`,
+    content: 'Tell the user now, in one or two short sentences, then ask whether they need anything else, suggesting '
+      + 'one fitting next step if one stands out; if they say no, say only something like "OK, just ping me if you need me": '
+      + withoutPhoneNumbers(String(text)).slice(0, MAX_SPOKEN_CHARS),
   }), [send]);
 
   // Calls the person back with what Anton finished while the call was down.
@@ -444,7 +481,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
 
   return {
     phase, notice, captions, agentSpeaking, working, micOn, meters, closing, voice, previewing,
-    lingering, start, end, toggleMic, announce, switchVoice, preview, signOff, callBack, isOn, armAway, resume,
+    lingering, analyzing, start, end, toggleMic, announce, switchVoice, preview, signOff, callBack, isOn, armAway, resume,
     dismiss: () => { setPhase('idle'); setNotice(''); },
   };
 }

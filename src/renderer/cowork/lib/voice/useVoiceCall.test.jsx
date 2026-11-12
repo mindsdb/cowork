@@ -271,6 +271,34 @@ describe('a quiet call', () => {
     expect(peer.channel.sent.some((e) => e.type === 'session.close')).toBe(false);
   });
 
+  it('a call-back analyzes with the microphone off, opens it once Anton speaks, and picks up from the last line', async () => {
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '', busy: () => true, onAway: vi.fn() }));
+    await act(() => hook.result.current.start());
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    act(() => hook.result.current.armAway());
+    act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: "On it. I'll get back to you when it's done." }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS + LINGER_MS + 1_000); });
+    expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+    act(() => peer.channel.emit({ type: 'session.closed', reason: 'client_requested' }));
+
+    track.enabled = true;
+    await act(() => hook.result.current.callBack('Flights from $212.'));
+    expect(hook.result.current.analyzing).toBe(true);
+    expect(track.enabled).toBe(false);
+    expect(hook.result.current.micOn).toBe(false);
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    const greet = peer.channel.sent.find((e) => e.type === 'session.instructions.append');
+    expect(greet.content).toContain('The last thing you said before hanging up was: "On it. I\'ll get back to you when it\'s done."');
+    expect(greet.content).toMatch(/ask whether they need anything else/);
+    // Analyzing holds off the quiet rule.
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS + LINGER_MS + 1_000); });
+    expect(hook.result.current.lingering).toBe(false);
+    act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: "Hey, it's done." }));
+    expect(hook.result.current.analyzing).toBe(false);
+    expect(track.enabled).toBe(true);
+    expect(hook.result.current.micOn).toBe(true);
+  });
+
   it('a call-back fades out soon after its news, with nothing left to call back about', async () => {
     const onAway = vi.fn();
     const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '', busy: () => false, onAway }));

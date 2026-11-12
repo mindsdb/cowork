@@ -28,6 +28,8 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
 
   let status = STATUS[phase] || '';
   if (live) status = working ? 'Working on it…' : (micOn ? 'Listening' : 'Talk soon');
+  // A call-back before Anton speaks: the microphone is off until he does.
+  if (call.analyzing) status = 'Analyzing results…';
   if (call.previewing && (live || phase === 'starting')) status = `Trying ${voiceLabel(prefs.voice)}`;
   if (ended) status = notice || 'The call ended.';
 
@@ -41,7 +43,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
         className={`voice-call voice-call--connecting${docked ? ' voice-call--docked' : ''}`}
       >
         <span className="voice-call__spin" aria-hidden="true" />
-        <span className="voice-call__connecting" aria-live="polite">Connecting voice…</span>
+        <span className="voice-call__connecting" aria-live="polite">{call.analyzing ? 'Analyzing results…' : 'Connecting voice…'}</span>
         <button type="button" className="voice-call__x" onClick={call.end} aria-label="End call" title="End call">
           {Ico.close(12)}
         </button>
