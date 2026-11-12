@@ -107,13 +107,13 @@ export function BrowserPanel(props) {
  */
 function WebBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
-  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null,
+  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null, onDraft = null,
 }) {
   const { t } = useTranslation('chat');
   const onControlRef = useRef(onControl);
   onControlRef.current = onControl;
-  const onSendRef = useRef(onSend);
-  onSendRef.current = onSend;
+  const onDraftRef = useRef(onDraft);
+  onDraftRef.current = onDraft;
   const onPageUrlRef = useRef(onPageUrl);
   onPageUrlRef.current = onPageUrl;
   const [viewUrl, setViewUrl] = useState(null);
@@ -223,10 +223,12 @@ function WebBrowserStage({
         onPageUrlRef.current?.(url);
         return;
       }
-      // A question typed in the viewer's address bar: the agent looks it up.
+      // A question typed in the viewer's address bar. The viewer is served by
+      // the remote browser, so its text never goes out as the person's own:
+      // it lands in the composer (`onDraft`), for them to read and send.
       if (type === 'browser-viewer-ask') {
         const text = String(event.data?.text || '').trim().slice(0, 2000);
-        if (text) onSendRef.current?.(browserRequestFor(text));
+        if (text) onDraftRef.current?.(browserRequestFor(text));
         return;
       }
       // Who holds the browser: 'human' when Anton handed it to the person.

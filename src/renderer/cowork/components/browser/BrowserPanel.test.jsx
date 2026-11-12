@@ -131,14 +131,16 @@ describe('BrowserPanel', () => {
       expect(field.value).toBe('half typed');
     });
 
-    it("sends a question typed in the viewer's address bar to the agent, from its own frame only", async () => {
+    it("puts a question typed in the viewer's address bar in the composer, never sends it, and hears its own frame only", async () => {
       const onSend = vi.fn();
-      render(<BrowserPanel sessionId="t-abc" agentLabel="Anton" onClose={() => {}} onSend={onSend} />);
+      const onDraft = vi.fn();
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Anton" onClose={() => {}} onSend={onSend} onDraft={onDraft} />);
       await flush();
       messageFrom({}, { type: 'browser-viewer-ask', text: 'stranger' });
       messageFrom(frameWindow(), { type: 'browser-viewer-ask', text: '  ' });
       messageFrom(frameWindow(), { type: 'browser-viewer-ask', text: 'cheap flights to Lisbon' });
-      expect(onSend.mock.calls).toEqual([['Search the web in the browser for: cheap flights to Lisbon']]);
+      expect(onDraft.mock.calls).toEqual([['Search the web in the browser for: cheap flights to Lisbon']]);
+      expect(onSend).not.toHaveBeenCalled();
     });
 
     it("frames the link in the router's own embed answer", async () => {

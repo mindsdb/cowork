@@ -167,7 +167,7 @@ import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import {
-  desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageUrlForContext,
+  desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
 } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
@@ -496,12 +496,14 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
 // agent gets no signal at all that a message's "this file" refers to
 // one of them. Named explicitly here so Anton can resolve the
 // reference — same hidden-context pattern as describeConnectFormState.
-/** What the agent is told about the page open in the browser a new task was sent beside. */
-function describeOpenBrowserPage(url) {
+/** What the agent is told about the page open in the browser a new task was
+    sent beside: only the site's origin (pageOriginForContext), never text the
+    site chose, so nothing the page wrote reads as the person's request. */
+function describeOpenBrowserPage(origin) {
   return [
     '[The browser beside this request — Anton-only context, do not echo back]',
-    `The user had this page open in the shared browser when they asked, so the request is about it: ${url}`,
-    'It is open in this task\'s browser now; read it there first.',
+    `When they sent this, the user had a page from ${origin} open in the shared browser.`,
+    'That page is open in this task\'s browser now; if the request is about it, read it there.',
   ].join('\n');
 }
 
@@ -4004,7 +4006,7 @@ function AppCore() {
     // The whole address, so the task's browser reopens the same page (a
     // search keeps its query); prompts get only its origin and path.
     const raw = String(offTaskPageUrlRef.current || '');
-    return pageUrlForContext(raw) && raw.length <= 4096 ? raw : '';
+    return pageOriginForContext(raw) && raw.length <= 4096 ? raw : '';
   };
   /* The new task's own browser opens at that page, and its view shows it;
      the off-task pane closes, since the task now holds the page. */
@@ -4115,7 +4117,7 @@ function AppCore() {
     const sendText = [
       text,
       reference.length ? describeGoogleDriveReferenceFiles(reference) : '',
-      carried ? describeOpenBrowserPage(pageUrlForContext(carried)) : '',
+      carried ? describeOpenBrowserPage(pageOriginForContext(carried)) : '',
     ].filter(Boolean).join('\n\n');
     if (carried) void carryBrowserInto(taskId, carried);
     setComposerAttachments([]);
@@ -5166,7 +5168,7 @@ function AppCore() {
     history: voiceHistoryRef.current,
     snapshot: () => describeScreen({
       ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callBusy(),
-      browserPage: pageUrlForContext(carriedPageRef.current?.() || ''),
+      browserPage: pageOriginForContext(carriedPageRef.current?.() || ''),
     }),
     actions: callActions,
   });
@@ -5191,6 +5193,11 @@ function AppCore() {
     onClose: closeOffTaskBrowser,
     onOpenUrl: openOffTaskBrowser,
     onSend: sendFromOffTaskBrowser,
+    // The viewer's address bar fills Home's composer, for the person to send.
+    onDraft: (text) => {
+      if (route !== 'home') setRoute('home');
+      setComposerPrefill({ text, bump: Date.now(), append: true });
+    },
   };
   const offTaskPane = offTaskBrowserOpen && browserSwitchShown && route !== 'task' && (offTaskBrowser || (host.isWeb && !offTaskBlank) ? (
     <BrowserPanel
