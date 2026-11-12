@@ -524,7 +524,7 @@ async function pressPoint(host: StepHost, input: AgentInput, target: StepTarget,
       beforePress: async () => {
         const hit = await host.page.hitTest(id, [at]);
         if (!hit.found) throw stale(id, 'is no longer on the page');
-        if (hit.reaches < 0) throw movedUnder(`over element ${id}`, hit.intoFrame);
+        if (hit.reaches < 0) throw movedUnder(`over element ${id}`, hit.intoFrame || await host.page.intoFrame(at));
       },
     };
   }

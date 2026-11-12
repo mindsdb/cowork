@@ -400,6 +400,17 @@ describe('runStep', () => {
     expect(events(dbg.sent, 'Input.dispatchMouseEvent').at(-1)).toMatchObject({ type: 'mouseMoved', ...pressed });
   });
 
+  it('names a frame laid over the element from outside it as a frame when the check before the press finds one', async () => {
+    const hitTest = vi.fn()
+      .mockResolvedValueOnce({ found: true, reaches: 0, intoFrame: false } satisfies HitTestResult)
+      .mockResolvedValue({ found: true, reaches: -1, intoFrame: false } satisfies HitTestResult);
+    const { dbg, stepHost } = host({ hitTest, intoFrame: vi.fn(async () => true) });
+    await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
+      message: 'a frame moved over element 7 as the pointer arrived, so nothing was pressed; read the page again',
+    });
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+  });
+
   it("checks again before a double click's second press, and stops there once something moved over the point", async () => {
     const hitTest = vi.fn()
       .mockResolvedValueOnce({ found: true, reaches: 0, intoFrame: false } satisfies HitTestResult)
