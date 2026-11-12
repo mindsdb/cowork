@@ -575,6 +575,10 @@ async function loadSessionMessagesWithRetry(
 // - but never more than MAX (a heartbeat for cross-client changes / clock drift)
 // - and never less than MIN (so an overdue-but-not-yet-processed schedule can't turn into a busy loop).
 // RUN_BUFFER gives the time to actually finish task before we go check.
+// A failed read of /voice/status is tried again this many times in all,
+// waiting a little longer each time.
+const VOICE_STATUS_TRIES = 4;
+const VOICE_STATUS_RETRY_MS = 15_000;
 const SCHEDULE_POLL_MAX_DELAY_MS = 10 * 60 * 1000;
 const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
 const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
@@ -710,10 +714,29 @@ function AppCore() {
   const callTaskIdRef = useRef(null);
   const callContextRef = useRef(null);
   const [voiceAvailable, setVoiceAvailable] = useState(false);
-  useEffect(() => {
-    let live = true;
-    fetchVoiceStatus().then((s) => { if (live) setVoiceAvailable(s.available); });
-    return () => { live = false; };
+  // Read with the rest of the app's data (refreshData): at start, and again
+  // whenever the server comes online. A failed read keeps the last answer and
+  // asks again a little later, a few times; only the newest read counts.
+  const voiceStatusRead = useRef({ seq: 0, timer: null });
+  const readVoiceStatus = useCallback((attempt = 0) => {
+    const reads = voiceStatusRead.current;
+    clearTimeout(reads.timer);
+    reads.seq += 1;
+    const seq = reads.seq;
+    fetchVoiceStatus().then((status) => {
+      if (seq !== reads.seq) return;
+      if (!status.failed) {
+        setVoiceAvailable(status.available);
+        return;
+      }
+      if (attempt + 1 < VOICE_STATUS_TRIES) {
+        reads.timer = setTimeout(() => readVoiceStatus(attempt + 1), VOICE_STATUS_RETRY_MS * (attempt + 1));
+      }
+    });
+  }, []);
+  useEffect(() => () => {
+    clearTimeout(voiceStatusRead.current.timer);
+    voiceStatusRead.current.seq += 1;
   }, []);
   // Its requests go through the operator (lib/voice/operator.js), which can
   // also run the app: projects, moving and stopping tasks, a task's steps, the
@@ -2527,7 +2550,8 @@ function AppCore() {
         setSettingsLoaded(true);
       }
     });
-  }, [refreshSchedules, reloadArtifacts]);
+    readVoiceStatus();
+  }, [refreshSchedules, reloadArtifacts, readVoiceStatus]);
 
   useEffect(() => {
     refreshData();
@@ -5253,12 +5277,13 @@ function AppCore() {
       label: callBackPending ? `${agentLabel} will call you back when it's done` : `Call ${agentLabel}`,
       onClick: () => { if (voiceCall.phase === 'ended') voiceCall.dismiss(); startVoiceCall(); },
     };
-  } else {
+  } else if (voiceAvailable) {
     voiceCallShortcut = {
-      label: voiceAvailable ? 'Another call is running' : 'Voice calls aren’t available here yet',
+      label: 'Another call is running',
       disabled: true,
     };
   }
+  // Where live voice isn't served (or not yet known), no call button shows.
   const offTaskShortcuts = (
     // The browser's button only while the shared browser is on (Settings, beta) and offered.
     <TopShortcuts onShowBrowser={browserSwitchShown ? () => setOffTaskBrowserOpen(true) : null} />
