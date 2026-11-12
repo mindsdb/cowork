@@ -28,6 +28,53 @@ const MAX_THREAD_HEIGHT = 168;
  * it again). Both run on --dur-layout, which prefers-reduced-motion sets to
  * 0ms, and the reduced-motion rule drops the rise.
  */
+// After the viewer's open animation (--dur-modal, 150ms) has settled.
+export const AUTOFOCUS_DELAY_MS = 220;
+const PHONE_MAX_WIDTH = 768;
+
+/** Touch or phone width, where focusing an input pops the keyboard. */
+export function isTouchViewport() {
+  try {
+    if (window.matchMedia?.('(pointer: coarse)')?.matches) return true;
+  } catch { /* no media queries: judge by width */ }
+  return (window.innerWidth || 0) > 0 && window.innerWidth < PHONE_MAX_WIDTH;
+}
+
+const isTypingTarget = (el) => !!el && (el.isContentEditable
+  || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+
+/*
+ * Puts the caret in the bar when the viewer opens, and when Live edit is
+ * turned on, so it reads as the place to type (ENG-4227). Once per
+ * `focusRequest` (the viewer bumps it for those two moments, and remembers
+ * the one it already used in `focusUsed`), after the open animation, and only
+ * when nobody has started elsewhere: no click or key since the request, no
+ * other field focused, and never on a touch or phone-width screen.
+ */
+function useAutoFocus(inputRef, { focusRequest, focusUsed, blocked }) {
+  useEffect(() => {
+    if (!focusRequest || !focusUsed || focusUsed.current === focusRequest) return undefined;
+    focusUsed.current = focusRequest;
+    if (blocked || isTouchViewport()) return undefined;
+    let interacted = false;
+    const onInteract = () => { interacted = true; };
+    document.addEventListener('pointerdown', onInteract, true);
+    document.addEventListener('keydown', onInteract, true);
+    const timer = setTimeout(() => {
+      const input = inputRef.current;
+      const active = document.activeElement;
+      if (interacted || !input || input.disabled) return;
+      if (active && active !== input && isTypingTarget(active)) return;
+      input.focus({ preventScroll: true });
+    }, AUTOFOCUS_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('pointerdown', onInteract, true);
+      document.removeEventListener('keydown', onInteract, true);
+    };
+  }, [focusRequest, focusUsed, blocked, inputRef]);
+}
+
 function useThreadHeight(innerRef, active) {
   const [height, setHeight] = useState(0);
   useLayoutEffect(() => {
@@ -168,13 +215,17 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, cha
   return <span className="artifact-quick-edit-error" role="alert">{reply.error || t('quickEdit.errors.failed')}</span>;
 }
 
-export function QuickEditBar({ controller, disabledReason = '', onOpenChat, chatMessages = null, picker = null }) {
+export function QuickEditBar({
+  controller, disabledReason = '', onOpenChat, chatMessages = null, picker = null,
+  focusRequest = 0, focusUsed = null,
+}) {
   const { t } = useTranslation('artifacts');
   const { messages, running, direct = true, send, askAgent, undo, undoableId } = controller;
   const [text, setText] = useState('');
   const taRef = useRef(null);
   const threadRef = useRef(null);
   const threadInnerRef = useRef(null);
+  useAutoFocus(taRef, { focusRequest, focusUsed, blocked: !!disabledReason });
   const threadHeight = useThreadHeight(threadInnerRef, messages.length > 0);
   // Messages whose entrance has played: they never get .is-entering again.
   const enteredRef = useRef(new Set());
@@ -246,7 +297,7 @@ export function QuickEditBar({ controller, disabledReason = '', onOpenChat, chat
       {disabledReason && (
         <div className="artifact-quick-edit-muted artifact-quick-edit-hint">{disabledReason}</div>
       )}
-      <div className="shrink-0 flex items-end gap-[2px] bg-surface rounded-[16px]
+      <div className="artifact-quick-edit-input shrink-0 flex items-end gap-[2px] bg-surface rounded-[16px]
         border-[0.5px] border-[rgba(39,39,42,0.15)] py-[8px] pl-[8px] pr-[4px]
         focus-within:border-[rgba(39,39,42,0.3)] transition-colors">
         <textarea

@@ -722,5 +722,21 @@
     "undone": "Annulé",
     "showAll": "{count, plural, other {Tout afficher (#)}}",
     "showFewer": "Afficher moins"
+  },
+  "layers": {
+    "ariaLabel": "Calques de la visionneuse",
+    "liveEdit": "Modification en direct",
+    "source": "Source",
+    "comments": "Commentaires",
+    "sourceOffPrompt": {
+      "title": "Désactiver Source ?",
+      "message": "Vos modifications non enregistrées dans Source seront abandonnées.",
+      "confirmLabel": "Abandonner les modifications"
+    }
+  },
+  "address": {
+    "draft": "Brouillon",
+    "copy": "Copier l'adresse",
+    "copied": "Copié"
   }
 }

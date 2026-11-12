@@ -722,5 +722,21 @@
     "undone": "Undone",
     "showAll": "{count, plural, other {Show all #}}",
     "showFewer": "Show fewer"
+  },
+  "layers": {
+    "ariaLabel": "Viewer layers",
+    "liveEdit": "Live edit",
+    "source": "Source",
+    "comments": "Comments",
+    "sourceOffPrompt": {
+      "title": "Turn off Source?",
+      "message": "Your unsaved changes in Source will be discarded.",
+      "confirmLabel": "Discard changes"
+    }
+  },
+  "address": {
+    "draft": "Draft",
+    "copy": "Copy address",
+    "copied": "Copied"
   }
 }

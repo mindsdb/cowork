@@ -5,7 +5,8 @@ import { useOrgMode } from '../../../lib/orgMode';
 import { canDownloadArtifact, canShowInBrowserTab } from '../../lib/artifactKinds';
 import { artifactExportFormats } from '../../lib/artifactExport';
 import { PublishMenu } from './publish/PublishMenu';
-import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
+import { ArtifactAddressPill } from './ArtifactAddressPill';
+import { ViewerLayerToggle } from './ViewerLayerToggle';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
@@ -23,6 +24,11 @@ export function ArtifactViewerHeader({
   actions,
   // `{ errors, dismissed, dismiss }` from usePreviewDiagnostics.
   diagnostics,
+  // The viewer's layers (ENG-4227): `{ layers, setLayer, canLiveEdit,
+  // canSource }`. Comments is offered where `review.enabled`.
+  viewerLayers = null,
+  // The address pill: `{ kind, url, fallback }`.
+  address = null,
   onClose,
 }) {
   const { t } = useTranslation('artifacts');
@@ -42,6 +48,9 @@ export function ArtifactViewerHeader({
     disabledReason,
   } = publication;
   const showStats = !!stats && isPublished && canManage;
+  // A caller with no address to give still gets the pill, named by the
+  // title, so ↗ keeps its place.
+  const shownAddress = address || { kind: isPublished ? 'published' : 'draft', url: '', fallback: title };
   const {
     canOpenInBrowserTab,
     canOpenLocalFile,
@@ -86,31 +95,6 @@ export function ArtifactViewerHeader({
       onClick: onOpenFolder,
     }] : []),
   ];
-  const workspaceLoading = workspace.status === 'idle' || workspace.status === 'loading';
-  /* A file the viewer only previews says so first: a card too old for the
-     workspace would otherwise read "Refresh", and a refresh never makes it
-     editable. The workspace hook sets `previewOnly` with its reason. */
-  const editDisabledReason = workspace.previewOnly
-    ? workspace.unsupportedReason || t('header.cannotEdit')
-    : !workspace.supported
-      ? t('header.refreshForEditing')
-      : workspaceLoading
-        ? t('header.loadingEditing')
-        : workspace.capabilities?.canEdit === false
-          ? t('modeTabs.editDisabled')
-          // "Too old to edit" and "never shared with you" both land in the
-          // `unsupported` status; the hook names which one so the tooltip doesn't
-          // send the user looking in the wrong place.
-          : workspace.unsupportedReason || t('header.cannotEdit');
-  const reviewDisabledReason = workspace.previewOnly
-    ? workspace.unsupportedReason || t('modeTabs.reviewDisabled')
-    : !workspace.supported
-      ? t('header.refreshForReview')
-      : workspaceLoading
-        ? t('header.loadingReview')
-        : workspace.commentsOffReason
-          || workspace.unsupportedReason
-          || t('modeTabs.reviewDisabled');
   return (
     <div className="artifact-viewer-topbar" style={{
       flex: '0 0 auto',
@@ -120,7 +104,7 @@ export function ArtifactViewerHeader({
       background: 'var(--surface)',
     }}>
       {/* Left — artifact title. */}
-      <div className="artifact-viewer-title-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+      <div className="artifact-viewer-title-zone" style={{ flex: '1 1 140px', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div
           id="artifact-viewer-title"
           className="s-h3"
@@ -138,54 +122,54 @@ export function ArtifactViewerHeader({
         <ArtifactAuthorshipBadge authorship={authorship} className="shrink-0" />
       </div>
 
-      {/* Middle — the artifact's three working modes. */}
-      <div className="artifact-viewer-mode-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <ArtifactModeTabs
-          value={workspace.mode}
-          onChange={workspace.setMode}
-          canEdit={!!workspace.source && workspace.capabilities?.canEdit !== false}
-          canReview={commentsEnabled}
-          editDisabledReason={editDisabledReason}
-          reviewDisabledReason={reviewDisabledReason}
-        />
-        {/* Beside the tabs rather than in the ⋯ menu: that menu is hidden in org
-            mode because its other entries are OS/file actions and `/publish`
-            routes an org deployment cannot answer, and this belongs on both.
-            Hidden outright when there is no URL to open — a button that opens
-            nothing is worse than no button. Hidden on web, too, for a file a
-            tab would save instead of show. */}
-        {canOpenInBrowserTab && canOpenAsTab && (
-          <Tooltip content={t('header.openInTab')}>
-            <IconButton aria-label={t('header.openInTab')} onClick={onOpenInBrowserTab}>
-              {Ico.arrowUpRight(16)}
-            </IconButton>
-          </Tooltip>
+      {/* Middle — the artifact's address, with copy and open-in-a-tab. ↗ is
+          here rather than in the ⋯ menu, which org mode hides, and is offered
+          by the same rule as before: never a button that opens nothing, nor a
+          tab that would save a file instead of showing it. */}
+      <div className="artifact-viewer-mode-zone" style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        {shownAddress && (
+          <ArtifactAddressPill
+            kind={shownAddress.kind}
+            url={shownAddress.url}
+            fallback={shownAddress.fallback}
+            canOpen={!!canOpenInBrowserTab && canOpenAsTab}
+            onOpen={onOpenInBrowserTab}
+          />
         )}
       </div>
 
       {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
-      <div className="artifact-viewer-action-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      <div className="artifact-viewer-action-zone" style={{ flex: '0 0 auto', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
-        {commentsEnabled && (
-          <div style={{ position: 'relative' }}>
-            <Tooltip content={commentsOpen ? t('header.hideComments') : t('comments.panel.title')}>
-              <IconButton
-                aria-label={comments.unreadCount > 0
-                  ? t('header.commentsUnread', { count: comments.unreadCount })
-                  : t('comments.panel.title')}
-                onClick={toggleComments}
-                active={commentsOpen}
-              >
-                {Ico.chats(16)}
-              </IconButton>
-            </Tooltip>
-            {comments.unreadCount > 0 && (
-              <span className="artifact-feedback-badge" aria-hidden="true">
-                {Math.min(99, comments.unreadCount)}
-              </span>
-            )}
-          </div>
-        )}
+        {/* The viewer's layers, each a toggle, only those this person may use. */}
+        <div className="artifact-layer-toggles" role="group" aria-label={t('layers.ariaLabel')}>
+          {viewerLayers?.canLiveEdit && (
+            <ViewerLayerToggle
+              icon={Ico.sparkle(14)}
+              label={t('layers.liveEdit')}
+              pressed={!!viewerLayers.layers.liveEdit}
+              onToggle={(on) => viewerLayers.setLayer('liveEdit', on)}
+            />
+          )}
+          {viewerLayers?.canSource && (
+            <ViewerLayerToggle
+              icon={Ico.code(14)}
+              label={t('layers.source')}
+              pressed={!!viewerLayers.layers.source}
+              onToggle={(on) => viewerLayers.setLayer('source', on)}
+            />
+          )}
+          {commentsEnabled && (
+            <ViewerLayerToggle
+              icon={Ico.chats(14)}
+              label={t('layers.comments')}
+              pressed={!!commentsOpen}
+              onToggle={() => toggleComments()}
+              badge={comments.unreadCount}
+              badgeLabel={t('header.commentsUnread', { count: comments.unreadCount })}
+            />
+          )}
+        </div>
         {showStats && (
           <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
             <IconButton aria-label={t('stats.toggle.show')} onClick={stats.onToggle} active={!!stats.open}>

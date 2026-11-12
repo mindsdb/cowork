@@ -70,9 +70,12 @@ vi.mock('./stats/useArtifactStats', () => ({
   },
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
-  ArtifactViewerHeader: ({ review, stats }) => (
+  ArtifactViewerHeader: ({ review, stats, workspace }) => (
     <>
       <button type="button" aria-pressed={!!review.open} onClick={review.onToggle}>Comments</button>
+      {/* The mode calls older callers still make (repair flows, notices). */}
+      <button type="button" onClick={() => workspace.setMode('review')}>Review mode</button>
+      <button type="button" onClick={() => workspace.setMode('edit')}>Edit mode</button>
       {stats && <button type="button" aria-pressed={!!stats.open} onClick={stats.onToggle}>Stats</button>}
     </>
   ),
@@ -192,36 +195,26 @@ describe('ArtifactViewer side panel', () => {
     expect(panels().stats).toBe('false');
   });
 
-  it('opens Comments and closes Stats on entering review mode', async () => {
-    const rerender = renderViewer();
+  it("opens Comments with its inbox and closes Stats on setMode('review')", async () => {
+    renderViewer();
     await settle();
     click('Stats');
 
-    workspaceMock.mode = 'review';
-    rerender();
+    click('Review mode');
     await settle();
 
     expect(panels()).toMatchObject({ comments: 'true', inbox: 'true', stats: 'false' });
   });
 
-  it('closes both panels on entering edit mode', async () => {
-    const rerender = renderViewer();
+  it("keeps Comments on beside Source: setMode('edit') turns Source on and leaves Comments alone", async () => {
+    renderViewer();
     await settle();
     click('Comments');
-    click('Open inbox');
 
-    workspaceMock.mode = 'edit';
-    rerender();
+    click('Edit mode');
     await settle();
-    expect(panels()).toMatchObject({ comments: 'false', inbox: 'false', stats: 'false' });
 
-    workspaceMock.mode = 'preview';
-    rerender();
-    click('Stats');
-    workspaceMock.mode = 'edit';
-    rerender();
-    await settle();
-    expect(panels().stats).toBe('false');
+    expect(panels()).toMatchObject({ comments: 'true', inbox: 'true', stats: 'false' });
   });
 
   it('loads stats only while the panel is open', async () => {
@@ -252,11 +245,14 @@ describe('ArtifactViewer side panel', () => {
     renderViewer();
     await settle();
     click('Comments');
+    // Comments opens with its inbox.
+    expect(panels()).toMatchObject({ comments: 'true', inbox: 'true', stats: 'false' });
 
+    click('Toggle inbox');
+    expect(panels()).toMatchObject({ comments: 'true', inbox: 'false', stats: 'false' });
     click('Toggle inbox');
     expect(panels()).toMatchObject({ comments: 'true', inbox: 'true', stats: 'false' });
     click('Toggle inbox');
-    expect(panels()).toMatchObject({ comments: 'true', inbox: 'false', stats: 'false' });
 
     click('Stats');
     click('Close inbox');

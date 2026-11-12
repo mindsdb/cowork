@@ -98,7 +98,9 @@ describe('preview window chrome in org mode', () => {
 
     expect(screen.getByRole('button', { name: 'Comments' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Preview' })).toBeInTheDocument();
+    // The address pill took the mode tabs' place.
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(document.querySelector('.artifact-address-pill')).not.toBeNull();
   });
 });
 

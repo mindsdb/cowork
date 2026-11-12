@@ -80,6 +80,10 @@ function LiveAppPanel({ notice, state, reloadKey, onOpen, onLaunch }) {
 
 export function ArtifactViewerBody({
   workspace,
+  // The viewer's Source layer (ENG-4227): `{ source, split }`. Without it the
+  // body follows `workspace.mode` as before.
+  layers = null,
+  bodyRef = undefined,
   preview,
   review,
   stats = null,
@@ -141,7 +145,10 @@ export function ArtifactViewerBody({
     || /\.html?$/i.test(sourcePath)
   );
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
-  const showEditor = workspace.mode === 'edit' && !!workspace.source;
+  const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source;
+  // Code left, preview right, on a wide viewer: for an HTML source, whose
+  // editor has no preview of its own (Markdown's does, so it takes the canvas).
+  const splitView = showEditor && !!layers?.split && htmlSource;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
   // Rejecting restores the pre-agent content over head. Once the artifact has
   // moved on, that also discards the work written since, so the server refuses
@@ -286,9 +293,9 @@ export function ArtifactViewerBody({
   return (
     <>
       {/* Text renders inline; other artifacts use a sandboxed iframe. */}
-      <div className={`artifact-viewer-body${commentsOpen && inboxOpen ? ' has-comments-inbox' : ''}`}>
+      <div ref={bodyRef} className={`artifact-viewer-body${commentsOpen && inboxOpen ? ' has-comments-inbox' : ''}`}>
         <div className="artifact-review-stage">
-          <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
+          <div className={`artifact-viewer-canvas${splitView ? ' is-split' : ''}`} style={{ overflow: isText ? 'auto' : 'hidden' }}>
             {/* A framed preview sits in its surface from the first render. The
                 workspace source loads separately and, on a slow connection,
                 after the page painted; moving the iframe into a surface only
@@ -297,10 +304,10 @@ export function ArtifactViewerBody({
             {htmlSource || !(isText || isImage) ? (
               <>
                 {htmlSource && (showEditor || retainedEditorKey === editorKey) && (
-                  <div className="artifact-mode-surface" hidden={!showEditor}>{sourceEditor}</div>
+                  <div className="artifact-mode-surface is-source-side" data-testid="source-surface" hidden={!showEditor}>{sourceEditor}</div>
                 )}
                 {!htmlSource && showEditor ? sourceEditor : (
-                  <div className="artifact-mode-surface" hidden={showEditor}>{previewContent}</div>
+                  <div className="artifact-mode-surface is-preview-side" data-testid="preview-surface" hidden={showEditor && !splitView}>{previewContent}</div>
                 )}
               </>
             ) : showEditor ? sourceEditor : previewContent}
@@ -319,7 +326,7 @@ export function ArtifactViewerBody({
             />
           )}
           {/* Stats replaces the comments chrome, so no composer opens beside it. */}
-          {textSelection && workspace.mode === 'review' && !stats?.open && (
+          {textSelection && commentsOpen && !stats?.open && (
             <TextSelectionComment
               selection={textSelection}
               onCancel={() => setTextSelection(null)}

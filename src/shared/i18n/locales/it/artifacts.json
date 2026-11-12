@@ -722,5 +722,21 @@
     "undone": "Annullata",
     "showAll": "{count, plural, other {Mostra tutte (#)}}",
     "showFewer": "Mostra meno"
+  },
+  "layers": {
+    "ariaLabel": "Livelli del visualizzatore",
+    "liveEdit": "Modifica dal vivo",
+    "source": "Sorgente",
+    "comments": "Commenti",
+    "sourceOffPrompt": {
+      "title": "Disattivare Sorgente?",
+      "message": "Le modifiche non salvate in Sorgente andranno perse.",
+      "confirmLabel": "Scarta modifiche"
+    }
+  },
+  "address": {
+    "draft": "Bozza",
+    "copy": "Copia indirizzo",
+    "copied": "Copiato"
   }
 }

@@ -722,5 +722,21 @@
     "undone": "Rückgängig",
     "showAll": "{count, plural, other {Alle # anzeigen}}",
     "showFewer": "Weniger anzeigen"
+  },
+  "layers": {
+    "ariaLabel": "Viewer-Ebenen",
+    "liveEdit": "Live-Bearbeitung",
+    "source": "Quelle",
+    "comments": "Kommentare",
+    "sourceOffPrompt": {
+      "title": "Quelle ausschalten?",
+      "message": "Deine nicht gespeicherten Änderungen in „Quelle“ werden verworfen.",
+      "confirmLabel": "Änderungen verwerfen"
+    }
+  },
+  "address": {
+    "draft": "Entwurf",
+    "copy": "Adresse kopieren",
+    "copied": "Kopiert"
   }
 }

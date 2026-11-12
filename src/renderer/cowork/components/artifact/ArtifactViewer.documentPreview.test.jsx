@@ -128,7 +128,6 @@ import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
 import { loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
 import { PREVIEW_FAILED_DOWNLOADED_NOTE, PREVIEW_FAILED_NOTE, PREVIEW_LIMIT_REASONS } from '../../preview/DocumentPreview';
 import { ArtifactViewer } from './ArtifactViewer';
-import { PREVIEW_ONLY } from './workspace/useArtifactWorkspace';
 
 const data = documentPreviewData();
 const MIB = 1024 * 1024;
@@ -216,12 +215,12 @@ describe.each(data.documentArtifacts)('a $type artifact', (artifactData) => {
     expect(review.enabled).toBe(false);
   });
 
-  it(`disables Source and Review with "${PREVIEW_ONLY}", even with a text sibling to load`, async () => {
+  it('offers no Source, Comments or Live edit toggle, even with a text sibling to load', async () => {
     renderViewer(artifact);
-    const edit = await screen.findByRole('tab', { name: `Source unavailable \u2014 ${PREVIEW_ONLY}` });
-    const review = screen.getByRole('tab', { name: `Review unavailable \u2014 ${PREVIEW_ONLY}` });
-    expect(edit).toBeDisabled();
-    expect(review).toBeDisabled();
+    await waitFor(() => expect(previewFrames()).toHaveLength(1));
+    expect(screen.queryByRole('button', { name: 'Source' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Comments/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Live edit' })).toBeNull();
     expect(workspaceApi.loadArtifactSource).not.toHaveBeenCalled();
     expect(calls.body.at(-1).workspace.source).toBeNull();
   });

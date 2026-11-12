@@ -722,5 +722,21 @@
     "undone": "Deshecho",
     "showAll": "{count, plural, other {Mostrar los #}}",
     "showFewer": "Mostrar menos"
+  },
+  "layers": {
+    "ariaLabel": "Capas del visor",
+    "liveEdit": "Edición en vivo",
+    "source": "Código fuente",
+    "comments": "Comentarios",
+    "sourceOffPrompt": {
+      "title": "¿Desactivar Código fuente?",
+      "message": "Se descartarán los cambios no guardados en Código fuente.",
+      "confirmLabel": "Descartar cambios"
+    }
+  },
+  "address": {
+    "draft": "Borrador",
+    "copy": "Copiar dirección",
+    "copied": "Copiado"
   }
 }

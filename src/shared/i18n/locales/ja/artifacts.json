@@ -722,5 +722,21 @@
     "undone": "取り消し済み",
     "showAll": "{count, plural, other {すべて表示（#件）}}",
     "showFewer": "表示を減らす"
+  },
+  "layers": {
+    "ariaLabel": "ビューアーのレイヤー",
+    "liveEdit": "ライブ編集",
+    "source": "ソース",
+    "comments": "コメント",
+    "sourceOffPrompt": {
+      "title": "ソースをオフにしますか？",
+      "message": "ソースの未保存の変更は破棄されます。",
+      "confirmLabel": "変更を破棄"
+    }
+  },
+  "address": {
+    "draft": "下書き",
+    "copy": "アドレスをコピー",
+    "copied": "コピーしました"
   }
 }

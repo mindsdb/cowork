@@ -722,5 +722,21 @@
     "undone": "실행 취소됨",
     "showAll": "{count, plural, other {모두 보기(#개)}}",
     "showFewer": "간단히 보기"
+  },
+  "layers": {
+    "ariaLabel": "뷰어 레이어",
+    "liveEdit": "실시간 편집",
+    "source": "소스",
+    "comments": "댓글",
+    "sourceOffPrompt": {
+      "title": "소스를 끌까요?",
+      "message": "소스에서 저장하지 않은 변경 사항이 삭제됩니다.",
+      "confirmLabel": "변경 사항 삭제"
+    }
+  },
+  "address": {
+    "draft": "초안",
+    "copy": "주소 복사",
+    "copied": "복사됨"
   }
 }

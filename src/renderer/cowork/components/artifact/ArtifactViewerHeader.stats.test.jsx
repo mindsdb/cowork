@@ -74,7 +74,10 @@ describe('Stats button', () => {
 
     const comments = screen.getByRole('button', { name: 'Comments' });
     const stats = screen.getByRole('button', { name: 'Stats' });
-    expect(comments.parentElement.nextElementSibling).toBe(stats);
+    // Right after the layer toggles, the last of which is Comments.
+    const toggles = comments.closest('[role="group"]');
+    expect(toggles.lastElementChild).toContainElement(comments);
+    expect(toggles.nextElementSibling).toBe(stats);
   });
 
   it('is hidden on an unpublished artifact', () => {

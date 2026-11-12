@@ -166,29 +166,3 @@ export:
     shows: []
     download: true
 
-# Why Source and Review are unavailable, as each tab's aria-label says it. The
-# workspace hook sets `previewOnly` for a file the viewer only previews, and
-# that reason comes first even on a card too old for the workspace. Without
-# the flag, such a card still asks for a refresh. When the owner's comments
-# service is down, Review says so instead of the generic line.
-reasons:
-  - name: a preview-only file on a card too old for the workspace
-    workspace:
-      supported: false
-      status: unsupported
-      previewOnly: true
-      unsupportedReason: "Preview only: Cowork can't edit this file type."
-    edit: "Source unavailable \u2014 Preview only: Cowork can't edit this file type."
-    review: "Review unavailable \u2014 Preview only: Cowork can't edit this file type."
-  - name: the same card without the preview-only flag
-    workspace:
-      supported: false
-      status: unsupported
-      unsupportedReason: "Preview only: Cowork can't edit this file type."
-    edit: "Source unavailable \u2014 Refresh the artifact to load editing tools"
-    review: "Review unavailable \u2014 Refresh the artifact to load review tools"
-  - name: a loaded artifact whose comments service is down
-    workspace:
-      commentsOffReason: "Comments aren't available right now. Reopen the artifact to try again."
-    edit: "Source unavailable \u2014 This artifact cannot be edited here"
-    review: "Review unavailable \u2014 Comments aren't available right now. Reopen the artifact to try again."

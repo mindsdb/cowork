@@ -722,5 +722,21 @@
     "undone": "已撤销",
     "showAll": "{count, plural, other {显示全部 # 项}}",
     "showFewer": "收起"
+  },
+  "layers": {
+    "ariaLabel": "查看器图层",
+    "liveEdit": "实时编辑",
+    "source": "源代码",
+    "comments": "评论",
+    "sourceOffPrompt": {
+      "title": "关闭源代码？",
+      "message": "源代码中未保存的更改将被放弃。",
+      "confirmLabel": "放弃更改"
+    }
+  },
+  "address": {
+    "draft": "草稿",
+    "copy": "复制地址",
+    "copied": "已复制"
   }
 }

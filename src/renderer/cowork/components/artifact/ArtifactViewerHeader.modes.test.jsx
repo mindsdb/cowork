@@ -209,15 +209,54 @@ describe('the viewer header controls', () => {
   });
 });
 
-describe.each(cases.reasons)('Source and Review for $name', (reasonCase) => {
-  it('names the reason in each tab', () => {
-    useMode(modeNamed('local web'));
-    const props = headerProps(modeNamed('local web'), { path: 'model.xlsx' });
-    props.workspace = { ...props.workspace, ...reasonCase.workspace };
-    render(<ArtifactViewerHeader {...props} />);
+describe('the layer toggles', () => {
+  const viewerLayers = (over = {}) => ({
+    layers: { liveEdit: true, source: false, comments: false },
+    setLayer: vi.fn(),
+    canLiveEdit: true,
+    canSource: true,
+    ...over,
+  });
 
-    expect(screen.getByRole('tab', { name: reasonCase.edit })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: reasonCase.review })).toBeDisabled();
+  it('offers only the layers this person may use', () => {
+    useMode(modeNamed('local web'));
+    const props = headerProps(modeNamed('local web'), { path: 'page.html' });
+    render(<ArtifactViewerHeader {...props} viewerLayers={viewerLayers({ canLiveEdit: false, canSource: false })} />);
+
+    expect(screen.queryByRole('button', { name: 'Live edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Source' })).toBeNull();
+    // review.enabled is false in these props: no Comments either.
+    expect(screen.queryByRole('button', { name: 'Comments' })).toBeNull();
+    expect(screen.queryByRole('tab')).toBeNull();
+  });
+
+  it('shows each allowed layer pressed or not, and switches it', () => {
+    useMode(modeNamed('local web'));
+    const props = headerProps(modeNamed('local web'), { path: 'page.html' });
+    const layers = viewerLayers();
+    props.review = { ...props.review, enabled: true, open: true, controller: { unreadCount: 0 }, onToggle: vi.fn() };
+    render(<ArtifactViewerHeader {...props} viewerLayers={layers} />);
+
+    expect(screen.getByRole('button', { name: 'Live edit' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Source' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Comments' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Source' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    expect(layers.setLayer).toHaveBeenCalledWith('source', true);
+    expect(layers.setLayer).toHaveBeenCalledWith('liveEdit', false);
+    expect(props.review.onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the unread badge on the Comments toggle', () => {
+    useMode(modeNamed('local web'));
+    const props = headerProps(modeNamed('local web'), { path: 'page.html' });
+    props.review = { ...props.review, enabled: true, open: false, controller: { unreadCount: 3 }, onToggle: vi.fn() };
+    render(<ArtifactViewerHeader {...props} viewerLayers={viewerLayers()} />);
+
+    expect(screen.getByRole('button', { name: /3 unread/ })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('3')).toBeInTheDocument();
   });
 });
 

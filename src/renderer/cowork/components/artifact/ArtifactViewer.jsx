@@ -68,6 +68,7 @@ import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
+import { useViewerLayers } from './useViewerLayers';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
@@ -98,6 +99,10 @@ import {
   withArtifactCommentFlag,
   withArtifactVersion,
 } from './artifactPreviewUtils';
+
+// The body width from which Source sits beside the preview instead of in
+// its place.
+export const SOURCE_SPLIT_MIN_WIDTH = 1100;
 
 // Extensions we render inline with the lightweight text preview path
 // (server `/v1/artifacts/preview` → text body). `.md` gets the full
@@ -278,6 +283,35 @@ export function ArtifactViewer({
     onChange: reportChange,
     previewOnly: !!documentType,
   });
+  // The viewer's layers over its one preview (ENG-4227): Live edit (the
+  // quick-edit bar), Source (the code editor) and Comments, each a header
+  // toggle, remembered on this device.
+  const { layers, setLayer: setStoredLayer } = useViewerLayers();
+  // The bar takes the caret when the viewer opens and when Live edit is
+  // turned on (QuickEditBar), once per such moment.
+  const [barFocusRequest, setBarFocusRequest] = useState(0);
+  const barFocusUsed = useRef(0);
+  useEffect(() => { if (open) setBarFocusRequest((n) => n + 1); }, [open, artifact?.id]);
+  const setLayer = useCallback((name, on) => {
+    if (name === 'liveEdit' && on) setBarFocusRequest((n) => n + 1);
+    setStoredLayer(name, on);
+  }, [setStoredLayer]);
+  const [sourceOffPrompt, setSourceOffPrompt] = useState(false);
+  // The body's width decides whether Source sits beside the preview or
+  // replaces it.
+  const [bodyWidth, setBodyWidth] = useState(0);
+  const bodyObserverRef = useRef(null);
+  const bodyRef = useCallback((node) => {
+    bodyObserverRef.current?.disconnect();
+    bodyObserverRef.current = null;
+    if (!node) return;
+    const measure = () => setBodyWidth(node.getBoundingClientRect().width || node.clientWidth || 0);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    bodyObserverRef.current = observer;
+  }, []);
   // Fallback target for a repair: a brand-new chat. Used when the viewer has no
   // host chat (opened from the artifacts list) and the host either offers no
   // resolver or can't reach the chat that created the artifact.
@@ -412,12 +446,7 @@ export function ArtifactViewer({
   // comment-placement mode so no pin cursor lingers on a "plain" preview.
   // Either way Stats closes, since it shares the docked slot.
   const toggleComments = () => {
-    setCommentsOpen((was) => {
-      if (was) layer.exitMode();
-      setSidePanel(null);
-      setMarkersShown(true);
-      return !was;
-    });
+    setLayer('comments', !(layers.comments && commentsEnabled));
   };
 
   // Stats turns comment mode off, so no markers are drawn beside it and at
@@ -428,24 +457,26 @@ export function ArtifactViewer({
       return;
     }
     layer.exitMode();
-    setCommentsOpen(false);
+    setLayer('comments', false);
     setSidePanel('stats');
   };
 
+  // The Comments layer drives the comments chrome. Turned on (or restored on
+  // open, once comments are available) it opens with the inbox and markers;
+  // turned off it leaves comment mode and closes the inbox.
   useEffect(() => {
-    if (workspace.mode === 'review' && commentsEnabled) {
+    if (open && layers.comments && commentsEnabled) {
       setFeedbackNotice('');
+      setMarkersShown(true);
       setCommentsOpen(true);
       setSidePanel('comments');
       return;
     }
-    if (workspace.mode === 'edit') {
-      layer.exitMode();
-      setCommentsOpen(false);
-      setSidePanel(null);
-    }
-    if (workspace.mode !== 'review') setTextSelection(null);
-  }, [commentsEnabled, layer.exitMode, workspace.mode]);
+    layer.exitMode();
+    setCommentsOpen(false);
+    setSidePanel((current) => (current === 'comments' ? null : current));
+    setTextSelection(null);
+  }, [open, layers.comments, commentsEnabled, layer.exitMode]);
 
   useEffect(() => {
     if (!open || workspace.repair?.status !== 'queued') return undefined;
@@ -521,7 +552,7 @@ export function ArtifactViewer({
   };
 
   const captureTextSelection = () => {
-    if (workspace.mode !== 'review' || !commentsEnabled) return;
+    if (!commentsOpen || !commentsEnabled) return;
     const selection = window.getSelection?.();
     const quote = selection?.toString().trim();
     const root = textContentRef.current;
@@ -986,6 +1017,31 @@ export function ArtifactViewer({
     onStale: () => { void workspace.load(); },
   });
 
+  // Source: the code editor, beside the preview on a wide viewer and in its
+  // place on a narrow one. Turning it off with unsaved text asks first.
+  const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
+  const sourceOn = layers.source && canSource;
+  const sourceSplit = sourceOn && bodyWidth >= SOURCE_SPLIT_MIN_WIDTH;
+  const setSourceLayer = (on) => {
+    if (!on && workspace.dirty) {
+      setSourceOffPrompt(true);
+      return;
+    }
+    setLayer('source', on);
+  };
+  // `workspace.mode` and `setMode`, for the callers that still speak modes:
+  // 'edit' is Source on, 'review' Comments on, 'preview' neither.
+  const viewerMode = sourceOn ? 'edit' : (commentsOpen ? 'review' : 'preview');
+  const setViewerMode = (mode) => {
+    if (mode === 'edit') setLayer('source', true);
+    else if (mode === 'review') setLayer('comments', true);
+    else {
+      setSourceLayer(false);
+      setLayer('comments', false);
+    }
+  };
+  const workspaceView = { ...workspace, mode: viewerMode, setMode: setViewerMode };
+
   if (!open || !artifact) return null;
 
   const title = artifact.title || artifact.path?.split('/').pop();
@@ -1213,6 +1269,15 @@ export function ArtifactViewer({
     onClose?.();
   };
 
+  // The address pill: where this artifact can be opened. A published page or
+  // a running live app has its own address; a draft has the address the
+  // browser-tab action opens, or none until a signed link is minted.
+  const addressModel = liveAppView && liveAppAddress
+    ? { kind: 'live', url: liveAppAddress, fallback: title }
+    : isPublished
+      ? { kind: 'published', url: pub.publishedUrl, fallback: title }
+      // Embedded content (data:/blob:) is no address to read or copy.
+      : { kind: 'draft', url: draftLinkRef || /^(?:data|blob):/i.test(browserTabUrl) ? '' : browserTabUrl, fallback: artifact.slug || title };
   const headerReview = {
     enabled: commentsEnabled,
     open: commentsOpen,
@@ -1327,19 +1392,27 @@ export function ArtifactViewer({
       open={open}
       onClose={requestClose}
       size="lg"
-      width="min(1080px, 94vw)"
+      // Wider with Source on, so code and preview fit side by side.
+      width={sourceOn ? 'min(1440px, 96vw)' : 'min(1080px, 94vw)'}
       height="min(820px, 88vh)"
       labelledBy="artifact-viewer-title"
     >
       <ArtifactViewerHeader
         title={title}
         authorship={authorship}
-        workspace={workspace}
+        workspace={workspaceView}
         review={headerReview}
         stats={headerStats}
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
+        viewerLayers={{
+          layers: { ...layers, source: sourceOn },
+          setLayer: (name, on) => (name === 'source' ? setSourceLayer(on) : setLayer(name, on)),
+          canLiveEdit: canQuickEdit,
+          canSource,
+        }}
+        address={addressModel}
         onClose={requestClose}
       />
 
@@ -1374,7 +1447,7 @@ export function ArtifactViewer({
         <button
           type="button"
           className="artifact-feedback-notice"
-          onClick={() => workspace.setMode('review')}
+          onClick={() => setLayer('comments', true)}
         >
           {Ico.chats(14)} <span>{feedbackNotice}</span>
         </button>
@@ -1456,14 +1529,16 @@ export function ArtifactViewer({
       )}
 
       <ArtifactViewerBody
-        workspace={{ ...workspace, save: saveWorkspace }}
+        bodyRef={bodyRef}
+        layers={{ source: sourceOn, split: sourceSplit }}
+        workspace={{ ...workspaceView, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
         stats={bodyStats}
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
       />
 
-      {canQuickEdit && workspace.mode === 'preview' && (
+      {canQuickEdit && layers.liveEdit && (!sourceOn || sourceSplit) && (
         <QuickEditBar
           controller={quickEdit}
           chatMessages={chatMessages}
@@ -1481,9 +1556,26 @@ export function ArtifactViewer({
           ) : null}
           // A reload after a quick edit would replace Source text never saved.
           disabledReason={workspace.dirty ? t('quickEdit.unsavedSource') : ''}
+          focusRequest={barFocusRequest}
+          focusUsed={barFocusUsed}
           onOpenChat={onClose}
         />
       )}
+
+      <ConfirmModal
+        open={sourceOffPrompt}
+        title={t('layers.sourceOffPrompt.title')}
+        message={t('layers.sourceOffPrompt.message')}
+        confirmLabel={t('layers.sourceOffPrompt.confirmLabel')}
+        cancelLabel={t('viewer.keepEditing')}
+        destructive
+        onClose={() => setSourceOffPrompt(false)}
+        onConfirm={() => {
+          setSourceOffPrompt(false);
+          workspace.discard();
+          setLayer('source', false);
+        }}
+      />
 
       <ConfirmModal
         open={!!pendingDiscard}

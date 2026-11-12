@@ -722,5 +722,21 @@
     "undone": "Desfeita",
     "showAll": "{count, plural, other {Mostrar todas (#)}}",
     "showFewer": "Mostrar menos"
+  },
+  "layers": {
+    "ariaLabel": "Camadas do visualizador",
+    "liveEdit": "Edição ao vivo",
+    "source": "Código-fonte",
+    "comments": "Comentários",
+    "sourceOffPrompt": {
+      "title": "Desativar Código-fonte?",
+      "message": "Suas alterações não salvas em Código-fonte serão descartadas.",
+      "confirmLabel": "Descartar alterações"
+    }
+  },
+  "address": {
+    "draft": "Rascunho",
+    "copy": "Copiar endereço",
+    "copied": "Copiado"
   }
 }
