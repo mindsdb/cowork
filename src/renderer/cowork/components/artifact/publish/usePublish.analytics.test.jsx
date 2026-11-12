@@ -246,3 +246,44 @@ describe('on Desktop', () => {
     expect(analytics.trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({ reason: 'error' }));
   });
 });
+
+describe('an artifact opened from a chat message learns its page id when the viewer opens', () => {
+  // Built from the stream: it has the link but no reportId.
+  const FROM_CHAT = { id: ID, type: 'html', path: '/p/.anton/artifacts/r/index.html', publishedUrl: 'https://share/x' };
+
+  it('on Desktop, from the status read', async () => {
+    apiMock.fetchArtifactStatus.mockResolvedValue({ publishedUrl: 'https://share/x', accessMode: 'public', reportId: 'rep-chat' });
+    const onChange = vi.fn();
+    const { result } = renderHook(() => usePublish(FROM_CHAT, { onChange, enabled: true }));
+    await act(async () => { await result.current.refresh(); });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ reportId: 'rep-chat' }));
+  });
+
+  it('on Web, from the access read', async () => {
+    setOrgMode(true);
+    try {
+      wsMock.loadArtifactAccess.mockResolvedValue({
+        accessMode: 'restricted', accessEmails: [], orgAllowed: false, ownerOnly: true,
+        allowedTeamIds: [], allowedUserIds: [], reportId: 'rep-web',
+      });
+      const onChange = vi.fn();
+      // The card already matches the read in every field but the page id.
+      const card = {
+        ...FROM_CHAT, projectId: 'proj-1', accessMode: 'restricted', ownerOnly: true,
+        accessEmails: [], orgAllowed: false, allowedTeamIds: [], allowedUserIds: [],
+      };
+      renderHook(() => usePublish(card, { onChange, enabled: true }));
+      await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ reportId: 'rep-web' })));
+    } finally {
+      setOrgMode(false);
+    }
+  });
+
+  it('keeps the id it has when an older server sends none', async () => {
+    apiMock.fetchArtifactStatus.mockResolvedValue({ publishedUrl: 'https://share/x', accessMode: 'password', modified: true });
+    const onChange = vi.fn();
+    const { result } = renderHook(() => usePublish({ ...FROM_CHAT, reportId: 'rep-had' }, { onChange, enabled: true }));
+    await act(async () => { await result.current.refresh(); });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ reportId: 'rep-had' }));
+  });
+});

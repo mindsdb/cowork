@@ -67,6 +67,14 @@ function modeFromArtifact(a) {
 // records may carry only the `accessProtected` flag. Used to seed/reset
 // `accessLoaded` from the prop's own knowledge (ENG-931). Kept in one place so
 // the seed and the open-effect reset can't drift apart.
+/* The live page's id an access or status answer names, for the sharing
+   analytics. A card built from a chat message has none until this read; an
+   older server sends no field, and then the card keeps what it had. */
+function answeredReportId(answer, artifact) {
+  if (typeof answer?.reportId === 'string') return answer.reportId;
+  return artifact?.reportId || '';
+}
+
 function hasServerAccess(a) {
   return a?.accessMode != null || a?.accessProtected != null;
 }
@@ -422,6 +430,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setOwnerOnly(nextOwnerOnly);
       setAccessPassword(a.accessPassword || '');
       if (a.artifactKey) setArtifactKey(a.artifactKey);
+      const nextReportId = answeredReportId(a, artifact);
       setAccessLoaded(true);
       // The parent keeps its own copy of the artifact, so the loaded audience
       // goes back to it. Once the prop already carries it, a repeat report only
@@ -432,10 +441,12 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         && Array.isArray(artifact?.accessEmails)
         && artifact.accessEmails.join(',') === nextEmails.join(',')
         && (artifact?.allowedTeamIds || []).join(',') === nextTeams.join(',')
-        && (artifact?.allowedUserIds || []).join(',') === nextUsers.join(',');
+        && (artifact?.allowedUserIds || []).join(',') === nextUsers.join(',')
+        && (artifact?.reportId || '') === nextReportId;
       if (propSame) return;
       onChange?.({
         ...artifact,
+        reportId: nextReportId,
         accessMode: nextMode,
         accessEmails: nextEmails,
         orgAllowed: nextOrg,
@@ -465,6 +476,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
        restricted artifact is owner-only. */
     const nextOwnerOnly = nextMode === 'restricted' && isOwnerOnlyAccess(s) === true;
     if (s.artifactKey) setArtifactKey(s.artifactKey);
+    const nextReportId = answeredReportId(s, artifact);
     /* The unknown audience (UNKNOWN_AUDIENCE: every field null) matches no
        answer, so the refresh replaces it with the server's. */
     const accessSame = nextMode === accessMode
@@ -487,7 +499,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setAccessLoaded(true);
     // Nothing the parent cares about changed → skip the parent onChange (and
     // the modified/url setters) to avoid a needless grid/rail re-render.
-    if (nextModified === modified && nextUrl === publishedUrl && accessSame) return;
+    if (nextModified === modified && nextUrl === publishedUrl && accessSame
+      && nextReportId === (artifact?.reportId || '')) return;
     setModified(nextModified);
     setPublishedUrl(nextUrl);
     // ⚠️ LOAD-BEARING: onChange MUST carry the access fields back into the
@@ -499,6 +512,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       ...artifact,
       modified: nextModified,
       publishedUrl: nextUrl,
+      reportId: nextReportId,
       accessMode: nextMode,
       accessEmails: nextEmails,
       orgAllowed: nextOrg,
