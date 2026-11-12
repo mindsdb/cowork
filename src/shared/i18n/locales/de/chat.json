@@ -615,5 +615,22 @@
     "closedTitle": "Der Browser dieser Aufgabe ist geschlossen",
     "closedDescription": "{agent} öffnet ihn wieder, wenn er benötigt wird.",
     "squeezed": "Vergrößern Sie das Fenster, um die Seite zu sehen"
+  },
+  "videoCall": {
+    "dialogLabel": "Videoanruf mit {agent}",
+    "show": "Videoanruf mit {agent} anzeigen",
+    "starting": "Anton wird angerufen…",
+    "preparing": "Anton macht sich bereit. Das kann bis zu einer halben Minute dauern.",
+    "ended": "Der Anruf wurde beendet.",
+    "close": "Schließen",
+    "aiBadge": "KI",
+    "yourCamera": "Ihre Kamera",
+    "working": "{agent} arbeitet daran…",
+    "mute": "Stummschalten",
+    "unmute": "Stummschaltung aufheben",
+    "cameraOff": "Kamera ausschalten",
+    "cameraOn": "Kamera einschalten",
+    "minimize": "Minimieren",
+    "hangUp": "Auflegen"
   }
 }

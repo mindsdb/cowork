@@ -615,5 +615,22 @@
     "closedTitle": "このタスクのブラウザは閉じています",
     "closedDescription": "必要になると{agent}が再び開きます。",
     "squeezed": "ページを表示するにはウィンドウを大きくしてください"
+  },
+  "videoCall": {
+    "dialogLabel": "{agent}とのビデオ通話",
+    "show": "{agent}とのビデオ通話を表示",
+    "starting": "Antonに発信中…",
+    "preparing": "Antonが準備しています。最大30秒ほどかかることがあります。",
+    "ended": "通話が終了しました。",
+    "close": "閉じる",
+    "aiBadge": "AI",
+    "yourCamera": "あなたのカメラ",
+    "working": "{agent}が対応中です…",
+    "mute": "ミュート",
+    "unmute": "ミュート解除",
+    "cameraOff": "カメラをオフ",
+    "cameraOn": "カメラをオン",
+    "minimize": "最小化",
+    "hangUp": "通話を終了"
   }
 }

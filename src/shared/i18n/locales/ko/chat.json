@@ -615,5 +615,22 @@
     "closedTitle": "이 작업의 브라우저가 닫혔습니다",
     "closedDescription": "{agent}이(가) 필요할 때 다시 엽니다.",
     "squeezed": "페이지를 보려면 창을 더 크게 만드세요"
+  },
+  "videoCall": {
+    "dialogLabel": "{agent}와(과)의 영상 통화",
+    "show": "{agent}와(과)의 영상 통화 표시",
+    "starting": "Anton에게 전화하는 중…",
+    "preparing": "Anton이 준비하고 있습니다. 최대 30초 정도 걸릴 수 있습니다.",
+    "ended": "통화가 종료되었습니다.",
+    "close": "닫기",
+    "aiBadge": "AI",
+    "yourCamera": "내 카메라",
+    "working": "{agent}이(가) 작업 중입니다…",
+    "mute": "음소거",
+    "unmute": "음소거 해제",
+    "cameraOff": "카메라 끄기",
+    "cameraOn": "카메라 켜기",
+    "minimize": "최소화",
+    "hangUp": "통화 종료"
   }
 }

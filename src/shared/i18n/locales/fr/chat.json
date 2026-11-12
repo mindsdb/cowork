@@ -615,5 +615,22 @@
     "closedTitle": "Le navigateur de cette tâche est fermé",
     "closedDescription": "{agent} le rouvrira quand il en aura besoin.",
     "squeezed": "Agrandissez la fenêtre pour voir la page"
+  },
+  "videoCall": {
+    "dialogLabel": "Appel vidéo avec {agent}",
+    "show": "Afficher l’appel vidéo avec {agent}",
+    "starting": "Appel d’Anton…",
+    "preparing": "Anton se prépare. Cela peut prendre jusqu’à une demi-minute.",
+    "ended": "L’appel est terminé.",
+    "close": "Fermer",
+    "aiBadge": "IA",
+    "yourCamera": "Votre caméra",
+    "working": "{agent} s’en occupe…",
+    "mute": "Couper le micro",
+    "unmute": "Activer le micro",
+    "cameraOff": "Désactiver la caméra",
+    "cameraOn": "Activer la caméra",
+    "minimize": "Réduire",
+    "hangUp": "Raccrocher"
   }
 }

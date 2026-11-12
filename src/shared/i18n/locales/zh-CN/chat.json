@@ -615,5 +615,22 @@
     "closedTitle": "此任务的浏览器已关闭",
     "closedDescription": "{agent} 需要时会重新打开它。",
     "squeezed": "放大窗口以查看页面"
+  },
+  "videoCall": {
+    "dialogLabel": "与 {agent} 视频通话",
+    "show": "显示与 {agent} 的视频通话",
+    "starting": "正在呼叫 Anton…",
+    "preparing": "Anton 正在准备，最多可能需要半分钟。",
+    "ended": "通话已结束。",
+    "close": "关闭",
+    "aiBadge": "AI",
+    "yourCamera": "你的摄像头",
+    "working": "{agent} 正在处理…",
+    "mute": "静音",
+    "unmute": "取消静音",
+    "cameraOff": "关闭摄像头",
+    "cameraOn": "打开摄像头",
+    "minimize": "最小化",
+    "hangUp": "挂断"
   }
 }
