@@ -22,6 +22,7 @@ import {
   pageWorldSource,
   type PageWorldState,
   type RawSnapshot,
+  SECRET_SEARCH_DEPTH,
   type SelectResult,
   type TypingFocus,
 } from './browser-page-script';
@@ -68,6 +69,10 @@ function snapshot(world: PageWorldState, maxText = 3000, maxElements = 300): Raw
 /* A srcdoc frame's document loads after it is attached. */
 const framesLoad = () => new Promise((resolve) => setTimeout(resolve, 30));
 const frameDoc = (id: string): Document => (document.getElementById(id) as HTMLIFrameElement).contentDocument!;
+
+/* What a screenshot of this page must hide, the search `depth` documents deep. */
+const secretBoxes = (depth = SECRET_SEARCH_DEPTH): FoundSecrets =>
+  pageWorld(document, freshWorld(), { kind: 'secretBoxes', paymentHosts: [...FRAME_READ_RULES.paymentHosts], depth }) as FoundSecrets;
 
 /* The frames a read listed, by address. */
 const framesByUrl = (page: RawSnapshot): Record<string, RawFrame> => Object.fromEntries(page.frames.map((f) => [f.url, f]));
@@ -833,7 +838,7 @@ describe('frames', () => {
     place(frameDoc('form').getElementById('otp')!, 5, 5, 80, 20);
     place(document.getElementById('pay')!, 10, 320, 300, 40);
     place(document.getElementById('ads')!, 10, 400, 300, 250);
-    const found = pageWorld(document, freshWorld(), { kind: 'secretBoxes', paymentHosts: [...FRAME_READ_RULES.paymentHosts] }) as FoundSecrets;
+    const found = secretBoxes();
     expect(found.secrets).toEqual([
       { x: 10, y: 10, width: 100, height: 20 },
       { x: 10, y: 40, width: 100, height: 20 },
@@ -841,10 +846,40 @@ describe('frames', () => {
     ]);
     expect(found.paymentFrames).toEqual([{ x: 10, y: 320, width: 300, height: 40 }]);
     expect(found.otherSiteFrames).toEqual([{ x: 10, y: 320, width: 300, height: 40 }, { x: 10, y: 400, width: 300, height: 250 }]);
+    expect(found.owners).toBe(3);
     // A payment frame the page's DOM accounts for hides itself alone.
-    expect(screenshotMasks(found, ['https://js.stripe.com/v3/elements-inner-card', 'https://ads.example.test/'])).toEqual([...found.secrets, ...found.paymentFrames]);
+    expect(screenshotMasks(found, ['https://js.stripe.com/v3/elements-inner-card', 'https://ads.example.test/'], 3)).toEqual([...found.secrets, ...found.paymentFrames]);
     // One it doesn't (nested in another site's frame, or redirected there) hides every frame from another site.
-    expect(screenshotMasks(found, ['https://js.stripe.com/v3/elements-inner-card', 'https://ads.example.test/', 'https://js.stripe.com/v3/controller.html'])).toEqual([...found.secrets, ...found.paymentFrames, ...found.otherSiteFrames]);
+    expect(screenshotMasks(found, ['https://js.stripe.com/v3/elements-inner-card', 'https://ads.example.test/', 'https://js.stripe.com/v3/controller.html'], 3)).toEqual([...found.secrets, ...found.paymentFrames, ...found.otherSiteFrames]);
+  });
+
+  it("counts the frame owners in every document it searches, and masks a same-origin frame past its depth as one it can't search", async () => {
+    document.body.innerHTML = `
+      <iframe id="outer" srcdoc="<iframe id='mid' srcdoc='<p>Deep</p>'></iframe>"></iframe>
+      <svg><iframe></iframe></svg>
+      <embed id="emb" src="https://shop.other.test/buy" type="text/html">`;
+    await framesLoad();
+    await framesLoad();
+    place(document.getElementById('outer')!, 10, 10, 300, 100);
+    place(frameDoc('outer').getElementById('mid')!, 5, 5, 50, 20);
+    place(document.getElementById('emb')!, 10, 120, 300, 100);
+    const found = secretBoxes(1);
+    // The two iframes; an SVG element named iframe and an embed hold no frame it can count.
+    expect(found.owners).toBe(2);
+    expect(found.otherSiteFrames).toEqual([{ x: 15, y: 15, width: 50, height: 20 }, { x: 10, y: 120, width: 300, height: 100 }]);
+  });
+
+  it("takes no screenshot when the frame tree holds a payment frame and the searched documents hold a frame their owners don't account for", () => {
+    const found: FoundSecrets = { secrets: [{ x: 1, y: 1, width: 5, height: 5 }], paymentFrames: [], otherSiteFrames: [{ x: 0, y: 0, width: 50, height: 50 }], owners: 1, viewport: { width: 800, height: 600 } };
+    const stripe = 'https://js.stripe.com/v3/elements-inner-card';
+    // A payment frame in a closed shadow root, or behind an embed: two frames placed in the searched documents, one owner found.
+    expect(screenshotMasks(found, ['https://ads.example.test/', stripe], 2)).toBeNull();
+    // More owners than frames is a count off too.
+    expect(screenshotMasks(found, [stripe], 0)).toBeNull();
+    // No payment frame anywhere: the screenshot goes ahead.
+    expect(screenshotMasks(found, ['https://ads.example.test/', 'https://ads.example.test/2'], 2)).toEqual(found.secrets);
+    // Every frame placed: what can't be accounted for is blacked out.
+    expect(screenshotMasks(found, [stripe], 1)).toEqual([...found.secrets, ...found.otherSiteFrames]);
   });
 });
 

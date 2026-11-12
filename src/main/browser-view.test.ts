@@ -2,7 +2,7 @@ import type { BrowserWindow, Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { ANTON_REQUEST_TIMEOUT_MS, parseStepRequest, SETTLE_MAX_MS, SETTLE_QUIET_MS, STEP_TIMEOUT_MS, type StepOutcome, type StepRequest } from '../shared/browser-contract';
 import type { TabHooks } from './browser-sessions';
-import { PAGE_READ_TIMEOUT_MS, PAGE_WORLD_ID } from './browser-page-script';
+import { PAGE_READ_TIMEOUT_MS, PAGE_WORLD_ID, SECRET_SEARCH_DEPTH } from './browser-page-script';
 
 /* A WebContentsView whose page answers the isolated-world reads the tab sends. */
 const electron = vi.hoisted(() => {
@@ -21,10 +21,10 @@ const electron = vi.hoisted(() => {
     /* The page's side of the step's change watch: the token it runs under,
        what it counted, and when content last changed. */
     change = { token: null as number | null, changes: 0, lastChangeAt: 0, busy: false, opaque: false };
-    mainFrame = { framesInSubtree: [] as unknown[], frames: [] as unknown[] };
+    mainFrame = { origin: 'https://a.test', framesInSubtree: [] as unknown[], frames: [] as unknown[] };
     focus = { secret: false, otherSite: false };
     /* What the page's secret-field read finds for a screenshot. */
-    secrets = { secrets: [] as unknown[], paymentFrames: [] as unknown[], otherSiteFrames: [] as unknown[], viewport: { width: 800, height: 600 } };
+    secrets = { secrets: [] as unknown[], paymentFrames: [] as unknown[], otherSiteFrames: [] as unknown[], owners: 0, viewport: { width: 800, height: 600 } };
     capturePage = vi.fn(async () => {
       const image = {
         getSize: () => ({ width: 800, height: 600 }),
@@ -253,6 +253,29 @@ describe('ElectronTab', () => {
     expect(at(50, 40)).toEqual([0x80, 0x80, 0x80, 0x80]);
     const [found] = worldCalls(contents, 'secretBoxes');
     expect(found[1][0].code).toContain('"paymentHosts":["stripe.com",');
+  });
+
+  it("takes no screenshot when the page holds a payment frame its DOM can't place, at the top or in a same-origin frame, and nothing is captured", async () => {
+    const { tab, contents } = setup();
+    const stripe = { url: 'https://js.stripe.com/v3/elements-inner-card', origin: 'https://js.stripe.com', frames: [] };
+    // At the top, in a closed shadow root: the frame tree holds it, the page's search finds no owner.
+    contents.mainFrame.frames = [stripe];
+    contents.mainFrame.framesInSubtree = [contents.mainFrame, stripe];
+    contents.secrets = { ...contents.secrets, owners: 0 };
+    await expect(tab.screenshot(false, 70)).rejects.toMatchObject({ code: 'internal', status: 500, message: expect.stringContaining('payment frame') });
+    // In a closed shadow root inside a same-origin frame: the search finds that frame's owner only.
+    const checkout = { url: 'https://a.test/checkout', origin: 'https://a.test', frames: [stripe] };
+    contents.mainFrame.frames = [checkout];
+    contents.mainFrame.framesInSubtree = [contents.mainFrame, checkout, stripe];
+    contents.secrets = { ...contents.secrets, owners: 1 };
+    await expect(tab.screenshot(false, 70)).rejects.toMatchObject({ code: 'internal' });
+    expect(contents.capturePage).not.toHaveBeenCalled();
+    // Found where the tree says, it is blacked out and the screenshot is taken.
+    contents.secrets = { ...contents.secrets, owners: 2, paymentFrames: [{ x: 0, y: 100, width: 300, height: 40 }] };
+    electron.nativeImage.createFromBitmap.mockImplementation(() => ({ toJPEG: () => Buffer.from('masked') }));
+    await expect(tab.screenshot(false, 70)).resolves.toMatchObject({ jpeg: Buffer.from('masked') });
+    const [, request] = worldCalls(contents, 'secretBoxes').at(-1)!;
+    expect(request[0].code).toContain(`"depth":${SECRET_SEARCH_DEPTH}`);
   });
 
   it('refuses a key that edits text into a frame from another site while the page holds a payment frame', async () => {

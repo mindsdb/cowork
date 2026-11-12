@@ -79,6 +79,11 @@ export const PAGE_WORLD_ID = 1031;
 /** A read that takes longer than this answers 409 page_busy. */
 export const PAGE_READ_TIMEOUT_MS = 10_000;
 
+/** How many same-origin frames deep a screenshot's search for secrets goes
+    (`secretBoxes`). The frame tree is counted to the same depth
+    (browser-view.ts), so the two can be compared. */
+export const SECRET_SEARCH_DEPTH = 8;
+
 export interface PageWorldState {
   ids: Map<number, Element>;
   byElement: WeakMap<Element, number>;
@@ -179,11 +184,15 @@ export interface FocusedSecret {
 
 /** What a screenshot must not show, in viewport CSS pixels: secret fields
     (in the page, its open shadow roots and its same-origin frames), payment
-    frames by address, and every frame from another site. */
+    frames by address, and every frame the search doesn't enter (one from
+    another site, or a same-origin one past SECRET_SEARCH_DEPTH). `owners`
+    counts the frame owners that hold a frame (DomFrame's `framed`) in the
+    documents it searched. */
 export interface FoundSecrets {
   secrets: Box[];
   paymentFrames: Box[];
   otherSiteFrames: Box[];
+  owners: number;
   viewport: { width: number; height: number };
 }
 
@@ -208,7 +217,7 @@ export type PageWorldRequest =
   | { kind: 'changeStart'; token: number }
   | { kind: 'changeMark'; token: number; at: ViewPoint | null }
   | { kind: 'changeStop'; token: number }
-  | { kind: 'secretBoxes'; paymentHosts: readonly string[] }
+  | { kind: 'secretBoxes'; paymentHosts: readonly string[]; depth: number }
   | { kind: 'watch' };
 
 export interface RawSnapshot {
@@ -770,24 +779,25 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   };
 
   /* What a screenshot must not show. Same-origin frames are searched in
-     turn, offset by their content box; a frame from another site can't be. */
-  const secretBoxes = (paymentHosts: readonly string[]): FoundSecrets => {
-    const found: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], viewport };
+     turn, `maxDepth` deep, offset by their content box; a frame from another
+     site can't be, and one past that depth isn't. */
+  const secretBoxes = (paymentHosts: readonly string[], maxDepth: number): FoundSecrets => {
+    const found: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], owners: 0, viewport };
     const add = (into: Box[], el: Element, dx: number, dy: number) => {
       const box = boxOf(el);
       if (box.width > 0 && box.height > 0) into.push({ x: box.x + dx, y: box.y + dy, width: box.width, height: box.height });
     };
     const visit = (root: Node, dx: number, dy: number, depth: number) => {
-      if (depth > 8) return;
       for (const el of elementsIn(root)) {
         if (!FRAME_TAGS.has(tagOf(el))) {
           if (isField(el) && isSecret(el)) add(found.secrets, el, dx, dy);
           continue;
         }
+        if (holdsFrame(el)) found.owners += 1;
         const inner = frameDocOf(el);
         const payment = hostIn(sourceOf(el), paymentHosts) || (!!inner && hostIn(String(inner.location?.href || ''), paymentHosts));
         if (payment) add(found.paymentFrames, el, dx, dy);
-        if (!inner) add(found.otherSiteFrames, el, dx, dy);
+        if (!inner || depth >= maxDepth) add(found.otherSiteFrames, el, dx, dy);
         else if (!payment) {
           const box = contentBox(el);
           visit(inner, dx + box.x, dy + box.y, depth + 1);
@@ -1087,7 +1097,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       if (world.change?.token === request.token) stopChanges();
       return { ok: true };
     case 'secretBoxes':
-      return secretBoxes(request.paymentHosts);
+      return secretBoxes(request.paymentHosts, request.depth);
     case 'watch':
       world.observer ??= new MutationObserver(onMutations);
       watchRoot(doc);
@@ -1176,11 +1186,17 @@ export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrame
 }
 
 /** What a screenshot blacks out: secret fields and payment frames, and every
-    frame from another site when the frame tree (`frameUrls`) holds a payment
-    frame the page's DOM doesn't account for (one nested in another site's
-    frame, or one that navigated there). */
-export function screenshotMasks(found: FoundSecrets, frameUrls: string[]): Box[] {
-  const unaccounted = frameUrls.filter(isPaymentAddress).length > found.paymentFrames.length;
+    frame the search didn't enter when the frame tree (`frameUrls`) holds a
+    payment frame the page's DOM doesn't account for (one nested in another
+    site's frame, or one that navigated there). Null, for no screenshot at
+    all, when the frame tree holds a payment frame and the frames it places
+    in the searched documents (`searchedFrames`) don't number the owners the
+    search found: one sits where the DOM can't place it (a closed shadow
+    root, behind an embed), so no box would cover it. */
+export function screenshotMasks(found: FoundSecrets, frameUrls: string[], searchedFrames: number): Box[] | null {
+  const payments = frameUrls.filter(isPaymentAddress).length;
+  if (payments > 0 && found.owners !== searchedFrames) return null;
+  const unaccounted = payments > found.paymentFrames.length;
   return [...found.secrets, ...found.paymentFrames, ...(unaccounted ? found.otherSiteFrames : [])];
 }
 

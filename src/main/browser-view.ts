@@ -27,7 +27,7 @@
  * page shows.
  */
 
-import { type BrowserWindow, type Certificate, type HandlerDetails, type Input, nativeImage, type Session, type WebContents, WebContentsView, type WindowOpenHandlerResponse } from 'electron';
+import { type BrowserWindow, type Certificate, type HandlerDetails, type Input, nativeImage, type Session, type WebContents, WebContentsView, type WebFrameMain, type WindowOpenHandlerResponse } from 'electron';
 import { diagnostic } from '../shared/diagnostics';
 import {
   BridgeError,
@@ -59,6 +59,7 @@ import {
   type PageWorldRequest,
   type RawSnapshot,
   screenshotMasks,
+  SECRET_SEARCH_DEPTH,
   type SelectResult,
   type TypingFocus,
 } from './browser-page-script';
@@ -333,6 +334,19 @@ export class ElectronTab implements TabView {
     return this.contents.mainFrame.frames.map((frame) => frame.url);
   }
 
+  /* How many frames sit directly in the documents a screenshot's search for
+     secrets walks (secretBoxes): the main frame's, and below it each
+     same-origin frame's that is not a payment frame, SECRET_SEARCH_DEPTH
+     deep. Each frame owner the search counts holds one of them. */
+  private searchedFrames(): number {
+    const main = this.contents.mainFrame;
+    const count = (frame: WebFrameMain, depth: number): number => frame.frames.reduce((sum, child) => {
+      const searched = depth < SECRET_SEARCH_DEPTH && child.origin === main.origin && !isPaymentAddress(child.url);
+      return sum + 1 + (searched ? count(child, depth + 1) : 0);
+    }, 0);
+    return count(main, 0);
+  }
+
   async read(maxText: number): Promise<PageSnapshot> {
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
     return pageAnswer(raw, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls());
@@ -527,11 +541,15 @@ export class ElectronTab implements TabView {
   }
 
   /* Every screenshot blacks out the page's secret fields and payment frames
-     (screenshotMasks), read just before the capture. */
+     (screenshotMasks), read just before the capture. A page with a payment
+     frame it can't place gets no capture at all. */
   async screenshot(annotate: boolean, quality: number): Promise<Screenshot> {
     const raw = annotate ? await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText: 0, maxElements: MAX_ELEMENTS, frames: null }) : null;
-    const found = await this.inWorld<FoundSecrets>({ kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS });
-    const masks = screenshotMasks(found, this.subframeUrls());
+    const found = await this.inWorld<FoundSecrets>({ kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: SECRET_SEARCH_DEPTH });
+    const masks = screenshotMasks(found, this.subframeUrls(), this.searchedFrames());
+    if (!masks) {
+      throw new BridgeError('internal', "the page holds a payment frame this browser can't place to black out, so no screenshot was taken; read the page instead");
+    }
     const image = await this.contents.capturePage(undefined, { stayHidden: true });
     const width = (raw?.viewport ?? found.viewport).width;
     return renderScreenshot(image, width, raw?.boxes ?? null, quality, (data, size) => nativeImage.createFromBitmap(data, size), masks);
