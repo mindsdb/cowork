@@ -78,6 +78,14 @@ async function startFixtureServer(): Promise<void> {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end(`<title>Long</title><style>body{margin:0;font:16px sans-serif}p{margin:0;height:30px;line-height:30px}</style>${lines}`);
     }
+    if (url.pathname === '/many') {
+      /* 20,000 rows of about 125 characters, each with a button: about
+         2.5 MB of text and 20,000 controls, scrolled to the middle. */
+      const filler = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.';
+      const rows = Array.from({ length: 20_000 }, (_, i) => `<div><p>Row ${i} ${filler}</p><button>Action ${i}</button></div>`).join('');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Many</title>${rows}<script>scrollTo(0, document.documentElement.scrollHeight / 2)</script>`);
+    }
     if (url.pathname === '/late') {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Late</title><button onclick="fetch(\'/slow\').then((r) => r.text()).then((t) => { const p = document.createElement(\'p\'); p.textContent = t; document.body.append(p); })">Load</button>');
@@ -352,6 +360,23 @@ test('reads the text the person sees once the page is scrolled past what a read 
   expect(read.text.startsWith(`… Line ${top} of the long page`), read.text.slice(0, 80)).toBe(true);
   expect(read.text).toContain(`Line ${top + 5} of the long page`);
   expect(read.text).toContain('… (above the view) Line 1 of the long page');
+});
+
+test('reads a page of 20,000 controls and 2.5 MB of text scrolled to the middle well inside the read timeout, with what is in view first', async () => {
+  await openAt('/many');
+  await expect.poll(async () => (await page()).scroll.y, { timeout: 10_000 }).toBeGreaterThan(100_000);
+  const started = Date.now();
+  const read = await page();
+  const took = Date.now() - started;
+  const middle = Number(/^… Row (\d+) /.exec(read.text)?.[1]);
+  expect(middle, read.text.slice(0, 80)).toBeGreaterThan(9_000);
+  expect(read.elements).toHaveLength(300);
+  expect(read.truncated).toBe(true);
+  // The buttons in view come first, from the rows the text starts at.
+  expect(read.elements[0]).toMatchObject({ role: 'button', name: `Action ${middle}` });
+  expect(read.elements[0].offscreen).toBeUndefined();
+  // About 0.1 s here, where a walk of every text node takes 1.5 s.
+  expect(took, `the read took ${took} ms`).toBeLessThan(1_000);
 });
 
 test("a click's answer carries what a request it started brings 2.5 s later", async () => {

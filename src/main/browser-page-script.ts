@@ -584,16 +584,28 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /*
    * The page's text in reading order, the light DOM innerText reads, with
    * secret fields and editors, and a frame's editors, left out (hidesText).
-   * `above` holds the text nodes whose every line sits above the view, or
-   * above a scrolled box they are in; `shown` the rest. Rects come from a
-   * detached Range, so nothing is selected, scrolled or focused.
+   * On a `scrolled` page, `above` holds the text nodes whose every line
+   * sits above the view, or above a scrolled box they are in; `shown` holds
+   * the rest (all of them on a page that isn't). Rects come from a detached
+   * Range, so nothing is selected, scrolled or focused.
+   *
+   * It reads only as far as a read of `maxText` characters can show, so a
+   * long page costs about what its view holds, as on the web pod: it stops
+   * once `shown` is longer than `maxText` as pageText cleans it, and keeps
+   * text above the view only until that is. From then on a subtree drawn
+   * wholly above the view, its own box and every box in it (one Range over
+   * it all, which takes in a fixed or positioned box inside it), is passed
+   * over whole. What it leaves out, pageText's answer never holds.
    */
-  const textByView = (d: Document): { all: string; shown: string; above: string } => {
+  const textByView = (d: Document, maxText: number, scrolled: boolean): { all: string; shown: string; above: string } => {
     const all: string[] = [];
     const shownParts: string[] = [];
     const aboveParts: string[] = [];
+    /* How long each part is so far, cleaned: no shorter than it is joined. */
+    const found = { shown: 0, above: 0 };
     const range = d.createRange();
     const walk = (node: Node, clipTop: number): void => {
+      if (found.shown > maxText) return;
       if (node.nodeType === 3) {
         const parent = node.parentElement;
         const visibility = parent ? styleOf(parent).visibility : 'hidden';
@@ -601,14 +613,24 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         range.selectNodeContents(node);
         const rects = Array.from(range.getClientRects());
         if (!rects.length) return;
+        const above = scrolled && rects.every((rect) => rect.bottom <= clipTop);
+        if (above && found.above > maxText) return;
         const text = node.textContent || '';
+        found[above ? 'above' : 'shown'] += clean(text, Infinity).length;
         all.push(text);
-        (rects.every((rect) => rect.bottom <= clipTop) ? aboveParts : shownParts).push(text);
+        (above ? aboveParts : shownParts).push(text);
         return;
       }
       if (node.nodeType !== 1) return;
       const el = node as Element;
       if (UNREAD_TEXT.has(tagOf(el)) || hidesText(el)) return;
+      if (found.above > maxText) {
+        const box = el.getBoundingClientRect();
+        if (box.height > 0 && box.bottom <= clipTop) {
+          range.selectNodeContents(el);
+          if (range.getBoundingClientRect().bottom <= clipTop) return;
+        }
+      }
       const style = styleOf(el);
       if (style.display === 'none') return;
       const check = (el as Element & { checkVisibility?: () => boolean }).checkVisibility;
@@ -637,7 +659,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     const scrolled = scrolledAway(d);
     const secret = holdsHiddenText(d);
     if (!secret && (full.length <= maxText || !scrolled)) return cut(full, maxText);
-    const { all, shown: inView, above } = textByView(d);
+    const { all, shown: inView, above } = textByView(d, maxText, scrolled);
     const everything = clean(all, Infinity);
     if (!scrolled || everything.length <= maxText) return cut(everything, maxText);
     let text = cut(clean(`… ${inView}`, Infinity), maxText);

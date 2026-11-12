@@ -79,20 +79,33 @@ const framesByUrl = (page: RawSnapshot): Record<string, RawFrame> => Object.from
 
 /* happy-dom gives a text node no boxes, so each text node here takes its
    parent element's box, as Chromium gives a line of text its own: in this
-   document, or in a frame's. */
-function textBoxesFromParents(doc: Document = document): () => void {
+   document, or in a frame's. A range over an element's contents is bounded
+   by every placed box in it. `reads()` counts the text nodes' box reads. */
+function textBoxesFromParents(doc: Document = document): (() => void) & { reads: () => number } {
   const original = doc.createRange;
+  let reads = 0;
+  const placedBox = (el: Element | null) => {
+    const box = el?.getBoundingClientRect();
+    return box && (box.width || box.height) ? box : null;
+  };
   doc.createRange = () => {
     let node: Node | null = null;
     return {
       selectNodeContents: (target: Node) => { node = target; },
       getClientRects: () => {
-        const box = node?.parentElement?.getBoundingClientRect();
-        return box && (box.width || box.height) ? [box] : [];
+        reads += 1;
+        const box = placedBox(node?.parentElement ?? null);
+        return box ? [box] : [];
+      },
+      getBoundingClientRect: () => {
+        const boxes = [node as Element, ...Array.from((node as Element).querySelectorAll('*'))].map(placedBox).filter((box) => box !== null);
+        const top = Math.min(...boxes.map((box) => box.top));
+        const bottom = Math.max(...boxes.map((box) => box.bottom));
+        return boxes.length ? { top, bottom, height: bottom - top } : { top: 0, bottom: 0, height: 0 };
       },
     } as unknown as Range;
   };
-  return () => { doc.createRange = original; };
+  return Object.assign(() => { doc.createRange = original; }, { reads: () => reads });
 }
 
 /* happy-dom has no hit test, so each test says what lies at each point. */
@@ -464,6 +477,35 @@ describe('the isolated-world page read', () => {
         expect(short.startsWith('… Paragraph 31 x')).toBe(true);
         expect(short).not.toContain('above the view');
         expect(short).toHaveLength(500);
+      } finally {
+        restore();
+      }
+    });
+
+    it('reads only as far as a read can show on a long scrolled page, and answers the same', () => {
+      // 2,000 paragraphs of 100 characters, 30 px apart.
+      document.body.innerHTML = Array.from({ length: 2_000 }, (_, i) => `<p>${`Paragraph ${i + 1} `.padEnd(100, 'x')}</p>`).join('');
+      const scrolledTo = (y: number) => {
+        document.querySelectorAll('p').forEach((p, i) => place(p, 0, i * 30 - y, 600, 20));
+        window.scrollTo(0, y);
+      };
+      const restore = textBoxesFromParents();
+      try {
+        // In the middle: the text from the view on fills the read.
+        scrolledTo(30_000);
+        const middle = snapshot(freshWorld(), 3000).text;
+        expect(middle.startsWith('… Paragraph 1001 x')).toBe(true);
+        expect(middle).toContain('Paragraph 1010 x');
+        expect(middle).toHaveLength(3000);
+        // Near the end: the text from the view on, then the start of the page.
+        scrolledTo(59_400);
+        const end = snapshot(freshWorld(), 3000).text;
+        expect(end.startsWith('… Paragraph 1981 x')).toBe(true);
+        expect(end).toContain('Paragraph 2000 x');
+        expect(end).toContain(' … (above the view) Paragraph 1 x');
+        expect(end).toHaveLength(3000);
+        // About a read's worth above the view and in it each time, not every paragraph.
+        expect(restore.reads()).toBeLessThan(200);
       } finally {
         restore();
       }
