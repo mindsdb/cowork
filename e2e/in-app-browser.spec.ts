@@ -119,6 +119,15 @@ async function startFixtureServer(): Promise<void> {
           + `<object data="${buy}" type="text/html" role="button" aria-label="Dismiss" style="${box}"></object>`
           + `<embed src="${buy}" type="text/html" tabindex="0" title="Close" style="${box}">`);
     }
+    if (url.pathname === '/sealed-frame') {
+      /* Another site's frame in a closed shadow root of a control that is
+         listed with a number: the page's DOM can't place it. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      const box = 'display:block;width:400px;height:120px;border:0;margin:0';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Sealed</title><div id="w" tabindex="0" aria-label="More info" style="${box}"></div>`
+          + `<script>document.getElementById("w").attachShadow({ mode: "closed" }).innerHTML = '<iframe src="${buy}" style="${box}"></iframe>'</script>`);
+    }
     if (url.pathname === '/clear-frame') {
       /* Another site's frame drawn fully transparent over a button. */
       const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
@@ -366,6 +375,17 @@ test("lists no object or embed as an element, and refuses a click by number that
   expect(reply.status, reply.body.toString()).toBe(409);
   expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
   // Long enough for a click that landed to have been recorded.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+});
+
+test('refuses a click by number on a control whose closed shadow root holds a frame, and presses nothing', async () => {
+  await openAt('/sealed-frame');
+  // The frame tree's child has no owner in the DOM, so it is listed with no box.
+  await expect.poll(async () => (await page()).frames.map((f: { box: unknown }) => f.box), { timeout: 10_000 }).toEqual([null]);
+  const reply = await act({ action: 'click', element: await element('More info') });
+  expect(reply.status, reply.body.toString()).toBe(409);
+  expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
   await new Promise((resolve) => setTimeout(resolve, 500));
   expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
 });

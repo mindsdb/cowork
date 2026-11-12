@@ -477,7 +477,7 @@ describe('the isolated-world page read', () => {
     const restore = hitTestBy((x, y) => at[`${x},${y}`] ?? null);
     try {
       const hitTest = (id: number, points: Array<[number, number]>) =>
-        pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })) });
+        pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })), childFrames: 0 });
       expect(hitTest(ids.Go, [[1, 1], [2, 2], [4, 4]])).toEqual({ found: true, reaches: 1, throughFrame: -1 } satisfies HitTestResult);
       expect(hitTest(ids.Go, [[4, 4]])).toEqual({ found: true, reaches: 0, throughFrame: -1 });
       expect(hitTest(ids.Agree, [[1, 1], [3, 3]])).toEqual({ found: true, reaches: 1, throughFrame: -1 });
@@ -514,7 +514,7 @@ describe('the isolated-world page read', () => {
     Object.defineProperty(inner, 'elementFromPoint', { configurable: true, value: () => inner.getElementById('shadow-frame') });
     try {
       const hitTest = (id: number, points: Array<[number, number]>) =>
-        pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })) });
+        pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })), childFrames: 0 });
       // Every point lands on another site's frame the control wraps, or its label holds.
       expect(hitTest(ids['More info'], [[1, 1]])).toEqual({ found: true, reaches: -1, throughFrame: 0 } satisfies HitTestResult);
       expect(hitTest(ids.Agree, [[2, 2]])).toEqual({ found: true, reaches: -1, throughFrame: 0 });
@@ -531,9 +531,32 @@ describe('the isolated-world page read', () => {
     const restoreText = textBoxesFromParents();
     const restoreIcon = hitTestBy(() => document.getElementById('icon'));
     try {
-      expect(pageWorld(document, world, { kind: 'hitTest', id: ids.Menu, points: [{ x: 15, y: 410 }] })).toEqual({ found: true, reaches: 0, throughFrame: -1 });
+      expect(pageWorld(document, world, { kind: 'hitTest', id: ids.Menu, points: [{ x: 15, y: 410 }], childFrames: 0 })).toEqual({ found: true, reaches: 0, throughFrame: -1 });
     } finally {
       restoreIcon();
+      restoreText();
+    }
+  });
+
+  it("counts a point on a plain element that may hold a closed shadow root as a frame while the page holds a frame its DOM can't place", () => {
+    document.body.innerHTML = '<div data-box="400x120" id="wrap" tabindex="0" aria-label="More info"></div><div data-box="400x40" id="named" role="button">Continue</div>';
+    layout();
+    document.getElementById('wrap')!.attachShadow({ mode: 'closed' }).innerHTML = '<iframe src="https://shop.other.test/buy"></iframe>';
+    const world = freshWorld();
+    const ids = Object.fromEntries(snapshot(world).elements.map((e) => [e.name, e.id]));
+    const restoreText = textBoxesFromParents();
+    const restoreHits = hitTestBy((_x, y) => document.getElementById(y < 130 ? 'wrap' : 'named'));
+    try {
+      const hitTest = (id: number, y: number, childFrames: number) => pageWorld(document, world, { kind: 'hitTest', id, points: [{ x: 50, y }], childFrames });
+      // The frame tree holds one frame the DOM has no owner for, and the point lands on the closed root's host.
+      expect(hitTest(ids['More info'], 50, 1)).toEqual({ found: true, reaches: -1, throughFrame: 0 } satisfies HitTestResult);
+      expect(pageWorld(document, world, { kind: 'intoFrame', point: { x: 50, y: 50 }, childFrames: 1 })).toBe(true);
+      // With every frame placed it is an ordinary element.
+      expect(hitTest(ids['More info'], 50, 0)).toEqual({ found: true, reaches: 0, throughFrame: -1 });
+      // A point on its own text is where a click lands.
+      expect(hitTest(ids.Continue, 150, 1)).toEqual({ found: true, reaches: 0, throughFrame: -1 });
+    } finally {
+      restoreHits();
       restoreText();
     }
   });
@@ -542,7 +565,7 @@ describe('the isolated-world page read', () => {
     document.body.innerHTML = '<iframe id="buy" src="https://shop.other.test/buy"></iframe><x-pay id="sealed"></x-pay><button id="go">Go</button>';
     const restore = hitTestBy((x) => document.getElementById(['buy', 'sealed', 'go'][x])!);
     try {
-      const intoFrame = (x: number) => pageWorld(document, freshWorld(), { kind: 'intoFrame', point: { x, y: 5 } });
+      const intoFrame = (x: number) => pageWorld(document, freshWorld(), { kind: 'intoFrame', point: { x, y: 5 }, childFrames: 0 });
       expect([intoFrame(0), intoFrame(1), intoFrame(2)]).toEqual([true, true, false]);
     } finally {
       restore();

@@ -208,10 +208,11 @@ export type PageWorldRequest =
   /* Focuses an element for a key press; `editing` when the key edits text. */
   | { kind: 'focus'; id: number; editing: boolean }
   | { kind: 'select'; id: number; values: string[] }
-  /* Which of `points` (viewport CSS pixels) a click reaches element `id` at. */
-  | { kind: 'hitTest'; id: number; points: ViewPoint[] }
+  /* Which of `points` (viewport CSS pixels) a click reaches element `id` at.
+     `childFrames`: how many child frames the frame tree gives the main frame. */
+  | { kind: 'hitTest'; id: number; points: ViewPoint[]; childFrames: number }
   /* Whether a click at `point` lands in a frame, or where this world can't see. */
-  | { kind: 'intoFrame'; point: ViewPoint }
+  | { kind: 'intoFrame'; point: ViewPoint; childFrames: number }
   /* A step's change watch, under the step's token. `at` is where the step's
      pointer ended, or null for a step without one. */
   | { kind: 'changeStart'; token: number }
@@ -856,12 +857,30 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     });
   };
 
+  /* The elements besides custom ones a page may attach a shadow root to. */
+  const SHADOW_HOSTS = new Set(['article', 'aside', 'blockquote', 'body', 'div', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'main', 'nav', 'p', 'section', 'span']);
+  /* Whether the page's DOM has fewer frame owners that hold a frame than the
+     main frame's `childFrames`: one sits where this world can't place it, a
+     closed shadow root among them. */
+  const framesHidden = (childFrames: number): boolean =>
+    elementsIn(doc).filter((el) => FRAME_TAGS.has(tagOf(el)) && holdsFrame(el)).length < childFrames;
   /* Whether a click on `hit` at (x, y) lands where this world can't see: in
-     a frame owner's document, or in a custom element that shows no open
-     shadow root and has no text of its own there, whose closed shadow root
-     may hold a frame. */
-  const opaqueHit = (hit: Element, x: number, y: number): boolean =>
-    FRAME_TAGS.has(tagOf(hit)) || (tagOf(hit).includes('-') && !hit.shadowRoot && !ownTextAt(hit, x, y));
+     a frame owner's document, or in an element that shows no open shadow
+     root and has no text of its own there, whose closed shadow root may hold
+     a frame. That is any custom element, and any other element a page may
+     attach a shadow root to while the page holds a frame its DOM can't place
+     (`hidden`, asked only when needed). */
+  const opaqueHit = (hit: Element, x: number, y: number, hidden: () => boolean): boolean => {
+    if (FRAME_TAGS.has(tagOf(hit))) return true;
+    const host = tagOf(hit).includes('-') || SHADOW_HOSTS.has(tagOf(hit));
+    if (!host || hit.shadowRoot || ownTextAt(hit, x, y)) return false;
+    return tagOf(hit).includes('-') || hidden();
+  };
+  /* `framesHidden`, worked out once per request. */
+  const hiddenOnce = (childFrames: number): (() => boolean) => {
+    let hidden: boolean | null = null;
+    return () => (hidden ??= framesHidden(childFrames));
+  };
 
   /* Whether the focus is on `el` or inside it, across shadow roots, or on the
      editing host `el` is part of. */
@@ -1050,17 +1069,18 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'hitTest': {
       const el = world.ids.get(request.id);
       if (!el || !el.isConnected) return { found: false };
+      const hidden = hiddenOnce(request.childFrames);
       const landings = request.points.map(({ x, y }) => {
         const hit = hitAt(x, y);
         if (!hit || !landsOn(el, hit)) return 'elsewhere';
-        return opaqueHit(hit, x, y) ? 'frame' : 'element';
+        return opaqueHit(hit, x, y, hidden) ? 'frame' : 'element';
       });
       return { found: true, reaches: landings.indexOf('element'), throughFrame: landings.indexOf('frame') } satisfies HitTestResult;
     }
     case 'intoFrame': {
       const { x, y } = request.point;
       const hit = hitAt(x, y);
-      return !!hit && opaqueHit(hit, x, y);
+      return !!hit && opaqueHit(hit, x, y, hiddenOnce(request.childFrames));
     }
     case 'changeStart': {
       stopChanges();

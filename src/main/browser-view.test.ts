@@ -350,6 +350,22 @@ describe('ElectronTab', () => {
     expect(contents.sent).toContain('Input.dispatchMouseEvent');
   });
 
+  it("tells a click's hit test how many child frames the frame tree gives the page", async () => {
+    const { tab, contents } = setup();
+    contents.mainFrame.frames = [{ url: 'https://ads.example.test/' }, { url: 'https://shop.other.test/buy' }];
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await tab.act(stepOf({ action: 'click', element: 1 }));
+      await tab.act(stepOf({ action: 'click', x: 10, y: 10, coords: 'page' }));
+    } finally {
+      vi.useRealTimers();
+    }
+    for (const kind of ['hitTest', 'intoFrame']) {
+      expect(worldCalls(contents, kind).length, kind).toBeGreaterThan(0);
+      expect(worldCalls(contents, kind).every(([, scripts]) => scripts[0].code.includes('"childFrames":2')), kind).toBe(true);
+    }
+  });
+
   it('detaches the debugger at once when the person takes over', async () => {
     const { tab, contents } = setup();
     contents.debugger.attach();
