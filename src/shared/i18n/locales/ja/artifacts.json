@@ -630,5 +630,38 @@
         "prompt": "メモアプリに新しく追加されたダークモードの告知文を、3つのバージョンで書いてください。280文字以内のツイート、親しみやすい120語以内のメール、50語以内の変更履歴エントリです。それぞれのチャネルにふさわしい文体にしてください。"
       }
     }
+  },
+  "stats": {
+    "toggle": {
+      "show": "統計",
+      "hide": "統計を非表示"
+    },
+    "title": "統計",
+    "close": "統計パネルを閉じる",
+    "loading": "統計を読み込み中",
+    "retry": "再試行",
+    "trackViews": "閲覧数をカウント",
+    "trackingOff": "カウントはオフです。オンにすると閲覧数のカウントが始まります。",
+    "metrics": {
+      "viewsInPeriod": "閲覧数（30日間）",
+      "uniqueViewers": "ユニーク閲覧者（30日間）",
+      "totalViews": "総閲覧数",
+      "lastViewed": "最終閲覧"
+    },
+    "daysInUtc": "日付は UTC",
+    "chartLabel": "1日あたりの閲覧数",
+    "viewers": {
+      "email": "メール",
+      "lastSeen": "最終閲覧",
+      "restrictedOnly": "閲覧者の名前は、共有が制限されている場合にのみ記録されます。"
+    },
+    "noViews": "まだ閲覧はありません",
+    "errors": {
+      "otherAccount": "このアカウントでは統計を利用できません。",
+      "unavailable": "このアーティファクトでは統計を利用できません。",
+      "reconnect": "統計を表示するには MindsHub に再接続してください。",
+      "temporarilyUnavailable": "統計は一時的に利用できません。",
+      "loadFailed": "統計を読み込めませんでした。"
+    }
   }
 }
