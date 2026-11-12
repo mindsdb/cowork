@@ -276,8 +276,8 @@ export default function ScheduleDetailView({
                   <span className="inline-flex items-center gap-3">
                     {formatDuration(run.durationMs) && <span>{formatDuration(run.durationMs)}</span>}
                     {run.unavailableModel && (
-                      <Tooltip content={`${modelName(run.unavailableModel)} isn't available, so this run used your default model.`}>
-                        <span tabIndex={0} className="relative z-10 cursor-help">Default model</span>
+                      <Tooltip content={t('scheduleDetail.modelUnavailable', { model: modelName(run.unavailableModel) })}>
+                        <span tabIndex={0} className="relative z-10 cursor-help">{t('scheduleDetail.ranOnDefaultModel')}</span>
                       </Tooltip>
                     )}
                     {reason ? (

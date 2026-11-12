@@ -132,14 +132,14 @@ export default function ScheduleTaskModal({
   }, [models, modelMeta?.modelEnabled]);
   const showModel = PLATFORM_UI || pickable.length > 0;
   const modelOptions = useMemo(() => [
-    { value: DEFAULT_MODEL, label: 'Account default', pin: 'top' },
+    { value: DEFAULT_MODEL, label: t('scheduleTaskModal.accountDefault'), pin: 'top' },
     // A pin the catalog no longer lists stays selectable as itself, where
     // the user picks freely; an operator's list offers only its own models.
     ...buildModelPickerOptions(
       PLATFORM_UI ? withModelPickerFallback(pickable, form.model === DEFAULT_MODEL ? '' : form.model) : pickable,
       modelMeta,
     ),
-  ], [pickable, modelMeta, form.model]);
+  ], [pickable, modelMeta, form.model, t]);
   // What is sent: the pick when it's on offer, else the default.
   const sentModel = !showModel
     ? DEFAULT_MODEL
@@ -310,11 +310,11 @@ export default function ScheduleTaskModal({
               />
             </Field>
             {showModel && (
-              <Field label="Model">
+              <Field label={t('scheduleTaskModal.model')}>
                 <ModelSelect
                   value={sentModel}
                   onValueChange={(v) => v && update('model', v)}
-                  ariaLabel="Model"
+                  ariaLabel={t('scheduleTaskModal.model')}
                   variant="field"
                   style={fieldSelectStyle}
                   options={modelOptions}
