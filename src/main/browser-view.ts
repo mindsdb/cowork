@@ -17,13 +17,30 @@
  * When the person takes the browser, a step in flight ends at once: its
  * input stops, and its waits, a navigation's included, answer 409
  * human_in_control.
+ *
+ * Each step settles before it answers (`act`). A step that started a
+ * main-frame request or a navigation waits until those requests are done and
+ * the page has gone quiet; one that started neither answers at once. The
+ * step's change watch (browser-page-script.ts) and the profile's request count
+ * (RequestsInFlight in browser-profile.ts) say whether it changed what the
+ * page shows.
  */
 
 import { type BrowserWindow, type Certificate, type HandlerDetails, type Input, nativeImage, type Session, type WebContents, WebContentsView, type WindowOpenHandlerResponse } from 'electron';
 import { diagnostic } from '../shared/diagnostics';
-import { BridgeError, type PageSnapshot, STEP_TIMEOUT_MS, type StepRequest } from '../shared/browser-contract';
+import {
+  BridgeError,
+  type PageSnapshot,
+  SETTLE_MAX_MS,
+  SETTLE_QUIET_MS,
+  type StepAction,
+  type StepOutcome,
+  type StepRequest,
+  STEP_TIMEOUT_MS,
+} from '../shared/browser-contract';
 import { type AgentInput, type Pacing, type Point, realPacing, runStep, type StepHost, withAgentInput } from './browser-input';
 import {
+  type ChangeMark,
   challengesFrom,
   type FocusFieldResult,
   type FocusResult,
@@ -38,7 +55,7 @@ import {
   type SelectResult,
   type TypingFocus,
 } from './browser-page-script';
-import { browserViewPreferences, guardNavigation, navigationAllowed, refusedDestination } from './browser-profile';
+import { browserViewPreferences, guardNavigation, navigationAllowed, refusedDestination, type RequestsInFlight, requestsInFlight } from './browser-profile';
 import { renderScreenshot, type Screenshot } from './browser-screenshot';
 import type { TabFactory, TabHooks, TabView, ViewBounds } from './browser-sessions';
 
@@ -47,6 +64,31 @@ import type { TabFactory, TabHooks, TabView, ViewBounds } from './browser-sessio
    shorter than STEP_TIMEOUT_MS, so a slow load answers 200, not page_blocked. */
 export const NAVIGATION_WAIT_MS = 30_000;
 const MAX_ELEMENTS = 300;
+
+/* A step's settle: how long it looks for a request or a navigation the step
+   started before it answers as an in-place step, how often it then reads the
+   page, how long a read of the change watch may take, and how much of the
+   step's budget it leaves for the answer. */
+const SETTLE_PROBE_MS = 150;
+const SETTLE_POLL_MS = 100;
+const CHANGE_START_MS = 500;
+const CHANGE_MARK_MS = 1_000;
+const SETTLE_MARGIN_MS = 500;
+
+/* Steps whose pointer ends somewhere: the change watch checks what lies
+   there. */
+const POINTER_STEPS: ReadonlySet<StepAction> = new Set<StepAction>(['click', 'hover', 'drag', 'scroll']);
+
+/* One step's settle: its change watch's token, when it began, the address it
+   began on, the main-frame navigations since, and when the page's change
+   watch last started (in the page the step began on, or the one it reached). */
+interface StepWatch {
+  token: number;
+  startedAt: number;
+  url: string;
+  navigations: number;
+  watchStartedAt: number;
+}
 
 function withTimeout<T>(work: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -122,10 +164,17 @@ export class ElectronTab implements TabView {
   /* The step in flight, which abortInput ends. */
   private step: AbortController | null = null;
   private closed = false;
+  /* The settling step's watch, which counts main-frame navigations. */
+  private watching: StepWatch | null = null;
+  private steps = 0;
+  private readonly contentsId: number;
+  private readonly requests: RequestsInFlight;
 
   constructor(private readonly ctx: TabContext, private readonly hooks: TabHooks, url: string | null, adopted?: WebContentsView) {
     this.view = adopted ?? new WebContentsView({ webPreferences: browserViewPreferences(ctx.session()) });
     const contents = this.view.webContents;
+    this.contentsId = contents.id;
+    this.requests = requestsInFlight(ctx.session());
     ctx.register(contents, hooks);
     guardNavigation(contents);
     contents.setWindowOpenHandler((details) => this.openPopup(details));
@@ -134,6 +183,10 @@ export class ElectronTab implements TabView {
     contents.on('did-stop-loading', changed);
     contents.on('did-navigate', changed);
     contents.on('did-navigate-in-page', changed);
+    contents.on('did-navigate', () => this.navigated());
+    contents.on('did-navigate-in-page', (_event, _url, isMainFrame) => {
+      if (isMainFrame) this.navigated();
+    });
     contents.on('page-title-updated', changed);
     contents.on('render-process-gone', changed);
     contents.on('dom-ready', () => this.watchSecrets());
@@ -247,6 +300,12 @@ export class ElectronTab implements TabView {
     return this.contents.executeJavaScriptInIsolatedWorld(PAGE_WORLD_ID, [{ code: pageWorldSource(request) }]) as Promise<T>;
   }
 
+  /* A call into the page that may fail: null when it fails or takes longer
+     than `ms`. The settle reads null as "can't tell". */
+  private tryInWorld<T>(request: PageWorldRequest, ms: number): Promise<T | null> {
+    return withTimeout(this.runInWorld<T>(request), ms, () => new Error('the page did not answer in time')).catch(() => null);
+  }
+
   /* A read, which answers 409 page_busy when the page doesn't answer in time. */
   private inWorld<T>(request: PageWorldRequest): Promise<T> {
     return withTimeout(
@@ -321,21 +380,131 @@ export class ElectronTab implements TabView {
     };
   }
 
-  async act(request: StepRequest): Promise<void> {
+  /**
+   * Runs one step, then lets it settle, and answers whether it changed what
+   * the page shows. `onInputDone` runs once the step's input is over, before
+   * the settle. A wait doesn't settle and can't tell.
+   */
+  async act(request: StepRequest, onInputDone: () => void = () => {}): Promise<StepOutcome> {
     const step = new AbortController();
     this.step = step;
     const waitMs = request.step.action === 'wait' ? request.step.ms : 0;
+    const watch = request.step.action === 'wait' ? null : this.beginWatch();
     try {
+      if (watch) await this.startChanges(watch, step.signal);
       await withTimeout(runStep(this.stepHost(step.signal), request), STEP_TIMEOUT_MS + waitMs, () => {
         this.abortInput();
         return new BridgeError('page_blocked', 'the page stopped answering during the step; a dialog may be open for the person to close');
       });
+      onInputDone();
+      return { changed: watch ? await this.quiet(watch, request, step.signal) : null };
     } catch (error) {
       if (step.signal.aborted && !(error instanceof BridgeError && error.code === 'page_blocked')) throw tookOver();
       throw error;
     } finally {
+      if (watch) this.endWatch(watch);
       if (this.step === step) this.step = null;
     }
+  }
+
+  private navigated(): void {
+    if (this.watching) this.watching.navigations += 1;
+  }
+
+  /* Starts counting the step's main-frame requests and navigations. */
+  private beginWatch(): StepWatch {
+    this.steps += 1;
+    const now = Date.now();
+    const watch: StepWatch = { token: this.steps, startedAt: now, url: this.contents.getURL(), navigations: 0, watchStartedAt: now };
+    this.requests.begin(this.contentsId);
+    this.watching = watch;
+    return watch;
+  }
+
+  /* Starts the page's change watch for the step, before its input. Electron
+     holds isolated-world script while the page loads, so a page still loading
+     gets no watch, and the step can't tell what it changed unless it
+     navigates. */
+  private async startChanges(watch: StepWatch, signal: AbortSignal): Promise<void> {
+    if (this.contents.isLoadingMainFrame()) return;
+    await unlessTakenOver(signal, () => this.tryInWorld({ kind: 'changeStart', token: watch.token }, CHANGE_START_MS));
+    watch.watchStartedAt = Date.now();
+  }
+
+  private endWatch(watch: StepWatch): void {
+    this.requests.end(this.contentsId);
+    if (this.watching === watch) this.watching = null;
+    if (this.closed || this.contents.isDestroyed()) return;
+    this.runInWorld({ kind: 'changeStop', token: watch.token }).catch((error: unknown) => {
+      diagnostic('main.browser-view', 'INFO', 'browser_view_change_watch_did_not_stop', error);
+    });
+  }
+
+  /* Resolves once the page stops loading, or after `ms`, and leaves no
+     listener behind. */
+  private stoppedLoading(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        this.contents.removeListener('did-stop-loading', done);
+        resolve();
+      };
+      const timer = setTimeout(done, Math.max(0, ms));
+      this.contents.once('did-stop-loading', done);
+    });
+  }
+
+  /*
+   * The step's settle, after its input. A step that started a main-frame
+   * request or a navigation waits until those requests are done and the page
+   * has shown no change for SETTLE_QUIET_MS (a page that marks itself
+   * aria-busy keeps waiting), at most SETTLE_MAX_MS, and always inside the
+   * step's budget; one that started neither answers at once. Then: true when
+   * the step navigated or the watch counted a change, null when the page
+   * couldn't be watched or may have changed where the watch can't see (a
+   * hover's :hover too), false otherwise. The person taking over ends it at
+   * once with null. Never throws: the step ran.
+   */
+  private async quiet(watch: StepWatch, request: StepRequest, signal: AbortSignal): Promise<boolean | null> {
+    const deadline = Math.min(Date.now() + SETTLE_MAX_MS, watch.startedAt + STEP_TIMEOUT_MS - SETTLE_MARGIN_MS);
+    const takenOver = new Promise<null>((resolve) => {
+      if (signal.aborted) resolve(null);
+      signal.addEventListener('abort', () => resolve(null), { once: true });
+    });
+    const pause = (ms: number) => Promise.race([sleep(Math.max(0, Math.min(ms, deadline - Date.now()))), takenOver]);
+    const at = POINTER_STEPS.has(request.step.action) ? this.mouse : null;
+    const mark = () => Promise.race([this.tryInWorld<ChangeMark>({ kind: 'changeMark', token: watch.token, at }, CHANGE_MARK_MS), takenOver]);
+    const navigated = () => watch.navigations > 0 || this.contents.getURL() !== watch.url;
+
+    await pause(SETTLE_PROBE_MS);
+    if (signal.aborted) return null;
+    const sent = (this.requests.of(this.contentsId)?.sent ?? 0) > 0;
+    let last: ChangeMark | null = null;
+    if (!sent && !navigated() && !this.contents.isLoadingMainFrame()) {
+      last = await mark();
+    } else {
+      if (this.contents.isLoadingMainFrame()) await Promise.race([this.stoppedLoading(deadline - Date.now()), takenOver]);
+      // A new document gets its own watch, and the quiet counts from there.
+      if (navigated() && !signal.aborted && !this.contents.isLoadingMainFrame()) {
+        await Promise.race([this.tryInWorld({ kind: 'changeStart', token: watch.token }, CHANGE_START_MS), takenOver]);
+        watch.watchStartedAt = Date.now();
+      }
+      while (!signal.aborted) {
+        last = await mark();
+        const requests = this.requests.of(this.contentsId);
+        const now = Date.now();
+        const lastChange = Math.max(watch.watchStartedAt, requests?.lastEndedAt ?? 0, last ? now - last.sinceLastMs : 0);
+        const quiet = !requests?.pending && !last?.busy && now - lastChange >= SETTLE_QUIET_MS;
+        if (quiet || now >= deadline) break;
+        await pause(SETTLE_POLL_MS);
+      }
+    }
+    if (signal.aborted) return null;
+    if (navigated()) return true;
+    if (!last) return null;
+    if (last.changes > 0) return true;
+    if (last.opaque || request.step.action === 'hover') return null;
+    return false;
   }
 
   async screenshot(annotate: boolean, quality: number): Promise<Screenshot> {

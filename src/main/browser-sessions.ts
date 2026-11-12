@@ -35,6 +35,7 @@ import {
   type SessionInfo,
   type Site,
   type StepAction,
+  type StepOutcome,
   type StepRequest,
   type Tab,
 } from '../shared/browser-contract';
@@ -80,7 +81,9 @@ export interface TabView {
   canGoBack(): boolean;
   canGoForward(): boolean;
   read(maxText: number): Promise<PageSnapshot>;
-  act(request: StepRequest): Promise<void>;
+  /** Runs a step and lets it settle. `onInputDone` runs once its input is
+      over, before the settle. */
+  act(request: StepRequest, onInputDone: () => void): Promise<StepOutcome>;
   screenshot(annotate: boolean, quality: number): Promise<Screenshot>;
   load(url: string): Promise<void>;
   back(): Promise<void>;
@@ -414,24 +417,37 @@ export class BrowserSessions {
     const session = this.ensure(id);
     return this.enqueue(session, async () => {
       const tab = this.active(session);
+      const seq = session.control.seq;
       session.stepRunning = INPUT_STEPS.has(request.step.action);
-      try {
-        await tab.view.act(request);
-      } finally {
+      let inputOver = false;
+      /* A popup may open while the step's input runs and for
+         POPUP_INPUT_WINDOW_MS after it, not through the settle that follows. */
+      const endInput = () => {
+        if (inputOver) return;
+        inputOver = true;
         session.stepRunning = false;
         session.lastAgentStepAt = this.now();
+      };
+      let outcome: StepOutcome;
+      try {
+        outcome = await tab.view.act(request, endInput);
+      } finally {
+        endInput();
       }
       this.emitState(session);
       const current = this.active(session);
-      const answer: ActionAnswer = { ok: true, url: current.view.url() };
+      const answer: ActionAnswer = { ok: true, url: current.view.url(), changed: outcome.changed };
       /* The step ran, so it answers 200 even when the browser passed to the
-         person during it or during its read, but without the page. anton then
-         asks for the page, and that call gets 409 while the person holds it. */
+         person during it or during its read, but without the page, and
+         without saying what changed: the person may have changed it. anton
+         then asks for the page, and that call gets 409 while the person
+         holds it. */
       if (request.includePage && session.control.holder !== 'human') {
-        const seq = session.control.seq;
+        const readSeq = session.control.seq;
         const page = await current.view.read(3000);
-        if (session.control.seq === seq) answer.page = page;
+        if (session.control.seq === readSeq) answer.page = page;
       }
+      if (session.control.seq !== seq) answer.changed = null;
       return answer;
     });
   }

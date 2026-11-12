@@ -76,6 +76,27 @@ const elementShape = shape(
   },
 );
 
+/* A child frame's element: read-only, with no id a step could name. */
+const frameElementShape = shape(
+  { role: str, name: str },
+  {
+    value: nullable(str),
+    value_hidden: bool,
+    type: str,
+    checked: nullable(bool),
+    disabled: bool,
+    offscreen: bool,
+    context: str,
+    in_dialog: bool,
+    options: list(str),
+  },
+);
+
+const frameShape = shape(
+  { url: str, read: bool, box: nullable(shape({ x: int, y: int, width: int, height: int })) },
+  { offscreen: bool, elements: list(frameElementShape), text: str, truncated: bool },
+);
+
 export const pageShape = shape(
   { url: str, title: str, elements: list(elementShape) },
   {
@@ -83,10 +104,11 @@ export const pageShape = shape(
     truncated: bool,
     scroll: nullable(shape({ y: int, height: int, viewport: int })),
     challenges: list(shape({ host: str, kind: str })),
+    frames: list(frameShape),
   },
 );
 
-export const actionAnswerShape = shape({ ok: bool, url: str }, { page: nullable(pageShape) });
+export const actionAnswerShape = shape({ ok: bool, url: str, changed: nullable(bool) }, { page: nullable(pageShape) });
 
 const tabShape = shape({ id: str, url: str, title: str, active: bool });
 export const tabsAnswerShape = shape({ tabs: list(tabShape) });

@@ -1,12 +1,14 @@
 import type { BrowserWindow, Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { ANTON_REQUEST_TIMEOUT_MS, parseStepRequest, type StepRequest } from '../shared/browser-contract';
+import { ANTON_REQUEST_TIMEOUT_MS, parseStepRequest, SETTLE_MAX_MS, SETTLE_QUIET_MS, STEP_TIMEOUT_MS, type StepOutcome, type StepRequest } from '../shared/browser-contract';
 import type { TabHooks } from './browser-sessions';
 import { PAGE_READ_TIMEOUT_MS, PAGE_WORLD_ID } from './browser-page-script';
 
 /* A WebContentsView whose page answers the isolated-world reads the tab sends. */
 const electron = vi.hoisted(() => {
+  let nextId = 1;
   class FakeContents {
+    id = nextId++;
     listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
     openHandler: ((details: { url: string }) => unknown) | null = null;
     attached = false;
@@ -15,6 +17,10 @@ const electron = vi.hoisted(() => {
     destroyed = false;
     url = 'about:blank';
     world: unknown[] = [];
+    loadingMainFrame = false;
+    /* The page's side of the step's change watch: the token it runs under,
+       what it counted, and when content last changed. */
+    change = { token: null as number | null, changes: 0, lastChangeAt: 0, busy: false, opaque: false };
     mainFrame = { framesInSubtree: [] as unknown[] };
     navigationHistory = { canGoBack: () => false, canGoForward: () => false, goBack: vi.fn(), goForward: vi.fn() };
     debugger = {
@@ -37,13 +43,23 @@ const electron = vi.hoisted(() => {
     once(name: string, cb: (...args: unknown[]) => void) {
       return this.on(name, cb);
     }
+    removeListener(name: string, cb: (...args: unknown[]) => void) {
+      this.listeners[name] = (this.listeners[name] ?? []).filter((listener) => listener !== cb);
+      return this;
+    }
     setWindowOpenHandler(handler: (details: { url: string }) => unknown) {
       this.openHandler = handler;
     }
     loadURL = vi.fn(async (url: string) => { this.url = url; });
     getURL() { return this.url; }
     getTitle() { return 'Title'; }
-    isLoading() { return false; }
+    isLoading() { return this.loadingMainFrame; }
+    isLoadingMainFrame() { return this.loadingMainFrame; }
+    /* The page changes: the watch counts it, and its quiet clock starts again. */
+    pageChanges(count = 1) {
+      this.change.changes += count;
+      this.change.lastChangeAt = Date.now();
+    }
     isDestroyed() { return this.destroyed; }
     close() { this.destroyed = true; }
     reload = vi.fn();
@@ -58,6 +74,20 @@ const electron = vi.hoisted(() => {
       if (code.includes('"kind":"focusedSecret"')) return { secret: false };
       if (code.includes('"kind":"hitTest"')) return { found: true, reaches: 0 };
       if (code.includes('"kind":"watch"')) return { ok: true };
+      const token = Number(/"token":(\d+)/.exec(code)?.[1]);
+      if (code.includes('"kind":"changeStart"')) {
+        this.change = { ...this.change, token, changes: 0, lastChangeAt: Date.now() };
+        return { ok: true };
+      }
+      if (code.includes('"kind":"changeMark"')) {
+        if (this.change.token !== token) return null;
+        const { changes, busy, opaque, lastChangeAt } = this.change;
+        return { changes, sinceLastMs: Date.now() - lastChangeAt, busy, opaque };
+      }
+      if (code.includes('"kind":"changeStop"')) {
+        if (this.change.token === token) this.change.token = null;
+        return { ok: true };
+      }
       return { url: this.url, title: 'Title', scroll: { y: 0, height: 600, viewport: 600 }, elements: [], text: '', truncated: false, frameOwners: [], boxes: [], viewport: { width: 800, height: 600 } };
     });
   }
@@ -82,6 +112,7 @@ const diagnostics = vi.hoisted(() => ({ diagnostic: vi.fn() }));
 vi.mock('../shared/diagnostics', () => diagnostics);
 
 const { ElectronTab, NAVIGATION_WAIT_MS } = await import('./browser-view');
+const { requestsInFlight } = await import('./browser-profile');
 
 type Contents = InstanceType<typeof electron.FakeContents>;
 
@@ -117,11 +148,16 @@ function setup(popupAllowed = false) {
     personHolds: vi.fn(() => false),
     sessionId: vi.fn(() => 't-a'),
   };
-  const ctx = { window: () => window as unknown as BrowserWindow, session: () => ({}) as Session, register: vi.fn() };
+  const profile = {} as Session;
+  const ctx = { window: () => window as unknown as BrowserWindow, session: () => profile, register: vi.fn() };
   const tab = new ElectronTab(ctx, hooks, 'https://a.test/');
   const view = window.contentView.addChildView.mock.calls[0][0] as InstanceType<typeof electron.WebContentsView>;
-  return { tab, hooks, window, view, contents: view.webContents as Contents, ctx };
+  return { tab, hooks, window, view, contents: view.webContents as Contents, ctx, requests: requestsInFlight(profile) };
 }
+
+/* A request the page's main frame sends, as the profile's listeners report it. */
+const mainFrameRequest = (contents: Contents, id: number) =>
+  ({ id, url: `https://a.test/r/${id}`, webContentsId: contents.id, resourceType: 'xhr' as const, frame: { parent: null } });
 
 describe('ElectronTab', () => {
   it("refuses to load MindsHub's own hosts or a metadata address for the agent", async () => {
@@ -272,7 +308,10 @@ describe('ElectronTab', () => {
   it('never attaches when the person takes over while a first step reads the viewport', async () => {
     const { tab, contents } = setup();
     let answer: (viewport: { width: number; height: number }) => void = () => {};
-    contents.executeJavaScriptInIsolatedWorld.mockImplementationOnce(() => new Promise<{ width: number; height: number }>((resolve) => { answer = resolve; }));
+    const page = contents.executeJavaScriptInIsolatedWorld.getMockImplementation()!;
+    contents.executeJavaScriptInIsolatedWorld.mockImplementation((world, scripts) => (scripts[0].code.includes('"kind":"viewport"')
+      ? new Promise<{ width: number; height: number }>((resolve) => { answer = resolve; })
+      : page(world, scripts)));
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const running = tab.act(stepOf({ action: 'click', element: 1 }));
@@ -288,7 +327,8 @@ describe('ElectronTab', () => {
 
   it('ends a first step at once when the person takes over while the page has not answered its viewport read', async () => {
     const { tab, contents } = setup();
-    contents.executeJavaScriptInIsolatedWorld.mockImplementationOnce(() => new Promise(() => {}));
+    const page = contents.executeJavaScriptInIsolatedWorld.getMockImplementation()!;
+    contents.executeJavaScriptInIsolatedWorld.mockImplementation((world, scripts) => (scripts[0].code.includes('"kind":"viewport"') ? new Promise(() => {}) : page(world, scripts)));
     vi.useFakeTimers();
     try {
       const running = tab.act(stepOf({ action: 'click', element: 1 }));
@@ -321,14 +361,17 @@ describe('ElectronTab', () => {
     expect(contents.attached).toBe(false);
   });
 
-  it('answers a navigation still loading once its wait runs out, before the step budget calls the page blocked', async () => {
+  it('answers a navigation still loading once its wait and its settle run out, before the step budget calls the page blocked', async () => {
     const { tab, contents } = setup();
     contents.loadURL.mockImplementationOnce(() => new Promise(() => {}));
+    contents.loadingMainFrame = true;
     vi.useFakeTimers();
     try {
       let outcome: unknown = 'still waiting';
       tab.act(stepOf({ action: 'navigate', url: 'https://slow.test/' })).then(() => { outcome = 'answered'; }, (error: unknown) => { outcome = error; });
       await vi.advanceTimersByTimeAsync(NAVIGATION_WAIT_MS);
+      expect(outcome).toBe('still waiting');
+      await vi.advanceTimersByTimeAsync(STEP_TIMEOUT_MS - NAVIGATION_WAIT_MS - 1);
       expect(outcome).toBe('answered');
     } finally {
       vi.useRealTimers();
@@ -426,6 +469,157 @@ describe('ElectronTab', () => {
     expect(request.host).toBe('intranet.test');
     request.respond({ username: 'ada', password: 'pw' });
     expect(callback).toHaveBeenCalledWith('ada', 'pw');
+  });
+
+  describe('a step settles before it answers', () => {
+    /* Runs a step on a faked clock: what it answered, and how long after it
+       began. */
+    function timed(tab: InstanceType<typeof ElectronTab>, body: Record<string, unknown>) {
+      const started = Date.now();
+      const result: { outcome: StepOutcome | Error | null; at: number } = { outcome: null, at: -1 };
+      tab.act(stepOf(body)).then((outcome) => { result.outcome = outcome; result.at = Date.now() - started; }, (error: Error) => { result.outcome = error; });
+      return result;
+    }
+    /* Runs `onKey` as the step's first key reaches the page. */
+    function onFirstKey(contents: Contents, onKey: () => void | Promise<void>) {
+      const send = contents.debugger.sendCommand;
+      let first = true;
+      vi.spyOn(contents.debugger, 'sendCommand').mockImplementation(async (method: string) => {
+        if (method === 'Input.dispatchKeyEvent' && first) {
+          first = false;
+          await onKey();
+        }
+        return send(method);
+      });
+    }
+
+    it('answers at once a step that started no request, with whether the page changed', async () => {
+      const { tab, contents } = setup();
+      vi.useFakeTimers();
+      try {
+        const still = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(400);
+        expect(still.outcome).toEqual({ changed: false });
+        expect(worldCalls(contents, 'changeMark')).toHaveLength(1);
+        onFirstKey(contents, () => contents.pageChanges(2));
+        const changing = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(400);
+        expect(changing.outcome).toEqual({ changed: true });
+      } finally {
+        vi.useRealTimers();
+      }
+      // Each step's watch starts before its input and stops after its settle.
+      expect(worldCalls(contents, 'changeStart')).toHaveLength(2);
+      expect(worldCalls(contents, 'changeStop')).toHaveLength(2);
+      expect(contents.world.every((world) => world === PAGE_WORLD_ID)).toBe(true);
+    });
+
+    it('waits for a request the step started, then for the page to stay quiet, and answers with what it brought', async () => {
+      const { tab, contents, requests } = setup();
+      onFirstKey(contents, () => requests.sent(mainFrameRequest(contents, 41)));
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        setTimeout(() => {
+          requests.ended(mainFrameRequest(contents, 41));
+          contents.pageChanges();
+        }, 2_500);
+        await vi.advanceTimersByTimeAsync(2_500 + SETTLE_QUIET_MS - 50);
+        expect(step.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(300);
+        expect(step.outcome).toEqual({ changed: true });
+        expect(step.at).toBeGreaterThanOrEqual(2_500 + SETTLE_QUIET_MS);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('stops waiting at SETTLE_MAX_MS for a request that never ends', async () => {
+      const { tab, contents, requests } = setup();
+      onFirstKey(contents, () => requests.sent(mainFrameRequest(contents, 42)));
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(SETTLE_MAX_MS - 100);
+        expect(step.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(500);
+        expect(step.outcome).toEqual({ changed: false });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps the step and its settle inside the step budget', async () => {
+      const { tab, contents, requests } = setup();
+      // The key lands only after 32 s, with a request in flight from it.
+      onFirstKey(contents, async () => {
+        requests.sent(mainFrameRequest(contents, 43));
+        await new Promise((resolve) => setTimeout(resolve, 32_000));
+      });
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(STEP_TIMEOUT_MS - 1);
+        expect(step.outcome).toEqual({ changed: false });
+        expect(step.at).toBeLessThanOrEqual(STEP_TIMEOUT_MS - 500 + 100);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("ends the settle at once when the person takes over, and can't tell what changed", async () => {
+      const { tab, contents, requests } = setup();
+      onFirstKey(contents, () => requests.sent(mainFrameRequest(contents, 44)));
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(500);
+        expect(step.outcome).toBeNull();
+        tab.abortInput();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(step.outcome).toEqual({ changed: null });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('answers a navigation as a change, and waits for its new page to go quiet', async () => {
+      const { tab, contents } = setup();
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'navigate', url: 'https://b.test/' });
+        await vi.advanceTimersByTimeAsync(150 + SETTLE_QUIET_MS - 50);
+        expect(step.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(SETTLE_MAX_MS);
+        expect(step.outcome).toEqual({ changed: true });
+        expect(step.at).toBeLessThan(150 + SETTLE_QUIET_MS + 300);
+      } finally {
+        vi.useRealTimers();
+      }
+      // One watch in the page the step began on, one in the page it reached.
+      expect(worldCalls(contents, 'changeStart')).toHaveLength(2);
+    });
+
+    it("can't tell for a wait, a page still loading when the step began, a page with a frame or canvas in view, or a hover that changed nothing", async () => {
+      const { tab, contents } = setup();
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        expect(await tab.act(stepOf({ action: 'wait', ms: 100 }))).toEqual({ changed: null });
+        expect(worldCalls(contents, 'changeStart')).toHaveLength(0);
+        contents.loadingMainFrame = true;
+        const loading = tab.act(stepOf({ action: 'press', key: 'Enter' }));
+        contents.loadingMainFrame = false;
+        expect(await loading).toEqual({ changed: null });
+        contents.change.opaque = true;
+        expect(await tab.act(stepOf({ action: 'press', key: 'Enter' }))).toEqual({ changed: null });
+        contents.change.opaque = false;
+        expect(await tab.act(stepOf({ action: 'hover', element: 1 }))).toEqual({ changed: null });
+        onFirstKey(contents, () => contents.pageChanges());
+        expect(await tab.act(stepOf({ action: 'press', key: 'Enter' }))).toEqual({ changed: true });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('shows on top at the stage, parks laid out but off screen, and closes for good', () => {

@@ -78,6 +78,18 @@ async function startFixtureServer(): Promise<void> {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end(`<title>Long</title><style>body{margin:0;font:16px sans-serif}p{margin:0;height:30px;line-height:30px}</style>${lines}`);
     }
+    if (url.pathname === '/late') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Late</title><button onclick="fetch(\'/slow\').then((r) => r.text()).then((t) => { const p = document.createElement(\'p\'); p.textContent = t; document.body.append(p); })">Load</button>');
+    }
+    if (url.pathname === '/slow') {
+      setTimeout(() => res.writeHead(200, { 'content-type': 'text/plain' }).end('Arrived late'), 2_500);
+      return;
+    }
+    if (url.pathname === '/still') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Still</title><button>Nothing</button><button onclick="document.getElementById(\'o\').textContent = \'Changed\'">Change</button><p id="o">Before</p>');
+    }
     if (url.pathname === '/echo-cookie') {
       const cookie = (req.headers.cookie ?? '').replace(/[<>&]/g, '');
       return void res.writeHead(200, { 'content-type': 'text/html' }).end(`<title>Echo</title><p>cookie:[${cookie}]</p>`);
@@ -244,6 +256,27 @@ test('reads the text the person sees once the page is scrolled past what a read 
   expect(read.text.startsWith(`… Line ${top} of the long page`), read.text.slice(0, 80)).toBe(true);
   expect(read.text).toContain(`Line ${top + 5} of the long page`);
   expect(read.text).toContain('… (above the view) Line 1 of the long page');
+});
+
+test("a click's answer carries what a request it started brings 2.5 s later", async () => {
+  await openAt('/late');
+  const load = await element('Load');
+  const started = Date.now();
+  const reply = await act({ action: 'click', element: load, include_page: true });
+  expect(reply.status, reply.body.toString()).toBe(200);
+  const answer = reply.json();
+  expect(answer.page.text).toContain('Arrived late');
+  expect(answer.changed).toBe(true);
+  expect(Date.now() - started).toBeLessThan(4_500);
+});
+
+test('says whether a step changed what the page shows', async () => {
+  await openAt('/still');
+  const nothing = await act({ action: 'click', element: await element('Nothing') });
+  expect(nothing.json()).toMatchObject({ ok: true, changed: false });
+  const change = await act({ action: 'click', element: await element('Change') });
+  expect(change.json()).toMatchObject({ ok: true, changed: true });
+  expect((await act({ action: 'wait', ms: 10 })).json()).toMatchObject({ ok: true, changed: null });
 });
 
 test('turns shared workers off, since their WebSockets skip the request listener', async () => {

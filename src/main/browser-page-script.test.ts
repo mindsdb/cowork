@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { pageShape, problems } from '../../tests/browser-contract-shapes';
 import {
   challengeKind,
   challengesFrom,
   type FocusFieldResult,
+  type ChangeMark,
   type FocusResult,
   type HitTestResult,
   type LocateResult,
@@ -37,7 +38,7 @@ function layout(): void {
 }
 
 const freshWorld = (): PageWorldState => ({
-  ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(),
+  ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(), change: null,
 });
 
 /* MutationObserver callbacks run after the change, as in a browser. */
@@ -109,7 +110,10 @@ afterAll(() => {
 });
 
 afterEach(() => {
-  for (const world of watching.splice(0)) world.observer?.disconnect();
+  for (const world of watching.splice(0)) {
+    world.observer?.disconnect();
+    if (world.change) pageWorld(document, world, { kind: 'changeStop', token: world.change.token });
+  }
   document.body.innerHTML = '';
 });
 
@@ -273,6 +277,9 @@ describe('the isolated-world page read', () => {
     pageWorld(document, world, { kind: 'locate', id: 1, reveal: false });
     pageWorld(document, world, { kind: 'focusedSecret' });
     pageWorld(document, world, { kind: 'typingFocus', id: 1 });
+    pageWorld(document, world, { kind: 'changeStart', token: 1 });
+    pageWorld(document, world, { kind: 'changeMark', token: 1, at: { x: 5, y: 5 } });
+    pageWorld(document, world, { kind: 'changeStop', token: 1 });
     world.observer?.disconnect();
     changes.push(...observer.takeRecords());
     observer.disconnect();
@@ -566,6 +573,102 @@ describe('the isolated-world page read', () => {
       expect(Object.getOwnPropertyNames(window).filter((name) => !before.has(name))).toEqual(['__coworkBrowserWorld']);
     } finally {
       delete (window as unknown as Record<string, unknown>).__coworkBrowserWorld;
+    }
+  });
+});
+
+describe("the step's change watch", () => {
+  /* happy-dom holds each observer's record hook only by a WeakRef, so a
+     garbage collection between two tasks can drop it. Each test therefore
+     changes the page in the task that started the watch, and reads the
+     records it queued with changeMark's takeRecords. */
+  function watchedStep(token = 1): { world: PageWorldState; mark: (at?: { x: number; y: number } | null) => ChangeMark | null } {
+    const world = freshWorld();
+    expect(pageWorld(document, world, { kind: 'changeStart', token })).toEqual({ ok: true });
+    watching.push(world);
+    return { world, mark: (at = null) => pageWorld(document, world, { kind: 'changeMark', token, at }) as ChangeMark | null };
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('counts what the step changes, and a style change moves no quiet clock', () => {
+    document.body.innerHTML = '<div data-box id="box">Before</div><ul id="list"></ul>';
+    layout();
+    let clock = 1_000;
+    vi.spyOn(window.performance, 'now').mockImplementation(() => clock);
+    const { mark } = watchedStep();
+    expect(mark()).toEqual({ changes: 0, sinceLastMs: 0, busy: false, opaque: false });
+    clock = 1_040;
+    document.getElementById('box')!.setAttribute('style', 'color: red');
+    expect(mark()).toMatchObject({ changes: 1, sinceLastMs: 40 });
+    clock = 1_050;
+    document.getElementById('list')!.append(document.createElement('li'));
+    document.getElementById('box')!.firstChild!.textContent = 'After';
+    expect(mark()).toMatchObject({ changes: 3, sinceLastMs: 0 });
+    clock = 1_080;
+    expect(mark()).toMatchObject({ changes: 3, sinceLastMs: 30 });
+  });
+
+  it('counts a scroll, an input, a change and a toggle, and not a focus', () => {
+    document.body.innerHTML = '<input data-box id="field"><div data-box id="pane"></div><details data-box id="more"></details>';
+    layout();
+    const { mark } = watchedStep();
+    (document.getElementById('field') as HTMLInputElement).focus();
+    expect(mark()!.changes).toBe(0);
+    // A scroll inside a box doesn't bubble; the watch hears it on the way down.
+    document.getElementById('pane')!.dispatchEvent(new Event('scroll'));
+    document.getElementById('field')!.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('field')!.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('more')!.dispatchEvent(new Event('toggle'));
+    expect(mark()!.changes).toBe(4);
+  });
+
+  it('watches open shadow roots, one added during the step too', () => {
+    document.body.innerHTML = '<div id="host"></div>';
+    const root = document.getElementById('host')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<p>Inside</p>';
+    const { mark } = watchedStep();
+    root.querySelector('p')!.firstChild!.textContent = 'Changed';
+    expect(mark()!.changes).toBe(1);
+    const later = document.createElement('div');
+    later.attachShadow({ mode: 'open' }).innerHTML = '<p>Late</p>';
+    document.body.append(later);
+    expect(mark()!.changes).toBe(2);
+    later.shadowRoot!.querySelector('p')!.firstChild!.textContent = 'Later still';
+    expect(mark()!.changes).toBe(3);
+  });
+
+  it("answers can't tell for another step's token, and stops for good at changeStop", () => {
+    document.body.innerHTML = '<p id="p">Text</p>';
+    const { world, mark } = watchedStep(4);
+    expect(pageWorld(document, world, { kind: 'changeMark', token: 3, at: null })).toBeNull();
+    pageWorld(document, world, { kind: 'changeStop', token: 3 });
+    expect(mark()).not.toBeNull();
+    pageWorld(document, world, { kind: 'changeStop', token: 4 });
+    document.getElementById('p')!.textContent = 'Changed';
+    expect(mark()).toBeNull();
+    expect(world.change).toBeNull();
+  });
+
+  it('tells a busy page, and one whose change it may not see: a frame, a canvas or a video in view, or a custom element with no open root under the step', () => {
+    document.body.innerHTML = '<div data-box id="busy" aria-busy="true">Loading</div>';
+    layout();
+    expect(watchedStep().mark()).toMatchObject({ busy: true, opaque: false });
+    for (const tag of ['iframe', 'canvas', 'video']) {
+      document.body.innerHTML = `<${tag} id="thing"></${tag}><${tag} id="below"></${tag}>`;
+      place(document.getElementById('thing')!, 10, 10, 200, 100);
+      place(document.getElementById('below')!, 10, window.innerHeight + 50, 200, 100);
+      expect(watchedStep().mark(), tag).toMatchObject({ busy: false, opaque: true });
+      document.getElementById('thing')!.remove();
+      expect(watchedStep().mark(), `${tag} out of view`).toMatchObject({ opaque: false });
+    }
+    document.body.innerHTML = '<pay-button id="sealed">Pay</pay-button><button id="plain">Go</button>';
+    const restore = hitTestBy((x) => document.getElementById(x < 50 ? 'sealed' : 'plain'));
+    try {
+      expect(watchedStep().mark({ x: 10, y: 10 })).toMatchObject({ opaque: true });
+      expect(watchedStep().mark({ x: 60, y: 10 })).toMatchObject({ opaque: false });
+    } finally {
+      restore();
     }
   });
 });

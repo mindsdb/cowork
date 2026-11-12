@@ -18,6 +18,8 @@ import {
   parseStageBounds,
   parseStepRequest,
   SESSION_ID_PATTERN,
+  SETTLE_MAX_MS,
+  SETTLE_QUIET_MS,
   type Parsed,
 } from './browser-contract';
 import {
@@ -71,6 +73,11 @@ describe('the browser contract fixtures', () => {
   it("caps a project's saved tabs at the contract's number", () => {
     const savedTabs = JSON.parse(readFileSync(path.join(FIXTURES, 'saved_tabs.json'), 'utf-8')) as FixtureFile;
     expect(savedTabs.limits?.saved_tabs_per_project).toBe(MAX_SAVED_TABS_PER_PROJECT);
+  });
+
+  it("settles a step at the contract's numbers", () => {
+    const action = JSON.parse(readFileSync(path.join(FIXTURES, 'action.json'), 'utf-8')) as FixtureFile;
+    expect(action.limits).toEqual({ settle_max_ms: SETTLE_MAX_MS, settle_quiet_ms: SETTLE_QUIET_MS });
   });
 
   it.each(all.filter(([, , e]) => e.kind === 'request'))('%s "%s": the request guard agrees', (_file, _name, example) => {

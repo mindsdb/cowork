@@ -16,7 +16,7 @@
  */
 
 /** GET /healthz's `api`. Bumped with any shape change, in anton's fixtures too. */
-export const BROWSER_HOST_API = 1;
+export const BROWSER_HOST_API = 2;
 
 /** A task's session id and a project key. anton's BrowserConfig and the renderer's
     Browser step use the same pattern. */
@@ -77,6 +77,15 @@ export const ANTON_REQUEST_TIMEOUT_MS = 45_000;
     before anton stops waiting. A type step's keyed typing is sized to end
     inside the budget (KEYED_CHARS in src/main/browser-input.ts). */
 export const STEP_TIMEOUT_MS = 33_000;
+
+/** A step settles before it answers (ElectronTab.act in
+    src/main/browser-view.ts). One that started a main-frame request or a
+    navigation waits until those requests are done and the page has shown no
+    change for SETTLE_QUIET_MS, at most SETTLE_MAX_MS, and always inside
+    STEP_TIMEOUT_MS; one that started neither answers at once. The web pod
+    holds the same two numbers, and action.json's `limits` pins both. */
+export const SETTLE_MAX_MS = 3_000;
+export const SETTLE_QUIET_MS = 400;
 
 /** anton's STEP_ACTIONS (anton/core/browser/tool.py). */
 export const STEP_ACTIONS = [
@@ -159,8 +168,15 @@ export interface PageSnapshot {
   challenges: Challenge[];
 }
 
+/** What a step did to the page: whether it changed what the page shows,
+    or null when the host can't tell (a frame, canvas or media element in
+    view or under the step, a hover, a wait, or a page it couldn't watch). */
+export interface StepOutcome {
+  changed: boolean | null;
+}
+
 /** POST /sessions/{id}/action. */
-export interface ActionAnswer {
+export interface ActionAnswer extends StepOutcome {
   ok: true;
   url: string;
   page?: PageSnapshot;

@@ -119,7 +119,7 @@ describe('who may call the bridge', () => {
 
 describe('routes', () => {
   it('answers healthz with the API version', async () => {
-    expect(json(await call('GET', '/healthz'))).toEqual({ ok: true, api: 1 });
+    expect(json(await call('GET', '/healthz'))).toEqual({ ok: true, api: 2 });
   });
 
   it.each([

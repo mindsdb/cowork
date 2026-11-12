@@ -37,6 +37,13 @@
  * with no element in the DOM by its presence. A frame is never an element: a
  * click by number never lands inside one, and each click by number presses a
  * point whose hit test reaches its element (`hitTest`).
+ *
+ * Each agent step runs a change watch (`changeStart`, `changeMark`,
+ * `changeStop`) under the step's token: a MutationObserver over the document
+ * and its open shadow roots, and scroll, input, change and toggle listeners.
+ * It counts records and events and never reads text, a value or an
+ * attribute's content. A style change counts, but doesn't keep the page from
+ * going quiet, so an animation can't hold a step. Focus doesn't count.
  */
 
 import type { Challenge, PageElement, PageScroll, PageSnapshot } from '../shared/browser-contract';
@@ -56,6 +63,33 @@ export interface PageWorldState {
   observer: MutationObserver | null;
   /** The document and the open shadow roots the watch observes. */
   watched: WeakSet<Node>;
+  /** The running step's change watch. */
+  change: ChangeWatch | null;
+}
+
+/** What a step's change watch counted since the step began. */
+export interface ChangeWatch {
+  token: number;
+  changes: number;
+  /** performance.now() of the last change to content: nodes, text, or an
+      attribute other than style. */
+  lastContentAt: number;
+  observer: MutationObserver;
+  /** The document and the open shadow roots it observes. */
+  roots: Node[];
+  observed: WeakSet<Node>;
+  listener: () => void;
+}
+
+/** A step's change watch as read while the step settles. `busy`: the page
+    marks something aria-busy. `opaque`: a change could happen where the
+    watch can't see it (a frame, canvas or media element in view, or a custom
+    element with no open shadow root under the step's pointer or focus). */
+export interface ChangeMark {
+  changes: number;
+  sinceLastMs: number;
+  busy: boolean;
+  opaque: boolean;
 }
 
 export interface Box {
@@ -93,6 +127,11 @@ export type PageWorldRequest =
   | { kind: 'select'; id: number; values: string[] }
   /* Which of `points` (viewport CSS pixels) a click reaches element `id` at. */
   | { kind: 'hitTest'; id: number; points: ViewPoint[] }
+  /* A step's change watch, under the step's token. `at` is where the step's
+     pointer ended, or null for a step without one. */
+  | { kind: 'changeStart'; token: number }
+  | { kind: 'changeMark'; token: number; at: ViewPoint | null }
+  | { kind: 'changeStop'; token: number }
   | { kind: 'watch' };
 
 export interface RawSnapshot {
@@ -602,6 +641,56 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
   };
 
+  /* What a change watch can't see into when it is in view. */
+  const OPAQUE = 'iframe, frame, canvas, video, audio, object, embed';
+  const CHANGE_EVENTS = ['scroll', 'input', 'change', 'toggle'];
+  const now = (): number => win.performance.now();
+
+  const observeRoot = (watch: ChangeWatch, root: Node): void => {
+    if (watch.observed.has(root)) return;
+    watch.observed.add(root);
+    watch.roots.push(root);
+    watch.observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true });
+  };
+  /* Observes every open shadow root at `node` and below it. */
+  const observeShadowRoots = (watch: ChangeWatch, node: Node): void => {
+    const top = node.nodeType === 1 ? [node as Element] : [];
+    const own = top[0]?.shadowRoot;
+    for (const el of [...top, ...elementsIn(node), ...(own ? elementsIn(own) : [])]) {
+      if (el.shadowRoot) observeRoot(watch, el.shadowRoot);
+    }
+  };
+  const countRecords = (watch: ChangeWatch, records: MutationRecord[]): void => {
+    for (const record of records) {
+      watch.changes += 1;
+      if (record.type !== 'attributes' || record.attributeName !== 'style') watch.lastContentAt = now();
+      if (record.type === 'childList') {
+        record.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) observeShadowRoots(watch, node);
+        });
+      }
+    }
+  };
+  const stopChanges = (): void => {
+    const watch = world.change;
+    if (!watch) return;
+    watch.observer.disconnect();
+    for (const type of CHANGE_EVENTS) win.removeEventListener(type, watch.listener, true);
+    world.change = null;
+  };
+  /* A custom element that shows no open shadow root may keep a closed one,
+     whose changes no observer here sees. */
+  const mayBeSealed = (el: Element | null): boolean => !!el && el.localName.includes('-') && !el.shadowRoot;
+  const opaqueNow = (watch: ChangeWatch, at: ViewPoint | null): boolean => {
+    const inViewNow = watch.roots.some((root) => Array.from((root as ParentNode).querySelectorAll(OPAQUE)).some((el) => {
+      const box = boxOf(el);
+      return shown(el, box) && inView(box);
+    }));
+    return inViewNow || mayBeSealed(at ? hitAt(at.x, at.y) : null) || mayBeSealed(deepActive());
+  };
+  const busyNow = (watch: ChangeWatch): boolean => watch.roots.some((root) =>
+    Array.from((root as ParentNode).querySelectorAll('[aria-busy="true"]')).some((el) => shown(el, boxOf(el))));
+
   switch (request.kind) {
     case 'snapshot':
       return snapshot(request.maxText, request.maxElements);
@@ -669,6 +758,37 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       if (!el || !el.isConnected) return { found: false };
       return { found: true, reaches: request.points.findIndex((point) => reaches(el, hitAt(point.x, point.y))) };
     }
+    case 'changeStart': {
+      stopChanges();
+      const watch: ChangeWatch = {
+        token: request.token,
+        changes: 0,
+        lastContentAt: now(),
+        observer: new MutationObserver((records) => countRecords(watch, records)),
+        roots: [],
+        observed: new WeakSet(),
+        listener: () => { watch.changes += 1; },
+      };
+      for (const type of CHANGE_EVENTS) win.addEventListener(type, watch.listener, { capture: true, passive: true });
+      world.change = watch;
+      observeRoot(watch, doc);
+      observeShadowRoots(watch, doc);
+      return { ok: true };
+    }
+    case 'changeMark': {
+      const watch = world.change;
+      if (!watch || watch.token !== request.token) return null;
+      countRecords(watch, watch.observer.takeRecords());
+      return {
+        changes: watch.changes,
+        sinceLastMs: Math.max(0, now() - watch.lastContentAt),
+        busy: busyNow(watch),
+        opaque: opaqueNow(watch, request.at),
+      } satisfies ChangeMark;
+    }
+    case 'changeStop':
+      if (world.change?.token === request.token) stopChanges();
+      return { ok: true };
     case 'watch':
       world.observer ??= new MutationObserver(onMutations);
       watchRoot(doc);
@@ -696,7 +816,7 @@ const WORLD_STATE_KEY = '__coworkBrowserWorld';
 
 /** The source text that runs `request` in the isolated world. */
 export function pageWorldSource(request: PageWorldRequest): string {
-  const state = `globalThis[${JSON.stringify(WORLD_STATE_KEY)}] ??= { ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet() }`;
+  const state = `globalThis[${JSON.stringify(WORLD_STATE_KEY)}] ??= { ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(), change: null }`;
   return `(${pageWorld.toString()})(document, ${state}, ${JSON.stringify(request)})`;
 }
 
