@@ -197,6 +197,13 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Card</title><style>body{margin:0;background:#fff}input{position:absolute;left:100px;top:40px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
           + '<input autocomplete="cc-number" value="4242424242424242">');
     }
+    if (url.pathname === '/scaled-card') {
+      /* Another site's checkout frame, 300 by 100, drawn at twice its size. */
+      const card = `${origin.replace('127.0.0.1', 'localhost')}/card`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Scaled card</title><style>body{margin:0;background:#fff}</style>'
+          + `<iframe src="${card}" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;transform:scale(2);transform-origin:0 0"></iframe>`);
+    }
     if (url.pathname === '/closed-same-card') {
       /* The page's own checkout frame, in a closed shadow root. */
       return void res.writeHead(200, { 'content-type': 'text/html' })
@@ -630,6 +637,13 @@ test("blacks out a card field in the page's own frame kept in a closed shadow ro
   await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
   // CSS points: three on the card number, then the form's background.
   expect(await blackIn('/closed-same-card', [[110, 60], [190, 60], [280, 60], [50, 20]])).toEqual([true, true, true, false]);
+});
+
+test("blacks out a card field where another site's frame draws it at twice its size", async () => {
+  await openAt('/scaled-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // CSS points: three on the card number, drawn from (200, 80) to (580, 160); then the frame's background, where an unscaled mask would land.
+  expect(await blackIn('/scaled-card', [[220, 120], [390, 120], [560, 150], [150, 60], [100, 170]])).toEqual([true, true, true, false, false]);
 });
 
 test('refuses a click whose point a frame slides over as the pointer arrives, by number and by position, and presses nothing', async () => {

@@ -127,6 +127,21 @@ describe('FrameReads.frameMasks', () => {
     expect(worlds).toEqual(expect.arrayContaining([['same', undefined], ['sibling', undefined], ['nested', 'session-nested']]));
   });
 
+  it("places a secret field through a frame's transform, scaled as the frame is drawn, and blacks out whole a frame a transform turns", async () => {
+    const field = { secrets: [box(10, 20, 50, 10)], viewport: { width: 200, height: 100 } };
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // Drawn at twice its 200 by 100 size, at (100, 0).
+        { ...WIDGET, owner: { content: box(100, 0, 400, 200), border: box(100, 0, 400, 200) }, secrets: field },
+        // Turned a few degrees: its content quad's corners don't line up.
+        { id: 'turned', url: 'https://forms.other.test/', parentId: MAIN_FRAME, remote: true, owner: { content: box(0, 300, 200, 100), border: box(-5, 295, 210, 110), quad: [0, 300, 200, 310, 195, 410, -5, 400] }, secrets: field },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toHaveLength(2);
+    expect(masks).toEqual(expect.arrayContaining([box(120, 40, 100, 20), box(-5, 295, 210, 110)]));
+  });
+
   it("reads a frame the page's world searched for the secret fields of its own document alone, since that search can't reach one in a closed shadow root, and leaves its frames to their own reads", async () => {
     const dbg = fakeCdpDebugger({
       frames: [

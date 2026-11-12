@@ -27,8 +27,10 @@ export interface FakeFrame {
   /** What the frame's own world finds for a screenshot, in its own viewport's pixels. */
   secrets?: Partial<FoundSecrets>;
   /** The frame's owner element in the page: its content and border boxes in
-      the page's viewport, or null when it draws nothing. */
-  owner?: { content: Box; border: Box } | null;
+      the page's viewport, or null when it draws nothing. `quad` is its
+      content quad when a transform turns it. The frame's own viewport is
+      its content box's size unless `secrets.viewport` says otherwise. */
+  owner?: { content: Box; border: Box; quad?: number[] } | null;
   /** The frame's world never answers. */
   hangs?: boolean;
 }
@@ -150,7 +152,7 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
       case 'DOM.getBoxModel': {
         const owned = model.frames[Number(params.backendNodeId) - 1000];
         if (!owned?.owner) throw new Error('Could not compute box model.');
-        return { model: { content: quad(owned.owner.content), border: quad(owned.owner.border) } };
+        return { model: { content: owned.owner.quad ?? quad(owned.owner.content), border: quad(owned.owner.border) } };
       }
       case 'Page.createIsolatedWorld': {
         const target = frame(params.frameId);
@@ -183,7 +185,10 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         if (expression.includes('"kind":"focusedFrame"')) return node(focus.otherSite && model.focusedOwnerOf ? 'focused-owner' : null);
         if (expression.includes('"kind":"focusedElement"')) return node(focus.sealed ? `focus:${target.id}:${level + 1}` : null);
         if (expression.includes('"kind":"focusedSecret"')) return { result: { type: 'object', value: focus } };
-        if (expression.includes('"kind":"secretBoxes"')) return { result: { type: 'object', value: { ...SECRETS_NONE, ...target.secrets } } };
+        if (expression.includes('"kind":"secretBoxes"')) {
+          const viewport = target.owner ? { width: target.owner.content.width, height: target.owner.content.height } : SECRETS_NONE.viewport;
+          return { result: { type: 'object', value: { ...SECRETS_NONE, viewport, ...target.secrets } } };
+        }
         return { exceptionDetails: { text: 'Uncaught' }, result: { type: 'object', subtype: 'error' } };
       }
       default:

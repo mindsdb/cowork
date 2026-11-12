@@ -151,6 +151,22 @@ function quadBox(quad: number[]): Box {
   return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
 
+/* How a box in a frame's own viewport (`view`: its innerWidth and
+   innerHeight) lands in the page's viewport through its owner's content
+   quad, which a CSS transform may scale or turn: scaled by the quad's size
+   over the view's, from the quad's top left corner. Null when the quad is
+   turned, skewed or mirrored, which no box maps through, or the view is
+   empty. */
+function throughQuad(quad: number[], view: { width: number; height: number }): ((box: Box) => Box) | null {
+  const [x1, y1, x2, y2, x3, y3, x4, y4] = quad;
+  const level = (a: number, b: number) => Math.abs(a - b) < 0.5;
+  if (!level(y1, y2) || !level(x2, x3) || !level(y3, y4) || !level(x4, x1) || x2 <= x1 || y4 <= y1) return null;
+  if (!(view.width > 0) || !(view.height > 0)) return null;
+  const sx = (x2 - x1) / view.width;
+  const sy = (y4 - y1) / view.height;
+  return (box) => ({ x: x1 + box.x * sx, y: y1 + box.y * sy, width: box.width * sx, height: box.height * sy });
+}
+
 /* The part of `box` inside `within`, or null when none is. */
 function clip(box: Box, within: Box): Box | null {
   const x = Math.max(box.x, within.x);
@@ -355,12 +371,13 @@ export class DebuggerSession {
     return url;
   }
 
-  /** The content and border boxes, in the page's viewport, of the element
-      that holds frame `frameId`. It fails for one that draws nothing. */
-  async ownerBoxes(frameId: string): Promise<{ content: Box; border: Box }> {
+  /** The content quad and border box, in the page's viewport, of the
+      element that holds frame `frameId`, as drawn, its transforms applied.
+      It fails for one that draws nothing. */
+  async ownerBoxes(frameId: string): Promise<{ content: number[]; border: Box }> {
     const { backendNodeId } = await this.send<{ backendNodeId: number }>('DOM.getFrameOwner', { frameId });
     const { model } = await this.send<{ model: { content: number[]; border: number[] } }>('DOM.getBoxModel', { backendNodeId });
-    return { content: quadBox(model.content), border: quadBox(model.border) };
+    return { content: model.content, border: quadBox(model.border) };
   }
 
   /** The frame that the element `request` answers in frame `frameId`'s
@@ -531,8 +548,10 @@ export class FrameReads {
 
   /**
    * What a screenshot blacks out inside the frames below the main one
-   * (`framesToRead`), in the page's viewport, each read in its own world and
-   * kept inside its content box. A frame the page's world can't search: its
+   * (`framesToRead`), in the page's viewport, each read in its own world,
+   * placed through its owner's content quad, so a frame a transform scales
+   * is blacked out where it is drawn (one it turns, whole), and kept inside
+   * its content box. A frame the page's world can't search: its
    * secret fields, payment frames and frames it can't search in turn. A
    * frame that world searched, which it can't reach in a closed shadow root:
    * the secret fields and payment frames of its own document, its frames
@@ -551,10 +570,11 @@ export class FrameReads {
       const depth = searched ? 0 : SECRET_SEARCH_DEPTH;
       const read = this.session.read<FoundSecrets>(frameId, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth });
       const found = await withTimeout(read, FRAME_READ_MS).catch(() => null);
-      if (!found) return [owner.border];
-      const { content } = owner;
+      const place = found && throughQuad(owner.content, found.viewport);
+      if (!found || !place) return [owner.border];
+      const content = quadBox(owner.content);
       return [...found.secrets, ...found.paymentFrames, ...(searched ? [] : found.otherSiteFrames)]
-        .map((box) => clip({ ...box, x: box.x + content.x, y: box.y + content.y }, content))
+        .map((box) => clip(place(box), content))
         .filter((box): box is Box => box !== null);
     }));
     return masks.flat();
