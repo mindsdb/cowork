@@ -761,6 +761,68 @@ describe('ElectronTab', () => {
       }
     });
 
+    it('answers a page that keeps changing on its own about SETTLE_QUIET_MS after its first look, when the step started no request', async () => {
+      const { tab, contents } = setup();
+      vi.useFakeTimers();
+      // A ticker: the page changes every 100 ms, before the step and after it.
+      const ticking = setInterval(() => contents.pageChanges(), 100);
+      try {
+        const ticker = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(SETTLE_QUIET_MS);
+        expect(ticker.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(400);
+        expect(ticker.outcome).toEqual({ changed: true });
+        expect(ticker.at).toBeGreaterThanOrEqual(SETTLE_QUIET_MS);
+        expect(ticker.at).toBeLessThan(150 + SETTLE_QUIET_MS + 250);
+      } finally {
+        clearInterval(ticking);
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps a step that changed nothing waiting while the page shows something aria-busy, for quiet up to SETTLE_MAX_MS', async () => {
+      const { tab, contents } = setup();
+      contents.change.busy = true;
+      vi.useFakeTimers();
+      try {
+        const busy = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(SETTLE_MAX_MS - 200);
+        expect(busy.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(600);
+        expect(busy.outcome).toEqual({ changed: false });
+        expect(busy.at).toBeGreaterThanOrEqual(SETTLE_MAX_MS);
+
+        // A page that stops being busy answers once it does, quiet since
+        // its watch began.
+        const cleared = timed(tab, { action: 'press', key: 'Enter' });
+        setTimeout(() => { contents.change.busy = false; }, 1_000);
+        await vi.advanceTimersByTimeAsync(900);
+        expect(cleared.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(400);
+        expect(cleared.outcome).toEqual({ changed: false });
+        expect(cleared.at).toBeLessThan(1_000 + 250);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('waits up to SETTLE_MAX_MS for a busy page that keeps changing on its own', async () => {
+      const { tab, contents } = setup();
+      contents.change.busy = true;
+      vi.useFakeTimers();
+      const ticking = setInterval(() => contents.pageChanges(), 100);
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(SETTLE_MAX_MS - 200);
+        expect(step.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(600);
+        expect(step.outcome).toEqual({ changed: true });
+      } finally {
+        clearInterval(ticking);
+        vi.useRealTimers();
+      }
+    });
+
     it('stops waiting at SETTLE_MAX_MS for a request that never ends', async () => {
       const { tab, contents, requests } = setup();
       onFirstKey(contents, () => requests.sent(mainFrameRequest(contents, 42)));

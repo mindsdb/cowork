@@ -20,13 +20,13 @@
  * input stops, and its waits, a navigation's included, answer 409
  * human_in_control.
  *
- * Each step settles before it answers (`act`). A step that changed the page,
- * or started a main-frame request or a navigation, waits until those requests
- * are done and the page has gone quiet; one that started none of them answers
- * at once. The
- * step's change watch (browser-page-script.ts) and the profile's request count
- * (RequestsInFlight in browser-profile.ts) say whether it changed what the
- * page shows.
+ * Each step settles before it answers (`act`). A step that started a
+ * main-frame request or a navigation, or finds the page aria-busy, waits
+ * until those requests are done and the page has gone quiet; one that only
+ * changed the page in place waits a moment for quiet at most, and one that
+ * did none of these answers at once. The step's change watch
+ * (browser-page-script.ts) and the profile's request count (RequestsInFlight
+ * in browser-profile.ts) say whether it changed what the page shows.
  */
 
 import { type BrowserWindow, type Certificate, type HandlerDetails, type Input, nativeImage, type Session, type WebContents, WebContentsView, type WebFrameMain, type WindowOpenHandlerResponse } from 'electron';
@@ -486,12 +486,16 @@ export class ElectronTab implements TabView {
 
   /*
    * The step's settle, after its input. A step that started nothing (no
-   * change the watch counted, no main-frame request, no navigation) answers
-   * at once. Any other waits until the page's main-frame requests are done
-   * and it has shown no change for SETTLE_QUIET_MS (a page that marks itself
-   * aria-busy keeps waiting), at most SETTLE_MAX_MS, and always inside the
-   * step's budget: a change in place may be a spinner before a fetch the
-   * page sends a moment later. Then: true when
+   * change the watch counted, no main-frame request, no navigation) on a
+   * page that shows nothing aria-busy answers at once. Any other waits until
+   * the page's main-frame requests are done, nothing it shows is aria-busy
+   * and it has shown no change for SETTLE_QUIET_MS, at most SETTLE_MAX_MS,
+   * and always inside the step's budget: a change in place may be a spinner
+   * before a fetch the page sends a moment later. A step that changed the
+   * page in place and started none of those waits SETTLE_QUIET_MS past its
+   * first look at most, so a page that changes on its own (a ticker) doesn't
+   * hold every step to the cap; a change that lands after that is missed.
+   * Then: true when
    * the step navigated or the watch counted a change, null when the page
    * couldn't be watched or may have changed where the watch can't see (a
    * hover's :hover too), false otherwise. The person taking over ends it at
@@ -517,15 +521,21 @@ export class ElectronTab implements TabView {
       watch.watchStartedAt = Date.now();
     }
     let last: ChangeMark | null = null;
+    /* A step that has started nothing the page asks to be waited for (a
+       request, a navigation, aria-busy) waits SETTLE_QUIET_MS past this
+       first look at most, as the web pod does, so a page that changes on its
+       own (a ticker) doesn't hold every step to the cap. */
+    let brief = Date.now() + SETTLE_QUIET_MS;
     while (!signal.aborted) {
       last = await mark();
       const requests = this.requests.of(this.contentsId);
-      if (!last?.changes && !requests?.sent && !navigated()) break;
+      if (last?.busy || requests?.sent || navigated()) brief = Infinity;
+      if (!last?.changes && brief !== Infinity) break;
       const now = Date.now();
       const lastChange = Math.max(watch.watchStartedAt, requests?.lastEndedAt ?? 0, last ? now - last.sinceLastMs : 0);
       const quiet = !requests?.pending && !last?.busy && now - lastChange >= SETTLE_QUIET_MS;
-      if (quiet || now >= deadline) break;
-      await pause(SETTLE_POLL_MS);
+      if (quiet || now >= Math.min(deadline, brief)) break;
+      await pause(Math.min(SETTLE_POLL_MS, brief - now));
     }
     if (signal.aborted) return null;
     if (navigated()) return true;
