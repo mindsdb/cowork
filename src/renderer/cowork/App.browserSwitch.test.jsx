@@ -231,7 +231,7 @@ describe('the Browser switch and pane through App', () => {
     Object.defineProperty(frame, 'contentWindow', { configurable: true, get: () => win });
     await act(async () => {
       window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-ready' }, source: win }));
-      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-url', url: 'https://www.united.com/en/us' }, source: win }));
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-url', url: 'https://www.united.com/en/us?f=SFO&t=WAS' }, source: win }));
     });
 
     await user.click(composer);
@@ -239,8 +239,10 @@ describe('the Browser switch and pane through App', () => {
     await waitFor(() => expect(streams).toHaveLength(1));
     const { text, opts } = streams[0];
     expect(text).toMatch(/^Find nonstop flights to DC\n\n\[The browser beside this request/);
+    // The prompt gets origin and path only; the task's browser reopens the whole page, its search kept.
     expect(text).toContain('https://www.united.com/en/us');
+    expect(text).not.toContain('f=SFO');
     expect(opts.conversationId).toBeTruthy();
-    await waitFor(() => expect(spies.openBrowserAt).toHaveBeenCalledWith(opts.conversationId, 'https://www.united.com/en/us'));
+    await waitFor(() => expect(spies.openBrowserAt).toHaveBeenCalledWith(opts.conversationId, 'https://www.united.com/en/us?f=SFO&t=WAS'));
   });
 });

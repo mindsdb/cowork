@@ -4032,7 +4032,10 @@ function AppCore() {
      Its origin and path only: it goes into the task's context. */
   const carriedBrowserPage = () => {
     if (!offTaskBrowserOpen || !(route === 'home' || route === 'projects')) return '';
-    return pageUrlForContext(offTaskPageUrlRef.current);
+    // The whole address, so the task's browser reopens the same page (a
+    // search keeps its query); prompts get only its origin and path.
+    const raw = String(offTaskPageUrlRef.current || '');
+    return pageUrlForContext(raw) && raw.length <= 4096 ? raw : '';
   };
   /* The new task's own browser opens at that page, and its view shows it;
      the off-task pane closes, since the task now holds the page. */
@@ -4143,7 +4146,7 @@ function AppCore() {
     const sendText = [
       text,
       reference.length ? describeGoogleDriveReferenceFiles(reference) : '',
-      carried ? describeOpenBrowserPage(carried) : '',
+      carried ? describeOpenBrowserPage(pageUrlForContext(carried)) : '',
     ].filter(Boolean).join('\n\n');
     if (carried) void carryBrowserInto(taskId, carried);
     setComposerAttachments([]);
@@ -5341,7 +5344,7 @@ function AppCore() {
     history: voiceHistoryRef.current,
     snapshot: () => describeScreen({
       ...callScreenRef.current, tasks: tasksRef.current, callTaskId: facetimeTaskIdRef.current, working: callBusy(),
-      browserPage: carriedPageRef.current?.() || '',
+      browserPage: pageUrlForContext(carriedPageRef.current?.() || ''),
     }),
     actions: callActions,
   });

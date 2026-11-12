@@ -571,13 +571,14 @@ describe('the desktop browser pane', () => {
     expect(document.querySelector('.browser-panel__site')).not.toHaveTextContent('accounts.mindshub.ai');
   });
 
-  it("reports the page it shows by origin and path only, for the off-task browser's carry-over", async () => {
+  it("reports the page it shows, whole, for the off-task browser's carry-over (which strips it for prompts)", async () => {
     const onPageUrl = vi.fn();
     render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={vi.fn()} onPageUrl={onPageUrl} />);
     emit(state({ url: 'https://mail.example.test/inbox?session=s3cret#top' }));
-    expect(onPageUrl).toHaveBeenLastCalledWith('https://mail.example.test/inbox');
+    expect(onPageUrl).toHaveBeenLastCalledWith('https://mail.example.test/inbox?session=s3cret#top');
     emit(state({ url: 'file:///Users/me/notes.txt' }));
-    expect(onPageUrl).toHaveBeenLastCalledWith('');
+    // The carry-over drops what isn't http(s) (pageUrlForContext); the stage reports what it shows.
+    expect(onPageUrl).toHaveBeenLastCalledWith('file:///Users/me/notes.txt');
   });
 
   it('ignores state for other tasks', async () => {
