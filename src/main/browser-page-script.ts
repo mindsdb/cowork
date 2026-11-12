@@ -44,9 +44,32 @@
  * It counts records and events and never reads text, a value or an
  * attribute's content. A style change counts, but doesn't keep the page from
  * going quiet, so an animation can't hold a step. Focus doesn't count.
+ *
+ * A page read lists the page's shown child frames with their content boxes,
+ * and reads the ones it may: a same-origin frame, big enough, within the
+ * read cap, on no payment, sign-in or consent address, and holding no
+ * secret, card or sign-in field. A read frame's elements have no id and no
+ * field value. A frame from another site can't be read from here: running
+ * script in its own world would let its page see it. `secretBoxes` finds what
+ * every screenshot blacks out.
  */
 
-import type { Challenge, PageElement, PageScroll, PageSnapshot } from '../shared/browser-contract';
+import {
+  type Challenge,
+  ELEMENTS_PER_FRAME,
+  type FrameBox,
+  FRAME_MIN_READ_PX,
+  FRAMES_READ,
+  PAYMENT_FRAME_HOSTS,
+  type PageElement,
+  type PageFrame,
+  type PageFrameElement,
+  type PageScroll,
+  type PageSnapshot,
+  SIGN_IN_FRAME_HOSTS,
+  TEXT_PER_FRAME,
+} from '../shared/browser-contract';
+import { screenshotScale } from './browser-screenshot';
 
 /** The isolated world every read runs in: not 0 (the page's) and not 999 (Electron's preload world). */
 export const PAGE_WORLD_ID = 1031;
@@ -113,8 +136,52 @@ export interface ViewPoint {
   y: number;
 }
 
+/** How a page read reads its child frames: the contract's limits and host
+    lists. A screenshot's read passes none and reads no frame. */
+export interface FrameReadRules {
+  read: number;
+  elements: number;
+  text: number;
+  minPx: number;
+  paymentHosts: readonly string[];
+  signInHosts: readonly string[];
+}
+
+export const FRAME_READ_RULES: FrameReadRules = {
+  read: FRAMES_READ,
+  elements: ELEMENTS_PER_FRAME,
+  text: TEXT_PER_FRAME,
+  minPx: FRAME_MIN_READ_PX,
+  paymentHosts: PAYMENT_FRAME_HOSTS,
+  signInHosts: SIGN_IN_FRAME_HOSTS,
+};
+
+/** A shown child frame as a page read finds it: its address (the
+    document's own for a frame the read reaches, else its owner's src), its
+    content box in viewport CSS pixels, and what a read frame holds. */
+export type RawFrame =
+  | { url: string; read: false; box: Box; offscreen: boolean }
+  | { url: string; read: true; box: Box; offscreen: boolean; elements: PageFrameElement[]; text: string; truncated: boolean };
+
+/** Where the focus is for a key: on a secret field, or in a frame from
+    another site, whose fields this world can't read. */
+export interface FocusedSecret {
+  secret: boolean;
+  otherSite: boolean;
+}
+
+/** What a screenshot must not show, in viewport CSS pixels: secret fields
+    (in the page, its open shadow roots and its same-origin frames), payment
+    frames by address, and every frame from another site. */
+export interface FoundSecrets {
+  secrets: Box[];
+  paymentFrames: Box[];
+  otherSiteFrames: Box[];
+  viewport: { width: number; height: number };
+}
+
 export type PageWorldRequest =
-  | { kind: 'snapshot'; maxText: number; maxElements: number }
+  | { kind: 'snapshot'; maxText: number; maxElements: number; frames: FrameReadRules | null }
   | { kind: 'locate'; id: number; reveal: boolean }
   | { kind: 'focusedSecret' }
   /* Where the focus is while a type step types into element `id`. */
@@ -132,6 +199,7 @@ export type PageWorldRequest =
   | { kind: 'changeStart'; token: number }
   | { kind: 'changeMark'; token: number; at: ViewPoint | null }
   | { kind: 'changeStop'; token: number }
+  | { kind: 'secretBoxes'; paymentHosts: readonly string[] }
   | { kind: 'watch' };
 
 export interface RawSnapshot {
@@ -145,6 +213,8 @@ export interface RawSnapshot {
   /** Every frame element in the page's DOM (open shadow roots included), and
       whether the person can see it: a non-empty box in the viewport, not hidden. */
   frameOwners: DomFrame[];
+  /** The shown ones, on-screen first, and what a read one holds. */
+  frames: RawFrame[];
   /** Boxes of the numbered elements in the viewport, in CSS pixels, for screenshot labels. */
   boxes: ElementBox[];
   viewport: { width: number; height: number };
@@ -233,8 +303,50 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     const style = win.getComputedStyle(el);
     return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || '1') > 0;
   };
-  const inView = (box: Box): boolean =>
-    box.x < viewport.width && box.y < viewport.height && box.x + box.width > 0 && box.y + box.height > 0;
+  const inView = (box: Box, view: { width: number; height: number } = viewport): boolean =>
+    box.x < view.width && box.y < view.height && box.x + box.width > 0 && box.y + box.height > 0;
+  /* The box inside an element's border and padding: a frame's own viewport. */
+  const contentBox = (el: Element): Box => {
+    const box = boxOf(el);
+    const style = styleOf(el);
+    const px = (value: string) => parseFloat(value) || 0;
+    const left = px(style.borderLeftWidth) + px(style.paddingLeft);
+    const top = px(style.borderTopWidth) + px(style.paddingTop);
+    const right = px(style.borderRightWidth) + px(style.paddingRight);
+    const bottom = px(style.borderBottomWidth) + px(style.paddingBottom);
+    return { x: box.x + left, y: box.y + top, width: Math.max(0, box.width - left - right), height: Math.max(0, box.height - top - bottom) };
+  };
+  /* A frame owner's document, when this world may read it: same origin. */
+  const frameDocOf = (owner: Element): Document | null => {
+    try {
+      return (owner as HTMLIFrameElement).contentDocument;
+    } catch {
+      return null;
+    }
+  };
+  /* Whether `address`'s host is one of `hosts`, or a name under one. */
+  const hostIn = (address: string, hosts: readonly string[]): boolean => {
+    let host: string;
+    try {
+      host = new URL(address).hostname.toLowerCase().replace(/\.+$/, '');
+    } catch {
+      return false;
+    }
+    return !!host && hosts.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  };
+  /* An OAuth authorization request or consent page, by its address. */
+  const CONSENT_SEGMENTS = new Set(['authorize', 'authorization', 'oauth', 'oauth2', 'openid', 'openid-connect', 'login-actions']);
+  const consentPage = (address: string): boolean => {
+    let url: URL;
+    try {
+      url = new URL(address);
+    } catch {
+      return false;
+    }
+    const query = url.searchParams;
+    if (query.has('client_id') && ['response_type', 'redirect_uri', 'request_uri'].some((key) => query.has(key))) return true;
+    return url.pathname.toLowerCase().split('/').some((part) => CONSENT_SEGMENTS.has(part) || part.startsWith('consent'));
+  };
   const isSecret = (el: Element): boolean => {
     if (world.secret.has(el)) return true;
     const auto = (el.getAttribute('autocomplete') || '').toLowerCase();
@@ -342,6 +454,14 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return clean(img?.getAttribute('alt') || el.getAttribute('title') || el.getAttribute('placeholder'), 120);
   };
 
+  const selectValue = (select: HTMLSelectElement): string =>
+    clean(Array.from(select.selectedOptions).map((o) => o.label || o.text).join(', '), MAX_VALUE_CHARS);
+  const selectOptions = (select: HTMLSelectElement): string[] => Array.from(select.options).slice(0, 50).map((o) => clean(o.label || o.text, 120));
+  const checkedOf = (el: Element): boolean => {
+    const aria = el.getAttribute('aria-checked');
+    return aria !== null ? aria === 'true' : (el as HTMLInputElement).checked === true;
+  };
+
   const describe = (el: Element, id: number, role: string, offscreen: boolean): Record<string, unknown> => {
     const entry: Record<string, unknown> = { id, role, name: nameOf(el, role) };
     const tag = tagOf(el);
@@ -349,9 +469,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       entry.value_hidden = true;
       if (tag === 'input' && inputType(el) === 'password') entry.type = 'password';
     } else if (tag === 'select') {
-      const select = el as HTMLSelectElement;
-      entry.value = clean(Array.from(select.selectedOptions).map((o) => o.label || o.text).join(', '), MAX_VALUE_CHARS);
-      entry.options = Array.from(select.options).slice(0, 50).map((o) => clean(o.label || o.text, 120));
+      entry.value = selectValue(el as HTMLSelectElement);
+      entry.options = selectOptions(el as HTMLSelectElement);
     } else if (tag === 'textarea' || (tag === 'input' && role !== 'button' && role !== 'checkbox' && role !== 'radio')) {
       const value = (el as HTMLInputElement).value;
       if (value) entry.value = value.slice(0, MAX_VALUE_CHARS);
@@ -359,10 +478,21 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       const value = clean(el.textContent, MAX_VALUE_CHARS);
       if (value) entry.value = value;
     }
-    if (role === 'checkbox' || role === 'radio' || role === 'switch') {
-      const aria = el.getAttribute('aria-checked');
-      entry.checked = aria !== null ? aria === 'true' : (el as HTMLInputElement).checked === true;
+    if (role === 'checkbox' || role === 'radio' || role === 'switch') entry.checked = checkedOf(el);
+    if (isDisabled(el)) entry.disabled = true;
+    if (offscreen) entry.offscreen = true;
+    return entry;
+  };
+
+  /* An element of a frame as a read lists it: no id, and no field value but
+     a select's. */
+  const describeInFrame = (el: Element, role: string, offscreen: boolean): PageFrameElement => {
+    const entry: PageFrameElement = { role, name: nameOf(el, role) };
+    if (tagOf(el) === 'select') {
+      entry.value = selectValue(el as HTMLSelectElement);
+      entry.options = selectOptions(el as HTMLSelectElement);
     }
+    if (role === 'checkbox' || role === 'radio' || role === 'switch') entry.checked = checkedOf(el);
     if (isDisabled(el)) entry.disabled = true;
     if (offscreen) entry.offscreen = true;
     return entry;
@@ -371,7 +501,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   const elementsIn = (root: Node): Element[] => {
     const found: Element[] = [];
     const visit = (from: Node) => {
-      const walker = doc.createTreeWalker(from, 1);
+      const walker = (from.ownerDocument ?? (from as Document)).createTreeWalker(from, 1);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const el = node as Element;
         found.push(el);
@@ -480,40 +610,100 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
 
   const FRAME_TAGS = new Set(['iframe', 'frame']);
 
-  /*
-   * Every shown element is listed in page order when they all fit. Past
-   * `maxElements`, the ones in view come first, then the rest, each group in
-   * page order, and `truncated` says more exist. Only listed elements get an
-   * id. Frames are never elements; each one is a frame owner.
-   */
-  const snapshot = (maxText: number, maxElements: number) => {
-    for (const [id, el] of world.ids) {
-      if (!el.isConnected) {
-        world.ids.delete(id);
-        world.byElement.delete(el);
-      }
-    }
-    const candidates: Array<{ el: Element; role: string; box: Box; visible: boolean }> = [];
-    const frameOwners: DomFrame[] = [];
-    const root = doc.body || doc.documentElement;
+  interface Candidate { el: Element; role: string; box: Box; visible: boolean }
+
+  /* The shown elements with a role under `root` (open shadow roots
+     included), each with its box and whether it is in `view`, and the frame
+     owners, which are never elements. */
+  const collect = (root: Node | null, view: { width: number; height: number }): { candidates: Candidate[]; owners: Element[] } => {
+    const candidates: Candidate[] = [];
+    const owners: Element[] = [];
     for (const el of root ? elementsIn(root) : []) {
       if (FRAME_TAGS.has(tagOf(el))) {
-        const box = boxOf(el);
-        frameOwners.push({ url: (el as HTMLIFrameElement).src || '', visible: shown(el, box) && inView(box) });
+        owners.push(el);
         continue;
       }
       const role = roleOf(el);
       if (!role) continue;
       const box = boxOf(el);
       if (!shown(el, box)) continue;
-      candidates.push({ el, role, box, visible: inView(box) });
+      candidates.push({ el, role, box, visible: inView(box, view) });
     }
-    const kept = candidates.length <= maxElements
-      ? candidates
-      : [...candidates.filter((c) => c.visible), ...candidates.filter((c) => !c.visible)].slice(0, maxElements);
+    return { candidates, owners };
+  };
+
+  /* Every candidate in page order when they all fit; past `max`, the ones
+     in view first, then the rest, each group in page order. */
+  const listed = (candidates: Candidate[], max: number): Candidate[] => (candidates.length <= max
+    ? candidates
+    : [...candidates.filter((c) => c.visible), ...candidates.filter((c) => !c.visible)].slice(0, max));
+
+  /* A field that says a frame holds something only the person handles: a
+     secret field (password, one-time code, card), a field named for a card,
+     or a sign-in field. */
+  const CARD_FIELD_NAME = /(^|[^a-z])(cvc|cvv2?|csc)([^a-z]|$)|card[\s_-]*(number|num|no)|cc[\s_-]*num|security[\s_-]*code/i;
+  const SIGN_IN_AUTOCOMPLETE = /(^|\s)(username|webauthn)(\s|$)/;
+  const isField = (el: Element): boolean => ['input', 'textarea', 'select'].includes(tagOf(el)) || editable(el);
+  const holdsPrivateField = (root: Node): boolean => elementsIn(root).some((el) => isField(el) && (
+    isSecret(el)
+    || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase())
+    || ['name', 'id', 'aria-label', 'placeholder'].some((attr) => CARD_FIELD_NAME.test(el.getAttribute(attr) || ''))));
+
+  /* The shown frames among `owners`, on-screen first, each read when the
+     rules let it: a same-origin frame at least `minPx` each way, within the
+     first `read` frames read, on no payment, sign-in or consent address (its
+     src's or its document's), and holding no private field. */
+  const readFrames = (owners: Element[], rules: FrameReadRules): RawFrame[] => {
+    const placed = owners
+      .filter((owner) => shown(owner, boxOf(owner)))
+      .map((owner) => {
+        const box = contentBox(owner);
+        return { owner, box, offscreen: !inView(box) };
+      });
+    let reads = 0;
+    return [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen }): RawFrame => {
+      const inner = frameDocOf(owner);
+      const src = (owner as HTMLIFrameElement).src || '';
+      const url = inner ? String(inner.location?.href || src) : src;
+      const refusedAddress = (address: string) =>
+        hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
+      if (!inner || reads >= rules.read || box.width < rules.minPx || box.height < rules.minPx
+        || refusedAddress(src) || refusedAddress(url) || holdsPrivateField(inner)) {
+        return { url, read: false, box, offscreen };
+      }
+      reads += 1;
+      const view = { width: inner.defaultView?.innerWidth ?? 0, height: inner.defaultView?.innerHeight ?? 0 };
+      const { candidates } = collect(inner.body || inner.documentElement, view);
+      return {
+        url,
+        read: true,
+        box,
+        offscreen,
+        elements: listed(candidates, rules.elements).map(({ el, role, visible }) => describeInFrame(el, role, !visible)),
+        text: pageText(inner, rules.text),
+        truncated: candidates.length > rules.elements,
+      };
+    });
+  };
+
+  /*
+   * Every shown element is listed in page order when they all fit. Past
+   * `maxElements`, the ones in view first, then the rest, each group in
+   * page order, and `truncated` says more exist. Only listed elements get an
+   * id. Frames are never elements: each one is a frame owner, and the shown
+   * ones are listed as frames.
+   */
+  const snapshot = (maxText: number, maxElements: number, frameRules: FrameReadRules | null) => {
+    for (const [id, el] of world.ids) {
+      if (!el.isConnected) {
+        world.ids.delete(id);
+        world.byElement.delete(el);
+      }
+    }
+    const { candidates, owners } = collect(doc.body || doc.documentElement, viewport);
     const elements: Record<string, unknown>[] = [];
     const boxes: ElementBox[] = [];
-    for (const { el, role, box, visible } of kept) {
+    for (const { el, role, box, visible } of listed(candidates, maxElements)) {
       const id = idOf(el);
       elements.push(describe(el, id, role, !visible));
       if (visible) {
@@ -526,6 +716,10 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         });
       }
     }
+    const frameOwners = owners.map((owner): DomFrame => {
+      const box = boxOf(owner);
+      return { url: (owner as HTMLIFrameElement).src || '', visible: shown(owner, box) && inView(box) };
+    });
     const scroller = doc.scrollingElement || doc.documentElement;
     return {
       url: String(doc.location?.href || ''),
@@ -539,15 +733,51 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       text: pageText(doc, maxText),
       truncated: candidates.length > maxElements,
       frameOwners,
+      frames: frameRules ? readFrames(owners, frameRules) : [],
       boxes,
       viewport,
     };
   };
 
+  /* What a screenshot must not show. Same-origin frames are searched in
+     turn, offset by their content box; a frame from another site can't be. */
+  const secretBoxes = (paymentHosts: readonly string[]): FoundSecrets => {
+    const found: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], viewport };
+    const add = (into: Box[], el: Element, dx: number, dy: number) => {
+      const box = boxOf(el);
+      if (box.width > 0 && box.height > 0) into.push({ x: box.x + dx, y: box.y + dy, width: box.width, height: box.height });
+    };
+    const visit = (root: Node, dx: number, dy: number, depth: number) => {
+      if (depth > 8) return;
+      for (const el of elementsIn(root)) {
+        if (!FRAME_TAGS.has(tagOf(el))) {
+          if (isField(el) && isSecret(el)) add(found.secrets, el, dx, dy);
+          continue;
+        }
+        const inner = frameDocOf(el);
+        const payment = hostIn((el as HTMLIFrameElement).src || '', paymentHosts) || (!!inner && hostIn(String(inner.location?.href || ''), paymentHosts));
+        if (payment) add(found.paymentFrames, el, dx, dy);
+        if (!inner) add(found.otherSiteFrames, el, dx, dy);
+        else if (!payment) {
+          const box = contentBox(el);
+          visit(inner, dx + box.x, dy + box.y, depth + 1);
+        }
+      }
+    };
+    visit(doc, 0, 0, 0);
+    return found;
+  };
+
+  /* The focused element, followed into open shadow roots and same-origin
+     frames. A frame from another site keeps the focus on its owner. */
   const deepActive = (): Element | null => {
     let active = doc.activeElement;
-    while (active && active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement;
-    return active;
+    for (;;) {
+      const inFrame = active && FRAME_TAGS.has(tagOf(active)) ? frameDocOf(active) : null;
+      const inner = active?.shadowRoot?.activeElement ?? inFrame?.activeElement ?? null;
+      if (!inner || inner === active || inner === inner.ownerDocument.body) return active;
+      active = inner;
+    }
   };
 
   /* A node's parent, or a shadow root's host. */
@@ -586,6 +816,12 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   const focusOnSecret = (): boolean => {
     const active = deepActive();
     return !!active && active !== doc.body && isSecret(active);
+  };
+
+  /* The focus rests on a frame this world can't read. */
+  const focusInOtherSite = (): boolean => {
+    const active = deepActive();
+    return !!active && FRAME_TAGS.has(tagOf(active)) && !frameDocOf(active);
   };
 
   /* Selects a field's text so typing replaces it; false when it held none. */
@@ -693,7 +929,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
 
   switch (request.kind) {
     case 'snapshot':
-      return snapshot(request.maxText, request.maxElements);
+      return snapshot(request.maxText, request.maxElements, request.frames);
     case 'locate': {
       const el = world.ids.get(request.id);
       if (!el || !el.isConnected) return { found: false };
@@ -713,7 +949,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'viewport':
       return viewport;
     case 'focusedSecret':
-      return { secret: focusOnSecret() };
+      return { secret: focusOnSecret(), otherSite: focusInOtherSite() } satisfies FocusedSecret;
     case 'typingFocus': {
       const el = world.ids.get(request.id);
       return { secret: focusOnSecret(), inField: !!el && el.isConnected && focusIn(el) };
@@ -789,6 +1025,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'changeStop':
       if (world.change?.token === request.token) stopChanges();
       return { ok: true };
+    case 'secretBoxes':
+      return secretBoxes(request.paymentHosts);
     case 'watch':
       world.observer ??= new MutationObserver(onMutations);
       watchRoot(doc);
@@ -797,8 +1035,69 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   }
 }
 
-/** The page answer anton reads: the read without main's own fields, with the checks the person can see. */
-export function pageAnswer(raw: RawSnapshot, challenges: Challenge[]): PageSnapshot {
+/** The longest frame address a page answer carries. */
+const MAX_FRAME_ADDRESS = 1024;
+
+/** A frame's address as a page answer gives it: origin and path for http
+    and https, about:blank or about:srcdoc, otherwise the scheme alone. */
+export function frameAddress(address: string): string {
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return 'about:blank';
+  }
+  if (url.protocol === 'http:' || url.protocol === 'https:') return `${url.origin}${url.pathname}`.slice(0, MAX_FRAME_ADDRESS);
+  if (url.protocol === 'about:') return url.pathname === 'srcdoc' ? 'about:srcdoc' : 'about:blank';
+  return url.protocol;
+}
+
+/** Whether a frame address is a payment provider's (PAYMENT_FRAME_HOSTS). */
+export function isPaymentAddress(address: string): boolean {
+  let host: string;
+  try {
+    host = new URL(address).hostname.toLowerCase().replace(/\.+$/, '');
+  } catch {
+    return false;
+  }
+  return !!host && PAYMENT_FRAME_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+/* The addresses of the main frame's child frames that no frame owner in the
+   page's DOM accounts for: one in a closed shadow root, or an object's or
+   embed's. The page read can't place them. */
+function unplacedFrames(childFrameUrls: string[], owners: DomFrame[]): string[] {
+  const missing = childFrameUrls.length - owners.length;
+  if (missing <= 0) return [];
+  const sources = owners.map((owner) => owner.url);
+  const unmatched = childFrameUrls.filter((url) => {
+    const at = sources.indexOf(url);
+    if (at === -1) return true;
+    sources.splice(at, 1);
+    return false;
+  });
+  const pool = unmatched.length >= missing ? unmatched : childFrameUrls;
+  return pool.slice(pool.length - missing);
+}
+
+/** The page answer anton reads: the read without main's own fields, with the
+    checks the person can see, and the page's child frames (`childFrameUrls`,
+    the main frame's direct children) in screenshot pixels. A check frame's
+    content never leaves main. */
+export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrameUrls: string[]): PageSnapshot {
+  const scale = screenshotScale(raw.viewport.width);
+  const inShot = (box: Box): FrameBox => ({
+    x: Math.round(box.x / scale),
+    y: Math.round(box.y / scale),
+    width: Math.round(box.width / scale),
+    height: Math.round(box.height / scale),
+  });
+  const frames = raw.frames.map((frame): PageFrame => {
+    const where = { url: frameAddress(frame.url), box: inShot(frame.box), ...(frame.offscreen ? { offscreen: true as const } : {}) };
+    if (!frame.read || challengeKind(frame.url) !== null) return { ...where, read: false };
+    return { ...where, read: true, elements: frame.elements, text: frame.text, truncated: frame.truncated };
+  });
+  for (const url of unplacedFrames(childFrameUrls, raw.frameOwners)) frames.push({ url: frameAddress(url), read: false, box: null });
   return {
     url: raw.url,
     title: raw.title,
@@ -807,7 +1106,17 @@ export function pageAnswer(raw: RawSnapshot, challenges: Challenge[]): PageSnaps
     text: raw.text,
     truncated: raw.truncated,
     challenges,
+    frames,
   };
+}
+
+/** What a screenshot blacks out: secret fields and payment frames, and every
+    frame from another site when the frame tree (`frameUrls`) holds a payment
+    frame the page's DOM doesn't account for (one nested in another site's
+    frame, or one that navigated there). */
+export function screenshotMasks(found: FoundSecrets, frameUrls: string[]): Box[] {
+  const unaccounted = frameUrls.filter(isPaymentAddress).length > found.paymentFrames.length;
+  return [...found.secrets, ...found.paymentFrames, ...(unaccounted ? found.otherSiteFrames : [])];
 }
 
 /* The isolated world's own global holds the state between reads. That global

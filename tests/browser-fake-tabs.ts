@@ -22,6 +22,7 @@ export const FAKE_PAGE: PageSnapshot = {
   text: 'Sign in to Example Shop.',
   truncated: false,
   challenges: [],
+  frames: [],
 };
 
 export interface FakeTab extends TabView {

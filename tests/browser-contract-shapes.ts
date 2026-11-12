@@ -97,17 +97,20 @@ const frameShape = shape(
   { offscreen: bool, elements: list(frameElementShape), text: str, truncated: bool },
 );
 
+/* Both hosts send `frames` on every page, so its check is required here;
+   anton reads a page without it as one with none. */
 export const pageShape = shape(
-  { url: str, title: str, elements: list(elementShape) },
+  { url: str, title: str, elements: list(elementShape), frames: list(frameShape) },
   {
     text: str,
     truncated: bool,
     scroll: nullable(shape({ y: int, height: int, viewport: int })),
     challenges: list(shape({ host: str, kind: str })),
-    frames: list(frameShape),
   },
 );
 
+/* Both hosts send `changed` on every answer; anton reads one without it as
+   a host that can't tell. */
 export const actionAnswerShape = shape({ ok: bool, url: str, changed: nullable(bool) }, { page: nullable(pageShape) });
 
 const tabShape = shape({ id: str, url: str, title: str, active: bool });
@@ -165,7 +168,9 @@ export interface FixtureExample {
 
 export interface FixtureFile {
   description: string;
-  /** Numbers both hosts hold to, such as saved_tabs.json's per-project cap. */
-  limits?: Record<string, number>;
+  /** Values both hosts hold to: a number, such as saved_tabs.json's
+      per-project cap, or a list of hosts, such as page.json's payment frame
+      hosts. */
+  limits?: Record<string, number | string[]>;
   examples: Record<string, FixtureExample>;
 }

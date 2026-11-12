@@ -5,11 +5,13 @@
  * wide (the width the web pod uses too), and draws the element numbers into
  * the bitmap itself, from boxes the page read returned at capture time. Nothing
  * is drawn into the page, so a page never sees the labels. Element ids are
- * integers, so a small built-in digit font is enough.
+ * integers, so a small built-in digit font is enough. Before the labels, it
+ * blacks out what the page read says the model must not see (secret fields,
+ * payment frames), and answers no image when it can't.
  */
 
-import { MAX_SCREENSHOT_WIDTH } from '../shared/browser-contract';
-import type { ElementBox } from './browser-page-script';
+import { BridgeError, MAX_SCREENSHOT_WIDTH } from '../shared/browser-contract';
+import type { Box, ElementBox } from './browser-page-script';
 
 /** A raw 32-bit bitmap as nativeImage.toBitmap() gives it: 4 bytes a pixel, row by row. */
 export interface Bitmap {
@@ -41,6 +43,7 @@ export const LABEL_HEIGHT = 5 * SCALE + 2 * PAD;
    bitmap's channel order can't change it. */
 const LABEL_COLOR = [0xc0, 0x1a, 0xc0, 0xff] as const;
 const TEXT_COLOR = [0xff, 0xff, 0xff, 0xff] as const;
+const MASK_COLOR = [0, 0, 0, 0xff] as const;
 
 function setPixel(bitmap: Bitmap, x: number, y: number, color: readonly number[]): void {
   if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height) return;
@@ -128,8 +131,10 @@ export function jpegQuality(raw: string | null): number {
 }
 
 /**
- * The capture scaled to the screenshot width, with labels drawn when `boxes`
- * is given (boxes in page CSS pixels, read at capture time), as a JPEG.
+ * The capture scaled to the screenshot width, with `masks` blacked out and
+ * then labels drawn when `boxes` is given (both in page CSS pixels, read at
+ * capture time), as a JPEG. A capture it can't mask gets no image at all: a
+ * card number the person typed must never reach the model.
  */
 export function renderScreenshot(
   capture: ImageLike,
@@ -137,15 +142,26 @@ export function renderScreenshot(
   boxes: ElementBox[] | null,
   quality: number,
   fromBitmap: (bitmap: Buffer, size: { width: number; height: number }) => ImageLike,
+  masks: Box[],
 ): Screenshot {
   const width = screenshotWidth(viewportWidth);
   const scaled = capture.resize({ width, quality: 'good' });
   const size = scaled.getSize();
-  if (!boxes || !boxes.length) return { jpeg: scaled.toJPEG(quality), ...size };
+  if (!boxes?.length && !masks.length) return { jpeg: scaled.toJPEG(quality), ...size };
   const data = scaled.toBitmap();
-  if (data.length !== size.width * size.height * 4) return { jpeg: scaled.toJPEG(quality), ...size };
+  if (data.length !== size.width * size.height * 4) {
+    if (masks.length) throw new BridgeError('internal', "the screenshot could not hide the page's secret fields, so none was taken");
+    return { jpeg: scaled.toJPEG(quality), ...size };
+  }
   const factor = size.width / viewportWidth;
-  drawLabels({ data, ...size }, boxes.map((box) => ({
+  const bitmap = { data, ...size };
+  // Outward to whole pixels, so no edge of a secret shows.
+  for (const mask of masks) {
+    const left = Math.floor(mask.x * factor);
+    const top = Math.floor(mask.y * factor);
+    fill(bitmap, left, top, Math.ceil((mask.x + mask.width) * factor) - left, Math.ceil((mask.y + mask.height) * factor) - top, MASK_COLOR);
+  }
+  drawLabels(bitmap, (boxes ?? []).map((box) => ({
     id: box.id,
     x: box.x * factor,
     y: box.y * factor,

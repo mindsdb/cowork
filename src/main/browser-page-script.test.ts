@@ -1,11 +1,19 @@
 // @vitest-environment happy-dom
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { ELEMENTS_PER_FRAME, TEXT_PER_FRAME } from '../shared/browser-contract';
 import { pageShape, problems } from '../../tests/browser-contract-shapes';
 import {
+  type FoundSecrets,
+  FRAME_READ_RULES,
+  frameAddress,
+  isPaymentAddress,
+  type RawFrame,
+  screenshotMasks,
   challengeKind,
   challengesFrom,
   type FocusFieldResult,
   type ChangeMark,
+  type FocusedSecret,
   type FocusResult,
   type HitTestResult,
   type LocateResult,
@@ -54,8 +62,15 @@ function watchedWorld(): PageWorldState {
 }
 
 function snapshot(world: PageWorldState, maxText = 3000, maxElements = 300): RawSnapshot {
-  return pageWorld(document, world, { kind: 'snapshot', maxText, maxElements }) as RawSnapshot;
+  return pageWorld(document, world, { kind: 'snapshot', maxText, maxElements, frames: FRAME_READ_RULES }) as RawSnapshot;
 }
+
+/* A srcdoc frame's document loads after it is attached. */
+const framesLoad = () => new Promise((resolve) => setTimeout(resolve, 30));
+const frameDoc = (id: string): Document => (document.getElementById(id) as HTMLIFrameElement).contentDocument!;
+
+/* The frames a read listed, by address. */
+const framesByUrl = (page: RawSnapshot): Record<string, RawFrame> => Object.fromEntries(page.frames.map((f) => [f.url, f]));
 
 /* happy-dom gives a text node no boxes, so each text node here takes its
    parent element's box, as Chromium gives a line of text its own. */
@@ -142,9 +157,11 @@ describe('the isolated-world page read', () => {
     document.body.innerHTML = `${SIGN_IN}<iframe data-box="300x65" title="Widget containing a Cloudflare security challenge" src="https://challenges.cloudflare.com/cdn-cgi/x"></iframe>`;
     layout();
     const raw = snapshot(freshWorld());
-    const answer = pageAnswer(raw, challengesFrom(['https://challenges.cloudflare.com/cdn-cgi/x'], raw.frameOwners));
+    const frameUrls = ['https://challenges.cloudflare.com/cdn-cgi/x'];
+    const answer = pageAnswer(raw, challengesFrom(frameUrls, raw.frameOwners), frameUrls);
     expect(problems(pageShape, answer)).toEqual([]);
     expect(answer.challenges).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
+    expect(answer.frames).toEqual([{ url: 'https://challenges.cloudflare.com/cdn-cgi/x', read: false, box: { x: 10, y: 340, width: 300, height: 65 } }]);
     expect(answer).not.toHaveProperty('boxes');
     expect(answer).not.toHaveProperty('frameOwners');
     expect(pageWorld(document, freshWorld(), { kind: 'viewport' })).toEqual({ width: window.innerWidth, height: window.innerHeight });
@@ -468,9 +485,9 @@ describe('the isolated-world page read', () => {
     layout();
     const world = freshWorld();
     (document.getElementById('email') as HTMLInputElement).focus();
-    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false });
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: false });
     (document.getElementById('pw') as HTMLInputElement).focus();
-    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true });
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true, otherSite: false });
   });
 
   it('tells a type step whether the focus is still in its field, and whether it is on a secret one', () => {
@@ -561,7 +578,7 @@ describe('the isolated-world page read', () => {
   it('runs from its source text, so it needs nothing from this module', () => {
     document.body.innerHTML = SIGN_IN;
     layout();
-    const read = () => new Function(`return ${pageWorldSource({ kind: 'snapshot', maxText: 100, maxElements: 300 })}`)() as RawSnapshot;
+    const read = () => new Function(`return ${pageWorldSource({ kind: 'snapshot', maxText: 100, maxElements: 300, frames: FRAME_READ_RULES })}`)() as RawSnapshot;
     const before = new Set(Object.getOwnPropertyNames(window));
     try {
       const first = read();
@@ -574,6 +591,222 @@ describe('the isolated-world page read', () => {
     } finally {
       delete (window as unknown as Record<string, unknown>).__coworkBrowserWorld;
     }
+  });
+});
+
+describe('frames', () => {
+  it('lists every shown frame, on-screen first, with its address, its content box and whether it is in view', async () => {
+    document.body.innerHTML = `
+      <iframe id="below" src="https://ads.example.test/banner?id=7"></iframe>
+      <iframe id="pad" src="https://widgets.example.test/w" style="border: 2px solid black; padding: 3px"></iframe>
+      <iframe id="hidden" src="https://track.example.test/" style="display: none"></iframe>
+      <div id="host"></div>
+      <iframe id="data" src="data:text/html,hi"></iframe>`;
+    const root = document.getElementById('host')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<iframe id="inner" srcdoc="<p>Inside a widget</p>"></iframe>';
+    await framesLoad();
+    place(document.getElementById('below')!, 10, window.innerHeight + 100, 300, 250);
+    place(document.getElementById('pad')!, 10, 10, 300, 150);
+    place(document.getElementById('hidden')!, 0, 0, 0, 0);
+    place(root.getElementById('inner')!, 10, 200, 200, 100);
+    place(document.getElementById('data')!, 10, 320, 100, 50);
+    const world = freshWorld();
+    const page = snapshot(world);
+    expect(page.frames.map((f) => [f.url, f.read, f.offscreen])).toEqual([
+      ['https://widgets.example.test/w', false, false],
+      ['about:srcdoc', true, false],
+      ['data:text/html,hi', false, false],
+      ['https://ads.example.test/banner?id=7', false, true],
+    ]);
+    // The frame's own viewport: inside its border and padding.
+    expect(page.frames[0].box).toEqual({ x: 15, y: 15, width: 290, height: 140 });
+    expect(framesByUrl(page)['about:srcdoc']).toMatchObject({ read: true, elements: [], text: 'Inside a widget', truncated: false });
+    expect(page.frameOwners).toHaveLength(5);
+    expect(page.elements).toEqual([]);
+    expect(world.ids.size).toBe(0);
+  });
+
+  it("reads a same-origin frame's controls and text with no ids and no field values; a select keeps its value", async () => {
+    document.body.innerHTML = `<iframe id="news" srcdoc="${`
+      <p>Get the weekly digest.</p>
+      <label>Email <input id='email' value='ada@example.test'></label>
+      <textarea id='note' aria-label='Note'></textarea>
+      <div id='draft' contenteditable aria-label='Draft'>draft words</div>
+      <select id='when' aria-label='How often'><option>Weekly</option><option selected>Daily</option></select>
+      <label><input id='agree' type='checkbox' checked> Agree</label>
+      <button id='go'>Subscribe</button>`.replace(/"/g, '&quot;')}"></iframe>`;
+    await framesLoad();
+    place(document.getElementById('news')!, 0, 0, 600, 400);
+    const inner = frameDoc('news');
+    inner.querySelectorAll('input, textarea, [contenteditable], select, button').forEach((el, i) => place(el, 10, 10 + i * 30, 200, 20));
+    // What the person typed, which no element of a frame carries.
+    (inner.getElementById('note') as HTMLTextAreaElement).value = 'typed words';
+    (inner.getElementById('email') as HTMLInputElement).value = 'ada@example.test';
+    const world = freshWorld();
+    const [frame] = snapshot(world).frames;
+    expect(frame).toMatchObject({ url: 'about:srcdoc', read: true, truncated: false });
+    expect(frame.read && frame.elements).toEqual([
+      { role: 'textbox', name: 'Email' },
+      { role: 'textbox', name: 'Note' },
+      { role: 'textbox', name: 'Draft' },
+      { role: 'combobox', name: 'How often', value: 'Daily', options: ['Weekly', 'Daily'] },
+      { role: 'checkbox', name: 'Agree', checked: true },
+      { role: 'button', name: 'Subscribe' },
+    ]);
+    expect(frame.read && frame.text).toContain('Get the weekly digest.');
+    expect(JSON.stringify(frame)).not.toMatch(/ada@example\.test|typed words/);
+    expect(world.ids.size).toBe(0);
+  });
+
+  it('never reads a frame that holds a secret, card-named or sign-in field, sits on a payment or sign-in host, is a consent page, is under 32 px, or comes after the fifth read', async () => {
+    const frames: Array<[string, string, string]> = [
+      ['password', '', "<input type='password'>"],
+      ['card', '', "<input name='cardnumber' placeholder='Card'>"],
+      ['code', '', "<input autocomplete='one-time-code'>"],
+      ['username', '', "<input autocomplete='username'>"],
+      ['editor', '', "<div contenteditable autocomplete='cc-number'>4242 4242 4242 4242</div>"],
+      ['stripe', 'https://js.stripe.com/v3/elements-inner-card', '<p>Card</p>'],
+      ['google', 'https://accounts.google.com/signin', '<p>Choose an account</p>'],
+      ['consent', 'https://auth.example.test/oauth2/authorize?client_id=1&amp;response_type=code', '<p>Allow access</p>'],
+      ['tiny', '', '<p>Tiny</p>'],
+      ...[1, 2, 3, 4, 5, 6].map((n): [string, string, string] => [`plain${n}`, '', `<p>Plain ${n}</p>`]),
+    ];
+    document.body.innerHTML = frames.map(([id, src, body]) => `<iframe id="${id}"${src ? ` src="${src}"` : ''} srcdoc="${body}"></iframe>`).join('');
+    await framesLoad();
+    frames.forEach(([id], i) => place(document.getElementById(id)!, 0, i * 40, id === 'tiny' ? 400 : 300, id === 'tiny' ? 20 : 36));
+    const page = snapshot(freshWorld());
+    expect(page.frames.map((f) => f.read)).toEqual([...frames.slice(0, 9).map(() => false), true, true, true, true, true, false]);
+    expect(JSON.stringify(page)).not.toMatch(/4242|Choose an account|Allow access|Card/);
+  });
+
+  it("caps a frame's elements, in-view first, and its text", async () => {
+    const buttons = Array.from({ length: 60 }, (_, i) => `<button>Button ${i + 1}</button>`).join('');
+    document.body.innerHTML = `<iframe id="many" srcdoc="<p>${'word '.repeat(400)}</p>${buttons}"></iframe>`;
+    await framesLoad();
+    place(document.getElementById('many')!, 0, 0, 600, 400);
+    frameDoc('many').querySelectorAll('button').forEach((el, i) => place(el, 10, i < 10 ? 2000 + i * 30 : (i - 10) * 10, 80, 8));
+    const [frame] = snapshot(freshWorld()).frames;
+    expect(frame.read).toBe(true);
+    if (!frame.read) return;
+    expect(frame.elements).toHaveLength(ELEMENTS_PER_FRAME);
+    expect(frame.elements[0]).toEqual({ role: 'button', name: 'Button 11' });
+    expect(frame.truncated).toBe(true);
+    expect(frame.text).toHaveLength(TEXT_PER_FRAME);
+  });
+
+  it("reads no frame when asked for none, as a screenshot's labels are", async () => {
+    document.body.innerHTML = '<iframe id="f" srcdoc="<p>Inside</p>"></iframe>';
+    await framesLoad();
+    place(document.getElementById('f')!, 0, 0, 300, 200);
+    const page = pageWorld(document, freshWorld(), { kind: 'snapshot', maxText: 0, maxElements: 300, frames: null }) as RawSnapshot;
+    expect(page.frames).toEqual([]);
+    expect(page.frameOwners).toHaveLength(1);
+  });
+
+  it("follows the focus into a same-origin frame, so an editing key into its password field is refused; another site's frame can't be read", async () => {
+    document.body.innerHTML = '<iframe id="login" srcdoc="<input id=\'pw\' type=\'password\'><input id=\'user\'>"></iframe><iframe id="other" src="https://pay.example.test/"></iframe>';
+    await framesLoad();
+    const world = freshWorld();
+    (frameDoc('login').getElementById('pw') as HTMLInputElement).focus();
+    document.getElementById('login')!.focus();
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true, otherSite: false } satisfies FocusedSecret);
+    (frameDoc('login').getElementById('user') as HTMLInputElement).focus();
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: false });
+    document.getElementById('other')!.focus();
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: true });
+  });
+
+  it('finds what a screenshot must hide: secret fields in the page, its open shadow roots and its same-origin frames, payment frames by address, and every frame from another site', async () => {
+    document.body.innerHTML = `
+      <input id="pw" type="password">
+      <div id="host"></div>
+      <iframe id="form" style="border: 2px solid black; padding: 3px" srcdoc="<input id='otp' autocomplete='one-time-code'>"></iframe>
+      <iframe id="pay" src="https://js.stripe.com/v3/elements-inner-card"></iframe>
+      <iframe id="ads" src="https://ads.example.test/"></iframe>`;
+    const root = document.getElementById('host')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<input id="card" autocomplete="cc-number">';
+    await framesLoad();
+    place(document.getElementById('pw')!, 10, 10, 100, 20);
+    place(root.getElementById('card')!, 10, 40, 100, 20);
+    place(document.getElementById('form')!, 50, 200, 300, 100);
+    place(frameDoc('form').getElementById('otp')!, 5, 5, 80, 20);
+    place(document.getElementById('pay')!, 10, 320, 300, 40);
+    place(document.getElementById('ads')!, 10, 400, 300, 250);
+    const found = pageWorld(document, freshWorld(), { kind: 'secretBoxes', paymentHosts: [...FRAME_READ_RULES.paymentHosts] }) as FoundSecrets;
+    expect(found.secrets).toEqual([
+      { x: 10, y: 10, width: 100, height: 20 },
+      { x: 10, y: 40, width: 100, height: 20 },
+      { x: 60, y: 210, width: 80, height: 20 },
+    ]);
+    expect(found.paymentFrames).toEqual([{ x: 10, y: 320, width: 300, height: 40 }]);
+    expect(found.otherSiteFrames).toEqual([{ x: 10, y: 320, width: 300, height: 40 }, { x: 10, y: 400, width: 300, height: 250 }]);
+    // A payment frame the page's DOM accounts for hides itself alone.
+    expect(screenshotMasks(found, ['https://js.stripe.com/v3/elements-inner-card', 'https://ads.example.test/'])).toEqual([...found.secrets, ...found.paymentFrames]);
+    // One it doesn't (nested in another site's frame, or redirected there) hides every frame from another site.
+    expect(screenshotMasks(found, ['https://js.stripe.com/v3/elements-inner-card', 'https://ads.example.test/', 'https://js.stripe.com/v3/controller.html'])).toEqual([...found.secrets, ...found.paymentFrames, ...found.otherSiteFrames]);
+  });
+});
+
+describe('the page answer', () => {
+  const raw = (over: Partial<RawSnapshot>): RawSnapshot => ({
+    url: 'https://news.example.test/article', title: 'Article', scroll: { y: 0, height: 900, viewport: 800 }, elements: [],
+    text: '', truncated: false, frameOwners: [], frames: [], boxes: [], viewport: { width: 1600, height: 800 }, ...over,
+  });
+
+  it("puts each frame's box in screenshot pixels and its address as origin and path, or a scheme alone", () => {
+    const answer = pageAnswer(raw({
+      frameOwners: [{ url: 'https://forms.example.test/newsletter?u=ada', visible: true }, { url: 'data:text/html,hi', visible: true }],
+      frames: [
+        { url: 'https://forms.example.test/newsletter?u=ada#top', read: true, box: { x: 160, y: 300.4, width: 875, height: 280 }, offscreen: false, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
+        { url: 'data:text/html,hi', read: false, box: { x: 0, y: 1600, width: 160, height: 160 }, offscreen: true },
+      ],
+    }), [], ['https://forms.example.test/newsletter?u=ada', 'data:text/html,hi']);
+    expect(answer.frames).toEqual([
+      { url: 'https://forms.example.test/newsletter', read: true, box: { x: 102, y: 192, width: 560, height: 179 }, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
+      { url: 'data:', read: false, box: { x: 0, y: 1024, width: 102, height: 102 }, offscreen: true },
+    ]);
+    expect(problems(pageShape, answer)).toEqual([]);
+  });
+
+  it("lists a frame the page's DOM doesn't place, as one in a closed shadow root, unread and with no box", () => {
+    const answer = pageAnswer(raw({ frameOwners: [{ url: 'https://ads.example.test/', visible: true }] }), [], ['https://ads.example.test/', 'https://js.stripe.com/v3/x', 'about:srcdoc']);
+    expect(answer.frames).toEqual([
+      { url: 'https://js.stripe.com/v3/x', read: false, box: null },
+      { url: 'about:srcdoc', read: false, box: null },
+    ]);
+  });
+
+  it("never passes on a check frame's content", () => {
+    const answer = pageAnswer(raw({
+      frameOwners: [{ url: 'https://challenges.cloudflare.com/x', visible: true }],
+      frames: [{ url: 'https://challenges.cloudflare.com/x', read: true, box: { x: 0, y: 0, width: 300, height: 65 }, offscreen: false, elements: [{ role: 'checkbox', name: 'Verify you are human' }], text: 'Verify', truncated: false }],
+    }), [], ['https://challenges.cloudflare.com/x']);
+    expect(answer.frames).toEqual([{ url: 'https://challenges.cloudflare.com/x', read: false, box: { x: 0, y: 0, width: 192, height: 42 } }]);
+  });
+
+  it.each([
+    ['https://js.stripe.com/v3/x', 'https://js.stripe.com/v3/x'],
+    ['https://user:pw@forms.example.test:8443/a/b?q=1#h', 'https://forms.example.test:8443/a/b'],
+    ['about:srcdoc', 'about:srcdoc'],
+    ['about:blank', 'about:blank'],
+    ['', 'about:blank'],
+    ['data:text/html,<p>hi</p>', 'data:'],
+    ['blob:https://a.test/0f3c', 'blob:'],
+  ])('writes the frame address %s as %s', (address, written) => {
+    expect(frameAddress(address)).toBe(written);
+  });
+
+  it.each([
+    ['https://js.stripe.com/v3/x', true],
+    ['https://m.stripe.network/x', false],
+    ['https://STRIPE.com./x', true],
+    ['https://notstripe.com/x', false],
+    ['https://www.paypal.com/x', true],
+    ['https://pay.google.com/x', true],
+    ['https://google.com/x', false],
+    ['about:blank', false],
+  ])('%s is a payment frame: %s', (address, payment) => {
+    expect(isPaymentAddress(address)).toBe(payment);
   });
 });
 

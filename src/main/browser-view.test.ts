@@ -21,7 +21,19 @@ const electron = vi.hoisted(() => {
     /* The page's side of the step's change watch: the token it runs under,
        what it counted, and when content last changed. */
     change = { token: null as number | null, changes: 0, lastChangeAt: 0, busy: false, opaque: false };
-    mainFrame = { framesInSubtree: [] as unknown[] };
+    mainFrame = { framesInSubtree: [] as unknown[], frames: [] as unknown[] };
+    focus = { secret: false, otherSite: false };
+    /* What the page's secret-field read finds for a screenshot. */
+    secrets = { secrets: [] as unknown[], paymentFrames: [] as unknown[], otherSiteFrames: [] as unknown[], viewport: { width: 800, height: 600 } };
+    capturePage = vi.fn(async () => {
+      const image = {
+        getSize: () => ({ width: 800, height: 600 }),
+        resize: () => image,
+        toBitmap: () => Buffer.alloc(800 * 600 * 4, 0x80),
+        toJPEG: () => Buffer.from('plain'),
+      };
+      return image;
+    });
     navigationHistory = { canGoBack: () => false, canGoForward: () => false, goBack: vi.fn(), goForward: vi.fn() };
     debugger = {
       attach: () => {
@@ -71,7 +83,8 @@ const electron = vi.hoisted(() => {
       if (code.includes('"kind":"locate"')) {
         return { found: true, box: { x: 10, y: 10, width: 100, height: 20 }, shown: true, inViewport: true, secret: false, disabled: false, tag: 'button', viewport: { width: 800, height: 600 } };
       }
-      if (code.includes('"kind":"focusedSecret"')) return { secret: false };
+      if (code.includes('"kind":"focusedSecret"')) return this.focus;
+      if (code.includes('"kind":"secretBoxes"')) return this.secrets;
       if (code.includes('"kind":"hitTest"')) return { found: true, reaches: 0 };
       if (code.includes('"kind":"watch"')) return { ok: true };
       const token = Number(/"token":(\d+)/.exec(code)?.[1]);
@@ -88,7 +101,7 @@ const electron = vi.hoisted(() => {
         if (this.change.token === token) this.change.token = null;
         return { ok: true };
       }
-      return { url: this.url, title: 'Title', scroll: { y: 0, height: 600, viewport: 600 }, elements: [], text: '', truncated: false, frameOwners: [], boxes: [], viewport: { width: 800, height: 600 } };
+      return { url: this.url, title: 'Title', scroll: { y: 0, height: 600, viewport: 600 }, elements: [], text: '', truncated: false, frameOwners: [], frames: [], boxes: [], viewport: { width: 800, height: 600 } };
     });
   }
   class WebContentsView {
@@ -212,6 +225,47 @@ describe('ElectronTab', () => {
     const page = await tab.read(100);
     expect(page.challenges).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
     expect(frame.executeJavaScript).not.toHaveBeenCalled();
+  });
+
+  it("reads frames by the contract's rules, and lists a frame the page's DOM can't place, unread and with no box", async () => {
+    const { tab, contents } = setup();
+    contents.mainFrame.frames = [{ url: 'https://js.stripe.com/v3/elements-inner-card' }];
+    const page = await tab.read(100);
+    expect(page.frames).toEqual([{ url: 'https://js.stripe.com/v3/elements-inner-card', read: false, box: null }]);
+    const [snapshot] = worldCalls(contents, 'snapshot');
+    expect(snapshot[1][0].code).toContain('"paymentHosts":["stripe.com",');
+    expect(snapshot[1][0].code).toContain('"read":5');
+  });
+
+  it('blacks out secret fields and payment frames in every screenshot it takes', async () => {
+    const { tab, contents } = setup();
+    contents.secrets = { ...contents.secrets, secrets: [{ x: 10, y: 10, width: 100, height: 20 }] };
+    let drawn: Buffer | null = null;
+    electron.nativeImage.createFromBitmap.mockImplementation((data: Buffer) => {
+      drawn = data;
+      return { toJPEG: () => Buffer.from('masked') };
+    });
+    const shot = await tab.screenshot(false, 70);
+    expect(shot.jpeg).toEqual(Buffer.from('masked'));
+    const at = (x: number, y: number) => [...drawn!.subarray((y * 800 + x) * 4, (y * 800 + x) * 4 + 4)];
+    expect(at(50, 15)).toEqual([0, 0, 0, 0xff]);
+    expect(at(50, 40)).toEqual([0x80, 0x80, 0x80, 0x80]);
+    const [found] = worldCalls(contents, 'secretBoxes');
+    expect(found[1][0].code).toContain('"paymentHosts":["stripe.com",');
+  });
+
+  it('refuses a key that edits text into a frame from another site while the page holds a payment frame', async () => {
+    const { tab, contents } = setup();
+    contents.focus = { secret: false, otherSite: true };
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await expect(tab.act(stepOf({ action: 'press', key: 'a' }))).resolves.toBeDefined();
+      contents.mainFrame.framesInSubtree = [contents.mainFrame, { url: 'https://checkout.shop.test/' }, { url: 'https://js.stripe.com/v3/elements-inner-card' }];
+      await expect(tab.act(stepOf({ action: 'press', key: 'a' }))).rejects.toMatchObject({ code: 'password_field', status: 403 });
+      await expect(tab.act(stepOf({ action: 'press', key: 'Enter' }))).resolves.toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('starts the secret-field watch as each document loads, and when asked', () => {

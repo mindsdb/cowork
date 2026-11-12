@@ -45,7 +45,7 @@ function harness(options: { maxLive?: number } = {}) {
         loading: () => false,
         canGoBack: () => false,
         canGoForward: () => false,
-        read: vi.fn<TabView['read']>(async () => ({ url: tab.currentUrl, title: 'Title', scroll: { y: 0, height: 100, viewport: 100 }, elements: [], text: '', truncated: false, challenges: [] })),
+        read: vi.fn<TabView['read']>(async () => ({ url: tab.currentUrl, title: 'Title', scroll: { y: 0, height: 100, viewport: 100 }, elements: [], text: '', truncated: false, challenges: [], frames: [] })),
         act: vi.fn<TabView['act']>(async (request: StepRequest) => {
           tab.actions.push(request);
           if (request.step.action === 'wait') await new Promise<void>((resolve) => { release = resolve; });
@@ -101,7 +101,7 @@ function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => voi
 const BOUNDS = { x: 10, y: 20, width: 600, height: 700 };
 /* What the pane reports while something covers it. */
 const EMPTY = { x: 0, y: 0, width: 0, height: 0 };
-const PAGE: PageSnapshot = { url: 'https://a.test/', title: 'Title', scroll: { y: 0, height: 100, viewport: 100 }, elements: [], text: 'what the person typed', truncated: false, challenges: [] };
+const PAGE: PageSnapshot = { url: 'https://a.test/', title: 'Title', scroll: { y: 0, height: 100, viewport: 100 }, elements: [], text: 'what the person typed', truncated: false, challenges: [], frames: [] };
 const SHOT: Screenshot = { jpeg: Buffer.from('x'), width: 10, height: 10 };
 
 describe('control', () => {

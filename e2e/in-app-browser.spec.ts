@@ -90,6 +90,21 @@ async function startFixtureServer(): Promise<void> {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Still</title><button>Nothing</button><button onclick="document.getElementById(\'o\').textContent = \'Changed\'">Change</button><p id="o">Before</p>');
     }
+    if (url.pathname === '/frames') {
+      /* One frame from this origin, and the same page from another one:
+         localhost is another origin than 127.0.0.1. */
+      const other = origin.replace('127.0.0.1', 'localhost');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Frames</title><p>Top text</p><iframe src="/frame-inner" style="width:400px;height:200px"></iframe><iframe src="${other}/frame-inner" style="width:400px;height:200px"></iframe>`);
+    }
+    if (url.pathname === '/frame-inner') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Inner</title><p>Get the weekly digest.</p><label>Email <input value="ada@example.test"></label><button>Subscribe</button>');
+    }
+    if (url.pathname === '/covered') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Covered</title><button onclick="document.title = \'clicked\'">Under</button><div style="position:fixed;inset:0;background:rgba(0,0,0,0.3)">Cookie banner</div>');
+    }
     if (url.pathname === '/echo-cookie') {
       const cookie = (req.headers.cookie ?? '').replace(/[<>&]/g, '');
       return void res.writeHead(200, { 'content-type': 'text/html' }).end(`<title>Echo</title><p>cookie:[${cookie}]</p>`);
@@ -277,6 +292,28 @@ test('says whether a step changed what the page shows', async () => {
   const change = await act({ action: 'click', element: await element('Change') });
   expect(change.json()).toMatchObject({ ok: true, changed: true });
   expect((await act({ action: 'wait', ms: 10 })).json()).toMatchObject({ ok: true, changed: null });
+});
+
+test('reads a same-origin frame, lists one from another site unread, and lists no frame as an element', async () => {
+  await openAt('/frames');
+  await expect.poll(async () => (await page()).frames.map((f: { read: boolean }) => f.read), { timeout: 10_000 }).toEqual([true, false]);
+  const snapshot = await page();
+  expect(snapshot.elements).toEqual([]);
+  const [same, other] = snapshot.frames;
+  expect(same).toMatchObject({ url: `${origin}/frame-inner`, read: true, truncated: false });
+  expect(same.text).toContain('Get the weekly digest.');
+  expect(same.elements).toEqual([{ role: 'textbox', name: 'Email' }, { role: 'button', name: 'Subscribe' }]);
+  expect(same.box).toMatchObject({ width: 400, height: 200 });
+  expect(other).toMatchObject({ url: `${origin.replace('127.0.0.1', 'localhost')}/frame-inner`, read: false, box: { width: 400, height: 200 } });
+  expect(JSON.stringify(snapshot)).not.toContain('ada@example.test');
+});
+
+test('refuses a click by number on a control something covers, and presses nothing', async () => {
+  await openAt('/covered');
+  const reply = await act({ action: 'click', element: await element('Under') });
+  expect(reply.status).toBe(409);
+  expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('is covered by another element') });
+  expect((await page()).title).toBe('Covered');
 });
 
 test('turns shared workers off, since their WebSockets skip the request listener', async () => {

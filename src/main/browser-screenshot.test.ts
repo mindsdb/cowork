@@ -128,7 +128,7 @@ describe('renderScreenshot', () => {
       drawn = data;
       return { getSize: () => size, resize: () => image, toBitmap: () => data, toJPEG: () => Buffer.from('labelled') };
     });
-    const shot = renderScreenshot(image, 1600, [{ id: 1, x: 160, y: 160, width: 320, height: 80 }], 70, fromBitmap);
+    const shot = renderScreenshot(image, 1600, [{ id: 1, x: 160, y: 160, width: 320, height: 80 }], 70, fromBitmap, []);
     expect(resized).toHaveBeenCalledWith({ width: 1024, quality: 'good' });
     expect(shot).toEqual({ jpeg: Buffer.from('labelled'), width: 1024, height: 384 });
     const bitmap = { data: drawn!, width: 1024, height: 384 };
@@ -140,7 +140,47 @@ describe('renderScreenshot', () => {
   it('skips drawing when not annotated', () => {
     const { image } = capture(800, 1);
     const fromBitmap = vi.fn();
-    expect(renderScreenshot(image, 800, null, 70, fromBitmap)).toEqual({ jpeg: Buffer.from('plain'), width: 800, height: 600 });
+    expect(renderScreenshot(image, 800, null, 70, fromBitmap, [])).toEqual({ jpeg: Buffer.from('plain'), width: 800, height: 600 });
     expect(fromBitmap).not.toHaveBeenCalled();
+  });
+
+  const BLACK = [0, 0, 0, 0xff];
+  const GREY = [0x80, 0x80, 0x80, 0x80];
+  function drawnTo(): { fromBitmap: (data: Buffer, size: { width: number; height: number }) => ImageLike; bitmap: () => Bitmap } {
+    let drawn: Bitmap | null = null;
+    return {
+      fromBitmap: (data, size) => {
+        drawn = { data, ...size };
+        return { getSize: () => size, resize: () => { throw new Error('unused'); }, toBitmap: () => data, toJPEG: () => Buffer.from('drawn') };
+      },
+      bitmap: () => drawn!,
+    };
+  }
+
+  it('blacks out each mask, scaled like the labels, before it draws them', () => {
+    const { image } = capture(1600, 2);
+    const out = drawnTo();
+    const shot = renderScreenshot(image, 1600, [{ id: 1, x: 160, y: 160, width: 320, height: 80 }], 70, out.fromBitmap, [{ x: 160, y: 320, width: 320, height: 160 }]);
+    expect(shot.jpeg).toEqual(Buffer.from('drawn'));
+    // 160 to 480 CSS px is 102.4 to 307.2 in the 1024-wide image, and the mask covers its edge pixels.
+    expect(pixel(out.bitmap(), 102, 204)).toEqual(BLACK);
+    expect(pixel(out.bitmap(), 307, 307)).toEqual(BLACK);
+    expect(pixel(out.bitmap(), 200, 250)).toEqual(BLACK);
+    expect(pixel(out.bitmap(), 90, 250)).toEqual(GREY);
+    expect(pixel(out.bitmap(), 102, 102)).not.toEqual(GREY);
+  });
+
+  it('masks a screenshot taken without labels too', () => {
+    const { image } = capture(800, 1);
+    const out = drawnTo();
+    renderScreenshot(image, 800, null, 70, out.fromBitmap, [{ x: 10, y: 10, width: 100, height: 20 }]);
+    expect(pixel(out.bitmap(), 50, 15)).toEqual(BLACK);
+    expect(pixel(out.bitmap(), 50, 40)).toEqual(GREY);
+  });
+
+  it('answers no image when it cannot mask one, and an unlabelled one when it only cannot label it', () => {
+    const odd: ImageLike = { getSize: () => ({ width: 800, height: 600 }), resize: () => odd, toBitmap: () => Buffer.alloc(16), toJPEG: () => Buffer.from('plain') };
+    expect(() => renderScreenshot(odd, 800, null, 70, vi.fn(), [{ x: 10, y: 10, width: 100, height: 20 }])).toThrow(expect.objectContaining({ code: 'internal' }));
+    expect(renderScreenshot(odd, 800, [{ id: 1, x: 0, y: 0, width: 10, height: 10 }], 70, vi.fn(), [])).toEqual({ jpeg: Buffer.from('plain'), width: 800, height: 600 });
   });
 });

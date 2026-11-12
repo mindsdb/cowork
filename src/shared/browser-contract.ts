@@ -87,6 +87,30 @@ export const STEP_TIMEOUT_MS = 33_000;
 export const SETTLE_MAX_MS = 3_000;
 export const SETTLE_QUIET_MS = 400;
 
+/** A page read's child frames, as page.json's `limits` pins them; the web
+    pod holds the same values. A read reads at most FRAMES_READ frames, each
+    at least FRAME_MIN_READ_PX each way, and lists at most ELEMENTS_PER_FRAME
+    of a frame's elements and TEXT_PER_FRAME characters of its text. */
+export const FRAMES_READ = 5;
+export const ELEMENTS_PER_FRAME = 50;
+export const TEXT_PER_FRAME = 1_000;
+export const FRAME_MIN_READ_PX = 32;
+
+/** Hosts whose frames hold a payment provider's card fields. A frame on one,
+    or on a name under one, is never read and is blacked out of every
+    screenshot. page.json's `limits` pins the list. */
+export const PAYMENT_FRAME_HOSTS: readonly string[] = [
+  'stripe.com', 'braintreegateway.com', 'braintree-api.com', 'adyen.com', 'checkout.com', 'squareup.com', 'squarecdn.com',
+  'recurly.com', 'chargebee.com', 'spreedly.com', 'authorize.net', 'cybersource.com', 'worldpay.com', 'paddle.com',
+  'paypal.com', 'shopifycs.com', 'shopifyinc.com', 'pay.google.com', 'mollie.com', 'razorpay.com', 'nmi.com', 'klarna.com',
+];
+
+/** Identity providers' sign-in hosts: a frame on one, or on a name under
+    one, is never read. page.json's `limits` pins the list. */
+export const SIGN_IN_FRAME_HOSTS: readonly string[] = [
+  'accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com', 'login.live.com', 'facebook.com',
+];
+
 /** anton's STEP_ACTIONS (anton/core/browser/tool.py). */
 export const STEP_ACTIONS = [
   'click', 'type', 'press', 'select', 'scroll', 'hover', 'drag',
@@ -145,6 +169,42 @@ export interface PageElement {
   options?: string[];
 }
 
+/** A child frame's element. It has no id, so a step reaches it only by
+    position, and it never carries a field's value: a select keeps its value
+    and options. */
+export interface PageFrameElement {
+  role: string;
+  name: string;
+  value?: string;
+  checked?: boolean;
+  disabled?: true;
+  offscreen?: true;
+  options?: string[];
+}
+
+/** A frame's content box in the screenshot's pixels. */
+export interface FrameBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A rendered child frame. `url` is origin and path for http and https,
+    about:blank or about:srcdoc, otherwise the scheme alone. `box` is null for
+    a frame the host can't place. Only a read frame carries what it holds. */
+export type PageFrame =
+  | { url: string; read: false; box: FrameBox | null; offscreen?: true }
+  | {
+    url: string;
+    read: true;
+    box: FrameBox | null;
+    offscreen?: true;
+    elements: PageFrameElement[];
+    text: string;
+    truncated: boolean;
+  };
+
 /** A check frame the person can see. */
 export interface Challenge {
   host: string;
@@ -164,8 +224,11 @@ export interface PageSnapshot {
   scroll: PageScroll;
   elements: PageElement[];
   text: string;
+  /** More elements exist than `elements` lists. */
   truncated: boolean;
   challenges: Challenge[];
+  /** The page's rendered child frames, on-screen first. */
+  frames: PageFrame[];
 }
 
 /** What a step did to the page: whether it changed what the page shows,

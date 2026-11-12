@@ -7,6 +7,9 @@ import {
   type BridgeErrorCode,
   bridgeUrl,
   electronHostsInAppBrowser,
+  ELEMENTS_PER_FRAME,
+  FRAME_MIN_READ_PX,
+  FRAMES_READ,
   MAX_CONTROL_REASON,
   MAX_SAVED_TABS_PER_PROJECT,
   MIN_IN_APP_BROWSER_ELECTRON_MAJOR,
@@ -17,9 +20,12 @@ import {
   parseSaveTab,
   parseStageBounds,
   parseStepRequest,
+  PAYMENT_FRAME_HOSTS,
   SESSION_ID_PATTERN,
   SETTLE_MAX_MS,
   SETTLE_QUIET_MS,
+  SIGN_IN_FRAME_HOSTS,
+  TEXT_PER_FRAME,
   type Parsed,
 } from './browser-contract';
 import {
@@ -78,6 +84,18 @@ describe('the browser contract fixtures', () => {
   it("settles a step at the contract's numbers", () => {
     const action = JSON.parse(readFileSync(path.join(FIXTURES, 'action.json'), 'utf-8')) as FixtureFile;
     expect(action.limits).toEqual({ settle_max_ms: SETTLE_MAX_MS, settle_quiet_ms: SETTLE_QUIET_MS });
+  });
+
+  it("reads a page's frames at the contract's numbers, and never on its payment or sign-in hosts", () => {
+    const page = JSON.parse(readFileSync(path.join(FIXTURES, 'page.json'), 'utf-8')) as FixtureFile;
+    expect(page.limits).toEqual({
+      frames_read: FRAMES_READ,
+      elements_per_frame: ELEMENTS_PER_FRAME,
+      text_per_frame: TEXT_PER_FRAME,
+      frame_min_read_px: FRAME_MIN_READ_PX,
+      payment_frame_hosts: [...PAYMENT_FRAME_HOSTS],
+      sign_in_frame_hosts: [...SIGN_IN_FRAME_HOSTS],
+    });
   });
 
   it.each(all.filter(([, , e]) => e.kind === 'request'))('%s "%s": the request guard agrees', (_file, _name, example) => {

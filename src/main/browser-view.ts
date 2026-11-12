@@ -7,7 +7,8 @@
  * Page reads run in an isolated world (browser-page-script.ts) and answer
  * 409 page_busy when the page doesn't answer in time. Agent steps attach the
  * debugger for the step only (browser-input.ts). Screenshots are captured
- * without showing a hidden tab (browser-screenshot.ts).
+ * without showing a hidden tab, with the page's secret fields and payment
+ * frames blacked out (browser-screenshot.ts).
  *
  * Popups become tabs of the same task, keeping window.opener for sign-in
  * flows, and only right after an agent step or the person's own input. A
@@ -31,6 +32,7 @@ import { diagnostic } from '../shared/diagnostics';
 import {
   BridgeError,
   type PageSnapshot,
+  PAYMENT_FRAME_HOSTS,
   SETTLE_MAX_MS,
   SETTLE_QUIET_MS,
   type StepAction,
@@ -42,9 +44,13 @@ import { type AgentInput, type Pacing, type Point, realPacing, runStep, type Ste
 import {
   type ChangeMark,
   challengesFrom,
+  type FocusedSecret,
   type FocusFieldResult,
   type FocusResult,
+  type FoundSecrets,
+  FRAME_READ_RULES,
   type HitTestResult,
+  isPaymentAddress,
   type LocateResult,
   PAGE_READ_TIMEOUT_MS,
   PAGE_WORLD_ID,
@@ -52,6 +58,7 @@ import {
   pageWorldSource,
   type PageWorldRequest,
   type RawSnapshot,
+  screenshotMasks,
   type SelectResult,
   type TypingFocus,
 } from './browser-page-script';
@@ -321,9 +328,14 @@ export class ElectronTab implements TabView {
     return main.framesInSubtree.filter((frame) => frame !== main).map((frame) => frame.url);
   }
 
+  /* The addresses of the main frame's own child frames. */
+  private childFrameUrls(): string[] {
+    return this.contents.mainFrame.frames.map((frame) => frame.url);
+  }
+
   async read(maxText: number): Promise<PageSnapshot> {
-    const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS });
-    return pageAnswer(raw, challengesFrom(this.subframeUrls(), raw.frameOwners));
+    const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
+    return pageAnswer(raw, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls());
   }
 
   /** Starts the page's secret-field watch on its current document
@@ -354,7 +366,13 @@ export class ElectronTab implements TabView {
       pacing,
       page: {
         locate: (id, reveal) => inStep<LocateResult>({ kind: 'locate', id, reveal }),
-        focusedSecret: async () => (await inStep<{ secret: boolean }>({ kind: 'focusedSecret' })).secret,
+        /* The world can't read a frame from another site, so a key into one
+           counts as a key into a secret field while the page holds a
+           payment frame anywhere in its frame tree. */
+        focusedSecret: async () => {
+          const focus = await inStep<FocusedSecret>({ kind: 'focusedSecret' });
+          return focus.secret || (focus.otherSite && this.subframeUrls().some(isPaymentAddress));
+        },
         typingFocus: (id) => inStep<TypingFocus>({ kind: 'typingFocus', id }),
         focusField: (id, select) => inStep<FocusFieldResult>({ kind: 'focusField', id, select }),
         focus: (id, editing) => inStep<FocusResult>({ kind: 'focus', id, editing }),
@@ -507,11 +525,15 @@ export class ElectronTab implements TabView {
     return false;
   }
 
+  /* Every screenshot blacks out the page's secret fields and payment frames
+     (screenshotMasks), read just before the capture. */
   async screenshot(annotate: boolean, quality: number): Promise<Screenshot> {
-    const raw = annotate ? await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText: 0, maxElements: MAX_ELEMENTS }) : null;
-    const viewport = raw?.viewport ?? await this.inWorld<{ width: number; height: number }>({ kind: 'viewport' });
+    const raw = annotate ? await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText: 0, maxElements: MAX_ELEMENTS, frames: null }) : null;
+    const found = await this.inWorld<FoundSecrets>({ kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS });
+    const masks = screenshotMasks(found, this.subframeUrls());
     const image = await this.contents.capturePage(undefined, { stayHidden: true });
-    return renderScreenshot(image, viewport.width, raw?.boxes ?? null, quality, (data, size) => nativeImage.createFromBitmap(data, size));
+    const width = (raw?.viewport ?? found.viewport).width;
+    return renderScreenshot(image, width, raw?.boxes ?? null, quality, (data, size) => nativeImage.createFromBitmap(data, size), masks);
   }
 
   async load(url: string): Promise<void> {
