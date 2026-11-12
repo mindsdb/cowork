@@ -137,7 +137,11 @@ export interface ConnectorDraft {
   help_url?: string;
   usage_notes?: string;
   fields: ConnectorDraftField[];
-  check?: { path: string; headers: Record<string, string> };
+  auth:
+    | { type: 'header'; headers: Record<string, string> }
+    | { type: 'basic'; username: string; password: string }
+    | { type: 'query'; params: Record<string, string> };
+  check?: { path: string };
 }
 export function saveConnectorDraft(draft: ConnectorDraft): Promise<unknown>;
 export function fetchConnectorDraftSaved(id: string): Promise<boolean | null>;
