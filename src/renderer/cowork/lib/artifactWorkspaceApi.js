@@ -1,6 +1,9 @@
 import { authFetch, BASE } from '../api';
 import { host } from '../../platform/host';
 import { artifactIdentity } from './artifactIdentity';
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.artifactWorkspaceApi.${key}`, { ns: 'projects', ...vars });
 
 function artifactRef(artifact) {
   const artifactId = artifactIdentity(artifact);
@@ -24,7 +27,7 @@ async function request(path, options = {}) {
     const detail = payload?.detail;
     const message = typeof detail === 'string'
       ? detail
-      : (detail?.message || payload?.message || `Request failed (${response.status})`);
+      : (detail?.message || payload?.message || tr('requestFailed', { status: response.status }));
     const error = new Error(message);
     error.status = response.status;
     error.detail = detail;
@@ -123,7 +126,7 @@ export async function loadArtifactDraftText(draftUrl, { withCredentials = true, 
     // The status has to travel on the error, not only inside its message: the
     // viewer maps 401 and 403 to their own copy and cannot read a number back
     // out of a sentence.
-    const error = new Error(`Could not load private draft (${response.status})`);
+    const error = new Error(tr('draftLoadFailed', { status: response.status }));
     error.status = response.status;
     throw error;
   }
@@ -153,7 +156,7 @@ export async function loadArtifactDraftDocument(draftUrl) {
   const url = resolveSameOriginDraftUrl(draftUrl);
   const response = await authFetch(url);
   if (!response.ok) {
-    const error = new Error(`Could not load private draft (${response.status})`);
+    const error = new Error(tr('draftLoadFailed', { status: response.status }));
     error.status = response.status;
     throw error;
   }
@@ -290,6 +293,23 @@ export function setArtifactAccess(artifact, access) {
   return request(`${ref.base}/access`, {
     method: 'PUT',
     body: JSON.stringify({ access }),
+  });
+}
+
+// Owner-only, like loadArtifactAccess above: view counts of the published
+// artifact and, on a restricted link, who opened it.
+export function loadArtifactStats(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats`);
+}
+
+export function setArtifactTracking(artifact, enabled) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats/tracking`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
   });
 }
 

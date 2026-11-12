@@ -6,14 +6,16 @@ import { MarkdownContent } from '../markdown/MarkdownContent';
 import { ConfirmModal } from '../ConfirmModal';
 import { CommentsPanel, CommentsToolbar } from './comments';
 import { useDraftImageLoader } from './draftImages';
+import { StatsPanel } from './stats/StatsPanel';
 import { ArtifactComparison } from './workspace/ArtifactComparison';
 import { ArtifactSourceEditor } from './workspace/ArtifactSourceEditor';
 import { TextSelectionComment } from './workspace/TextSelectionComment';
 import { LiveAppPreview } from './LiveAppPreview';
 import { liveAppPreviewOrigin } from '../../lib/liveAppPreview';
-import { LAUNCH_LIVE_APP_LABEL } from '../../lib/liveAppState';
+import { launchLiveAppLabel } from '../../lib/liveAppState';
 import { DocumentPreview } from '../../preview/DocumentPreview';
 import { csvPreviewNotice } from './artifactPreviewUtils';
+import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -23,6 +25,7 @@ const FONT_MONO = "var(--font-mono)";
 // iframe has actually painted (or while a text preview is fetching), so the
 // user never sees a flash of empty grey.
 function PreviewPlaceholder() {
+  const { t } = useTranslation('artifacts');
   return (
     <div aria-hidden="true" style={{
       position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
@@ -33,13 +36,13 @@ function PreviewPlaceholder() {
         fontSize: 'clamp(40px, 9vw, 84px)', color: 'var(--ink)', opacity: 0.06,
         transform: 'rotate(-12deg)', letterSpacing: '-0.02em',
         userSelect: 'none', whiteSpace: 'nowrap',
-      }}>Preview</span>
+      }}>{t('body.previewWatermark')}</span>
       <div style={{
         position: 'absolute', bottom: 22,
         display: 'flex', alignItems: 'center', gap: 8,
         color: 'var(--ink-4)', fontFamily: FONT_BODY, fontSize: 12,
       }}>
-        <Spinner /> Loading preview…
+        <Spinner /> {t('documentPreview.loading')}
       </div>
     </div>
   );
@@ -67,7 +70,7 @@ function LiveAppPanel({ notice, state, reloadKey, onOpen, onLaunch }) {
         {notice.canLaunch && onLaunch && (
           <Button onClick={onLaunch}>
             {Ico.play(14)}
-            {LAUNCH_LIVE_APP_LABEL}
+            {launchLiveAppLabel()}
           </Button>
         )}
       </div>
@@ -79,8 +82,10 @@ export function ArtifactViewerBody({
   workspace,
   preview,
   review,
+  stats = null,
   agentReview,
 }) {
+  const { t } = useTranslation('artifacts');
   const {
     draftUrl: draftPreviewUrl,
     contentVersion,
@@ -220,7 +225,7 @@ export function ArtifactViewerBody({
             </span>
             <Button onClick={host.isWeb ? onDownload : onOpenOS}>
               {host.isWeb ? Ico.download(14) : Ico.externalLink(14)}
-              {host.isWeb ? 'Download full file' : 'Open full file in OS'}
+              {host.isWeb ? t('body.downloadFull') : t('body.openFullInOs')}
             </Button>
           </div>
         )}
@@ -229,13 +234,13 @@ export function ArtifactViewerBody({
   ) : isImage ? (
     imageFailed ? (
       <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
-        <div style={{ color: 'var(--ink-3)', fontSize: 13, fontFamily: FONT_BODY }}>Could not load image.</div>
+        <div style={{ color: 'var(--ink-3)', fontSize: 13, fontFamily: FONT_BODY }}>{t('body.imageFailed')}</div>
       </div>
     ) : imageSrc ? (
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <img
           src={imageSrc}
-          alt={title || 'Artifact preview'}
+          alt={title || t('body.artifactPreview')}
           style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }}
         />
       </div>
@@ -247,7 +252,7 @@ export function ArtifactViewerBody({
       {(previewUrl || previewDoc) && (
         <iframe
           ref={iframeRef}
-          title={title || 'Artifact preview'}
+          title={title || t('body.artifactPreview')}
           // The comment-layer activation flag (when applicable) is already
           // baked into previewUrl/previewDoc at mount time, so neither prop
           // below is reactive after the initial mount.
@@ -302,7 +307,8 @@ export function ArtifactViewerBody({
               onClose={toggleComments}
             />
           )}
-          {textSelection && workspace.mode === 'review' && (
+          {/* Stats replaces the comments chrome, so no composer opens beside it. */}
+          {textSelection && workspace.mode === 'review' && !stats?.open && (
             <TextSelectionComment
               selection={textSelection}
               onCancel={() => setTextSelection(null)}
@@ -335,6 +341,19 @@ export function ArtifactViewerBody({
             onClose={() => setInboxOpen(false)}
           />
         )}
+        {stats?.open && (
+          <StatsPanel
+            data={stats.controller?.data ?? null}
+            loading={!!stats.controller?.loading}
+            error={stats.controller?.error ?? null}
+            trackingBusy={!!stats.controller?.trackingBusy}
+            accessMode={stats.accessMode}
+            accessLoaded={!!stats.accessLoaded}
+            onToggleTracking={stats.controller?.setTracking}
+            onRetry={stats.controller?.reload}
+            onClose={stats.onClose}
+          />
+        )}
         <ArtifactComparison
           comparison={workspace.comparison}
           busy={repairBusy || workspace.status === 'saving'}
@@ -352,7 +371,7 @@ export function ArtifactViewerBody({
               if (decisionError?.status === 409) {
                 setConfirmRejectHead(workspace.currentRevision?.id || null);
               } else {
-                setErr(decisionError?.message || 'Could not reject the agent change. Try again.');
+                setErr(decisionError?.message || t('body.rejectFailed'));
               }
             } finally {
               setRepairBusy(false);
@@ -372,12 +391,12 @@ export function ArtifactViewerBody({
                 ? await comments.setStatus(threadId, 'resolved')
                 : true;
               if (!resolved) {
-                setErr('The change was accepted, but the comment could not be resolved. Try resolving it again.');
+                setErr(t('body.resolveFailed'));
               }
               await workspace.load();
               onReload();
             } catch (decisionError) {
-              setErr(decisionError?.message || 'Could not accept the agent change. Try again.');
+              setErr(decisionError?.message || t('body.acceptFailed'));
             } finally {
               setRepairBusy(false);
             }
@@ -385,11 +404,10 @@ export function ArtifactViewerBody({
         />
         <ConfirmModal
           open={confirmRejectHead !== null}
-          title="Restore the earlier version?"
-          message={"This artifact changed after the agent's edit. Restoring the version "
-            + 'from before it will also discard everything written since.'}
-          confirmLabel="Restore anyway"
-          busyLabel="Restoring…"
+          title={t('body.restoreTitle')}
+          message={t('body.restoreMessage')}
+          confirmLabel={t('body.restoreAnyway')}
+          busyLabel={t('body.restoring')}
           destructive
           busy={repairBusy}
           error={confirmRejectError}
@@ -407,7 +425,7 @@ export function ArtifactViewerBody({
               setConfirmRejectHead(null);
             } catch (decisionError) {
               setConfirmRejectError(decisionError?.message
-                || 'Could not restore the earlier version. Try again.');
+                || t('body.restoreFailed'));
             } finally {
               setRepairBusy(false);
             }

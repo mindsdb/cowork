@@ -1,0 +1,1595 @@
+{
+  "reviewPanel": {
+    "ariaLabel": "Revisar alterações",
+    "closeAriaLabel": "Fechar painel de revisão",
+    "resizeAriaLabel": "Redimensionar painel de revisão",
+    "eyebrow": "Resultado da tarefa",
+    "title": "Revisar alterações",
+    "tabsAriaLabel": "Seções de revisão",
+    "tabs": {
+      "changes": "Alterações",
+      "deliver": "Entregar"
+    },
+    "summary": {
+      "changedFiles": "{count, plural, one {# arquivo alterado} other {# arquivos alterados}}",
+      "trackingUnavailable": "Rastreamento de alterações indisponível",
+      "unchanged": "Árvore de trabalho sem alterações"
+    },
+    "empty": {
+      "directTitle": "Abra a pasta para revisar as alterações",
+      "title": "Ainda não há alterações para revisar",
+      "directDescription": "Pastas diretas não têm uma base do Git, então o {product} não consegue gerar um diff inline.",
+      "description": "As alterações nos arquivos vão aparecer aqui enquanto o agente trabalha."
+    },
+    "deliver": {
+      "heading": "Entregar esta tarefa",
+      "project": "Projeto",
+      "branch": "Branch",
+      "openOriginalFolder": "Abrir pasta original",
+      "openIsolatedCopy": "Abrir cópia isolada",
+      "openOriginal": "Abrir original"
+    },
+    "sourceChanged": {
+      "title": "A origem tinha alterações locais quando esta tarefa começou",
+      "body": "Essas alterações ficaram na pasta de origem. O {product} verifica conflitos antes de aplicar."
+    },
+    "reconcile": {
+      "title": "Conciliar as alterações originais",
+      "body": "Peça ao agente para preservar as duas versões na cópia isolada e revise novamente.",
+      "action": "Resolver com o agente"
+    },
+    "checks": {
+      "title": "Verificações do projeto",
+      "run": "Executar verificações",
+      "adopt": "Usar os comandos mais recentes do projeto",
+      "failed": "{failed} de {total} verificações do projeto falharam. Abra a atividade da tarefa para ver a saída.",
+      "passed": "{count, plural, one {# verificação do projeto aprovada.} other {# verificações do projeto aprovadas.}}",
+      "none": "Esta tarefa não tem verificações do projeto. As tarefas iniciadas neste projeto usam os comandos salvos nas configurações do projeto.",
+      "noValidationCommands": "As configurações do projeto não têm comandos de validação para as pastas desta tarefa, então não há nada para verificar. {count, plural, one {# ação de execução já está disponível.} other {# ações de execução já estão disponíveis.}}",
+      "noCommands": "As configurações do projeto ainda não têm comandos para as pastas desta tarefa. Adicione comandos de validação lá e use esta opção novamente."
+    },
+    "applyLocally": {
+      "title": "Aplicar localmente",
+      "tooltip": "Copiar as alterações revisadas de volta para as pastas originais",
+      "applied": "Aplicado",
+      "appliedNotice": "Estas alterações revisadas foram aplicadas às pastas de origem.",
+      "nothingToApply": "Esta tarefa já trabalha na pasta selecionada, então não há nada para aplicar."
+    },
+    "git": {
+      "title": "Opções do Git",
+      "branchLabel": "Criar uma branch na worktree da tarefa",
+      "create": "Criar",
+      "commitLabel": "Fazer commit de todas as alterações da tarefa",
+      "commitPlaceholder": "Descreva a alteração",
+      "commit": "Commit"
+    },
+    "applyConfirm": {
+      "title": "Aplicar as alterações à pasta de origem?",
+      "message": "Atualizar {target} com as alterações revisadas da tarefa? O {product} vai parar antes de alterar qualquer pasta se encontrar um conflito.",
+      "confirm": "Aplicar alterações",
+      "error": "Não foi possível aplicar as alterações. Tente novamente."
+    }
+  },
+  "fileReview": {
+    "staged": "Em stage",
+    "unstaged": "Fora do stage",
+    "committed": "Com commit",
+    "stage": "Adicionar ao stage",
+    "unstage": "Remover do stage",
+    "askCodex": "Perguntar ao Codex",
+    "discardAriaLabel": "Descartar alterações em {path}",
+    "noteAriaLabel": "Nota de revisão para {path}",
+    "notePlaceholder": "O que deve mudar neste arquivo?",
+    "toSend": "para enviar",
+    "cancel": "Cancelar",
+    "sendToCodex": "Enviar ao Codex",
+    "discardConfirm": {
+      "title": "Descartar as alterações deste arquivo?",
+      "message": "{path} voltará para a versão atual da tarefa. Isso não pode ser desfeito.",
+      "confirm": "Descartar alterações"
+    }
+  },
+  "reviewFileCard": {
+    "binary": "Arquivo binário alterado",
+    "noTextualDiff": "Sem diff de texto"
+  },
+  "diffPatch": {
+    "ariaLabel": "Diff do arquivo",
+    "selectLine": "Selecionar {line}",
+    "selectRemovedLine": "Selecionar {line} removida",
+    "selectedLines": "linhas selecionadas",
+    "line": "linha {line}",
+    "lines": "linhas {start}–{end}"
+  },
+  "filesPanel": {
+    "ariaLabel": "Arquivos da tarefa",
+    "closeAriaLabel": "Fechar painel de arquivos",
+    "resizeAriaLabel": "Redimensionar painel de arquivos",
+    "eyebrow": "Contexto da tarefa",
+    "title": "Arquivos",
+    "folderMenuAriaLabel": "Pasta do projeto",
+    "resourceAriaLabel": "Recurso: {name}",
+    "searchPlaceholder": "Pesquisar arquivos da tarefa",
+    "loading": "Carregando…",
+    "empty": {
+      "title": "Nenhum arquivo da tarefa disponível",
+      "description": "Esta tarefa não tem uma cópia de trabalho preparada neste computador."
+    },
+    "noMatches": {
+      "title": "Nenhum resultado",
+      "description": "Tente um nome de arquivo, símbolo ou frase do código."
+    },
+    "back": "Voltar",
+    "folderEmpty": "Esta pasta está vazia.",
+    "backToFiles": "Arquivos",
+    "lineWindow": "Linhas {start}–{end} de {total}",
+    "linesAriaLabel": "Linhas de {name}",
+    "pagesAriaLabel": "Páginas do arquivo",
+    "previous": "Anterior",
+    "next": "Próxima",
+    "selectedLine": "Linha {start}",
+    "selectedLines": "Linhas {start}–{end}",
+    "wholeFile": "Arquivo inteiro",
+    "addToPrompt": "Adicionar ao prompt",
+    "errors": {
+      "loadFiles": "Não foi possível carregar os arquivos.",
+      "openFolder": "Não foi possível abrir esta pasta.",
+      "search": "A pesquisa falhou.",
+      "openFile": "Não foi possível abrir este arquivo."
+    }
+  },
+  "previewPanel": {
+    "ariaLabel": "Pré-visualização ao vivo",
+    "closeAriaLabel": "Fechar pré-visualização",
+    "eyebrow": "Ação do projeto",
+    "title": "Pré-visualização",
+    "reloadAriaLabel": "Recarregar pré-visualização",
+    "openInBrowserAriaLabel": "Abrir pré-visualização no navegador",
+    "unavailable": "A pré-visualização não está disponível",
+    "widthAriaLabel": "Largura da pré-visualização",
+    "responsiveAriaLabel": "pré-visualização responsiva",
+    "tabletAriaLabel": "pré-visualização em tablet",
+    "mobileAriaLabel": "pré-visualização em celular",
+    "frameTitle": "Pré-visualização do projeto",
+    "empty": {
+      "title": "Ainda não há pré-visualização local",
+      "description": "Execute uma ação do projeto que escute na porta de desenvolvimento da tarefa."
+    }
+  },
+  "draftPullRequest": {
+    "status": {
+      "merged": "Mesclado",
+      "closed": "Fechado",
+      "draft": "Rascunho",
+      "changesRequested": "Alterações solicitadas",
+      "checksFailing": "Verificações falhando",
+      "readyToMerge": "Pronto para mesclar",
+      "checksRunning": "Verificações em andamento",
+      "open": "Aberto",
+      "draftCreated": "Rascunho criado"
+    },
+    "item": {
+      "needsCommit": "Commit necessário",
+      "noChanges": "Sem alterações",
+      "readyFor": "Pronto para {branch}",
+      "baseBranch": "a branch base",
+      "unavailable": "Indisponível"
+    },
+    "review": {
+      "approved": "Revisão aprovada",
+      "changesRequested": "Alterações solicitadas",
+      "pending": "Revisão pendente"
+    },
+    "ci": {
+      "passing": "Verificações aprovadas",
+      "failing": "Verificações falhando",
+      "running": "Verificações em andamento"
+    },
+    "checkState": "{state, select, passing {aprovada} failing {falhando} pending {pendente} other {{state}}}",
+    "updatedAt": "Atualizado às {time}",
+    "checks": "Verificações",
+    "reviewFeedback": "Comentários da revisão",
+    "reviewer": "Revisor",
+    "fixWithAgent": "Corrigir com o agente",
+    "resolve": "Resolver",
+    "markReady": "Marcar como pronto",
+    "addressFeedback": "Atender comentários",
+    "fixChecks": "Corrigir verificações",
+    "merge": "Mesclar",
+    "automationOptions": {
+      "fixFailingChecks": "Corrigir verificações com falha",
+      "fixFailingChecksHint": "{count, plural, one {Até # tentativa do agente por falha} other {Até # tentativas do agente por falha}}",
+      "markReady": "Marcar como pronto",
+      "markReadyHint": "Quando as verificações passarem",
+      "merge": "Mesclar",
+      "mergeHint": "Após a aprovação e as verificações",
+      "completeLinkedIssues": "Concluir issues vinculadas",
+      "completeLinkedIssuesHint": "Após as atualizações finais e todas as mesclagens",
+      "archiveTask": "Arquivar tarefa",
+      "archiveTaskHint": "Após todas as mesclagens"
+    },
+    "loadError": "Não foi possível preparar a entrega no GitHub.",
+    "sectionAriaLabel": "Finalizar com o GitHub",
+    "title": "Finalizar com o GitHub",
+    "summary": {
+      "published": "{count, plural, one {# publicado} other {# publicados}}",
+      "toResolve": "{count, plural, one {# item para resolver} other {# itens para resolver}}",
+      "ready": "{count, plural, one {# pronto} other {# prontos}}"
+    },
+    "automation": "Automação",
+    "automationAriaLabel": "Automação da entrega",
+    "refreshAriaLabel": "Atualizar pull requests",
+    "attempt": {
+      "created": "{count, plural, one {# criado} other {# criados}}",
+      "failed": "{count, plural, one {# com falha} other {# com falha}}",
+      "failureHint": "Resolva o problema no repositório afetado e tente novamente; os rascunhos criados com sucesso não serão recriados."
+    },
+    "allMerged": "Todos os pull requests foram mesclados.",
+    "archiveTask": "Arquivar tarefa",
+    "githubAccount": "Conta do GitHub",
+    "connected": "Conectada a este projeto",
+    "addAccount": "Adicione uma conta a este projeto",
+    "addGithub": "Adicionar GitHub",
+    "commitMessagePlaceholder": "Mensagem do commit",
+    "commitRepositories": "{count, plural, one {Fazer commit em # repositório} other {Fazer commit em # repositórios}}",
+    "githubAccountAriaLabel": "Conta do GitHub",
+    "titlePlaceholder": "Título do pull request",
+    "bodyPlaceholder": "Contexto opcional para os revisores…",
+    "repositories": "Repositórios",
+    "selectedOf": "{selected} de {total}",
+    "includeAriaLabel": "Incluir {name}",
+    "into": "para {branch}",
+    "editOverride": "Editar título ou contexto",
+    "createDrafts": "{count, plural, one {Criar # pull request em rascunho} other {Criar # pull requests em rascunho}}",
+    "createConfirm": {
+      "title": "{count, plural, one {Criar # pull request em rascunho?} other {Criar # pull requests em rascunho?}}",
+      "message": "Isso envia as branches de tarefa selecionadas e depois cria os rascunhos na ordem mostrada. Os rascunhos existentes não são alterados.",
+      "confirm": "Criar rascunhos"
+    },
+    "mergeConfirm": {
+      "title": "Mesclar {name}?",
+      "message": "O GitHub vai mesclar este pull request usando o método de mesclagem padrão do repositório. Isso não pode ser desfeito aqui.",
+      "confirm": "Mesclar pull request"
+    },
+    "resolveConfirm": {
+      "title": "Resolver esta conversa de revisão?",
+      "message": "Marque esta conversa de revisão do GitHub como resolvida. A conversa continua visível no histórico do GitHub.",
+      "confirm": "Resolver conversa"
+    },
+    "readyConfirm": {
+      "title": "Marcar {name} como pronto?",
+      "pullRequest": "o pull request",
+      "message": "Isso remove o status de rascunho e solicita revisão no GitHub.",
+      "confirm": "Marcar como pronto"
+    }
+  },
+  "sourceUpdate": {
+    "ariaLabel": "Atualizações do trabalho vinculado",
+    "title": "Trabalho vinculado",
+    "completeIssue": "Concluir issue",
+    "cancel": "Cancelar",
+    "postAnother": "Publicar outra",
+    "postUpdate": "Publicar atualização",
+    "needsAttention": "Requer atenção",
+    "completed": "Concluído",
+    "posted": "Publicado",
+    "placeholder": "Escreva uma atualização para {target}…",
+    "progress": "Progresso",
+    "finalResult": "Resultado final",
+    "typeAriaLabel": "Tipo de atualização",
+    "useLatestSummary": "Usar o resumo mais recente",
+    "postTo": "Publicar no {provider}",
+    "completeConfirm": {
+      "title": "Concluir {target}?",
+      "issue": "a issue",
+      "linearMessage": "Mova esta issue do Linear para o estado concluído da equipe.",
+      "githubMessage": "Feche esta issue do GitHub. A discussão e o histórico continuam disponíveis.",
+      "confirm": "Concluir issue"
+    }
+  },
+  "repositoryLocalChanges": {
+    "ariaLabel": "Alterações locais de {name}",
+    "heading": "{count, plural, one {{name} tem # alteração local} other {{name} tem # alterações locais}}",
+    "hideDiff": "Ocultar diff",
+    "viewDiff": "Ver diff",
+    "moreFiles": "{count, plural, one {Mais # arquivo} other {Mais # arquivos}}",
+    "loadError": "Não foi possível carregar as alterações locais. Tente novamente.",
+    "closeAndRetry": "Fechar e tentar novamente",
+    "binary": "Arquivo binário alterado.",
+    "noChanges": "Não há mais alterações locais. Atualize para recarregar este painel."
+  },
+  "deliveryAutomation": {
+    "error": "A automação da entrega não pôde continuar."
+  },
+  "developerTools": {
+    "comments": "{count, plural, one {# comentário} other {# comentários}}",
+    "attachments": "{count, plural, one {# anexo} other {# anexos}}"
+  },
+  "workspaceUsage": {
+    "explanation": "Armazenamento aproximado que o Cowork mantém para esta tarefa: o espaço de trabalho, a cópia de comparação e os dados de recuperação. Sua própria pasta e o histórico do Git compartilhado pelos worktrees não são contados. No macOS as cópias compartilham disco com a origem, então excluir uma tarefa pode liberar muito menos do que o exibido.",
+    "storage": "Armazenamento",
+    "measuring": "Medindo…",
+    "notMeasured": "Ainda não medido",
+    "taskSize": "~{size}",
+    "taskSizeUpdating": "~{size} · atualizando…",
+    "recovery": "Recuperação",
+    "recoveryOfThat": "{size} disso",
+    "allTasks": "Todas as tarefas"
+  },
+  "repositorySetup": {
+    "invalidBranch": "Use um nome de branch do Git, como {example}."
+  },
+  "gitIdentity": {
+    "saveFailed": "Não foi possível salvar a identidade do Git.",
+    "title": "O Git precisa saber quem você é",
+    "body": "Os commits neste computador precisam de um nome e um e-mail. Salve-os uma vez e o commit será executado novamente. O que o Git já tiver será mantido.",
+    "namePlaceholder": "Seu nome",
+    "nameAriaLabel": "Nome para os commits do Git",
+    "emailAriaLabel": "E-mail para os commits do Git",
+    "saving": "Salvando…",
+    "save": "Salvar e fazer commit"
+  },
+  "deleteProject": {
+    "title": "Excluir este projeto de código?",
+    "message": "Isso exclui a configuração do projeto. As pastas de origem não são alteradas. Projetos com tarefas de código não podem ser excluídos.",
+    "confirm": "Excluir projeto",
+    "deleting": "Excluindo…",
+    "failed": "Não foi possível excluir este projeto de código."
+  },
+  "renameTask": {
+    "failed": "Não foi possível renomear esta tarefa de código.",
+    "title": "Renomear tarefa de código",
+    "label": "Nome da tarefa",
+    "cancel": "Cancelar",
+    "rename": "Renomear"
+  },
+  "recovery": {
+    "title": "Reabrir tarefa",
+    "subtitle": "Escolha onde reabrir esta tarefa. Depois, envie uma mensagem para continuar o trabalho interrompido.",
+    "computerAriaLabel": "Computador para a tarefa retomada",
+    "recommended": "Recomendado",
+    "savedCopy": "Cópia de trabalho salva",
+    "freshCopy": "Cópia de trabalho nova",
+    "empty": {
+      "title": "Nenhum computador compatível está online",
+      "body": "Coloque o computador original online ou conecte outro computador compatível."
+    },
+    "recreateWarning": "Isso começa a partir das revisões salvas do repositório. Alterações não enviadas no computador anterior não podem ser movidas com a tarefa.",
+    "cancel": "Cancelar",
+    "reopening": "Reabrindo…",
+    "startFresh": "Começar cópia nova"
+  },
+  "projectResources": {
+    "title": "Código",
+    "errors": {
+      "chooseFolder": "Não foi possível escolher essa pasta.",
+      "duplicateResource": "Esse recurso já está neste projeto.",
+      "inspectFolder": "Não foi possível verificar essa pasta.",
+      "invalidUrl": "Insira a URL de um repositório Git, como {example}.",
+      "duplicateRepository": "Esse repositório já está neste projeto."
+    },
+    "status": {
+      "offline": "{computer} offline",
+      "computerOffline": "Computador offline",
+      "anyComputer": "Qualquer computador",
+      "only": "Somente {computer}",
+      "onlyThisComputer": "Somente este computador"
+    },
+    "baseBranch": "Branch base",
+    "baseBranchPlaceholder": "Padrão do repositório",
+    "commands": "Comandos",
+    "optional": "(opcional)",
+    "setup": "Configuração",
+    "setupAriaLabel": "Comando de configuração",
+    "validate": "Validar",
+    "validateAriaLabel": "Comando de validação",
+    "run": "Executar",
+    "runAriaLabel": "Comando de execução",
+    "remove": "Remover",
+    "removeAriaLabel": "Remover {name}",
+    "adding": "Adicionando…",
+    "addFolder": "Adicionar pasta",
+    "addRepository": "Adicionar repositório",
+    "chooseFolder": "Escolher uma pasta",
+    "runsOnThisComputer": "Executa neste computador",
+    "cloneRepository": "Clonar um repositório",
+    "runsOnAnyComputer": "Executa em qualquer computador"
+  },
+  "projectConnectedTools": {
+    "title": "Conectores",
+    "usedByRepository": " · Usado por um repositório",
+    "reconnect": "Reconectar",
+    "manage": "Gerenciar conectores",
+    "empty": "Conecte o GitHub ou o Linear para iniciar tarefas a partir de issues e entregar pull requests.",
+    "open": "Abrir Conectores"
+  },
+  "projectConnections": {
+    "backToSettings": "Voltar às configurações do projeto",
+    "backToTask": "Voltar à tarefa"
+  },
+  "projectActions": {
+    "settings": "Configurações do projeto",
+    "delete": "Excluir projeto",
+    "noTask": "Abra uma tarefa de código antes de executar uma ação do projeto."
+  },
+  "projectDefaults": {
+    "invalidEnvironmentLine": "A linha do ambiente precisa de NOME=valor: {line}"
+  },
+  "projectSettings": {
+    "title": "Configurações do projeto",
+    "newTitle": "Novo projeto de código",
+    "subtitle": "As tarefas deste projeto compartilham o código, os conectores e os padrões dele.",
+    "name": "Nome do projeto",
+    "skills": "Habilidades",
+    "teamSetup": {
+      "title": "Configuração da equipe",
+      "summary": "{branch} · {count} incluídas",
+      "updateAvailable": "Atualização disponível",
+      "checkForUpdates": "Verificar atualizações",
+      "reviewUpdate": "Revisar atualização",
+      "newerRevision": "Há uma revisão mais recente da configuração da equipe.",
+      "applyUpdate": "Aplicar atualização",
+      "includedGuidance": "Orientações incluídas",
+      "includedCount": "{enabled} de {total}",
+      "details": "Detalhes",
+      "source": "Origem",
+      "revision": "Revisão",
+      "checking": "Verificando…",
+      "openSource": "Abrir origem",
+      "openLocalCopy": "Abrir cópia local"
+    },
+    "defaults": {
+      "title": "Padrões das tarefas",
+      "agent": "Agente",
+      "agentAriaLabel": "Agente de código padrão",
+      "model": "Modelo",
+      "modelAriaLabel": "Modelo de código padrão",
+      "modelPlaceholder": "Selecionar modelo",
+      "noModels": "Nenhum modelo de código disponível",
+      "reasoning": "Raciocínio",
+      "reasoningAriaLabel": "Esforço de raciocínio padrão",
+      "permissions": "Permissões",
+      "permissionsAriaLabel": "Permissões de código padrão"
+    },
+    "environment": {
+      "title": "Ambiente",
+      "ports": "Portas de desenvolvimento",
+      "portsHelp": "Cada tarefa recebe a própria porta livre com cada nome.",
+      "variables": "Variáveis de ambiente",
+      "variablesHelp": "Visíveis para todas as tarefas deste projeto. Não coloque segredos aqui."
+    },
+    "errors": {
+      "inspectPlaybook": "Não foi possível verificar o playbook da equipe.",
+      "checkAvailability": "Não foi possível verificar a disponibilidade dos recursos.",
+      "nameRequired": "Dê um nome a este projeto de código.",
+      "resourceRequired": "Adicione pelo menos um repositório ou uma pasta.",
+      "save": "Não foi possível salvar este projeto de código.",
+      "checkTeamSetup": "Não foi possível verificar atualizações da configuração da equipe.",
+      "applyTeamSetup": "Não foi possível aplicar a atualização da configuração da equipe.",
+      "updateGuidance": "Não foi possível atualizar as orientações da configuração da equipe.",
+      "openRepository": "Não foi possível abrir esse repositório."
+    },
+    "cancel": "Cancelar",
+    "saving": "Salvando…",
+    "creating": "Criando…",
+    "save": "Salvar alterações",
+    "create": "Criar projeto"
+  },
+  "runtimeControls": {
+    "tryAgain": "Tente novamente.",
+    "title": "Configurações da tarefa",
+    "subtitle": "Essas configurações se aplicam aos próximos turnos desta tarefa de código.",
+    "model": "Modelo",
+    "modelAriaLabel": "Modelo da tarefa",
+    "reasoning": "Raciocínio",
+    "modelDefault": "Padrão do modelo",
+    "reasoningAriaLabel": "Esforço de raciocínio",
+    "effortPlaceholder": "Esforço",
+    "permissions": "Permissões",
+    "permissionsAriaLabel": "Permissões da tarefa",
+    "personality": "Personalidade",
+    "personalityAriaLabel": "Personalidade do agente",
+    "personalities": {
+      "pragmatic": "Pragmático",
+      "friendly": "Amigável",
+      "none": "Sem personalidade"
+    },
+    "fast": {
+      "title": "Rápido",
+      "description": "Use inferência prioritária quando o modelo permitir.",
+      "ariaLabel": "Inferência rápida"
+    },
+    "network": {
+      "title": "Acesso à rede",
+      "includedWithFullAccess": "Incluído no acesso total.",
+      "description": "Permita que os comandos acessem serviços externos."
+    },
+    "webSearch": {
+      "title": "Pesquisa na web",
+      "description": "Deixe o agente de código pesquisar na web quando for útil."
+    },
+    "folders": {
+      "title": "Pastas adicionais",
+      "description": "Deixe esta tarefa trabalhar em pastas locais relacionadas.",
+      "add": "Adicionar pasta",
+      "removeAriaLabel": "Remover a pasta adicional {path}"
+    },
+    "sandbox": {
+      "title": "Sandbox do Windows",
+      "checking": "Verificando…",
+      "unknown": "desconhecido",
+      "unavailable": "indisponível",
+      "setupStarted": "configuração iniciada",
+      "setupFailed": "falha na configuração",
+      "ready": "pronto",
+      "setUp": "Configurar"
+    },
+    "applyFailed": "Não foi possível aplicar as configurações da tarefa",
+    "cancel": "Cancelar",
+    "apply": "Aplicar"
+  },
+  "extensions": {
+    "alsoInstalled": "Também instalado em {location}",
+    "alsoInstalledAt": "Também instalado em {location} · {path}",
+    "loadFailed": "Não foi possível carregar as extensões da tarefa.",
+    "title": "Extensões da tarefa",
+    "subtitle": "Recursos carregados desta pasta, das suas habilidades do Codex e da biblioteca de habilidades do Cowork.",
+    "typesAriaLabel": "Tipos de extensão",
+    "tabs": {
+      "skills": "Habilidades",
+      "mcp_servers": "MCP",
+      "plugins": "Plugins",
+      "apps": "Apps",
+      "hooks": "Hooks"
+    },
+    "refreshAriaLabel": "Atualizar as extensões da tarefa",
+    "loading": "Carregando {tab, select, skills {habilidades} mcp_servers {MCP} plugins {plugins} apps {apps} hooks {hooks} other {extensões}}…",
+    "empty": "{tab, select, skills {Nenhuma habilidade ativa} mcp_servers {Nenhum MCP ativo} plugins {Nenhum plugin ativo} apps {Nenhum app ativo} hooks {Nenhum hook ativo} other {Nenhuma extensão ativa}} nesta tarefa.",
+    "sourceErrors": "Não foi possível verificar algumas origens de extensões",
+    "config": {
+      "title": "Configuração do modo Código",
+      "description": "As tarefas de código compartilham esta configuração privada do Codex. Os arquivos {file} do projeto são aplicados por cima automaticamente.",
+      "open": "Abrir configuração"
+    }
+  },
+  "projects": {
+    "viewTasks": "Ver as tarefas de {name}",
+    "resourceCount": "{count, plural, one {# recurso} other {# recursos}}",
+    "actionsAriaLabel": "Ações de {name}",
+    "title": "Projetos",
+    "subtitle": "Repositórios, pastas, habilidades e padrões compartilhados pelas tarefas de código.",
+    "new": "Novo projeto",
+    "search": "Pesquisar projetos",
+    "sort": {
+      "updated": "Atualizados recentemente",
+      "name": "Nome"
+    },
+    "empty": {
+      "title": "Ainda não há projetos",
+      "description": "Crie um projeto para reunir repositórios e pastas relacionados.",
+      "action": "Criar seu primeiro projeto"
+    },
+    "listAriaLabel": "Projetos de código",
+    "loadFailed": "Não foi possível carregar os projetos de código."
+  },
+  "projectPicker": {
+    "resourceCount": "{count, plural, one {# recurso} other {# recursos}}",
+    "noProject": "Sem projeto",
+    "localFolder": "Pasta local",
+    "projects": "Projetos",
+    "newProject": "Novo projeto",
+    "search": "Pesquisar projetos",
+    "noResults": "Nenhum projeto encontrado",
+    "ariaLabel": "Projeto de código",
+    "menuLabel": "Projeto"
+  },
+  "skills": {
+    "origin": {
+      "all": "Todas as fontes",
+      "team": "Equipe",
+      "personal": "Suas"
+    },
+    "kind": {
+      "instructions": "Instruções",
+      "workflow": "Fluxo de trabalho",
+      "skill": "Habilidade"
+    },
+    "unversioned": "Sem versão",
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "save": "Salvar",
+    "saving": "Salvando…",
+    "usedBy": "Usada em {count, plural, one {# projeto} other {# projetos}}",
+    "updateAvailable": "Atualização disponível",
+    "addSource": {
+      "title": "Adicionar fonte da equipe",
+      "subtitle": "Conecte um repositório Git com habilidades, instruções ou fluxos de trabalho.",
+      "repositoryLabel": "Repositório ou pasta",
+      "choose": "Escolher",
+      "nameLabel": "Nome",
+      "optional": "Opcional",
+      "namePlaceholder": "Padrões de engenharia",
+      "branchLabel": "Branch",
+      "repositoryRequired": "Escolha um repositório Git ou informe a URL dele.",
+      "addFailed": "Não foi possível adicionar essa fonte da equipe.",
+      "folderFailed": "Não foi possível escolher essa pasta.",
+      "adding": "Adicionando…",
+      "add": "Adicionar fonte"
+    },
+    "projects": {
+      "title": "Escolher projetos",
+      "subtitle": "Disponibilize isto para as tarefas dos projetos do Code selecionados.",
+      "folders": "{count, plural, one {# pasta} other {# pastas}}",
+      "empty": "Crie um projeto do Code antes de atribuir habilidades da equipe."
+    },
+    "source": {
+      "fallbackTitle": "Fonte da equipe",
+      "repository": "Repositório",
+      "itemsUnit": "{count, plural, one {item} other {itens}}",
+      "projectsUnit": "{count, plural, one {projeto} other {projetos}}",
+      "openRepository": "Abrir repositório",
+      "checkUpdates": "Verificar atualizações",
+      "update": "Atualizar fonte",
+      "remove": "Remover fonte"
+    },
+    "view": {
+      "title": "Habilidades",
+      "subtitle": "Seus fluxos de trabalho e os padrões de engenharia da sua equipe, prontos para as tarefas do Code.",
+      "addPersonal": "Adicionar habilidade pessoal",
+      "searchPlaceholder": "Buscar habilidades",
+      "noMatch": "Nenhuma habilidade corresponde à sua busca.",
+      "emptyPersonal": {
+        "title": "Ainda não há habilidades pessoais",
+        "description": "Escreva instruções ou importe um SKILL.md. Não é preciso um repositório Git.",
+        "action": "Adicionar sua primeira habilidade"
+      },
+      "emptyTeam": {
+        "title": "Ainda não há fontes da equipe",
+        "description": "Conecte um repositório Git para compartilhar padrões de engenharia entre projetos."
+      },
+      "emptyView": "Nenhuma habilidade nesta visualização.",
+      "viewItem": "Ver {name}",
+      "moreActions": "Mais ações para {name}",
+      "edit": "Editar",
+      "delete": "Excluir",
+      "projectCount": "{count, plural, one {# projeto} other {# projetos}}",
+      "available": "Disponível",
+      "disabled": "Desativada",
+      "sourceFilter": "Fonte",
+      "itemCount": "{count, plural, one {# item} other {# itens}}",
+      "needsAttention": "Requer atenção",
+      "sourceDetails": "Detalhes da fonte",
+      "sourceUnavailable": "Fonte indisponível — abra para ver os detalhes.",
+      "noItemsMatch": "Nenhum item corresponde a esta busca.",
+      "noSharedItems": "Nenhum item compartilhado encontrado.",
+      "personalDescription": "Habilidades pessoais disponíveis no modo Code",
+      "builtInDescription": "Habilidades de engenharia mantidas pela MindsHub"
+    },
+    "errors": {
+      "updateProjects": "Não foi possível atualizar as habilidades do projeto.",
+      "updateSource": "Não foi possível atualizar essa fonte.",
+      "openRepository": "Não foi possível abrir esse repositório.",
+      "removeSource": "Não foi possível remover essa fonte.",
+      "deleteSkill": "Não foi possível excluir essa habilidade.",
+      "loadLibrary": "Não foi possível carregar a biblioteca de habilidades."
+    },
+    "removeConfirm": {
+      "title": "Remover a fonte da equipe?",
+      "message": "{name} será removida desta biblioteca de habilidades. O repositório Git dela não será alterado.",
+      "busy": "Removendo…"
+    },
+    "deleteConfirm": {
+      "title": "Excluir a habilidade pessoal?",
+      "message": "{name} será removida da sua biblioteca. As tarefas existentes mantêm a cópia salva.",
+      "confirm": "Excluir habilidade",
+      "busy": "Excluindo…"
+    }
+  },
+  "personalSkill": {
+    "saveFailed": "Não foi possível salvar esta habilidade. Tente novamente.",
+    "errors": {
+      "fileType": "Escolha um arquivo de texto SKILL.md ou .skill.",
+      "fileTooLarge": "Escolha uma habilidade com menos de 120 KB.",
+      "fileUnreadable": "Não foi possível ler este arquivo. Escolha uma habilidade em texto UTF-8.",
+      "instructionsTooLong": "Mantenha as instruções abaixo de 120 KB."
+    },
+    "fields": {
+      "name": "Nome",
+      "namePlaceholder": "ex.: Revisar meu TypeScript",
+      "description": "Quando usar",
+      "descriptionHelp": "Ajuda o agente a reconhecer quando esta habilidade é relevante.",
+      "descriptionPlaceholder": "Revise as alterações de TypeScript quanto à clareza e ao tratamento confiável de erros.",
+      "instructions": "Instruções",
+      "instructionsHelp": "Escreva ou cole as etapas e os padrões que o agente deve seguir.",
+      "instructionsPlaceholder": "Comece lendo os arquivos alterados…",
+      "available": "Disponível para o agente",
+      "keepRestrictions": "As restrições de projeto existentes serão mantidas.",
+      "availableHint": "Disponível para novas tarefas do Code neste computador."
+    },
+    "editTitle": "Editar habilidade pessoal",
+    "addTitle": "Adicionar habilidade pessoal",
+    "subtitle": "Para suas tarefas do Code. Não é preciso um repositório Git.",
+    "loading": "Carregando habilidade…",
+    "tryAgain": "Tentar novamente",
+    "tabs": {
+      "ariaLabel": "Adicionar uma habilidade pessoal",
+      "write": "Escrever instruções",
+      "import": "Importar arquivo"
+    },
+    "import": {
+      "fileAriaLabel": "Arquivo da habilidade",
+      "title": "Traga seu próprio SKILL.md",
+      "description": "Escolha um arquivo de texto com nome, descrição e instruções. Ele será copiado para suas habilidades do Code. O arquivo original não é alterado.",
+      "chooseAnother": "Escolher outro arquivo",
+      "choose": "Escolher arquivo",
+      "limits": "SKILL.md ou .skill · Até 120 KB"
+    },
+    "cancel": "Cancelar",
+    "saving": "Salvando…",
+    "saveChanges": "Salvar alterações",
+    "add": "Adicionar habilidade",
+    "discard": {
+      "title": "Descartar alterações?",
+      "message": "As alterações não salvas da habilidade serão perdidas.",
+      "confirm": "Descartar alterações",
+      "cancel": "Continuar editando"
+    }
+  },
+  "skillDetail": {
+    "loadFailed": "Não foi possível carregar esta habilidade.",
+    "rendered": "Renderizado",
+    "viewSource": "Ver código-fonte",
+    "files": "Arquivos"
+  },
+  "projectSkills": {
+    "heading": {
+      "added": "{count, plural, one {# habilidade adicionada} other {# habilidades adicionadas}}",
+      "choose": "Escolher habilidades",
+      "included": "{count, plural, one {# habilidade incluída} other {# habilidades incluídas}}"
+    },
+    "summary": {
+      "selected": "{count} selecionadas",
+      "available": "{count} disponíveis",
+      "included": "{count} incluídas",
+      "none": "Nenhuma habilidade do Code disponível"
+    },
+    "footer": {
+      "selected": "{count} selecionadas para este projeto",
+      "maintained": "{count, plural, one {# habilidade mantida incluída automaticamente} other {# habilidades mantidas incluídas automaticamente}}",
+      "default": "Escolha as orientações que toda tarefa deve receber"
+    },
+    "loadingEngineering": "Carregando habilidades de engenharia…",
+    "search": "Buscar habilidades do Code",
+    "loading": "Carregando habilidades…",
+    "maintained": "Mantidas pela MindsHub",
+    "included": "Incluída",
+    "empty": "Ainda não há habilidades do Code disponíveis para esta organização.",
+    "openSkills": "Abrir Habilidades"
+  },
+  "connectors": {
+    "title": "Conectores",
+    "subtitle": "Conecte suas ferramentas de desenvolvimento uma vez e adicione-as a qualquer projeto do Code.",
+    "ariaLabel": "Conectores do Code",
+    "providers": {
+      "github": "Comece a partir de issues, crie pull requests em rascunho e acompanhe revisões e checks.",
+      "linear": "Comece a partir de issues do Linear e publique o progresso nelas."
+    },
+    "usage": {
+      "none": "Não usado por nenhum projeto",
+      "used": "Usado em {count, plural, one {# projeto} other {# projetos}}"
+    },
+    "errors": {
+      "loadOptions": "Não foi possível carregar as opções de conexão do {provider}.",
+      "connect": "Não foi possível conectar o {provider}.",
+      "validate": "Não foi possível validar esta credencial.",
+      "postConnect": "Conectado, mas não foi possível concluir a atualização do Code: {reason}",
+      "postConnectFallback": "tente reabrir Conectores.",
+      "disconnect": "Não foi possível desconectar esta conta."
+    },
+    "returnProject": {
+      "before": "As contas que você conectar aqui são adicionadas a",
+      "after": ". Conecte quantas precisar e depois volte."
+    },
+    "returnTask": "Conecte uma conta e depois volte para sua tarefa.",
+    "backToTask": "Voltar para a tarefa",
+    "status": {
+      "reconnect": "{count, plural, one {# conta · reconectar} other {# contas · reconectar}}",
+      "connectedCount": "{count} conectadas",
+      "notConnected": "Não conectado",
+      "reconnectNeeded": "Reconexão necessária",
+      "connected": "Conectado"
+    },
+    "connecting": "Conectando…",
+    "addAccount": "Adicionar conta",
+    "connect": "Conectar",
+    "browser": {
+      "title": "Continue no seu navegador",
+      "hint": "Volte aqui quando o {provider} concluir a autorização."
+    },
+    "cancel": "Cancelar",
+    "reconnecting": "Reconectando…",
+    "reconnect": "Reconectar",
+    "credential": {
+      "title": "Conectar {provider}",
+      "githubSubtitle": "Use um token de acesso pessoal para esta build local.",
+      "linearSubtitle": "Use uma chave de API pessoal para esta build local."
+    },
+    "disconnect": {
+      "action": "Desconectar",
+      "title": "Desconectar {name}?",
+      "titleFallback": "Desconectar esta conta?",
+      "message": "Os projetos que usam esta conta manterão a referência, mas o Code não poderá ler nem publicar por meio dela até que você a reconecte."
+    }
+  },
+  "commandPalette": {
+    "skillFallback": "Habilidade da MindsHub",
+    "view": "Ver",
+    "ariaLabel": "Habilidades e comandos",
+    "search": "Buscar habilidades e comandos",
+    "skillsSection": "Habilidades da MindsHub",
+    "commandsSection": "Comandos do {agent}",
+    "empty": "Nenhuma habilidade ou comando correspondente"
+  },
+  "sidebarSessions": {
+    "title": "Tarefas do Code",
+    "noProject": "Sem projeto",
+    "errors": {
+      "pin": "Não foi possível fixar esta tarefa.",
+      "unpin": "Não foi possível desafixar esta tarefa."
+    },
+    "untitled": "Tarefa de código sem título",
+    "untitledLower": "tarefa de código sem título",
+    "rowAriaLabel": "{title}, {status}{unread, select, yes {, não lida} other {}}, {repository}, {updated}",
+    "actionsFor": "Ações para {name}",
+    "organize": "Organizar",
+    "organizeAriaLabel": "Organizar tarefas de código",
+    "projects": "Projetos",
+    "taskList": "Lista de tarefas",
+    "sort": "Ordenar",
+    "priority": "Prioridade",
+    "lastUpdated": "Última atualização",
+    "searchPlaceholder": "Encontrar uma tarefa",
+    "searchAriaLabel": "Encontrar uma tarefa de código",
+    "noMatch": "Nenhuma tarefa de código corresponde à sua busca.",
+    "empty": "Inicie uma tarefa de código para manter aqui a conversa e as alterações dela.",
+    "pinned": "Fixadas",
+    "archived": "Arquivadas"
+  },
+  "tasksView": {
+    "status": {
+      "all": "Todos os status",
+      "attention": "Requer atenção",
+      "inProgress": "Em andamento",
+      "completed": "Concluídas",
+      "failed": "Com falha",
+      "readyOrStopped": "Prontas ou paradas"
+    },
+    "sort": {
+      "updated": "Atualizadas recentemente",
+      "created": "Criadas recentemente",
+      "title": "Título"
+    },
+    "unavailableProject": "Projeto indisponível",
+    "filters": {
+      "project": "Projeto",
+      "allProjects": "Todos os projetos",
+      "status": "Status"
+    },
+    "allTasks": "Todas as tarefas",
+    "projectSubtitle": "Tarefas de código deste projeto.",
+    "projectActions": "Ações de {name}",
+    "newTask": "Nova tarefa",
+    "search": "Buscar tarefas",
+    "count": "{count, plural, one {# tarefa} other {# tarefas}}",
+    "filteredCount": "{shown} de {total} tarefas",
+    "noMatch": "Nenhuma tarefa correspondente",
+    "clearFilters": "Limpar filtros",
+    "emptyArchived": {
+      "title": "Nenhuma tarefa arquivada",
+      "description": "As tarefas que você arquivar aparecerão aqui."
+    },
+    "empty": {
+      "title": "Ainda não há tarefas",
+      "description": "Uma tarefa mantém uma conversa de código e as alterações que ela faz em uma pasta ou repositório.",
+      "action": "Iniciar sua primeira tarefa"
+    },
+    "projectTasks": "Tarefas do projeto"
+  },
+  "taskMenu": {
+    "errors": {
+      "archive": "Não foi possível arquivar esta tarefa.",
+      "restore": "Não foi possível restaurar esta tarefa.",
+      "delete": "Não foi possível excluir esta tarefa."
+    },
+    "stopFirst": "Primeiro pare o turno ativo.",
+    "pin": "Fixar",
+    "unpin": "Desafixar",
+    "rename": "Renomear",
+    "archive": "Arquivar",
+    "restore": "Restaurar",
+    "delete": "Excluir",
+    "deleteConfirm": {
+      "title": "Excluir esta tarefa de código?",
+      "message": "Isso remove o histórico da tarefa e qualquer cópia de trabalho isolada. Seus arquivos originais não são alterados.",
+      "confirm": "Excluir tarefa"
+    }
+  },
+  "taskList": {
+    "loadFailed": "Não foi possível carregar as tarefas de código."
+  },
+  "taskActions": {
+    "refreshFailed": "{completed}, mas não foi possível atualizar a lista de tarefas: {reason}",
+    "tryAgainShortly": "tente novamente em instantes",
+    "operationFailed": "A operação de código falhou.",
+    "completed": {
+      "operation": "A operação foi concluída",
+      "started": "A tarefa foi iniciada",
+      "forked": "A tarefa foi bifurcada",
+      "archived": "A tarefa foi arquivada",
+      "restored": "A tarefa foi restaurada"
+    },
+    "errors": {
+      "start": "Não foi possível iniciar esta tarefa.",
+      "fork": "Não foi possível bifurcar esta tarefa de código.",
+      "update": "Não foi possível atualizar esta tarefa de código."
+    }
+  },
+  "taskAttention": {
+    "answer": "Uma tarefa precisa da sua resposta.",
+    "approval": "Uma tarefa precisa da sua aprovação.",
+    "plan": "Um plano está pronto para sua revisão.",
+    "failed": "Uma tarefa requer atenção antes de continuar.",
+    "finished": "Uma tarefa de código foi concluída.",
+    "bar": {
+      "ariaLabel": "Atenção das tarefas",
+      "unavailable": "As notificações da área de trabalho não estão disponíveis nesta janela.",
+      "denied": "Permita as notificações da MindsHub nas configurações do sistema para receber alertas.",
+      "failed": "Não foi possível ativar as notificações. Você ainda encontra as decisões em Requer atenção.",
+      "needsYou": "{count, plural, one {# tarefa precisa de você →} other {# tarefas precisam de você →}}",
+      "on": "Notificações ativadas",
+      "off": "Avisar quando estiver ausente"
+    }
+  },
+  "catalog": {
+    "loadAgentsFailed": "Não foi possível carregar os agentes de código.",
+    "loadModelsFailed": "Não foi possível carregar os modelos de código."
+  },
+  "newTask": {
+    "heading": "O que vamos construir?",
+    "composerAriaLabel": "Criar tarefa de código",
+    "dropHint": "Solte arquivos para anexar",
+    "editProject": "Editar {name}",
+    "changeFolder": "Alterar pasta, atualmente {name}",
+    "chooseFolder": "Escolher pasta",
+    "localResources": "Recursos locais",
+    "promptPlaceholder": "Descreva a mudança, as restrições importantes e como você quer que seja verificada…",
+    "promptAriaLabel": "Tarefa de código",
+    "agentAriaLabel": "Agente de código",
+    "agentMenuLabel": "Agente",
+    "modelAriaLabel": "Escolher modelo",
+    "modelMenuLabel": "Modelo",
+    "modelPlaceholder": "Selecionar modelo",
+    "noModels": "Nenhum modelo de código disponível",
+    "effortLabel": "Esforço de raciocínio",
+    "effortPlaceholder": "Esforço",
+    "starting": "Iniciando…",
+    "startPlanning": "Começar a planejar",
+    "startTask": "Iniciar tarefa",
+    "automaticBranches": "Branches de tarefa automáticos",
+    "localChangesIncluded": "Alterações locais incluídas",
+    "localChangesExcluded": "Alterações locais excluídas",
+    "loadingSource": "Carregando issue ou PR…",
+    "planUnavailable": "O modo plano não está disponível aqui. Desative-o ou escolha um computador compatível.",
+    "connectToStart": "Conecte o MindsHub para iniciar uma tarefa.",
+    "mindsHubRequired": "O Code roda no MindsHub. Conecte sua conta do MindsHub para iniciar uma tarefa.",
+    "connecting": "Conectando…",
+    "connectMindsHub": "Conectar MindsHub"
+  },
+  "newTaskDraft": {
+    "folderUnavailable": "{name} não está disponível. Remova e adicione novamente nas configurações do projeto.",
+    "baseBranchMissing": "{name} não encontra seu branch base {branch}. Atualize-o em {location, select, setup {Repositórios e pastas} other {configurações do projeto}}.",
+    "sourcePromptOne": "Trabalhe em {id}: {title}",
+    "sourcePromptMany": "{count, plural, one {Trabalhe no # item de trabalho vinculado.} other {Trabalhe nos # itens de trabalho vinculados.}}",
+    "foldersCheckFailed": "Não foi possível verificar as pastas deste projeto.",
+    "engineUnavailable": "Indisponível",
+    "folderGone": "Essa pasta não está mais disponível. Escolha outra pasta.",
+    "folderAccessFailed": "Não foi possível acessar essa pasta.",
+    "folderChooseFailed": "Não foi possível escolher essa pasta.",
+    "readiness": {
+      "startingTask": "Iniciando tarefa…",
+      "loadingAgent": "Carregando agente de código…",
+      "checkingResources": "Verificando recursos do projeto…",
+      "checkingFolder": "Verificando pasta…",
+      "findingComputer": "Procurando um computador disponível…",
+      "addResource": "Adicione um repositório ou pasta a este projeto nas configurações do projeto.",
+      "noComputer": "Nenhum computador pode executar esta tarefa.",
+      "noAgent": "Nenhum agente de código está disponível.",
+      "modelRestricted": "Um administrador restringiu este modelo. Escolha outro modelo.",
+      "addCredits": "Adicione créditos ou escolha um modelo disponível.",
+      "noModels": "Nenhum modelo de código está disponível.",
+      "chooseModel": "Escolha um modelo para continuar.",
+      "chooseFolder": "Escolha uma pasta para continuar.",
+      "budgetReached": "O orçamento da sua organização acabou. Escolha um modelo disponível ou peça a um proprietário ou administrador para aumentá-lo."
+    }
+  },
+  "executionTarget": {
+    "thisComputer": "Este computador",
+    "readyNow": "{platform} · Pronto agora",
+    "offline": "{platform} · Offline",
+    "activeTasks": "{platform} · {count, plural, one {# tarefa ativa} other {# tarefas ativas}}",
+    "ready": "{platform} · Pronto",
+    "localFolder": "Pasta local",
+    "unavailable": "Indisponível",
+    "computers": "Computadores",
+    "cloudDescription": "Computação gerenciada sob demanda",
+    "comingSoon": "Em breve",
+    "runOn": "Executar tarefa em",
+    "capacityIssue": "Nenhum computador online pode executar esta tarefa agora.",
+    "offlineIssue": "{name} está em um computador offline.",
+    "findFailed": "Não foi possível encontrar este computador.",
+    "checkFailed": "Não foi possível verificar onde esta tarefa pode ser executada."
+  },
+  "permissions": {
+    "ariaLabel": "Permissões de código",
+    "menuLabel": "Permissões",
+    "readOnly": {
+      "label": "Somente leitura",
+      "title": "Inspecionar e explicar sem alterar arquivos."
+    },
+    "supervised": {
+      "label": "Perguntar antes",
+      "title": "Pausar antes de comandos que precisam da sua aprovação."
+    },
+    "workspace": {
+      "label": "Auto no espaço de trabalho",
+      "title": "Trabalhar de forma autônoma dentro da cópia isolada desta tarefa."
+    },
+    "fullAccess": {
+      "label": "Acesso total",
+      "title": "Trabalhar de forma autônoma sem restrições do sistema de arquivos."
+    }
+  },
+  "branchSelect": {
+    "loadFailed": "Não foi possível carregar os branches. Abra o seletor para tentar de novo.",
+    "ariaLabel": "Iniciar {name} a partir de",
+    "placeholder": "Branch padrão",
+    "searchPlaceholder": "Encontrar um branch…",
+    "menuLabel": "Iniciar a partir de"
+  },
+  "repositoryPicker": {
+    "resultsAriaLabel": "Repositórios do GitHub",
+    "private": "Privado",
+    "public": "Público",
+    "archivedSuffix": " · Arquivado",
+    "added": "Adicionado",
+    "add": "Adicionar",
+    "searchingMore": "Buscando mais repositórios…",
+    "loading": "Carregando repositórios…",
+    "noMatches": "Nenhum repositório correspondente.",
+    "noRepositories": "Nenhum repositório disponível para esta conexão.",
+    "tryAgain": "Tentar novamente",
+    "manageConnection": "Gerenciar conexão",
+    "loadMore": "Carregar mais repositórios",
+    "ariaLabel": "Adicionar repositório Git",
+    "title": "Repositórios do GitHub",
+    "close": "Fechar seletor de repositórios",
+    "accountAriaLabel": "Conta do GitHub",
+    "accountMenuLabel": "Conta",
+    "reconnectHint": "Reconecte o GitHub para navegar pelos seus repositórios.",
+    "connectHint": "Conecte o GitHub para escolher entre seus repositórios.",
+    "reconnect": "Reconectar GitHub",
+    "connect": "Conectar GitHub",
+    "searchPlaceholder": "Buscar repositórios…",
+    "searchAriaLabel": "Buscar repositórios",
+    "missingHint": "Falta um repositório? Esta conexão pode precisar de acesso a ele.",
+    "manageAccess": "Gerenciar acesso",
+    "pasteUrl": "Colar URL do repositório",
+    "urlAriaLabel": "URL do repositório Git",
+    "loadFailed": "Não foi possível carregar os repositórios. Tente novamente."
+  },
+  "taskRepositories": {
+    "checkFailed": "Não foi possível verificar os repositórios. Atualize para tentar de novo.",
+    "ariaLabel": "Repositórios e pastas",
+    "resources": "{count, plural, one {# recurso} other {# recursos}}",
+    "localChanges": "Alterações locais"
+  },
+  "repositoryDrawer": {
+    "branchExists": "Esse branch já existe. Escolha um novo nome para o branch da tarefa.",
+    "remoteCheckFailed": "Não foi possível verificar os branches remotos.",
+    "retryApply": "{message} Aplique novamente para tentar de novo.",
+    "newTask": "Nova tarefa",
+    "title": "Repositórios e pastas",
+    "remoteNotice": "Escolha este computador para definir branches de tarefa e incluir alterações locais. A seleção de recursos funciona em qualquer computador.",
+    "branchLabel": "Novo branch para esta tarefa",
+    "optional": "Opcional",
+    "branchHint": "Criado em cada repositório selecionado. Deixe em branco para um nome automático.",
+    "includeInTask": "Incluir nesta tarefa",
+    "startFrom": "Iniciar a partir de",
+    "computerOffline": "{name} está offline",
+    "requiredComputer": "O computador necessário",
+    "onlyOn": "Somente em {name}",
+    "linkedComputer": "seu computador vinculado",
+    "include": "Incluir {name}",
+    "localFolder": "Pasta local · copiada para esta tarefa",
+    "onSelectedComputer": "No computador selecionado",
+    "onThisComputer": "Neste computador: {branch}",
+    "onThisComputerClean": "Neste computador: {branch} · limpo",
+    "checkingRepository": "Verificando repositório…",
+    "statusUnavailable": "Status indisponível",
+    "checkingRepositories": "Verificando repositórios…",
+    "checkoutStatus": "Status da cópia local",
+    "refresh": "Atualizar",
+    "localChanges": "Alterações locais",
+    "committedTitle": "Iniciar do código commitado",
+    "committedHint": "Deixe as alterações locais neste computador.",
+    "includeTitle": "Incluir minhas alterações locais",
+    "includeHint": "Copie-as para esta tarefa. Mantenha os originais.",
+    "count": "{repositories, plural, one {# repositório} other {# repositórios}} · {folders, plural, one {# pasta} other {# pastas}}",
+    "checkingBranches": "Verificando branches…",
+    "apply": "Aplicar à tarefa"
+  },
+  "workItemPicker": {
+    "justNow": "Agora mesmo",
+    "hours": "{count} h",
+    "days": "{count} d",
+    "ariaLabel": "Iniciar a partir de trabalho existente",
+    "title": "Iniciar a partir de trabalho",
+    "searchSubtitle": "Busque issues e pull requests",
+    "recentSubtitle": "Atualizados recentemente e atribuídos a você",
+    "close": "Fechar seletor de trabalho",
+    "providerAriaLabel": "Ferramenta de desenvolvimento",
+    "accountAriaLabel": "Conta do {provider}",
+    "accountMenuLabel": "Conta",
+    "searchPlaceholder": "Buscar no {provider}",
+    "searchAriaLabel": "Buscar trabalho no {provider}",
+    "resultsAriaLabel": "Trabalho no {provider}",
+    "finding": "Procurando trabalho…",
+    "noMatches": "Nenhum trabalho correspondente.",
+    "noAssigned": "Nenhum trabalho atribuído encontrado.",
+    "linkPlaceholder": "Ou cole um link de issue ou pull request",
+    "linkAriaLabel": "Link de issue ou pull request",
+    "adding": "Adicionando…",
+    "add": "Adicionar",
+    "connectHint": "Conecte o GitHub ou o Linear para iniciar a partir de trabalho existente.",
+    "openConnectors": "Abrir conectores"
+  },
+  "taskSourceLinks": {
+    "invalidLink": "Cole um link de issue ou pull request do GitHub ou do Linear.",
+    "chooseAccount": "Escolha a conta do {provider} a ser usada.",
+    "loadFailed": "Não foi possível carregar esse item de trabalho.",
+    "searchFailed": "Não foi possível buscar no trabalho conectado.",
+    "linkedAriaLabel": "Trabalho vinculado",
+    "remove": "Remover {label}",
+    "addAnother": "Adicionar outro issue ou PR",
+    "add": "Adicionar issue ou PR"
+  },
+  "activity": {
+    "phrase": {
+      "edit": "editou {count, plural, one {# arquivo} other {# arquivos}}",
+      "command": "executou {count, plural, one {# comando} other {# comandos}}",
+      "read": "leu {count, plural, one {# arquivo} other {# arquivos}}",
+      "search": "pesquisou {count, plural, one {# vez} other {# vezes}}",
+      "list": "listou {count, plural, one {# pasta} other {# pastas}}",
+      "tool": "usou {count, plural, one {# ferramenta} other {# ferramentas}}",
+      "plan": "atualizou o plano",
+      "compact": "compactou o contexto",
+      "retry": "{count, plural, one {tentou de novo uma vez} other {tentou de novo # vezes}}"
+    },
+    "askedForApproval": "Pediu aprovação",
+    "thoughtItThrough": "Pensou no assunto",
+    "agentActivity": "Atividade do agente",
+    "aFile": "um arquivo",
+    "planStep": "Etapa do plano",
+    "stepPosition": "Etapa {step} de {total}",
+    "live": {
+      "editingFile": "Editando {name}",
+      "editingFiles": "Editando arquivos",
+      "compacting": "Compactando o contexto",
+      "calling": "Chamando {tool}",
+      "using": "Usando {tool}",
+      "usingTool": "Usando uma ferramenta",
+      "reading": "Lendo {name}",
+      "searchingFor": "Pesquisando {query}",
+      "searching": "Pesquisando",
+      "listing": "Listando arquivos",
+      "running": "Executando {command}",
+      "reconnecting": "Reconectando…",
+      "thinking": "Pensando…"
+    },
+    "step": {
+      "edited": "Editou",
+      "files": "{count, plural, one {# arquivo} other {# arquivos}}",
+      "updatedPlan": "Atualizou o plano",
+      "planProgress": "· {done} de {total} concluídos",
+      "retried": "Tentou de novo",
+      "retryTarget": "após a conexão cair",
+      "retryTargetAttempt": "após a conexão cair ({attempt})",
+      "askedToRun": "Pediu para executar",
+      "compacted": "Compactou o contexto",
+      "viewed": "Visualizou",
+      "anImage": "uma imagem",
+      "called": "Chamou",
+      "used": "Usou",
+      "aTool": "uma ferramenta",
+      "read": "Leu",
+      "searchedFor": "Pesquisou",
+      "searched": "Pesquisou",
+      "listed": "Listou",
+      "filesWord": "arquivos",
+      "ran": "Executou",
+      "created": "Criou",
+      "deleted": "Excluiu"
+    }
+  },
+  "presentation": {
+    "status": {
+      "ready": "Pronta",
+      "working": "Trabalhando",
+      "needsApproval": "Precisa de aprovação",
+      "completed": "Concluída",
+      "stopped": "Parada",
+      "interrupted": "Interrompida",
+      "failed": "Falhou",
+      "preparing": "Preparando",
+      "needsAttention": "Precisa de atenção",
+      "paused": "Pausada",
+      "reopening": "Reabrindo",
+      "computerOffline": "Computador offline",
+      "answerNeeded": "Precisa de resposta",
+      "reviewPlan": "Revisar plano",
+      "planning": "Planejando"
+    },
+    "relative": {
+      "now": "agora",
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d"
+    },
+    "replaces": "substitui {skills}"
+  },
+  "reasoning": {
+    "levels": {
+      "none": "Nenhum",
+      "minimal": "Mínimo",
+      "low": "Baixo",
+      "medium": "Médio",
+      "high": "Alto",
+      "xhigh": "Extra alto",
+      "max": "Máximo"
+    },
+    "levelEffort": "Esforço: {level}",
+    "projectDefault": "Padrão do projeto",
+    "modelDefault": "Padrão do modelo",
+    "default": "Padrão",
+    "defaultEffort": "Esforço padrão"
+  },
+  "timeline": {
+    "failed": "Falhou",
+    "exitCode": "Código de saída {code}",
+    "failedCount": "{count, plural, one {# falhou} other {# falharam}}",
+    "workedFor": "Trabalhou por {duration}",
+    "worked": "Trabalhou",
+    "turnChanges": {
+      "ariaLabel": "Arquivos alterados neste turno",
+      "edited": "Editou {count, plural, one {# arquivo} other {# arquivos}}",
+      "review": "Revisar",
+      "more": "e mais {count}"
+    },
+    "preparingWorkspace": "Preparando o espaço de trabalho da tarefa…",
+    "preparingPlan": "Explorando e preparando um plano…",
+    "plan": {
+      "heading": "Plano",
+      "preparing": "O agente está preparando um plano…"
+    },
+    "childWork": {
+      "ariaLabel": "Trabalho paralelo do Codex",
+      "label": "Trabalho paralelo",
+      "worker": "Processo do Codex",
+      "working": "Trabalhando",
+      "stopped": "Parado",
+      "done": "Concluído"
+    },
+    "copyMessage": "Copiar mensagem",
+    "copyResponse": "Copiar resposta",
+    "agentMessageAriaLabel": "Mensagem do agente de código",
+    "record": {
+      "approvalDenied": "Aprovação negada",
+      "approvalResolved": "Aprovação resolvida",
+      "followUpDelivered": "Mensagem de acompanhamento entregue",
+      "requestRejected": "Solicitação rejeitada",
+      "taskStatus": "Status da tarefa"
+    },
+    "failureDetails": "Detalhes da falha",
+    "showEarlier": "Mostrar {count} atualizações anteriores"
+  },
+  "externalLink": {
+    "unsafeRepository": "Não é seguro abrir esse endereço de repositório.",
+    "openRepositoryFailed": "Não foi possível abrir esse repositório."
+  },
+  "commandLine": {
+    "unclosedQuote": "Feche as aspas do argumento do comando."
+  },
+  "queuedResume": {
+    "failed": "Não foi possível retomar a instrução na fila."
+  },
+  "session": {
+    "refreshFailed": "Não foi possível atualizar esta tarefa de código.",
+    "liveDisconnected": "As atualizações ao vivo foram desconectadas. Reconectando…",
+    "loadFailed": "Não foi possível carregar esta tarefa de código.",
+    "historyReconnecting": "O histórico da tarefa está se reconectando…"
+  },
+  "codeView": {
+    "resumeFailed": "Não foi possível retomar a tarefa.",
+    "recoveryOptionsFailed": "Não foi possível carregar as opções de recuperação.",
+    "projectActionFailed": "Não foi possível iniciar a ação do projeto.",
+    "loadingTasks": "Carregando tarefas de código…",
+    "restoringTask": "Restaurando a tarefa…",
+    "steerTimeout": "A tarefa não aceitou o redirecionamento a tempo. Se houver uma aprovação pendente, resolva-a primeiro e tente novamente.",
+    "stopTimeout": "A tarefa não confirmou o pedido de parada a tempo. Tente novamente.",
+    "commandUnavailable": "Os controles de /{command} ainda não estão disponíveis nesta versão.",
+    "projectCommandsNotUpdated": "Os comandos do projeto não foram atualizados.",
+    "restoreFailed": "Não foi possível restaurar esta tarefa de código.",
+    "applyBlocked": "As alterações podem ser aplicadas quando o turno atual terminar"
+  },
+  "api": {
+    "serviceStartFailed": "Não foi possível iniciar o serviço local do Code.",
+    "requestFailed": "A solicitação de código falhou ({status})",
+    "outdatedBackend": "Esta versão para desktop está conectada a um backend mais antigo que não oferece suporte ao Modo Código. Reinicie o app com a versão correspondente do cowork-server."
+  },
+  "composer": {
+    "checkingModes": "Verificando os modos de tarefa disponíveis…",
+    "modeUnavailable": "Este modo de tarefa não está disponível. Mude o modo antes de enviar.",
+    "dropHint": "Solte arquivos para anexá-los",
+    "placeholder": {
+      "queueWhileWaiting": "Coloque uma instrução na fila enquanto o agente aguarda…",
+      "steer": "Redirecione o trabalho atual…",
+      "followUp": "Adicione uma instrução para depois deste turno…",
+      "notStarted": "Inicie uma nova tarefa para continuar",
+      "recoverable": "Reabra a tarefa e diga como continuar…",
+      "refinePlan": "Ajuste o plano…",
+      "anotherChange": "Peça outra alteração…"
+    },
+    "inputAriaLabel": "Instrução de acompanhamento",
+    "whenBuilding": "Ao construir:",
+    "permissionsLocked": "As permissões podem ser alteradas quando o turno atual terminar",
+    "stopAriaLabel": "Parar o agente de código",
+    "stop": "Parar",
+    "deliveryAriaLabel": "Entrega da instrução",
+    "queue": "Na fila",
+    "steer": "Redirecionar",
+    "steerAriaLabel": "Redirecionar o turno atual",
+    "queueAriaLabel": "Colocar a instrução na fila",
+    "sendAriaLabel": "Enviar instrução",
+    "send": "Enviar"
+  },
+  "promptQueue": {
+    "ariaLabel": "Instruções na fila",
+    "queued": "{count, plural, =0 {Na fila} one {Na fila · # arquivo} other {Na fila · # arquivos}}",
+    "steerAriaLabel": "Redirecionar com a instrução na fila {position}",
+    "steer": "Redirecionar",
+    "removeAriaLabel": "Remover a instrução na fila {position}"
+  },
+  "slashMenu": {
+    "ariaLabel": "Comandos de código",
+    "label": "Comandos"
+  },
+  "mentionMenu": {
+    "ariaLabel": "Arquivos da tarefa",
+    "label": "Arquivos e pastas desta tarefa"
+  },
+  "composerAddMenu": {
+    "ariaLabel": "Adicionar",
+    "triggerAriaLabel": "Adicionar ao prompt",
+    "heading": "Adicionar",
+    "planMode": "Modo plano",
+    "planUnavailable": "Disponível quando o turno atual terminar",
+    "files": "Arquivos e pastas",
+    "planOffAriaLabel": "Desativar o modo plano",
+    "plan": "Plano"
+  },
+  "composerLip": {
+    "showMore": "{count, plural, one {Mostrar mais # aviso} other {Mostrar mais # avisos}}",
+    "addCredits": "Adicionar créditos",
+    "reopening": "Reabrindo…",
+    "reopen": "Reabrir tarefa",
+    "chooseModel": "Escolher modelo",
+    "chooseAnotherModel": "Escolher outro modelo",
+    "hideDetails": "Ocultar detalhes",
+    "showDetails": "Mostrar detalhes",
+    "details": "Detalhes",
+    "moreOptions": "Mais opções",
+    "dismiss": "Dispensar",
+    "viewBudgets": "Ver orçamentos"
+  },
+  "composerNotices": {
+    "thisModel": "Este modelo",
+    "insufficientCredits": {
+      "title": "{model} precisa de créditos",
+      "body": "Adicione créditos ou escolha outro modelo e continue nesta tarefa."
+    },
+    "authFailed": {
+      "title": "Seu login não corresponde a este servidor",
+      "body": "Entre novamente ou volte ao ambiente em que você entrou e continue nesta tarefa."
+    },
+    "modelUnavailable": {
+      "title": "{model} não está disponível",
+      "body": "Escolha outro modelo e continue nesta tarefa."
+    },
+    "rateLimited": {
+      "title": "O MindsHub está recebendo solicitações rápido demais",
+      "body": "Este turno parou. Aguarde um momento e continue nesta tarefa."
+    },
+    "allowanceExhausted": {
+      "title": "Seu saldo incluído acabou",
+      "body": "Adicione créditos para continuar agora ou aguarde a renovação do saldo e continue nesta tarefa."
+    },
+    "freeAirPaused": {
+      "title": "O MindsHub Air gratuito está pausado",
+      "body": "Ele volta quando o orçamento diário for reiniciado. Adicione créditos ou escolha outro modelo para continuar agora."
+    },
+    "notStarted": {
+      "title": "A tarefa não foi iniciada",
+      "body": "Não foi possível preparar o espaço de trabalho, então o agente nunca foi executado. Inicie uma nova tarefa quando o problema for resolvido."
+    },
+    "reopening": {
+      "title": "Reabrindo a tarefa",
+      "body": "Reconectando aos arquivos da tarefa…"
+    },
+    "paused": {
+      "title": "Tarefa pausada",
+      "offlineBody": "O computador da tarefa se desconectou. Sua conversa está segura; reabra-a lá ou escolha outro computador compatível.",
+      "interruptedBody": "O turno parou antes de terminar. Reabrir restaura a cópia de trabalho; envie uma mensagem para continuar o trabalho interrompido."
+    },
+    "restoreError": {
+      "title": "Não foi possível reabrir o espaço de trabalho desta tarefa",
+      "body": "{error}. O trabalho da tarefa continua salvo; tente novamente quando isso for resolvido."
+    },
+    "released": {
+      "body": "O espaço de trabalho desta tarefa foi guardado para economizar disco. Ele é reconstruído com todas as alterações quando você continuar ou revisá-lo."
+    },
+    "kept": {
+      "body": "{reason}, então ainda usa disco."
+    },
+    "budgetExceeded": {
+      "title": "O orçamento da sua organização acabou",
+      "body": "Um proprietário ou administrador pode aumentá-lo em Orçamentos, ou você pode escolher um modelo disponível para continuar nesta tarefa."
+    }
+  },
+  "planModeCommand": {
+    "label": "Modo plano",
+    "turnOn": "Ativar o modo plano",
+    "turnOff": "Desativar o modo plano"
+  },
+  "taskBar": {
+    "originalFolder": "Pasta original",
+    "isolatedFolders": "{count, plural, one {# pasta isolada} other {# pastas isoladas}}",
+    "isolatedCopy": "Cópia isolada",
+    "allProjectFiles": "Todos os arquivos do projeto",
+    "allProjectFolders": "{count, plural, one {A # pasta do projeto} other {Todas as # pastas do projeto}}",
+    "selectedFolders": "{count, plural, one {# pasta selecionada} other {# pastas selecionadas}}",
+    "openOriginalFolder": "Abrir pasta original",
+    "openIsolatedCopy": "Abrir cópia isolada",
+    "forkTask": "Bifurcar tarefa",
+    "taskSettings": "Configurações da tarefa",
+    "detailsMenuAriaLabel": "Cópia de trabalho e detalhes da tarefa",
+    "showDetailsAriaLabel": "Mostrar detalhes da tarefa para {label}",
+    "details": {
+      "title": "Configuração da tarefa",
+      "files": "Arquivos",
+      "branch": "Branch",
+      "computer": "Computador",
+      "agent": "Agente",
+      "model": "Modelo",
+      "folder": "Pasta"
+    },
+    "runAndPreviewAriaLabel": "Executar e visualizar",
+    "runAction": "Executar {action}",
+    "startingAction": "Iniciando {action}",
+    "starting": "Iniciando…",
+    "run": "Executar",
+    "runMenuAriaLabel": "Executar ação do projeto",
+    "chooseActionAriaLabel": "Escolha uma ação do projeto para executar",
+    "previewRunning": "Visualizar o projeto em execução",
+    "previewUnavailable": "Execute o projeto para ativar a visualização",
+    "preview": "Visualizar",
+    "surfacesAriaLabel": "Painéis da tarefa",
+    "files": "Arquivos",
+    "terminal": "Terminal",
+    "reviewChanges": "Revisar alterações",
+    "review": "Revisar",
+    "taskActionsAriaLabel": "Ações da tarefa de código"
+  },
+  "terminal": {
+    "status": {
+      "running": "Em execução",
+      "disconnected": "Desconectado",
+      "ready": "Pronto",
+      "exited": "Encerrado",
+      "exitedWithCode": "Encerrado com código {code}"
+    },
+    "errors": {
+      "open": "Não foi possível abrir o terminal.",
+      "actionTerminal": "A ação do projeto foi iniciada, mas não foi possível abrir o terminal dela.",
+      "refresh": "Não foi possível atualizar a lista de terminais.",
+      "create": "Não foi possível criar um terminal.",
+      "rename": "Não foi possível renomear o terminal.",
+      "close": "Não foi possível fechar o terminal.",
+      "stop": "Não foi possível parar o terminal.",
+      "restart": "Não foi possível reiniciar o terminal.",
+      "write": "Não foi possível escrever no terminal.",
+      "interrupted": "A conexão com o terminal foi interrompida. Troque de aba ou reabra o painel para reconectar.",
+      "unavailable": "O terminal não está disponível."
+    },
+    "ariaLabel": "Terminais da tarefa",
+    "resize": "Redimensionar terminal",
+    "tabs": "Abas de terminal",
+    "renameAriaLabel": "Renomear {label}",
+    "renameHint": "Clique duas vezes para renomear",
+    "tabAriaLabel": "{label}, {status}",
+    "closeAriaLabel": "Fechar {label}",
+    "limit": "Até {max} terminais por tarefa",
+    "new": "Novo terminal",
+    "stopHint": "Parar este terminal sem fechar a aba",
+    "stop": "Parar terminal",
+    "restart": "Reiniciar",
+    "hide": "Ocultar painel do terminal",
+    "opening": "Abrindo terminal…",
+    "empty": "Nenhum terminal aberto",
+    "output": "Saída do terminal"
+  },
+  "planDecision": {
+    "error": "Não foi possível continuar. Tente novamente.",
+    "label": "Revisar plano",
+    "kind": "Plano pronto",
+    "cancelRevision": "Cancelar revisão",
+    "revise": "Revisar plano",
+    "update": "Atualizar plano",
+    "build": "Construir a partir do plano",
+    "buildTooltip": "Constrói com as permissões selecionadas para esta tarefa",
+    "question": "Começar a construir a partir deste plano?",
+    "changesAriaLabel": "Alterações no plano",
+    "changesPlaceholder": "O que deve mudar no plano?"
+  },
+  "question": {
+    "error": "Não foi possível enviar suas respostas. Tente novamente.",
+    "label": "Perguntas do agente",
+    "kind": "{count, plural, one {Pergunta} other {# perguntas}}",
+    "sending": "Enviando…",
+    "continue": "Continuar",
+    "privateAnswer": "Resposta privada",
+    "ownAnswer": "Ou escreva sua própria resposta",
+    "yourAnswer": "Sua resposta"
+  },
+  "approval": {
+    "kinds": {
+      "command": {
+        "label": "Terminal",
+        "question": "Executar este comando?"
+      },
+      "fileChange": {
+        "label": "Alteração de arquivos",
+        "question": "Modificar arquivos protegidos?"
+      },
+      "network": {
+        "label": "Acesso",
+        "question": "Conceder acesso adicional?"
+      },
+      "elevated": {
+        "label": "Acesso elevado",
+        "question": "Aprovar a ação elevada?"
+      }
+    },
+    "deny": "Negar",
+    "alwaysAllow": "Sempre permitir",
+    "alwaysAllowTooltip": "Permitir isto agora e comandos semelhantes pelo resto desta tarefa",
+    "label": "Aprovação necessária",
+    "kind": "Aprovação",
+    "allowOnce": "Permitir uma vez",
+    "fallbackQuestion": "O agente precisa de aprovação"
+  },
+  "promptReferences": {
+    "desktopOnly": "Anexos de arquivos locais estão disponíveis no app para desktop.",
+    "ariaLabel": "Contexto anexado",
+    "removeAriaLabel": "Remover {name}"
+  }
+}

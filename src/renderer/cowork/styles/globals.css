@@ -3988,6 +3988,32 @@ body[data-theme="light"] .anton-inline-code {
   pointer-events: none;
   background: linear-gradient(to right, transparent, var(--surface-2));
 }
+/* A note in the steps list (MarkdownContent size="steps", ENG-4195): code
+   stays the small mono style with little padding, so a note holding a code
+   block or a code span keeps the step rows' rhythm. */
+.markdown-steps .anton-inline-code {
+  font-size: 0.92em;
+}
+/* Bold keeps the row's ink: the dark theme's brightest-ink emphasis (see
+   `body[data-theme="dark"] strong`) would make a note's bold outshine the
+   step rows around it. */
+body[data-theme] .markdown-steps :is(strong, b) {
+  color: inherit;
+}
+.markdown-steps .anton-code-block {
+  margin: 2px 0;
+  border-radius: var(--r);
+}
+.markdown-steps .anton-code-block-header {
+  padding: 2px 6px 0;
+}
+.markdown-steps .anton-code-block-pre {
+  padding: 2px 8px 6px;
+}
+.markdown-steps .anton-code-block-pre code.hljs {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
 .anton-code-block-overflow-note {
   padding: 0 14px 10px;
   font-family: var(--font-body);
@@ -4215,4 +4241,51 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 }
 @media (prefers-reduced-motion: reduce) {
   .compare-vs-orb { animation: none; }
+}
+
+/* Japanese (ENG-4149). Inter and JetBrains Mono have no kana or kanji, so
+   name Japanese faces right after them: Latin text keeps the brand faces,
+   Japanese text gets a Japanese face instead of whatever the OS falls back to
+   (on Windows that can be a Chinese one, which draws some kanji differently).
+   `lang` is set on <html> by the i18n runtime. */
+:root:lang(ja) {
+  --font-sans: 'Inter', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo UI',
+    'Noto Sans JP', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans JP', monospace;
+}
+/* Japanese has no spaces between words: break between characters, but never
+   before small kana or closing punctuation (kinsoku). */
+:lang(ja) {
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+/* Korean (ENG-4149): Hangul faces after the brand faces, as for Japanese.
+   Korean puts spaces between words, so break only there (keep-all), never
+   inside a word. */
+:root:lang(ko) {
+  --font-sans: 'Inter', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', ui-sans-serif,
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', monospace;
+}
+:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* Simplified Chinese (ENG-4149): Simplified Han faces after the brand faces.
+   Naming them matters: left to the fallback, macOS can pick a Japanese face
+   and draw some characters with Japanese glyph shapes. No spaces between
+   words, so break between characters, but never before closing punctuation. */
+:root:lang(zh) {
+  --font-sans: 'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', monospace;
+}
+:lang(zh) {
+  line-break: strict;
+  overflow-wrap: anywhere;
 }

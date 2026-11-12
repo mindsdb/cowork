@@ -36,6 +36,7 @@ import { Toast as BaseToast } from '@base-ui/react/toast';
 import { Check, TriangleAlert, CircleAlert, X } from 'lucide-react';
 import { Icon } from './Icon';
 import { cn } from '../../lib/cn';
+import { useTranslation } from '../../../lib/i18n';
 import { useNativeOverlay } from '../../lib/nativeOverlay';
 
 export const useToastManager = BaseToast.useToastManager;
@@ -88,6 +89,7 @@ function ToastList() {
 // The Base UI toast object carries app-defined fields (title/description/type)
 // under a broad generic; typed `any` here rather than fighting those generics.
 function ToastBubble({ toast }: { toast: any }) {
+  const { t } = useTranslation('shell');
   const icon = toast.type ? TYPE_ICON[toast.type] : undefined;
   return (
     <BaseToast.Root
@@ -122,7 +124,7 @@ function ToastBubble({ toast }: { toast: any }) {
         <BaseToast.Description className="text-ink-3 text-[12px]">{toast.description}</BaseToast.Description>
       )}
       <BaseToast.Close
-        aria-label="Dismiss"
+        aria-label={t('ui.toast.dismiss')}
         className="shrink-0 inline-flex items-center justify-center bg-transparent border-0 p-0 cursor-pointer opacity-70 hover:opacity-100"
       >
         {CLOSE_X}

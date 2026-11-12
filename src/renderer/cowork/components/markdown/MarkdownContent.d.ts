@@ -32,6 +32,8 @@ export interface MarkdownContentProps {
   complete?: boolean;
   conversationId?: string;
   dense?: boolean;
+  /* 'steps' is a note in the steps list: the step rows' size and colour. */
+  size?: 'default' | 'dense' | 'steps';
   variant?: string;
   enableForms?: boolean;
   enableCharts?: boolean;

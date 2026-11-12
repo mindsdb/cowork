@@ -6,6 +6,7 @@ import {
   type TerminalPage,
 } from './api';
 import { getTerminalShellPreference } from './terminalPreferences';
+import i18n from '../../lib/i18n';
 
 
 function terminalTheme() {
@@ -105,7 +106,7 @@ export function TerminalScreen({
           inputInFlight = true;
           codingApi.terminalInput(sessionId, terminalId, encodeBase64(data))
             .catch((reason) => {
-              if (!disposed) onError(reason instanceof Error ? reason.message : 'Could not write to terminal.');
+              if (!disposed) onError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.write', { ns: 'code' }));
             })
             .finally(() => {
               inputInFlight = false;
@@ -147,7 +148,7 @@ export function TerminalScreen({
           },
           () => {
             if (!disposed && !stopRequested.current && !isDisconnectExpected(terminalId) && statusRef.current === 'running') {
-              onError('Terminal connection interrupted. Switch tabs or reopen the panel to reconnect.');
+              onError(i18n.t('terminal.errors.interrupted', { ns: 'code' }));
             }
           },
         );
@@ -169,7 +170,7 @@ export function TerminalScreen({
         });
         resizeObserver.observe(containerRef.current);
       } catch (reason) {
-        if (!disposed) onError(reason instanceof Error ? reason.message : 'Terminal is unavailable.');
+        if (!disposed) onError(reason instanceof Error ? reason.message : i18n.t('terminal.errors.unavailable', { ns: 'code' }));
       }
     };
     void connect();
@@ -184,5 +185,5 @@ export function TerminalScreen({
     };
   }, [isDisconnectExpected, onError, onState, sessionId, terminalId]);
 
-  return <div ref={containerRef} className="code-terminal__screen" aria-label="Terminal output" />;
+  return <div ref={containerRef} className="code-terminal__screen" aria-label={i18n.t('terminal.output', { ns: 'code' })} />;
 }

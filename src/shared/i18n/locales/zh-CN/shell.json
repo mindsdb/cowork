@@ -1,0 +1,415 @@
+{
+  "common": {
+    "cancel": "取消",
+    "delete": "删除",
+    "keep": "保留",
+    "remove": "移除",
+    "time": {
+      "justNow": "刚刚",
+      "minutesShort": "{count} 分钟",
+      "hoursShort": "{count} 小时",
+      "daysShort": "{count} 天"
+    },
+    "opensInBrowser": "在浏览器中打开"
+  },
+  "ui": {
+    "actionBar": {
+      "moreActions": "更多操作"
+    },
+    "toast": {
+      "dismiss": "关闭"
+    },
+    "modal": {
+      "close": "关闭"
+    },
+    "select": {
+      "placeholder": "请选择…",
+      "selected": "已选择：{label}"
+    },
+    "combobox": {
+      "placeholder": "请选择",
+      "search": "搜索",
+      "empty": "无结果"
+    },
+    "field": {
+      "optional": "（可选）"
+    }
+  },
+  "rail": {
+    "context": {
+      "title": "上下文",
+      "memoryDescriptions": {
+        "lessons": "智能体在这里工作时学到的内容",
+        "rules": "智能体始终遵循的指令",
+        "profile": "你是谁，以及你喜欢的工作方式"
+      },
+      "attachmentFallbackName": "附件",
+      "attachmentFallbackLower": "附件",
+      "fileFallbackName": "文件",
+      "taskUploadActionsAriaLabel": "任务上传操作",
+      "instructions": "指令",
+      "deleteFile": "删除文件",
+      "deleteFileAriaLabel": "删除 {name}",
+      "openNamedInDrive": "在 Google Drive 中打开“{name}”",
+      "untitled": "未命名",
+      "openInDrive": "在 Google Drive 中打开",
+      "openNamedInNotion": "在 Notion 中打开“{name}”",
+      "openInNotion": "在 Notion 中打开",
+      "removeFromProjectFiles": "从项目文件中移除",
+      "removeFromProjectFilesAriaLabel": "从项目文件中移除 {name}",
+      "loadAttachmentsFailed": "无法加载附件",
+      "uploadFailed": "上传失败。",
+      "emptyMemories": "智能体会在你工作时不断学习，记忆将显示在这里。",
+      "dropToAdd": "拖放文件以添加到项目",
+      "projectFiles": "项目文件",
+      "addToProject": "向此项目添加文件",
+      "uploading": "正在上传…",
+      "attachFiles": "添加附件",
+      "connecting": "正在连接…",
+      "attachDriveFiles": "添加 Google Drive 文件",
+      "addDriveFilesFailed": "无法添加 Google Drive 文件。",
+      "addFromSharePoint": "从 SharePoint 添加文件",
+      "emptyProjectFiles": "添加文件，为智能体提供上下文。",
+      "truncated": "此文件夹中的文件超出了列表可显示的数量，因此部分文件未在此列出。",
+      "taskUploads": "任务上传",
+      "attachToTask": "向此任务添加附件",
+      "loadingAttachments": "正在加载附件…",
+      "emptyTaskUploads": "尚无附件，点击即可添加。",
+      "open": "打开",
+      "moveToProjectFiles": "移到项目文件",
+      "moveFailed": "无法移动文件。",
+      "projectMemory": "项目记忆",
+      "globalMemory": "全局记忆",
+      "projectMemorySubtitle": "项目 · {name}",
+      "globalScope": "全局",
+      "emptyMemory": "（记忆为空）",
+      "memoryPlaceholder": "记忆内容：你希望智能体记住什么？",
+      "deleteFileTitle": "删除“{name}”？",
+      "deleteFileMessage": "该文件将从项目工作文件夹中移除。此操作无法撤销。",
+      "deleteFileFailed": "无法删除文件。",
+      "removeDriveFileTitle": "从项目文件中移除“{name}”？",
+      "removeDriveFileMessage": "Cowork 将无法再访问此文件。Google Drive 中的文件本身不受影响。",
+      "removeFileFailed": "无法移除文件。",
+      "deleteAttachmentMessage": "该文件将从此任务的上传内容中移除，之后的对话轮次将无法看到它。此操作无法撤销。",
+      "deleteAttachmentFailed": "无法删除附件。"
+    },
+    "progress": {
+      "title": "进度"
+    },
+    "card": {
+      "collapse": "收起",
+      "expand": "展开"
+    },
+    "showMore": {
+      "less": "收起",
+      "more": "还有 {count} 项"
+    },
+    "scheduled": {
+      "title": "定时任务",
+      "empty": "这里还没有定时任务。"
+    },
+    "artifacts": {
+      "title": "产物",
+      "noServableFile": "此产物尚无可供显示的文件。",
+      "openFailed": "无法打开文件。",
+      "preview": "预览",
+      "openInOs": "在系统中打开",
+      "openInNewTab": "在新标签页中打开",
+      "download": "下载",
+      "deleteFailed": "删除失败。",
+      "empty": "尚无产物。智能体生成仪表板、报告和数据集时，会将它们保存在这里。",
+      "otherInProject": "此项目中的其他产物",
+      "published": "已发布",
+      "actionsAriaLabel": "产物操作",
+      "deleteTitle": "删除“{name}”？",
+      "deleteFallbackName": "产物",
+      "deleteMessage": "此产物将被永久删除；如果它当前处于共享状态，会先停止共享。此操作无法撤销。"
+    },
+    "shared": {
+      "loadFailed": "无法加载可复制的应用。",
+      "duplicateFailed": "无法复制此应用。",
+      "duplicate": "创建副本",
+      "duplicating": "正在创建副本…",
+      "duplicated": "已创建副本",
+      "haveCopyAriaLabel": "你已有 {name} 的副本",
+      "haveCopyTitle": "你已有一个副本。删除它后才能再次复制此应用。",
+      "duplicateAriaLabel": "创建 {name} 的副本",
+      "duplicatedToast": "已复制到此项目。"
+    }
+  },
+  "confirm": {
+    "title": "确定吗？",
+    "confirm": "确认"
+  },
+  "taskMenu": {
+    "schedule": "定时",
+    "turnIntoSkill": "转为技能",
+    "moveToProject": "移到项目…",
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "rename": "重命名",
+    "ariaLabel": "任务操作"
+  },
+  "themeModal": {
+    "title": "显示设置",
+    "subtitle": "主题和样式，即时生效",
+    "subtitleThemeOnly": "主题，即时生效",
+    "theme": "主题",
+    "light": "浅色",
+    "dark": "深色",
+    "style": "样式",
+    "skins": {
+      "normal": "标准",
+      "8bit": "8-Bit"
+    },
+    "setByOrg": {
+      "themeAndStyle": "主题和样式由你的组织设定。",
+      "theme": "主题由你的组织设定。",
+      "style": "样式由你的组织设定。"
+    }
+  },
+  "comingSoon": {
+    "cloudTitle": "即将登陆 Cloud",
+    "unavailableTitle": "功能不可用",
+    "cloudBodyNamed": "{feature} 暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
+    "cloudBody": "此功能暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
+    "unavailableBodyNamed": "{feature} 在此部署中不可用。",
+    "unavailableBody": "此功能在此部署中不可用。",
+    "notNow": "以后再说",
+    "download": "下载应用"
+  },
+  "loadStatus": {
+    "retry": "重试",
+    "failed": "无法加载 {what}。",
+    "loading": "正在加载 {what}…"
+  },
+  "upToDate": "已是最新版本",
+  "usageBar": {
+    "hideAllowance": "隐藏额度",
+    "hide": "隐藏"
+  },
+  "diagnostics": {
+    "copy": "复制诊断信息",
+    "copied": "已复制",
+    "copyFailed": "无法复制"
+  },
+  "appShell": {
+    "openSidebar": "打开边栏"
+  },
+  "workspace": {
+    "label": "工作区",
+    "archived": "该工作区已归档。请选择其他工作区。",
+    "switchFailed": "无法切换工作区。请重试。",
+    "manage": "管理工作区",
+    "triggerAriaLabel": "工作区：{name}"
+  },
+  "workspaceMode": {
+    "code": "代码"
+  },
+  "search": {
+    "label": "搜索 {product}",
+    "ariaLabel": "搜索",
+    "types": {
+      "task": "任务",
+      "project": "项目",
+      "artifact": "产物",
+      "attachment": "附件",
+      "schedule": "定时",
+      "pin": "置顶"
+    },
+    "recentTasks": "最近任务",
+    "failed": "搜索失败。",
+    "searching": "正在搜索...",
+    "noResults": "未在 {product} 中找到结果。",
+    "hint": "可搜索任务、项目、产物、附件、定时和置顶内容。",
+    "toNavigate": "切换",
+    "toOpen": "打开",
+    "toClose": "关闭"
+  },
+  "recents": {
+    "untitled": "未命名",
+    "deleteTask": "删除此任务",
+    "searchPlaceholder": "搜索最近任务…",
+    "searchAriaLabel": "搜索最近任务",
+    "count": "{shown}/{total}",
+    "noMatch": "没有匹配的任务。",
+    "empty": "暂无最近任务。",
+    "noProject": "（无项目）"
+  },
+  "serverHelp": {
+    "online": {
+      "title": "{agent} 后端正在运行",
+      "subtitle": "正在端口 {port} 上运行。本地 Python 服务器正在响应 /health。"
+    },
+    "starting": {
+      "title": "{agent} 后端正在启动…",
+      "subtitle": "正在启动本地 Python 服务器。通常只需几秒钟，窗口会自动显示结果。"
+    },
+    "stopping": {
+      "title": "{agent} 后端正在停止…",
+      "subtitle": "正在等待本地 Python 服务器终止。"
+    },
+    "stopped": {
+      "title": "{agent} 后端已停止",
+      "subtitle": "你已停止本地 Python 服务器。点击下方的“启动后端”即可重新启动。"
+    },
+    "failed": {
+      "title": "{agent} 后端未运行",
+      "subtitle": "本地 Python 服务器未能启动。下方显示了该进程最近的错误和日志末尾。"
+    },
+    "port": "端口",
+    "exitCode": "退出代码",
+    "lastAttempt": "上次尝试",
+    "noError": "未捕获到具体的启动错误。请查看下方的日志末尾，Python 进程可能在成功启动后终止了。",
+    "recentLog": "最近日志",
+    "noLog": "（尚未捕获日志）",
+    "actions": {
+      "start": "启动后端",
+      "starting": "正在启动…",
+      "restart": "重启后端",
+      "restarting": "正在重启…",
+      "stop": "停止后端",
+      "stopping": "正在停止…"
+    }
+  },
+  "userMenu": {
+    "switchOrgFailed": "无法切换组织。请重试。",
+    "changingOrg": "正在切换组织",
+    "organization": "组织",
+    "account": "账户",
+    "settings": "设置",
+    "billing": "账单与用量",
+    "members": "成员",
+    "help": "帮助与反馈",
+    "manageOrg": "管理组织",
+    "logout": "退出登录",
+    "signingOut": "正在退出登录…"
+  },
+  "sidebar": {
+    "soon": "即将推出",
+    "renameTask": "重命名任务",
+    "runs": "{count, plural, other {# 次运行}}",
+    "agentWorking": "{agent} 正在处理此任务",
+    "active": "进行中",
+    "taskMenu": "任务菜单",
+    "scheduledTask": "定时任务",
+    "expand": "展开边栏",
+    "collapse": "收起边栏",
+    "newTask": "新建任务",
+    "newCodeTask": "新建代码任务",
+    "nav": {
+      "projects": "项目",
+      "scheduled": "定时任务",
+      "artifacts": "实时产物",
+      "connectedApps": "已连接的应用和数据",
+      "connectApps": "连接应用和数据",
+      "allTasks": "所有任务",
+      "connectors": "连接器",
+      "skills": "技能",
+      "memories": "记忆",
+      "skillsLibrary": "技能库",
+      "compare": "对比模型"
+    },
+    "agent": "智能体",
+    "pinned": "已置顶",
+    "viewAllTasks": "查看所有任务",
+    "viewAll": "查看全部 →",
+    "loadingTasks": "正在加载任务",
+    "loadFailed": "无法加载你的任务。",
+    "noTasks": "暂无任务",
+    "showMore": "显示更多",
+    "update": {
+      "manualTooltip": "{product} 有新版本可用。请下载安装程序，退出应用后{step}",
+      "manualTooltipVersion": "{product} 有新版本可用（{version}）。请下载安装程序，退出应用后{step}",
+      "openToUpdate": "打开安装程序进行更新",
+      "dismiss": "关闭更新通知"
+    },
+    "status": {
+      "details": "后端状态：点击查看详情",
+      "backend": "后端 ·",
+      "starting": "正在启动",
+      "stopping": "正在停止",
+      "offline": "离线"
+    },
+    "settings": "设置",
+    "openSettings": "打开设置"
+  },
+  "mobile": {
+    "tasks": "任务",
+    "titles": {
+      "newTaskIn": "新建任务 · {project}",
+      "conversation": "对话",
+      "scheduled": "定时任务",
+      "connect": "连接"
+    },
+    "closeMenu": "关闭菜单",
+    "openMenu": "打开菜单",
+    "switchToLight": "切换到浅色模式",
+    "switchToDark": "切换到深色模式",
+    "inProject": "位于 {project}",
+    "newProject": "新建项目",
+    "closeCreateMenu": "关闭新建菜单",
+    "createNew": "新建",
+    "chat": "对话",
+    "chatSubtitle": "开始或继续对话",
+    "noProjects": "暂无项目。",
+    "tapToStart": "轻点即可开始对话",
+    "taskCount": "{count, plural, other {# 个任务}}",
+    "noScheduled": "暂无定时任务。",
+    "schedule": "定时",
+    "noArtifacts": "暂无实时产物。",
+    "viewAllArtifacts": "查看所有产物",
+    "total": "共 {count} 个",
+    "noTasks": "暂无任务。",
+    "untitledTask": "未命名任务",
+    "seeAllTasks": "查看所有任务"
+  },
+  "dispatch": {
+    "qrAriaLabel": "装饰性配对码",
+    "defaultAgent": "智能体",
+    "title": "Dispatch",
+    "heading": "与 {product} Mobile 应用配对",
+    "body": "{agent} 在你的电脑上工作时，你可以用移动应用与它对话。扫描二维码即可在手机上下载。",
+    "signedIn": "我已在手机上登录",
+    "comingSoon": "即将推出",
+    "later": "稍后设置"
+  },
+  "tasks": {
+    "sort": {
+      "recent": "最近",
+      "name": "名称（A–Z）",
+      "project": "项目"
+    },
+    "allProjects": "所有项目",
+    "subtitle": "所有项目中的全部对话。排序、筛选，一键直达。",
+    "searchPlaceholder": "搜索任务",
+    "countFiltered": "{shown}/{total} 个任务",
+    "noMatch": "没有符合筛选条件的任务。",
+    "clearFilters": "清除筛选",
+    "emptyDescription": "在首页开始对话，所有对话都会显示在这里。"
+  },
+  "home": {
+    "greetingFallback": "来，先搞定待办清单上的一件事",
+    "active": "进行中",
+    "clearActive": "清除进行中",
+    "connectProvider": {
+      "title": "连接提供商，开始对话",
+      "operatorTitle": "需要设置提供商",
+      "body": "从 MindsHub 开始，即可获得 MindsHub Air 的免费额度，之后按用量付费。你也可以在“设置”中添加自己的 API 密钥（Anthropic、OpenAI 或任何兼容 OpenAI 的端点）。",
+      "operatorBody": "开始任务前，请让运营方配置模型提供商。",
+      "startFree": "免费开始"
+    },
+    "handoffHint": "编辑此提示词，准备好后再发送。"
+  },
+  "logout": {
+    "title": "退出 {product} 登录？",
+    "messageWebMindsHub": "这将使你退出 Cowork。要继续使用，你需要使用 MindsHub 重新登录。",
+    "messageWeb": "这将使你退出 {product}。要继续使用，你需要重新登录。",
+    "messageDesktop": "这将结束你的 MindsHub 会话，并移除 Cowork 中为此账户保存的 AI 提供商 API 密钥，每个组织会在下次使用前清除。项目、文件、已连接的应用和数据连接（包括其中保存的密码）都会保留在此处。要继续使用 Cowork，你需要重新登录。",
+    "paneSubtitle": "结束你的 MindsHub 会话，并移除 Cowork 中为此账户保存的 AI 提供商 API 密钥。未打开的组织会在下次使用前清除。项目、文件、已连接的应用和数据连接（包括其中保存的密码）都会保留在此设备上。",
+    "tooltip": "退出登录并移除已保存的 API 密钥",
+    "confirm": "退出登录",
+    "failed": "无法完成退出登录。请重试。",
+    "waitNote": "仍在退出登录。你可以关闭此窗口，退出会自动完成。"
+  }
+}

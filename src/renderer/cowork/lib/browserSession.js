@@ -1,3 +1,6 @@
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.browserSession.${key}`, { ns: 'projects', ...vars });
 /* The shared browser: the agent opened the person's browser, and on the web
    the chat shows its live viewer beside the conversation.
 
@@ -67,7 +70,7 @@ export function browserStep(event, eventTs) {
   if (!sessionId) return null;
   return {
     id: `browser-${sessionId}`,
-    label: 'Opened the browser',
+    label: tr('opened'),
     badge: BROWSER_BADGE,
     icon: 'globe',
     status: 'completed',

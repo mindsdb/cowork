@@ -79,6 +79,9 @@ vi.mock('./lib/analytics', () => ({
   trackFirstResponse: vi.fn(),
   classifyFirstResponse: vi.fn(() => null),
   trackKeyProvisioningRefused: (...args) => spies.trackKeyProvisioningRefused(...args),
+  trackAddonAdded: vi.fn(),
+  trackAddonQueued: vi.fn(),
+  trackAddonOverridden: vi.fn(),
 }));
 
 import App from './App';

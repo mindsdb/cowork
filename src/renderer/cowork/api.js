@@ -8,12 +8,14 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // dev / web are same-origin (proxied), so getApiOrigin() returns the page
 // origin. Routing through host keeps the port in one place.
 
-import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
+import { iterateSSE } from './lib/responseStreamAdapter';
+import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
 import { isAntonConfigError } from './lib/antonErrors';
+import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
-import { relativeAge } from './lib/formatTime';
 import { withoutNotionPageNotes, stripNotionPageNoteFromTitle } from './lib/notionPageNote';
+import { currentServerLocale } from '../lib/i18n';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
@@ -71,7 +73,14 @@ function _untilAborted(promise, signal) {
 // COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
 // (src/main/app.ts). That token never reaches the renderer and is NOT the
 // Keycloak token, so nothing is attached here.
+//
+// Both: every request carries the UI language as X-Cowork-UI-Locale (one of
+// SUPPORTED_LOCALES), so cowork-server can tell Anton which language to fall
+// back to (ENG-4149). Its own header, not Accept-Language, which browsers send
+// on their own; and only while the language picker is on. A caller's own
+// header wins.
 export async function authFetch(url, options = {}) {
+  options = withUiLocale(options);
   if (host.isWeb) {
     const token = await _untilAborted(host.getAccessToken(), options.signal);
     if (token) {
@@ -90,6 +99,27 @@ export async function authFetch(url, options = {}) {
     throw new Error('The active organization changed; reload required');
   }
   return response;
+}
+
+function hasHeader(headers, name) {
+  if (!headers) return false;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) return headers.has(name);
+  const wanted = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === wanted);
+}
+
+export const UI_LOCALE_HEADER = 'X-Cowork-UI-Locale';
+
+export function withUiLocale(options = {}) {
+  if (hasHeader(options.headers, UI_LOCALE_HEADER)) return options;
+  const locale = currentServerLocale();
+  if (!locale) return options;
+  if (typeof Headers !== 'undefined' && options.headers instanceof Headers) {
+    const headers = new Headers(options.headers);
+    headers.set(UI_LOCALE_HEADER, locale);
+    return { ...options, headers };
+  }
+  return { ...options, headers: { ...(options.headers || {}), [UI_LOCALE_HEADER]: locale } };
 }
 
 /* Opt-in bound for a plain JSON request, so a dead server (a proxy holding
@@ -337,11 +367,10 @@ function _hydrateAssistantEvents(messages) {
       out.push(m);
       continue;
     }
-    let state = initialStreamState();
-    for (const ev of m.events) {
-      try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
-    }
+    const state = reduceServerEvents(m.events, null);
     const { events: _drop, ...rest } = m;
+    // The turn's response id, so an add-on saved against it can find it.
+    if (state.responseId) rest._responseId = state.responseId;
     const turnComplete = state.status === 'done' || state.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
     out.push({
@@ -352,6 +381,12 @@ function _hydrateAssistantEvents(messages) {
       ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
       ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
+      // The answer the live turn showed, not the saved text that joins every
+      // round: earlier rounds' narration is already in the steps as Notes.
+      // Every conversation open and every refetch after a turn ends comes
+      // through here, so without it a finished answer gained its narration
+      // back the moment the chat refetched it (ENG-4194).
+      ...(replayedAnswer(state, rest.content) || {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
@@ -377,14 +412,14 @@ function _hydrateAssistantEvents(messages) {
       }
     }
   }
-  return out;
+  // Messages added to a running turn (ENG-4194) render inside that turn.
+  return foldAddonMessages(out);
 }
 
 function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
-  // Server stores conversations under <project>/.anton/episodes/ and
-  // returns the project NAME on each conversation meta. We carry both:
-  //   projectName — the canonical id from the server
-  //   projectPath — resolved later from the projects list (App.jsx)
+  // The server returns each conversation's project by name, id and folder:
+  // projectName, projectId and projectPath below. The id is the stable one;
+  // a rename changes the name.
   //
   // Each assistant message may carry an `events` array — the SSE log
   // captured server-side for that turn. Replaying it through the live
@@ -402,10 +437,16 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
       .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
     : undefined;
 
+  /* `conv` is cowork-server's ConversationListItem, which both
+     GET /conversations/ and GET /conversations/{id} send in camelCase
+     (CamelResponse), so its two-word fields are read by their camelCase
+     names. */
   return {
     id: conv.id,
     title: stripNotionPageNoteFromTitle(conv.title || conv.preview) || conv.id || 'Untitled task',
-    subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
+    // The server sends no subtitle. A row ages from updatedAt when it renders;
+    // an age stamped here goes stale, and chatTaskRow shows it as a second line.
+    subtitle: '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
     // 'loading' until a real fetch resolves — every sidebar-listed
@@ -416,10 +457,11 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     // conversation-list caller (fetchSessions) passes 'loading' explicitly.
     messagesStatus,
     projectName: conv.project || null,
-    projectId: conv.project_id || null,
-    projectPath: conv.project_path || null,
+    projectId: conv.projectId || null,
+    projectPath: conv.projectPath || null,
     harness: conv.harness || null,
     model: conv.model || null,
+    reasoningEffort: conv.reasoningEffort || null,
     attachments: [],
     disabledConnections,
     // Kept on this device, like the mutes (lib/taskBrowser).
@@ -431,8 +473,8 @@ function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } 
     // conversations created by `_run_schedule`; null for chat-
     // initiated conversations.
     scheduledId: conv.scheduled_id || conv.scheduledId || null,
-    updatedAt: conv.updated_at || conv.updatedAt || null,
-    createdAt: conv.created_at || conv.createdAt || null,
+    updatedAt: conv.updatedAt || null,
+    createdAt: conv.createdAt || null,
   };
 }
 
@@ -719,12 +761,24 @@ function idleWindowAfter(msg, idleTimeoutMs) {
   return timeoutS * 1000 + idleTimeoutMs;
 }
 
+// The controller a turn's stream hands back (ENG-4194): an AbortController
+// that also lets the app put its own `response.addon` rows through this
+// stream's reducer (`injectEvent`), so they sit in the turn exactly where server
+// events do, and carries the running turn's response id, which an add-on
+// request names (set once `response.created` arrives).
+function turnStreamController(onEvent) {
+  const ctrl = new AbortController();
+  ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
+  ctrl.responseId = null;
+  return ctrl;
+}
+
 // Streams a /v1/responses request. Maps OpenAI-style typed events to the
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
-  const ctrl = new AbortController();
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+  const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -747,7 +801,8 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // picker (lib/modelPicker) sends a model, and App hands it only the
   // models that picker offers. With it off, all callers use
   // operator-configured role settings, including restored tasks.
-  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
+  const sendsPicks = PLATFORM_UI || modelPickerMode() !== 'off';
+  const sentModel = (sendsPicks && model && model !== MODEL_ROUTER_ID) ? model : null;
   // A per-task effort is available with platform UI on, and under the
   // operator's picker for an effort it lets users pick on the model this
   // question sends, a retried task's saved effort included. Omit the key
@@ -769,6 +824,10 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
           ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
+          // The picks this question goes back to the default on (App's
+          // turnResetPicks), so the server clears the saved ones. Only where
+          // this client sends picks at all, and only when there is one.
+          ...(sendsPicks && resetPicks.length ? { reset_picks: resetPicks } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -824,6 +883,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
 
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
           bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
 
           // Raw passthrough — used by the streamAdapter to build a
@@ -950,7 +1010,7 @@ export function tailInFlight(conversationId, {
   idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
-  const ctrl = new AbortController();
+  const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -1002,6 +1062,7 @@ export function tailInFlight(conversationId, {
           try { msg = JSON.parse(raw); } catch { continue; }
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
           bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
           onEvent?.(msg);
           switch (msg.type) {
@@ -1224,6 +1285,80 @@ export async function submitAnswer(conversationId, questionId, answer) {
     if (status === 404) return { status: 'not_found' };
     if (status === 409) return { status: 'already_answered' };
     if (status === 400) return { status: 'rejected' };
+    return { status: 'error' };
+  }
+}
+
+/** Keep the running turn's response id on its stream handle (ENG-4194). */
+function noteResponseId(ctrl, msg) {
+  if (msg?.type === 'response.created' && msg.response?.id) ctrl.responseId = String(msg.response.id);
+}
+
+/**
+ * Offer a message sent while a turn runs to that turn (ENG-4194). The server
+ * asks Jev whether it belongs to the running task; `force` is the person's own
+ * "Add to current task" and skips that question. `responseId` is the running
+ * turn's id (from its `response.created`); `localKey` is the app's own key for
+ * the row (≤64 chars of [A-Za-z0-9_-], dropped otherwise).
+ *
+ * Never throws. Answers `{status: 'added', addon_id, decided_by}`, or a status
+ * the caller queues on: the server's `queued` (with its reason), `not_found`
+ * (no running turn), `unsupported` (an older server without the route),
+ * `timeout` (no verdict within the window) or `error`.
+ */
+export async function sendAddon(conversationId, text, {
+  force = false, responseId = null, localKey = null, timeoutMs = ADDON_REQUEST_TIMEOUT_MS,
+} = {}) {
+  if (!conversationId) return { status: 'not_found' };
+  try {
+    const res = await req('/responses/addon', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        text,
+        ...(force ? { force: true } : {}),
+        // The turn this was typed against, so the server never adds it to a
+        // later one; and the app's own key for its row, echoed on the
+        // stream's `response.addon` events.
+        ...(responseId ? { response_id: String(responseId) } : {}),
+        ...(isValidLocalKey(localKey) ? { local_key: localKey } : {}),
+      }),
+      timeoutMs,
+    });
+    return res && typeof res === 'object' ? res : { status: 'error' };
+  } catch (err) {
+    if (err?.name === 'AbortError') return { status: 'timeout' };
+    const status = err?.status;
+    // An older server has no such route: FastAPI's plain 404 or a 405. A 404
+    // from the route itself (`{"status":"not_found"}`) means no running turn;
+    // both end the same way, in the queue.
+    if (status === 404) {
+      const body = err?.body;
+      const said = body?.status ?? body?.detail?.status;
+      return { status: said === 'not_found' ? 'not_found' : 'unsupported' };
+    }
+    if (status === 405) return { status: 'unsupported' };
+    return { status: 'error' };
+  }
+}
+
+/**
+ * Take an added message back out of the running turn ("Move to queue").
+ * `withdrawn` means Anton never saw it; `already_read` means it is too late.
+ */
+export async function withdrawAddon(conversationId, addonId) {
+  if (!conversationId || !addonId) return { status: 'not_found' };
+  try {
+    const res = await req('/responses/addon/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId, addon_id: addonId }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+    return res && typeof res === 'object' ? res : { status: 'error' };
+  } catch (err) {
+    const status = err?.status;
+    if (status === 409) return { status: 'already_read' };
+    if (status === 404) return { status: 'not_found' };
     return { status: 'error' };
   }
 }
@@ -2625,7 +2760,7 @@ export function streamDataVaultSubmission({
   idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
-  const ctrl = new AbortController();
+  const ctrl = turnStreamController(onEvent);
   /*
    * Same idle timer as _streamResponse. Without it a submission that never
    * answers keeps its conversation's stream record forever, and every message
@@ -2674,6 +2809,7 @@ export function streamDataVaultSubmission({
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
+          noteResponseId(ctrl, msg);
           bumpIdle();
 
           onEvent?.(msg);
@@ -2805,6 +2941,21 @@ export async function listArtifactVersions(path) {
 // URL is stable). Static artifacts only; the server rejects fullstack apps.
 export async function activateArtifactVersion(path, md5) {
   return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
+}
+
+// View stats of a published artifact for its owner. Same path addressing as
+// /publish/versions; an empty path would only earn a 400, so it is refused here.
+export async function fetchPublishStats(path) {
+  if (!path) throw new Error('Artifact has no path');
+  return req(`/publish/stats?path=${encodeURIComponent(path)}`);
+}
+
+export async function setPublishTracking(path, enabled) {
+  if (!path) throw new Error('Artifact has no path');
+  return req('/publish/stats/tracking', {
+    method: 'PUT',
+    body: JSON.stringify({ path, enabled }),
+  });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the

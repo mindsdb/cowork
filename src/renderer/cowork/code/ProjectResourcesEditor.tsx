@@ -18,6 +18,7 @@ import {
   type ResourceAvailability,
   type GitHubRepository,
 } from './api';
+import { useTranslation } from '../../lib/i18n';
 
 
 function resourceId(value: string): string {
@@ -76,6 +77,7 @@ export function ProjectResourcesEditor({
   // Creating a project takes one source; more are added from Project settings.
   allowMultiple?: boolean;
 }) {
+  const { t } = useTranslation('code');
   const [repositoryOpen, setRepositoryOpen] = useState(false);
   const repositoryTrigger = useRef<HTMLButtonElement>(null);
   // The trigger swaps from the empty-state choice to "Add repository" once a
@@ -94,11 +96,11 @@ export function ProjectResourcesEditor({
   const addFromComputer = async () => {
     const result = await host.pickCodeFolder();
     if (!result.ok || !result.path) {
-      if (!result.cancelled) onError(result.reason || 'Could not choose that folder.');
+      if (!result.cancelled) onError(result.reason || t('projectResources.errors.chooseFolder'));
       return;
     }
     if (resources.some((item) => resourceLocation(item).toLowerCase() === result.path?.toLowerCase())) {
-      onError('That resource is already in this project.');
+      onError(t('projectResources.errors.duplicateResource'));
       return;
     }
     const name = result.path.split(/[\\/]/).filter(Boolean).at(-1) || 'Folder';
@@ -111,7 +113,7 @@ export function ProjectResourcesEditor({
       if (!resources.length) onFirstResource(name);
       onError('');
     } catch (reason) {
-      onError(reason instanceof Error ? reason.message : 'Could not inspect that folder.');
+      onError(reason instanceof Error ? reason.message : t('projectResources.errors.inspectFolder'));
     } finally {
       setAdding(false);
     }
@@ -120,11 +122,11 @@ export function ProjectResourcesEditor({
   const addRepository = (value: string, repository?: GitHubRepository) => {
     const url = value.trim();
     if (!/^(https:\/\/|ssh:\/\/|git@)[^\s]+$/i.test(url)) {
-      onError('Enter a Git repository URL, such as https://github.com/org/repository.git.');
+      onError(t('projectResources.errors.invalidUrl', { example: 'https://github.com/org/repository.git' }));
       return;
     }
     if (resources.some((item) => item.kind === 'repository' && item.source_url && repositoryKey(item.source_url) === repositoryKey(url))) {
-      onError('That repository is already in this project.');
+      onError(t('projectResources.errors.duplicateRepository'));
       return;
     }
     const name = repositoryName(url);
@@ -168,7 +170,7 @@ export function ProjectResourcesEditor({
   );
 
   return (
-    <FieldSet legend="Code">
+    <FieldSet legend={t('projectResources.title')}>
 
       {resources.length ? (
         <div className="code-project-list">
@@ -178,10 +180,10 @@ export function ProjectResourcesEditor({
             const portable = resource.kind === 'repository' && !!resource.source_url;
             const location = resourceLocation(resource);
             const status = state?.status === 'offline'
-              ? `${owner?.name || 'Computer'} offline`
+              ? (owner?.name ? t('projectResources.status.offline', { computer: owner.name }) : t('projectResources.status.computerOffline'))
               : portable
-                ? 'Any computer'
-                : `Only ${owner?.name || 'this computer'}`;
+                ? t('projectResources.status.anyComputer')
+                : (owner?.name ? t('projectResources.status.only', { computer: owner.name }) : t('projectResources.status.onlyThisComputer'));
             const commandsVisible = commandsOpen.has(resource.id);
             const phases = (['setup', 'validate', 'run'] as const).filter((phase) => (commandDrafts[`${resource.id}:${phase}`] ?? commandValue(resource.commands, phase).join(' ')).trim());
             const commandsSummary = [resource.kind === 'repository' ? resource.default_branch : '', ...phases].filter(Boolean).join(' · ');
@@ -213,26 +215,26 @@ export function ProjectResourcesEditor({
                 >
                     {resource.kind === 'repository' && (
                       <label>
-                        <span>Base branch</span>
-                        <Input size="sm" value={resource.default_branch || ''} onChange={(value) => updateRepository(resource.id, { default_branch: value || null })} placeholder="Repository default" />
+                        <span>{t('projectResources.baseBranch')}</span>
+                        <Input size="sm" value={resource.default_branch || ''} onChange={(value) => updateRepository(resource.id, { default_branch: value || null })} placeholder={t('projectResources.baseBranchPlaceholder')} />
                       </label>
                     )}
-                    <span className="code-project-resource__commands-label">Commands <span className="code-project-optional">(optional)</span></span>
+                    <span className="code-project-resource__commands-label">{t('projectResources.commands')} <span className="code-project-optional">{t('projectResources.optional')}</span></span>
                     <label>
-                      <span>Setup</span>
-                      <Input size="sm" variant="mono" aria-label="Setup command" value={commandDrafts[`${resource.id}:setup`] ?? commandValue(resource.commands, 'setup').join(' ')} onChange={(value) => onCommandChange(resource.id, 'setup', value)} placeholder="npm install" />
+                      <span>{t('projectResources.setup')}</span>
+                      <Input size="sm" variant="mono" aria-label={t('projectResources.setupAriaLabel')} value={commandDrafts[`${resource.id}:setup`] ?? commandValue(resource.commands, 'setup').join(' ')} onChange={(value) => onCommandChange(resource.id, 'setup', value)} placeholder="npm install" />
                     </label>
                     <label>
-                      <span>Validate</span>
-                      <Input size="sm" variant="mono" aria-label="Validation command" value={commandDrafts[`${resource.id}:validate`] ?? commandValue(resource.commands, 'validate').join(' ')} onChange={(value) => onCommandChange(resource.id, 'validate', value)} placeholder="npm test" />
+                      <span>{t('projectResources.validate')}</span>
+                      <Input size="sm" variant="mono" aria-label={t('projectResources.validateAriaLabel')} value={commandDrafts[`${resource.id}:validate`] ?? commandValue(resource.commands, 'validate').join(' ')} onChange={(value) => onCommandChange(resource.id, 'validate', value)} placeholder="npm test" />
                     </label>
                     <label>
-                      <span>Run</span>
-                      <Input size="sm" variant="mono" aria-label="Run command" value={commandDrafts[`${resource.id}:run`] ?? commandValue(resource.commands, 'run').join(' ')} onChange={(value) => onCommandChange(resource.id, 'run', value)} placeholder="npm run dev" />
+                      <span>{t('projectResources.run')}</span>
+                      <Input size="sm" variant="mono" aria-label={t('projectResources.runAriaLabel')} value={commandDrafts[`${resource.id}:run`] ?? commandValue(resource.commands, 'run').join(' ')} onChange={(value) => onCommandChange(resource.id, 'run', value)} placeholder="npm run dev" />
                     </label>
                 </Collapsible>
-                <Tooltip content="Remove">
-                  <Button icon size="sm" variant="subtle" className="code-project-resource__remove" aria-label={`Remove ${resource.name}`} onClick={() => {
+                <Tooltip content={t('projectResources.remove')}>
+                  <Button icon size="sm" variant="subtle" className="code-project-resource__remove" aria-label={t('projectResources.removeAriaLabel', { name: resource.name })} onClick={() => {
                     onChange(resources.filter((item) => item.id !== resource.id));
                   }}>{Ico.close(12)}</Button>
                 </Tooltip>
@@ -241,10 +243,10 @@ export function ProjectResourcesEditor({
           })}
           {allowMultiple && <div className="code-project-list__actions">
             <Button size="sm" variant="subtle" disabled={disabled || adding} onClick={() => void addFromComputer()}>
-              {Ico.folder(14)} {adding ? 'Adding…' : 'Add folder'}
+              {Ico.folder(14)} {adding ? t('projectResources.adding') : t('projectResources.addFolder')}
             </Button>
             <Button ref={repositoryTrigger} size="sm" variant="subtle" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
-              {Ico.plus(14)} Add repository
+              {Ico.plus(14)} {t('projectResources.addRepository')}
             </Button>
           </div>}
         </div>
@@ -252,11 +254,11 @@ export function ProjectResourcesEditor({
         <div className="code-project-choices">
           <button type="button" className="code-project-choice" disabled={disabled || adding} onClick={() => void addFromComputer()}>
             <span className="code-project-choice__icon" aria-hidden="true">{Ico.folder(16)}</span>
-            <span><strong>{adding ? 'Adding…' : 'Choose a folder'}</strong><small>Runs on this computer</small></span>
+            <span><strong>{adding ? t('projectResources.adding') : t('projectResources.chooseFolder')}</strong><small>{t('projectResources.runsOnThisComputer')}</small></span>
           </button>
           <button ref={repositoryTrigger} type="button" className="code-project-choice" disabled={disabled} aria-expanded={repositoryOpen} onClick={() => setRepositoryOpen((value) => !value)}>
             <span className="code-project-choice__icon" aria-hidden="true">{Ico.code(16)}</span>
-            <span><strong>Clone a repository</strong><small>Runs on any computer</small></span>
+            <span><strong>{t('projectResources.cloneRepository')}</strong><small>{t('projectResources.runsOnAnyComputer')}</small></span>
           </button>
         </div>
       )}

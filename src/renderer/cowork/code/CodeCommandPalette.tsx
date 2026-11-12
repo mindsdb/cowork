@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { useTranslation } from '../../lib/i18n';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -44,6 +45,7 @@ export function useCodePaletteItems({
   query: string | null;
   projectId?: string | null;
 }): CodePaletteItem[] {
+  const { t } = useTranslation('code');
   const skills = useSkillLibrary(projectId).page.items;
 
   return useMemo(() => {
@@ -62,7 +64,7 @@ export function useCodePaletteItems({
         section: 'skills' as const,
         invocation: skillInvocation(skill),
         label: skill.name,
-        description: skill.description || 'MindsHub skill',
+        description: skill.description || t('commandPalette.skillFallback'),
         scope: [skill.source_name, skillSupersedesHint(skill)].filter(Boolean).join(' · '),
         skill,
       }));
@@ -88,7 +90,7 @@ export function useCodePaletteItems({
       }));
 
     return [...uniqueSkillItems, ...commandItems];
-  }, [commands, query, skills]);
+  }, [commands, query, skills, t]);
 }
 
 export function CodeCommandPalette({
@@ -112,6 +114,7 @@ export function CodeCommandPalette({
   onViewSkill: (skill: SkillLibraryItem) => void;
   onDismiss: () => void;
 }) {
+  const { t } = useTranslation('code');
   const paletteRef = useRef<HTMLDivElement>(null);
   const [availableHeight, setAvailableHeight] = useState<number>();
   const skills = items.filter((item) => item.section === 'skills');
@@ -185,10 +188,10 @@ export function CodeCommandPalette({
             size="xxs"
             variant="subtle"
             className="code-command-palette__view"
-            aria-label={`View ${item.label}`}
+            aria-label={t('skills.view.viewItem', { name: item.label })}
             onClick={() => onViewSkill(item.skill)}
           >
-            View
+            {t('commandPalette.view')}
           </Button>
         )}
       </div>
@@ -200,7 +203,7 @@ export function CodeCommandPalette({
       ref={paletteRef}
       className="code-command-palette"
       role="listbox"
-      aria-label="Skills and commands"
+      aria-label={t('commandPalette.ariaLabel')}
       style={availableHeight ? { maxHeight: availableHeight } : undefined}
       onKeyDown={handleKeyDown}
     >
@@ -210,29 +213,29 @@ export function CodeCommandPalette({
           onChange={onQueryChange}
           size="sm"
           leading={Ico.search(14)}
-          placeholder="Search skills and commands"
-          aria-label="Search skills and commands"
+          placeholder={t('commandPalette.search')}
+          aria-label={t('commandPalette.search')}
         />
       </div>
       <div className="code-command-palette__list">
         {skills.length > 0 && (
-          <section aria-label="MindsHub skills">
+          <section aria-label={t('commandPalette.skillsSection')}>
             <div className="code-command-palette__section section-label">
-              <span>MindsHub skills</span>
+              <span>{t('commandPalette.skillsSection')}</span>
             </div>
             {skills.map(renderItem)}
           </section>
         )}
         {commands.length > 0 && (
-          <section aria-label={`${agentLabel} commands`}>
+          <section aria-label={t('commandPalette.commandsSection', { agent: agentLabel })}>
             <div className="code-command-palette__section section-label">
-              <span>{agentLabel} commands</span>
+              <span>{t('commandPalette.commandsSection', { agent: agentLabel })}</span>
             </div>
             {commands.map(renderItem)}
           </section>
         )}
         {!items.length && (
-          <div className="code-command-palette__empty">No matching skills or commands</div>
+          <div className="code-command-palette__empty">{t('commandPalette.empty')}</div>
         )}
       </div>
     </div>

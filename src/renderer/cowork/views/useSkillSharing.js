@@ -16,9 +16,9 @@ import { useOrgMode } from '../../lib/orgMode';
 import { useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { setSkillAccessAndSync } from '../lib/skillsStore';
 import {
-  MINDSHUB_UNREACHABLE_EDIT,
-  MINDSHUB_UNREACHABLE_PERMISSIONS,
-  MINDSHUB_UNREACHABLE_TEAMS,
+  mindsHubUnreachableEdit,
+  mindsHubUnreachablePermissions,
+  mindsHubUnreachableTeams,
   alwaysOnHelp,
   canChangeSkillAudience,
   canEditSkill,
@@ -34,11 +34,7 @@ import {
   teamsUnknown,
 } from '../lib/orgSharing';
 import { LOAD_STATUS, readAudienceRequest } from '../lib/sharingContract';
-
-/* The detail note on an always-on skill someone else shares with a team or
-   with everyone. */
-export const ALWAYS_ON_DETAIL = "It's part of every task, and only its owner can change it.";
-const READ_ONLY_ORG_NOTE = "You can use it but can't change it.";
+import { useTranslation } from '../../lib/i18n';
 
 /**
  * @param {{
@@ -47,6 +43,7 @@ const READ_ONLY_ORG_NOTE = "You can use it but can't change it.";
  * }} args
  */
 export function useSkillSharing({ showToast, reloadSkills }) {
+  const { t } = useTranslation('library');
   const orgMode = useOrgMode();
   const sharing = useSharingCapabilities();
   const capabilities = sharing.capabilities;
@@ -67,7 +64,7 @@ export function useSkillSharing({ showToast, reloadSkills }) {
     // the skill stays as it was.
     const alwaysOn = readAudienceRequest(after).alwaysOn;
     const alwaysOnOnly = sameSkillAudience(after, before) && alwaysOn !== readAudienceRequest(before).alwaysOn;
-    showToast(alwaysOnOnly ? alwaysOnHelp(alwaysOn, skill.label) : `Updated who can use ${skill.label}.`, 'success');
+    showToast(alwaysOnOnly ? alwaysOnHelp(alwaysOn, skill.label) : t('skills.sharing.updated', { name: skill.label }), 'success');
   };
 
   /* Whether a skill offers Share, on an org: the caller's own, or one whose
@@ -84,9 +81,11 @@ export function useSkillSharing({ showToast, reloadSkills }) {
      the caller can't change it, unless that "can't" is MindsHub not
      answering for one shared with everyone. */
   const readOnlyOrgNote = (skill) => {
-    if (alwaysApplied(skill) && isSkillAlwaysOn(skill)) return ALWAYS_ON_DETAIL;
-    if (skillSection(skill) === 'org' && permissionsUnknown(capabilities)) return MINDSHUB_UNREACHABLE_EDIT;
-    return READ_ONLY_ORG_NOTE;
+    // The detail note on an always-on skill someone else shares with a team
+    // or with everyone.
+    if (alwaysApplied(skill) && isSkillAlwaysOn(skill)) return t('skills.sharing.alwaysOnDetail');
+    if (skillSection(skill) === 'org' && permissionsUnknown(capabilities)) return mindsHubUnreachableEdit();
+    return t('skills.sharing.readOnlyOrgNote');
   };
   /* "Share" or "Shared", with who in the tooltip. */
   const shareState = (skill) => skillShareState(skill, { teams: teamsState.teams, orgName });
@@ -98,7 +97,7 @@ export function useSkillSharing({ showToast, reloadSkills }) {
   const unreachable = orgSharingOn && status === LOAD_STATUS.READY
     && (teamsUnknown(capabilities) || permissionsUnknown(capabilities));
   const unreachableMessage = !unreachable ? null
-    : teamsUnknown(capabilities) ? MINDSHUB_UNREACHABLE_TEAMS : MINDSHUB_UNREACHABLE_PERMISSIONS;
+    : teamsUnknown(capabilities) ? mindsHubUnreachableTeams() : mindsHubUnreachablePermissions();
   const retryMindsHub = () => {
     sharing.retry();
     reloadSkills({ afterCurrent: true });

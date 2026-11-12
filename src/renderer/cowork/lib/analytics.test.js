@@ -1593,6 +1593,33 @@ describe('console handoff attribution', () => {
   });
 });
 
+describe('artifact_stats_opened', () => {
+  it('carries the artifact, its access mode and whether it has views', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactStatsOpened } = await importAnalytics();
+
+    trackArtifactStatsOpened({ artifactId: 'a1', accessMode: 'restricted', hasViews: true });
+
+    const event = await sentEvent(fetchMock, 'artifact_stats_opened');
+    expect(event.properties).toMatchObject({
+      artifact_id: 'a1',
+      access_mode: 'restricted',
+      has_views: true,
+    });
+  });
+
+  it('sends a null access mode while the real one is still loading', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactStatsOpened } = await importAnalytics();
+
+    trackArtifactStatsOpened({ artifactId: 'a1', accessMode: null, hasViews: false });
+
+    const event = await sentEvent(fetchMock, 'artifact_stats_opened');
+    expect(event.properties.access_mode).toBeNull();
+    expect(event.properties.has_views).toBe(false);
+  });
+});
+
 describe('onboarding and start events', () => {
   it('onboarding_row_clicked and onboarding_step_completed carry only the step and where it happened', async () => {
     const fetchMock = mockFetch();
@@ -1788,5 +1815,44 @@ describe('Compare Models events', () => {
       comparison_id: 'cmp-1', side: 'a', model: 'kimi', other_model: 'qwen', turns: 3, carried_all: true,
       chose_winner: false, chose_cheaper: true, ...cost,
     });
+  });
+});
+
+describe('mid-task message events (ENG-4194)', () => {
+  it('addon_added says who decided and from where, never the text', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonAdded } = await importAnalytics();
+    trackAddonAdded('jev', 'send');
+    const { properties } = await sentEvent(fetchMock, 'addon_added');
+    expect(properties).toMatchObject({ decided_by: 'jev', via: 'send' });
+  });
+
+  it('addon_queued carries the reason', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonQueued } = await importAnalytics();
+    trackAddonQueued('timeout');
+    const { properties } = await sentEvent(fetchMock, 'addon_queued');
+    expect(properties).toMatchObject({ reason: 'timeout' });
+  });
+
+  it('addon_overridden carries the direction, the outcome and who had decided', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonOverridden } = await importAnalytics();
+    trackAddonOverridden('to_queue', 'withdrawn', 'jev');
+    const { properties } = await sentEvent(fetchMock, 'addon_overridden');
+    expect(properties).toMatchObject({ direction: 'to_queue', outcome: 'withdrawn', decided_by: 'jev' });
+  });
+
+  it('reports a reason it does not know as unknown, never the raw string', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonQueued, trackAddonOverridden } = await importAnalytics();
+    trackAddonQueued('too_many');
+    expect((await sentEvent(fetchMock, 'addon_queued')).properties.reason).toBe('too_many');
+    fetchMock.mockClear();
+    trackAddonQueued('something the server made up');
+    expect((await sentEvent(fetchMock, 'addon_queued')).properties.reason).toBe('unknown');
+    fetchMock.mockClear();
+    trackAddonOverridden('to_task', 'free text', 'robot');
+    expect((await sentEvent(fetchMock, 'addon_overridden')).properties).toMatchObject({ outcome: 'unknown', decided_by: 'jev' });
   });
 });

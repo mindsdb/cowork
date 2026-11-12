@@ -1,0 +1,210 @@
+{
+  "updates": {
+    "backendVersion": {
+      "loading": "Wird geladen…",
+      "unavailable": "Nicht verfügbar"
+    },
+    "currentVersion": {
+      "title": "Aktuelle Version",
+      "subtitle": "Die derzeit laufende Version. Server- und Oberflächen-Updates werden beim Start automatisch übernommen; die zugrunde liegenden Komponenten finden Sie in den Details.",
+      "releaseWeek": "Release-Woche {range}",
+      "outOfSyncHint": "Die zugrunde liegenden Komponenten liegen {days} Tage auseinander – eine Komponente ist im Rückstand. Siehe Details.",
+      "outOfSync": "⚠ nicht synchron",
+      "built": "Build vom {date}",
+      "appShell": "App-Shell",
+      "tooOldHint": "Unterstützt: {minVersion} oder neuer und höchstens {days} Tage älter als die neueste App ({latestVersion}).",
+      "tooOld": "⚠ zu alt",
+      "osCappedHint": "Die neueste App erfordert macOS {minMacos} oder neuer, daher wird diese App nicht mehr aktualisiert.",
+      "osCapped": "⚠ keine Updates unter macOS {macos}",
+      "tooOldAlert": "Diese App ist zu alt für diese Version von {product}. Einige Funktionen sind ausgeblendet, bis die App auf {version} aktualisiert ist. Nutzen Sie dazu „Software-Updates“ unten.",
+      "showDetails": "Details",
+      "hideDetails": "Details ausblenden",
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "copyFailed": "Kopieren fehlgeschlagen – markieren Sie die Details oben und kopieren Sie sie manuell"
+    },
+    "software": {
+      "title": "Software-Updates",
+      "subtitle": "Oberflächen- und Server-Updates werden beim Neustart der App automatisch übernommen. Eine neue App-Version wird im Hintergrund heruntergeladen und beim nächsten Neustart installiert.",
+      "manualAfterFailure": "Sie können das Installationsprogramm weiterhin manuell herunterladen.",
+      "installerDownloading": "Das Installationsprogramm wird heruntergeladen. Beenden Sie danach {product} und öffnen Sie das Installationsprogramm, um das Update abzuschließen.",
+      "installerDownloadingDeb": "Das Installationsprogramm wird heruntergeladen. Beenden Sie danach {product} und {step}.",
+      "downloadInstallerHint": "Laden Sie das Installationsprogramm herunter, beenden Sie dann {product} und öffnen Sie es, um das Update abzuschließen.",
+      "downloadInstallerHintDeb": "Laden Sie das Installationsprogramm herunter, beenden Sie dann {product} und {step}.",
+      "offline": "Prüfung nicht möglich – Sie scheinen offline zu sein.",
+      "checkFailed": "Nach Updates konnte nicht gesucht werden. Bitte versuchen Sie es erneut.",
+      "upToDate": "Alles ist auf dem neuesten Stand.",
+      "serverPart": "Server → {version}",
+      "agentPart": "Agent → {version}",
+      "uiPart": "Oberfläche → {version}",
+      "newVersion": "neue Version",
+      "checking": "Wird geprüft…",
+      "check": "Nach Updates suchen",
+      "updateReady": "Update bereit",
+      "restartToApply": "Starten Sie die App neu, um es zu übernehmen.",
+      "restartToApplyWith": "Starten Sie die App neu, um es zu übernehmen ({changes}).",
+      "restarting": "Wird neu gestartet…",
+      "tryAgain": "Erneut versuchen",
+      "restartNow": "Jetzt neu starten",
+      "auto": {
+        "checking": "Suche nach App-Update…",
+        "available": "Neue App-Version verfügbar",
+        "downloading": "App-Update wird heruntergeladen…",
+        "downloadingPercent": "App-Update wird heruntergeladen – {percent} %",
+        "ready": "App-Update bereit",
+        "installing": "App-Update wird installiert…",
+        "failed": "App-Update fehlgeschlagen",
+        "readyHint": "Starten Sie {product} neu, um die Installation des heruntergeladenen Updates abzuschließen.",
+        "failedHint": "Das automatische Update konnte nicht abgeschlossen werden. Ihre aktuelle Installation bleibt nutzbar.",
+        "availableManualHint": "Laden Sie es herunter, wann es Ihnen passt.",
+        "availableHint": "Das Update kann heruntergeladen werden.",
+        "workingHint": "Sie können weiterarbeiten, während {product} das Update vorbereitet.",
+        "download": "Update herunterladen",
+        "retry": "Erneut versuchen"
+      },
+      "newAppVersion": "Neue App-Version {version}",
+      "downloadAgain": "Erneut herunterladen",
+      "downloadInstaller": "Installationsprogramm herunterladen",
+      "applyFailed": "Das Update konnte nicht übernommen werden. Bitte versuchen Sie es erneut."
+    }
+  },
+  "backend": {
+    "web": {
+      "title": "Das Backend wird serverseitig verwaltet",
+      "body": "Das Python-Backend läuft auf dem Server und lässt sich nicht über diese Oberfläche steuern."
+    },
+    "status": {
+      "online": {
+        "title": "MindsHub-Backend läuft",
+        "subtitle": "Der lokale Python-Server antwortet auf /health."
+      },
+      "starting": {
+        "title": "MindsHub-Backend wird gestartet…",
+        "subtitle": "Der lokale Python-Server wird gestartet. Das dauert meist nur wenige Sekunden."
+      },
+      "stopping": {
+        "title": "MindsHub-Backend wird beendet…",
+        "subtitle": "Warten, bis der lokale Python-Server beendet ist."
+      },
+      "stopped": {
+        "title": "MindsHub-Backend ist beendet",
+        "subtitle": "Sie haben den lokalen Python-Server beendet. Klicken Sie unten auf „Backend starten“, um ihn wieder hochzufahren."
+      },
+      "failed": {
+        "title": "MindsHub-Backend läuft nicht",
+        "subtitle": "Der lokale Python-Server wurde nicht gestartet. Der letzte Fehler und das Ende des Logs sind unten aufgeführt."
+      }
+    },
+    "refreshTooltip": "Diagnose aktualisieren",
+    "refresh": "Aktualisieren",
+    "stopping": "Wird beendet…",
+    "stop": "Backend beenden",
+    "starting": "Wird gestartet…",
+    "restarting": "Wird neu gestartet…",
+    "start": "Backend starten",
+    "restart": "Backend neu starten",
+    "statusHeading": "Status",
+    "port": "Port",
+    "exit": "Exit-Code",
+    "started": "Gestartet",
+    "noStartError": "Es wurde kein konkreter Startfehler erfasst. Prüfen Sie das Ende des Logs – der Prozess ist möglicherweise nach dem Start abgestürzt.",
+    "log": "Log",
+    "noLog": "(noch kein Log erfasst)"
+  },
+  "account": {
+    "username": "Benutzername",
+    "organization": "Organisation",
+    "signIn": {
+      "title": "Cloud-Funktionen aktivieren",
+      "subtitle": "Melden Sie sich mit MindsHub an, um alle Modelle, Cloud-Ausführung und Veröffentlichen an einem Ort zu nutzen.",
+      "features": {
+        "router": {
+          "label": "Nahtloser Modell-Router",
+          "desc": "Der einfachste Weg, alle Modelle an einem Ort zu nutzen – Claude, GPT, DeepSeek, Kimi und mehr."
+        },
+        "remote": {
+          "label": "Remote-Aufgaben",
+          "desc": "Code und lange Aufgaben auf verwalteter Infrastruktur ausführen statt auf Ihrem Laptop."
+        },
+        "share": {
+          "label": "Teilen und zusammenarbeiten",
+          "desc": "Dashboards, Berichte und Artefakte teilen – und gemeinsam daran arbeiten."
+        },
+        "unified": {
+          "label": "Ein Konto für alles",
+          "desc": "Eine Anmeldung, eine Rechnung – kein Jonglieren mit API-Schlüsseln verschiedener Anbieter."
+        }
+      },
+      "comingSoon": "bald verfügbar",
+      "error": "Die Anmeldung wurde nicht abgeschlossen: {error}",
+      "button": "Bei MindsHub anmelden oder registrieren"
+    },
+    "cancel": "Abbrechen",
+    "signingOut": "Wird abgemeldet…",
+    "signOut": "Abmelden",
+    "web": {
+      "title": "Über MindsHub verwaltet",
+      "body": "In der Webversion wird das Konto über MindsHub verwaltet."
+    }
+  },
+  "usage": {
+    "actions": {
+      "viewUsage": "Nutzung anzeigen",
+      "addFunds": "Guthaben aufladen",
+      "setUpAutoTopUp": "Automatisches Aufladen einrichten",
+      "manageAutoTopUp": "Automatisches Aufladen verwalten",
+      "updatePaymentMethod": "Zahlungsmethode aktualisieren"
+    },
+    "free": {
+      "title": "Gratiskontingent für Air",
+      "badge": "Nur MindsHub Air",
+      "resetsAt": "Nächste Zurücksetzung: {time}",
+      "unlimited": "Unbegrenzt für dieses Konto.",
+      "used": "{percent} Ihres Kontingents verbraucht",
+      "left": "{percent} übrig",
+      "meterLabel": "Verbrauchtes Gratiskontingent für Air",
+      "usedUpUntil": "Aufgebraucht. MindsHub Air wird von Ihrem Guthaben abgerechnet, bis das Kontingent wieder aufgefüllt wird ({time}).",
+      "usedUp": "Aufgebraucht. MindsHub Air wird von Ihrem Guthaben abgerechnet, bis das Kontingent wieder aufgefüllt wird.",
+      "afterUntil": "Danach nutzt MindsHub Air Ihr Guthaben, bis das Kontingent wieder aufgefüllt wird ({time}).",
+      "after": "Danach nutzt MindsHub Air Ihr Guthaben."
+    },
+    "autoTopUp": {
+      "off": "Automatisches Aufladen ist aus. Aktivieren Sie es, damit Aufgaben weiterlaufen, wenn Ihr Guthaben knapp wird.",
+      "rule": "Lädt auf {target} auf, wenn Ihr Guthaben unter {floor} fällt.",
+      "on": "Aktiv.",
+      "paymentFailed": "Automatisches Aufladen fehlgeschlagen: Ihre Karte konnte nicht belastet werden. Aktualisieren Sie Ihre Zahlungsmethode, um es fortzusetzen.",
+      "capReached": "{rule} Pausiert, um das Monatslimit einzuhalten.",
+      "pendingAction": "{rule} Warten auf die Bestätigung der letzten Abbuchung durch Ihre Bank.",
+      "badgeOn": "Automatisches Aufladen aktiv",
+      "badgeFailed": "Automatisches Aufladen fehlgeschlagen",
+      "badgePaused": "Automatisches Aufladen pausiert"
+    },
+    "low": {
+      "off": "Guthaben wird knapp. Laden Sie Guthaben auf oder aktivieren Sie das automatische Aufladen, damit Aufgaben weiterlaufen.",
+      "ok": "Guthaben wird knapp. Das automatische Aufladen füllt es wieder auf.",
+      "pending": "Guthaben wird knapp. Das automatische Aufladen wartet auf Ihre Bank.",
+      "other": "Guthaben wird knapp. Laden Sie Guthaben auf, damit Aufgaben weiterlaufen."
+    },
+    "balance": {
+      "title": "Guthaben",
+      "empty": "Leer. Kostenpflichtige Modelle laufen erst wieder, wenn Sie Guthaben aufladen.",
+      "usedBy": "Wird von kostenpflichtigen Modellen genutzt und von MindsHub Air, sobald die Gratis-Tokens aufgebraucht sind.",
+      "spentRange": "Guthaben verbraucht ({start} – {end})",
+      "spentDate": "Guthaben verbraucht ({date})",
+      "spentThisPeriod": "Guthaben in diesem Zeitraum verbraucht",
+      "notOwner": "Nur die für die Abrechnung zuständige Person Ihrer Organisation kann Guthaben aufladen oder das automatische Aufladen ändern."
+    },
+    "signIn": {
+      "title": "Melden Sie sich an, um Ihre Nutzung zu sehen",
+      "body": "Ihr Gratiskontingent für Air und Ihr Guthaben werden hier angezeigt, sobald Sie bei MindsHub angemeldet sind.",
+      "goToAccount": "Zum Konto"
+    },
+    "loading": "Nutzung wird geladen…",
+    "error": {
+      "title": "Nutzung konnte nicht geladen werden",
+      "body": "MindsHub hat nicht geantwortet. Versuchen Sie es erneut oder prüfen Sie Ihre Nutzung in der Konsole.",
+      "tryAgain": "Erneut versuchen"
+    },
+    "empty": "Für dieses Konto gibt es noch keine Nutzungsdaten."
+  }
+}
