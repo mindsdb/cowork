@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Section, SettingsGroup } from './settingsLayout';
-import { setBrowserPrefs, useBrowserPrefs } from '../../lib/browserPrefs';
+import { asksToApprove } from '../../lib/browserPrefs';
 import { Switch } from '../../components/ui/Switch';
 import { Tooltip } from '../../components/ui/Tooltip';
 import Button from '../../components/ui/Button';
@@ -90,7 +90,6 @@ export function approveStepsHelp(agentLabel) {
 }
 
 export default function BrowserSettingsSection({ settings, setSetting, agentLabel = 'Anton', signedInToMindsHub = false }) {
-  const browserPrefs = useBrowserPrefs();
   const { t } = useTranslation('settingsTools');
   // The last BrowseStatus answer (api.js), or null before the first one.
   const [status, setStatus] = useState(null);
@@ -228,9 +227,10 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
         {settings.browserEnabled === true && (
           <>
             <Section title={t('browser.approveStepsTitle')} subtitle={approveStepsHelp(agentLabel)}>
+              {/* The person's setting (browser_approve_steps), so every device asks alike; on unless turned off. */}
               <Switch
-                checked={browserPrefs.askToApprove}
-                onCheckedChange={(on) => setBrowserPrefs({ askToApprove: on })}
+                checked={asksToApprove(settings)}
+                onCheckedChange={(on) => setSetting('browserApproveSteps', on)}
                 aria-label={t('browser.approveStepsTitle')}
               />
             </Section>

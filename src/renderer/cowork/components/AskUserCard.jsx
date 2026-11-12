@@ -56,9 +56,9 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
 
   const settled = !reopened && (Boolean(answer) || expired || gone);
 
-  /* A position card, and a held browser step while the person doesn't
-     approve steps, is approved by the app (App.jsx approvePositionClicks):
-     it stays hidden, and shows only if that approval hasn't landed in time. */
+  /* With Approve browser steps off, a position card or a held browser step
+     is approved by the app (App.jsx approvePositionClicks): it stays hidden,
+     and shows only if that approval hasn't landed in time. */
   const browserPrefs = useBrowserPrefs();
   const positionCard = !reopened && isAutoApprovedCard(q, browserPrefs);
   const [positionLate, setPositionLate] = useState(false);

@@ -71,6 +71,9 @@ export const SETTINGS_KEY_MAP = {
   memory_mode: 'memoryMode',
   episodic_memory: 'episodicMemory',
   browser_enabled: 'browserEnabled',
+  // Whether the person approves consequential browser steps on a card (default
+  // on; lib/browserPrefs.js reads anything but false as on).
+  browser_approve_steps: 'browserApproveSteps',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.

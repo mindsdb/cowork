@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import approveFixture from '../__fixtures__/browser-router/approve.json';
+import { resetBrowserPrefsForTests } from './browserPrefs';
 import {
+  approveIfApprovalsOff,
   autoApprovePositionClick,
   isPositionClickCard,
   isAutoApprovedCard,
@@ -154,14 +156,22 @@ describe('position clicks, refused answers', () => {
 describe('which cards the app approves for the person', () => {
   const hold = (options) => ({ question_id: 'browser:approve:t-abc:pa-1', options });
   const approve = [{ value: 'approve', label: 'Approve' }, { value: 'cancel', label: 'Cancel' }];
-  it('approves held browser steps unless the person approves steps', () => {
+  it('approves held browser steps only once the person turned approvals off', () => {
     expect(isBrowserStepCard(hold(approve))).toBe(true);
     expect(isAutoApprovedCard(hold(approve), { askToApprove: false })).toBe(true);
     expect(isAutoApprovedCard(hold(approve), { askToApprove: true })).toBe(false);
   });
-  it('always approves clicks by position, and never another question', () => {
+  it('asks by default: a held step and a click by position show with no settings read', () => {
     const position = { question_id: 'q1', options: [{ value: 'approve', detail: POSITION_APPROVE_DETAIL }] };
-    expect(isAutoApprovedCard(position, { askToApprove: true })).toBe(true);
+    resetBrowserPrefsForTests();
+    expect(isAutoApprovedCard(hold(approve))).toBe(false);
+    expect(isAutoApprovedCard(position)).toBe(false);
+    expect(isAutoApprovedCard(hold(approve), {})).toBe(false);
+  });
+  it('shows clicks by position while the person approves steps, and never approves another question', () => {
+    const position = { question_id: 'q1', options: [{ value: 'approve', detail: POSITION_APPROVE_DETAIL }] };
+    expect(isAutoApprovedCard(position, { askToApprove: true })).toBe(false);
+    expect(isAutoApprovedCard(position, { askToApprove: false })).toBe(true);
     expect(isAutoApprovedCard({ question_id: 'q2', options: approve }, { askToApprove: false })).toBe(false);
     expect(isAutoApprovedCard(hold([{ value: 'cancel' }]), { askToApprove: false })).toBe(false);
   });
@@ -169,5 +179,20 @@ describe('which cards the app approves for the person', () => {
     const desktop = { question_id: 'q-7', options: [{ value: 'approve', detail: STEP_APPROVE_DETAIL }, { value: 'cancel' }] };
     expect(isAutoApprovedCard(desktop, { askToApprove: false })).toBe(true);
     expect(isAutoApprovedCard(desktop, { askToApprove: true })).toBe(false);
+  });
+});
+
+describe('approving for the person only with approvals off on the server', () => {
+  const args = { conversationIds: ['c1'], questionId: 'ask:q', isWeb: false };
+  it('reads the setting fresh and approves only when it says off', async () => {
+    const submit = vi.fn(async () => ({}));
+    expect(await approveIfApprovalsOff({ ...args, submit, readAsks: async () => false })).toBe('approved');
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+  it('leaves the card to the person when approvals are on, or the setting cannot be read', async () => {
+    const submit = vi.fn(async () => ({}));
+    expect(await approveIfApprovalsOff({ ...args, submit, readAsks: async () => true })).toBe('asks');
+    expect(await approveIfApprovalsOff({ ...args, submit, readAsks: async () => null })).toBe('unread');
+    expect(submit).not.toHaveBeenCalled();
   });
 });

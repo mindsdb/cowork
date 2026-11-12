@@ -172,7 +172,8 @@ import {
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
-import { autoApprovePositionClick, isAutoApprovedCard } from './lib/browserApproval';
+import { approveIfApprovalsOff, isAutoApprovedCard } from './lib/browserApproval';
+import { forgetLegacyBrowserPrefs, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, waitForTurnEnd } from './lib/voice/turnEnds';
 import { Outlet } from 'react-router-dom';
 
@@ -654,6 +655,10 @@ function AppCore() {
   // server's values within one fetch. This removes the hard-coded copy whose
   // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
   const [settings, setSettings] = useState(loadCachedSettings);
+  // Approve browser steps is the person's setting (lib/browserPrefs.js): the
+  // cards read it as it changes here, and the old device-only copy goes.
+  useEffect(() => { syncBrowserPrefs({ browserApproveSteps: settings.browserApproveSteps }); }, [settings.browserApproveSteps]);
+  useEffect(() => { forgetLegacyBrowserPrefs(); }, []);
   // Whether this session's settings have arrived from the server, so a choice
   // that depends on them (such as the models an operator offers) is final.
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -1456,17 +1461,23 @@ function AppCore() {
   // time a question appears while messages are queued, hands them back to
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
-  // Clicks by position, and every held browser step unless the person asked
-  // to approve steps (Settings > Shared browser), are approved for the person,
-  // once per card, and never shown (lib/browserApproval.js). A card the approval didn't land on shows
-  // after POSITION_AUTO_APPROVE_MS, so the person can still answer it.
+  // With Approve browser steps off (Settings > Shared browser), clicks by
+  // position and held browser steps are approved for the person, once per
+  // card, and never shown (lib/browserApproval.js). The setting is read fresh
+  // from the server first, so approvals turned on from another device since
+  // this tab read settings count: then the card shows. A card the approval
+  // didn't land on shows after POSITION_AUTO_APPROVE_MS, so the person can
+  // still answer it.
   const autoApprovedRef = useRef(new Set());
   const approvePositionClicks = (taskIds, steps) => {
     (steps || []).forEach((s) => {
       const questionId = s.badge === 'AskUser' && !s.data?.answer ? s.data?.question_id : null;
       if (!questionId || autoApprovedRef.current.has(questionId) || !isAutoApprovedCard(s.data)) return;
       autoApprovedRef.current.add(questionId);
-      void autoApprovePositionClick({ conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer })
+      void approveIfApprovalsOff({ conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer })
+        .then((outcome) => {
+          if (outcome === 'asks') setSettings((prev) => ({ ...prev, browserApproveSteps: true }));
+        })
         .catch(() => false);
     });
   };
