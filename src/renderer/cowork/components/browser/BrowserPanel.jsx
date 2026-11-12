@@ -196,9 +196,9 @@ function WebBrowserStage({
   const readyRef = useRef(false);
   // Whether the viewer's current socket is live (VIEWER_LIVE), for a viewer with a port.
   const liveRef = useRef(false);
-  /* A reconnect after a close: when the close came (null when none is under
-     way), the back-off's count and its timer, and the watchdog that reloads
-     the frame when no live comes within RELINK_WAIT_MS. */
+  /* A reconnect after a close: when the latest close came (null when none is
+     under way), the back-off's count and its timer, and the watchdog that
+     reloads the frame when no live comes within RELINK_WAIT_MS. */
   const downSinceRef = useRef(/** @type {number | null} */ (null));
   const retries = useRef(0);
   const retryTimer = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
@@ -479,7 +479,10 @@ function WebBrowserStage({
       });
       quickCloses.current = next.quickCloses;
       if (next.remint) {
-        downSinceRef.current ??= Date.now();
+        /* Each close starts the wait and the back-off over, as it does the
+           watchdog; afterViewerClose's count of failed opens bounds them. */
+        downSinceRef.current = Date.now();
+        retries.current = 0;
         armWatchdog();
         void (portRef.current && wasLive ? relink() : mint());
         return;

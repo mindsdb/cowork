@@ -821,6 +821,30 @@ describe('BrowserPanel', () => {
       expect(embedBrowser).toHaveBeenCalledTimes(3);
     });
 
+    it("gives the reload's link the whole wait from the latest close when a ticket handed in place fails late", async () => {
+      const { port } = await liveViewer();
+      act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
+      embedBrowser.mockResolvedValue(link(2));
+      fromViewer(DROP_CLOSED, port);
+      await flush();
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
+
+      // The ticket fails late, and the reload's link fails for a while.
+      act(() => { vi.advanceTimersByTime(110_000); });
+      const blip = new TypeError('Failed to fetch');
+      embedBrowser.mockRejectedValueOnce(blip).mockRejectedValueOnce(blip).mockRejectedValueOnce(blip).mockRejectedValueOnce(blip)
+        .mockResolvedValue(link(3));
+      fromViewer(DROP_CLOSED, port);
+      await flush();
+      // Retries 2, 4 and 8 s apart all fail, past RELINK_WAIT_MS after the first close.
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+      expect(embedBrowser).toHaveBeenCalledTimes(6);
+      expect(stopShown()).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(16_000); });
+      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+      expect(stopShown()).toBeNull();
+    });
+
     it('reloads the frame, then says why, when the link still fails RELINK_WAIT_MS after the close', async () => {
       const { frame, port } = await liveViewer();
       act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
