@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Google Drive wird geöffnet…",
       "addFromGoogleDrive": "Dateien aus Google Drive hinzufügen",
       "addFromSharePoint": "Dateien aus SharePoint hinzufügen",
-      "browserTitle": "{agent} kann in dieser Aufgabe Ihren geteilten Browser verwenden. Das Ausschalten gilt ab Ihrer nächsten Nachricht.",
+      "browserTitle": "{agent} kann in dieser Aufgabe den Browsermodus verwenden. Das Ausschalten gilt ab Ihrer nächsten Nachricht.",
       "browser": "Browser",
       "browserOff": "Browser für diese Aufgabe ausschalten",
       "browserOn": "Browser für diese Aufgabe einschalten",
@@ -565,7 +565,7 @@
   },
   "browser": {
     "close": "Browser schließen",
-    "shared": "Geteilter Browser",
+    "shared": "Browsermodus",
     "title": "Browser",
     "unreachable": "Der Browser ist nicht erreichbar",
     "stopped": {

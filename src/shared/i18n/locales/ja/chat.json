@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Google Driveを開いています…",
       "addFromGoogleDrive": "Google Driveからファイルを追加",
       "addFromSharePoint": "SharePointからファイルを追加",
-      "browserTitle": "このタスクでは、{agent}が共有ブラウザを使用できます。オフにすると次のメッセージから適用されます。",
+      "browserTitle": "このタスクでは、{agent}がブラウザモードを使用できます。オフにすると次のメッセージから適用されます。",
       "browser": "ブラウザ",
       "browserOff": "このタスクのブラウザをオフにする",
       "browserOn": "このタスクのブラウザをオンにする",
@@ -565,7 +565,7 @@
   },
   "browser": {
     "close": "ブラウザを閉じる",
-    "shared": "共有ブラウザ",
+    "shared": "ブラウザモード",
     "title": "ブラウザ",
     "unreachable": "ブラウザに接続できません",
     "stopped": {

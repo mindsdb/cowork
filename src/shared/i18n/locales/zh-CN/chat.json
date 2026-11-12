@@ -262,7 +262,7 @@
       "openingGoogleDrive": "正在打开 Google Drive…",
       "addFromGoogleDrive": "从 Google Drive 添加文件",
       "addFromSharePoint": "从 SharePoint 添加文件",
-      "browserTitle": "{agent} 可以在此任务中使用你的共享浏览器。关闭后从你的下一条消息起生效。",
+      "browserTitle": "{agent} 可以在此任务中使用浏览器模式。关闭后从你的下一条消息起生效。",
       "browser": "浏览器",
       "browserOff": "为此任务关闭浏览器",
       "browserOn": "为此任务开启浏览器",
@@ -565,7 +565,7 @@
   },
   "browser": {
     "close": "关闭浏览器",
-    "shared": "共享浏览器",
+    "shared": "浏览器模式",
     "title": "浏览器",
     "unreachable": "无法访问浏览器",
     "stopped": {

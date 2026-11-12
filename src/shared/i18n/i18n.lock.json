@@ -26555,36 +26555,36 @@
   },
   "chat:browser.shared": {
     "de": {
-      "from": "52002b68ebda",
-      "text": "5780d81c172b"
+      "from": "3c7847f4b2e1",
+      "text": "bbaeaacec6e9"
     },
     "es": {
-      "from": "52002b68ebda",
-      "text": "0d45bcf741fe"
+      "from": "3c7847f4b2e1",
+      "text": "3d1181519395"
     },
     "fr": {
-      "from": "52002b68ebda",
-      "text": "bc2884a62d46"
+      "from": "3c7847f4b2e1",
+      "text": "f2cfe8349d25"
     },
     "it": {
-      "from": "52002b68ebda",
-      "text": "78792d44835c"
+      "from": "3c7847f4b2e1",
+      "text": "d2ba3bbc6c7a"
     },
     "ja": {
-      "from": "52002b68ebda",
-      "text": "6754c1260c9a"
+      "from": "3c7847f4b2e1",
+      "text": "e0e2be68aeea"
     },
     "ko": {
-      "from": "52002b68ebda",
-      "text": "47a2b32c8a15"
+      "from": "3c7847f4b2e1",
+      "text": "325fe8e3d70b"
     },
     "pt-BR": {
-      "from": "52002b68ebda",
-      "text": "68e9050c93e0"
+      "from": "3c7847f4b2e1",
+      "text": "3d1181519395"
     },
     "zh-CN": {
-      "from": "52002b68ebda",
-      "text": "f8a8babb3ca2"
+      "from": "3c7847f4b2e1",
+      "text": "4db813613d07"
     }
   },
   "chat:browser.signIn.cancel": {
@@ -34307,36 +34307,36 @@
   },
   "chat:composer.menu.browserTitle": {
     "de": {
-      "from": "56113dd66d5f",
-      "text": "3d730955ec2a"
+      "from": "d965441d8d4a",
+      "text": "8aa4579794c5"
     },
     "es": {
-      "from": "56113dd66d5f",
-      "text": "0dcb84ccde2b"
+      "from": "d965441d8d4a",
+      "text": "41e24f0cd035"
     },
     "fr": {
-      "from": "56113dd66d5f",
-      "text": "5cfe8167e17c"
+      "from": "d965441d8d4a",
+      "text": "20ce1460d1b1"
     },
     "it": {
-      "from": "56113dd66d5f",
-      "text": "188bcb0d719e"
+      "from": "d965441d8d4a",
+      "text": "a9ad81ebee2f"
     },
     "ja": {
-      "from": "56113dd66d5f",
-      "text": "ed7ccbd4b4b6"
+      "from": "d965441d8d4a",
+      "text": "fe8abace7780"
     },
     "ko": {
-      "from": "56113dd66d5f",
-      "text": "92f94efcc38c"
+      "from": "d965441d8d4a",
+      "text": "6f5568e31eb1"
     },
     "pt-BR": {
-      "from": "56113dd66d5f",
-      "text": "ca898c588866"
+      "from": "d965441d8d4a",
+      "text": "8715aa4540f2"
     },
     "zh-CN": {
-      "from": "56113dd66d5f",
-      "text": "1cb7e63efd66"
+      "from": "d965441d8d4a",
+      "text": "11ce61c05404"
     }
   },
   "chat:composer.menu.connectAppsAndData": {
@@ -87823,36 +87823,36 @@
   },
   "library:dataVault.browserInstead.help": {
     "de": {
-      "from": "1ca7df6465ea",
-      "text": "cf8f329c09e8"
+      "from": "d2eaf39a1c24",
+      "text": "503453eafa95"
     },
     "es": {
-      "from": "1ca7df6465ea",
-      "text": "206fb176a1c5"
+      "from": "d2eaf39a1c24",
+      "text": "e98600af9361"
     },
     "fr": {
-      "from": "1ca7df6465ea",
-      "text": "d87d0c67284d"
+      "from": "d2eaf39a1c24",
+      "text": "66e0b7f7df99"
     },
     "it": {
-      "from": "1ca7df6465ea",
-      "text": "471550e06119"
+      "from": "d2eaf39a1c24",
+      "text": "e0e8efed4ff3"
     },
     "ja": {
-      "from": "1ca7df6465ea",
-      "text": "e53f489f7510"
+      "from": "d2eaf39a1c24",
+      "text": "3559c0eac962"
     },
     "ko": {
-      "from": "1ca7df6465ea",
-      "text": "02a657ca1534"
+      "from": "d2eaf39a1c24",
+      "text": "319bc0225062"
     },
     "pt-BR": {
-      "from": "1ca7df6465ea",
-      "text": "c4eb30402ff2"
+      "from": "d2eaf39a1c24",
+      "text": "588e024984f2"
     },
     "zh-CN": {
-      "from": "1ca7df6465ea",
-      "text": "9c777158493f"
+      "from": "d2eaf39a1c24",
+      "text": "3bdef831651d"
     }
   },
   "library:dataVault.browserInstead.title": {
@@ -142053,36 +142053,36 @@
   },
   "settingsTools:browser.sharedBrowser": {
     "de": {
-      "from": "52002b68ebda",
-      "text": "c7e2a401ef73"
+      "from": "3c7847f4b2e1",
+      "text": "bbaeaacec6e9"
     },
     "es": {
-      "from": "52002b68ebda",
-      "text": "0d45bcf741fe"
+      "from": "3c7847f4b2e1",
+      "text": "3d1181519395"
     },
     "fr": {
-      "from": "52002b68ebda",
-      "text": "bc2884a62d46"
+      "from": "3c7847f4b2e1",
+      "text": "f2cfe8349d25"
     },
     "it": {
-      "from": "52002b68ebda",
-      "text": "78792d44835c"
+      "from": "3c7847f4b2e1",
+      "text": "d2ba3bbc6c7a"
     },
     "ja": {
-      "from": "52002b68ebda",
-      "text": "6754c1260c9a"
+      "from": "3c7847f4b2e1",
+      "text": "e0e2be68aeea"
     },
     "ko": {
-      "from": "52002b68ebda",
-      "text": "47a2b32c8a15"
+      "from": "3c7847f4b2e1",
+      "text": "325fe8e3d70b"
     },
     "pt-BR": {
-      "from": "52002b68ebda",
-      "text": "68e9050c93e0"
+      "from": "3c7847f4b2e1",
+      "text": "3d1181519395"
     },
     "zh-CN": {
-      "from": "52002b68ebda",
-      "text": "f8a8babb3ca2"
+      "from": "3c7847f4b2e1",
+      "text": "4db813613d07"
     }
   },
   "settingsTools:browser.signOut": {
@@ -142359,36 +142359,36 @@
   },
   "settingsTools:browser.useSharedBrowser": {
     "de": {
-      "from": "2a0512084852",
-      "text": "6130053d5314"
+      "from": "ffd04093e68d",
+      "text": "4bca3ff05ffe"
     },
     "es": {
-      "from": "2a0512084852",
-      "text": "ed126be95f1f"
+      "from": "ffd04093e68d",
+      "text": "a4ce5f274272"
     },
     "fr": {
-      "from": "2a0512084852",
-      "text": "ca7e047e15d1"
+      "from": "ffd04093e68d",
+      "text": "7937094d2795"
     },
     "it": {
-      "from": "2a0512084852",
-      "text": "1946e8bcfb9b"
+      "from": "ffd04093e68d",
+      "text": "09ce5e4d127b"
     },
     "ja": {
-      "from": "2a0512084852",
-      "text": "fe0d1094cef7"
+      "from": "ffd04093e68d",
+      "text": "c6c26328cd54"
     },
     "ko": {
-      "from": "2a0512084852",
-      "text": "be8242754782"
+      "from": "ffd04093e68d",
+      "text": "3c0e2a885043"
     },
     "pt-BR": {
-      "from": "2a0512084852",
-      "text": "b9ceb0a602c3"
+      "from": "ffd04093e68d",
+      "text": "3f41704fc3b8"
     },
     "zh-CN": {
-      "from": "2a0512084852",
-      "text": "f96571acd478"
+      "from": "ffd04093e68d",
+      "text": "5460f96b6f34"
     }
   },
   "settingsTools:browser.webDisclosure": {

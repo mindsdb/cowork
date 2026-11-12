@@ -639,7 +639,7 @@
     },
     "browserInstead": {
       "title": "Use the browser instead",
-      "help": "No connection: you sign in to {name} in the shared browser and the work happens there. Slower than connecting."
+      "help": "No connection: you sign in to {name} in browser mode and the work happens there. Slower than connecting."
     }
   },
   "legacyConnect": {

@@ -639,7 +639,7 @@
     },
     "browserInstead": {
       "title": "Stattdessen den Browser verwenden",
-      "help": "Keine Verbindung: Sie melden sich im gemeinsamen Browser bei {name} an, und die Arbeit findet dort statt. Langsamer als eine Verbindung."
+      "help": "Keine Verbindung: Sie melden sich im Browsermodus bei {name} an, und die Arbeit findet dort statt. Langsamer als eine Verbindung."
     }
   },
   "legacyConnect": {

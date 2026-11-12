@@ -150,7 +150,7 @@ async function openHomeComposer(user) {
 }
 
 function pane() {
-  return screen.queryByRole('complementary', { name: 'Shared browser' });
+  return screen.queryByRole('complementary', { name: 'Browser mode' });
 }
 
 const callButton = () => document.querySelector('.voice-launcher__button');

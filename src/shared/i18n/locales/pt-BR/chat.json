@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Abrindo o Google Drive…",
       "addFromGoogleDrive": "Adicionar arquivos do Google Drive",
       "addFromSharePoint": "Adicionar arquivos do SharePoint",
-      "browserTitle": "{agent} pode usar seu navegador compartilhado nesta tarefa. Desativar vale a partir da sua próxima mensagem.",
+      "browserTitle": "{agent} pode usar o modo navegador nesta tarefa. Desativar vale a partir da sua próxima mensagem.",
       "browser": "Navegador",
       "browserOff": "Desativar o navegador nesta tarefa",
       "browserOn": "Ativar o navegador nesta tarefa",
@@ -565,7 +565,7 @@
   },
   "browser": {
     "close": "Fechar navegador",
-    "shared": "Navegador compartilhado",
+    "shared": "Modo navegador",
     "title": "Navegador",
     "unreachable": "Não é possível acessar o navegador",
     "stopped": {

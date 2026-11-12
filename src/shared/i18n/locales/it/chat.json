@@ -262,7 +262,7 @@
       "openingGoogleDrive": "Apertura di Google Drive…",
       "addFromGoogleDrive": "Aggiungi file da Google Drive",
       "addFromSharePoint": "Aggiungi file da SharePoint",
-      "browserTitle": "{agent} può usare il browser condiviso in questa attività. La disattivazione vale dal tuo prossimo messaggio.",
+      "browserTitle": "{agent} può usare la modalità browser in questa attività. La disattivazione vale dal tuo prossimo messaggio.",
       "browser": "Browser",
       "browserOff": "Disattiva il browser per questa attività",
       "browserOn": "Attiva il browser per questa attività",
@@ -565,7 +565,7 @@
   },
   "browser": {
     "close": "Chiudi browser",
-    "shared": "Browser condiviso",
+    "shared": "Modalità browser",
     "title": "Browser",
     "unreachable": "Il browser non è raggiungibile",
     "stopped": {

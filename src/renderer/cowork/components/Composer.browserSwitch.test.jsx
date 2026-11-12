@@ -44,7 +44,7 @@ describe('the Browser switch in the + menu', () => {
     await openThePlusMenu();
 
     const row = (await screen.findByRole('switch', { name: /browser off for this task/i })).parentElement;
-    expect(row).toHaveAttribute('title', 'Cowork can use your shared browser in this task. Off applies from your next message.');
+    expect(row).toHaveAttribute('title', 'Cowork can use browser mode in this task. Off applies from your next message.');
   });
 
   it('is not there when the shared browser is off in Settings', async () => {
