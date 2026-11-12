@@ -983,7 +983,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* Whether `el`, or an element it is drawn in, is turned, skewed or
      mirrored by a transform, so no box inside it maps through its box: a
      computed transform other than a matrix that only scales and moves it, a
-     rotate, or a scale that flips it. */
+     rotate, a scale that flips it, or an offset path, which turns it along
+     the path (offset-rotate) while the other three stay none. */
   const turned = (el: Element): boolean => {
     for (let at: Element | null = el; at; at = drawnParent(at)) {
       const style = styleOf(at);
@@ -994,6 +995,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         if (!(a > 0 && d > 0 && b === 0 && c === 0)) return true;
       }
       if (!['', 'none'].includes(style.getPropertyValue('rotate'))) return true;
+      if (!['', 'none'].includes(style.getPropertyValue('offset-path'))) return true;
       if (style.getPropertyValue('scale').split(/\s+/).some((value) => Number.parseFloat(value) < 0)) return true;
     }
     return false;
@@ -1001,8 +1003,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* How a box in same-origin frame `owner`'s own viewport lands in its
      document's viewport: scaled as the frame is drawn (its box over its
      laid-out size, so a transform that scales it scales the box),
-     from the corner of its content box; for a frame a transform turns, the
-     frame's whole box. */
+     from the corner of its content box; for a frame a transform or an
+     offset path turns, the frame's whole box. */
   const throughOwner = (owner: Element): ((box: Box) => Box) => {
     const box = boxOf(owner);
     if (turned(owner)) return () => box;

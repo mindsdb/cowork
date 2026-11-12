@@ -261,6 +261,14 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Scaled same card</title><style>body{margin:0;background:#fff}</style>'
           + `<iframe src="/card" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;transform:scale(${scale});transform-origin:0 0"></iframe>`);
     }
+    if (url.pathname === '/along-same-card') {
+      /* The page's own checkout frame, 300 by 100, turned 30 degrees by an
+         offset path, its transform, rotate and scale all none: drawn inside
+         (95, 32) to (405, 268), its card number from (206, 136) to (362, 226). */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Along same card</title><style>body{margin:0;background:#fff}</style>'
+          + '<iframe src="/card" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;offset-path:path(\'M 250 150 L 400 150\');offset-rotate:30deg"></iframe>');
+    }
     if (url.pathname === '/closed-same-card') {
       /* The page's own checkout frame, in a closed shadow root. */
       return void res.writeHead(200, { 'content-type': 'text/html' })
@@ -779,7 +787,7 @@ test("blacks out a card field where another site's frame draws it at half its si
   expect(await blackIn('/half-card', [[55, 23], [97, 30], [140, 37], [200, 60], [20, 10]])).toEqual([true, true, true, false, false]);
 });
 
-test("blacks out a card field where the page's own frame draws it at twice or half its size, while something else holds the debugger too", async () => {
+test("blacks out a card field where the page's own frame draws it at twice or half its size, and the whole frame where an offset path turns it, while something else holds the debugger too", async () => {
   for (const scale of [2, 0.5]) {
     const route = `/scaled-same-card?scale=${scale}`;
     await openAt(route);
@@ -793,6 +801,18 @@ test("blacks out a card field where the page's own frame draws it at twice or ha
     } finally {
       await holdDebugger(route, false);
     }
+  }
+  await openAt('/along-same-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // CSS points: both ends and the middle of the card number, the four corners of the box the frame is drawn in, then the page outside it.
+  const along = [[206, 136], [284, 181], [362, 226], [103, 40], [397, 40], [103, 260], [397, 260], [50, 300]];
+  const blackedOut = [true, true, true, true, true, true, true, false];
+  expect(await blackIn('/along-same-card', along), 'an offset path').toEqual(blackedOut);
+  await holdDebugger('/along-same-card', true);
+  try {
+    expect(await blackIn('/along-same-card', along), 'an offset path, the debugger held').toEqual(blackedOut);
+  } finally {
+    await holdDebugger('/along-same-card', false);
   }
 });
 
