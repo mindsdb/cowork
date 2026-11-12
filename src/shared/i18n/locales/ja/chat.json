@@ -671,24 +671,6 @@
       "watching": "誰かが閲覧中です"
     }
   },
-  "videoCall": {
-    "dialogLabel": "{agent}とのビデオ通話",
-    "show": "{agent}とのビデオ通話を表示",
-    "starting": "Antonに発信中…",
-    "preparing": "Antonが準備しています。最大30秒ほどかかることがあります。",
-    "ended": "通話が終了しました。",
-    "close": "閉じる",
-    "aiBadge": "AI",
-    "yourCamera": "あなたのカメラ",
-    "working": "{agent}が対応中です…",
-    "mute": "ミュート",
-    "unmute": "ミュート解除",
-    "cameraOff": "カメラをオフ",
-    "cameraOn": "カメラをオン",
-    "minimize": "最小化",
-    "hangUp": "通話を終了",
-    "endCall": "通話を終了"
-  },
   "voiceCall": {
     "dialogLabel": "{agent}との音声通話",
     "connecting": "接続中…",
@@ -702,6 +684,10 @@
     "voice": "音声",
     "voiceAriaLabel": "音声：{voice}",
     "changeVoice": "音声を変更",
-    "muteAndEnd": "ミュートして通話を終了"
+    "muteAndEnd": "ミュートして通話を終了",
+    "ended": "通話が終了しました。",
+    "close": "閉じる",
+    "endCall": "通話を終了",
+    "mute": "ミュート"
   }
 }

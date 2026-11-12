@@ -1,4 +1,4 @@
-// When an Anton turn ends, for a video call waiting on its answer (prototype).
+// When an Anton turn ends, for a voice call waiting on its answer (prototype).
 //
 // The app's send paths start a turn and return; its answer arrives in the
 // stream's onDone or onError. Those report here, by every id the task had

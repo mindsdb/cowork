@@ -1,10 +1,9 @@
-// What a video call's avatar may be handed from Anton (prototype).
+// What a voice call may be handed from Anton (prototype).
 //
-// Nuance ends a call, as a policy violation, when a tool result holds a phone
-// number other than an emergency number, and repeated ends pause the person's
-// calls. So every number that looks like a phone number is replaced before
-// Anton's answer goes back. The avatar only says the gist; the whole answer
-// is in the task on screen.
+// The call speaks only the gist of Anton's answer; the whole answer is in the
+// task on screen. Code blocks are left out, the answer is trimmed to what can
+// be said, and every number that looks like a phone number is replaced, so the
+// call never reads one out; the number itself stays in the task.
 
 // A run of digits with phone punctuation between them: an optional +country,
 // an optional (area), then groups split by spaces, dots or dashes.

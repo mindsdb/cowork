@@ -110,7 +110,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer, sendAddon, withdrawAddon,
          fetchRecommendedModels, createConversation, revealSettingKey,
-         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchFacetimeStatus, fetchVoiceStatus} from './api';
+         SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchVoiceStatus} from './api';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
 import { rebaseFigureSources } from './lib/figureSources';
 import { frameScheduler } from './lib/frameScheduler';
@@ -157,8 +157,6 @@ import { normalizeComposerDisabledConnections, toggleConnectionMute } from './li
 import { rememberTaskBrowser } from './lib/taskBrowser';
 import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
 import { useNativeOverlay } from './lib/nativeOverlay';
-import FacetimeWindow from './components/FacetimeWindow';
-import { useFacetimeCall } from './lib/facetime/useFacetimeCall';
 import VoiceCallWindow from './components/VoiceCallWindow';
 import VoiceLauncher from './components/VoiceLauncher';
 import TopShortcuts from './components/TopShortcuts';
@@ -174,7 +172,7 @@ import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePre
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
 import { autoApprovePositionClick, isAutoApprovedCard } from './lib/browserApproval';
-import { reportTurnEnd, waitForTurnEnd } from './lib/facetime/turnEnds';
+import { reportTurnEnd, waitForTurnEnd } from './lib/voice/turnEnds';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -698,24 +696,11 @@ function AppCore() {
   // requests whose results the `local.length > 0` guard then discards.
   const warmedRef = useRef(false);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
-  // A video call with Anton (prototype): offered when the server holds a
-  // Nuance key. The call hands each request to Anton through askFromCallRef,
-  // set below once the send paths exist, in the task facetimeTaskIdRef names.
-  const [facetimeAvailable, setFacetimeAvailable] = useState(false);
-  useEffect(() => {
-    let live = true;
-    fetchFacetimeStatus().then((s) => { if (live) setFacetimeAvailable(s.available); });
-    return () => { live = false; };
-  }, []);
-  const facetimeTaskIdRef = useRef(null);
-  const askFromCallRef = useRef(null);
+  // The voice call with Anton (ENG-4138): GPT-Live through MindsHub
+  // Inference. Its requests go to Anton in the task callTaskIdRef names, and
+  // callContextRef (set below) says what that task is about.
+  const callTaskIdRef = useRef(null);
   const callContextRef = useRef(null);
-  const facetime = useFacetimeCall({
-    onAsk: (request) => askFromCallRef.current(request),
-    context: () => callContextRef.current?.() || '',
-  });
-  // The voice-only call (ENG-4138): GPT-Live through MindsHub Inference, with
-  // the same bridge to Anton and the same task tracking as the video call.
   const [voiceAvailable, setVoiceAvailable] = useState(false);
   useEffect(() => {
     let live = true;
@@ -748,14 +733,14 @@ function AppCore() {
   // call, says a short line in it.
   const voicePrefs = useVoicePrefs();
   const voicePrefsSeenRef = useRef(null);
-  voicePrefsSeenRef.current = { voiceCall, voiceAvailable, videoCallIdle: facetime.phase === 'idle' };
+  voicePrefsSeenRef.current = { voiceCall, voiceAvailable };
   useEffect(() => subscribeVoicePrefs((prefs, { voiceChanged }) => {
-    const { voiceCall: calling, voiceAvailable: canCall, videoCallIdle } = voicePrefsSeenRef.current;
+    const { voiceCall: calling, voiceAvailable: canCall } = voicePrefsSeenRef.current;
     if (!prefs.enabled) {
       if (calling.phase !== 'idle') void calling.end();
       return;
     }
-    if (!voiceChanged || !canCall || !videoCallIdle) return;
+    if (!voiceChanged || !canCall) return;
     if (calling.phase === 'idle' || calling.phase === 'ended' || calling.previewing) calling.preview(prefs.voice);
     else calling.switchVoice(prefs.voice);
   }), []);
@@ -5115,18 +5100,17 @@ function AppCore() {
   // task's queue, not just the finishing one. `preferredTaskId` (the
   // finishing task) is tried first so its own follow-ups keep FIFO order.
   // `skipTaskIds` lists tasks a failed send already tried in this chain.
-  // The video call's ask_cowork: the request goes to Anton as a typed message
-  // would, in the call's task (a new one for the first request from Home), and
-  // resolves with Anton's answer once the turn ends.
-  // The voice call's operator names the task (`taskId`), or asks for a new
-  // one (`newTask`, in `project` when given).
+  // The voice call's requests go to Anton as a typed message would, in the
+  // call's task (a new one for the first request from Home). The operator
+  // names the task (`taskId`), or asks for a new one (`newTask`, in `project`
+  // when given).
   // Sends the request and resolves once Anton has it: {taskId, finished}, where
   // `finished` resolves with his answer when the turn ends.
   const sendFromCall = async (request, { taskId = null, newTask = false, project = null } = {}) => {
-    const callTaskId = newTask ? null : (taskId || facetimeTaskIdRef.current);
+    const callTaskId = newTask ? null : (taskId || callTaskIdRef.current);
     const existing = callTaskId && tasksRef.current.find((t) => t.id === callTaskId);
     const id = existing ? existing.id : allocateConversationId();
-    facetimeTaskIdRef.current = id;
+    callTaskIdRef.current = id;
     const turn = waitForTurnEnd(id);
     const sent = existing
       ? await handleSendInTask(request, [], { targetTask: existing })
@@ -5138,13 +5122,12 @@ function AppCore() {
       throw new Error(`${agentLabel} couldn't take the request.`);
     }
     const finished = turn.promise.then(({ content, error, finalId }) => {
-      facetimeTaskIdRef.current = finalId || id;
+      callTaskIdRef.current = finalId || id;
       if (error) throw new Error(String(error));
       return content;
     });
     return { taskId: id, finished };
   };
-  askFromCallRef.current = async (request, options) => (await sendFromCall(request, options)).finished;
   /* Work the voice call gave Anton finished: said on the call while it is up,
      or in a call back when the call hung up to wait for it. A call the person
      ended themselves stays ended. */
@@ -5176,9 +5159,9 @@ function AppCore() {
     };
     document.addEventListener('visibilitychange', onVisible);
   };
-  // What the call's avatar is told about the task at the start, as background.
+  // What the voice call is told about the task at the start, as background.
   callContextRef.current = () => {
-    const task = facetimeTaskIdRef.current && tasksRef.current.find((t) => t.id === facetimeTaskIdRef.current);
+    const task = callTaskIdRef.current && tasksRef.current.find((t) => t.id === callTaskIdRef.current);
     if (!task) return '';
     const recent = (task.messages || [])
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
@@ -5344,14 +5327,11 @@ function AppCore() {
     request,
     history: voiceHistoryRef.current,
     snapshot: () => describeScreen({
-      ...callScreenRef.current, tasks: tasksRef.current, callTaskId: facetimeTaskIdRef.current, working: callBusy(),
+      ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callBusy(),
       browserPage: pageUrlForContext(carriedPageRef.current?.() || ''),
     }),
     actions: callActions,
   });
-  // From a composer's + menu: in the task on screen, or a new one from the
-  // first request. A click, so the browser plays the avatar's voice.
-  // One call at a time: each start offers itself only while neither runs.
   // The current task's project's tasks, for the browser pane's list of the
   // project's browsers (ENG-4138, prototype).
   const projectTasksForBrowsers = useMemo(() => {
@@ -5392,15 +5372,15 @@ function AppCore() {
     </div>
   );
   // An ended voice call only shows its card: the call button dismisses it and starts anew.
-  const noCallRunning = facetime.phase === 'idle' && !voiceCallRunning(voiceCall.phase);
+  const noCallRunning = !voiceCallRunning(voiceCall.phase);
   // Voice calls only where the LLM provider is MindsHub: the call runs on
   // MindsHub. With another provider every call button is hidden.
   const voiceOffered = llmViaMindsHub(settings) && voicePrefs.enabled;
-  // A call back needs voice calls on, and no video call running.
-  callBackSeenRef.current = { canCallBack: voiceAvailable && voiceOffered && facetime.phase === 'idle' };
+  // A call back needs voice calls on.
+  callBackSeenRef.current = { canCallBack: voiceAvailable && voiceOffered };
   const startVoiceCall = voiceAvailable && voiceOffered && noCallRunning
     ? () => {
-      facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
+      callTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
       // Calling while a call back is due: the work goes on, and its result is
       // said on this call. Work left over with nothing running anywhere is
       // stale: it would hold the call busy for good.
@@ -5443,14 +5423,6 @@ function AppCore() {
   // On a phone, in a task, the card sits at the top of the chat, above the
   // browser (ChatView's phone dock).
   const callInTaskOnPhone = isMobile && route === 'task' && Boolean(currentTask) && !showConversationError && !showConversationLoading;
-
-  const startVideoCall = facetimeAvailable && noCallRunning
-    ? () => {
-      facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
-      if (voiceCall.phase === 'ended') voiceCall.dismiss();
-      void facetime.start();
-    }
-    : null;
 
   const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
     // Slot re-reserved (a new turn already started) — that turn's own
@@ -7126,7 +7098,6 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
-            onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
             topShortcuts={offTaskShortcuts}
             browserSwitch={composerBrowserSwitch}
@@ -7206,7 +7177,6 @@ function AppCore() {
             disabledConnections={currentTask?.disabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
-            onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
             browserRequest={browserRequest}
             projectTasks={projectTasksForBrowsers}
@@ -7343,7 +7313,6 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
-            onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
             topShortcuts={offTaskShortcuts}
             browserSwitch={composerBrowserSwitch}
@@ -7743,7 +7712,6 @@ function AppCore() {
       />
       )}
 
-      <FacetimeWindow call={facetime} agentLabel={agentLabel} />
       {!dockVoiceCall && !callInTaskOnPhone && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
       {/* The call starts from a round button where its card shows. */}
       {!dockVoiceCall && <VoiceLauncher call={voiceCallShortcut} />}

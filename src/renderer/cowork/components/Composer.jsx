@@ -153,8 +153,6 @@ export default function Composer({
   conversationId = null,
   disabledConnections = [],
   onUpdateConnectorMute,
-  /** Starts a video call with the agent (prototype); null hides it from the + menu. */
-  onStartVideoCall = null,
   /** Starts a voice call with the agent (prototype); null hides it from the + menu. */
   onStartVoiceCall = null,
   /**
@@ -1321,17 +1319,6 @@ export default function Composer({
                       }}
                     >
                       {Ico.call(14)} Voice call
-                    </button>
-                  )}
-                  {onStartVideoCall && (
-                    <button
-                      className="menu-item"
-                      onClick={() => {
-                        setOpenMenu(null);
-                        onStartVideoCall();
-                      }}
-                    >
-                      {Ico.video(14)} Video call
                     </button>
                   )}
                   <button

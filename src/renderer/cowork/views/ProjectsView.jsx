@@ -268,7 +268,6 @@ function ProjectDetail({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
-  onStartVideoCall = null,
   onStartVoiceCall = null,
   // The browser and call icons, in the header beside New project.
   topShortcuts = null,
@@ -468,7 +467,6 @@ function ProjectDetail({
                 onRemoveAttachment={onRemoveAttachment}
                 disabledConnections={disabledConnections}
                 onUpdateConnectorMute={onUpdateConnectorMute}
-                onStartVideoCall={onStartVideoCall}
                 onStartVoiceCall={onStartVoiceCall}
                 browserSwitch={browserSwitch}
                 metaReadOnly
@@ -580,7 +578,6 @@ export default function ProjectsView({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
-  onStartVideoCall = null,
   onStartVoiceCall = null,
   topShortcuts = null,
   browserSwitch = null,
@@ -815,7 +812,6 @@ export default function ProjectsView({
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}
-        onStartVideoCall={onStartVideoCall}
         onStartVoiceCall={onStartVoiceCall}
         topShortcuts={topShortcuts}
         browserSwitch={browserSwitch}

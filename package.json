@@ -103,7 +103,6 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
-    "@nuancelabs/js-sdk": "^0.37.0",
     "@react-keycloak/web": "^3.4.0",
     "chart.js": "^4.5.1",
     "class-variance-authority": "^0.7.1",

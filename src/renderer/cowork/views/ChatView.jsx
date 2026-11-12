@@ -1991,7 +1991,6 @@ export default function ChatView({
   onRemoveGoogleDriveProjectFile,
   disabledConnections,
   onUpdateConnectorMute,
-  onStartVideoCall = null,
   onStartVoiceCall = null,
   // A voice call asked to show this task's browser: {taskId, sessionId, at}.
   browserRequest = null,
@@ -3897,7 +3896,6 @@ export default function ChatView({
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
-            onStartVideoCall={onStartVideoCall}
             onStartVoiceCall={onStartVoiceCall}
             browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}

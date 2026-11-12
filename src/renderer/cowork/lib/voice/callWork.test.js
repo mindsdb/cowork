@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { reportTurnEnd } from '../facetime/turnEnds';
+import { reportTurnEnd } from './turnEnds';
 import { OWN_TURN_WAIT_MS, createCallWork, createQueueWatch, sendForOwnTurn } from './callWork';
 
 // Stands in for the app's queue: a send into a busy task queues an item, the

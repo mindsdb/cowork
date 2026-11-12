@@ -1,6 +1,5 @@
 // A voice call with Anton (ENG-4138, prototype): OpenAI GPT-Live through
-// MindsHub Inference, the voice-only sibling of the video call
-// (lib/facetime/useFacetimeCall.js).
+// MindsHub Inference.
 //
 // - The browser makes a WebRTC offer with the microphone and an `oai-events`
 //   data channel; the server sends it to MindsHub, which starts the session on
@@ -32,7 +31,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startVoiceSession } from '../../api';
-import { forTheAvatar, withoutPhoneNumbers } from '../facetime/forTheAvatar';
+import { forTheAvatar, withoutPhoneNumbers } from './forTheAvatar';
 
 const CHANNEL = 'oai-events';
 const CAPTION_CHARS = 180;

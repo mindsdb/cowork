@@ -249,7 +249,6 @@ export default function HomeView({
   onAddGoogleDriveFiles,
   disabledConnections = [],
   onUpdateConnectorMute,
-  onStartVideoCall = null,
   onStartVoiceCall = null,
   // The browser and call icons, at the top right (TopShortcuts).
   topShortcuts = null,
@@ -646,7 +645,6 @@ export default function HomeView({
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
-              onStartVideoCall={onStartVideoCall}
               onStartVoiceCall={onStartVoiceCall}
               browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}

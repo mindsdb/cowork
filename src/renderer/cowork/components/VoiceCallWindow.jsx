@@ -34,7 +34,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
   // A call-back before Anton speaks: the microphone is off until he does.
   if (call.analyzing) status = t('voiceCall.analyzing');
   if (call.previewing && (live || phase === 'starting')) status = t('voiceCall.trying', { voice: voiceLabel(prefs.voice) });
-  if (ended) status = notice || t('videoCall.ended');
+  if (ended) status = notice || t('voiceCall.ended');
 
   // Until the session is live: one quiet line, no waves, so the card never
   // looks like it listens before it can.
@@ -47,7 +47,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
       >
         <span className="voice-call__spin" aria-hidden="true" />
         <span className="voice-call__connecting" aria-live="polite">{call.analyzing ? t('voiceCall.analyzing') : t('voiceCall.connectingVoice')}</span>
-        <button type="button" className="voice-call__x" onClick={call.end} aria-label={t('videoCall.endCall')} title={t('videoCall.endCall')}>
+        <button type="button" className="voice-call__x" onClick={call.end} aria-label={t('voiceCall.endCall')} title={t('voiceCall.endCall')}>
           {Ico.close(12)}
         </button>
       </div>
@@ -67,8 +67,8 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
         type="button"
         className="voice-call__x"
         onClick={ended ? call.dismiss : call.end}
-        aria-label={ended ? t('videoCall.close') : t('videoCall.endCall')}
-        title={ended ? t('videoCall.close') : t('videoCall.endCall')}
+        aria-label={ended ? t('voiceCall.close') : t('voiceCall.endCall')}
+        title={ended ? t('voiceCall.close') : t('voiceCall.endCall')}
       >
         {Ico.close(12)}
       </button>
@@ -115,7 +115,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
               onClick={call.signOff}
               disabled={!live || !micOn}
               aria-label={t('voiceCall.muteAndEnd')}
-              title={t('videoCall.mute')}
+              title={t('voiceCall.mute')}
             >
               {micOn ? Ico.mic(16) : Ico.micOff(16)}
             </button>

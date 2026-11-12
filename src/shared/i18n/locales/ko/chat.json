@@ -671,24 +671,6 @@
       "watching": "누군가 보고 있습니다"
     }
   },
-  "videoCall": {
-    "dialogLabel": "{agent}와(과)의 영상 통화",
-    "show": "{agent}와(과)의 영상 통화 표시",
-    "starting": "Anton에게 전화하는 중…",
-    "preparing": "Anton이 준비하고 있습니다. 최대 30초 정도 걸릴 수 있습니다.",
-    "ended": "통화가 종료되었습니다.",
-    "close": "닫기",
-    "aiBadge": "AI",
-    "yourCamera": "내 카메라",
-    "working": "{agent}이(가) 작업 중입니다…",
-    "mute": "음소거",
-    "unmute": "음소거 해제",
-    "cameraOff": "카메라 끄기",
-    "cameraOn": "카메라 켜기",
-    "minimize": "최소화",
-    "hangUp": "통화 종료",
-    "endCall": "통화 종료"
-  },
   "voiceCall": {
     "dialogLabel": "{agent}와(과)의 음성 통화",
     "connecting": "연결 중…",
@@ -702,6 +684,10 @@
     "voice": "음성",
     "voiceAriaLabel": "음성: {voice}",
     "changeVoice": "음성 변경",
-    "muteAndEnd": "음소거하고 통화 종료"
+    "muteAndEnd": "음소거하고 통화 종료",
+    "ended": "통화가 종료되었습니다.",
+    "close": "닫기",
+    "endCall": "통화 종료",
+    "mute": "음소거"
   }
 }

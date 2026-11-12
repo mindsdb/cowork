@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { forTheAvatar, MAX_RESULT_CHARS, PHONE_PLACEHOLDER, withoutPhoneNumbers } from './forTheAvatar';
 
-describe('phone numbers never reach the avatar', () => {
+describe('phone numbers never reach the voice model', () => {
   it.each([
     '+1 (415) 555-0134',
     '415-555-0134',

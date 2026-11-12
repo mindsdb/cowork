@@ -671,24 +671,6 @@
       "watching": "Qualcuno lo sta guardando"
     }
   },
-  "videoCall": {
-    "dialogLabel": "Videochiamata con {agent}",
-    "show": "Mostra la videochiamata con {agent}",
-    "starting": "Chiamata ad Anton…",
-    "preparing": "Anton si sta preparando. Può volerci fino a mezzo minuto.",
-    "ended": "La chiamata è terminata.",
-    "close": "Chiudi",
-    "aiBadge": "IA",
-    "yourCamera": "La tua fotocamera",
-    "working": "{agent} ci sta lavorando…",
-    "mute": "Disattiva microfono",
-    "unmute": "Attiva microfono",
-    "cameraOff": "Disattiva fotocamera",
-    "cameraOn": "Attiva fotocamera",
-    "minimize": "Riduci a icona",
-    "hangUp": "Riattacca",
-    "endCall": "Termina chiamata"
-  },
   "voiceCall": {
     "dialogLabel": "Chiamata vocale con {agent}",
     "connecting": "Connessione…",
@@ -702,6 +684,10 @@
     "voice": "Voce",
     "voiceAriaLabel": "Voce: {voice}",
     "changeVoice": "Cambia voce",
-    "muteAndEnd": "Disattiva il microfono e termina la chiamata"
+    "muteAndEnd": "Disattiva il microfono e termina la chiamata",
+    "ended": "La chiamata è terminata.",
+    "close": "Chiudi",
+    "endCall": "Termina chiamata",
+    "mute": "Disattiva microfono"
   }
 }

@@ -10,7 +10,7 @@
 //   of the turn that runs that request, not just the next turn there: a send
 //   that queues behind other work waits for its own queue item's turn.
 
-import { waitForTurnEnd } from '../facetime/turnEnds';
+import { waitForTurnEnd } from './turnEnds';
 
 // The longest a queued request is waited on: past this the call stops waiting
 // (and stops counting it as running), though the message still runs.
