@@ -137,6 +137,12 @@ export interface MobileAdapterDeps {
    */
   beforeLogout?: () => Promise<void>;
   beforeLogoutTimeoutMs?: number;
+  /**
+   * Forgets the session saved for the next launch (lib/mobileSession.ts).
+   * Awaited before leaving the page, so the next launch can't restore the
+   * account that just signed out.
+   */
+  forgetSession?: () => Promise<void>;
 }
 
 /** Wait for `task`, at most `ms`; never rejects. */
@@ -169,7 +175,8 @@ function appRoot(): string {
  * The keycloak-js adapter for the app. Sign-in and sign-up open the system
  * browser sheet; closing the sheet resolves quietly, so the sign-in screen
  * stays put. Sign-out ends the Keycloak session with the refresh token, then
- * clears the tokens and reloads to the sign-in screen.
+ * clears the tokens, forgets the saved session and reloads to the sign-in
+ * screen.
  */
 export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapter {
   const {
@@ -183,6 +190,7 @@ export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapt
     logoutTimeoutMs = 5_000,
     beforeLogout,
     beforeLogoutTimeoutMs = 3_000,
+    forgetSession,
   } = deps;
 
   const runNativeFlow = async (createUrl: () => Promise<string>): Promise<void> => {
@@ -236,6 +244,7 @@ export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapt
         }
       }
       keycloak.clearToken();
+      if (forgetSession) await settleWithin(forgetSession, beforeLogoutTimeoutMs);
       navigate(options?.redirectUri ?? appRoot());
     },
     accountManagement: async () => {
