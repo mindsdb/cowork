@@ -55,11 +55,11 @@
  * secret, card or sign-in field. A read
  * frame's elements have no id and no field value, and no editor's text
  * reaches its text or a name there. A frame from another site can't be read
- * from here: Electron runs this world only in the view's own process. Its
- * page read stays out of reach; browser-frames.ts reads the focus and the
- * secret fields in there
- * through the debugger, in that frame's own isolated world. `secretBoxes`
- * finds what every screenshot blacks out.
+ * from here: Electron runs this world only in the view's own process, and a
+ * page read attaches no debugger, so that frame is listed unread. A step
+ * or a screenshot, which attach the debugger, read its focus and its secret
+ * fields in that frame's own isolated world (browser-frames.ts).
+ * `secretBoxes` finds what every screenshot blacks out.
  */
 
 import {
