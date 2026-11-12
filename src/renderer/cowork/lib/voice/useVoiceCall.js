@@ -56,6 +56,9 @@ export const AWAY_MS = 5_000;
 // How long a faded call still listens before it hangs up.
 export const LINGER_MS = 3_500;
 const IDLE_CHECK_MS = 1_000;
+// A call-back that hears nothing from GPT-Live this long after it starts stops
+// analyzing and opens the microphone, so the person can speak.
+export const ANALYZE_MAX_MS = 20_000;
 
 const OPENINGS = {
   // Mid-task the call opens silent: Anton has the task's context and waits
@@ -78,6 +81,9 @@ const OPENINGS = {
 function tail(text) {
   return text.length > CAPTION_CHARS ? `…${text.slice(-CAPTION_CHARS)}` : text;
 }
+
+// Whether a call in `phase` still holds the line: an ended one only shows its card.
+export const voiceCallRunning = (phase) => phase !== 'idle' && phase !== 'ended';
 
 export function voiceStartFailure(err) {
   if (err?.name === 'NotAllowedError') return 'Allow the microphone in your browser to start a voice call.';
@@ -110,7 +116,10 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   // The quick rule (AWAY_MS): after handing Anton work, and on a call-back.
   const awayArmed = useRef(false);
 
-  const call = useRef(null); // { peer, channel, microphone, audio, listening }
+  // { peer, channel, microphone, audio, listening, live, ending, pending }:
+  // `live` once the session started, `ending` once it is hanging up, and
+  // `pending` what to announce once it is live.
+  const call = useRef(null);
   const meters = useRef({ agent: null, user: null });
   const heard = useRef({ pending: '', lastTurn: '' });
   const speakingTimer = useRef(null);
@@ -137,6 +146,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   // microphone stays off until Anton speaks.
   const [analyzing, setAnalyzing] = useState(false);
   const analyzingRef = useRef(false);
+  const analyzeTimer = useRef(null);
   contextRef.current = context;
 
   const cleanup = useCallback(() => {
@@ -144,6 +154,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     call.current = null;
     clearTimeout(speakingTimer.current);
     clearTimeout(lingerTimer.current);
+    clearTimeout(analyzeTimer.current);
     lingeringRef.current = false;
     setLingering(false);
     analyzingRef.current = false;
@@ -164,8 +175,12 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     return true;
   }, []);
 
+  // The answer goes back to the session that asked: a call that changed since
+  // (hung up, or moved to another voice) drops it.
   const handleDelegation = useCallback(async (delegationId) => {
+    const asking = call.current;
     await new Promise((r) => { setTimeout(r, TRANSCRIPT_SETTLE_MS); });
+    if (call.current !== asking) return;
     const request = (heard.current.pending.trim() || heard.current.lastTurn).trim();
     heard.current.lastTurn = request || heard.current.lastTurn;
     heard.current.pending = '';
@@ -181,10 +196,13 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     } catch (err) {
       content = `Anton couldn't finish it: ${withoutPhoneNumbers(err?.message || 'something went wrong').slice(0, 300)}`;
     } finally {
-      setWorking(false);
-      workingRef.current = false;
-      lastActive.current = Date.now();
+      if (call.current === asking) {
+        setWorking(false);
+        workingRef.current = false;
+        lastActive.current = Date.now();
+      }
     }
+    if (call.current !== asking) return;
     send({ type: 'session.commentary.append', event_id: eventId('result'), delegation_id: delegationId, content });
   }, [send]);
 
@@ -197,17 +215,38 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     lastActive.current = Date.now();
   }, []);
 
+  // A call-back's analyzing ends: Anton spoke, or never will. The person can answer.
+  const stopAnalyzing = useCallback(() => {
+    clearTimeout(analyzeTimer.current);
+    if (!analyzingRef.current) return;
+    analyzingRef.current = false;
+    setAnalyzing(false);
+    call.current?.microphone?.getAudioTracks().forEach((t) => { t.enabled = true; });
+    setMicOn(true);
+  }, []);
+
   const onEvent = useCallback((event) => {
     switch (event.type) {
       case 'session.started': {
         setPhase('live');
+        const current = call.current;
+        if (current) current.live = true;
         const kind = opening.current;
         const about = kind === 'preview' ? '' : withoutPhoneNumbers(contextRef.current?.() || '').slice(0, 1800);
         if (about) send({ type: 'session.thinking.append', event_id: eventId('context'), delegation_id: null, content: about });
         const line = kind === 'call' ? (about ? OPENINGS.task : OPENINGS.fresh)
           : kind === 'callBack' ? OPENINGS.callBack(news.current, lastSaid.current) : OPENINGS[kind];
         if (line) send({ type: 'session.instructions.append', event_id: eventId('greet'), delegation_id: null, content: line });
-        if (kind === 'preview') void afterLine().then(() => foldAndEnd());
+        // News that came while it connected.
+        (current?.pending || []).forEach((content) => {
+          send({ type: 'session.instructions.append', event_id: eventId('announce'), delegation_id: null, content });
+        });
+        if (current) current.pending = [];
+        if (kind === 'preview') void afterLine(current).then(() => foldAndEnd(current));
+        if (analyzingRef.current) {
+          clearTimeout(analyzeTimer.current);
+          analyzeTimer.current = setTimeout(() => { if (call.current === current) stopAnalyzing(); }, ANALYZE_MAX_MS);
+        }
         break;
       }
       case 'session.input_transcript.delta': {
@@ -223,13 +262,8 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         wake();
         const delta = String(event.delta || '');
         agentLine.current = (agentLine.current + delta).slice(-400);
-        if (analyzingRef.current) {
-          // Anton is speaking: from here the person can answer.
-          analyzingRef.current = false;
-          setAnalyzing(false);
-          call.current?.microphone?.getAudioTracks().forEach((t) => { t.enabled = true; });
-          setMicOn(true);
-        }
+        // Anton is speaking: from here the person can answer.
+        stopAnalyzing();
         setCaptions((c) => ({ ...c, agent: tail(c.last === 'agent' ? c.agent + delta : delta.trimStart()), last: 'agent' }));
         setAgentSpeaking(true);
         spoke.current = Date.now();
@@ -251,19 +285,22 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         break;
       case 'error':
         console.warn('[voice-call] error', event.error);
+        // A call-back would wait for a line that may never come.
+        stopAnalyzing();
         break;
       default:
     }
-  }, [cleanup, handleDelegation, send, wake]);
+  }, [cleanup, handleDelegation, send, stopAnalyzing, wake]);
 
-  // Resolves once Anton has said the line just asked for (or it never came).
-  const afterLine = useCallback(() => new Promise((resolve) => {
+  // Resolves once Anton has said the line just asked for in `owner` (or it
+  // never came, or that call is gone).
+  const afterLine = useCallback((owner) => new Promise((resolve) => {
     const asked = Date.now();
     spoke.current = 0;
     const tick = () => {
       const now = Date.now();
       const started = spoke.current > 0;
-      if (!call.current || now - asked > LINE_MAX_MS
+      if (!owner || call.current !== owner || now - asked > LINE_MAX_MS
         || (!started && now - asked > LINE_START_MS)
         || (started && now - spoke.current > LINE_QUIET_MS)) { resolve(); return; }
       setTimeout(tick, 150);
@@ -273,11 +310,14 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
 
   const startRef = useRef(null);
   const endRef = useRef(null);
-  // Folds the card, then hangs up.
-  const foldAndEnd = useCallback(async () => {
-    if (!call.current) return;
+  // Folds the card, then hangs up `owner`: a call that replaced it since (a
+  // voice switch) is not this one's to end.
+  const foldAndEnd = useCallback(async (owner) => {
+    if (!owner || call.current !== owner) return;
+    owner.ending = true;
     setClosing(true);
     await new Promise((r) => { setTimeout(r, FOLD_MS); });
+    if (call.current !== owner) return;
     await endRef.current?.();
   }, []);
 
@@ -373,6 +413,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     if (!call.current) { setPhase('idle'); return; }
     setPhase('ending');
     const ending = call.current;
+    ending.ending = true;
     if (send({ type: 'session.close' })) {
       // session.closed cleans up; this is the backstop, for this call only: a
       // call started since (a call-back) is not this one's to end.
@@ -401,13 +442,15 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   // The card's Mute: the microphone goes off, Anton says goodbye, the card
   // folds away and the call ends.
   const signOff = useCallback(async () => {
-    if (!call.current || closing) return;
-    call.current.microphone?.getAudioTracks().forEach((t) => { t.enabled = false; });
+    const owner = call.current;
+    if (!owner || closing) return;
+    owner.ending = true;
+    owner.microphone?.getAudioTracks().forEach((t) => { t.enabled = false; });
     setMicOn(false);
     if (send({ type: 'session.instructions.append', event_id: eventId('bye'), delegation_id: null, content: OPENINGS.signOff })) {
-      await afterLine();
+      await afterLine(owner);
     }
-    await foldAndEnd();
+    await foldAndEnd(owner);
   }, [afterLine, closing, foldAndEnd, send]);
 
   // Quiet for long enough (AWAY_MS right after handing Anton work or on a
@@ -449,20 +492,38 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   }, [wake]);
 
   // Something to tell the person unasked (queued work finished): GPT-Live
-  // says it in its own words when it can.
-  const announce = useCallback((text) => send({
-    type: 'session.instructions.append',
-    event_id: eventId('announce'),
-    delegation_id: null,
-    content: 'Tell the user now, in one or two short sentences, then ask whether they need anything else, suggesting '
+  // says it in its own words when it can. Only a call that will still be
+  // there to say it takes it: one connecting says it once it is live, one
+  // fading out comes back for it. A call hanging up, a voice preview or no
+  // call returns false, and the app calls back instead.
+  const announce = useCallback((text) => {
+    const current = call.current;
+    if (!current || current.ending || opening.current === 'preview') return false;
+    const content = 'Tell the user now, in one or two short sentences, then ask whether they need anything else, suggesting '
       + 'one fitting next step if one stands out; if they say no, say only something like "OK, just ping me if you need me": '
-      + withoutPhoneNumbers(String(text)).slice(0, MAX_SPOKEN_CHARS),
-  }), [send]);
+      + withoutPhoneNumbers(String(text)).slice(0, MAX_SPOKEN_CHARS);
+    if (!current.live) {
+      current.pending = [...(current.pending || []), content];
+      return true;
+    }
+    if (!send({ type: 'session.instructions.append', event_id: eventId('announce'), delegation_id: null, content })) return false;
+    wake();
+    lastActive.current = Date.now();
+    return true;
+  }, [send, wake]);
 
-  // Calls the person back with what Anton finished while the call was down.
-  const callBack = useCallback((text, voice = null) => startRef.current?.({ voice, kind: 'callBack', say: text }), []);
-  // Whether a call is up or starting (for work that finishes later).
-  const isOn = useCallback(() => Boolean(call.current), []);
+  // Calls the person back with what Anton finished while the call was down. A
+  // call still hanging up, or a voice preview, gives way to it.
+  const callBack = useCallback((text, voice = null) => {
+    const current = call.current;
+    if (current && (current.ending || opening.current === 'preview')) {
+      if (!current.ending) send({ type: 'session.close' });
+      cleanup();
+    }
+    return startRef.current?.({ voice, kind: 'callBack', say: text });
+  }, [cleanup, send]);
+  // Whether a call is up and staying (for work that finishes later).
+  const isOn = useCallback(() => Boolean(call.current && !call.current.ending), []);
 
   const toggleMic = useCallback(() => {
     const tracks = call.current?.microphone?.getAudioTracks() || [];

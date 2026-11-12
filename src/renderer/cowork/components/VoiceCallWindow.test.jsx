@@ -49,6 +49,14 @@ describe('the voice call card', () => {
 });
 
 describe('the voice call card, signing off and voices', () => {
+  it('fading out, it is out of reach of focus as well as hidden', () => {
+    render(<VoiceCallWindow call={call({ lingering: true })} />);
+    const card = document.querySelector('.voice-call');
+    expect(card).toHaveClass('is-lingering');
+    expect(card).toHaveAttribute('aria-hidden', 'true');
+    expect(card).toHaveAttribute('inert');
+  });
+
   it('folds away while it signs off', () => {
     render(<VoiceCallWindow call={call({ micOn: false, closing: true })} />);
     expect(screen.getByRole('dialog')).toHaveClass('is-closing');

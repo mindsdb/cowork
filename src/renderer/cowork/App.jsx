@@ -164,7 +164,8 @@ import VoiceLauncher from './components/VoiceLauncher';
 import TopShortcuts from './components/TopShortcuts';
 import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
 import { BrowserPanel } from './components/browser/BrowserPanel';
-import { useVoiceCall } from './lib/voice/useVoiceCall';
+import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
+import { createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import { desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
@@ -724,7 +725,10 @@ function AppCore() {
   // browser. Its history lives for one call.
   const operateFromCallRef = useRef(null);
   const callScreenRef = useRef({});
-  const callWorkRef = useRef(new Map());
+  const callWorkRef = useRef(createCallWork());
+  // Queued messages the call waits on (lib/voice/callWork.js): the queue's
+  // drain and every queue write report to it.
+  const callQueueWatchRef = useRef(createQueueWatch());
   const voiceHistoryRef = useRef([]);
   // The call hung up while Anton worked on its requests: it calls back with the result.
   const callBackRef = useRef(false);
@@ -734,7 +738,7 @@ function AppCore() {
     onAsk: (request) => operateFromCallRef.current(request),
     context: () => callContextRef.current?.() || '',
     // Work running for the call: a quiet call hangs up and calls back once it's done.
-    busy: () => callWorkRef.current.size > 0,
+    busy: () => callWorkRef.current.busy(),
     onAway: () => { callBackRef.current = true; setCallBackPending(true); },
   });
   // Settings > Voice (lib/voice/voicePrefs.js): off hides every call button
@@ -1371,6 +1375,8 @@ function AppCore() {
   const updateMessageQueue = (update) => {
     setMessageQueue(update);
     messageQueueRef.current = update(messageQueueRef.current);
+    // A message the voice call waits on that left the queue without running.
+    callQueueWatchRef.current.sweep(messageQueueRef.current);
   };
 
   const enqueueMessage = (taskId, text, attachments = [], disabledConnections = [], queuedReason = null, extra = null) => {
@@ -1419,6 +1425,7 @@ function AppCore() {
   const popQueueHead = (taskId) => {
     const head = queueHead(taskId);
     if (!head) return null;
+    callQueueWatchRef.current.ran(head.id, taskId);
     removeFromQueue(taskId, head.id);
     return head;
   };
@@ -4749,13 +4756,15 @@ function AppCore() {
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
       // reuses its own and leaves the live composer untouched.
-      enqueueMessage(
+      const queuedId = enqueueMessage(
         id,
         text,
         queuedAttachments ?? composerAttachments,
         mutesForSend,
         queuedReason,
       );
+      // A voice call that sent it follows its queue item to its own turn.
+      opts.onQueued?.(queuedId);
       if (queuedAttachments == null) setComposerAttachments([]);
       // Queued counts as sent: the drain runs it when the slot frees, so a
       // repair waiting on this prompt will get its turn.
@@ -5131,15 +5140,13 @@ function AppCore() {
     const news = error
       ? `${agentLabel} couldn't finish "${work.request}"${where}: ${error}`
       : `${agentLabel} finished "${work.request}"${where}: ${String(content || '').slice(0, 1200)}`;
-    if (voiceCall.isOn()) {
-      voiceCall.announce(news);
-      return;
-    }
+    // A call that is up (or connecting, or fading out) says it; one hanging up
+    // or gone refuses it, and the call back below takes over.
+    if (voiceCall.announce(news)) return;
     if (!callBackRef.current) return;
     callBackRef.current = false;
     setCallBackPending(false);
-    const { canCallBack } = callBackSeenRef.current;
-    if (!canCallBack) return;
+    if (!callBackSeenRef.current.canCallBack) return;
     // In a tab out of sight the call would start unheard: it waits for the person to come back.
     const callBackNow = () => void voiceCall.callBack(news, getVoicePrefs().voice);
     if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
@@ -5149,7 +5156,9 @@ function AppCore() {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       document.removeEventListener('visibilitychange', onVisible);
-      if (!voiceCall.isOn()) callBackNow();
+      // A call started meanwhile hears it; otherwise call back if it still may.
+      if (voiceCall.announce(news)) return;
+      if (callBackSeenRef.current.canCallBack) callBackNow();
     };
     document.addEventListener('visibilitychange', onVisible);
   };
@@ -5183,7 +5192,14 @@ function AppCore() {
   // other. A request while one runs is queued behind it or, when it should
   // replace it, the person is asked first (the operator decides, from
   // ask_anton's refusal).
-  const callBusy = () => [...callWorkRef.current.values()][0] || null;
+  const callBusy = () => callWorkRef.current.first();
+  // The call's last work went without an answer to say (given up on): with
+  // nothing left running, there is nothing to call back about.
+  const callWorkGone = () => {
+    if (callWorkRef.current.busy() || !callBackRef.current) return;
+    callBackRef.current = false;
+    setCallBackPending(false);
+  };
   const callActions = {
     ask_anton: async ({ request, task_id: taskId, project }) => {
       const busy = callBusy();
@@ -5199,21 +5215,19 @@ function AppCore() {
       if (existing && !(callScreenRef.current.route === 'task' && callScreenRef.current.currentTask?.id === existing.id)) {
         selectTask(existing.id);
       }
-      const work = { request: String(request || ''), taskId: existing?.id || null };
-      const key = Symbol('call work');
-      callWorkRef.current.set(key, work);
+      const work = callWorkRef.current.add({ request: String(request || ''), taskId: existing?.id || null });
       let sent;
       try {
         sent = await sendFromCall(work.request, { taskId: existing?.id, newTask: !existing, project: inProject });
       } catch (err) {
-        callWorkRef.current.delete(key);
+        work.settle();
         throw err;
       }
       // The call doesn't wait for the answer: it hears it when it comes, or is called back with it.
       work.taskId = sent.taskId;
-      work.done = sent.finished.then(
-        (content) => { callWorkRef.current.delete(key); reportCallWork(work, { content }); },
-        (err) => { callWorkRef.current.delete(key); reportCallWork(work, { error: err?.message || 'something went wrong' }); },
+      sent.finished.then(
+        (content) => { if (work.settle()) reportCallWork(work, { content }); },
+        (err) => { if (work.settle()) reportCallWork(work, { error: err?.message || 'something went wrong' }); },
       );
       voiceCall.armAway();
       const title = tasksRef.current.find((t) => t.id === sent.taskId)?.title;
@@ -5221,26 +5235,32 @@ function AppCore() {
         + `${agentLabel} is on it and you'll get back to them when it's done. Don't wait for the answer.`;
     },
     queue_for_anton: async ({ request, task_id: taskId }) => {
-      const busy = callBusy();
-      const task = taskId && taskId !== 'new' ? callTask(taskId) : (busy?.taskId && callTask(busy.taskId));
+      // The call's latest work: this one runs, and is said, after it.
+      const ahead = callWorkRef.current.last();
+      const task = taskId && taskId !== 'new' ? callTask(taskId) : (ahead?.taskId && callTask(ahead.taskId));
       if (!task) throw new Error('There is no task to queue it in.');
       const text = String(request || '');
-      // A send into a busy task waits its turn there (handleSendInTask's queue).
-      const sent = await handleSendInTask(text, [], { targetTask: task });
-      if (sent === false) throw new Error(`${agentLabel} couldn't take the request.`);
-      const work = { request: text, taskId: task.id };
-      const key = Symbol('queued call work');
-      callWorkRef.current.set(key, work);
+      // A send into a busy task waits its turn there (handleSendInTask's
+      // queue); `turn` follows its own queue item to the turn that runs it,
+      // and settles if that item is removed first (a Stop, or the person).
+      const { sent, turn } = await sendForOwnTurn({
+        taskId: task.id,
+        queueWatch: callQueueWatchRef.current,
+        send: (onQueued) => handleSendInTask(text, [], { targetTask: task, onQueued }),
+      });
+      if (!sent) throw new Error(`${agentLabel} couldn't take the request.`);
+      const work = callWorkRef.current.add({ request: text, taskId: task.id });
       voiceCall.armAway();
-      // When the work ahead ends, the next turn here is this one: say its gist then.
       void (async () => {
-        await busy?.done;
-        const { content, error } = await waitForTurnEnd(task.id).promise;
-        callWorkRef.current.delete(key);
-        reportCallWork(work, { content, error: error ? String(error) : '' });
+        const { content, error, timedOut } = await turn;
+        // Answers are said in the order they were asked.
+        await ahead?.done;
+        if (!work.settle()) return;
+        if (timedOut) callWorkGone();
+        else reportCallWork(work, { content, error });
       })();
-      return busy
-        ? `Queued in "${task.title}": ${agentLabel} does it right after "${busy.request}". You'll hear when it's done.`
+      return ahead
+        ? `Queued in "${task.title}": ${agentLabel} does it right after "${ahead.request}". You'll hear when it's done.`
         : `Sent to "${task.title}".`;
     },
     create_project: async ({ name }) => {
@@ -5285,7 +5305,7 @@ function AppCore() {
       await handleStopStream({ taskId: task.id });
       // The call's own work there ends with it: wait for that, so a request
       // that follows the stop isn't refused as running alongside it.
-      const stopping = [...callWorkRef.current.values()].filter((w) => w.taskId === task.id).map((w) => w.done);
+      const stopping = callWorkRef.current.inTask(task.id).map((w) => w.done);
       await Promise.race([Promise.all(stopping), new Promise((r) => { setTimeout(r, 4000); })]);
       return `Stopped "${task.title}".`;
     },
@@ -5357,7 +5377,8 @@ function AppCore() {
       {dockOffTask && offTaskPane}
     </div>
   );
-  const noCallRunning = facetime.phase === 'idle' && voiceCall.phase === 'idle';
+  // An ended voice call only shows its card: the call button dismisses it and starts anew.
+  const noCallRunning = facetime.phase === 'idle' && !voiceCallRunning(voiceCall.phase);
   // Voice calls only where the LLM provider is MindsHub: the call runs on
   // MindsHub. With another provider every call button is hidden.
   const voiceOffered = llmViaMindsHub(settings) && voicePrefs.enabled;
@@ -5366,11 +5387,13 @@ function AppCore() {
   const startVoiceCall = voiceAvailable && voiceOffered && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
-      // Calling while a call back is due: the work goes on, and its result is said on this call.
-      if (!callBackRef.current) {
-        voiceHistoryRef.current = [];
-        callWorkRef.current.clear();
-      }
+      // Calling while a call back is due: the work goes on, and its result is
+      // said on this call. Work left over with nothing running anywhere is
+      // stale: it would hold the call busy for good.
+      if (!callBackRef.current) voiceHistoryRef.current = [];
+      const anythingRunning = Boolean(activeStreamingTaskIdRef.current) || tasksRef.current.some(isRunning)
+        || Object.values(messageQueueRef.current).some((queue) => queue?.length);
+      if (!anythingRunning) callWorkRef.current.clear();
       callBackRef.current = false;
       setCallBackPending(false);
       void voiceCall.start({ voice: getVoicePrefs().voice });
@@ -5384,7 +5407,7 @@ function AppCore() {
   } else if (voiceCall.lingering) {
     // Fading out, still listening: the button brings the call back as an ordinary one.
     voiceCallShortcut = { label: `Back to the call with ${agentLabel}`, live: true, onClick: () => voiceCall.resume() };
-  } else if (voiceCall.phase !== 'idle' && voiceCall.phase !== 'ended') {
+  } else if (voiceCallRunning(voiceCall.phase)) {
     voiceCallShortcut = { label: `On a call with ${agentLabel}`, live: true };
   } else if (startVoiceCall) {
     voiceCallShortcut = {
@@ -5410,6 +5433,7 @@ function AppCore() {
   const startVideoCall = facetimeAvailable && noCallRunning
     ? () => {
       facetimeTaskIdRef.current = route === 'task' && currentTask ? currentTask.id : null;
+      if (voiceCall.phase === 'ended') voiceCall.dismiss();
       void facetime.start();
     }
     : null;

@@ -8,7 +8,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 vi.mock('../../api', () => ({ startVoiceSession: vi.fn() }));
 
 import { startVoiceSession } from '../../api';
-import { AWAY_MS, IDLE_MS, LINGER_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceStartFailure } from './useVoiceCall';
+import {
+  ANALYZE_MAX_MS, AWAY_MS, IDLE_MS, LINGER_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceCallRunning, voiceStartFailure,
+} from './useVoiceCall';
 
 class FakeChannel {
   constructor() {
@@ -319,5 +321,126 @@ describe('a quiet call', () => {
     expect(greet.content).toMatch(/calling the user back/);
     expect(greet.content).toMatch(/Flights from \$212 on Saturday\./);
     expect(hook.result.current.isOn()).toBe(true);
+  });
+});
+
+describe('a call-back that hears nothing', () => {
+  it('stops analyzing and opens the microphone after a while with GPT-Live silent', async () => {
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
+    await act(() => hook.result.current.callBack('It is done.'));
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    expect(hook.result.current.analyzing).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(ANALYZE_MAX_MS + 100); });
+    expect(hook.result.current.analyzing).toBe(false);
+    expect(hook.result.current.micOn).toBe(true);
+    expect(track.enabled).toBe(true);
+  });
+
+  it('stops analyzing on an error from GPT-Live', async () => {
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
+    await act(() => hook.result.current.callBack('It is done.'));
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    act(() => peer.channel.emit({ type: 'error', error: { message: 'boom' } }));
+    expect(hook.result.current.analyzing).toBe(false);
+    expect(hook.result.current.micOn).toBe(true);
+  });
+});
+
+describe('news for the call', () => {
+  it('is said on a live call, and wakes one fading out', async () => {
+    const { result } = await started({ onAsk: vi.fn(), context: () => '', busy: () => true, onAway: vi.fn() });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    act(() => result.current.armAway());
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS + 1_000); });
+    expect(result.current.lingering).toBe(true);
+    let taken;
+    act(() => { taken = result.current.announce('Flights from $212.'); });
+    expect(taken).toBe(true);
+    expect(result.current.lingering).toBe(false);
+    expect(peer.channel.sent.at(-1).content).toMatch(/Flights from \$212\./);
+  });
+
+  it('waits for a call still connecting, and is said once it is live', async () => {
+    const { result } = await started({ onAsk: vi.fn(), context: () => '' });
+    let taken;
+    act(() => { taken = result.current.announce('Flights from $212.'); });
+    expect(taken).toBe(true);
+    expect(peer.channel.sent).toEqual([]);
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    expect(peer.channel.sent.at(-1).content).toMatch(/Flights from \$212\./);
+  });
+
+  it('is refused by a call hanging up, so the app calls back, which takes over from it', async () => {
+    const { result } = await started({ onAsk: vi.fn(), context: () => '' });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    const first = peer;
+    await act(() => result.current.end());
+    expect(result.current.isOn()).toBe(false);
+    expect(result.current.announce('Flights from $212.')).toBe(false);
+
+    await act(() => result.current.callBack('Flights from $212.'));
+    expect(first.closed).toBe(true);
+    expect(peer).not.toBe(first);
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    expect(peer.channel.sent.find((e) => e.type === 'session.instructions.append').content).toMatch(/calling the user back/);
+  });
+
+  it('is refused with no call', () => {
+    const { result } = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
+    expect(result.current.announce('x')).toBe(false);
+  });
+});
+
+describe('a call that changed under a pending step', () => {
+  it("a preview's hang-up leaves alone the preview that replaced it", async () => {
+    globalThis.RTCPeerConnection = class extends FakePeer { addTransceiver() {} };
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '' }));
+    await act(async () => { hook.result.current.preview('vesper'); await vi.advanceTimersByTimeAsync(0); });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    const first = peer;
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    // Switched to another voice before the first preview's line is over.
+    await act(async () => { hook.result.current.preview('cedar'); await vi.advanceTimersByTimeAsync(0); });
+    const second = peer;
+    expect(second).not.toBe(first);
+    act(() => second.channel.emit({ type: 'session.started' }));
+    // A long line: past the first preview's longest wait, within the second's.
+    for (let i = 0; i < 11; i += 1) {
+      act(() => second.channel.emit({ type: 'session.output_transcript.delta', delta: 'Hi, this is how I sound. ' }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    }
+    expect(second.channel.sent.some((e) => e.type === 'session.close')).toBe(false);
+    expect(hook.result.current.closing).toBe(false);
+  });
+
+  it("drops an answer for a call that is gone, rather than send it into a new one", async () => {
+    let answer;
+    const onAsk = vi.fn(() => new Promise((r) => { answer = r; }));
+    const hook = renderHook(() => useVoiceCall({ onAsk, context: () => '' }));
+    await act(() => hook.result.current.start());
+    act(() => {
+      peer.channel.emit({ type: 'session.started' });
+      peer.channel.emit({ type: 'session.input_transcript.delta', delta: 'Book a hotel.' });
+      peer.channel.emit({ type: 'session.delegation.created', delegation: { id: 'item_1', target: 'client' } });
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    expect(onAsk).toHaveBeenCalled();
+    act(() => { hook.result.current.switchVoice('cedar'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const second = peer;
+    act(() => second.channel.emit({ type: 'session.started' }));
+    await act(async () => { answer('Booked.'); await vi.advanceTimersByTimeAsync(0); });
+    expect(second.channel.sent.some((e) => e.type === 'session.commentary.append')).toBe(false);
+  });
+});
+
+describe('whether a call holds the line', () => {
+  it('counts an ended call as none, so a new one can start', () => {
+    expect(voiceCallRunning('ended')).toBe(false);
+    expect(voiceCallRunning('idle')).toBe(false);
+    expect(voiceCallRunning('live')).toBe(true);
+    expect(voiceCallRunning('starting')).toBe(true);
+    expect(voiceCallRunning('ending')).toBe(true);
   });
 });

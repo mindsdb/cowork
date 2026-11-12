@@ -59,7 +59,9 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
       role="dialog"
       aria-label={t('voiceCall.dialogLabel', { agent: agentLabel })}
       className={`voice-call${docked ? ' voice-call--docked' : ''}${working ? ' is-working' : ''}${ended ? ' is-ended' : ''}${closing ? ' is-closing' : ''}${lingering ? ' is-lingering' : ''}`}
+      // Faded out: hidden from sight, from screen readers and from focus.
       aria-hidden={lingering || undefined}
+      inert={lingering || undefined}
     >
       <button
         type="button"

@@ -30,7 +30,6 @@ export async function runOperator({ request, history, snapshot, actions, operate
     history.push(...exchange, { role: 'assistant', content: said });
     return said;
   };
-  console.info('[voice-call] request', request);
   for (let round = 0; round < maxRounds; round += 1) {
     const turn = await operate([...history, ...exchange].slice(-MAX_HISTORY), snapshot());
     const calls = turn?.tool_calls || [];
@@ -45,7 +44,6 @@ export async function runOperator({ request, history, snapshot, actions, operate
       } catch (err) {
         result = `That failed: ${err?.message || err}`;
       }
-      console.info('[voice-call] action', call.name, call.arguments, '→', result);
       exchange.push({ role: 'tool', tool_call_id: call.id, content: String(result ?? 'Done.').slice(0, MAX_RESULT_CHARS) });
     }
   }
