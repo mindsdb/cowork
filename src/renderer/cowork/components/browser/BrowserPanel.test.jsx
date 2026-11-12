@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 const embedBrowser = vi.fn();
 vi.mock('../../api', () => ({ embedBrowser: (...args) => embedBrowser(...args) }));
@@ -70,7 +70,13 @@ describe('BrowserPanel', () => {
       render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
       await flush();
       const note = webPaneNote('Cowork');
-      expect(screen.getByText(note)).toBeInTheDocument();
+      // One line under the pane, and the whole note behind it, closed until
+      // the person opens it.
+      const details = document.querySelector('details.browser-panel__note');
+      expect(details).not.toBeNull();
+      expect(details.open).toBe(false);
+      expect(details.querySelector('summary')).toHaveTextContent(/^Learn what Cowork sees$/);
+      expect(within(details).getByText(note)).toBeInTheDocument();
       expect(note).toMatch(/^What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site\. /);
       expect(note).toContain("Cowork's page reads and screenshots go to the model provider that serves your turn.");
       // Settings' own lines, so the pane and Settings say the same.

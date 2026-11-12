@@ -1951,7 +1951,7 @@ export function redirectForTask(redirects, taskId) {
 }
 
 // Module-level so the per-task debounce survives switching tasks (ENG-3188).
-export const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
+const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
 
 // ─── Main view ───────────────────────────────────────────────────────────
 /** Sent for the person when they click Done after the turn that handed them the browser ended. */
