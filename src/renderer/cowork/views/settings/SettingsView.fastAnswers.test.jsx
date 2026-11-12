@@ -131,12 +131,12 @@ describe('the Fast answers with Jev switch', () => {
     expect(screen.queryByText('Max steps per task')).toBeNull();
   });
 
-  it('keeps Advanced Settings on hosted web, where the budget rows are hidden', async () => {
+  it('shows beside the budget rows on hosted web', async () => {
     host.isWeb = true;
     render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev' } })} />);
     await expandAdvanced();
     expect(screen.getByLabelText(SWITCH)).toBeChecked();
-    expect(screen.queryByText('Max steps per task')).toBeNull();
+    expect(screen.getByText('Max steps per task')).toBeInTheDocument();
   });
 
   it('shows off once the organization turned Jev off', async () => {

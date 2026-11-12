@@ -1,0 +1,210 @@
+{
+  "updates": {
+    "backendVersion": {
+      "loading": "正在加载…",
+      "unavailable": "不可用"
+    },
+    "currentVersion": {
+      "title": "当前版本",
+      "subtitle": "当前运行的版本。服务器和界面更新会在启动时自动应用；底层组件详见“详细信息”。",
+      "releaseWeek": "发布周：{range}",
+      "outOfSyncHint": "底层组件的版本相差 {days} 天，有组件版本落后。请查看详细信息。",
+      "outOfSync": "⚠ 版本不一致",
+      "built": "构建于 {date}",
+      "appShell": "桌面应用",
+      "tooOldHint": "支持的版本：{minVersion} 或更高，且与最新应用（{latestVersion}）相差不超过 {days} 天。",
+      "tooOld": "⚠ 版本过旧",
+      "osCappedHint": "最新版应用需要 macOS {minMacos} 或更高版本，因此此应用将不再更新。",
+      "osCapped": "⚠ macOS {macos} 上无法更新",
+      "tooOldAlert": "此应用版本过旧，与当前版本的 {product} 不兼容。部分功能将被隐藏，直到应用更新到 {version}。请使用下方的“软件更新”。",
+      "showDetails": "详细信息",
+      "hideDetails": "隐藏详细信息",
+      "copy": "复制",
+      "copied": "已复制",
+      "copyFailed": "无法复制，请选中上方的详细信息并手动复制"
+    },
+    "software": {
+      "title": "软件更新",
+      "subtitle": "界面和服务器更新会在应用重启时自动应用。新版应用会在后台下载，并在下次启动时安装。",
+      "manualAfterFailure": "你仍可以手动下载安装程序。",
+      "installerDownloading": "正在下载安装程序。下载完成后，请退出 {product} 并打开安装程序以完成更新。",
+      "installerDownloadingDeb": "正在下载安装程序。下载完成后，请退出 {product}，然后{step}。",
+      "downloadInstallerHint": "请下载安装程序，然后退出 {product} 并打开安装程序以完成更新。",
+      "downloadInstallerHintDeb": "请下载安装程序，然后退出 {product}，再{step}。",
+      "offline": "无法检查：你似乎处于离线状态。",
+      "checkFailed": "无法检查更新，请重试。",
+      "upToDate": "已是最新版本。",
+      "serverPart": "服务器 → {version}",
+      "agentPart": "智能体 → {version}",
+      "uiPart": "界面 → {version}",
+      "newVersion": "新版本",
+      "checking": "正在检查…",
+      "check": "检查更新",
+      "updateReady": "更新已就绪",
+      "restartToApply": "重启应用以应用更新。",
+      "restartToApplyWith": "重启应用以应用更新（{changes}）。",
+      "restarting": "正在重启…",
+      "tryAgain": "重试",
+      "restartNow": "立即重启",
+      "auto": {
+        "checking": "正在检查应用更新…",
+        "available": "有新版应用可用",
+        "downloading": "正在下载应用更新…",
+        "downloadingPercent": "正在下载应用更新：{percent}%",
+        "ready": "应用更新已就绪",
+        "installing": "正在安装应用更新…",
+        "failed": "应用更新失败",
+        "readyHint": "重启 {product} 以完成已下载更新的安装。",
+        "failedHint": "无法完成自动更新。当前安装的版本仍可正常使用。",
+        "availableManualHint": "准备好后即可下载。",
+        "availableHint": "更新已可下载。",
+        "workingHint": "{product} 准备更新期间，你可以继续工作。",
+        "download": "下载更新",
+        "retry": "重试"
+      },
+      "newAppVersion": "新版应用 {version}",
+      "downloadAgain": "重新下载",
+      "downloadInstaller": "下载安装程序",
+      "applyFailed": "无法应用更新，请重试。"
+    }
+  },
+  "backend": {
+    "web": {
+      "title": "后端由服务器管理",
+      "body": "Python 后端运行在服务器上，无法通过此界面控制。"
+    },
+    "status": {
+      "online": {
+        "title": "MindsHub 后端正在运行",
+        "subtitle": "本地 Python 服务器正在响应 /health。"
+      },
+      "starting": {
+        "title": "MindsHub 后端正在启动…",
+        "subtitle": "正在启动本地 Python 服务器，通常只需几秒钟。"
+      },
+      "stopping": {
+        "title": "MindsHub 后端正在停止…",
+        "subtitle": "正在等待本地 Python 服务器终止。"
+      },
+      "stopped": {
+        "title": "MindsHub 后端已停止",
+        "subtitle": "你已停止本地 Python 服务器。点击下方的“启动后端”即可重新启动。"
+      },
+      "failed": {
+        "title": "MindsHub 后端未运行",
+        "subtitle": "本地 Python 服务器未能启动。最近的错误和日志末尾记录如下。"
+      }
+    },
+    "refreshTooltip": "刷新诊断信息",
+    "refresh": "刷新",
+    "stopping": "正在停止…",
+    "stop": "停止后端",
+    "starting": "正在启动…",
+    "restarting": "正在重启…",
+    "start": "启动后端",
+    "restart": "重启后端",
+    "statusHeading": "状态",
+    "port": "端口",
+    "exit": "退出代码",
+    "started": "启动时间",
+    "noStartError": "未捕获到具体的启动错误。请查看日志末尾，进程可能在启动后意外退出。",
+    "log": "日志",
+    "noLog": "（暂无日志）"
+  },
+  "account": {
+    "username": "用户名",
+    "organization": "组织",
+    "signIn": {
+      "title": "启用云端功能",
+      "subtitle": "使用 MindsHub 登录，即可在一个地方使用所有模型、云端执行和发布功能。",
+      "features": {
+        "router": {
+          "label": "无缝模型路由",
+          "desc": "在一个地方使用所有模型的最简单方式：Claude、GPT、DeepSeek、Kimi 等。"
+        },
+        "remote": {
+          "label": "远程任务",
+          "desc": "在托管基础设施上运行代码和长时间任务，而不占用你的笔记本电脑。"
+        },
+        "share": {
+          "label": "分享与协作",
+          "desc": "分享仪表板、报告和产物，并共同处理。"
+        },
+        "unified": {
+          "label": "统一账户",
+          "desc": "一次登录，一份账单，无需在各个提供商之间管理 API 密钥。"
+        }
+      },
+      "comingSoon": "即将推出",
+      "error": "登录未完成：{error}",
+      "button": "登录或注册 MindsHub"
+    },
+    "cancel": "取消",
+    "signingOut": "正在退出登录…",
+    "signOut": "退出登录",
+    "web": {
+      "title": "通过 MindsHub 管理",
+      "body": "网页版的账户通过 MindsHub 管理。"
+    }
+  },
+  "usage": {
+    "actions": {
+      "viewUsage": "查看用量",
+      "addFunds": "充值",
+      "setUpAutoTopUp": "设置自动充值",
+      "manageAutoTopUp": "管理自动充值",
+      "updatePaymentMethod": "更新付款方式"
+    },
+    "free": {
+      "title": "Air 免费额度",
+      "badge": "仅限 MindsHub Air",
+      "resetsAt": "{time} 重置",
+      "unlimited": "此账户无限制。",
+      "used": "已使用 {percent} 的额度",
+      "left": "剩余 {percent}",
+      "meterLabel": "Air 免费额度已用量",
+      "usedUpUntil": "已用完。在 {time} 额度恢复前，MindsHub Air 将从你的余额中扣费。",
+      "usedUp": "已用完。在额度恢复前，MindsHub Air 将从你的余额中扣费。",
+      "afterUntil": "用完后，在 {time} 额度恢复前，MindsHub Air 将使用你的余额。",
+      "after": "用完后，MindsHub Air 将使用你的余额。"
+    },
+    "autoTopUp": {
+      "off": "自动充值已关闭。开启后，余额不足时任务也能继续运行。",
+      "rule": "余额低于 {floor} 时充值到 {target}。",
+      "on": "已开启。",
+      "paymentFailed": "自动充值失败：无法从你的卡中扣款。请更新付款方式以恢复自动充值。",
+      "capReached": "{rule}为不超出本月上限，已暂停。",
+      "pendingAction": "{rule}正在等待银行确认最近一笔扣款。",
+      "badgeOn": "自动充值已开启",
+      "badgeFailed": "自动充值失败",
+      "badgePaused": "自动充值已暂停"
+    },
+    "low": {
+      "off": "余额不足。请充值或开启自动充值，以便任务继续运行。",
+      "ok": "余额不足。自动充值将为你补足余额。",
+      "pending": "余额不足。自动充值正在等待银行确认。",
+      "other": "余额不足。请充值以便任务继续运行。"
+    },
+    "balance": {
+      "title": "余额",
+      "empty": "余额为零。充值前，付费模型将无法运行。",
+      "usedBy": "供付费模型使用；免费 token 用完后，MindsHub Air 也会使用余额。",
+      "spentRange": "积分已用（{start} 至 {end}）",
+      "spentDate": "积分已用（{date}）",
+      "spentThisPeriod": "积分本期已用",
+      "notOwner": "只有组织的账单所有者才能充值或更改自动充值设置。"
+    },
+    "signIn": {
+      "title": "登录以查看用量",
+      "body": "登录 MindsHub 后，你的 Air 免费额度和余额将显示在这里。",
+      "goToAccount": "前往“账户”"
+    },
+    "loading": "正在加载用量…",
+    "error": {
+      "title": "无法加载用量",
+      "body": "MindsHub 没有响应。请重试，或在控制台中查看用量。",
+      "tryAgain": "重试"
+    },
+    "empty": "此账户暂无用量数据。"
+  }
+}

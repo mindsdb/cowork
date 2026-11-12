@@ -1,3 +1,4 @@
+import i18n, { currentLocale } from '../../lib/i18n';
 import type { CodingEvent } from './api';
 
 
@@ -12,16 +13,20 @@ type ActionKind = 'edit' | 'command' | 'read' | 'search' | 'list' | 'tool' | 'pl
 
 const ACTION_ORDER: ActionKind[] = ['edit', 'command', 'read', 'search', 'list', 'tool', 'plan', 'compact', 'retry'];
 
+function t(key: string, values?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: 'code', ...values });
+}
+
 const ACTION_PHRASE: Record<ActionKind, (count: number) => string> = {
-  edit: (count) => `edited ${count} ${count === 1 ? 'file' : 'files'}`,
-  command: (count) => `ran ${count} ${count === 1 ? 'command' : 'commands'}`,
-  read: (count) => `read ${count} ${count === 1 ? 'file' : 'files'}`,
-  search: (count) => `searched ${count} ${count === 1 ? 'time' : 'times'}`,
-  list: (count) => `listed ${count} ${count === 1 ? 'folder' : 'folders'}`,
-  tool: (count) => `used ${count} ${count === 1 ? 'tool' : 'tools'}`,
-  plan: () => 'updated the plan',
-  compact: () => 'compacted context',
-  retry: (count) => (count === 1 ? 'retried once' : `retried ${count} times`),
+  edit: (count) => t('activity.phrase.edit', { count }),
+  command: (count) => t('activity.phrase.command', { count }),
+  read: (count) => t('activity.phrase.read', { count }),
+  search: (count) => t('activity.phrase.search', { count }),
+  list: (count) => t('activity.phrase.list', { count }),
+  tool: (count) => t('activity.phrase.tool', { count }),
+  plan: () => t('activity.phrase.plan'),
+  compact: () => t('activity.phrase.compact'),
+  retry: (count) => t('activity.phrase.retry', { count }),
 };
 
 interface CommandAction {
@@ -103,7 +108,7 @@ function latestPerItem(events: CodingEvent[]): CodingEvent[] {
 
 
 function sentence(phrases: string[]): string {
-  const joined = new Intl.ListFormat('en', { type: 'conjunction' }).format(phrases);
+  const joined = new Intl.ListFormat(currentLocale(), { type: 'conjunction' }).format(phrases);
   return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
@@ -123,8 +128,8 @@ export function activityHeadline(events: CodingEvent[]): string {
   }
   const phrases = ACTION_ORDER.filter((kind) => counts.get(kind)).map((kind) => ACTION_PHRASE[kind](counts.get(kind) || 0));
   if (phrases.length) return sentence(phrases);
-  if (events.some((event) => event.type === 'approval' && event.phase === 'pending')) return 'Asked for approval';
-  return events.some((event) => event.type === 'reasoning') ? 'Thought it through' : 'Agent activity';
+  if (events.some((event) => event.type === 'approval' && event.phase === 'pending')) return t('activity.askedForApproval');
+  return events.some((event) => event.type === 'reasoning') ? t('activity.thoughtItThrough') : t('activity.agentActivity');
 }
 
 
@@ -164,24 +169,24 @@ export function reasoningHeading(event: CodingEvent): string {
 function presentTense(event: CodingEvent): string {
   if (event.type === 'file_change') {
     const path = text(event.data.path) || event.title;
-    return path ? `Editing ${path.split(/[\\/]/).at(-1)}` : 'Editing files';
+    return path ? t('activity.live.editingFile', { name: path.split(/[\\/]/).at(-1) }) : t('activity.live.editingFiles');
   }
-  if (isCompaction(event)) return 'Compacting context';
-  if (event.type === 'tool' && text(event.data.tool)) return `Calling ${text(event.data.tool)}`;
-  if (event.type === 'tool') return event.title ? `Using ${event.title}` : 'Using a tool';
+  if (isCompaction(event)) return t('activity.live.compacting');
+  if (event.type === 'tool' && text(event.data.tool)) return t('activity.live.calling', { tool: text(event.data.tool) });
+  if (event.type === 'tool') return event.title ? t('activity.live.using', { tool: event.title }) : t('activity.live.usingTool');
   const actions = commandActions(event);
   const [first] = actions;
-  if (actions.length === 1 && first.type === 'read') return `Reading ${first.name || first.path.split(/[\\/]/).at(-1) || 'a file'}`;
-  if (actions.length === 1 && first.type === 'search') return first.query ? `Searching for ${first.query}` : 'Searching';
-  if (actions.length === 1 && first.type === 'listFiles') return 'Listing files';
-  return `Running ${displayCommand(event)}`;
+  if (actions.length === 1 && first.type === 'read') return t('activity.live.reading', { name: first.name || first.path.split(/[\\/]/).at(-1) || t('activity.aFile') });
+  if (actions.length === 1 && first.type === 'search') return first.query ? t('activity.live.searchingFor', { query: first.query }) : t('activity.live.searching');
+  if (actions.length === 1 && first.type === 'listFiles') return t('activity.live.listing');
+  return t('activity.live.running', { command: displayCommand(event) });
 }
 
 
 export function liveStatusLabel(events: CodingEvent[]): string {
   // Codex reports each reconnect attempt, e.g. "Reconnecting... 1/2".
   const latest = events.at(-1);
-  if (latest?.type === 'error') return latest.text.replace(/\.\.\./g, '…') || 'Reconnecting…';
+  if (latest?.type === 'error') return latest.text.replace(/\.\.\./g, '…') || t('activity.live.reconnecting');
   const current = latestPerItem(events);
   for (let index = current.length - 1; index >= 0; index -= 1) {
     const event = current[index];
@@ -192,7 +197,7 @@ export function liveStatusLabel(events: CodingEvent[]): string {
     const heading = reasoningHeading(events[index]);
     if (heading) return heading;
   }
-  return 'Thinking…';
+  return t('activity.live.thinking');
 }
 
 
@@ -216,33 +221,33 @@ export function stepLabel(event: CodingEvent): StepLabel {
   if (event.type === 'file_change') {
     const changes = fileChanges(event);
     if (changes.length === 1) return { icon: 'edit', ...changeLabel(changes[0]) };
-    return { icon: 'edit', verb: 'Edited', target: `${changes.length} files` };
+    return { icon: 'edit', verb: t('activity.step.edited'), target: t('activity.step.files', { count: changes.length }) };
   }
   if (isPlanUpdate(event)) {
     const steps = planSteps(event);
     const done = steps.filter((step) => step.status === 'completed').length;
-    return { icon: 'plan', verb: 'Updated the plan', target: steps.length ? `· ${done} of ${steps.length} done` : '' };
+    return { icon: 'plan', verb: t('activity.step.updatedPlan'), target: steps.length ? t('activity.step.planProgress', { done, total: steps.length }) : '' };
   }
-  if (event.type === 'reasoning') return { icon: 'thought', verb: '', target: reasoningHeading(event) || 'Thought it through' };
+  if (event.type === 'reasoning') return { icon: 'thought', verb: '', target: reasoningHeading(event) || t('activity.thoughtItThrough') };
   if (event.type === 'error') {
     const attempt = event.text.match(/\d+\/\d+/)?.[0];
-    return { icon: 'retry', verb: 'Retried', target: `after the connection dropped${attempt ? ` (${attempt})` : ''}` };
+    return { icon: 'retry', verb: t('activity.step.retried'), target: attempt ? t('activity.step.retryTargetAttempt', { attempt }) : t('activity.step.retryTarget') };
   }
-  if (event.type === 'approval') return { icon: 'approval', verb: 'Asked to run', target: displayCommand({ ...event, data: { command: event.text } }) || event.title };
-  if (isCompaction(event)) return { icon: 'compact', verb: 'Compacted context', target: '' };
+  if (event.type === 'approval') return { icon: 'approval', verb: t('activity.step.askedToRun'), target: displayCommand({ ...event, data: { command: event.text } }) || event.title };
+  if (isCompaction(event)) return { icon: 'compact', verb: t('activity.step.compacted'), target: '' };
   if (event.type === 'tool') {
-    if (text(event.data.type) === 'imageView') return { icon: 'image', verb: 'Viewed', target: basename(event.title) || 'an image' };
+    if (text(event.data.type) === 'imageView') return { icon: 'image', verb: t('activity.step.viewed'), target: basename(event.title) || t('activity.step.anImage') };
     const tool = text(event.data.tool);
     const server = text(event.data.server);
-    if (tool) return { icon: 'tool', verb: 'Called', target: server ? `${server} · ${tool}` : tool };
-    return { icon: 'tool', verb: 'Used', target: event.title || 'a tool' };
+    if (tool) return { icon: 'tool', verb: t('activity.step.called'), target: server ? `${server} · ${tool}` : tool };
+    return { icon: 'tool', verb: t('activity.step.used'), target: event.title || t('activity.step.aTool') };
   }
   const actions = commandActions(event);
   const [first] = actions;
-  if (actions.length === 1 && first.type === 'read') return { icon: 'read', verb: 'Read', target: first.name || basename(first.path) || displayCommand(event) };
-  if (actions.length === 1 && first.type === 'search') return { icon: 'search', verb: first.query ? 'Searched for' : 'Searched', target: first.query };
-  if (actions.length === 1 && first.type === 'listFiles') return { icon: 'list', verb: 'Listed', target: first.path || 'files' };
-  return { icon: 'command', verb: 'Ran', target: displayCommand(event) };
+  if (actions.length === 1 && first.type === 'read') return { icon: 'read', verb: t('activity.step.read'), target: first.name || basename(first.path) || displayCommand(event) };
+  if (actions.length === 1 && first.type === 'search') return { icon: 'search', verb: first.query ? t('activity.step.searchedFor') : t('activity.step.searched'), target: first.query };
+  if (actions.length === 1 && first.type === 'listFiles') return { icon: 'list', verb: t('activity.step.listed'), target: first.path || t('activity.step.filesWord') };
+  return { icon: 'command', verb: t('activity.step.ran'), target: displayCommand(event) };
 }
 
 
@@ -317,8 +322,8 @@ export function fileChanges(event: CodingEvent): FileChange[] {
 
 
 export function changeLabel(change: FileChange): { verb: string; target: string } {
-  const verb = change.kind === 'add' ? 'Created' : change.kind === 'delete' ? 'Deleted' : 'Edited';
-  return { verb, target: basename(change.path) || 'a file' };
+  const verb = change.kind === 'add' ? t('activity.step.created') : change.kind === 'delete' ? t('activity.step.deleted') : t('activity.step.edited');
+  return { verb, target: basename(change.path) || t('activity.aFile') };
 }
 
 
@@ -361,7 +366,7 @@ export function planSteps(event: CodingEvent): PlanStep[] {
     const step = item && typeof item === 'object' ? item as Record<string, unknown> : {};
     const status = text(step.status);
     return {
-      step: text(step.step) || 'Plan step',
+      step: text(step.step) || t('activity.planStep'),
       status: status === 'completed'
         ? 'completed'
         : status === 'inProgress' || status === 'in_progress' || status === 'running' ? 'in_progress' : 'pending',
@@ -375,5 +380,5 @@ export function planPosition(event: CodingEvent | undefined): string {
   const steps = event ? planSteps(event) : [];
   const current = steps.findIndex((step) => step.status === 'in_progress');
   const index = current >= 0 ? current : steps.findIndex((step) => step.status === 'pending');
-  return index >= 0 ? `Step ${index + 1} of ${steps.length}` : '';
+  return index >= 0 ? t('activity.stepPosition', { step: index + 1, total: steps.length }) : '';
 }

@@ -1,3 +1,6 @@
+import i18n from '../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`messages.artifactPaths.${key}`, { ns: 'projects', ...vars });
 function textValue(value) {
   return value == null ? '' : String(value).trim();
 }
@@ -70,7 +73,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
       rawPath: raw,
       canonicalPath: '',
       displayPath: '',
-      actionDisabledReason: 'This artifact did not include a file path.',
+      actionDisabledReason: tr('noPath'),
     };
   }
 
@@ -88,7 +91,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
       rawPath: raw,
       canonicalPath: '',
       displayPath: friendlyArtifactDisplayPath(raw, { relative: true }),
-      actionDisabledReason: 'This artifact path is relative, but the task has no project folder.',
+      actionDisabledReason: tr('relativeNoProject'),
     };
   }
 
@@ -99,7 +102,7 @@ export function normalizeArtifactPath(rawPath, projectPath) {
       rawPath: raw,
       canonicalPath: '',
       displayPath: friendlyArtifactDisplayPath(raw, { relative: true }),
-      actionDisabledReason: 'This artifact path points outside the project folder.',
+      actionDisabledReason: tr('outsideProject'),
     };
   }
 

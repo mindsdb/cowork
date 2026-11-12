@@ -1,0 +1,498 @@
+{
+  "nav": {
+    "title": "Paramètres",
+    "ariaLabel": "Sections des paramètres",
+    "groups": {
+      "General": "Général",
+      "Code": "Code",
+      "App": "Application",
+      "System": "Système"
+    },
+    "items": {
+      "agent": "Agent",
+      "codingAgent": "Agent de code",
+      "computers": "Ordinateurs",
+      "appearance": "Apparence",
+      "branding": "Image de marque",
+      "desktop": "Bureau",
+      "channels": "Canaux",
+      "updates": "Mises à jour",
+      "backend": "Backend",
+      "usage": "Utilisation",
+      "account": "Compte"
+    }
+  },
+  "header": {
+    "signIn": "Se connecter",
+    "signInTooltip": "Connectez-vous avec MindsHub pour utiliser les modèles gérés"
+  },
+  "autoSave": {
+    "saving": "Enregistrement…",
+    "failed": "Échec de l’enregistrement",
+    "saved": "Enregistré",
+    "savedAutomatically": "Les modifications sont enregistrées automatiquement."
+  },
+  "language": {
+    "title": "Langue",
+    "ariaLabel": "Langue",
+    "matchSystem": "Comme le système ({language})"
+  },
+  "appearance": {
+    "title": "Apparence",
+    "style": {
+      "title": "Style",
+      "lockedSubtitle": "Défini par ce déploiement. Le choix entre clair et sombre vous appartient toujours.",
+      "subtitle": "Normal, 8-Bit, ou créez le vôtre avec Personnalisé. Se combine avec le mode clair ou sombre.",
+      "ariaLabel": "Style",
+      "optionAriaLabel": "Style {name}"
+    },
+    "skins": {
+      "normal": {
+        "label": "Normal",
+        "title": "Utiliser l’apparence standard."
+      },
+      "8bit": {
+        "label": "8-Bit",
+        "title": "Utiliser l’apparence rétro 8-Bit."
+      },
+      "custom": {
+        "label": "Personnalisé",
+        "title": "Créer votre propre apparence."
+      }
+    },
+    "theme": {
+      "title": "Thème",
+      "subtitle": "Clair ou sombre — s’applique aussi à l’arrière-plan animé.",
+      "ariaLabel": "Thème",
+      "light": "Clair",
+      "lightAriaLabel": "Thème clair",
+      "lightHint": "Utiliser le thème clair.",
+      "dark": "Sombre",
+      "darkAriaLabel": "Thème sombre",
+      "darkHint": "Utiliser le thème sombre."
+    },
+    "accent": {
+      "title": "Couleur d’accentuation",
+      "subtitle": "Boutons, surbrillances, focus : la couleur de marque de votre thème.",
+      "ariaLabel": "Couleur d’accentuation personnalisée"
+    },
+    "background": {
+      "default": "Par défaut",
+      "lightTitle": "Arrière-plan clair",
+      "lightSubtitle": "Utilisé avec le thème clair. Une couleur sombre choisie devient une version claire de sa teinte ; le texte s’ajuste pour rester lisible. Avec Par défaut, l’arrière-plan sombre lui donne sa teinte, sinon l’apparence d’origine du thème Clair s’applique.",
+      "lightAriaLabel": "Couleur d’arrière-plan personnalisée — mode clair",
+      "lightDefaultAriaLabel": "Arrière-plan clair par défaut",
+      "darkTitle": "Arrière-plan sombre",
+      "darkSubtitle": "Utilisé avec le thème sombre. Une couleur claire choisie devient une version sombre de sa teinte ; le texte s’ajuste pour rester lisible. Avec Par défaut, l’arrière-plan clair lui donne sa teinte, sinon l’apparence d’origine du thème Sombre s’applique.",
+      "darkAriaLabel": "Couleur d’arrière-plan personnalisée — mode sombre",
+      "darkDefaultAriaLabel": "Arrière-plan sombre par défaut"
+    },
+    "corners": {
+      "title": "Coins",
+      "subtitle": "L’aspect plus ou moins anguleux des surfaces.",
+      "ariaLabel": "Rayon des coins",
+      "square": "Carrés",
+      "squareAriaLabel": "Coins carrés",
+      "squareHint": "Coins nets, au pixel près.",
+      "soft": "Adoucis",
+      "softAriaLabel": "Coins adoucis",
+      "softHint": "Légèrement arrondis.",
+      "round": "Ronds",
+      "roundAriaLabel": "Coins ronds",
+      "roundHint": "Entièrement arrondis."
+    },
+    "typeface": {
+      "title": "Police",
+      "subtitle": "Police standard de l’interface, ou chasse fixe partout pour un style terminal.",
+      "ariaLabel": "Police personnalisée",
+      "standard": "Standard",
+      "standardAriaLabel": "Police standard",
+      "standardHint": "Inter pour le texte de l’interface.",
+      "mono": "Mono",
+      "monoAriaLabel": "Police à chasse fixe",
+      "monoHint": "JetBrains Mono partout."
+    },
+    "scanlines": {
+      "title": "Lignes de balayage",
+      "subtitle": "Un léger effet de lignes de balayage CRT sur toute l’application.",
+      "ariaLabel": "Effet de lignes de balayage"
+    },
+    "greeting": {
+      "title": "Message d’accueil",
+      "subtitle": "La phrase affichée lorsque vous commencez une nouvelle tâche.",
+      "hint": "Affiché au-dessus du champ de saisie lorsque vous commencez une nouvelle tâche.",
+      "ariaLabel": "Texte du message d’accueil"
+    },
+    "sidebarTitle": {
+      "title": "Titre de la barre latérale",
+      "subtitle": "Affiché en haut du panneau de navigation à gauche. Laissez vide pour utiliser le titre par défaut, {product}.",
+      "hint": "Remplace le logotype {product} dans le panneau de navigation.",
+      "ariaLabel": "Texte du titre de la barre latérale"
+    },
+    "sidebarTitleColor": {
+      "title": "Couleur du titre de la barre latérale",
+      "subtitle": "Choisissez une couleur pour le titre de la barre latérale, ou suivez la couleur de texte par défaut du thème.",
+      "ariaLabel": "Couleur du titre de la barre latérale",
+      "follow": "Suivre le thème",
+      "followAriaLabel": "Suivre la couleur du thème"
+    },
+    "sidebarLogo": {
+      "title": "Logo de la barre latérale",
+      "subtitle": "Une icône affichée à côté du titre de la barre latérale. PNG, JPG ou SVG, moins de 300 KB.",
+      "change": "Changer le logo",
+      "upload": "Importer un logo",
+      "remove": "Retirer",
+      "tooLarge": "Le logo doit faire moins de 300 KB."
+    },
+    "favicon": {
+      "title": "Icône d’onglet du navigateur",
+      "subtitle": "PNG, ICO, SVG ou WEBP, moins de 100 KB. Une image carrée d’au moins 32 × 32 pixels donne le meilleur résultat.",
+      "previewAlt": "Aperçu de l’icône d’onglet du navigateur",
+      "change": "Changer l’icône",
+      "upload": "Importer une icône",
+      "remove": "Retirer",
+      "removeAriaLabel": "Retirer l’icône d’onglet du navigateur",
+      "fileAriaLabel": "Fichier de l’icône d’onglet du navigateur",
+      "wrongType": "Choisissez une image PNG, ICO, SVG ou WEBP.",
+      "tooLarge": "L’icône d’onglet du navigateur doit faire moins de 100 KB.",
+      "unreadable": "Impossible de lire cette image. Essayez un autre fichier."
+    },
+    "figureSources": {
+      "title": "Afficher l’origine des chiffres",
+      "subtitle": "Souligner chaque chiffre d’une réponse avec l’étape dont il provient, et signaler les chiffres qu’aucune étape n’a renvoyés."
+    },
+    "animatedBackground": {
+      "title": "Arrière-plan animé",
+      "subtitle": "Grille de points animée derrière l’application au lieu d’une surface unie."
+    },
+    "counters": {
+      "title": "Afficher les compteurs du panneau de navigation",
+      "subtitle": "Badges de comptage sur Projets / Planifiées / Artefacts / Applications connectées, ainsi que le temps écoulé sur chaque ligne de Récents.",
+      "ariaLabel": "Compteurs du panneau de navigation"
+    },
+    "themeToggle": {
+      "title": "Bouton de changement de thème",
+      "subtitle": "Commande clair/sombre sur le bouton d’affichage, dans le coin de la fenêtre."
+    },
+    "styleToggle": {
+      "title": "Bouton de style 8-Bit",
+      "subtitle": "Commande de style Normal/8-Bit sur le même bouton. Si les deux sont activées, le bouton ouvre les paramètres d’affichage."
+    },
+    "setByOrg": "Défini par votre organisation.",
+    "yourStyle": {
+      "title": "Votre style",
+      "description": "Ces réglages remplacent l’apparence de votre organisation, uniquement pour vous.",
+      "off": "Les réglages de style personnels sont désactivés. Tout le monde voit l’apparence de votre organisation.",
+      "orgSetsRest": "Les autres réglages de style sont définis par l’image de marque de votre organisation.",
+      "changeInBranding": "Modifier dans Image de marque →"
+    },
+    "display": {
+      "title": "Affichage",
+      "description": "Préférences d’affichage personnelles. Elles ne sont visibles que par vous."
+    }
+  },
+  "mobile": {
+    "back": "Retour aux paramètres",
+    "close": "Fermer les paramètres"
+  },
+  "footer": {
+    "hint": {
+      "missingNames": "Chaque fournisseur personnalisé doit avoir un nom",
+      "saving": "Enregistrement…",
+      "noChanges": "Aucune modification non enregistrée",
+      "save": "Enregistrer les modifications.",
+      "retest": "Retester les fournisseurs en échec.",
+      "saveAndTest": "Enregistrer les modifications et relancer les tests des fournisseurs."
+    },
+    "status": {
+      "testing": "Test de la configuration…",
+      "saving": "Enregistrement des paramètres…",
+      "testPassed": "Test réussi : le fournisseur, le modèle et les identifiants sont valides.",
+      "saved": "Paramètres enregistrés.",
+      "testProblem": "Le test a signalé un problème.",
+      "configProblem": "La configuration a signalé un problème.",
+      "applyOnSave": "Les modifications s’appliquent à l’enregistrement."
+    },
+    "button": {
+      "saving": "Enregistrement…",
+      "save": "Enregistrer",
+      "saved": "Enregistré"
+    },
+    "errors": {
+      "saveFailed": "Impossible d’enregistrer les paramètres.",
+      "verifyFailed": "Paramètres enregistrés, mais la vérification a échoué : {error}",
+      "checkFailed": "Impossible de vérifier la configuration.",
+      "validateFailed": "Impossible de valider les paramètres."
+    }
+  },
+  "fields": {
+    "clearTooltip": "Effacer (appliqué avec « Enregistrer »)",
+    "clearAriaLabel": "Effacer la valeur"
+  },
+  "apiKey": {
+    "ariaLabel": "Clé API",
+    "namedAriaLabel": "Clé API {name}",
+    "revealFirst": "Affichez d’abord la clé pour la copier",
+    "copied": "Copié",
+    "copyFailed": "Impossible de copier : sélectionnez la clé pour la copier manuellement",
+    "copy": "Copier dans le presse-papiers",
+    "copiedAriaLabel": "Copié dans le presse-papiers",
+    "copyAriaLabel": "Copier la clé dans le presse-papiers",
+    "hide": "Masquer la clé",
+    "revealing": "Affichage…",
+    "reveal": "Afficher la clé",
+    "clearTooltip": "Effacer cette clé (appliqué avec « Enregistrer »)",
+    "clearAriaLabel": "Effacer la clé"
+  },
+  "budget": {
+    "fieldTitle": "{label} ({min}–{max}, par défaut {fallback}{unit, select, million { millions de jetons} other {}})",
+    "millionTokens": "millions de jetons",
+    "safetyLimit": "limite de sécurité",
+    "noLimitHint": "aucune limite : seuls les plafonds d’étapes et de reprises automatiques s’appliquent",
+    "default": "par défaut {value}",
+    "or": "— ou —"
+  },
+  "probe": {
+    "byok": "Ou ajoutez votre propre fournisseur et votre clé API ci-dessous.",
+    "noCredits": "Aucun crédit disponible.",
+    "topUp": "Recharger le solde →",
+    "addFunds": "Ajouter des fonds →",
+    "slowDown": "{sentence} Ce n’est pas un problème de crédits.",
+    "budgetReached": "Le budget de votre organisation est épuisé. {detail}",
+    "viewBudgetsArrow": "Voir les budgets →"
+  },
+  "providers": {
+    "title": "Fournisseurs de LLM",
+    "unavailable": "Le fournisseur configuré est indisponible. Réessayez ou contactez votre administrateur.",
+    "status": {
+      "connected": "connecté",
+      "unableToConnect": "connexion impossible",
+      "testing": "test en cours…",
+      "notTested": "non testé"
+    },
+    "statusTitle": {
+      "signedIn": "Connecté via la connexion MindsHub.",
+      "passed": "Dernier test réussi",
+      "passedDetail": "Dernier test réussi ({detail})",
+      "failed": "Échec du dernier test",
+      "failedDetail": "Échec du dernier test : {detail}",
+      "testing": "Test en cours…",
+      "notTested": "Pas encore testé : enregistrez les paramètres et lancez un test pour vérifier.",
+      "notTestedNoTests": "La connexion au fournisseur n’a pas été testée."
+    },
+    "desc": {
+      "mindsCloud": "Tous les modèles de pointe au même endroit : Claude, GPT, Gemini et plus encore.",
+      "anthropic": "Utilisez les modèles Claude avec votre clé API Anthropic.",
+      "openai": "Utilisez les modèles GPT avec votre clé API OpenAI.",
+      "gemini": "Utilisez les modèles Gemini via le point de terminaison compatible OpenAI de Google.",
+      "openaiCompatible": "Tout serveur compatible OpenAI (Ollama, vLLM, Together, Groq, etc.)."
+    },
+    "customHeading": "Fournisseur personnalisé compatible OpenAI",
+    "customName": {
+      "label": "Nom du fournisseur personnalisé",
+      "hint": "Nom affiché pour ce fournisseur personnalisé, visible dans les listes de modèles ci-dessous.",
+      "required": "Nom obligatoire"
+    },
+    "baseUrl": "URL de base",
+    "getKey": "Obtenez votre clé API sur {link}",
+    "openInBrowser": "Ouvrir {url} dans votre navigateur.",
+    "noAccount": "Pas encore de compte ?",
+    "signUp": "S’inscrire →",
+    "signUpTooltip": "Ouvrir la page d’inscription MindsHub dans votre navigateur.",
+    "remove": "Retirer ce fournisseur",
+    "editKey": "Modifier la clé API",
+    "allConfigured": "Tous les types de fournisseurs sont déjà configurés",
+    "addAnother": "Ajouter un autre fournisseur",
+    "add": "Ajouter un fournisseur",
+    "choose": "Choisir un fournisseur :",
+    "hidePicker": "Masquer le sélecteur de fournisseur.",
+    "closePicker": "Fermer le sélecteur de fournisseur"
+  },
+  "agent": {
+    "modelRouter": "Routeur de modèles",
+    "roles": {
+      "planning": "Modèle de planification",
+      "router": "Modèle de routage et de synthèse",
+      "coding": "Modèle de code",
+      "planningSubtitle": "Utilisé pour le raisonnement, l’orchestration et les réponses.",
+      "codingSubtitle": "Utilisé pour générer du code dans le brouillon."
+    },
+    "providerLabel": "Fournisseur :",
+    "modelLabel": "Modèle :",
+    "providerHint": "Choisissez le fournisseur utilisé pour le rôle {role, select, planning {planification} coding {code} router {routage} other {{role}}}.",
+    "modelHint": "Choisissez le modèle utilisé pour le rôle {role, select, planning {planification} coding {code} router {routage} other {{role}}}. Choisissez Autre… pour saisir un identifiant de modèle personnalisé.",
+    "customModelPlaceholder": "Saisissez un identifiant de modèle",
+    "customModelHint": "Identifiant de modèle libre, envoyé tel quel au fournisseur.",
+    "modelIdHint": "Identifiant de modèle envoyé tel quel à ce fournisseur.",
+    "checking": "Vérification de la connexion à {provider}…",
+    "notConfigured": "{provider} n’est pas configuré : ajoutez ses identifiants dans Fournisseurs de LLM ci-dessus, ou choisissez un autre fournisseur.",
+    "unknownNotConfigured": "Ce fournisseur n’est pas configuré. Ajoutez-le dans Fournisseurs de LLM ci-dessus.",
+    "failed": "{provider} a échoué à son dernier test : vérifiez-le dans Fournisseurs de LLM ci-dessus, ou choisissez un autre fournisseur.",
+    "modelUnavailable": "{model} est indisponible. Choisissez un autre modèle ou contactez votre administrateur.",
+    "modelRestricted": "{model} est restreint par un administrateur de votre organisation. Choisissez un autre modèle.",
+    "modelNeedsCredits": "{model} nécessite des crédits. {link} pour l’utiliser.",
+    "topUpBalance": "Rechargez votre solde",
+    "modelBudgetReached": "{model} ne peut pas s’exécuter, car le budget de votre organisation est épuisé.",
+    "viewBudgets": "Voir les budgets"
+  },
+  "memory": {
+    "title": "Mémoire",
+    "mode": {
+      "title": "Mode de mémoire",
+      "subtitle": "La façon dont {agent} met à jour sa mémoire à long terme.",
+      "ariaLabel": "Mode de mémoire",
+      "autopilot": "Automatique",
+      "autopilotHint": "{agent} met à jour la mémoire à long terme automatiquement.",
+      "copilot": "Avec validation",
+      "copilotHint": "{agent} propose des mises à jour de la mémoire que vous validez.",
+      "off": "Désactivé",
+      "offHint": "Désactiver les mises à jour de la mémoire à long terme."
+    },
+    "episodic": {
+      "title": "Mémoire épisodique",
+      "subtitle": "Enregistrer l’historique des conversations pour s’en souvenir plus tard."
+    },
+    "dashboards": {
+      "title": "Tableaux de bord proactifs",
+      "subtitle": "Générer automatiquement des rapports HTML à partir des résultats du brouillon."
+    },
+    "actFirst": {
+      "title": "Agir d’abord, demander ensuite",
+      "subtitle": "Agir selon des choix par défaut raisonnables et indiquer les hypothèses au fil du texte, plutôt que de s’arrêter pour demander."
+    }
+  },
+  "advanced": {
+    "title": "Paramètres avancés",
+    "limits": {
+      "title": "Limiter ce qu’une tâche peut faire",
+      "subtitleOn": "{agent} s’arrête ou demande avant d’aller plus loin selon les étapes, reprises automatiques et jetons définis ci-dessous.",
+      "subtitleOff": "Désactivé : une tâche s’exécute jusqu’à son terme, dans la limite d’un seuil de sécurité élevé où {agent} demande avant d’aller plus loin. Activez l’option pour définir vos propres limites."
+    },
+    "maxSteps": {
+      "title": "Nombre max. d’étapes par tâche",
+      "subtitle": "Le nombre d’actions (exécuter du code, lire des fichiers, effectuer des recherches) que {agent} peut réaliser pour une même demande avant de faire une pause pour vous consulter. Augmentez-le pour que les grosses tâches se terminent d’un coup ; réduisez-le pour mieux maîtriser le temps et les coûts."
+    },
+    "maxContinuations": {
+      "title": "Nombre max. de reprises automatiques",
+      "subtitle": "Quand {agent} s’arrête alors que le travail semble inachevé, Cowork le relance pour le terminer ; ce réglage limite le nombre de relances. Augmentez-le pour plus de rigueur sans intervention ; indiquez 0 pour arrêter après la première tentative (vous recevrez tout de même un résumé de ce qui manque)."
+    },
+    "maxTokens": {
+      "title": "Nombre max. de jetons par tâche",
+      "subtitle": "Le nombre maximal de jetons que {agent} peut consommer pour une même demande avant de faire une pause pour vous consulter : une tâche bloquée ne peut ainsi pas épuiser une grande partie de votre quota gratuit ou de votre solde sans aboutir. Augmentez-le si vous lui confiez souvent de gros travaux ; réduisez-le pour plafonner le coût d’une demande.",
+      "noLimit": "Aucune limite"
+    },
+    "jev": {
+      "title": "Réponses rapides avec Jev",
+      "subtitle": "Jev, le modèle de décision de MindsHub, lit chaque message et la conversation récente pour déterminer si le modèle choisi peut répondre directement, et vérifie si {agent} a terminé son travail. Désactivez-le pour que chaque message passe par {agent}."
+    }
+  },
+  "desktop": {
+    "title": "Bureau",
+    "keepAwake": {
+      "title": "Rester éveillé pour les tâches planifiées",
+      "subtitle": "Lorsque l’ordinateur est branché, l’empêche de se mettre en veille pendant qu’une tâche planifiée s’exécute ou est sur le point de démarrer. Ne peut pas réveiller un ordinateur déjà en veille, ni l’empêcher de se mettre en veille quand vous fermez le capot."
+    }
+  },
+  "branding": {
+    "title": "Image de marque",
+    "description": "L’apparence de votre organisation, pour tous ses membres. Ils la verront la prochaine fois qu’ils ouvriront l’application ou les Paramètres.",
+    "adminOnly": "Défini par l’administrateur de votre organisation.",
+    "saveError": {
+      "forbidden": "Seul un administrateur de l’organisation peut modifier l’image de marque.",
+      "generic": "Impossible d’enregistrer l’image de marque. Réessayez."
+    },
+    "sidebarTitle": {
+      "title": "Titre de la barre latérale",
+      "subtitle": "Affiché en haut de la barre latérale pour tous les membres de votre organisation. Nom de l’entreprise suit les changements de nom faits dans la console ; un titre personnalisé reste tel que saisi ; Aucun n’affiche que le logo.",
+      "ariaLabel": "Titre de la barre latérale",
+      "company": "Nom de l’entreprise",
+      "companyHint": "Suit le nom de l’entreprise, y compris après un changement de nom.",
+      "custom": "Personnalisé",
+      "customHint": "Un titre que vous saisissez, conservé en cas de changement de nom.",
+      "none": "Aucun",
+      "noneAriaLabel": "Aucun (logo seul)",
+      "noneHint": "Pas de titre : le logo seul.",
+      "customAriaLabel": "Titre personnalisé de la barre latérale",
+      "required": "Saisissez un titre pour la barre latérale, ou choisissez Nom de l’entreprise ou Aucun.",
+      "preview": "La barre latérale affiche :",
+      "logoOnly": "logo seul",
+      "noTitle": "(aucun titre)"
+    },
+    "logo": {
+      "title": "Logo et icône",
+      "subtitle": "Le logo est celui de la barre latérale et l’icône celle de l’onglet du navigateur, pour tous les membres de votre organisation. Ils se définissent dans la console.",
+      "iconAlt": "Icône de l’organisation",
+      "logoAlt": "Logo de l’organisation",
+      "logoDarkAlt": "Logo de l’organisation pour les arrière-plans sombres",
+      "noneSet": "Aucun défini.",
+      "opensInBrowser": "S’ouvre dans votre navigateur",
+      "editInConsole": "Modifier dans la console"
+    },
+    "theme": {
+      "title": "Thème de l’organisation",
+      "subtitle": "Clair ou sombre pour tous, ou laissez chaque membre choisir.",
+      "ariaLabel": "Thème de l’organisation",
+      "notSet": "Non défini",
+      "notSetAriaLabel": "Aucun thème d’organisation",
+      "lightAriaLabel": "Thème clair de l’organisation",
+      "darkAriaLabel": "Thème sombre de l’organisation"
+    },
+    "style": {
+      "title": "Style de l’organisation",
+      "deploymentLocked": "Défini par ce déploiement, pour toutes ses organisations.",
+      "subtitle": "L’apparence de départ de tous les membres de votre organisation. Personnalisé vous permet de choisir la couleur, l’arrière-plan, les coins et la police.",
+      "ariaLabel": "Style de l’organisation",
+      "notSet": "Non défini",
+      "notSetAriaLabel": "Aucun style d’organisation",
+      "notSetHint": "Les membres conservent l’apparence standard de l’application.",
+      "optionAriaLabel": "Style d’organisation {name}"
+    },
+    "accent": {
+      "subtitle": "Boutons, surbrillances et contours de focus.",
+      "ariaLabel": "Couleur d’accentuation de l’organisation"
+    },
+    "background": {
+      "lightSubtitle": "Utilisé avec le thème clair. Une couleur sombre choisie devient une version claire de sa teinte ; le texte s’ajuste pour rester lisible. Avec Par défaut, l’arrière-plan sombre lui donne sa teinte, sinon l’apparence claire d’origine s’applique.",
+      "lightAriaLabel": "Couleur d’arrière-plan clair de l’organisation",
+      "lightDefaultAriaLabel": "Arrière-plan clair par défaut de l’organisation",
+      "darkSubtitle": "Utilisé avec le thème sombre. Une couleur claire choisie devient une version sombre de sa teinte ; le texte s’ajuste pour rester lisible. Avec Par défaut, l’arrière-plan clair lui donne sa teinte, sinon l’apparence sombre d’origine s’applique.",
+      "darkAriaLabel": "Couleur d’arrière-plan sombre de l’organisation",
+      "darkDefaultAriaLabel": "Arrière-plan sombre par défaut de l’organisation"
+    },
+    "corners": {
+      "ariaLabel": "Rayon des coins de l’organisation",
+      "squareAriaLabel": "Coins carrés de l’organisation",
+      "softAriaLabel": "Coins adoucis de l’organisation",
+      "roundAriaLabel": "Coins ronds de l’organisation"
+    },
+    "typeface": {
+      "subtitle": "Police standard de l’interface, ou chasse fixe partout.",
+      "ariaLabel": "Police de l’organisation",
+      "standardAriaLabel": "Police standard de l’organisation",
+      "monoAriaLabel": "Police à chasse fixe de l’organisation"
+    },
+    "greeting": {
+      "title": "Message d’accueil de l’organisation",
+      "subtitle": "La phrase que voient les membres lorsqu’ils commencent une nouvelle tâche. Laissez vide pour utiliser celle par défaut.",
+      "ariaLabel": "Message d’accueil de l’organisation"
+    },
+    "membersChoose": {
+      "title": "Laisser les membres choisir leur style",
+      "subtitle": "Activé : le style de l’organisation sert de point de départ, et les membres peuvent le modifier dans Votre style. Désactivé : tout le monde voit le style de l’organisation."
+    },
+    "guidelines": {
+      "title": "Consignes de marque pour Anton",
+      "subtitle": "Comment Anton doit utiliser votre marque dans les présentations, documents, applications et graphiques : ton, mots à employer ou à éviter, emplacement du logo. Anton reçoit aussi vos couleurs, votre police et votre logo définis ci-dessus.",
+      "placeholder": "Markdown. Par exemple :\n- Titres avec une majuscule initiale uniquement\n- Placer le logo en haut à gauche sur les diapositives de titre"
+    },
+    "footer": {
+      "ariaLabel": "Modifications de l’image de marque non enregistrées",
+      "saving": "Enregistrement…",
+      "unsaved": "Modifications de l’image de marque non enregistrées. Vous les voyez déjà ; les autres les verront une fois que vous aurez enregistré.",
+      "cancel": "Annuler",
+      "save": "Enregistrer l’image de marque",
+      "saved": "Enregistrée. Les membres la verront la prochaine fois qu’ils ouvriront l’application ou les Paramètres.",
+      "clean": "Aucune modification non enregistrée de l’image de marque"
+    }
+  }
+}

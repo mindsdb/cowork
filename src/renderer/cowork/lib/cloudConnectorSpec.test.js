@@ -183,3 +183,75 @@ describe('opening the form against an existing connection', () => {
     expect(toCloudSpec(POSTGRES)._datasource_edit).toBeUndefined();
   });
 });
+
+// Supabase as the specs endpoint serves it once its credentials method has a
+// cloud block: method ids, OAuth block and desktop field names copied from
+// cowork-server's supabase.json, the cloud block from postgres's.
+const supabase = (cloudAvailable) => ({
+  form_id: 'supabase-connector',
+  title: 'Connect Supabase',
+  engine: 'supabase',
+  _connector_id: 'supabase',
+  methods: [
+    {
+      id: 'browser_oauth_builtin',
+      label: 'Authorize with Supabase',
+      recommended: true,
+      hidden: false,
+      fields: [],
+      oauth: {
+        auth_url: 'https://api.supabase.com/v1/oauth/authorize',
+        token_url: 'https://api.supabase.com/v1/oauth/token',
+        scopes: ['projects:read', 'organizations:read'],
+      },
+    },
+    { id: 'connection-string', label: 'Connection String', fields: [{ name: 'connection_string', type: 'password' }] },
+    {
+      id: 'individual-credentials',
+      label: 'Host / Port / Database / User / Password',
+      fields: ['host', 'port', 'database', 'user', 'password', 'ssl_mode'].map((name) => ({ name, type: 'text' })),
+      cloud: {
+        available: cloudAvailable,
+        engine: 'postgres:host-port',
+        description: 'Cloud copy',
+        how_to: 'Cloud how-to',
+        // As cowork-server serves them: postgres's cloud fields.
+        fields: [
+          { name: 'host', label: 'Host', type: 'text', required: true },
+          { name: 'port', label: 'Port', type: 'text', required: true, default: '5432' },
+          { name: 'database', label: 'Database name', type: 'text', required: true },
+          { name: 'schema', label: 'Schema', type: 'text' },
+          { name: 'username', label: 'Username', type: 'text', required: true },
+          { name: 'password', label: 'Password', type: 'password', required: true, secret: true },
+          { name: 'tls_verify', label: 'Certificate', type: 'boolean', checkbox_label: 'Only connect if the certificate is signed by a public authority' },
+        ],
+      },
+    },
+    { id: 'service-role-api-key', label: 'REST API (Service Role Key)', fields: [{ name: 'service_role_key', type: 'password' }] },
+  ],
+});
+
+describe('a connector with both a cloud form and an OAuth method', () => {
+  it('keeps the OAuth method while the cloud form is off', () => {
+    expect(toCloudSpec(supabase(false)).methods.map((m) => m.id)).toEqual(['browser_oauth_builtin']);
+  });
+
+  it('offers the OAuth method beside the cloud form, each as it is', () => {
+    const shaped = toCloudSpec(supabase(true));
+    expect(shaped.methods.map((m) => m.id)).toEqual(['browser_oauth_builtin', 'individual-credentials']);
+    const [oauth, cloud] = shaped.methods;
+    expect(oauth).toEqual(supabase(true).methods[0]);
+    expect(cloud.fields.map((f) => f.name)).toEqual(['host', 'port', 'database', 'schema', 'username', 'password', 'tls_verify']);
+    expect(cloud).not.toHaveProperty('cloud');
+  });
+
+  it('drops the OAuth method from an edit form, which edits a saved database', () => {
+    const shaped = toCloudSpec(supabase(true), { datasourceId: 3, revision: 1, name: 'prod' });
+    expect(shaped.methods.map((m) => m.id)).toEqual(['individual-credentials']);
+  });
+
+  it('leaves postgres and an OAuth-only connector exactly as before', () => {
+    expect(toCloudSpec(POSTGRES).methods.map((m) => m.id)).toEqual(['host-port']);
+    expect(toCloudSpec(GMAIL)).toBe(GMAIL);
+  });
+});

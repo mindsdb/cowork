@@ -357,27 +357,30 @@ describe('SettingsView — Advanced Settings collapse', () => {
 
 
 describe('SettingsView — limits on hosted web', () => {
-  // Hosted web turns don't receive these limits until the web time limit and
-  // the PR that sends them ship; showing them there would describe limits
-  // those turns don't run under. This suite builds with PLATFORM_UI on, so a
-  // web host here is the hosted app; SettingsView.platformUi.test.jsx covers
-  // self-hosted web, which keeps them.
-  const onWeb = (fn) => () => {
+  // Hosted web turns run in a pod that now receives the switch and the
+  // budgets, so they are set here as on desktop. This suite builds with
+  // PLATFORM_UI on, so a web host here is the hosted app.
+  const onWeb = (fn) => async () => {
     host.isWeb = true;
     try {
-      return fn();
+      return await fn();
     } finally {
       delete host.isWeb;
     }
   };
 
-  it('shows neither the switch nor the budgets on hosted web', onWeb(() => {
-    render(<SettingsView {...baseProps(withBudgets({ limitsEnabled: false, maxTurnTokens: '1250000' }))} />);
-    expect(screen.queryByRole('button', { name: 'Advanced Settings' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: 'Limit how much a task can do' })).not.toBeInTheDocument();
+  it('shows the switch and the budgets on hosted web, and saves the switch', onWeb(async () => {
+    const props = baseProps(withBudgets({ limitsEnabled: false, maxTurnTokens: '1250000' }));
+    render(<SettingsView {...props} />);
+    expandAdvanced();
+    const limitsSwitch = screen.getByRole('switch', { name: 'Limit how much a task can do' });
     for (const label of ['Max steps per task', 'Max auto-continues', 'Max tokens per task']) {
-      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(label)).toBeInTheDocument();
     }
+
+    await userEvent.setup().click(limitsSwitch);
+    const patch = await savePatch(props);
+    expect(patch.limitsEnabled).toBe(true);
   }));
 
   it('still shows them on desktop', () => {

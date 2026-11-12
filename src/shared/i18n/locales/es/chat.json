@@ -1,0 +1,619 @@
+{
+  "cardShell": {
+    "notice": "Aviso",
+    "question": "Pregunta"
+  },
+  "chatView": {
+    "connectIntro": {
+      "clickToReopen": "Haz clic para volver a abrir el formulario",
+      "fillOutForm": "Completa el formulario en el panel lateral",
+      "cancel": "Cancelar",
+      "disconnect": "Desconectar"
+    },
+    "attachment": {
+      "connector": "Conector",
+      "image": "Imagen",
+      "file": "Archivo"
+    },
+    "turn": {
+      "metaDateTime": "{day} {month}, {time}",
+      "deleting": "Eliminando…",
+      "copyMessage": "Copiar mensaje",
+      "copyResponse": "Copiar respuesta",
+      "agentFallback": "Agente"
+    },
+    "incomplete": {
+      "spendCeiling": "Se detuvo antes: esta tarea alcanzó su presupuesto de tokens.",
+      "roundCap": "Se detuvo antes: esta tarea alcanzó su límite de pasos.",
+      "handbackBudget": "Se detuvo antes: las continuaciones automáticas se agotaron antes de terminar la tarea.",
+      "handbackVerifierFailure": "Se detuvo antes: el agente no pudo confirmar que la tarea estuviera terminada.",
+      "handbackStuck": "Se detuvo antes: el agente consideró que la tarea estaba atascada.",
+      "retryExhausted": "Se detuvo antes: la tarea siguió fallando.",
+      "questionUnanswered": "Se detuvo antes: una pregunta quedó sin respuesta.",
+      "contentFilter": "Se detuvo antes: el filtro de contenido del modelo bloqueó una respuesta.",
+      "fallback": "Se detuvo antes de terminar."
+    },
+    "figureFile": {
+      "attachedFile": "Archivo adjunto",
+      "noteWithStep": "Muestra el archivo tal como está ahora. Abrir paso muestra lo que leyó el paso.",
+      "note": "Muestra el archivo tal como está ahora, que puede diferir de lo que leyó el paso."
+    },
+    "artifactCard": {
+      "fallbackTitle": "Artefacto",
+      "showInFinder": "Mostrar en Finder",
+      "showInFolder": "Mostrar en carpeta",
+      "openShared": "Abrir artefacto compartido",
+      "download": "Descargar",
+      "open": "Abrir",
+      "openPreview": "Abrir vista previa",
+      "noPreviewNoLink": "Este artefacto no se puede previsualizar y todavía no tiene un enlace compartido.",
+      "noDownloadableFile": "Este artefacto todavía no tiene un archivo descargable.",
+      "noFilePath": "Sin ruta de archivo",
+      "deletedStatus": "Este artefacto se eliminó.",
+      "noPathAvailable": "No hay una ruta de archivo disponible para el artefacto.",
+      "couldNotOpen": "No se pudo abrir el artefacto.",
+      "opened": "Abierto.",
+      "shownInFinder": "Se mostró en Finder.",
+      "shownInFolder": "Se mostró en la carpeta.",
+      "couldNotShow": "No se pudo mostrar el artefacto.",
+      "downloading": "Descargando…",
+      "preview": "Vista previa",
+      "previewInProduct": "Previsualizar este artefacto en {product}",
+      "openSharedTooltip": "Abrir el artefacto compartido",
+      "saveFileTooltip": "Guardar el archivo de este artefacto",
+      "previewPath": "Previsualizar {path}",
+      "downloadPath": "Descargar {path}",
+      "actionTarget": "{action}: {target}",
+      "sharedLink": "Enlace compartido",
+      "sharedLinkTooltip": "Abrir el artefacto compartido en una pestaña nueva",
+      "openInDefaultApp": "Abrir en la app predeterminada",
+      "deletedAriaLabel": "Artefacto eliminado: {title}",
+      "thumbnailAlt": "Miniatura del artefacto",
+      "deletedTitle": "Este artefacto se eliminó",
+      "liveArtifact": "artefacto en vivo",
+      "deletedBadge": "Eliminado"
+    },
+    "kinds": {
+      "provider": "Proveedor",
+      "billing": "Facturación",
+      "usage": "Uso",
+      "connection": "Conexión",
+      "model": "Modelo",
+      "rateLimit": "Límite de solicitudes",
+      "attachment": "Adjunto",
+      "conversation": "Conversación",
+      "agent": "Agente",
+      "server": "Servidor"
+    },
+    "cards": {
+      "taskStopped": "Tarea detenida",
+      "providerLimitBody": "Se alcanzó el límite de uso del proveedor. Contacta a tu administrador antes de iniciar otra tarea.",
+      "addFunds": "Agregar fondos",
+      "switchToAir": "Cambiar a MindsHub Air",
+      "balanceRanOut": "Tu saldo se agotó antes de que terminara esta tarea. Agrega fondos antes de iniciar otra tarea.",
+      "balanceEmptyAirLeft": "Tu saldo está vacío, así que este modelo no puede ejecutarse. MindsHub Air todavía tiene asignación gratuita disponible.",
+      "providerUnavailableTitle": "El proveedor no está disponible temporalmente",
+      "providerPausedBody": "El proveedor pausó las solicitudes. Vuelve a intentarlo más tarde o contacta a tu administrador.",
+      "freeAirPausedTitle": "MindsHub Air gratuito está en pausa",
+      "connectProviderTitle": "Conecta un proveedor para empezar a chatear",
+      "providerSetupRequiredTitle": "Hay que configurar el proveedor",
+      "connectProviderBody": "Empieza con MindsHub y obtén una asignación gratuita en MindsHub Air; después paga según el uso. O agrega tu propia clave de API en Configuración.",
+      "providerSetupRequiredBody": "Pide a tu operador que configure el proveedor del modelo antes de iniciar una tarea.",
+      "startForFree": "Empezar gratis",
+      "openSettings": "Abrir Configuración",
+      "autoTopUpFailedTitle": "Falló la recarga automática",
+      "autoTopUpFailedBody": "No pudimos agregar fondos a tu saldo. Agrega fondos o actualiza tu método de pago para que las tareas sigan ejecutándose.",
+      "rateLimitedTitle": "Demasiadas solicitudes en poco tiempo",
+      "tryAgainIn": "Reintentar en {seconds} s",
+      "tryAgain": "Reintentar",
+      "adminSpendingLimitBody": "Se alcanzó el límite de gasto que fijó tu administrador. Comunícate con tu administrador.",
+      "budgetUsedUpTitle": "Se agotó el presupuesto de tu organización",
+      "viewBudgets": "Ver presupuestos"
+    },
+    "usageAlert": {
+      "freeLow": "Queda {percent} de la asignación gratuita de Air",
+      "freeLowRefills": "Queda {percent} de la asignación gratuita de Air · se renueva a las {time}",
+      "freeUsed": "Asignación gratuita de Air agotada · ahora se usa tu saldo",
+      "freeUsedUntil": "Asignación gratuita de Air agotada · se usa tu saldo hasta las {time}"
+    },
+    "reconnect": {
+      "couldNotReconnect": "No se pudo reconectar. Prueba cerrar sesión y volver a iniciarla.",
+      "failed": "Falló la reconexión.",
+      "cannotAuthTitle": "El proveedor no pudo autenticarse",
+      "reconnectedTitle": "Reconectado",
+      "reconnectTitle": "Reconéctate para continuar",
+      "signInAgainTitle": "Vuelve a iniciar sesión",
+      "updateKeyTitle": "Actualiza tu clave de API",
+      "cannotAuthBody": "El proveedor del modelo rechazó sus credenciales. Pide a tu operador que revise la configuración del proveedor.",
+      "reconnectedBody": "Tu sesión de MindsHub se actualizó. Vuelve a enviar tu mensaje para continuar.",
+      "reconnectBody": "Tu sesión de MindsHub ya no es válida. Reconéctate para seguir; no perderás esta conversación.",
+      "signInAgainBody": "Tu sesión de MindsHub ya no es válida. Abre Configuración para volver a iniciar sesión.",
+      "updateKeyBody": "Tu clave de API de {provider} ya no es válida. Actualízala en Configuración para continuar.",
+      "updateKeyBodyGeneric": "La clave de API de tu proveedor ya no es válida. Actualízala en Configuración para continuar.",
+      "reconnecting": "Reconectando…",
+      "reconnect": "Reconectar"
+    },
+    "model": {
+      "thisModel": "Este modelo",
+      "restrictedTitle": "{model} está restringido",
+      "unavailableTitle": "{model} no está disponible ahora",
+      "askOperatorBody": "Pide a tu operador que revise el modelo configurado y su acceso.",
+      "restrictedBody": "Un administrador de tu organización restringió este modelo. Elige otro modelo en Configuración.",
+      "needsCreditsTitle": "{model} necesita créditos",
+      "needsCreditsBody": "No tienes suficientes créditos para este modelo. Recarga tu saldo para usarlo.",
+      "disabledBody": "Este modelo está desactivado en tu espacio de trabajo. Elige otro modelo en Configuración.",
+      "topUpBalance": "Recargar saldo"
+    },
+    "overloaded": {
+      "theModelProvider": "El proveedor del modelo",
+      "body": "{who} tuvo un incidente temporal y no se recuperó a tiempo. Vuelve a intentarlo en un momento.",
+      "withFailover": "{base} MindsHub evita automáticamente caídas de proveedores como esta, para que las tareas sigan ejecutándose.",
+      "title": "{who} tiene un problema temporal"
+    },
+    "header": {
+      "expandPanel": "Expandir panel",
+      "collapsePanel": "Contraer panel",
+      "apps": "Apps",
+      "connectAppsAndData": "Conectar apps y datos",
+      "projects": "Proyectos",
+      "allProjects": "Todos los proyectos",
+      "openProject": "Abrir proyecto: {project}",
+      "taskMenu": "Menú de la tarea"
+    },
+    "transcript": {
+      "loading": "Cargando…",
+      "loadEarlier": "Cargar mensajes anteriores",
+      "thinking": "Pensando…",
+      "connect": "Conectar",
+      "streaming": "Transmitiendo…",
+      "deletingExchange": "Eliminando el intercambio seleccionado."
+    },
+    "queue": {
+      "status": "{count} en cola · esperando a {agent}",
+      "remove": "Quitar de la cola"
+    },
+    "composer": {
+      "replyPlaceholder": "Responder…"
+    },
+    "errors": {
+      "reference": "Referencia: {id}",
+      "modelNotFoundNamedTitle": "\"{model}\" no es un modelo que podamos usar",
+      "modelNotFoundTitle": "Ese modelo no está disponible",
+      "modelNotFoundOperatorBody": "El proveedor no puede ofrecer el modelo configurado. Pide a tu operador que revise la configuración del modelo.",
+      "modelNotFoundNamedBody": "Tu configuración apunta a \"{model}\", que este proveedor no ofrece, así que no se envió nada. Elige un modelo de la lista en Configuración.",
+      "modelNotFoundBody": "El modelo seleccionado se eliminó o ya no se ofrece. Cambia a otro modelo en Configuración.",
+      "imageFormatTitle": "No se pudo leer esa imagen",
+      "imageFormatBody": "La imagen adjunta está en un formato que el modelo no puede procesar. Conviértela a PNG o JPEG y vuelve a enviarla.",
+      "contentRecoveryTitle": "Se corrigió un problema con esta conversación",
+      "contentRecoveryBody": "Una imagen anterior de esta conversación no se pudo enviar al modelo por un problema interno de formato. Se quitó automáticamente; puedes continuar.",
+      "contentTooLargeTitle": "Esa imagen es demasiado grande",
+      "billingUnavailableTitle": "La facturación no está disponible temporalmente",
+      "billingUnavailableBody": "MindsHub no pudo confirmar la facturación de esta solicitud. Es temporal; vuelve a intentarlo en un momento.",
+      "providerUnauthorizedBody": "El proveedor no pudo autorizar esta solicitud. Vuelve a intentarlo en un momento.",
+      "workerUnresponsiveTitle": "El agente no se inició",
+      "workerUnresponsiveBody": "Este turno nunca llegó al agente, así que no se ejecutó nada. Es una falla de nuestro lado, no un problema con tu solicitud. Vuelve a intentarlo en un momento.",
+      "modelTimeoutTitle": "El modelo no respondió",
+      "modelTimeoutBody": "El modelo dejó de enviar datos, así que este turno terminó. Vuelve a intentarlo. Si sigue pasando, elige otro modelo en Configuración.",
+      "modelTimeoutOperatorBody": "El modelo dejó de enviar datos, así que este turno terminó. Vuelve a intentarlo. Si sigue pasando, pide a tu operador que revise la configuración del modelo.",
+      "turnLostTitle": "La respuesta quedó cortada",
+      "turnLostBody": "El servidor se detuvo antes de que esta respuesta terminara, así que termina aquí. Tu pregunta no tenía ningún problema. Vuelve a intentarlo cuando el servidor esté disponible.",
+      "stalledTitle": "La respuesta se detuvo",
+      "stalledBody": "{product} dejó de recibir noticias del agente. Es posible que la respuesta siga en curso. Espera a que termine antes de volver a enviar.",
+      "serverBusyTitle": "El servidor está ocupado",
+      "coworkUnavailableTitle": "El servidor no responde"
+    },
+    "addon": {
+      "sending": "Enviando…",
+      "added": "Añadido a la tarea actual",
+      "withdrawing": "Moviendo a la cola…",
+      "read": "Leído por {agent}",
+      "returned": "Movido a la cola",
+      "moveToQueue": "Mover a la cola",
+      "addToTask": "Añadir a la tarea actual",
+      "addingToTask": "Añadiendo a la tarea actual",
+      "unconfirmed": "No se pudo confirmar si se añadió. ¿Enviarlo de nuevo?",
+      "sendAgain": "Enviar de nuevo",
+      "queued": {
+        "separate": "En cola: parece una petición aparte, así que se ejecutará después de la tarea actual.",
+        "unsure": "En cola: no quedó claro si pertenece a la tarea actual. Usa la flecha para añadirlo ahora.",
+        "unchecked": "En cola: no se pudo comprobar si pertenece a la tarea actual.",
+        "unavailable": "En cola: la tarea actual no puede recibir mensajes ahora mismo.",
+        "files": "En cola: los mensajes con archivos se ejecutan después de la tarea actual.",
+        "notRead": "En cola: la tarea terminó antes de poder leerlo."
+      }
+    }
+  },
+  "composer": {
+    "placeholder": "Hola, jefe. ¿En qué te puedo ayudar hoy?",
+    "removeMode": "Quitar el modo {mode}",
+    "attachment": {
+      "connector": "Conector",
+      "image": "Imagen",
+      "file": "Archivo",
+      "queued": "En cola",
+      "remove": "Quitar adjunto"
+    },
+    "claudeCodeNotDetected": "Claude-Code: no se detectó en esta computadora",
+    "model": {
+      "operatorDefaultTitle": "Usa el modelo que configuró tu operador",
+      "routerTitle": "Dirige automáticamente al modelo configurado en esta cuenta",
+      "routerSettings": "Configuración del router",
+      "fixed": "El modelo es fijo para esta tarea",
+      "model": "Modelo",
+      "connectProvider": "Conecta un proveedor en Configuración para elegir un modelo",
+      "choose": "Elegir modelo",
+      "select": "Seleccionar modelo",
+      "effort": "Esfuerzo de razonamiento"
+    },
+    "slash": {
+      "openFilePicker": "Abrir selector de archivos",
+      "ariaLabel": "Habilidades y acciones"
+    },
+    "errors": {
+      "attachFiles": "No se pudieron adjuntar los archivos.",
+      "addGoogleDriveFiles": "No se pudieron agregar los archivos de Google Drive.",
+      "updateDatasource": "No se pudo actualizar la configuración de la fuente de datos.",
+      "send": "No se pudo enviar."
+    },
+    "dropFiles": "Suelta archivos para adjuntarlos",
+    "addContext": "Agregar contexto",
+    "menu": {
+      "attachFiles": "Adjuntar archivos o fotos",
+      "openingGoogleDrive": "Abriendo Google Drive…",
+      "addFromGoogleDrive": "Agregar archivos de Google Drive",
+      "addFromSharePoint": "Agregar archivos de SharePoint",
+      "browserTitle": "{agent} puede usar tu navegador compartido en esta tarea. Desactivarlo se aplica desde tu próximo mensaje.",
+      "browser": "Navegador",
+      "browserOff": "Desactivar el navegador para esta tarea",
+      "browserOn": "Activar el navegador para esta tarea",
+      "connectors": "Conectores",
+      "connectorsHint": "Desactivar uno se aplica desde tu próximo mensaje en este chat.",
+      "noConnectors": "Aún no hay conectores. Agrega uno en {link}.",
+      "connectAppsAndData": "Conectar apps y datos",
+      "enableConnector": "Activar {name} para este chat",
+      "disableConnector": "Desactivar {name} para este chat"
+    },
+    "stop": "Detener generación",
+    "send": "Enviar",
+    "project": {
+      "fixed": "El proyecto es fijo para esta tarea",
+      "none": "Sin proyecto"
+    },
+    "chooseHarness": "Elegir entorno de ejecución"
+  },
+  "attachmentThumbnail": {
+    "open": "Abrir imagen",
+    "openNamed": "Abrir imagen: {name}"
+  },
+  "askUser": {
+    "announcement": "El agente te está haciendo una pregunta",
+    "hintCustom": "…o escribe tu propia respuesta abajo.",
+    "hintSelectOnly": "Elige una opción de arriba; no se aceptará una respuesta escrita. Omite la pregunta para escribir otra cosa.",
+    "skip": "Omitir",
+    "send": "Enviar",
+    "skipped": "Omitida.",
+    "timedOut": "Sin respuesta: se agotó el tiempo.",
+    "answered": "Respuesta:",
+    "noLongerActive": "Esta pregunta ya no está activa."
+  },
+  "codingTerminal": {
+    "unavailable": "La terminal integrada no está disponible en esta compilación.",
+    "couldNotStart": "No se pudo iniciar Claude Code.",
+    "exited": "Claude Code terminó (código {code})."
+  },
+  "turnActions": {
+    "copy": "Copiar",
+    "editTooltip": "Editar y reenviar",
+    "editAriaLabel": "Editar y reenviar este mensaje",
+    "copied": "Copiado",
+    "delete": "Eliminar",
+    "copyFailed": "No se pudo copiar. Vuelve a intentarlo."
+  },
+  "minimap": {
+    "ariaLabel": "Turnos de la conversación",
+    "message": "Mensaje",
+    "goTo": "Ir al mensaje {index}: {snippet}"
+  },
+  "userTurn": {
+    "showMore": "Mostrar más",
+    "showLess": "Mostrar menos"
+  },
+  "scroller": {
+    "scrollToLatest": "Ir a lo más reciente"
+  },
+  "duration": {
+    "seconds": "{seconds} s",
+    "minutesSeconds": "{minutes} min {seconds} s",
+    "hoursMinutes": "{hours} h {minutes} min",
+    "milliseconds": "{ms} ms"
+  },
+  "thinking": {
+    "workingFor": "Trabajando desde hace {duration}",
+    "hide": "Ocultar el razonamiento",
+    "show": "Mostrar el razonamiento",
+    "thinking": "Pensando…",
+    "workedFor": "Trabajó durante {duration}",
+    "thoughtProcess": "Razonamiento",
+    "timedOutTitle": "{count, plural, one {Se agotó el tiempo de # celda; el agente reintentó con pasos más pequeños. Expande para ver cuál.} other {Se agotó el tiempo de # celdas; el agente reintentó con pasos más pequeños. Expande para ver cuáles.}}",
+    "timedOutBadge": "{count} sin tiempo",
+    "cellTimedOutTitle": "Esta celda se detuvo: se agotó el tiempo o dejó de responder. La próxima celda debería ser más pequeña, o divide el trabajo en varias celdas.",
+    "cellTimedOut": "sin tiempo",
+    "cellErrorTitle": "Esta celda terminó con un error.",
+    "artifactBadge": "artefacto"
+  },
+  "phaseProgress": {
+    "thinking": {
+      "1": "Lo pensé a fondo",
+      "2": "Lo planifiqué",
+      "3": "Ordené los pasos",
+      "4": "Elegí el enfoque",
+      "5": "Esbocé el plan"
+    },
+    "working": {
+      "1": "Lo resolví",
+      "2": "Hice los cálculos",
+      "3": "Hice el trabajo pesado",
+      "4": "Lo armé todo",
+      "5": "Seguí las pistas"
+    },
+    "reasoning": {
+      "1": "Terminé la respuesta",
+      "2": "Até los cabos",
+      "3": "Destilé el resultado",
+      "4": "Redacté la respuesta",
+      "5": "Lo hice legible"
+    },
+    "artifact": "Terminé un artefacto",
+    "empty": "Los pasos aparecen aquí mientras el agente trabaja."
+  },
+  "scratchpad": {
+    "untitled": "Sin título",
+    "toolCall": "Llamada a herramienta",
+    "title": "Borrador",
+    "noSteps": "No hay pasos en este turno.",
+    "stepOf": "paso {index}/{total}",
+    "reason": "razonamiento:",
+    "exec": "ejecución:",
+    "duration": "duración:",
+    "arguments": "Argumentos",
+    "code": "Código",
+    "args": "Args",
+    "packages": "paquetes:",
+    "output": "Salida",
+    "stderr": "Stderr",
+    "hideArgs": "Ocultar args",
+    "showArgs": "Mostrar args",
+    "hideCode": "Ocultar código",
+    "showCode": "Mostrar código"
+  },
+  "figure": {
+    "kinds": {
+      "query": "Consulta",
+      "file": "Archivo",
+      "web": "Página web",
+      "step": "Paso"
+    },
+    "states": {
+      "query": "de una consulta",
+      "file": "de un archivo",
+      "web": "de la web",
+      "step": "de un paso",
+      "none": "sin fuente",
+      "earlierAnswer": "repetida de una respuesta anterior"
+    },
+    "tableHint": "Las flechas del teclado mueven entre las cifras de esta tabla.",
+    "copied": "Copiado",
+    "copyFailed": "No se pudo copiar",
+    "copy": "Copiar",
+    "opensInNewWindow": " (se abre en una ventana nueva)",
+    "page": "página {page}",
+    "copySql": "Copiar SQL",
+    "request": "Solicitud",
+    "copyRequest": "Copiar solicitud",
+    "viewFile": "Ver archivo",
+    "openStep": "Abrir paso",
+    "ariaLabel": "{figure}, {state}",
+    "popoverTitle": "De dónde salió {figure}"
+  },
+  "markdown": {
+    "artifactLocalLinkTitle": "Este archivo está en el panel de artefactos en vivo; ábrelo o descárgalo desde ahí",
+    "linkBlocked": "Enlace bloqueado: esquema de URL no compatible",
+    "opensInNewWindow": " (se abre en una ventana nueva)",
+    "copied": "Copiado",
+    "copy": "Copiar",
+    "scrollSideways": "Desplázate hacia los lados para ver el resto de la línea.",
+    "copyCode": "Copiar código",
+    "copyLanguageCode": "Copiar código {language}",
+    "form": {
+      "parseErrorTitle": "No se pudo leer el formulario",
+      "parseErrorSubtitle": "El agente envió una especificación de formulario que no era JSON válido.",
+      "askRetry": "Pedir al agente que lo reintente",
+      "dismiss": "Descartar",
+      "preparing": "Preparando formulario…",
+      "specDidNotParse": "No se pudo leer la especificación del formulario.",
+      "useSidePanel": "Usa el panel lateral para pedir al agente que lo reintente.",
+      "openInSidePanel": "Abrir en el panel lateral",
+      "form": "Formulario",
+      "fillItOut": " — complétalo en el panel lateral →"
+    },
+    "chart": {
+      "invalidSpec": "Especificación de gráfico no válida",
+      "intentUnsupported": "El formato de intención `chart` requiere un endpoint de compilación en el backend (aún no conectado). Usa `chartjs` para configuraciones completas.",
+      "missingType": "Falta el tipo de gráfico",
+      "unsupportedType": "Tipo de gráfico no compatible: \"{type}\". Compatibles: {supported}.",
+      "invalidJson": "JSON no válido en la especificación del gráfico",
+      "error": "ERROR: {error}"
+    }
+  },
+  "taskModes": {
+    "slides": {
+      "pillLabel": "Crear diapositivas",
+      "chipLabel": "Diapositivas",
+      "placeholder": "Describe el tema de tu presentación",
+      "samples": {
+        "0": "Crear un panel de ventas trimestrales",
+        "1": "Analizar competidores y posicionamiento",
+        "2": "Automatizar el informe semanal del equipo",
+        "3": "Investigar la oportunidad de mercado para un lanzamiento",
+        "4": "Redactar la actualización de esta semana a partir de la anterior"
+      }
+    },
+    "website": {
+      "pillLabel": "Crear sitio web",
+      "chipLabel": "Sitio web",
+      "placeholder": "Describe el sitio web que quieres crear",
+      "samples": {
+        "0": "Crear una tienda en línea para un pequeño negocio",
+        "1": "Crear una landing page para un lanzamiento",
+        "2": "Crear un sitio web tipo panel",
+        "3": "Crear un sitio web de portafolio",
+        "4": "Crear un blog para la empresa"
+      }
+    },
+    "apps": {
+      "pillLabel": "Desarrollar apps",
+      "chipLabel": "Desarrollar apps",
+      "chipNoun": "apps",
+      "placeholder": "Describe la app que quieres crear",
+      "samples": {
+        "0": "Crear una app de incorporación de empleados",
+        "1": "Crear una app de reporte y aprobación de gastos",
+        "2": "Crear una app de seguimiento físico con registros",
+        "3": "Crear una herramienta para planificar estudios",
+        "4": "Crear una app para recopilar comentarios de clientes",
+        "5": "Crear un generador de cotizaciones o facturas",
+        "6": "Explicar un error y sugerir una solución",
+        "7": "Crear un registro de hábitos"
+      }
+    },
+    "spreadsheet": {
+      "pillLabel": "Hoja de cálculo",
+      "chipLabel": "Hoja de cálculo",
+      "placeholder": "Sube una hoja de cálculo para analizarla o empieza una desde cero",
+      "samples": {
+        "0": "Seguir las tareas de un proyecto de forma elegante",
+        "1": "Armar un calendario de conferencias de IA en Norteamérica",
+        "2": "Crear una lista de verificación para due diligence de adquisición",
+        "3": "Comparar los mejores modelos VLM con datos de Hugging Face",
+        "4": "Calcular la TIR de flujos de caja de inversión",
+        "5": "Limpiar mi hoja de cálculo y graficarla"
+      }
+    },
+    "visualization": {
+      "pillLabel": "Visualización",
+      "chipLabel": "Visualización",
+      "placeholder": "Sube tus datos y dile a Cowork cómo visualizarlos",
+      "samples": {
+        "0": "Mostrar la actividad de ventas semanal en un mapa de calor",
+        "1": "Generar un análisis de abandono de clientes",
+        "2": "Seguir KPI mensuales por departamento",
+        "3": "Analizar competidores por segmento de mercado"
+      }
+    },
+    "wide-research": {
+      "pillLabel": "Investigación amplia",
+      "chipLabel": "Investigación amplia",
+      "placeholder": "Describe un proyecto complejo que quieras investigar en paralelo",
+      "samples": {
+        "0": "Hacer un análisis completo del tamaño de mercado",
+        "1": "Hacer un estudio a fondo de benchmarking de competidores",
+        "2": "Investigar el panorama de tecnologías emergentes",
+        "3": "Hacer una investigación de due diligence de inversión",
+        "4": "Investigar perfiles de clientes y mapas de recorrido",
+        "5": "Resumir un documento y redactar mi respuesta",
+        "6": "Elegir un modelo local adecuado para mi computadora",
+        "7": "Revisar mis pendientes de esta semana"
+      }
+    },
+    "games": {
+      "pillLabel": "Crear juegos",
+      "chipLabel": "Crear juegos",
+      "chipNoun": "juegos",
+      "placeholder": "Describe el juego que quieres crear",
+      "samples": {
+        "0": "Juego clásico de la serpiente",
+        "1": "Bloques de neón que caen",
+        "2": "Secuencia de memoria con luciérnagas",
+        "3": "2048 celestial",
+        "4": "Avión de papel que vuela con un toque"
+      }
+    },
+    "examples": {
+      "chipLabel": "Ejemplos",
+      "placeholder": "Elige un ejemplo o describe tu propia tarea"
+    },
+    "samplePrompts": "Ejemplos de instrucciones",
+    "pillsAriaLabel": "Tipos de tarea"
+  },
+  "taskRows": {
+    "openProject": "Abrir {project}",
+    "untitled": "Tarea sin título",
+    "actionsFor": "Acciones para {title}",
+    "actionsForUntitled": "Acciones para la tarea sin título",
+    "running": "En curso",
+    "moveToProject": "Mover al proyecto…",
+    "delete": "Eliminar",
+    "scheduledTask": "Tarea programada",
+    "runs": "{count, plural, one {# ejecución} other {# ejecuciones}}",
+    "openLatestRun": "Abrir la última ejecución"
+  },
+  "taskList": {
+    "title": "Tareas",
+    "emptyTitle": "Aún no hay tareas en este proyecto",
+    "emptyDescription": "Escribe una instrucción arriba para iniciar una."
+  },
+  "browser": {
+    "close": "Cerrar navegador",
+    "shared": "Navegador compartido",
+    "title": "Navegador",
+    "unreachable": "No se puede acceder al navegador",
+    "stopped": {
+      "keepsClosing": "La vista del navegador se sigue cerrando. Vuelve a intentarlo en un momento.",
+      "noSlotTitle": "No hay ningún navegador libre",
+      "noSlotDescription": "Todos los navegadores están ocupados ahora. Vuelve a intentarlo en unos minutos.",
+      "taskCapTitle": "Tu navegador está lleno",
+      "taskCapDescription": "Tu navegador ya tiene {count} tareas abiertas."
+    },
+    "webPaneNote": "Lo que muestra este panel y lo que escribes aquí, incluidas las contraseñas, pasa por Cloudflare y por el servicio de navegador de MindsDB de camino al sitio y de vuelta. Las lecturas de página y capturas de pantalla de {agent} van al proveedor del modelo que atiende tu turno.",
+    "unexpectedAddress": "El navegador devolvió una dirección inesperada.",
+    "couldNotOpen": "No se pudo abrir el navegador.",
+    "hint": "Tú y {agent} lo comparten. Haz clic en él para tomar el control.",
+    "reload": "Recargar la vista del navegador",
+    "tryAgain": "Reintentar",
+    "slowTitle": "Tu navegador está tardando más de lo normal",
+    "slowDescription": "Es posible que aún se esté iniciando. Vuelve a intentarlo, o cierra el panel y regresa en un minuto.",
+    "starting": "Iniciando tu navegador…",
+    "signIn": {
+      "title": "{site} te pide iniciar sesión",
+      "hint": "Tu usuario y contraseña solo se envían a este sitio.",
+      "username": "Usuario",
+      "password": "Contraseña",
+      "cancel": "Cancelar",
+      "submit": "Iniciar sesión"
+    },
+    "download": {
+      "where": "Descargas, en {folder}",
+      "waiting": "Esta página quiere descargar {name} en {where}.",
+      "progressing": "Descargando {name}…",
+      "completed": "{name} está en {where}.",
+      "cancelled": "{name} no se guardó.",
+      "failed": "{name} no se descargó.",
+      "save": "Guardar",
+      "dontSave": "No guardar"
+    },
+    "aNewTab": "una pestaña nueva",
+    "yourTurn": "Es tu turno en {site}. Haz clic en Listo para devolvérselo a {agent}.",
+    "yourTurnReason": "Es tu turno en {site}: {reason}. Haz clic en Listo para devolvérselo a {agent}.",
+    "agentUsing": "{agent} lo está usando. Toma el control para usarlo tú.",
+    "pageReadsNote": "Las lecturas de página y capturas de pantalla de {agent} van al proveedor del modelo que atiende tu turno.",
+    "back": "Atrás",
+    "forward": "Adelante",
+    "reloadPage": "Recargar página",
+    "done": "Listo",
+    "takeOver": "Tomar el control",
+    "newTab": "Pestaña nueva",
+    "closedTitle": "El navegador de esta tarea está cerrado",
+    "closedDescription": "{agent} lo vuelve a abrir cuando lo necesita.",
+    "squeezed": "Agranda la ventana para ver la página"
+  }
+}

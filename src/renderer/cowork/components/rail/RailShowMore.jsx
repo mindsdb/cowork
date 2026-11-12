@@ -5,7 +5,10 @@
 // `hiddenCount` is how many rows the collapsed list leaves out; with none,
 // there is nothing to show or collapse, and the control draws nothing.
 
+import { useTranslation } from '../../../lib/i18n';
+
 export function RailShowMore({ hiddenCount, expanded, onToggle }) {
+  const { t } = useTranslation('shell');
   if (hiddenCount <= 0) return null;
   return (
     <button
@@ -14,7 +17,7 @@ export function RailShowMore({ hiddenCount, expanded, onToggle }) {
       onClick={onToggle}
       className="ml-1 mt-1 self-start text-xs text-ink-3 hover:text-ink underline-offset-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
     >
-      {expanded ? 'Show less' : `+ ${hiddenCount} more`}
+      {expanded ? t('rail.showMore.less') : t('rail.showMore.more', { count: hiddenCount })}
     </button>
   );
 }

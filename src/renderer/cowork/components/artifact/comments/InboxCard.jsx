@@ -13,13 +13,16 @@ import { threadAuthorEmail, threadReplies, threadText, viewerCanEdit, isoToEpoch
 import { Tooltip } from '../../ui';
 import OverflowMenu from '../../OverflowMenu';
 import { CheckCircleIcon, DotsIcon, InfoIcon } from './icons';
+import i18n, { useTranslation } from '../../../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(key, { ns: 'artifacts', ...vars });
 
 // ── Reference-exact presentation helpers ───────────────────────────────────
 
 function displayName(email) {
   const s = String(email || '');
   const i = s.indexOf('@');
-  return i > 0 ? s.slice(0, i) : s || 'Anonymous';
+  return i > 0 ? s.slice(0, i) : s || tr('comments.card.anonymous');
 }
 function initials(email) {
   const parts = displayName(email).split(/[^A-Za-z0-9]+/).filter(Boolean);
@@ -52,21 +55,13 @@ function inboxTimeAgo(epochSeconds) {
   const ts = isoToEpoch(epochSeconds);
   if (!ts) return '';
   const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 45) return 'just now';
-  if (diff < 3600) { const m = Math.round(diff / 60); return `${m}${m === 1 ? ' min ago' : ' mins ago'}`; }
-  if (diff < 86400) { const h = Math.round(diff / 3600); return `${h}${h === 1 ? ' hour ago' : ' hours ago'}`; }
-  if (diff < 2592000) { const d = Math.round(diff / 86400); return `${d}${d === 1 ? ' day ago' : ' days ago'}`; }
+  if (diff < 45) return tr('comments.card.justNow');
+  if (diff < 3600) return tr('comments.card.minutesAgo', { count: Math.round(diff / 60) });
+  if (diff < 86400) return tr('comments.card.hoursAgo', { count: Math.round(diff / 3600) });
+  if (diff < 2592000) return tr('comments.card.daysAgo', { count: Math.round(diff / 86400) });
   try { return new Date(ts * 1000).toLocaleDateString(); } catch { return ''; }
 }
 
-const UNATTACHED_TIP =
-  'The part of the artifact this comment referred to is no longer available.';
-
-const GENERAL_TIP =
-  'General feedback about the whole artifact.';
-
-const HIDDEN_TIP =
-  'This feedback refers to another slide, tab, or currently hidden section.';
 
 export function InboxCard({
   thread,
@@ -85,6 +80,7 @@ export function InboxCard({
   onLeave,
   onFocus,
 }) {
+  const { t } = useTranslation('artifacts');
   const resolved = thread.status === 'resolved';
   const done = resolved || thread.status === 'dismissed';
   // The injected layer detects selectors that no longer resolve after edits.
@@ -96,7 +92,7 @@ export function InboxCard({
   const general = !thread.selector;
   const mine = viewerCanEdit(thread.payload, viewer);
   const nReplies = threadReplies(thread).length;
-  const repliesTxt = nReplies ? `${nReplies}${nReplies === 1 ? ' reply' : ' replies'}` : '';
+  const repliesTxt = nReplies ? t('comments.card.replies', { count: nReplies }) : '';
   const email = threadAuthorEmail(thread);
 
   return (
@@ -121,7 +117,7 @@ export function InboxCard({
         <span className="text-base leading-[20px] text-ink-3 whitespace-nowrap">
           {inboxTimeAgo(thread.created_at || thread.updated_at)}
           {thread.payload?.edited_at && (
-            <span className="text-xs text-ink-4"> (edited)</span>
+            <span className="text-xs text-ink-4"> {t('comments.card.edited')}</span>
           )}
         </span>
       </div>
@@ -136,19 +132,19 @@ export function InboxCard({
         <div className="flex items-center justify-between min-h-[16px]">
           <span className="text-[12px] leading-[16px] text-ink-4">{repliesTxt}</span>
           {hidden ? (
-            <Tooltip content={HIDDEN_TIP}>
+            <Tooltip content={t('comments.card.hiddenTip')}>
               <span className="inline-flex items-center gap-1 px-[2px] rounded-[4px]
                 bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
-                <span>not visible</span>
+                <span>{t('comments.card.notVisible')}</span>
               </span>
             </Tooltip>
           ) : unanchored ? (
-            <Tooltip content={general ? GENERAL_TIP : UNATTACHED_TIP}>
+            <Tooltip content={general ? t('comments.card.generalTip') : t('comments.card.unattachedTip')}>
               <span className="inline-flex items-center gap-1 px-[2px] rounded-[4px]
                 bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
-                <span>{general ? 'general' : 'not attached'}</span>
+                <span>{general ? t('comments.card.general') : t('comments.card.notAttached')}</span>
               </span>
             </Tooltip>
           ) : null}
@@ -177,29 +173,29 @@ export function InboxCard({
             onClick={() => onAddressWithAgent(thread)}
           >
             {Ico.sparkle(14)}
-            {agentWorking ? 'Agent is working…' : agentBusy ? 'Starting…' : 'Address with agent'}
+            {agentWorking ? t('comments.card.agentWorking') : agentBusy ? t('comments.card.starting') : t('comments.card.addressWithAgent')}
           </button>
         )}
         {canResolve && (
-          <Tooltip content={resolved ? 'Reopen comment' : 'Resolve comment'}>
+          <Tooltip content={resolved ? t('comments.card.reopenComment') : t('comments.card.resolveComment')}>
             <button
               type="button"
-              aria-label={resolved ? 'Reopen' : 'Mark as resolved'}
+              aria-label={resolved ? t('comments.card.reopen') : t('comments.card.markResolved')}
               className="artifact-comment-secondary-action"
               onClick={() => onStatus?.(thread.id, resolved ? 'open' : 'resolved')}
             >
-              <CheckCircleIcon /> <span>{resolved ? 'Reopen' : 'Resolve'}</span>
+              <CheckCircleIcon /> <span>{resolved ? t('comments.card.reopen') : t('comments.card.resolve')}</span>
             </button>
           </Tooltip>
         )}
         {mine && (
           <OverflowMenu
-            label="More"
+            label={t('comments.card.more')}
             width={145}
             icon={<DotsIcon />}
             size="md"
             items={[{
-              label: 'Delete',
+              label: t('common.delete'),
               icon: Ico.trash(14),
               danger: true,
               onClick: () => onRequestDelete?.({ threadId: thread.id }),

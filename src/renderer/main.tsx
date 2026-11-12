@@ -23,6 +23,7 @@ import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import { loadSkin } from './lib/skins';
+import { whenI18nReady } from './lib/i18n';
 import { purgeOrganizationScopedState, purgeStaleAccountState } from './cowork/lib/accountLocalState';
 import { accountSessionSync } from './platform/host';
 import { reset as resetOnboardingProgress } from './cowork/components/onboarding/onboardingStore';
@@ -98,9 +99,13 @@ if (typeof window !== 'undefined' && !(window as any).antontron) {
     document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
   })();
 
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <App />
-    </StrictMode>
-  );
+  // Load the user's language before the first paint, so a Spanish or
+  // Portuguese user never sees an English flash. Bounded and never rejects.
+  void whenI18nReady().then(() => {
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <App />
+      </StrictMode>
+    );
+  });
 }

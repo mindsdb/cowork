@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import Ico from '../../Icons';
 import { Button } from '../../ui';
+import { useTranslation } from '../../../../lib/i18n';
 
 export function TextSelectionComment({ selection, onCancel, onCreate }) {
+  const { t } = useTranslation('artifacts');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   if (!selection) return null;
@@ -31,14 +33,14 @@ export function TextSelectionComment({ selection, onCancel, onCreate }) {
   };
 
   return (
-    <aside className="artifact-selection-comment" aria-label="Comment on selected text">
+    <aside className="artifact-selection-comment" aria-label={t('selectionComment.ariaLabel')}>
       <div className="artifact-selection-quote">“{selection.quote}”</div>
       <textarea
         autoFocus
         rows={2}
         value={text}
-        placeholder="What should change here?"
-        aria-label="Comment on selected text"
+        placeholder={t('selectionComment.placeholder')}
+        aria-label={t('selectionComment.ariaLabel')}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') onCancel?.();
@@ -46,9 +48,9 @@ export function TextSelectionComment({ selection, onCancel, onCreate }) {
         }}
       />
       <div>
-        <Button variant="subtle" onClick={onCancel}>Cancel</Button>
+        <Button variant="subtle" onClick={onCancel}>{t('common.cancel')}</Button>
         <Button disabled={!text.trim() || busy} onClick={submit}>
-          {Ico.send(14)} Comment
+          {Ico.send(14)} {t('selectionComment.comment')}
         </Button>
       </div>
     </aside>

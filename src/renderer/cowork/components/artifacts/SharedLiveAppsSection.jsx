@@ -11,20 +11,20 @@
 import Ico from '../Icons';
 import { ListGroup, ListItem, ListNotice } from '../collection';
 import { SharedAppAction, useSharedLiveApps } from '../rail/SharedLiveApps';
-import { COPY_GOES_TO_GENERAL, SHARED_WITH_YOU_LABEL, sharedByLine } from '../../lib/liveAppSharing';
+import { copyGoesToGeneral, sharedWithYouLabel, sharedByLine } from '../../lib/liveAppSharing';
 
 export function SharedLiveAppsSection({ projectId, onDuplicated, className }) {
   const { apps, loadError, choose, disclaimer } = useSharedLiveApps({
     projectId,
     onDuplicated,
-    destination: COPY_GOES_TO_GENERAL,
+    destination: copyGoesToGeneral(),
   });
 
   const showList = apps.length > 0 || Boolean(loadError);
   return (
     <>
       {showList && (
-        <ListGroup className={className} aria-label={SHARED_WITH_YOU_LABEL} title={<h2>{SHARED_WITH_YOU_LABEL}</h2>}>
+        <ListGroup className={className} aria-label={sharedWithYouLabel()} title={<h2>{sharedWithYouLabel()}</h2>}>
           {loadError && <ListNotice className="text-sm text-danger">{loadError}</ListNotice>}
           {apps.map((app) => (
             <ListItem

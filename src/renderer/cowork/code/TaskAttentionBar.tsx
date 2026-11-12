@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from '../../lib/i18n';
 import Button from '../components/ui/Button';
 import { codingApi, type CodingSession } from './api';
 import { newAttention, taskAttention } from './taskAttention';
@@ -12,6 +13,7 @@ export function TaskAttentionBar({ sessions, selectedId, active, scopeKey, onSel
   scopeKey: string;
   onSelect: (id: string) => void;
 }) {
+  const { t } = useTranslation('code');
   const [notifications, setNotifications] = useState(false);
   const [permissionError, setPermissionError] = useState('');
   const previous = useRef(new Map<string, CodingSession>());
@@ -64,18 +66,18 @@ export function TaskAttentionBar({ sessions, selectedId, active, scopeKey, onSel
     const requestedGeneration = generation.current;
     setPermissionError('');
     if (notifications) { setNotifications(false); return; }
-    if (typeof Notification === 'undefined') { setPermissionError('Desktop notifications are unavailable in this window.'); return; }
+    if (typeof Notification === 'undefined') { setPermissionError(t('taskAttention.bar.unavailable')); return; }
     try {
       const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
       if (requestedGeneration !== generation.current) return;
-      if (permission !== 'granted') { setPermissionError('Allow MindsHub notifications in your system settings to receive alerts.'); return; }
+      if (permission !== 'granted') { setPermissionError(t('taskAttention.bar.denied')); return; }
       previous.current = new Map(sessions.map(session => [session.id, session]));
       setNotifications(true);
-    } catch { if (requestedGeneration === generation.current) setPermissionError('Notifications could not be enabled. You can still find decisions under Needs attention.'); }
+    } catch { if (requestedGeneration === generation.current) setPermissionError(t('taskAttention.bar.failed')); }
   };
-  return <div className="code-attention-bar" aria-label="Task attention">
-    <div>{attention.length > 0 && <Button size="sm" variant="subtle" onClick={() => onSelect(attention[0].id)}>{attention.length} {attention.length === 1 ? 'task needs' : 'tasks need'} you →</Button>}</div>
-    <Button size="sm" variant="subtle" aria-pressed={notifications} onClick={() => void toggle()}>{notifications ? 'Notifications on' : 'Notify when away'}</Button>
+  return <div className="code-attention-bar" aria-label={t('taskAttention.bar.ariaLabel')}>
+    <div>{attention.length > 0 && <Button size="sm" variant="subtle" onClick={() => onSelect(attention[0].id)}>{t('taskAttention.bar.needsYou', { count: attention.length })}</Button>}</div>
+    <Button size="sm" variant="subtle" aria-pressed={notifications} onClick={() => void toggle()}>{notifications ? t('taskAttention.bar.on') : t('taskAttention.bar.off')}</Button>
     {permissionError && <p role="status">{permissionError}</p>}
   </div>;
 }

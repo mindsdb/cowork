@@ -145,6 +145,9 @@ vi.mock('./lib/analytics', () => ({
   classifyFirstResponse: vi.fn(() => ({})),
   fireFirstResponse: vi.fn(),
   trackTurnFailed: vi.fn(),
+  trackAddonAdded: vi.fn(),
+  trackAddonQueued: vi.fn(),
+  trackAddonOverridden: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';

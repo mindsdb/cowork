@@ -34,10 +34,10 @@ const analyticsMock = vi.hoisted(() => ({
 vi.mock('../../lib/analytics', () => analyticsMock);
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
-import SettingsView from './SettingsView';
+import SettingsView, { MindsProbeNotice, UnavailableModelHint } from './SettingsView';
 import { HubUsageContext } from '../../lib/hubUsageContext';
 import { formatResetTime, NO_FREE_GRANT_SENTENCE } from '../../lib/usageWarnings';
-import { MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_BUDGETS_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';
 
 function Harness({ initialSettings, usage = null }) {
   const [settings, setSettings] = useState(initialSettings);
@@ -161,6 +161,35 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
     expect(screen.queryByText(/refill/i)).toBeNull();
   });
 
+  it('a spent org budget links to Budgets, never asks for funds, and names Air while it has room', async () => {
+    const user = userEvent.setup();
+    spies.testProviders.mockResolvedValue(probeFailure('HTTP 402', { code: 'budget_exceeded', resetAt: null }));
+    render(<Harness
+      initialSettings={baseSettings()}
+      usage={hubUsage({ limit: 100, used: 10, remaining: 90, resetsAt: inHours(2) })}
+    />);
+
+    const copy = "Your organization's budget is used up. Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while its free allowance lasts.";
+    await waitFor(() => expect(screen.getAllByText(copy).length).toBeGreaterThan(0));
+    expect(screen.queryByRole('button', { name: /Add funds|Top up/ })).toBeNull();
+    expect(screen.queryByText(/failed its last test/)).toBeNull();
+
+    await user.click(screen.getAllByRole('button', { name: /View budgets/ })[0]);
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_notice');
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BUDGETS_URL);
+  });
+
+  it('a spent org budget does not name Air when the org has no free grant', async () => {
+    spies.testProviders.mockResolvedValue(probeFailure('HTTP 402', { code: 'budget_exceeded', resetAt: null }));
+    render(<Harness
+      initialSettings={baseSettings()}
+      usage={hubUsage({ limit: 0, used: 0, remaining: 0, resetsAt: null })}
+    />);
+
+    await waitFor(() => expect(screen.getAllByText("Your organization's budget is used up. Paid models can't run until an owner or admin raises it in Budgets.").length).toBeGreaterThan(0));
+    expect(screen.queryByText(/MindsHub Air still works/)).toBeNull();
+  });
+
   it('a billing outage says billing is unavailable, not that MindsHub failed its test', async () => {
     spies.testProviders.mockResolvedValue(probeFailure('HTTP 503', { code: 'policy_unavailable', resetAt: null }));
     render(<Harness initialSettings={baseSettings()} />);
@@ -258,5 +287,33 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
     await waitFor(() => expect(spies.testProviders).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByRole('button', { name: /Saved/ })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
+  });
+});
+
+describe('credit links open the add-credits dialog for a billing owner', () => {
+  it.each([
+    [true, MINDS_ADD_FUNDS_URL],
+    [false, MINDS_BILLING_URL],
+  ])('the no-credits notice (billing owner: %s)', async (isBillingOwner, url) => {
+    const user = userEvent.setup();
+    hostMock.host.openExternal.mockClear();
+    render(<MindsProbeNotice notice={{ kind: 'no_credits' }} isBillingOwner={isBillingOwner} />);
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance →' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(url);
+  });
+
+  it.each([
+    [true, MINDS_ADD_FUNDS_URL],
+    [false, MINDS_BILLING_URL],
+  ])('the needs-credits hint under the picker (billing owner: %s)', async (isBillingOwner, url) => {
+    const user = userEvent.setup();
+    hostMock.host.openExternal.mockClear();
+    render(<UnavailableModelHint label="Claude Opus 5" isBillingOwner={isBillingOwner} />);
+
+    await user.click(screen.getByRole('button', { name: 'Top up your balance' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(url);
   });
 });

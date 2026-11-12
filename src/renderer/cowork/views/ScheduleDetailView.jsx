@@ -24,7 +24,8 @@ import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import { scheduleState, scheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
 import ScheduleRunAlert from '../components/schedule/ScheduleRunAlert';
 import { missedRunText } from '../lib/scheduleCopy';
-import { describeWhen, timeZoneLabel, whenFromDate } from '../lib/scheduleWhen';
+import { dateLocale, describeWhen, timeZoneLabel, whenFromDate } from '../lib/scheduleWhen';
+import i18n, { useTranslation } from '../../lib/i18n';
 import { relativeTime } from '../lib/formatTime';
 
 // How many runs show before "Show older runs".
@@ -34,7 +35,7 @@ function absoluteTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(dateLocale(), {
     weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
@@ -49,26 +50,29 @@ function formatDuration(ms) {
   return `${m}m ${s}s`;
 }
 
+// Labels are scheduleDetail.runStatus.<key>.
 const RUN_STATUS = {
-  running:   { tone: 'accent',  label: 'Running' },
-  success:   { tone: 'success', label: 'Succeeded' },
-  failed:    { tone: 'danger',  label: 'Failed' },
-  cancelled: { tone: 'muted',   label: 'Stopped' },
+  running:   { tone: 'accent',  key: 'running' },
+  success:   { tone: 'success', key: 'success' },
+  failed:    { tone: 'danger',  key: 'failed' },
+  cancelled: { tone: 'muted',   key: 'cancelled' },
 };
+
+const msg = (key, vars) => i18n.t(`scheduleDetail.${key}`, { ns: 'projects', ...vars });
 
 // The schedule in words: "Every weekday at 9:00 AM, Los Angeles time". The
 // time is shown in this computer's zone, so that is the zone it names.
 function scheduleSentence(task) {
   if (!task.nextRunAt || Number.isNaN(new Date(task.nextRunAt).getTime())) return '';
-  return `${describeWhen(whenFromDate(task.nextRunAt, task.cadence))}, ${timeZoneLabel()}`;
+  return msg('sentence', { when: describeWhen(whenFromDate(task.nextRunAt, task.cadence)), zone: timeZoneLabel() });
 }
 
 function nextRunText(task, state) {
-  if (task.running) return 'Running now';
+  if (task.running) return msg('runningNow');
   // The status already says paused, missed or done.
   if (state !== 'active') return null;
   const when = relativeTime(task.nextRunAt);
-  return when ? `Next run ${when}` : null;
+  return when ? msg('nextRun', { when }) : null;
 }
 
 // A one-off with no time left to run at: it ran, it was missed, or it was
@@ -96,6 +100,7 @@ export default function ScheduleDetailView({
   onStopRun,
   agentLabel,
 }) {
+  const { t } = useTranslation('projects');
   const [runs, setRuns] = useState([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -129,8 +134,8 @@ export default function ScheduleDetailView({
     return (
       <div className="scroll-clean flex-1 flex items-center justify-center">
         <div className="font-[family-name:var(--font-body)] text-ink-3">
-          Schedule not found.{' '}
-          <button onClick={onBack} className="bg-transparent border-0 text-accent cursor-pointer">Back to scheduled tasks</button>
+          {t('scheduleDetail.notFound')}{' '}
+          <button onClick={onBack} className="bg-transparent border-0 text-accent cursor-pointer">{t('scheduleDetail.backToList')}</button>
         </div>
       </div>
     );
@@ -139,7 +144,7 @@ export default function ScheduleDetailView({
   async function withBusy(fn) {
     setBusy(true);
     try { await fn(); }
-    catch (err) { toastManager.add({ type: 'danger', title: err?.message || 'Action failed.' }); }
+    catch (err) { toastManager.add({ type: 'danger', title: err?.message || t('scheduleDetail.actionFailed') }); }
     finally     { setBusy(false); }
   }
 
@@ -150,7 +155,7 @@ export default function ScheduleDetailView({
   // The label, resolved by id -- named for what it holds (ENG-1676).
   const projectDisplay = projectLabel(projects.find((p) => p.id === task.projectId)) || '';
 
-  const status = scheduleStatusBadge(task, 'Last run failed');
+  const status = scheduleStatusBadge(task, t('scheduleStatus.lastRunFailed'));
   const sentence = scheduleSentence(task);
   const next = nextRunText(task, state);
   const shown = showAll ? runs : runs.slice(0, RUNS_SHOWN);
@@ -159,8 +164,8 @@ export default function ScheduleDetailView({
   return (
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col font-[family-name:var(--font-body)]">
       <PageHeader
-        crumbs={[{ label: 'Scheduled Tasks', onClick: onBack, title: 'All scheduled tasks' }]}
-        title={task.title || 'Untitled schedule'}
+        crumbs={[{ label: t('scheduleCommon.breadcrumb'), onClick: onBack, title: t('scheduleDetail.allScheduledTasks') }]}
+        title={task.title || t('scheduleCommon.untitled')}
         subtitle={(
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-ink-2">
             <StatusDot tone={status.variant}>{status.label}</StatusDot>
@@ -182,19 +187,19 @@ export default function ScheduleDetailView({
                 })}
                 disabled={busy}
                 size="sm"
-                aria-label="Schedule enabled"
+                aria-label={t('scheduleDetail.enabledAriaLabel')}
               />
             )}
             {/* One run at a time: while one is going, this stops it. */}
             {task.running ? (
               <Button onClick={() => withBusy(() => onStopRun?.(task.id))} disabled={busy}>
                 {Ico.stop(12)}
-                {busy ? 'Stopping…' : 'Stop run'}
+                {busy ? t('scheduleDetail.stopping') : t('scheduleDetail.stopRun')}
               </Button>
             ) : (
               <Button variant="primary" onClick={() => withBusy(() => onRunNow?.(task.id))} disabled={busy}>
                 {Ico.send(14)}
-                {busy ? 'Running…' : 'Run now'}
+                {busy ? t('scheduleDetail.running') : t('scheduleDetail.runNow')}
               </Button>
             )}
             {/* Edit + Delete live in the overflow — Delete opens a confirm,
@@ -204,9 +209,9 @@ export default function ScheduleDetailView({
               icon={Ico.moreVert(16)}
               size="md"
               items={[
-                { id: 'edit', label: 'Edit', icon: Ico.edit(14), onClick: () => setEditOpen(true) },
+                { id: 'edit', label: t('scheduleCommon.edit'), icon: Ico.edit(14), onClick: () => setEditOpen(true) },
                 { separator: true },
-                { id: 'delete', label: 'Delete', icon: Ico.trash(14), danger: true, onClick: () => setConfirmDeleteOpen(true) },
+                { id: 'delete', label: t('scheduleCommon.delete'), icon: Ico.trash(14), danger: true, onClick: () => setConfirmDeleteOpen(true) },
               ]}
             />
           </>
@@ -214,16 +219,16 @@ export default function ScheduleDetailView({
       />
 
       <div className="px-8 pb-14 flex flex-col gap-6">
-        <section className="flex flex-col gap-2" aria-label="Schedule">
+        <section className="flex flex-col gap-2" aria-label={t('scheduleDetail.scheduleAriaLabel')}>
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-ink-3">
-            <span>{projectDisplay || 'No project'}</span>
+            <span>{projectDisplay || t('scheduleCommon.noProject')}</span>
             <span aria-hidden className="text-ink-4">·</span>
             {/* "default" is the account's configured model, not a model id. */}
-            <span>{!task.model || task.model === 'default' ? 'Account default model' : task.model}</span>
+            <span>{!task.model || task.model === 'default' ? t('scheduleDetail.accountDefaultModel') : task.model}</span>
             {finished.length > 0 && (
               <>
                 <span aria-hidden className="text-ink-4">·</span>
-                <span>{succeeded} of {finished.length} {finished.length === 1 ? 'run' : 'runs'} succeeded</span>
+                <span>{t('scheduleDetail.succeededCount', { succeeded, total: finished.length })}</span>
               </>
             )}
           </div>
@@ -242,34 +247,35 @@ export default function ScheduleDetailView({
         />
 
         {task.prompt && (
-          <section aria-label="Prompt" className="rounded-card-row bg-surface-2 px-3.5 py-3 text-[13px] leading-[1.55] text-ink-2 whitespace-pre-wrap max-h-[168px] overflow-y-auto">
+          <section aria-label={t('scheduleDetail.promptAriaLabel')} className="rounded-card-row bg-surface-2 px-3.5 py-3 text-[13px] leading-[1.55] text-ink-2 whitespace-pre-wrap max-h-[168px] overflow-y-auto">
             {task.prompt}
           </section>
         )}
 
         <ListGroup
-          title={<h2>Runs</h2>}
-          meta={loadingRuns ? 'Loading…' : (task.runCount ?? runs.length) || null}
+          title={<h2>{t('scheduleDetail.runs')}</h2>}
+          meta={loadingRuns ? t('scheduleDetail.loading') : (task.runCount ?? runs.length) || null}
         >
           {runs.length === 0 && !loadingRuns && (
-            <ListNotice>No runs yet. Click Run now to try it.</ListNotice>
+            <ListNotice>{t('scheduleDetail.noRuns')}</ListNotice>
           )}
           {shown.map((run) => {
-            const look = RUN_STATUS[run.status] || RUN_STATUS.cancelled;
+            const status = RUN_STATUS[run.status] || RUN_STATUS.cancelled;
+            const look = { tone: status.tone, label: t(`scheduleDetail.runStatus.${status.key}`) };
             const reason = run.status === 'failed' ? (run.error || null) : null;
             const when = absoluteTime(run.startedAt);
             return (
               <ListItem
                 key={run.id || run.startedAt}
                 title={absoluteTime(run.startedAt) || '—'}
-                badges={run.isManual ? <Badge size="sm" variant="muted">Manual</Badge> : null}
+                badges={run.isManual ? <Badge size="sm" variant="muted">{t('scheduleDetail.manual')}</Badge> : null}
                 meta={(
                   <span className="inline-flex items-center gap-3">
                     {formatDuration(run.durationMs) && <span>{formatDuration(run.durationMs)}</span>}
                     {reason ? (
                       // Above the row's stretched link, so the pointer reaches it.
                       <Tooltip content={reason}>
-                        <span tabIndex={0} aria-label={`${look.label}: ${reason}`} className="relative z-10 inline-flex cursor-help rounded-sm">
+                        <span tabIndex={0} aria-label={t('scheduleDetail.statusWithReason', { status: look.label, reason })} className="relative z-10 inline-flex cursor-help rounded-sm">
                           <StatusDot tone={look.tone}>{look.label}</StatusDot>
                         </span>
                       </Tooltip>
@@ -279,13 +285,13 @@ export default function ScheduleDetailView({
                   </span>
                 )}
                 onActivate={run.conversationId ? () => onOpenRunSession?.(run.conversationId) : undefined}
-                activateLabel={reason ? `Open the failed run from ${when}: ${reason}` : `Open the run from ${when}`}
+                activateLabel={reason ? t('scheduleDetail.openFailedRun', { when, reason }) : t('scheduleDetail.openRun', { when })}
               />
             );
           })}
           {!showAll && runs.length > RUNS_SHOWN && (
             <ListNotice>
-              <Button variant="subtle" size="sm" onClick={() => setShowAll(true)}>Show older runs</Button>
+              <Button variant="subtle" size="sm" onClick={() => setShowAll(true)}>{t('scheduleDetail.showOlder')}</Button>
             </ListNotice>
           )}
         </ListGroup>
@@ -302,13 +308,13 @@ export default function ScheduleDetailView({
 
       <ConfirmModal
         open={confirmDeleteOpen}
-        title="Delete scheduled task?"
-        message={`"${task.title || 'Untitled schedule'}" will be permanently deleted. This can't be undone.`}
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        title={t('scheduleCommon.deleteTitle')}
+        message={t('scheduleCommon.deleteMessage', { title: task.title || t('scheduleCommon.untitled') })}
+        confirmLabel={t('scheduleCommon.delete')}
+        cancelLabel={t('scheduleCommon.keep')}
         destructive
         busy={busy}
-        busyLabel="Deleting…"
+        busyLabel={t('scheduleCommon.deleting')}
         onConfirm={() => withBusy(async () => {
           await onDelete?.(task.id);
           // Close on success rather than relying on the host to unmount this

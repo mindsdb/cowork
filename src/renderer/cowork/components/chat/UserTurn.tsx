@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { trimCopiedSelection } from '../../lib/clipboard';
+import { useTranslation } from '../../../lib/i18n';
 
 // Long user messages clamp to ~8 lines behind a "Show more" toggle so a big
 // pasted prompt doesn't dominate the viewport before the answer starts.
@@ -33,6 +34,7 @@ export function UserTurn({
   className?: string;
   turnId?: string;
 }) {
+  const { t } = useTranslation('chat');
   const contentRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState(true);
   const [overflowing, setOverflowing] = useState(false);
@@ -82,7 +84,7 @@ export function UserTurn({
               aria-expanded={!collapsed}
               onClick={() => setCollapsed((c) => !c)}
             >
-              {collapsed ? 'Show more' : 'Show less'}
+              {collapsed ? t('userTurn.showMore') : t('userTurn.showLess')}
             </button>
           )}
         </div>

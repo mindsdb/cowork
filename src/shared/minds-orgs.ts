@@ -5,6 +5,9 @@
  * desktop preference behavior testable without standing up Keycloak.
  */
 
+import { sourceTranslator, type Translate } from './i18n/translate';
+import appSource from './i18n/locales/en/app.json';
+
 /** One organization a person belongs to, as the desktop shows it. */
 export interface MindsOrg {
   /** Keycloak organization id — what `users/switch-organization` takes. */
@@ -16,6 +19,12 @@ export interface MindsOrg {
   displayName: string;
   /** Their own organization, rather than a company they belong to. */
   isPersonal: boolean;
+  /**
+   * The org's icon, from the Keycloak org attribute
+   * `brand_icon_url`. Present only when the org has one; the renderer still
+   * checks the URL's host before showing it (lib/orgBranding.ts).
+   */
+  iconUrl?: string;
 }
 
 /** The organizations a person belongs to, and which one their token names. */
@@ -29,6 +38,21 @@ export interface OrgSource {
   id: string;
   name?: string;
   slug?: string;
+  iconUrl?: string;
+}
+
+/** The Keycloak org attribute auth writes the org's icon URL to. */
+export const BRAND_ICON_ATTRIBUTE = 'brand_icon_url';
+
+/**
+ * The org's icon URL from a Keycloak organization's `attributes`, whose values
+ * are lists of strings (a bare string is accepted too). Undefined when unset.
+ */
+export function brandIconFromAttributes(attributes: unknown): string | undefined {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return undefined;
+  const raw = (attributes as Record<string, unknown>)[BRAND_ICON_ATTRIBUTE];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 /** Keycloak's name for a user's own organization. Auth builds the same string
@@ -62,6 +86,12 @@ export function isIdOrganizationName(name: string | null | undefined): boolean {
  * both halves into `System A… · Personal organi…`.
  */
 export const PERSONAL_ORG_LABEL = 'Personal';
+
+/* The label as shown lives in the `app` catalog (`orgs.personal`): the
+   renderer passes its `app` translator to organizationLabel and
+   orgDisplayName. PERSONAL_ORG_LABEL itself stays English: it is also stored
+   as account data. */
+const english: Translate = sourceTranslator(appSource);
 const AUTH_PERSONAL_ORG_DISPLAY_NAME = 'Personal Organization';
 
 /**
@@ -84,10 +114,17 @@ const AUTH_PERSONAL_ORG_DISPLAY_NAME = 'Personal Organization';
  * hosts already answer "what if there is no display name" differently. Keeping
  * the substitution here leaves the data honest and the choice in one place.
  */
-export function organizationLabel(org: MindsOrg | null | undefined): string | null {
+export function organizationLabel(org: MindsOrg | null | undefined, t: Translate = english): string | null {
   if (!org) return null;
-  if (org.isPersonal && isGeneratedPersonalOrgName(org)) return PERSONAL_ORG_LABEL;
+  if (org.isPersonal && isGeneratedPersonalOrgName(org)) return t('orgs.personal');
   return org.displayName || org.name || null;
+}
+
+/** An organization name carried as account data (accountUser's `org`), for
+ *  display: PERSONAL_ORG_LABEL in the reader's language, anything else as is. */
+export function orgDisplayName(name: string | null | undefined, t: Translate = english): string | null {
+  if (!name) return null;
+  return name === PERSONAL_ORG_LABEL ? t('orgs.personal') : name;
 }
 
 /**
@@ -142,6 +179,7 @@ export function toMindsOrg(source: OrgSource, userId: string): MindsOrg {
     name,
     displayName: source.name ?? name,
     isPersonal: name === personalOrgName(userId),
+    ...(source.iconUrl ? { iconUrl: source.iconUrl } : {}),
   };
 }
 

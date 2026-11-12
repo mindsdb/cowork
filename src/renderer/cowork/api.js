@@ -8,10 +8,13 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 // dev / web are same-origin (proxied), so getApiOrigin() returns the page
 // origin. Routing through host keeps the port in one place.
 
-import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
+import { iterateSSE } from './lib/responseStreamAdapter';
+import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
 import { isAntonConfigError } from './lib/antonErrors';
+import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
+import { currentServerLocale } from '../lib/i18n';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
@@ -70,7 +73,14 @@ function _untilAborted(promise, signal) {
 // COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
 // (src/main/app.ts). That token never reaches the renderer and is NOT the
 // Keycloak token, so nothing is attached here.
+//
+// Both: every request carries the UI language as X-Cowork-UI-Locale (one of
+// SUPPORTED_LOCALES), so cowork-server can tell Anton which language to fall
+// back to (ENG-4149). Its own header, not Accept-Language, which browsers send
+// on their own; and only while the language picker is on. A caller's own
+// header wins.
 export async function authFetch(url, options = {}) {
+  options = withUiLocale(options);
   if (host.isWeb) {
     const token = await _untilAborted(host.getAccessToken(), options.signal);
     if (token) {
@@ -89,6 +99,27 @@ export async function authFetch(url, options = {}) {
     throw new Error('The active organization changed; reload required');
   }
   return response;
+}
+
+function hasHeader(headers, name) {
+  if (!headers) return false;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) return headers.has(name);
+  const wanted = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === wanted);
+}
+
+export const UI_LOCALE_HEADER = 'X-Cowork-UI-Locale';
+
+export function withUiLocale(options = {}) {
+  if (hasHeader(options.headers, UI_LOCALE_HEADER)) return options;
+  const locale = currentServerLocale();
+  if (!locale) return options;
+  if (typeof Headers !== 'undefined' && options.headers instanceof Headers) {
+    const headers = new Headers(options.headers);
+    headers.set(UI_LOCALE_HEADER, locale);
+    return { ...options, headers };
+  }
+  return { ...options, headers: { ...(options.headers || {}), [UI_LOCALE_HEADER]: locale } };
 }
 
 /* Opt-in bound for a plain JSON request, so a dead server (a proxy holding
@@ -336,11 +367,10 @@ function _hydrateAssistantEvents(messages) {
       out.push(m);
       continue;
     }
-    let state = initialStreamState();
-    for (const ev of m.events) {
-      try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
-    }
+    const state = reduceServerEvents(m.events, null);
     const { events: _drop, ...rest } = m;
+    // The turn's response id, so an add-on saved against it can find it.
+    if (state.responseId) rest._responseId = state.responseId;
     const turnComplete = state.status === 'done' || state.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
     out.push({
@@ -351,6 +381,12 @@ function _hydrateAssistantEvents(messages) {
       ...(state.figureSources ? { figureSources: state.figureSources } : {}),
       ...completeFlag,
       ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
+      // The answer the live turn showed, not the saved text that joins every
+      // round: earlier rounds' narration is already in the steps as Notes.
+      // Every conversation open and every refetch after a turn ends comes
+      // through here, so without it a finished answer gained its narration
+      // back the moment the chat refetched it (ENG-4194).
+      ...(replayedAnswer(state, rest.content) || {}),
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
@@ -376,7 +412,8 @@ function _hydrateAssistantEvents(messages) {
       }
     }
   }
-  return out;
+  // Messages added to a running turn (ENG-4194) render inside that turn.
+  return foldAddonMessages(out);
 }
 
 function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
@@ -718,12 +755,24 @@ function idleWindowAfter(msg, idleTimeoutMs) {
   return timeoutS * 1000 + idleTimeoutMs;
 }
 
+// The controller a turn's stream hands back (ENG-4194): an AbortController
+// that also lets the app put its own `response.addon` rows through this
+// stream's reducer (`injectEvent`), so they sit in the turn exactly where server
+// events do, and carries the running turn's response id, which an add-on
+// request names (set once `response.created` arrives).
+function turnStreamController(onEvent) {
+  const ctrl = new AbortController();
+  ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
+  ctrl.responseId = null;
+  return ctrl;
+}
+
 // Streams a /v1/responses request. Maps OpenAI-style typed events to the
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
-  const ctrl = new AbortController();
+  const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -823,6 +872,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
 
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
           bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
 
           // Raw passthrough — used by the streamAdapter to build a
@@ -949,7 +999,7 @@ export function tailInFlight(conversationId, {
   idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
-  const ctrl = new AbortController();
+  const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -1001,6 +1051,7 @@ export function tailInFlight(conversationId, {
           try { msg = JSON.parse(raw); } catch { continue; }
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
           bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
           onEvent?.(msg);
           switch (msg.type) {
@@ -1223,6 +1274,80 @@ export async function submitAnswer(conversationId, questionId, answer) {
     if (status === 404) return { status: 'not_found' };
     if (status === 409) return { status: 'already_answered' };
     if (status === 400) return { status: 'rejected' };
+    return { status: 'error' };
+  }
+}
+
+/** Keep the running turn's response id on its stream handle (ENG-4194). */
+function noteResponseId(ctrl, msg) {
+  if (msg?.type === 'response.created' && msg.response?.id) ctrl.responseId = String(msg.response.id);
+}
+
+/**
+ * Offer a message sent while a turn runs to that turn (ENG-4194). The server
+ * asks Jev whether it belongs to the running task; `force` is the person's own
+ * "Add to current task" and skips that question. `responseId` is the running
+ * turn's id (from its `response.created`); `localKey` is the app's own key for
+ * the row (≤64 chars of [A-Za-z0-9_-], dropped otherwise).
+ *
+ * Never throws. Answers `{status: 'added', addon_id, decided_by}`, or a status
+ * the caller queues on: the server's `queued` (with its reason), `not_found`
+ * (no running turn), `unsupported` (an older server without the route),
+ * `timeout` (no verdict within the window) or `error`.
+ */
+export async function sendAddon(conversationId, text, {
+  force = false, responseId = null, localKey = null, timeoutMs = ADDON_REQUEST_TIMEOUT_MS,
+} = {}) {
+  if (!conversationId) return { status: 'not_found' };
+  try {
+    const res = await req('/responses/addon', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        text,
+        ...(force ? { force: true } : {}),
+        // The turn this was typed against, so the server never adds it to a
+        // later one; and the app's own key for its row, echoed on the
+        // stream's `response.addon` events.
+        ...(responseId ? { response_id: String(responseId) } : {}),
+        ...(isValidLocalKey(localKey) ? { local_key: localKey } : {}),
+      }),
+      timeoutMs,
+    });
+    return res && typeof res === 'object' ? res : { status: 'error' };
+  } catch (err) {
+    if (err?.name === 'AbortError') return { status: 'timeout' };
+    const status = err?.status;
+    // An older server has no such route: FastAPI's plain 404 or a 405. A 404
+    // from the route itself (`{"status":"not_found"}`) means no running turn;
+    // both end the same way, in the queue.
+    if (status === 404) {
+      const body = err?.body;
+      const said = body?.status ?? body?.detail?.status;
+      return { status: said === 'not_found' ? 'not_found' : 'unsupported' };
+    }
+    if (status === 405) return { status: 'unsupported' };
+    return { status: 'error' };
+  }
+}
+
+/**
+ * Take an added message back out of the running turn ("Move to queue").
+ * `withdrawn` means Anton never saw it; `already_read` means it is too late.
+ */
+export async function withdrawAddon(conversationId, addonId) {
+  if (!conversationId || !addonId) return { status: 'not_found' };
+  try {
+    const res = await req('/responses/addon/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId, addon_id: addonId }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+    return res && typeof res === 'object' ? res : { status: 'error' };
+  } catch (err) {
+    const status = err?.status;
+    if (status === 409) return { status: 'already_read' };
+    if (status === 404) return { status: 'not_found' };
     return { status: 'error' };
   }
 }
@@ -1711,6 +1836,49 @@ export async function fetchHubUsage() {
     if (data && typeof data === 'object') return data;
   } catch { /* an old sidecar has no such route: stay dark */ }
   return { reachable: false };
+}
+
+/**
+ * The org's branding: its logo and icon URLs, its look, and whether
+ * the caller may edit it. The hosted server serves it in org mode; the
+ * desktop's local server passes it through to auth with the MindsHub
+ * credential, which rides in the same header as the hub calls. Either answers
+ * `enabled: false` outside an org or in a personal one. Rejects on failure so
+ * the caller can keep what it has (the cached answer) rather than painting
+ * stock.
+ */
+export async function fetchOrgBranding() {
+  if (!host.isElectron) requireOrgMode('Company branding');
+  return req('/org-branding', { headers: await hubHeaders() });
+}
+
+/**
+ * Each organization's icon for the org switcher: `{ reachable,
+ * orgs: [{ id, iconUrl }] }`, read by the server from auth's org list with
+ * the caller's credential. Null when the server has no such route or the read
+ * fails, so the menu falls back to the Keycloak attribute and initials.
+ */
+export async function fetchHubOrgIcons() {
+  try {
+    const data = await req('/hub/org-icons', { headers: await hubHeaders() });
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save the org's look (admins only; the server answers 403 otherwise). Takes
+ * the snake_case body (lib/orgBranding.ts appearancePayload) and resolves to
+ * the same body as fetchOrgBranding.
+ */
+export async function updateOrgAppearance(payload) {
+  if (!host.isElectron) requireOrgMode('Company branding');
+  return req('/org-branding/appearance', {
+    method: 'PUT',
+    headers: await hubHeaders(),
+    body: JSON.stringify(payload),
+  });
 }
 
 // The lock-owning wrappers decide how to handle failure. A save must never
@@ -2549,7 +2717,7 @@ export function streamDataVaultSubmission({
   idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
-  const ctrl = new AbortController();
+  const ctrl = turnStreamController(onEvent);
   /*
    * Same idle timer as _streamResponse. Without it a submission that never
    * answers keeps its conversation's stream record forever, and every message
@@ -2598,6 +2766,7 @@ export function streamDataVaultSubmission({
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
+          noteResponseId(ctrl, msg);
           bumpIdle();
 
           onEvent?.(msg);
@@ -2651,6 +2820,25 @@ export function streamDataVaultSubmission({
     }
   })();
   return ctrl;
+}
+
+// Answers to a custom connector's waiting connection test. Each id is single
+// use; a 404 means the test is no longer waiting and the form must be sent again.
+export function allowConnectorTestHost(approvalId) {
+  return req('/connectors/submissions/allow-private', {
+    method: 'POST', body: JSON.stringify({ approval_id: approvalId }),
+  });
+}
+
+export function confirmConnectorTest(confirmId) {
+  return req('/connectors/submissions/confirm', {
+    method: 'POST', body: JSON.stringify({ confirm_id: confirmId }),
+  });
+}
+
+export function cancelConnectorTest({ approvalId, confirmId } = {}) {
+  const body = approvalId ? { approval_id: approvalId } : { confirm_id: confirmId };
+  return req('/connectors/submissions/cancel', { method: 'POST', body: JSON.stringify(body) });
 }
 
 // Backwards-compatible non-streaming wrapper — kept so callers that
