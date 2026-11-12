@@ -384,6 +384,11 @@
     "jev": {
       "title": "Schnelle Antworten mit Jev",
       "subtitle": "Jev, das Entscheidungsmodell von MindsHub, liest jede Nachricht und den aktuellen Gesprächsverlauf, um zu entscheiden, ob Ihr gewähltes Modell direkt antworten kann, und prüft, ob {agent} seine Arbeit abgeschlossen hat. Deaktivieren Sie die Option, damit jede Nachricht von {agent} bearbeitet wird."
+    },
+    "jevClassify": {
+      "title": "Jev für die Klassifizierung verwenden",
+      "subtitle": "Lässt {agent} viele Texte in Kategorien einordnen oder zu jedem eine Ja/Nein-Frage beantworten – mit Jev, dem Entscheidungsmodell von MindsHub, statt mit Ihrem gewählten Modell. Schneller und günstiger bei großen Mengen. Deaktivieren Sie die Option, damit Texte mit Ihrem gewählten Modell eingeordnet werden.",
+      "unavailable": "Nur verfügbar, wenn das Coding-Modell über MindsHub läuft."
     }
   },
   "desktop": {

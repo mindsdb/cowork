@@ -121889,6 +121889,108 @@
       "text": "5d732edb9ecc"
     }
   },
+  "settings:advanced.jevClassify.subtitle": {
+    "de": {
+      "from": "96aaa33a776c",
+      "text": "86e5b684025f"
+    },
+    "es": {
+      "from": "96aaa33a776c",
+      "text": "8752b9dc63ef"
+    },
+    "fr": {
+      "from": "96aaa33a776c",
+      "text": "1e46b1566cb3"
+    },
+    "it": {
+      "from": "96aaa33a776c",
+      "text": "a9fb5639ca86"
+    },
+    "ja": {
+      "from": "96aaa33a776c",
+      "text": "293bddcf1526"
+    },
+    "ko": {
+      "from": "96aaa33a776c",
+      "text": "55a2cb5fc248"
+    },
+    "pt-BR": {
+      "from": "96aaa33a776c",
+      "text": "3bd5d9db725a"
+    },
+    "zh-CN": {
+      "from": "96aaa33a776c",
+      "text": "4b00f01cfc6b"
+    }
+  },
+  "settings:advanced.jevClassify.title": {
+    "de": {
+      "from": "32dfff2b9393",
+      "text": "c13bb67df1c2"
+    },
+    "es": {
+      "from": "32dfff2b9393",
+      "text": "bb893f6261c8"
+    },
+    "fr": {
+      "from": "32dfff2b9393",
+      "text": "db71bea7c425"
+    },
+    "it": {
+      "from": "32dfff2b9393",
+      "text": "416e29ce69d6"
+    },
+    "ja": {
+      "from": "32dfff2b9393",
+      "text": "6a8e9e083ef1"
+    },
+    "ko": {
+      "from": "32dfff2b9393",
+      "text": "dfcab31b375f"
+    },
+    "pt-BR": {
+      "from": "32dfff2b9393",
+      "text": "a06f46b582b7"
+    },
+    "zh-CN": {
+      "from": "32dfff2b9393",
+      "text": "213eaee2ad58"
+    }
+  },
+  "settings:advanced.jevClassify.unavailable": {
+    "de": {
+      "from": "8c56a556edde",
+      "text": "f51c793e7576"
+    },
+    "es": {
+      "from": "8c56a556edde",
+      "text": "bae15f3a4b7c"
+    },
+    "fr": {
+      "from": "8c56a556edde",
+      "text": "b7df79c3b913"
+    },
+    "it": {
+      "from": "8c56a556edde",
+      "text": "f87d2f5154bb"
+    },
+    "ja": {
+      "from": "8c56a556edde",
+      "text": "d1f820543536"
+    },
+    "ko": {
+      "from": "8c56a556edde",
+      "text": "a940146c0f7d"
+    },
+    "pt-BR": {
+      "from": "8c56a556edde",
+      "text": "bc8efaf2f910"
+    },
+    "zh-CN": {
+      "from": "8c56a556edde",
+      "text": "5db572ed5e28"
+    }
+  },
   "settings:advanced.limits.subtitleOff": {
     "de": {
       "from": "1b7c87653598",

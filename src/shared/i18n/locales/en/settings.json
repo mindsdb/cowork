@@ -384,6 +384,11 @@
     "jev": {
       "title": "Fast answers with Jev",
       "subtitle": "Jev, MindsHub's decision model, reads each message and the recent conversation to decide whether your chosen model can answer it directly, and checks whether {agent} finished its work. Turn it off to have every message run {agent}."
+    },
+    "jevClassify": {
+      "title": "Use Jev for classification",
+      "subtitle": "Lets {agent} sort many texts into categories, or answer a yes/no question about each one, with Jev, MindsHub's decision model, instead of your chosen model. Faster and cheaper for large batches. Turn it off to label texts with your chosen model.",
+      "unavailable": "Available only when the coding model runs on MindsHub."
     }
   },
   "desktop": {
