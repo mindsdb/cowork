@@ -219,6 +219,19 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
     );
   });
 
+  it('inside the mobile app, leaves Billing & Usage out and keeps the rest', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      renderMenu(<UserMenu user={user} onOpenSettings={vi.fn()} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: /Billing & Usage/ })).toBeNull();
+      expect(screen.getByRole('menuitem', { name: /Members/ })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
   it.each([['Members'], ['Help & Feedback'], ['Settings']])(
     'records nothing for %s — it is not a billing route',
     (label) => {

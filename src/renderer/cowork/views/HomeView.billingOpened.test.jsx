@@ -69,6 +69,19 @@ describe('HomeView — connect-a-provider route to billing', () => {
   });
 });
 
+describe('HomeView inside the mobile app', () => {
+  it('keeps the connect card and Open Settings, without Start for free', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      renderHome();
+      expect(screen.queryByRole('button', { name: 'Start for free' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+});
+
 describe('HomeView: connect-a-provider copy', () => {
   it('opens with the same pitch as the chat card, and neither calls the allowance monthly', () => {
     /* One card reached two ways. Home adds the list of key providers after

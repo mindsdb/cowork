@@ -37,6 +37,19 @@ beforeEach(() => {
 });
 
 describe('UsageSection', () => {
+  it('inside the mobile app, shows the figures with no way to the billing console', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      renderWith(usage());
+      expect(screen.getByText('$99.63')).toBeInTheDocument();
+      for (const name of ['View usage', 'Add funds', 'Set up auto top up']) {
+        expect(screen.queryByRole('button', { name })).toBeNull();
+      }
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
   it('shows the allowance proportion and the period spend', () => {
     renderWith(usage());
     expect(screen.getByText('13%')).toBeInTheDocument();

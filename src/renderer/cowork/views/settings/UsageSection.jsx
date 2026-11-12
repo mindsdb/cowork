@@ -5,6 +5,7 @@ import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { trackBillingOpened } from '../../lib/analytics';
+import { offersBilling } from '../../lib/billingLinks';
 import {
   USAGE_ACTIONS,
   usageActionUrl,
@@ -35,6 +36,7 @@ function openConsole(action, isBillingOwner) {
 // USAGE_ACTIONS stays the fallback for an action this section doesn't know.
 function ActionButton({ action, isBillingOwner, variant = 'default' }) {
   const { t } = useTranslation('settingsSystem');
+  if (!offersBilling()) return null;
   return (
     <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner)}>
       {t(`usage.actions.${action.key}`, { defaultValue: action.label })}

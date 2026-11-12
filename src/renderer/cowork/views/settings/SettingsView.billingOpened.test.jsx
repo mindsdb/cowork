@@ -3,7 +3,7 @@
 // (the wallet is empty right now); the locked-model hint follows picking a model
 // the wallet cannot pay for (nothing is broken yet). Separate triggers, so the
 // two are not read as one.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
@@ -32,7 +32,7 @@ const analyticsMock = vi.hoisted(() => ({
 vi.mock('../../lib/analytics', () => analyticsMock);
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
-import SettingsView from './SettingsView';
+import SettingsView, { UnavailableModelHint } from './SettingsView';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';
 import { HubUsageContext } from '../../lib/hubUsageContext';
 
@@ -170,5 +170,44 @@ describe('SettingsView — locked-model hint route (ENG-1533)', () => {
     await waitFor(() => expect(spies.testProviders).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
     expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+  });
+});
+
+describe('SettingsView inside the mobile app', () => {
+  beforeEach(() => { hostMock.host.isMobileShell = true; });
+  afterEach(() => { hostMock.host.isMobileShell = false; });
+
+  it('says there are no credits without offering a top-up', async () => {
+    spies.testProviders.mockResolvedValue({
+      providerStatus: { 'minds-cloud': 'fail' },
+      providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
+    });
+    render(<Harness initialSettings={{
+      ...baseSettings(),
+      providerStatus: { 'minds-cloud': 'fail' },
+      providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
+    }} />);
+
+    await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
+    expect(screen.queryByRole('button', { name: /Top up balance/ })).toBeNull();
+  });
+
+  it('names a locked model as needing credits, with no link to top up', async () => {
+    render(<Harness initialSettings={{
+      ...baseSettings(),
+      providerStatus: { 'minds-cloud': 'ok' },
+      providerStatusDetails: {},
+      modelEnabled: { 'gpt-5.6-sol': false },
+    }} />);
+
+    await waitFor(() => expect(screen.getAllByText(/needs credits\.$/).length).toBeGreaterThan(0));
+    expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
+  });
+
+  it('names a budget-stopped model without linking to Budgets', () => {
+    render(<UnavailableModelHint label="Opus" budgetReached />);
+
+    expect(screen.getByText(/Opus/)).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });
