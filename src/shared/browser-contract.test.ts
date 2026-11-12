@@ -1,3 +1,21 @@
+/*
+ * The browser contract's fixtures, src/main/__fixtures__/browser-contract,
+ * are byte-for-byte copies of anton's tests/fixtures/browser_contract, its
+ * README.md included. anton owns them: they pin the HTTP contract between
+ * anton's `browser` tool and the two hosts that serve it, the browser router
+ * on the web and this app's own in-app browser.
+ *
+ * This file reads every JSON file there. It checks each request example
+ * against the guards in src/shared/browser-contract.ts and each response
+ * example against the shapes in tests/browser-contract-shapes.ts, and
+ * src/main/browser-bridge.contract.test.ts sends the requests through the
+ * real bridge and checks the host's answers against the same shapes.
+ *
+ * To refresh them, copy the folder from anton again and run `npx vitest run
+ * src/shared/browser-contract.test.ts src/main/browser-bridge.contract.test.ts`.
+ * A failure means the contract changed: update the host, then bump
+ * BROWSER_HOST_API if the shapes changed.
+ */
 import { readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
