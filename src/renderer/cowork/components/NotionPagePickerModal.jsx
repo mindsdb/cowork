@@ -3,6 +3,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Alert, Button, Input, Spinner } from './ui';
 import Ico from './Icons';
 import { searchNotionPages } from '../api';
+import { useTranslation } from '../../lib/i18n';
 
 const SEARCH_DEBOUNCE_MS = 350;
 const MIN_QUERY_LENGTH = 2;
@@ -17,6 +18,7 @@ const NO_CONNECTIONS = [];
 // Searches every connected Notion workspace at once and lets the user pick
 // pages. Notion's search needs a query, so the list starts empty.
 export default function NotionPagePickerModal({ open, connections = NO_CONNECTIONS, onClose, onConfirm }) {
+  const { t } = useTranslation('chat');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(() => new Map());
@@ -76,25 +78,25 @@ export default function NotionPagePickerModal({ open, connections = NO_CONNECTIO
     <Modal open={open} onClose={onClose} size="md" labelledBy="notion-page-picker-title">
       <ModalHeader
         id="notion-page-picker-title"
-        title="Add pages from Notion"
-        subtitle="Search your Notion and pick pages for this message."
+        title={t('notionPicker.title')}
+        subtitle={t('notionPicker.subtitle')}
         onClose={onClose}
       />
       <ModalBody>
         <Input
           value={query}
           onChange={setQuery}
-          placeholder="Search Notion pages…"
-          aria-label="Search Notion pages"
+          placeholder={t('notionPicker.searchPlaceholder')}
+          aria-label={t('notionPicker.searchAriaLabel')}
           autoFocus
           leading={Ico.search(14)}
           trailing={loading ? <Spinner /> : null}
         />
         {error && <div style={{ marginTop: 10 }}><Alert variant="danger">{error}</Alert></div>}
         <div role="listbox" aria-multiselectable="true" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 12, minHeight: 120 }}>
-          {!hasQuery && <p style={{ color: 'var(--ink-3)', fontSize: 13 }}>Type at least {MIN_QUERY_LENGTH} characters to search.</p>}
+          {!hasQuery && <p style={{ color: 'var(--ink-3)', fontSize: 13 }}>{t('notionPicker.minQuery', { count: MIN_QUERY_LENGTH })}</p>}
           {hasQuery && !loading && !error && results.length === 0 && (
-            <p style={{ color: 'var(--ink-3)', fontSize: 13 }}>No pages found.</p>
+            <p style={{ color: 'var(--ink-3)', fontSize: 13 }}>{t('notionPicker.noResults')}</p>
           )}
           {results.map((page) => {
             const checked = selected.has(pageKey(page));
@@ -119,7 +121,7 @@ export default function NotionPagePickerModal({ open, connections = NO_CONNECTIO
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {page.title}
                 </span>
-                {page.type === 'database' && <span style={{ color: 'var(--ink-3)', fontSize: 12 }}>Database</span>}
+                {page.type === 'database' && <span style={{ color: 'var(--ink-3)', fontSize: 12 }}>{t('notionPicker.database')}</span>}
                 {showWorkspace && <span style={{ color: 'var(--ink-3)', fontSize: 12, flexShrink: 0 }}>{page.workspace}</span>}
               </button>
             );
@@ -127,9 +129,9 @@ export default function NotionPagePickerModal({ open, connections = NO_CONNECTIO
         </div>
       </ModalBody>
       <ModalFooter>
-        <Button variant="subtle" onClick={onClose}>Cancel</Button>
+        <Button variant="subtle" onClick={onClose}>{t('notionPicker.cancel')}</Button>
         <Button variant="primary" disabled={selected.size === 0} onClick={() => onConfirm([...selected.values()])}>
-          {selected.size > 1 ? `Add ${selected.size} pages` : 'Add page'}
+          {t('notionPicker.add', { count: selected.size })}
         </Button>
       </ModalFooter>
     </Modal>

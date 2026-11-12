@@ -615,5 +615,16 @@
     "closedTitle": "Le navigateur de cette tâche est fermé",
     "closedDescription": "{agent} le rouvrira quand il en aura besoin.",
     "squeezed": "Agrandissez la fenêtre pour voir la page"
+  },
+  "notionPicker": {
+    "title": "Ajouter des pages depuis Notion",
+    "subtitle": "Recherchez dans votre Notion et choisissez des pages pour ce message.",
+    "searchPlaceholder": "Rechercher des pages Notion…",
+    "searchAriaLabel": "Rechercher des pages Notion",
+    "minQuery": "{count, plural, one {Saisissez au moins # caractère pour rechercher.} other {Saisissez au moins # caractères pour rechercher.}}",
+    "noResults": "Aucune page trouvée.",
+    "database": "Base de données",
+    "cancel": "Annuler",
+    "add": "{count, plural, =0 {Ajouter la page} one {Ajouter la page} other {Ajouter # pages}}"
   }
 }

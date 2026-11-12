@@ -7055,10 +7055,10 @@ function AppCore() {
       {/* Composer "+" → "Add pages from Notion" — see useNotionPagePicker. */}
       <ConfirmModal
         open={!!notionConnectPrompt}
-        title="Connect Notion?"
-        message="You need to connect your Notion workspace to add pages from Notion."
-        confirmLabel="Connect"
-        cancelLabel="Cancel"
+        title={tApp('notion.connectTitle')}
+        message={tApp('notion.connectMessage')}
+        confirmLabel={tApp('common.connect')}
+        cancelLabel={tApp('common.cancel')}
         onConfirm={confirmNotionConnect}
         onClose={cancelNotionConnect}
       />
