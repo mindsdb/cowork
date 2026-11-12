@@ -146,6 +146,18 @@ async function startFixtureServer(): Promise<void> {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Editor</title><p>Top</p><iframe src="/css-editor-inner" style="width:400px;height:200px;border:0"></iframe>');
     }
+    if (url.pathname === '/shadow-editor') {
+      /* A same-origin frame whose drafts sit in a widget's open shadow root:
+         one CSS alone makes editable, one an attribute does. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Shadow editor</title><p>Top</p><iframe src="/shadow-editor-inner" style="width:400px;height:200px;border:0"></iframe>');
+    }
+    if (url.pathname === '/shadow-editor-inner') {
+      const drafts = '<div tabindex="0">To: <div style="-webkit-user-modify:read-write;min-height:20px">CSS-DRAFT typed by the person</div></div>'
+        + '<div tabindex="0">Cc: <div contenteditable style="min-height:20px">ATTR-DRAFT typed by the person</div></div>';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Inner</title><p>Compose</p><x-compose id="c"></x-compose><button>Send</button><script>document.getElementById("c").attachShadow({ mode: "open" }).innerHTML = ${JSON.stringify(drafts)}</script>`);
+    }
     if (url.pathname === '/css-editor-inner') {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Inner</title><p>Compose</p><div tabindex="0">To: <div style="-webkit-user-modify:read-write;min-height:40px">CSS-DRAFT typed by the person</div></div><button>Send</button>');
@@ -537,6 +549,15 @@ test("reads no text of an editor that CSS alone makes editable in a same-origin 
   expect(frame.text).toContain('Compose');
   expect(frame.elements).toEqual([{ role: 'clickable', name: 'To:' }, { role: 'button', name: 'Send' }]);
   expect(JSON.stringify(frame)).not.toContain('CSS-DRAFT');
+});
+
+test("reads no text of an editor in a widget's open shadow root in a same-origin frame, one CSS alone makes editable or one an attribute does, in its text or a name", async () => {
+  await openAt('/shadow-editor');
+  await expect.poll(async () => (await page()).frames.map((f: { read: boolean }) => f.read), { timeout: 10_000 }).toEqual([true]);
+  await expect.poll(async () => (await page()).frames[0].text ?? '', { timeout: 10_000 }).toContain('Compose');
+  const [frame] = (await page()).frames;
+  expect(frame.text).toContain('Send');
+  expect(JSON.stringify(frame)).not.toMatch(/CSS-DRAFT|ATTR-DRAFT/);
 });
 
 test('reads a same-origin frame only where the person sees it, and lists the rest with their boxes, unread', async () => {
