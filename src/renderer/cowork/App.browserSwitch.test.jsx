@@ -32,7 +32,8 @@ vi.mock('./api', async (importOriginal) => ({
   fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
   fetchComparisons: vi.fn(async () => ({ comparisons: [], hasMore: false })),
   fetchArtifacts: vi.fn(async () => []),
-  fetchSettings: vi.fn(async () => ({ configReady: true })),
+  // The browser is off until turned on (Beta): these tests turn it on.
+  fetchSettings: vi.fn(async () => ({ configReady: true, browserEnabled: true })),
   fetchPins: vi.fn(async () => ({ pins: [] })),
   fetchSchedules: vi.fn(async () => []),
   fetchDatasources: vi.fn(async () => ({ connections: [] })),

@@ -68,6 +68,7 @@
     "signOut": "退出登录",
     "sharedBrowser": "共享浏览器",
     "useSharedBrowser": "使用共享浏览器",
+    "beta": "测试版",
     "signInsTitle": "登录信息",
     "providerSeesTitle": "模型提供商能看到的内容",
     "retry": "重试",

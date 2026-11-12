@@ -4,6 +4,7 @@ import { setBrowserPrefs, useBrowserPrefs } from '../../lib/browserPrefs';
 import { Switch } from '../../components/ui/Switch';
 import { Tooltip } from '../../components/ui/Tooltip';
 import Button from '../../components/ui/Button';
+import Badge from '../../components/ui/Badge';
 import { signOutOfBrowserSites } from '../../api';
 import { readBrowseStatus } from '../../lib/browseStatus';
 import { host, onInAppBrowserRegistered } from '../../../platform/host';
@@ -184,6 +185,14 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     </Section>
   );
 
+  // Off until the person turns it on, and marked Beta.
+  const browserTitle = (
+    <>
+      {t('browser.useSharedBrowser')}
+      <Badge variant="accent" size="xs" className="ml-2 align-middle uppercase tracking-[0.04em]">{t('browser.beta')}</Badge>
+    </>
+  );
+
   const browserHelp = (
     <div className="flex flex-col gap-2 max-w-[340px] text-left">
       <p className="m-0">
@@ -199,7 +208,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
 
   const browserSwitch = (
     <Switch
-      checked={settings.browserEnabled ?? true}
+      checked={settings.browserEnabled === true}
       onCheckedChange={(v) => setSetting('browserEnabled', v)}
       aria-label={t('browser.sharedBrowser')}
     />
@@ -209,7 +218,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   if (offered) {
     browserGroup = (
       <SettingsGroup title={t('browser.sharedBrowser')}>
-        <Section title={t('browser.useSharedBrowser')} subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
+        <Section title={browserTitle} subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
           {/* What stays signed in and what the model provider sees: on the switch, on hover. */}
           <Tooltip content={browserHelp}>
             <span className="inline-flex">{browserSwitch}</span>
@@ -229,7 +238,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     // Access is off, but the person's saved sign-ins are still theirs to clear.
     browserGroup = (
       <SettingsGroup title={t('browser.sharedBrowser')}>
-        <Section title={t('browser.useSharedBrowser')} subtitle={status.status === 'organization_off' ? t('browser.organizationOff') : t('browser.notEntitled')} />
+        <Section title={browserTitle} subtitle={status.status === 'organization_off' ? t('browser.organizationOff') : t('browser.notEntitled')} />
         {signOutRow}
       </SettingsGroup>
     );
@@ -237,7 +246,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     browserGroup = (
       <SettingsGroup title={t('browser.sharedBrowser')}>
         <Section
-          title={t('browser.useSharedBrowser')}
+          title={browserTitle}
           subtitle={t('browser.statusUnconfirmed')}
           notice={<Button size="sm" variant="subtle" onClick={() => void loadStatus()}>{t('browser.retry')}</Button>}
         >

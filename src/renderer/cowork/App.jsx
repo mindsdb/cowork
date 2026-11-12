@@ -3897,7 +3897,8 @@ function AppCore() {
      browser (GET /browse/status answers `available: true`, never on a
      self-hosted stack) and while it is on in Settings (on by default). Off
      there, no task gets it, so no switch (lib/browserSwitch). */
-  const browserOnInSettings = settings.browserEnabled !== false;
+  // Off unless the person turned it on in Settings (Beta).
+  const browserOnInSettings = settings.browserEnabled === true;
   const browseAvailable = useBrowseAvailable(`${health.status}:${inAppBrowserRegistered}`);
   const browserSwitchShown = showsBrowserSwitch({ browserOnInSettings, browseAvailable });
   const composerBrowserSwitch = browserSwitchShown

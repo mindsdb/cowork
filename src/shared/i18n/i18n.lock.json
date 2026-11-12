@@ -141439,6 +141439,40 @@
       "text": "a5bd5012efdf"
     }
   },
+  "settingsTools:browser.beta": {
+    "de": {
+      "from": "703390318bd5",
+      "text": "703390318bd5"
+    },
+    "es": {
+      "from": "703390318bd5",
+      "text": "703390318bd5"
+    },
+    "fr": {
+      "from": "703390318bd5",
+      "text": "6042cd723af6"
+    },
+    "it": {
+      "from": "703390318bd5",
+      "text": "703390318bd5"
+    },
+    "ja": {
+      "from": "703390318bd5",
+      "text": "d170f82e9c4d"
+    },
+    "ko": {
+      "from": "703390318bd5",
+      "text": "5aad4f0a0670"
+    },
+    "pt-BR": {
+      "from": "703390318bd5",
+      "text": "703390318bd5"
+    },
+    "zh-CN": {
+      "from": "703390318bd5",
+      "text": "065d4b037ce5"
+    }
+  },
   "settingsTools:browser.clearFailed": {
     "de": {
       "from": "d53957bb9b09",
