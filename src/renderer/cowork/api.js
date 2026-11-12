@@ -10,6 +10,7 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 
 import { iterateSSE } from './lib/responseStreamAdapter';
 import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
+import { withQuickEditGroup } from './lib/quickEditGroup';
 import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
@@ -364,6 +365,12 @@ function _hydrateAssistantEvents(messages) {
   for (const m of messages) {
     if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
       out.push(m);
+      continue;
+    }
+    // A quick-edit group (ENG-4227) is a card, not a turn to replay.
+    const group = withQuickEditGroup(m);
+    if (group) {
+      out.push(group);
       continue;
     }
     const state = reduceServerEvents(m.events, null);

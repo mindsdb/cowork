@@ -64,8 +64,10 @@ describe('ChatView quick edits', () => {
         id: 'g1',
         role: 'assistant',
         harness: 'cowork-quick-edit',
-        content: 'Quick edits.',
-        metadata: {
+        // Model-facing text, never shown.
+        content: 'Changes made directly in the viewer of artifact.',
+        quickEditGroup: {
+          type: 'response.quick_edit_group',
           kind: 'quick_edit_group',
           artifactSlug: CARD.slug,
           artifactTitle: CARD.title,
@@ -81,14 +83,14 @@ describe('ChatView quick edits', () => {
     expect(within(card).getByText('2 changes')).toBeInTheDocument();
     expect(within(card).getByText('Made the title blue.')).toBeInTheDocument();
     expect(within(card).getByText('Undone')).toBeInTheDocument();
-    expect(screen.queryByText('Quick edits.')).toBeNull();
+    expect(screen.queryByText(/Changes made directly/)).toBeNull();
     expect(screen.queryByText(/cowork-quick-edit/i)).toBeNull();
   });
 
   it('updates the card when the group message gains an edit', () => {
     const group = (edits) => ({
       id: 'g1', role: 'assistant', harness: 'cowork-quick-edit', content: '',
-      metadata: { kind: 'quick_edit_group', artifactSlug: CARD.slug, artifactTitle: CARD.title, edits },
+      quickEditGroup: { type: 'response.quick_edit_group', kind: 'quick_edit_group', artifactSlug: CARD.slug, artifactTitle: CARD.title, edits },
     });
     const one = [{ editId: 'e1', request: 'blue', summary: 'Blue.' }];
     const view = render(<ChatView task={taskWith([group(one)])} />);

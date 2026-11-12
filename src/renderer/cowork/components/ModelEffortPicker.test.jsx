@@ -15,6 +15,7 @@ const modelMeta = {
   modelEfforts: {
     sonnet: { efforts: ['low', 'medium', 'high'], default: 'high' },
     gemini: { efforts: ['low', 'high'], default: 'high' },
+    nodefault: { efforts: ['low', 'high'] },
   },
   planningReasoningEffort: 'low',
 };
@@ -26,10 +27,11 @@ describe('pickedEffort with platform UI', () => {
   it('keeps a pick the model offers', () => {
     expect(pickedEffort({ model: { id: 'sonnet' }, effort: 'high', modelMeta, operatorPicker: false })).toBe('high');
   });
-  it('falls back to what the composer shows when medium is not offered', () => {
-    expect(pickedEffort({ model: { id: 'gemini' }, modelMeta, operatorPicker: false })).toBe('low');
+  it("falls back to the model's own default when medium is not offered, as the server does", () => {
+    expect(pickedEffort({ model: { id: 'gemini' }, modelMeta, operatorPicker: false })).toBe('high');
+    expect(pickedEffort({ model: { id: 'nodefault' }, modelMeta, operatorPicker: false })).toBe('');
   });
-  it('sends none for a model without levels, or Model Router', () => {
+  it('sends none for a model missing from modelEfforts, or Model Router', () => {
     expect(pickedEffort({ model: { id: 'plain' }, modelMeta, operatorPicker: false })).toBe('');
     expect(pickedEffort({ model: { id: 'model-router' }, modelMeta, operatorPicker: false })).toBe('');
   });

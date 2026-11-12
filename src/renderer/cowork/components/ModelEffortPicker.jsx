@@ -18,7 +18,7 @@ import {
 } from '../lib/modelCatalog';
 import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
 import {
-  MODEL_DEFAULT_VALUE, effortLevelsFor, effortOptions, operatorEffortOptions, resolveEffort,
+  MODEL_DEFAULT_VALUE, effortLevelsFor, effortOptions, operatorEffortOptions,
 } from '../code/reasoning';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
@@ -29,10 +29,12 @@ export const DEFAULT_EFFORT = 'medium';
 const realModelId = (model) => (model?.id && model.id !== MODEL_ROUTER_ID ? model.id : null);
 
 /**
- * The effort a request on `model` runs at. `effort` is the user's pick: null
+ * The effort a request on `model` sends. `effort` is the user's pick: null
  * when they made none, '' for the operator picker's "Default" (send none).
- * With no pick, "medium" where the model offers it, else what the composer
- * would show (the saved planning effort, else the model's own default).
+ * Only a model in the catalog's `modelEfforts` (GET
+ * /settings/recommended-models, the composer's own source) takes an effort.
+ * With no pick, "medium" where the model offers it, else the model's own
+ * `default`, as the server would apply; a model with no default sends none.
  * '' means no effort is sent.
  */
 export function pickedEffort({ model, effort = null, modelMeta, operatorPicker = modelPickerMode() !== 'off' }) {
@@ -46,7 +48,7 @@ export function pickedEffort({ model, effort = null, modelMeta, operatorPicker =
   if (!levels) return '';
   if (effort && levels.levels.includes(effort)) return effort;
   if (levels.levels.includes(DEFAULT_EFFORT)) return DEFAULT_EFFORT;
-  return resolveEffort('', modelMeta?.planningReasoningEffort, levels) ?? levels.levels[0];
+  return levels.modelDefault || '';
 }
 
 export function ModelEffortPicker({
@@ -103,7 +105,9 @@ export function ModelEffortPicker({
       />
       {PLATFORM_UI && !operatorPicker && levels && (
         <Select
-          value={shown}
+          // A model with no default sends none and runs at the server's
+          // choice; the pill then names the first level it offers.
+          value={shown || levels.levels[0]}
           onValueChange={onEffortChange}
           options={effortOptions(levels)}
           variant="unstyled"

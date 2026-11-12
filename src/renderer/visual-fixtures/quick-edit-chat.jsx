@@ -53,8 +53,9 @@ const task = {
       id: 'g1',
       role: 'assistant',
       harness: 'cowork-quick-edit',
-      content: 'Quick edits to MindsHub explainer.',
-      metadata: {
+      content: 'Changes made directly in the viewer of artifact `mindshub-explainer-a8c2272e`: …',
+      quickEditGroup: {
+        type: 'response.quick_edit_group',
         kind: 'quick_edit_group',
         artifactId: CARD.id,
         artifactSlug: SLUG,

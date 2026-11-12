@@ -1,19 +1,24 @@
 // The quick-edit group message in a chat (ENG-4227), and older one-edit notes.
 import { describe, expect, it } from 'vitest';
-import { isFoldedLegacyRequest, legacyQuickEditGroup, legacyQuickEditNote, quickEditGroupOf } from './quickEditGroup';
+import {
+  isFoldedLegacyRequest, legacyQuickEditGroup, legacyQuickEditNote, quickEditGroupOf, withQuickEditGroup,
+} from './quickEditGroup';
+import { hydrateMessagesFromServerEvents } from './conversationHistory';
 
 const groupMessage = (edits, extra = {}) => ({
   id: 'm1',
   role: 'assistant',
   harness: 'cowork-quick-edit',
-  content: 'Quick edits to Launch brief.',
-  metadata: {
+  // Model-facing text: never shown.
+  content: 'Changes made directly in the viewer of artifact `launch-brief`: ...',
+  events: [{
+    type: 'response.quick_edit_group',
     kind: 'quick_edit_group',
     artifactId: 'a1',
     artifactSlug: 'launch-brief',
     artifactTitle: 'Launch brief',
     edits,
-  },
+  }],
   ...extra,
 });
 
@@ -34,9 +39,20 @@ describe('quickEditGroupOf', () => {
 
   it('is null for any other message', () => {
     expect(quickEditGroupOf({ role: 'assistant', content: 'hi' })).toBeNull();
-    expect(quickEditGroupOf({ role: 'user', metadata: groupMessage([{ editId: 'e' }]).metadata })).toBeNull();
+    expect(quickEditGroupOf({ role: 'user', events: groupMessage([{ editId: 'e' }]).events })).toBeNull();
     expect(quickEditGroupOf(groupMessage([]))).toBeNull();
-    expect(quickEditGroupOf({ role: 'assistant', metadata: { kind: 'other', edits: [{}] } })).toBeNull();
+    expect(quickEditGroupOf({ role: 'assistant', events: [{ type: 'response.output_text.delta', delta: 'x' }] })).toBeNull();
+    expect(quickEditGroupOf({ role: 'assistant', events: [{ type: 'response.quick_edit_group', kind: 'other', edits: [{}] }] })).toBeNull();
+  });
+
+  it('hydrates the group as a card, not a turn: no events, steps or answer text derived', () => {
+    const raw = groupMessage([{ editId: 'e1', request: 'blue', summary: 'Blue.' }]);
+    const [hydrated] = hydrateMessagesFromServerEvents([raw]);
+    expect(hydrated.events).toBeUndefined();
+    expect(hydrated.steps).toBeUndefined();
+    expect(hydrated.quickEditGroup.type).toBe('response.quick_edit_group');
+    expect(quickEditGroupOf(hydrated).edits[0].summary).toBe('Blue.');
+    expect(withQuickEditGroup({ role: 'assistant', events: [{ type: 'response.completed' }] })).toBeNull();
   });
 });
 

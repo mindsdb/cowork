@@ -1,25 +1,49 @@
 // Quick edits in the artifact's chat (ENG-4227). The server keeps one
-// assistant message per burst of edits from the viewer's chat bar, saved by
-// the `cowork-quick-edit` harness, with metadata
+// assistant message per burst of edits from the viewer's chat bar (harness
+// `cowork-quick-edit`) and updates it in place as edits land. The message's
+// only event is the group:
 //
-//   { kind: 'quick_edit_group', artifactId, artifactSlug, artifactTitle,
+//   { type: 'response.quick_edit_group', kind: 'quick_edit_group',
+//     artifactId, artifactSlug, artifactTitle,
 //     edits: [{ editId, request, summary, changed, revisionId, at, model, undone }] }
 //
-// and updates it in place as edits land. The transcript renders it as one
-// card (QuickEditGroupCard). Older conversations hold each edit as a user
-// message plus an assistant note starting with LEGACY_PREFIX; those render as
-// a one-edit card too.
+// Its `content` is model-facing text and is never shown. Hydrating the
+// messages API's items (api.js, lib/conversationHistory) keeps that event as
+// `quickEditGroup` instead of replaying it as a turn (`withQuickEditGroup`),
+// and the transcript renders it as one card (QuickEditGroupCard). Older
+// conversations hold each edit as a user message plus an assistant note
+// starting with LEGACY_PREFIX; those render as a one-edit card too.
 //
-// `groupMetadataOf` is the only place that knows where the metadata sits on a
+// `groupEventOf` is the only place that knows where the group sits on a
 // message, so the path is changed here and nowhere else.
 
 export const QUICK_EDIT_HARNESS = 'cowork-quick-edit';
 export const QUICK_EDIT_GROUP_KIND = 'quick_edit_group';
+export const QUICK_EDIT_GROUP_EVENT = 'response.quick_edit_group';
 export const LEGACY_PREFIX = 'I edited this artifact directly from its viewer (quick edit): ';
 
-function groupMetadataOf(message) {
-  const candidates = [message?.metadata, message?.meta, message?.extra?.metadata];
-  return candidates.find((m) => m && typeof m === 'object' && m.kind === QUICK_EDIT_GROUP_KIND) || null;
+const isGroupEvent = (e) => !!e && typeof e === 'object'
+  && e.type === QUICK_EDIT_GROUP_EVENT && e.kind === QUICK_EDIT_GROUP_KIND;
+
+// A hydrated message keeps the event as `quickEditGroup`; a raw item from the
+// messages API still has it in `events`.
+function groupEventOf(message) {
+  if (isGroupEvent(message?.quickEditGroup)) return message.quickEditGroup;
+  return Array.isArray(message?.events) ? message.events.find(isGroupEvent) || null : null;
+}
+
+/**
+ * A raw assistant item that is a quick-edit group, hydrated: its events
+ * dropped and the group kept as `quickEditGroup`, with no steps, status or
+ * answer text derived from it. Null for any other message, which then
+ * hydrates as a turn.
+ */
+export function withQuickEditGroup(message) {
+  if (message?.role !== 'assistant') return null;
+  const event = groupEventOf(message);
+  if (!event) return null;
+  const { events: _drop, ...rest } = message;
+  return { ...rest, quickEditGroup: event, _turnComplete: true };
 }
 
 const str = (v) => (typeof v === 'string' ? v : '');
@@ -41,7 +65,7 @@ function normalizeEdit(edit, index) {
 /** The group a message carries, normalized, or null for any other message. */
 export function quickEditGroupOf(message) {
   if (message?.role !== 'assistant') return null;
-  const meta = groupMetadataOf(message);
+  const meta = groupEventOf(message);
   if (!meta) return null;
   const edits = (Array.isArray(meta.edits) ? meta.edits : []).map(normalizeEdit).filter(Boolean);
   if (edits.length === 0) return null;
