@@ -4,8 +4,9 @@
 // send. State and the stream live in useQuickEdit; this file only draws them.
 //
 // A message handed to the chat shows the agent's reply here as it streams,
-// read from the chat's own task state (lib/quickEditPrompt chatReplyFor), with
-// a quiet "Open in chat" for the full turn.
+// read from the chat's own task state (lib/quickEditPrompt chatReplyFor).
+// Closing the viewer shows that chat, so the bar offers "Open in chat" only
+// while the turn waits for an answer there.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../../Icons';
@@ -59,10 +60,9 @@ function ChatMirror({ reply, chatMessages, onOpenChat }) {
         <div className="artifact-quick-edit-mirror" data-live={mirror.live || undefined}>
           <MarkdownContent text={mirror.text} id={`quick-edit-${reply.id}`} complete={!mirror.live} size="dense" isAssistant animateStreamingWords={false} />
         </div>
-        <div className="artifact-quick-edit-actions">
-          {mirror.live && <span className="artifact-quick-edit-status"><Spinner /></span>}
-          <OpenInChat onOpenChat={onOpenChat} />
-        </div>
+        {mirror.live && (
+          <div className="artifact-quick-edit-actions"><span className="artifact-quick-edit-status"><Spinner /></span></div>
+        )}
       </>
     );
   }
@@ -76,7 +76,6 @@ function ChatMirror({ reply, chatMessages, onOpenChat }) {
       <span className="artifact-quick-edit-status" role="status">
         {mirror && !mirror.failed ? <Spinner /> : null}{label}
       </span>
-      <div className="artifact-quick-edit-actions"><OpenInChat onOpenChat={onOpenChat} /></div>
     </>
   );
 }

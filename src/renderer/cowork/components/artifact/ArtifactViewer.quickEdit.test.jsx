@@ -360,8 +360,8 @@ describe('ArtifactViewer quick edit bar', () => {
       prompt: 'Add last quarter sales from the warehouse\n\n(About the artifact `launch-brief`.)',
       conversationId: 'conv-1',
     });
-    fireEvent.click(within(thread()).getByRole('button', { name: 'Open in chat' }));
-    expect(onClose).toHaveBeenCalled();
+    // Closing the viewer shows the chat; the bar adds no button for it.
+    expect(within(thread()).queryByRole('button', { name: 'Open in chat' })).toBeNull();
   });
 
   it('targets the chat that made the artifact when the viewer has none', async () => {
@@ -625,7 +625,7 @@ describe('ArtifactViewer quick edit bar', () => {
       return { ...view, update: (msgs) => view.rerender(ui(msgs)) };
     }
 
-    it('streams the agent reply into the bar from the chat state, with Open in chat', async () => {
+    it('streams the agent reply into the bar from the chat state, with no Open in chat once it has text', async () => {
       const onClose = vi.fn();
       const onAddressWithAgent = vi.fn(async () => true);
       workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'escalate', summary: '' }));
@@ -646,8 +646,7 @@ describe('ArtifactViewer quick edit bar', () => {
 
       view.update([...earlier, { role: 'user', content: PROMPT }, { role: 'assistant', content: 'Added a Q3 sales column.' }]);
       expect(await within(thread()).findByText('Added a Q3 sales column.')).toBeInTheDocument();
-      fireEvent.click(within(thread()).getByRole('button', { name: 'Open in chat' }));
-      expect(onClose).toHaveBeenCalled();
+      expect(within(thread()).queryByRole('button', { name: 'Open in chat' })).toBeNull();
     });
 
     it('says the chat needs an answer while the turn asks a question', async () => {
