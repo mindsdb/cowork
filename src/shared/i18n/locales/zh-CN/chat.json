@@ -614,7 +614,62 @@
     "newTab": "新标签页",
     "closedTitle": "此任务的浏览器已关闭",
     "closedDescription": "{agent} 需要时会重新打开它。",
-    "squeezed": "放大窗口以查看页面"
+    "squeezed": "放大窗口以查看页面",
+    "minimize": "最小化浏览器",
+    "expand": "展开浏览器",
+    "learnWhat": "了解 {agent} 能看到什么",
+    "opening": "正在打开你的浏览器",
+    "askOrTypeUrl": "提问或输入网址",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "空白页。有什么大计划？",
+          "subtitle": "输入网址，或告诉我要查什么。"
+        },
+        "wholeInternet": {
+          "title": "整个互联网，却无处可去。",
+          "subtitle": "告诉我一个值得去的地方。"
+        },
+        "freshTab": {
+          "title": "新标签页，新气象。",
+          "subtitle": "我们去哪儿？"
+        },
+        "quiet": {
+          "title": "这里很安静，安静得可疑。",
+          "subtitle": "给我一个网站或搜索词，我马上开始。"
+        }
+      },
+      "off": "此任务的浏览器已关闭。从 + 菜单中打开后，{agent} 就可以浏览网页。",
+      "searchPlaceholder": "搜索或粘贴链接",
+      "searchLabel": "要查找的内容",
+      "onIt": "处理中…",
+      "go": "前往",
+      "addressPlaceholder": "输入网址或搜索",
+      "address": "地址",
+      "nothingOpen": "尚未打开任何内容",
+      "openingUrl": "正在打开 {url}…",
+      "slow": "该页面加载较慢。请重试，或在地址栏中输入。",
+      "couldNotOpen": "无法打开该页面。",
+      "agentOpening": "{agent} 正在打开浏览器…"
+    },
+    "projectBrowsers": {
+      "title": "此项目中的浏览器",
+      "listFailed": "无法列出浏览器。",
+      "failed": "操作未成功。",
+      "looking": "正在查找…",
+      "thisTask": "此任务",
+      "held": "此浏览器由你控制：交还后会显示其标签页。",
+      "showing": "显示中",
+      "closeOthers": "{count, plural, other {关闭其他 # 个标签页（保存以便稍后使用）}}",
+      "noneMine": "此任务没有打开的浏览器。",
+      "reopen": "重新打开 {tab}",
+      "saved": "已保存",
+      "otherTasks": "此项目中的其他任务",
+      "tabCount": "{count, plural, other {# 个标签页}}",
+      "goTo": "前往其浏览器",
+      "closeIts": "关闭其浏览器（标签页已保存）",
+      "watching": "有人正在查看"
+    }
   },
   "videoCall": {
     "dialogLabel": "与 {agent} 视频通话",
@@ -631,6 +686,22 @@
     "cameraOff": "关闭摄像头",
     "cameraOn": "打开摄像头",
     "minimize": "最小化",
-    "hangUp": "挂断"
+    "hangUp": "挂断",
+    "endCall": "结束通话"
+  },
+  "voiceCall": {
+    "dialogLabel": "与 {agent} 语音通话",
+    "connecting": "正在连接…",
+    "ending": "正在结束…",
+    "working": "正在处理…",
+    "listening": "正在聆听",
+    "talkSoon": "回头聊",
+    "analyzing": "正在分析结果…",
+    "trying": "正在试听 {voice}",
+    "connectingVoice": "正在连接语音…",
+    "voice": "语音",
+    "voiceAriaLabel": "语音：{voice}",
+    "changeVoice": "更换语音",
+    "muteAndEnd": "静音并结束通话"
   }
 }

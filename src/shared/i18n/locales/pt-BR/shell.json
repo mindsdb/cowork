@@ -409,5 +409,8 @@
     "confirm": "Sair",
     "failed": "Não foi possível concluir a saída. Tente novamente.",
     "waitNote": "Ainda estamos encerrando sua sessão. Você pode fechar isto: termina sozinho."
+  },
+  "shortcuts": {
+    "showBrowser": "Mostrar navegador"
   }
 }

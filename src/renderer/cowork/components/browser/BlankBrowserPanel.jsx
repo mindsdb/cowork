@@ -3,6 +3,7 @@ import Ico from '../Icons';
 import Button from '../ui/Button';
 import { BrowserFrame } from './BrowserFrame';
 import { typedUrl } from '../../lib/browserSession';
+import { useTranslation } from '../../../lib/i18n';
 
 /* The browser pane before a page is open in the task: an address bar, and a
    blank page with a line asking where to go. An address typed in either opens
@@ -10,12 +11,8 @@ import { typedUrl } from '../../lib/browserSession';
    else goes to the agent as a search (`onSend`). The real pane takes over as
    soon as the browser opens. */
 
-export const BLANK_LINES = [
-  { title: 'Blank page. Big plans?', subtitle: 'Type an address, or tell me what to look up.' },
-  { title: 'The whole internet, and nowhere to be.', subtitle: 'Point me somewhere worth the trip.' },
-  { title: 'Fresh tab energy.', subtitle: 'Where are we headed?' },
-  { title: 'Quiet in here. Suspiciously quiet.', subtitle: 'Give me a site or a search and I’ll get going.' },
-];
+// The start page's lines, by their key in the chat catalog (browser.blank.lines.*).
+export const BLANK_LINES = ['bigPlans', 'wholeInternet', 'freshTab', 'quiet'];
 
 // One line per task, so it doesn't change every time the pane opens.
 export function blankLineFor(key = '') {
@@ -35,6 +32,7 @@ export function browserRequestFor(text) {
 /** Sends what the person typed: an address opens at once (`onOpenUrl`),
     anything else goes to the agent as a search (`onSend`). */
 function useBlankGo({ agentLabel, browserOn, onSend, onOpenUrl }) {
+  const { t } = useTranslation('chat');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   // Bumped by each address sent, so only the latest one's wait can give up.
@@ -48,7 +46,7 @@ function useBlankGo({ agentLabel, browserOn, onSend, onOpenUrl }) {
     setError('');
     const url = typedUrl(wanted);
     if (url && onOpenUrl) {
-      setBusy(`Opening ${url}…`);
+      setBusy(t('browser.blank.openingUrl', { url }));
       try {
         await onOpenUrl(url);
         // The page replaces this start page once it loads; if it never does,
@@ -57,46 +55,47 @@ function useBlankGo({ agentLabel, browserOn, onSend, onOpenUrl }) {
         setTimeout(() => {
           if (asked !== openSeq.current || !mounted.current) return;
           setBusy('');
-          setError('That page is taking a while. Try again, or type it in the address bar.');
+          setError(t('browser.blank.slow'));
         }, OPEN_WAIT_MS);
       } catch (err) {
-        setError(err?.message || 'Couldn’t open that page.');
+        setError(err?.message || t('browser.blank.couldNotOpen'));
         setBusy('');
       }
       return;
     }
     if (!onSend) return;
     onSend(browserRequestFor(wanted));
-    setBusy(`${agentLabel} is opening the browser…`);
+    setBusy(t('browser.blank.agentOpening', { agent: agentLabel }));
   };
   return { busy, error, usable, go };
 }
 
 /** The start page's middle: a line, and a field for a search or a link. */
 function BlankStart({ taskKey, agentLabel, browserOn, state, autoFocus = true }) {
+  const { t } = useTranslation('chat');
   const [search, setSearch] = useState('');
   const line = blankLineFor(taskKey);
   const { busy, error, usable, go } = state;
   return (
     <div className="browser-panel__blank">
       <span className="browser-panel__blank-mark" aria-hidden="true">{Ico.globe(20)}</span>
-      <h2 className="browser-panel__blank-title">{line.title}</h2>
+      <h2 className="browser-panel__blank-title">{t(`browser.blank.lines.${line}.title`)}</h2>
       <p className="browser-panel__blank-subtitle">
-        {browserOn ? line.subtitle : `The browser is off for this task. Turn it on from the + menu and ${agentLabel} can browse.`}
+        {browserOn ? t(`browser.blank.lines.${line}.subtitle`) : t('browser.blank.off', { agent: agentLabel })}
       </p>
       <form className="browser-panel__blank-form" onSubmit={(e) => { e.preventDefault(); void go(search); }}>
         <input
           type="text"
           className="browser-panel__blank-input"
-          placeholder="Search, or paste a link"
-          aria-label="What to look up"
+          placeholder={t('browser.blank.searchPlaceholder')}
+          aria-label={t('browser.blank.searchLabel')}
           value={search}
           disabled={!usable || !!busy}
           onChange={(e) => setSearch(e.target.value)}
           autoFocus={autoFocus}
         />
         <Button type="submit" size="sm" variant="primary" disabled={!usable || !!busy || !search.trim()}>
-          {busy ? 'On it…' : 'Go'}
+          {busy ? t('browser.blank.onIt') : t('browser.blank.go')}
         </Button>
       </form>
       {error && <p className="browser-panel__blank-error" role="alert">{error}</p>}
@@ -132,6 +131,7 @@ export function BlankStartOver({ taskKey = '', agentLabel = 'Anton', onSend, onO
 export default function BlankBrowserPanel({
   taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onOpenUrl, onClose, floating = false, extraActions = null, dock = null,
 }) {
+  const { t } = useTranslation('chat');
   const [address, setAddress] = useState('');
   const state = useBlankGo({ agentLabel, browserOn, onSend, onOpenUrl });
   const { busy, usable, go } = state;
@@ -145,8 +145,8 @@ export default function BlankBrowserPanel({
       <input
         type="text"
         className="browser-panel__address-input"
-        placeholder="Type a URL or search"
-        aria-label="Address"
+        placeholder={t('browser.blank.addressPlaceholder')}
+        aria-label={t('browser.blank.address')}
         value={address}
         disabled={!usable || !!busy}
         onChange={(e) => setAddress(e.target.value)}
@@ -158,7 +158,7 @@ export default function BlankBrowserPanel({
   );
 
   return (
-    <BrowserFrame hint={busy || 'Nothing open yet'} below={addressBar} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock}>
+    <BrowserFrame hint={busy || t('browser.blank.nothingOpen')} below={addressBar} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock}>
       <BlankStart taskKey={taskKey} agentLabel={agentLabel} browserOn={browserOn} state={state} />
     </BrowserFrame>
   );

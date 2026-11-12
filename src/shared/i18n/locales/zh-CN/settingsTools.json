@@ -72,7 +72,9 @@
     "providerSeesTitle": "模型提供商能看到的内容",
     "retry": "重试",
     "usageEventsTitle": "使用事件",
-    "sendUsageEvents": "发送匿名使用事件"
+    "sendUsageEvents": "发送匿名使用事件",
+    "approveStepsTitle": "批准浏览器步骤",
+    "approveStepsHelp": "开启：在执行购买、发送消息或提交表单等会产生实际结果的步骤前，{agent} 会等待你确认。关闭：{agent} 直接继续。"
   },
   "codingAgent": {
     "loadFailed": "无法加载编程智能体选项。",

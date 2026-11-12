@@ -151,7 +151,7 @@ export default function FacetimeWindow({ call, agentLabel = 'Anton' }) {
 
         {/* The X in a circle on the corner ends the call; shown on hover. */}
         {phase !== 'ended' && (
-          <button type="button" className="video-call__x" onClick={call.end} aria-label="End call" title="End call">
+          <button type="button" className="video-call__x" onClick={call.end} aria-label={t('videoCall.endCall')} title={t('videoCall.endCall')}>
             {Ico.close(12)}
           </button>
         )}

@@ -328,11 +328,11 @@ function WebBrowserStage({
         />
       )}
       {opening && (
-        <div className="browser-panel__ghostbar" role="status" aria-label="Opening your browser">
+        <div className="browser-panel__ghostbar" role="status" aria-label={t('browser.opening')}>
           <span className="browser-panel__ghost-button" />
           <span className="browser-panel__ghost-button" />
           <span className="browser-panel__ghost-button" />
-          <span className="browser-panel__ghost-address">Ask or type a URL</span>
+          <span className="browser-panel__ghost-address">{t('browser.askOrTypeUrl')}</span>
         </div>
       )}
       {(startOver || leaving) && (

@@ -894,6 +894,7 @@ export function DataVaultForm({
    for a service with a known website, and only where the browser can be
    used (`onUseBrowser`). */
 function BrowserInstead({ spec, busy, onUseBrowser }) {
+  const { t } = useTranslation('library');
   const url = connectorWebsite(spec?._connector_id || spec?.engine);
   if (!url || !onUseBrowser) return null;
   const name = providerNameFromSpec(spec);
@@ -906,9 +907,9 @@ function BrowserInstead({ spec, busy, onUseBrowser }) {
     >
       <span className="text-ink-3 inline-flex" aria-hidden>{Ico.globe(16)}</span>
       <span className="flex flex-col gap-[2px] min-w-0">
-        <span className="font-medium text-[13px]">Use the browser instead</span>
+        <span className="font-medium text-[13px]">{t('dataVault.browserInstead.title')}</span>
         <span className="text-[11.5px] text-ink-3 leading-[1.35]">
-          No connection: you sign in to {name} in the shared browser and the work happens there. Slower than connecting.
+          {t('dataVault.browserInstead.help', { name })}
         </span>
       </span>
     </button>

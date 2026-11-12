@@ -614,7 +614,62 @@
     "newTab": "新しいタブ",
     "closedTitle": "このタスクのブラウザは閉じています",
     "closedDescription": "必要になると{agent}が再び開きます。",
-    "squeezed": "ページを表示するにはウィンドウを大きくしてください"
+    "squeezed": "ページを表示するにはウィンドウを大きくしてください",
+    "minimize": "ブラウザを最小化",
+    "expand": "ブラウザを展開",
+    "learnWhat": "{agent}に見えるもの",
+    "opening": "ブラウザを開いています",
+    "askOrTypeUrl": "質問するかURLを入力",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "白紙のページ。大きな計画がありますか？",
+          "subtitle": "アドレスを入力するか、調べたいことを教えてください。"
+        },
+        "wholeInternet": {
+          "title": "インターネット全体が目の前に。でも行き先はまだありません。",
+          "subtitle": "行く価値のある場所を教えてください。"
+        },
+        "freshTab": {
+          "title": "新しいタブ、新しい気分。",
+          "subtitle": "どこへ行きましょうか？"
+        },
+        "quiet": {
+          "title": "静かですね。怪しいほどに。",
+          "subtitle": "サイトか検索語を教えてください。すぐに始めます。"
+        }
+      },
+      "off": "このタスクではブラウザがオフです。＋メニューからオンにすると、{agent}がブラウズできます。",
+      "searchPlaceholder": "検索、またはリンクを貼り付け",
+      "searchLabel": "調べること",
+      "onIt": "対応中…",
+      "go": "移動",
+      "addressPlaceholder": "URLを入力または検索",
+      "address": "アドレス",
+      "nothingOpen": "まだ何も開いていません",
+      "openingUrl": "{url}を開いています…",
+      "slow": "ページの読み込みに時間がかかっています。もう一度お試しいただくか、アドレスバーに入力してください。",
+      "couldNotOpen": "ページを開けませんでした。",
+      "agentOpening": "{agent}がブラウザを開いています…"
+    },
+    "projectBrowsers": {
+      "title": "このプロジェクトのブラウザ",
+      "listFailed": "ブラウザの一覧を取得できませんでした。",
+      "failed": "うまくいきませんでした。",
+      "looking": "確認中…",
+      "thisTask": "このタスク",
+      "held": "このブラウザはあなたが操作中です。返すとタブが表示されます。",
+      "showing": "表示中",
+      "closeOthers": "{count, plural, other {ほかの#個のタブを閉じる（後で使えるよう保存）}}",
+      "noneMine": "このタスクで開いているブラウザはありません。",
+      "reopen": "{tab}を再度開く",
+      "saved": "保存済み",
+      "otherTasks": "このプロジェクトのほかのタスク",
+      "tabCount": "{count, plural, other {#個のタブ}}",
+      "goTo": "そのブラウザに移動",
+      "closeIts": "そのブラウザを閉じる（タブは保存）",
+      "watching": "誰かが閲覧中です"
+    }
   },
   "videoCall": {
     "dialogLabel": "{agent}とのビデオ通話",
@@ -631,6 +686,22 @@
     "cameraOff": "カメラをオフ",
     "cameraOn": "カメラをオン",
     "minimize": "最小化",
-    "hangUp": "通話を終了"
+    "hangUp": "通話を終了",
+    "endCall": "通話を終了"
+  },
+  "voiceCall": {
+    "dialogLabel": "{agent}との音声通話",
+    "connecting": "接続中…",
+    "ending": "終了中…",
+    "working": "対応中…",
+    "listening": "聞いています",
+    "talkSoon": "またお話ししましょう",
+    "analyzing": "結果を分析中…",
+    "trying": "{voice}を試しています",
+    "connectingVoice": "音声を接続中…",
+    "voice": "音声",
+    "voiceAriaLabel": "音声：{voice}",
+    "changeVoice": "音声を変更",
+    "muteAndEnd": "ミュートして通話を終了"
   }
 }

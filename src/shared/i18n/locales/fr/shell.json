@@ -409,5 +409,8 @@
     "confirm": "Se déconnecter",
     "failed": "Impossible de terminer la déconnexion. Veuillez réessayer.",
     "waitNote": "Déconnexion en cours. Vous pouvez fermer cette fenêtre, l’opération se terminera d’elle-même."
+  },
+  "shortcuts": {
+    "showBrowser": "Afficher le navigateur"
   }
 }

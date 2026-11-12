@@ -72,7 +72,9 @@
     "providerSeesTitle": "Was der Modellanbieter sieht",
     "retry": "Erneut versuchen",
     "usageEventsTitle": "Nutzungsereignisse",
-    "sendUsageEvents": "Anonyme Nutzungsereignisse senden"
+    "sendUsageEvents": "Anonyme Nutzungsereignisse senden",
+    "approveStepsTitle": "Browser-Schritte bestätigen",
+    "approveStepsHelp": "Ein: {agent} wartet auf Ihr OK vor einem Schritt, der etwas verbindlich macht, etwa einen Kauf, eine Nachricht oder ein Formular. Aus: {agent} macht weiter."
   },
   "codingAgent": {
     "loadFailed": "Optionen für den Coding-Agent konnten nicht geladen werden.",

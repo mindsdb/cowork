@@ -614,7 +614,62 @@
     "newTab": "Nova aba",
     "closedTitle": "O navegador desta tarefa está fechado",
     "closedDescription": "{agent} o abre de novo quando precisar.",
-    "squeezed": "Aumente a janela para ver a página"
+    "squeezed": "Aumente a janela para ver a página",
+    "minimize": "Minimizar navegador",
+    "expand": "Expandir navegador",
+    "learnWhat": "O que {agent} vê",
+    "opening": "Abrindo seu navegador",
+    "askOrTypeUrl": "Pergunte ou digite uma URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Página em branco. Grandes planos?",
+          "subtitle": "Digite um endereço ou diga o que pesquisar."
+        },
+        "wholeInternet": {
+          "title": "A internet inteira, e nenhum lugar para ir.",
+          "subtitle": "Me mostre um lugar que valha a viagem."
+        },
+        "freshTab": {
+          "title": "Energia de aba nova.",
+          "subtitle": "Para onde vamos?"
+        },
+        "quiet": {
+          "title": "Está quieto aqui. Suspeitamente quieto.",
+          "subtitle": "Me dê um site ou uma pesquisa e eu começo."
+        }
+      },
+      "off": "O navegador está desligado para esta tarefa. Ative-o no menu + e {agent} poderá navegar.",
+      "searchPlaceholder": "Pesquise ou cole um link",
+      "searchLabel": "O que pesquisar",
+      "onIt": "Já vou…",
+      "go": "Ir",
+      "addressPlaceholder": "Digite uma URL ou pesquise",
+      "address": "Endereço",
+      "nothingOpen": "Nada aberto ainda",
+      "openingUrl": "Abrindo {url}…",
+      "slow": "Essa página está demorando. Tente de novo ou digite-a na barra de endereço.",
+      "couldNotOpen": "Não foi possível abrir essa página.",
+      "agentOpening": "{agent} está abrindo o navegador…"
+    },
+    "projectBrowsers": {
+      "title": "Navegadores neste projeto",
+      "listFailed": "Não foi possível listar os navegadores.",
+      "failed": "Isso não funcionou.",
+      "looking": "Procurando…",
+      "thisTask": "Esta tarefa",
+      "held": "Você está com este navegador: as abas aparecem quando você devolvê-lo.",
+      "showing": "Exibindo",
+      "closeOthers": "{count, plural, one {Fechar a outra aba (salva para depois)} other {Fechar as outras # abas (salvas para depois)}}",
+      "noneMine": "Nenhum navegador aberto para esta tarefa.",
+      "reopen": "Reabrir {tab}",
+      "saved": "Salva",
+      "otherTasks": "Outras tarefas neste projeto",
+      "tabCount": "{count, plural, one {# aba} other {# abas}}",
+      "goTo": "Ir para o navegador dela",
+      "closeIts": "Fechar o navegador dela (abas salvas)",
+      "watching": "Alguém está assistindo"
+    }
   },
   "videoCall": {
     "dialogLabel": "Chamada de vídeo com {agent}",
@@ -631,6 +686,22 @@
     "cameraOff": "Desligar a câmera",
     "cameraOn": "Ligar a câmera",
     "minimize": "Minimizar",
-    "hangUp": "Desligar"
+    "hangUp": "Desligar",
+    "endCall": "Encerrar chamada"
+  },
+  "voiceCall": {
+    "dialogLabel": "Chamada de voz com {agent}",
+    "connecting": "Conectando…",
+    "ending": "Encerrando…",
+    "working": "Trabalhando nisso…",
+    "listening": "Ouvindo",
+    "talkSoon": "Até logo",
+    "analyzing": "Analisando resultados…",
+    "trying": "Testando {voice}",
+    "connectingVoice": "Conectando a voz…",
+    "voice": "Voz",
+    "voiceAriaLabel": "Voz: {voice}",
+    "changeVoice": "Mudar voz",
+    "muteAndEnd": "Silenciar e encerrar a chamada"
   }
 }

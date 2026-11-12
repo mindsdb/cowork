@@ -409,5 +409,8 @@
     "confirm": "Cerrar sesión",
     "failed": "No se pudo terminar de cerrar sesión. Vuelve a intentarlo.",
     "waitNote": "Todavía estamos cerrando tu sesión. Puedes cerrar esto: termina por sí solo."
+  },
+  "shortcuts": {
+    "showBrowser": "Mostrar navegador"
   }
 }

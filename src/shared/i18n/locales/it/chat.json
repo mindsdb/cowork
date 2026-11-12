@@ -614,7 +614,62 @@
     "newTab": "Nuova scheda",
     "closedTitle": "Il browser di questa attività è chiuso",
     "closedDescription": "{agent} lo riaprirà quando ne avrà bisogno.",
-    "squeezed": "Allarga la finestra per vedere la pagina"
+    "squeezed": "Allarga la finestra per vedere la pagina",
+    "minimize": "Riduci il browser",
+    "expand": "Espandi il browser",
+    "learnWhat": "Cosa vede {agent}",
+    "opening": "Apertura del tuo browser",
+    "askOrTypeUrl": "Chiedi o digita un URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Pagina bianca. Grandi progetti?",
+          "subtitle": "Digita un indirizzo o dimmi cosa cercare."
+        },
+        "wholeInternet": {
+          "title": "Tutto internet, e nessun posto dove andare.",
+          "subtitle": "Indicami un posto che valga il viaggio."
+        },
+        "freshTab": {
+          "title": "Energia da scheda nuova.",
+          "subtitle": "Dove andiamo?"
+        },
+        "quiet": {
+          "title": "C’è silenzio qui. Un silenzio sospetto.",
+          "subtitle": "Dammi un sito o una ricerca e parto subito."
+        }
+      },
+      "off": "Il browser è disattivato per questa attività. Attivalo dal menu + e {agent} potrà navigare.",
+      "searchPlaceholder": "Cerca o incolla un link",
+      "searchLabel": "Cosa cercare",
+      "onIt": "Ci penso io…",
+      "go": "Vai",
+      "addressPlaceholder": "Digita un URL o cerca",
+      "address": "Indirizzo",
+      "nothingOpen": "Ancora niente di aperto",
+      "openingUrl": "Apertura di {url}…",
+      "slow": "La pagina ci sta mettendo un po’. Riprova o digitala nella barra degli indirizzi.",
+      "couldNotOpen": "Impossibile aprire la pagina.",
+      "agentOpening": "{agent} sta aprendo il browser…"
+    },
+    "projectBrowsers": {
+      "title": "Browser in questo progetto",
+      "listFailed": "Impossibile elencare i browser.",
+      "failed": "Non ha funzionato.",
+      "looking": "Ricerca…",
+      "thisTask": "Questa attività",
+      "held": "Hai tu questo browser: le sue schede compaiono quando lo restituisci.",
+      "showing": "Visibile",
+      "closeOthers": "{count, plural, one {Chiudi l’altra scheda (salvata per dopo)} other {Chiudi le altre # schede (salvate per dopo)}}",
+      "noneMine": "Nessun browser aperto per questa attività.",
+      "reopen": "Riapri {tab}",
+      "saved": "Salvata",
+      "otherTasks": "Altre attività in questo progetto",
+      "tabCount": "{count, plural, one {# scheda} other {# schede}}",
+      "goTo": "Vai al suo browser",
+      "closeIts": "Chiudi il suo browser (schede salvate)",
+      "watching": "Qualcuno lo sta guardando"
+    }
   },
   "videoCall": {
     "dialogLabel": "Videochiamata con {agent}",
@@ -631,6 +686,22 @@
     "cameraOff": "Disattiva fotocamera",
     "cameraOn": "Attiva fotocamera",
     "minimize": "Riduci a icona",
-    "hangUp": "Riattacca"
+    "hangUp": "Riattacca",
+    "endCall": "Termina chiamata"
+  },
+  "voiceCall": {
+    "dialogLabel": "Chiamata vocale con {agent}",
+    "connecting": "Connessione…",
+    "ending": "Chiusura…",
+    "working": "Ci sto lavorando…",
+    "listening": "In ascolto",
+    "talkSoon": "A presto",
+    "analyzing": "Analisi dei risultati…",
+    "trying": "Prova di {voice}",
+    "connectingVoice": "Connessione della voce…",
+    "voice": "Voce",
+    "voiceAriaLabel": "Voce: {voice}",
+    "changeVoice": "Cambia voce",
+    "muteAndEnd": "Disattiva il microfono e termina la chiamata"
   }
 }

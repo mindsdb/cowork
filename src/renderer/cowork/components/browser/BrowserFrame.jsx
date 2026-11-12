@@ -49,7 +49,7 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
         aria-label={t('browser.shared')}
       >
         {dock && !collapsed && (
-          <button type="button" className="browser-panel__dock-min" aria-label="Minimize browser" onClick={dock.onToggle}>
+          <button type="button" className="browser-panel__dock-min" aria-label={t('browser.minimize')} onClick={dock.onToggle}>
             <span className="browser-panel__minus" aria-hidden="true" />
           </button>
         )}
@@ -59,7 +59,7 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
           onClick={collapsed ? dock.onToggle : undefined}
           role={collapsed ? 'button' : undefined}
           tabIndex={collapsed ? 0 : undefined}
-          aria-label={collapsed ? 'Expand browser' : undefined}
+          aria-label={collapsed ? t('browser.expand') : undefined}
           onKeyDown={collapsed ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dock.onToggle(); } } : undefined}
         >
           <div className="browser-panel__heading">
@@ -78,7 +78,7 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
                 icon
                 size="sm"
                 variant="subtle"
-                aria-label={collapsed ? 'Expand browser' : 'Minimize browser'}
+                aria-label={collapsed ? t('browser.expand') : t('browser.minimize')}
                 onClick={(e) => { e.stopPropagation(); dock.onToggle(); }}
               >
                 {collapsed ? Ico.chevDown(14) : <span className="browser-panel__minus" aria-hidden="true" />}

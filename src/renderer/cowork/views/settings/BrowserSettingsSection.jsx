@@ -85,7 +85,7 @@ export function usageEventsHelp(agentLabel) {
 }
 
 export function approveStepsHelp(agentLabel) {
-  return `On: ${agentLabel} waits for your OK before a step that commits something, like a purchase, a message or a form. Off: ${agentLabel} goes ahead.`;
+  return i18n.t('settingsTools:browser.approveStepsHelp', { agent: agentLabel });
 }
 
 export default function BrowserSettingsSection({ settings, setSetting, agentLabel = 'Anton', signedInToMindsHub = false }) {
@@ -215,11 +215,11 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
             <span className="inline-flex">{browserSwitch}</span>
           </Tooltip>
         </Section>
-        <Section title="Approve browser steps" subtitle={approveStepsHelp(agentLabel)}>
+        <Section title={t('browser.approveStepsTitle')} subtitle={approveStepsHelp(agentLabel)}>
           <Switch
             checked={browserPrefs.askToApprove}
             onCheckedChange={(on) => setBrowserPrefs({ askToApprove: on })}
-            aria-label="Approve browser steps"
+            aria-label={t('browser.approveStepsTitle')}
           />
         </Section>
         {signOutRow}

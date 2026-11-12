@@ -614,7 +614,62 @@
     "newTab": "Pestaña nueva",
     "closedTitle": "El navegador de esta tarea está cerrado",
     "closedDescription": "{agent} lo vuelve a abrir cuando lo necesita.",
-    "squeezed": "Agranda la ventana para ver la página"
+    "squeezed": "Agranda la ventana para ver la página",
+    "minimize": "Minimizar navegador",
+    "expand": "Expandir navegador",
+    "learnWhat": "Qué ve {agent}",
+    "opening": "Abriendo tu navegador",
+    "askOrTypeUrl": "Pregunta o escribe una URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Página en blanco. ¿Grandes planes?",
+          "subtitle": "Escribe una dirección o dime qué buscar."
+        },
+        "wholeInternet": {
+          "title": "Todo internet, y ningún lugar adonde ir.",
+          "subtitle": "Llévame a algún lugar que valga la pena."
+        },
+        "freshTab": {
+          "title": "Energía de pestaña nueva.",
+          "subtitle": "¿A dónde vamos?"
+        },
+        "quiet": {
+          "title": "Hay silencio aquí. Sospechosamente silencioso.",
+          "subtitle": "Dame un sitio o una búsqueda y me pongo en marcha."
+        }
+      },
+      "off": "El navegador está apagado para esta tarea. Actívalo desde el menú + y {agent} podrá navegar.",
+      "searchPlaceholder": "Busca o pega un enlace",
+      "searchLabel": "Qué buscar",
+      "onIt": "En ello…",
+      "go": "Ir",
+      "addressPlaceholder": "Escribe una URL o busca",
+      "address": "Dirección",
+      "nothingOpen": "Nada abierto todavía",
+      "openingUrl": "Abriendo {url}…",
+      "slow": "Esa página está tardando. Vuelve a intentarlo o escríbela en la barra de direcciones.",
+      "couldNotOpen": "No se pudo abrir esa página.",
+      "agentOpening": "{agent} está abriendo el navegador…"
+    },
+    "projectBrowsers": {
+      "title": "Navegadores de este proyecto",
+      "listFailed": "No se pudieron listar los navegadores.",
+      "failed": "Eso no funcionó.",
+      "looking": "Buscando…",
+      "thisTask": "Esta tarea",
+      "held": "Tienes este navegador: sus pestañas aparecen cuando lo devuelvas.",
+      "showing": "Visible",
+      "closeOthers": "{count, plural, one {Cerrar la otra pestaña (guardada para después)} other {Cerrar las otras # pestañas (guardadas para después)}}",
+      "noneMine": "No hay ningún navegador abierto para esta tarea.",
+      "reopen": "Reabrir {tab}",
+      "saved": "Guardada",
+      "otherTasks": "Otras tareas de este proyecto",
+      "tabCount": "{count, plural, one {# pestaña} other {# pestañas}}",
+      "goTo": "Ir a su navegador",
+      "closeIts": "Cerrar su navegador (pestañas guardadas)",
+      "watching": "Alguien lo está viendo"
+    }
   },
   "videoCall": {
     "dialogLabel": "Videollamada con {agent}",
@@ -631,6 +686,22 @@
     "cameraOff": "Apagar la cámara",
     "cameraOn": "Encender la cámara",
     "minimize": "Minimizar",
-    "hangUp": "Colgar"
+    "hangUp": "Colgar",
+    "endCall": "Terminar llamada"
+  },
+  "voiceCall": {
+    "dialogLabel": "Llamada de voz con {agent}",
+    "connecting": "Conectando…",
+    "ending": "Terminando…",
+    "working": "Trabajando en ello…",
+    "listening": "Escuchando",
+    "talkSoon": "Hasta pronto",
+    "analyzing": "Analizando resultados…",
+    "trying": "Probando {voice}",
+    "connectingVoice": "Conectando la voz…",
+    "voice": "Voz",
+    "voiceAriaLabel": "Voz: {voice}",
+    "changeVoice": "Cambiar voz",
+    "muteAndEnd": "Silenciar y terminar la llamada"
   }
 }

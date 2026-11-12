@@ -72,7 +72,9 @@
     "providerSeesTitle": "Qué ve el proveedor de modelos",
     "retry": "Reintentar",
     "usageEventsTitle": "Eventos de uso",
-    "sendUsageEvents": "Enviar eventos de uso anónimos"
+    "sendUsageEvents": "Enviar eventos de uso anónimos",
+    "approveStepsTitle": "Aprobar pasos del navegador",
+    "approveStepsHelp": "Activado: {agent} espera tu aprobación antes de un paso que compromete algo, como una compra, un mensaje o un formulario. Desactivado: {agent} sigue adelante."
   },
   "codingAgent": {
     "loadFailed": "No se pudieron cargar las opciones del agente de código.",

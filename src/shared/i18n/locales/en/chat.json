@@ -614,7 +614,62 @@
     "newTab": "New tab",
     "closedTitle": "This task's browser is closed",
     "closedDescription": "{agent} opens it again when it needs it.",
-    "squeezed": "Make the window bigger to see the page"
+    "squeezed": "Make the window bigger to see the page",
+    "minimize": "Minimize browser",
+    "expand": "Expand browser",
+    "learnWhat": "Learn what {agent} sees",
+    "opening": "Opening your browser",
+    "askOrTypeUrl": "Ask or type a URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Blank page. Big plans?",
+          "subtitle": "Type an address, or tell me what to look up."
+        },
+        "wholeInternet": {
+          "title": "The whole internet, and nowhere to be.",
+          "subtitle": "Point me somewhere worth the trip."
+        },
+        "freshTab": {
+          "title": "Fresh tab energy.",
+          "subtitle": "Where are we headed?"
+        },
+        "quiet": {
+          "title": "Quiet in here. Suspiciously quiet.",
+          "subtitle": "Give me a site or a search and I’ll get going."
+        }
+      },
+      "off": "The browser is off for this task. Turn it on from the + menu and {agent} can browse.",
+      "searchPlaceholder": "Search, or paste a link",
+      "searchLabel": "What to look up",
+      "onIt": "On it…",
+      "go": "Go",
+      "addressPlaceholder": "Type a URL or search",
+      "address": "Address",
+      "nothingOpen": "Nothing open yet",
+      "openingUrl": "Opening {url}…",
+      "slow": "That page is taking a while. Try again, or type it in the address bar.",
+      "couldNotOpen": "Couldn’t open that page.",
+      "agentOpening": "{agent} is opening the browser…"
+    },
+    "projectBrowsers": {
+      "title": "Browsers in this project",
+      "listFailed": "Couldn’t list the browsers.",
+      "failed": "That didn’t work.",
+      "looking": "Looking…",
+      "thisTask": "This task",
+      "held": "You have this browser: its tabs show when you hand it back.",
+      "showing": "Showing",
+      "closeOthers": "{count, plural, one {Close the other tab (saved for later)} other {Close the other # tabs (saved for later)}}",
+      "noneMine": "No browser open for this task.",
+      "reopen": "Reopen {tab}",
+      "saved": "Saved",
+      "otherTasks": "Other tasks in this project",
+      "tabCount": "{count, plural, one {# tab} other {# tabs}}",
+      "goTo": "Go to its browser",
+      "closeIts": "Close its browser (tabs saved)",
+      "watching": "Someone is watching it"
+    }
   },
   "videoCall": {
     "dialogLabel": "Video call with {agent}",
@@ -631,6 +686,22 @@
     "cameraOff": "Turn camera off",
     "cameraOn": "Turn camera on",
     "minimize": "Minimize",
-    "hangUp": "Hang up"
+    "hangUp": "Hang up",
+    "endCall": "End call"
+  },
+  "voiceCall": {
+    "dialogLabel": "Voice call with {agent}",
+    "connecting": "Connecting…",
+    "ending": "Ending…",
+    "working": "Working on it…",
+    "listening": "Listening",
+    "talkSoon": "Talk soon",
+    "analyzing": "Analyzing results…",
+    "trying": "Trying {voice}",
+    "connectingVoice": "Connecting voice…",
+    "voice": "Voice",
+    "voiceAriaLabel": "Voice: {voice}",
+    "changeVoice": "Change voice",
+    "muteAndEnd": "Mute and end the call"
   }
 }

@@ -72,7 +72,9 @@
     "providerSeesTitle": "モデルプロバイダに送信される情報",
     "retry": "再試行",
     "usageEventsTitle": "使用状況イベント",
-    "sendUsageEvents": "匿名の使用状況イベントを送信"
+    "sendUsageEvents": "匿名の使用状況イベントを送信",
+    "approveStepsTitle": "ブラウザのステップを承認",
+    "approveStepsHelp": "オン：購入、メッセージ、フォームなど、確定する操作の前に{agent}があなたの承認を待ちます。オフ：{agent}はそのまま進めます。"
   },
   "codingAgent": {
     "loadFailed": "コーディングエージェントのオプションを読み込めませんでした。",

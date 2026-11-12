@@ -409,5 +409,8 @@
     "confirm": "Esci",
     "failed": "Impossibile completare la disconnessione. Riprova.",
     "waitNote": "Disconnessione ancora in corso. Puoi chiudere questa finestra: terminerà da sola."
+  },
+  "shortcuts": {
+    "showBrowser": "Mostra il browser"
   }
 }

@@ -72,7 +72,9 @@
     "providerSeesTitle": "What the model provider sees",
     "retry": "Retry",
     "usageEventsTitle": "Usage events",
-    "sendUsageEvents": "Send anonymous usage events"
+    "sendUsageEvents": "Send anonymous usage events",
+    "approveStepsTitle": "Approve browser steps",
+    "approveStepsHelp": "On: {agent} waits for your OK before a step that commits something, like a purchase, a message or a form. Off: {agent} goes ahead."
   },
   "codingAgent": {
     "loadFailed": "Could not load coding agent options.",

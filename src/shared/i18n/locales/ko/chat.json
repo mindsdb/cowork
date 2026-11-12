@@ -614,7 +614,62 @@
     "newTab": "새 탭",
     "closedTitle": "이 작업의 브라우저가 닫혔습니다",
     "closedDescription": "{agent}이(가) 필요할 때 다시 엽니다.",
-    "squeezed": "페이지를 보려면 창을 더 크게 만드세요"
+    "squeezed": "페이지를 보려면 창을 더 크게 만드세요",
+    "minimize": "브라우저 최소화",
+    "expand": "브라우저 펼치기",
+    "learnWhat": "{agent}에게 보이는 내용",
+    "opening": "브라우저를 여는 중",
+    "askOrTypeUrl": "질문하거나 URL 입력",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "빈 페이지. 큰 계획이 있습니까?",
+          "subtitle": "주소를 입력하거나 찾아볼 내용을 알려 주세요."
+        },
+        "wholeInternet": {
+          "title": "인터넷 전체가 있지만 갈 곳이 없습니다.",
+          "subtitle": "가 볼 만한 곳을 알려 주세요."
+        },
+        "freshTab": {
+          "title": "새 탭, 새 기분.",
+          "subtitle": "어디로 가시겠습니까?"
+        },
+        "quiet": {
+          "title": "조용합니다. 수상할 만큼 조용합니다.",
+          "subtitle": "사이트나 검색어를 알려 주시면 바로 시작합니다."
+        }
+      },
+      "off": "이 작업에서는 브라우저가 꺼져 있습니다. + 메뉴에서 켜면 {agent}이(가) 탐색할 수 있습니다.",
+      "searchPlaceholder": "검색하거나 링크 붙여넣기",
+      "searchLabel": "찾아볼 내용",
+      "onIt": "진행 중…",
+      "go": "이동",
+      "addressPlaceholder": "URL 입력 또는 검색",
+      "address": "주소",
+      "nothingOpen": "아직 열린 페이지가 없습니다",
+      "openingUrl": "{url} 여는 중…",
+      "slow": "페이지를 여는 데 시간이 걸리고 있습니다. 다시 시도하거나 주소 표시줄에 입력하세요.",
+      "couldNotOpen": "페이지를 열 수 없습니다.",
+      "agentOpening": "{agent}이(가) 브라우저를 여는 중…"
+    },
+    "projectBrowsers": {
+      "title": "이 프로젝트의 브라우저",
+      "listFailed": "브라우저 목록을 가져올 수 없습니다.",
+      "failed": "작업에 실패했습니다.",
+      "looking": "찾는 중…",
+      "thisTask": "이 작업",
+      "held": "이 브라우저는 사용자가 사용 중입니다. 돌려주면 탭이 표시됩니다.",
+      "showing": "표시 중",
+      "closeOthers": "{count, plural, other {다른 탭 #개 닫기(나중을 위해 저장)}}",
+      "noneMine": "이 작업에 열린 브라우저가 없습니다.",
+      "reopen": "{tab} 다시 열기",
+      "saved": "저장됨",
+      "otherTasks": "이 프로젝트의 다른 작업",
+      "tabCount": "{count, plural, other {탭 #개}}",
+      "goTo": "해당 브라우저로 이동",
+      "closeIts": "해당 브라우저 닫기(탭 저장됨)",
+      "watching": "누군가 보고 있습니다"
+    }
   },
   "videoCall": {
     "dialogLabel": "{agent}와(과)의 영상 통화",
@@ -631,6 +686,22 @@
     "cameraOff": "카메라 끄기",
     "cameraOn": "카메라 켜기",
     "minimize": "최소화",
-    "hangUp": "통화 종료"
+    "hangUp": "통화 종료",
+    "endCall": "통화 종료"
+  },
+  "voiceCall": {
+    "dialogLabel": "{agent}와(과)의 음성 통화",
+    "connecting": "연결 중…",
+    "ending": "종료 중…",
+    "working": "작업 중…",
+    "listening": "듣는 중",
+    "talkSoon": "곧 다시 이야기하겠습니다",
+    "analyzing": "결과 분석 중…",
+    "trying": "{voice} 들어 보는 중",
+    "connectingVoice": "음성 연결 중…",
+    "voice": "음성",
+    "voiceAriaLabel": "음성: {voice}",
+    "changeVoice": "음성 변경",
+    "muteAndEnd": "음소거하고 통화 종료"
   }
 }

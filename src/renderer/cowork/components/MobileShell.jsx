@@ -242,7 +242,7 @@ export default function MobileShell({
         {/* Top-bar "+" removed — the FAB is now the universal create
             entry, so two affordances would just duplicate each other. */}
         {onShowBrowser && (
-          <button type="button" className="mshell__theme-toggle mshell__browser" aria-label="Show browser" onClick={onShowBrowser}>
+          <button type="button" className="mshell__theme-toggle mshell__browser" aria-label={t('shortcuts.showBrowser')} onClick={onShowBrowser}>
             {Ico.globe(16)}
           </button>
         )}

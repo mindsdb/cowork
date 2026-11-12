@@ -614,7 +614,62 @@
     "newTab": "Neuer Tab",
     "closedTitle": "Der Browser dieser Aufgabe ist geschlossen",
     "closedDescription": "{agent} öffnet ihn wieder, wenn er benötigt wird.",
-    "squeezed": "Vergrößern Sie das Fenster, um die Seite zu sehen"
+    "squeezed": "Vergrößern Sie das Fenster, um die Seite zu sehen",
+    "minimize": "Browser minimieren",
+    "expand": "Browser einblenden",
+    "learnWhat": "Was {agent} sieht",
+    "opening": "Ihr Browser wird geöffnet",
+    "askOrTypeUrl": "Fragen oder URL eingeben",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Leere Seite. Große Pläne?",
+          "subtitle": "Geben Sie eine Adresse ein, oder sagen Sie mir, wonach ich suchen soll."
+        },
+        "wholeInternet": {
+          "title": "Das ganze Internet, und nirgends ein Termin.",
+          "subtitle": "Zeigen Sie mir ein lohnendes Ziel."
+        },
+        "freshTab": {
+          "title": "Frischer Tab, frische Energie.",
+          "subtitle": "Wohin geht es?"
+        },
+        "quiet": {
+          "title": "Ruhig hier. Verdächtig ruhig.",
+          "subtitle": "Nennen Sie mir eine Website oder eine Suche, und ich lege los."
+        }
+      },
+      "off": "Der Browser ist für diese Aufgabe ausgeschaltet. Schalten Sie ihn im Menü + ein, dann kann {agent} surfen.",
+      "searchPlaceholder": "Suchen oder Link einfügen",
+      "searchLabel": "Wonach suchen",
+      "onIt": "Läuft…",
+      "go": "Los",
+      "addressPlaceholder": "URL oder Suchbegriff eingeben",
+      "address": "Adresse",
+      "nothingOpen": "Noch nichts geöffnet",
+      "openingUrl": "{url} wird geöffnet…",
+      "slow": "Die Seite braucht eine Weile. Versuchen Sie es erneut, oder geben Sie sie in die Adressleiste ein.",
+      "couldNotOpen": "Die Seite konnte nicht geöffnet werden.",
+      "agentOpening": "{agent} öffnet den Browser…"
+    },
+    "projectBrowsers": {
+      "title": "Browser in diesem Projekt",
+      "listFailed": "Die Browser konnten nicht aufgelistet werden.",
+      "failed": "Das hat nicht funktioniert.",
+      "looking": "Wird gesucht…",
+      "thisTask": "Diese Aufgabe",
+      "held": "Sie haben diesen Browser: Seine Tabs erscheinen, wenn Sie ihn zurückgeben.",
+      "showing": "Angezeigt",
+      "closeOthers": "{count, plural, one {Den anderen Tab schließen (für später gespeichert)} other {Die anderen # Tabs schließen (für später gespeichert)}}",
+      "noneMine": "Für diese Aufgabe ist kein Browser geöffnet.",
+      "reopen": "{tab} erneut öffnen",
+      "saved": "Gespeichert",
+      "otherTasks": "Andere Aufgaben in diesem Projekt",
+      "tabCount": "{count, plural, one {# Tab} other {# Tabs}}",
+      "goTo": "Zum Browser wechseln",
+      "closeIts": "Browser schließen (Tabs gespeichert)",
+      "watching": "Jemand sieht gerade zu"
+    }
   },
   "videoCall": {
     "dialogLabel": "Videoanruf mit {agent}",
@@ -631,6 +686,22 @@
     "cameraOff": "Kamera ausschalten",
     "cameraOn": "Kamera einschalten",
     "minimize": "Minimieren",
-    "hangUp": "Auflegen"
+    "hangUp": "Auflegen",
+    "endCall": "Anruf beenden"
+  },
+  "voiceCall": {
+    "dialogLabel": "Sprachanruf mit {agent}",
+    "connecting": "Verbindung wird hergestellt…",
+    "ending": "Wird beendet…",
+    "working": "In Arbeit…",
+    "listening": "Hört zu",
+    "talkSoon": "Bis bald",
+    "analyzing": "Ergebnisse werden analysiert…",
+    "trying": "{voice} wird ausprobiert",
+    "connectingVoice": "Sprache wird verbunden…",
+    "voice": "Stimme",
+    "voiceAriaLabel": "Stimme: {voice}",
+    "changeVoice": "Stimme ändern",
+    "muteAndEnd": "Stummschalten und Anruf beenden"
   }
 }

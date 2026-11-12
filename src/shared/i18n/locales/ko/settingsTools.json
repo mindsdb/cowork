@@ -72,7 +72,9 @@
     "providerSeesTitle": "모델 제공업체에 전송되는 정보",
     "retry": "다시 시도",
     "usageEventsTitle": "사용 이벤트",
-    "sendUsageEvents": "익명 사용 이벤트 보내기"
+    "sendUsageEvents": "익명 사용 이벤트 보내기",
+    "approveStepsTitle": "브라우저 단계 승인",
+    "approveStepsHelp": "켜기: 구매, 메시지, 양식처럼 무언가를 확정하는 단계 전에 {agent}이(가) 승인을 기다립니다. 끄기: {agent}이(가) 그대로 진행합니다."
   },
   "codingAgent": {
     "loadFailed": "코딩 에이전트 옵션을 불러오지 못했습니다.",

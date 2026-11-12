@@ -614,7 +614,62 @@
     "newTab": "Nouvel onglet",
     "closedTitle": "Le navigateur de cette tâche est fermé",
     "closedDescription": "{agent} le rouvrira quand il en aura besoin.",
-    "squeezed": "Agrandissez la fenêtre pour voir la page"
+    "squeezed": "Agrandissez la fenêtre pour voir la page",
+    "minimize": "Réduire le navigateur",
+    "expand": "Agrandir le navigateur",
+    "learnWhat": "Ce que voit {agent}",
+    "opening": "Ouverture de votre navigateur",
+    "askOrTypeUrl": "Posez une question ou saisissez une URL",
+    "blank": {
+      "lines": {
+        "bigPlans": {
+          "title": "Page blanche. De grands projets ?",
+          "subtitle": "Saisissez une adresse, ou dites-moi quoi chercher."
+        },
+        "wholeInternet": {
+          "title": "Tout Internet, et nulle part où aller.",
+          "subtitle": "Indiquez-moi un endroit qui vaut le détour."
+        },
+        "freshTab": {
+          "title": "Un nouvel onglet, une nouvelle énergie.",
+          "subtitle": "Où allons-nous ?"
+        },
+        "quiet": {
+          "title": "C’est calme ici. Étrangement calme.",
+          "subtitle": "Donnez-moi un site ou une recherche, et je m’y mets."
+        }
+      },
+      "off": "Le navigateur est désactivé pour cette tâche. Activez-le depuis le menu + et {agent} pourra naviguer.",
+      "searchPlaceholder": "Recherchez ou collez un lien",
+      "searchLabel": "Quoi chercher",
+      "onIt": "C’est parti…",
+      "go": "Aller",
+      "addressPlaceholder": "Saisissez une URL ou recherchez",
+      "address": "Adresse",
+      "nothingOpen": "Rien d’ouvert pour l’instant",
+      "openingUrl": "Ouverture de {url}…",
+      "slow": "Cette page met du temps. Réessayez, ou saisissez-la dans la barre d’adresse.",
+      "couldNotOpen": "Impossible d’ouvrir cette page.",
+      "agentOpening": "{agent} ouvre le navigateur…"
+    },
+    "projectBrowsers": {
+      "title": "Navigateurs de ce projet",
+      "listFailed": "Impossible de lister les navigateurs.",
+      "failed": "Cela n’a pas fonctionné.",
+      "looking": "Recherche…",
+      "thisTask": "Cette tâche",
+      "held": "Vous avez ce navigateur : ses onglets s’affichent quand vous le rendez.",
+      "showing": "Affiché",
+      "closeOthers": "{count, plural, one {Fermer l’autre onglet (enregistré pour plus tard)} other {Fermer les # autres onglets (enregistrés pour plus tard)}}",
+      "noneMine": "Aucun navigateur ouvert pour cette tâche.",
+      "reopen": "Rouvrir {tab}",
+      "saved": "Enregistré",
+      "otherTasks": "Autres tâches de ce projet",
+      "tabCount": "{count, plural, one {# onglet} other {# onglets}}",
+      "goTo": "Aller à son navigateur",
+      "closeIts": "Fermer son navigateur (onglets enregistrés)",
+      "watching": "Quelqu’un le regarde"
+    }
   },
   "videoCall": {
     "dialogLabel": "Appel vidéo avec {agent}",
@@ -631,6 +686,22 @@
     "cameraOff": "Désactiver la caméra",
     "cameraOn": "Activer la caméra",
     "minimize": "Réduire",
-    "hangUp": "Raccrocher"
+    "hangUp": "Raccrocher",
+    "endCall": "Terminer l’appel"
+  },
+  "voiceCall": {
+    "dialogLabel": "Appel vocal avec {agent}",
+    "connecting": "Connexion…",
+    "ending": "Fin de l’appel…",
+    "working": "En cours…",
+    "listening": "À l’écoute",
+    "talkSoon": "À bientôt",
+    "analyzing": "Analyse des résultats…",
+    "trying": "Essai de {voice}",
+    "connectingVoice": "Connexion de la voix…",
+    "voice": "Voix",
+    "voiceAriaLabel": "Voix : {voice}",
+    "changeVoice": "Changer de voix",
+    "muteAndEnd": "Couper le micro et terminer l’appel"
   }
 }

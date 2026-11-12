@@ -409,5 +409,8 @@
     "confirm": "Sign out",
     "failed": "Could not finish signing out. Please try again.",
     "waitNote": "Still signing you out. You can close this — it finishes on its own."
+  },
+  "shortcuts": {
+    "showBrowser": "Show browser"
   }
 }

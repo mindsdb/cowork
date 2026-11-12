@@ -72,7 +72,9 @@
     "providerSeesTitle": "Cosa vede il provider del modello",
     "retry": "Riprova",
     "usageEventsTitle": "Eventi di utilizzo",
-    "sendUsageEvents": "Invia eventi di utilizzo anonimi"
+    "sendUsageEvents": "Invia eventi di utilizzo anonimi",
+    "approveStepsTitle": "Approva i passaggi del browser",
+    "approveStepsHelp": "Attivo: {agent} attende il tuo OK prima di un passaggio che impegna qualcosa, come un acquisto, un messaggio o un modulo. Disattivo: {agent} procede."
   },
   "codingAgent": {
     "loadFailed": "Impossibile caricare le opzioni dell’agente di codice.",

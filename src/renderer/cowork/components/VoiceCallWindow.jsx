@@ -3,6 +3,7 @@ import Menu from './ui/Menu';
 import VoiceWaves from './VoiceWaves';
 import { VOICES, setVoicePrefs, useVoicePrefs, voiceLabel } from '../lib/voice/voicePrefs';
 import './voice-call.css';
+import { useTranslation } from '../../lib/i18n';
 
 // The voice call's card (ENG-4138, prototype): the call's sound waves, who is
 // on it and what they are doing, and mute. The X in the corner ends the call
@@ -14,24 +15,26 @@ import './voice-call.css';
 // `docked`: in the sidebar, above its footer, where the onboarding steps sit.
 // Otherwise (sidebar collapsed, phone) it floats in that corner.
 
+// The status line's key for each phase that has one of its own.
 const STATUS = {
-  starting: 'Connecting…',
-  ending: 'Ending…',
+  starting: 'voiceCall.connecting',
+  ending: 'voiceCall.ending',
 };
 
 export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = false }) {
   const { phase, notice, working, micOn, meters, closing, lingering } = call;
   const prefs = useVoicePrefs();
+  const { t } = useTranslation('chat');
   if (phase === 'idle') return null;
   const live = phase === 'live';
   const ended = phase === 'ended';
 
-  let status = STATUS[phase] || '';
-  if (live) status = working ? 'Working on it…' : (micOn ? 'Listening' : 'Talk soon');
+  let status = STATUS[phase] ? t(STATUS[phase]) : '';
+  if (live) status = working ? t('voiceCall.working') : (micOn ? t('voiceCall.listening') : t('voiceCall.talkSoon'));
   // A call-back before Anton speaks: the microphone is off until he does.
-  if (call.analyzing) status = 'Analyzing results…';
-  if (call.previewing && (live || phase === 'starting')) status = `Trying ${voiceLabel(prefs.voice)}`;
-  if (ended) status = notice || 'The call ended.';
+  if (call.analyzing) status = t('voiceCall.analyzing');
+  if (call.previewing && (live || phase === 'starting')) status = t('voiceCall.trying', { voice: voiceLabel(prefs.voice) });
+  if (ended) status = notice || t('videoCall.ended');
 
   // Until the session is live: one quiet line, no waves, so the card never
   // looks like it listens before it can.
@@ -39,12 +42,12 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
     return (
       <div
         role="dialog"
-        aria-label={`Voice call with ${agentLabel}`}
+        aria-label={t('voiceCall.dialogLabel', { agent: agentLabel })}
         className={`voice-call voice-call--connecting${docked ? ' voice-call--docked' : ''}`}
       >
         <span className="voice-call__spin" aria-hidden="true" />
-        <span className="voice-call__connecting" aria-live="polite">{call.analyzing ? 'Analyzing results…' : 'Connecting voice…'}</span>
-        <button type="button" className="voice-call__x" onClick={call.end} aria-label="End call" title="End call">
+        <span className="voice-call__connecting" aria-live="polite">{call.analyzing ? t('voiceCall.analyzing') : t('voiceCall.connectingVoice')}</span>
+        <button type="button" className="voice-call__x" onClick={call.end} aria-label={t('videoCall.endCall')} title={t('videoCall.endCall')}>
           {Ico.close(12)}
         </button>
       </div>
@@ -54,7 +57,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
   return (
     <div
       role="dialog"
-      aria-label={`Voice call with ${agentLabel}`}
+      aria-label={t('voiceCall.dialogLabel', { agent: agentLabel })}
       className={`voice-call${docked ? ' voice-call--docked' : ''}${working ? ' is-working' : ''}${ended ? ' is-ended' : ''}${closing ? ' is-closing' : ''}${lingering ? ' is-lingering' : ''}`}
       aria-hidden={lingering || undefined}
     >
@@ -62,8 +65,8 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
         type="button"
         className="voice-call__x"
         onClick={ended ? call.dismiss : call.end}
-        aria-label={ended ? 'Close' : 'End call'}
-        title={ended ? 'Close' : 'End call'}
+        aria-label={ended ? t('videoCall.close') : t('videoCall.endCall')}
+        title={ended ? t('videoCall.close') : t('videoCall.endCall')}
       >
         {Ico.close(12)}
       </button>
@@ -77,14 +80,14 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
                 side="top"
                 align="start"
                 width={220}
-                ariaLabel="Voice"
+                ariaLabel={t('voiceCall.voice')}
                 trigger={(
-                  <button type="button" className="voice-call__voice" aria-label={`Voice: ${voiceLabel(prefs.voice)}`} title="Change voice">
+                  <button type="button" className="voice-call__voice" aria-label={t('voiceCall.voiceAriaLabel', { voice: voiceLabel(prefs.voice) })} title={t('voiceCall.changeVoice')}>
                     {Ico.chevDown(12)}
                   </button>
                 )}
                 items={[
-                  { heading: 'Voice' },
+                  { heading: t('voiceCall.voice') },
                   ...VOICES.map((v) => ({
                     key: v.value,
                     label: v.label,
@@ -109,8 +112,8 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
               className={`send-btn voice-call__mic${micOn ? '' : ' is-off'}`}
               onClick={call.signOff}
               disabled={!live || !micOn}
-              aria-label="Mute and end the call"
-              title="Mute"
+              aria-label={t('voiceCall.muteAndEnd')}
+              title={t('videoCall.mute')}
             >
               {micOn ? Ico.mic(16) : Ico.micOff(16)}
             </button>
