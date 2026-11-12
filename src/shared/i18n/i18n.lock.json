@@ -17373,7 +17373,7 @@
       "text": "6849b8254d20"
     }
   },
-  "artifacts:layers.liveEdit": {
+  "artifacts:layers.source": {
     "de": {
       "from": "328a17fcdacf",
       "text": "b72439a587d1"
@@ -17405,40 +17405,6 @@
     "zh-CN": {
       "from": "328a17fcdacf",
       "text": "dea5b9ba8ca6"
-    }
-  },
-  "artifacts:layers.source": {
-    "de": {
-      "from": "0e570ca6fabe",
-      "text": "0378894a522e"
-    },
-    "es": {
-      "from": "0e570ca6fabe",
-      "text": "6a938e7e32fe"
-    },
-    "fr": {
-      "from": "0e570ca6fabe",
-      "text": "0e570ca6fabe"
-    },
-    "it": {
-      "from": "0e570ca6fabe",
-      "text": "a449426d8742"
-    },
-    "ja": {
-      "from": "0e570ca6fabe",
-      "text": "003741059728"
-    },
-    "ko": {
-      "from": "0e570ca6fabe",
-      "text": "ffa449b18142"
-    },
-    "pt-BR": {
-      "from": "0e570ca6fabe",
-      "text": "a972d1257dd4"
-    },
-    "zh-CN": {
-      "from": "0e570ca6fabe",
-      "text": "606a4e58169e"
     }
   },
   "artifacts:layers.sourceOffPrompt.confirmLabel": {
@@ -17477,70 +17443,70 @@
   },
   "artifacts:layers.sourceOffPrompt.message": {
     "de": {
-      "from": "2fc3ca32c341",
-      "text": "f97e2d50c4ac"
+      "from": "2c434c9db699",
+      "text": "9167d7ffd4d0"
     },
     "es": {
-      "from": "2fc3ca32c341",
-      "text": "328b18ec003f"
+      "from": "2c434c9db699",
+      "text": "d8bde8ad1bc0"
     },
     "fr": {
-      "from": "2fc3ca32c341",
-      "text": "0e159811d631"
+      "from": "2c434c9db699",
+      "text": "a9a1d025d932"
     },
     "it": {
-      "from": "2fc3ca32c341",
-      "text": "4e9172a82de4"
+      "from": "2c434c9db699",
+      "text": "e9dd9b8ac64f"
     },
     "ja": {
-      "from": "2fc3ca32c341",
-      "text": "13137149feb1"
+      "from": "2c434c9db699",
+      "text": "2385a9182899"
     },
     "ko": {
-      "from": "2fc3ca32c341",
-      "text": "e1b8d3153773"
+      "from": "2c434c9db699",
+      "text": "10ec85302833"
     },
     "pt-BR": {
-      "from": "2fc3ca32c341",
-      "text": "55a7fe6635c6"
+      "from": "2c434c9db699",
+      "text": "7413f163ccc0"
     },
     "zh-CN": {
-      "from": "2fc3ca32c341",
-      "text": "75b2adb8fd2d"
+      "from": "2c434c9db699",
+      "text": "9eba19ca955e"
     }
   },
   "artifacts:layers.sourceOffPrompt.title": {
     "de": {
-      "from": "8c492d92eb45",
-      "text": "d76e5a523912"
+      "from": "6831e774266b",
+      "text": "29ae7da3ce6e"
     },
     "es": {
-      "from": "8c492d92eb45",
-      "text": "4e60f716dfe4"
+      "from": "6831e774266b",
+      "text": "667fcc552353"
     },
     "fr": {
-      "from": "8c492d92eb45",
-      "text": "b193658fb606"
+      "from": "6831e774266b",
+      "text": "b092118798b9"
     },
     "it": {
-      "from": "8c492d92eb45",
-      "text": "75b1e544856b"
+      "from": "6831e774266b",
+      "text": "24ca6adb6902"
     },
     "ja": {
-      "from": "8c492d92eb45",
-      "text": "919377ba1a95"
+      "from": "6831e774266b",
+      "text": "7364e7e1bcfb"
     },
     "ko": {
-      "from": "8c492d92eb45",
-      "text": "603f34a733da"
+      "from": "6831e774266b",
+      "text": "8fe7e0d566dc"
     },
     "pt-BR": {
-      "from": "8c492d92eb45",
-      "text": "dc9d9bbe1cfa"
+      "from": "6831e774266b",
+      "text": "c28bb95ddb5c"
     },
     "zh-CN": {
-      "from": "8c492d92eb45",
-      "text": "ddfc47d23cea"
+      "from": "6831e774266b",
+      "text": "984f5d19a305"
     }
   },
   "artifacts:liveAppPreview.connecting": {
@@ -22169,36 +22135,36 @@
   },
   "artifacts:quickEdit.unsavedSource": {
     "de": {
-      "from": "3a47504cbd22",
-      "text": "5d102b9bd532"
+      "from": "22e4d44bbe24",
+      "text": "cf9e58e25d0d"
     },
     "es": {
-      "from": "3a47504cbd22",
-      "text": "fcdc03891135"
+      "from": "22e4d44bbe24",
+      "text": "b65725d2050e"
     },
     "fr": {
-      "from": "3a47504cbd22",
-      "text": "4e48461fcd4f"
+      "from": "22e4d44bbe24",
+      "text": "f222405b3d06"
     },
     "it": {
-      "from": "3a47504cbd22",
-      "text": "36509e278db5"
+      "from": "22e4d44bbe24",
+      "text": "cd05d3c00010"
     },
     "ja": {
-      "from": "3a47504cbd22",
-      "text": "e70bbd9a7d5b"
+      "from": "22e4d44bbe24",
+      "text": "41159a269284"
     },
     "ko": {
-      "from": "3a47504cbd22",
-      "text": "a08dd1a7a40b"
+      "from": "22e4d44bbe24",
+      "text": "cbf9b416de23"
     },
     "pt-BR": {
-      "from": "3a47504cbd22",
-      "text": "8cb78a09a8c3"
+      "from": "22e4d44bbe24",
+      "text": "6482fc88eab3"
     },
     "zh-CN": {
-      "from": "3a47504cbd22",
-      "text": "f5642ed37b5a"
+      "from": "22e4d44bbe24",
+      "text": "73c05445daa1"
     }
   },
   "artifacts:quickEdit.workingInChat": {

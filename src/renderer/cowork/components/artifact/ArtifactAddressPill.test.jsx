@@ -4,12 +4,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 const copyText = vi.hoisted(() => vi.fn(async () => true));
 vi.mock('../../lib/clipboard', () => ({ copyText }));
 
-import { ArtifactAddressPill, displayAddress, middleEllipsis } from './ArtifactAddressPill';
+import { ArtifactAddressPill, displayAddress, middleEllipsis, splitAddress } from './ArtifactAddressPill';
 
 describe('ArtifactAddressPill', () => {
   it('shows a published address without its scheme, and copies the whole of it', async () => {
     render(<ArtifactAddressPill kind="published" url="https://pages.example/launch-brief/" fallback="Launch" canOpen onOpen={vi.fn()} />);
-    expect(screen.getByText('pages.example/launch-brief')).toBeInTheDocument();
+    const text = document.querySelector('.artifact-address-pill-text');
+    expect(text).toHaveTextContent('pages.example/launch-brief');
+    expect(text).toHaveAttribute('title', 'https://pages.example/launch-brief/');
     fireEvent.click(screen.getByRole('button', { name: 'Copy address' }));
     expect(copyText).toHaveBeenCalledWith('https://pages.example/launch-brief/');
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
@@ -38,5 +40,13 @@ describe('ArtifactAddressPill', () => {
     expect(cut.endsWith('explainer-a8c2272e')).toBe(true);
     expect(middleEllipsis('short', 40)).toBe('short');
     expect(displayAddress('http://a.example/')).toBe('a.example');
+  });
+
+  it('keeps the slug as its own, never-shrinking tail; the host and path give way first', () => {
+    render(<ArtifactAddressPill kind="published" url="https://view-pr-cowork-1422.dev.mindshub.ai/p/mindshub-explainer-a8c2272e" fallback="x" canOpen={false} onOpen={vi.fn()} />);
+    expect(document.querySelector('.artifact-address-pill-head')).toHaveTextContent('view-pr-cowork-1422.dev.mindshub.ai/p/');
+    expect(document.querySelector('.artifact-address-pill-tail')).toHaveTextContent(/^mindshub-explainer-a8c2272e$/);
+    expect(splitAddress('a.example')).toEqual({ head: '', tail: 'a.example' });
+    expect(splitAddress('a.example/x/y')).toEqual({ head: 'a.example/x/', tail: 'y' });
   });
 });

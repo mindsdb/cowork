@@ -54,13 +54,18 @@ const isTypingTarget = (el) => !!el && (el.isContentEditable
 function useAutoFocus(inputRef, { focusRequest, focusUsed, blocked }) {
   useEffect(() => {
     if (!focusRequest || !focusUsed || focusUsed.current === focusRequest) return undefined;
-    focusUsed.current = focusRequest;
-    if (blocked || isTouchViewport()) return undefined;
+    if (blocked || isTouchViewport()) {
+      focusUsed.current = focusRequest;
+      return undefined;
+    }
     let interacted = false;
     const onInteract = () => { interacted = true; };
     document.addEventListener('pointerdown', onInteract, true);
     document.addEventListener('keydown', onInteract, true);
+    // Used up when the timer fires, not when it is set: StrictMode runs this
+    // effect twice, and the first run's timer is cleared before it fires.
     const timer = setTimeout(() => {
+      focusUsed.current = focusRequest;
       const input = inputRef.current;
       const active = document.activeElement;
       if (interacted || !input || input.disabled) return;

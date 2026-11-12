@@ -69,6 +69,7 @@ import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
+import { ViewerLayerToggle, ViewerLayerToggles } from './ViewerLayerToggle';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
@@ -286,16 +287,11 @@ export function ArtifactViewer({
   // The viewer's layers over its one preview (ENG-4227): Live edit (the
   // quick-edit bar), Source (the code editor) and Comments, each a header
   // toggle, remembered on this device.
-  const { layers, setLayer: setStoredLayer } = useViewerLayers();
-  // The bar takes the caret when the viewer opens and when Live edit is
-  // turned on (QuickEditBar), once per such moment.
+  const { layers, setLayer } = useViewerLayers();
+  // The bar takes the caret when the viewer opens (QuickEditBar), once per open.
   const [barFocusRequest, setBarFocusRequest] = useState(0);
   const barFocusUsed = useRef(0);
   useEffect(() => { if (open) setBarFocusRequest((n) => n + 1); }, [open, artifact?.id]);
-  const setLayer = useCallback((name, on) => {
-    if (name === 'liveEdit' && on) setBarFocusRequest((n) => n + 1);
-    setStoredLayer(name, on);
-  }, [setStoredLayer]);
   const [sourceOffPrompt, setSourceOffPrompt] = useState(false);
   // The body's width decides whether Source sits beside the preview or
   // replaces it.
@@ -1269,6 +1265,30 @@ export function ArtifactViewer({
     onClose?.();
   };
 
+  // The layer toggles on the revision line, before History: Live edit (the
+  // code editor; `source` inside) and Comments, each only where allowed.
+  const layerControls = canSource || commentsEnabled ? (
+    <ViewerLayerToggles label={t('layers.ariaLabel')}>
+      {canSource && (
+        <ViewerLayerToggle
+          icon={Ico.edit(14)}
+          label={t('layers.source')}
+          pressed={sourceOn}
+          onToggle={(on) => setSourceLayer(on)}
+        />
+      )}
+      {commentsEnabled && (
+        <ViewerLayerToggle
+          icon={Ico.chats(14)}
+          label={t('layers.comments')}
+          pressed={!!commentsOpen}
+          onToggle={() => toggleComments()}
+          badge={comments.unreadCount}
+          badgeLabel={t('header.commentsUnread', { count: comments.unreadCount })}
+        />
+      )}
+    </ViewerLayerToggles>
+  ) : null;
   // The address pill: where this artifact can be opened. A published page or
   // a running live app has its own address; a draft has the address the
   // browser-tab action opens, or none until a signed link is minted.
@@ -1406,18 +1426,13 @@ export function ArtifactViewer({
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
-        viewerLayers={{
-          layers: { ...layers, source: sourceOn },
-          setLayer: (name, on) => (name === 'source' ? setSourceLayer(on) : setLayer(name, on)),
-          canLiveEdit: canQuickEdit,
-          canSource,
-        }}
         address={addressModel}
         onClose={requestClose}
       />
 
       {workspace.currentRevision && (
         <ArtifactRevisionBar
+          layerControls={layerControls}
           revision={workspace.currentRevision}
           revisions={workspace.revisions}
           status={workspace.status}
@@ -1427,6 +1442,14 @@ export function ArtifactViewer({
           onDiscard={workspace.discard}
           onCompare={workspace.compareRevision}
         />
+      )}
+      {/* No revision line to sit on (a published page someone reviews, say):
+          the toggles get a line of their own. */}
+      {!workspace.currentRevision && layerControls && (
+        <div className="artifact-revision-bar is-layers-only">
+          <span />
+          <div className="artifact-revision-actions">{layerControls}</div>
+        </div>
       )}
       {(workspace.error || workspace.conflict) && (
         <div className="artifact-workspace-notice" role="alert">
@@ -1538,7 +1561,7 @@ export function ArtifactViewer({
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
       />
 
-      {canQuickEdit && layers.liveEdit && (!sourceOn || sourceSplit) && (
+      {canQuickEdit && (!sourceOn || sourceSplit) && (
         <QuickEditBar
           controller={quickEdit}
           chatMessages={chatMessages}

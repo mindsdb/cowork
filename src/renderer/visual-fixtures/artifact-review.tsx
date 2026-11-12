@@ -151,7 +151,11 @@ window.fetch = async (input, init) => {
     });
   }
   if (url.includes('/api/v1/artifacts/status?')) {
-    return new Response(JSON.stringify({ publishedUrl: '', accessMode: 'private', artifactKey: ARTIFACT_KEY }), {
+    // `?published=1`: a published page, for the header's address pill.
+    const publishedUrl = SEARCH_PARAMS.get('published') === '1'
+      ? 'https://view-pr-cowork-1422.dev.mindshub.ai/p/artifact-collaboration-slides-a1b2c3d4'
+      : '';
+    return new Response(JSON.stringify({ publishedUrl, accessMode: publishedUrl ? 'public' : 'private', artifactKey: ARTIFACT_KEY }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

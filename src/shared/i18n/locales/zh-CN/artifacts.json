@@ -660,7 +660,7 @@
     "noop": "没有任何更改。",
     "failed": "无法在此处完成该修改。",
     "askAgent": "改为询问智能体",
-    "unsavedSource": "请先保存或放弃“源代码”中的更改，再在此请求修改。",
+    "unsavedSource": "请先保存或放弃“实时编辑”中的更改，再在此请求修改。",
     "errors": {
       "stale": "你打开此产物后它已被更改。已重新加载，请重试。",
       "busy": "此产物的另一项修改仍在进行中。完成后请重试。",
@@ -725,12 +725,11 @@
   },
   "layers": {
     "ariaLabel": "查看器图层",
-    "liveEdit": "实时编辑",
-    "source": "源代码",
+    "source": "实时编辑",
     "comments": "评论",
     "sourceOffPrompt": {
-      "title": "关闭源代码？",
-      "message": "源代码中未保存的更改将被放弃。",
+      "title": "关闭实时编辑？",
+      "message": "实时编辑中未保存的更改将被放弃。",
       "confirmLabel": "放弃更改"
     }
   },

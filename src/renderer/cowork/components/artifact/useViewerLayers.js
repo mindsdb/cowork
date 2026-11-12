@@ -1,14 +1,14 @@
 // The artifact viewer's layers (ENG-4227). There is one preview; Live edit
-// (the quick-edit bar), Source (the code editor) and Comments (pins and the
-// inbox) are layers on it, switched on and off independently from the header
-// and remembered on this device. Storage can be unavailable (private mode,
-// blocked site data), so every read and write is guarded and the defaults
-// apply then: Live edit on, Source and Comments off.
+// (the code editor, `source` here) and Comments (pins and the inbox) are
+// layers on it, switched on and off independently and remembered on this
+// device. The quick-edit bar is no layer: it shows whenever it may. Storage
+// can be unavailable (private mode, blocked site data), so every read and
+// write is guarded and the defaults apply then: both off.
 
 import { useCallback, useState } from 'react';
 
 export const LAYERS_STORAGE_KEY = 'cowork.artifactViewer.layers.v1';
-export const DEFAULT_LAYERS = Object.freeze({ liveEdit: true, source: false, comments: false });
+export const DEFAULT_LAYERS = Object.freeze({ source: false, comments: false });
 const NAMES = Object.keys(DEFAULT_LAYERS);
 
 function storageKey(userKey) {

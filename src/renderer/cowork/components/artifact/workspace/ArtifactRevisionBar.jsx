@@ -16,6 +16,8 @@ export function ArtifactRevisionBar({
   onSave,
   onDiscard,
   onCompare,
+  // The viewer's layer toggles (ENG-4227), right-aligned before History.
+  layerControls = null,
 }) {
   const { t } = useTranslation('artifacts');
   const statusCopy = status === 'saving'
@@ -37,6 +39,7 @@ export function ArtifactRevisionBar({
         <span className={`artifact-save-state is-${status}`}>{visibleStatus}</span>
       </div>
       <div className="artifact-revision-actions">
+        {layerControls}
         {revisions.length > 1 && (
           <label className="artifact-history-picker">
             <span className="sr-only">{t('revisionBar.compare')}</span>

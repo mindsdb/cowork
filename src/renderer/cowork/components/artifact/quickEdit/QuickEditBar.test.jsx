@@ -40,3 +40,20 @@ describe('QuickEditBar motion', () => {
     expect(thread.style.height).toMatch(/px$/);
   });
 });
+
+describe('QuickEditBar focus', () => {
+  it('puts the caret in the input after the open animation, under StrictMode too', async () => {
+    const { StrictMode } = await import('react');
+    const { waitFor } = await import('@testing-library/react');
+    const used = { current: 0 };
+    render(
+      <StrictMode>
+        <QuickEditBar controller={{ ...controller([]), running: false }} focusRequest={1} focusUsed={used} />
+      </StrictMode>,
+    );
+    const input = screen.getByRole('textbox', { name: 'Ask for a change' });
+    expect(document.activeElement).not.toBe(input);
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(used.current).toBe(1);
+  });
+});

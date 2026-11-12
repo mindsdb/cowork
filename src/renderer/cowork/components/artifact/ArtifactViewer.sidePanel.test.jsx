@@ -70,9 +70,9 @@ vi.mock('./stats/useArtifactStats', () => ({
   },
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
-  ArtifactViewerHeader: ({ review, stats, workspace }) => (
+  // Comments is a layer toggle on the revision line (ENG-4227), not here.
+  ArtifactViewerHeader: ({ stats, workspace }) => (
     <>
-      <button type="button" aria-pressed={!!review.open} onClick={review.onToggle}>Comments</button>
       {/* The mode calls older callers still make (repair flows, notices). */}
       <button type="button" onClick={() => workspace.setMode('review')}>Review mode</button>
       <button type="button" onClick={() => workspace.setMode('edit')}>Edit mode</button>

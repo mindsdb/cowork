@@ -660,7 +660,7 @@
     "noop": "No cambió nada.",
     "failed": "Ese cambio no se pudo hacer aquí.",
     "askAgent": "Preguntar al agente",
-    "unsavedSource": "Guarda o descarta tus cambios en Código fuente para pedir un cambio aquí.",
+    "unsavedSource": "Guarda o descarta tus cambios en Edición en vivo para pedir un cambio aquí.",
     "errors": {
       "stale": "Este artefacto cambió desde que lo abriste. Se ha vuelto a cargar; inténtalo de nuevo.",
       "busy": "Otro cambio en este artefacto sigue en curso. Inténtalo de nuevo cuando termine.",
@@ -725,12 +725,11 @@
   },
   "layers": {
     "ariaLabel": "Capas del visor",
-    "liveEdit": "Edición en vivo",
-    "source": "Código fuente",
+    "source": "Edición en vivo",
     "comments": "Comentarios",
     "sourceOffPrompt": {
-      "title": "¿Desactivar Código fuente?",
-      "message": "Se descartarán los cambios no guardados en Código fuente.",
+      "title": "¿Desactivar Edición en vivo?",
+      "message": "Se descartarán los cambios no guardados en Edición en vivo.",
       "confirmLabel": "Descartar cambios"
     }
   },

@@ -92,11 +92,11 @@ describe('preview window chrome in org mode', () => {
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 
-  it('keeps review and close', () => {
+  it('keeps the address and close; Comments moved to the revision line', () => {
     setOrgMode(true);
     render(<ArtifactViewerHeader {...props} />);
 
-    expect(screen.getByRole('button', { name: 'Comments' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Comments' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
     // The address pill took the mode tabs' place.
     expect(screen.queryByRole('tab')).toBeNull();
@@ -178,12 +178,6 @@ describe('preview errors button', () => {
 
 // IconButton renders aria-pressed only for a real toggle.
 describe('top-bar toggle semantics', () => {
-  it('keeps aria-pressed on the comments switch', () => {
-    render(<ArtifactViewerHeader {...props} />);
-
-    expect(screen.getByRole('button', { name: 'Comments' })).toHaveAttribute('aria-pressed', 'false');
-  });
-
   it('leaves it off plain actions', () => {
     render(<ArtifactViewerHeader {...props} />);
 

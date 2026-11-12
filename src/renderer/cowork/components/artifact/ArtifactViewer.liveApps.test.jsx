@@ -79,7 +79,6 @@ vi.mock('./ArtifactViewerHeader', () => ({
   ArtifactViewerHeader: ({ publication, review }) => (
     <>
       <div data-testid="publishable">{String(publication?.publishable)}</div>
-      <button onClick={review?.onToggle}>Comments</button>
     </>
   ),
 }));

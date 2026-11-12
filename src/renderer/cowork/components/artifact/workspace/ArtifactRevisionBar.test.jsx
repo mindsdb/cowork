@@ -60,3 +60,23 @@ describe('ArtifactRevisionBar history picker', () => {
     expect(screen.getByRole('option', { name: /Revision 1/ })).toBeEnabled();
   });
 });
+
+// The viewer's layer toggles (ENG-4227) sit on this line, right-aligned just
+// before History.
+describe('ArtifactRevisionBar layer controls', () => {
+  it('puts the layer controls right before History', () => {
+    render(
+      <ArtifactRevisionBar
+        revision={{ id: 'rev-2', number: 2, summary: 'x' }}
+        revisions={[{ id: 'rev-2', number: 2, summary: 'x' }, { id: 'rev-1', number: 1, summary: 'y' }]}
+        status="ready"
+        canEdit
+        layerControls={<div data-testid="layers" />}
+      />,
+    );
+
+    const layers = screen.getByTestId('layers');
+    const history = screen.getByRole('combobox', { name: /Compare/ });
+    expect(layers.nextElementSibling).toContainElement(history);
+  });
+});

@@ -325,22 +325,32 @@
 .artifact-address-pill[data-kind="live"] .artifact-address-pill-icon { color: var(--accent); }
 .artifact-address-pill-draft { flex-shrink: 0; color: var(--ink-4); }
 .artifact-address-pill-draft::after { content: " ·"; }
-.artifact-address-pill-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-2); }
+/* The head (host and path) shrinks to an ellipsis; the tail (the slug) never
+   does, so the address is cut in its middle, never at its end. */
+.artifact-address-pill-text { display: inline-flex; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--ink-2); }
+/* The host and path go first (a far larger shrink factor); only once they
+   are gone does the slug give way, and then from its start, so its end
+   stays legible. */
+.artifact-address-pill-head { flex: 0 10000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
+.artifact-address-pill-tail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.artifact-address-pill-tail > bdi { direction: ltr; unicode-bidi: isolate; }
 .artifact-address-pill-action { flex-shrink: 0; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-3); cursor: pointer; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
 .artifact-address-pill-action:hover { background: var(--ghost-hover); color: var(--text-strong); }
 .artifact-address-pill-action:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
 
-/* Layer toggles: icon and label, filled with the accent when on. */
-.artifact-layer-toggles { display: inline-flex; align-items: center; gap: 4px; }
+/* Layer toggles on the revision line (ENG-4227): one segmented group in
+   History's size and frame, the pressed one filled with the accent. */
+.artifact-layer-toggles { display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 1px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
 .artifact-layer-toggle-wrap { position: relative; display: inline-flex; }
-.artifact-layer-toggle { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--r-8); background: transparent; color: var(--ink-3); font: 500 var(--text-sm)/1 var(--font-body); cursor: pointer; white-space: nowrap; transition: background var(--dur-hover) ease, color var(--dur-hover) ease, border-color var(--dur-hover) ease; }
+.artifact-layer-toggle { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-3); font: 500 11px/1 var(--font-body); cursor: pointer; white-space: nowrap; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
 .artifact-layer-toggle:hover { background: var(--ghost-hover); color: var(--text-strong); }
-.artifact-layer-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 32%, transparent); color: var(--accent); }
-.artifact-layer-toggle[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
+.artifact-layer-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
+.artifact-layer-toggle[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--accent) 19%, var(--surface)); }
 .artifact-layer-toggle:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
-@media (max-width: 900px) {
+.artifact-layer-toggles .artifact-feedback-badge { top: -6px; right: -6px; }
+.artifact-revision-bar.is-layers-only { min-height: 38px; }
+@media (max-width: 640px) {
   .artifact-layer-toggle-label { display: none; }
-  .artifact-layer-toggle { padding: 0 8px; }
 }
 
 /* The bar reads as an input while focused: the app's focus ring, quiet. */

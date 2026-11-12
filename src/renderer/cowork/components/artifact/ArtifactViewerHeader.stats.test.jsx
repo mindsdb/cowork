@@ -1,5 +1,5 @@
 // The Stats switch belongs to the owner of a published artifact, on both
-// deployments, and sits right after Comments.
+// deployments, and sits before Share.
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
@@ -69,15 +69,14 @@ function renderHeader({ isPublished = true, canManage = true, stats } = {}) {
 }
 
 describe('Stats button', () => {
-  it('is offered to the owner of a published artifact, right after Comments', () => {
+  it('is offered to the owner of a published artifact, before Share', () => {
     renderHeader();
 
-    const comments = screen.getByRole('button', { name: 'Comments' });
     const stats = screen.getByRole('button', { name: 'Stats' });
-    // Right after the layer toggles, the last of which is Comments.
-    const toggles = comments.closest('[role="group"]');
-    expect(toggles.lastElementChild).toContainElement(comments);
-    expect(toggles.nextElementSibling).toBe(stats);
+    const share = screen.getByRole('button', { name: 'Share' });
+    expect(stats.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The layer toggles left the header for the revision line.
+    expect(screen.queryByRole('button', { name: 'Comments' })).toBeNull();
   });
 
   it('is hidden on an unpublished artifact', () => {

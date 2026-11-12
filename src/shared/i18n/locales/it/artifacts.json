@@ -660,7 +660,7 @@
     "noop": "Nessuna modifica.",
     "failed": "Non è stato possibile fare questa modifica qui.",
     "askAgent": "Chiedi all'agente",
-    "unsavedSource": "Salva o scarta le modifiche in Sorgente per chiedere una modifica qui.",
+    "unsavedSource": "Salva o scarta le modifiche in Modifica dal vivo per chiedere una modifica qui.",
     "errors": {
       "stale": "Questo artefatto è cambiato da quando l'hai aperto. È stato ricaricato; riprova.",
       "busy": "Un'altra modifica a questo artefatto è ancora in corso. Riprova quando termina.",
@@ -725,12 +725,11 @@
   },
   "layers": {
     "ariaLabel": "Livelli del visualizzatore",
-    "liveEdit": "Modifica dal vivo",
-    "source": "Sorgente",
+    "source": "Modifica dal vivo",
     "comments": "Commenti",
     "sourceOffPrompt": {
-      "title": "Disattivare Sorgente?",
-      "message": "Le modifiche non salvate in Sorgente andranno perse.",
+      "title": "Disattivare Modifica dal vivo?",
+      "message": "Le modifiche non salvate in Modifica dal vivo andranno perse.",
       "confirmLabel": "Scarta modifiche"
     }
   },

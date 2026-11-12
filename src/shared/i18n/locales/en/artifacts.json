@@ -660,7 +660,7 @@
     "noop": "Nothing changed.",
     "failed": "That change couldn't be made here.",
     "askAgent": "Ask the agent instead",
-    "unsavedSource": "Save or discard your Source changes to ask for a change here.",
+    "unsavedSource": "Save or discard your Live edit changes to ask for a change here.",
     "errors": {
       "stale": "This artifact changed since you opened it. It has been reloaded; try again.",
       "busy": "Another change to this artifact is still running. Try again when it finishes.",
@@ -725,12 +725,11 @@
   },
   "layers": {
     "ariaLabel": "Viewer layers",
-    "liveEdit": "Live edit",
-    "source": "Source",
+    "source": "Live edit",
     "comments": "Comments",
     "sourceOffPrompt": {
-      "title": "Turn off Source?",
-      "message": "Your unsaved changes in Source will be discarded.",
+      "title": "Turn off Live edit?",
+      "message": "Your unsaved changes in Live edit will be discarded.",
       "confirmLabel": "Discard changes"
     }
   },

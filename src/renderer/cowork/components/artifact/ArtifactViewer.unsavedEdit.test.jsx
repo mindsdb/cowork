@@ -94,8 +94,8 @@ const editor = () => screen.queryByLabelText('Edit notes.md');
 const discardPrompt = () => screen.queryByRole('dialog', { name: 'Discard changes?' });
 
 async function openEditor() {
-  // Source is a layer toggle, remembered across opens: switch it on only if off.
-  const toggle = await screen.findByRole('button', { name: 'Source' });
+  // The code editor is the Live edit layer, remembered across opens: switch it on only if off.
+  const toggle = await screen.findByRole('button', { name: 'Live edit' });
   if (toggle.getAttribute('aria-pressed') !== 'true') await user.click(toggle);
   return screen.findByLabelText('Edit notes.md');
 }

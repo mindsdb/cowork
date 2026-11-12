@@ -660,7 +660,7 @@
     "noop": "Rien n'a changé.",
     "failed": "Cette modification n'a pas pu être faite ici.",
     "askAgent": "Demander plutôt à l'agent",
-    "unsavedSource": "Enregistrez ou abandonnez vos modifications dans Source pour demander une modification ici.",
+    "unsavedSource": "Enregistrez ou abandonnez vos modifications dans Modification en direct pour demander une modification ici.",
     "errors": {
       "stale": "Cet artefact a changé depuis son ouverture. Il a été rechargé ; réessayez.",
       "busy": "Une autre modification de cet artefact est encore en cours. Réessayez une fois terminée.",
@@ -725,12 +725,11 @@
   },
   "layers": {
     "ariaLabel": "Calques de la visionneuse",
-    "liveEdit": "Modification en direct",
-    "source": "Source",
+    "source": "Modification en direct",
     "comments": "Commentaires",
     "sourceOffPrompt": {
-      "title": "Désactiver Source ?",
-      "message": "Vos modifications non enregistrées dans Source seront abandonnées.",
+      "title": "Désactiver Modification en direct ?",
+      "message": "Vos modifications non enregistrées dans Modification en direct seront abandonnées.",
       "confirmLabel": "Abandonner les modifications"
     }
   },

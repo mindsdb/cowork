@@ -4,7 +4,9 @@
 // beside it. A draft that opens by a signed link has no address until the
 // link is minted, which opening does: the pill then names it by its slug.
 //
-// Long addresses lose their middle, never the end, so the slug stays legible.
+// Long addresses lose their middle, never the end: the last path segment (the
+// slug) always shows whole, and the host and the rest of the path give way to
+// an ellipsis first. The full address is the tooltip.
 
 import { useEffect, useState } from 'react';
 import Ico from '../Icons';
@@ -19,6 +21,19 @@ export function middleEllipsis(text, max = 56) {
   const tail = Math.ceil((max - 1) * 0.6);
   const head = max - 1 - tail;
   return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
+}
+
+/**
+ * `{ head, tail }` of a shown address: `tail` is its last path segment, which
+ * always shows; `head` is everything before it (host and path, ending in
+ * "/"), which shrinks to an ellipsis when space is short. A bare host or a
+ * name with no "/" is all tail.
+ */
+export function splitAddress(shown) {
+  const value = String(shown || '');
+  const cut = value.lastIndexOf('/');
+  if (cut <= 0 || cut === value.length - 1) return { head: '', tail: value };
+  return { head: value.slice(0, cut + 1), tail: value.slice(cut + 1) };
 }
 
 /** An address as a person reads it: no scheme, no trailing slash. */
@@ -43,6 +58,7 @@ export function ArtifactAddressPill({ kind, url, fallback, canOpen, onOpen }) {
     return () => clearTimeout(timer);
   }, [copied]);
   const shown = url ? displayAddress(url) : fallback;
+  const { head, tail } = splitAddress(shown);
   const isDraft = kind === 'draft';
   return (
     <div className="artifact-address-pill" data-kind={kind}>
@@ -50,7 +66,10 @@ export function ArtifactAddressPill({ kind, url, fallback, canOpen, onOpen }) {
         {isDraft ? Ico.doc(14) : Ico.globe(14)}
       </span>
       {isDraft && <span className="artifact-address-pill-draft">{t('address.draft')}</span>}
-      <span className="artifact-address-pill-text" title={url || fallback}>{middleEllipsis(shown)}</span>
+      <span className="artifact-address-pill-text" title={url || fallback}>
+        {head && <span className="artifact-address-pill-head">{head}</span>}
+        <span className="artifact-address-pill-tail"><bdi>{middleEllipsis(tail, 48)}</bdi></span>
+      </span>
       {url && (
         <Tooltip content={copied ? t('address.copied') : t('address.copy')}>
           <button

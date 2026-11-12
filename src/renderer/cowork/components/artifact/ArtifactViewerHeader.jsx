@@ -6,7 +6,6 @@ import { canDownloadArtifact, canShowInBrowserTab } from '../../lib/artifactKind
 import { artifactExportFormats } from '../../lib/artifactExport';
 import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactAddressPill } from './ArtifactAddressPill';
-import { ViewerLayerToggle } from './ViewerLayerToggle';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
@@ -24,21 +23,15 @@ export function ArtifactViewerHeader({
   actions,
   // `{ errors, dismissed, dismiss }` from usePreviewDiagnostics.
   diagnostics,
-  // The viewer's layers (ENG-4227): `{ layers, setLayer, canLiveEdit,
-  // canSource }`. Comments is offered where `review.enabled`.
-  viewerLayers = null,
   // The address pill: `{ kind, url, fallback }`.
   address = null,
   onClose,
 }) {
   const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
-  const {
-    enabled: commentsEnabled,
-    open: commentsOpen,
-    controller: comments,
-    onToggle: toggleComments,
-  } = review;
+  // Comments is a layer toggle on the revision line now (ENG-4227); `review`
+  // stays in the props for callers that pass it.
+  void review;
   const {
     canManage,
     publishable,
@@ -141,35 +134,6 @@ export function ArtifactViewerHeader({
       {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
       <div className="artifact-viewer-action-zone" style={{ flex: '0 0 auto', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
-        {/* The viewer's layers, each a toggle, only those this person may use. */}
-        <div className="artifact-layer-toggles" role="group" aria-label={t('layers.ariaLabel')}>
-          {viewerLayers?.canLiveEdit && (
-            <ViewerLayerToggle
-              icon={Ico.sparkle(14)}
-              label={t('layers.liveEdit')}
-              pressed={!!viewerLayers.layers.liveEdit}
-              onToggle={(on) => viewerLayers.setLayer('liveEdit', on)}
-            />
-          )}
-          {viewerLayers?.canSource && (
-            <ViewerLayerToggle
-              icon={Ico.code(14)}
-              label={t('layers.source')}
-              pressed={!!viewerLayers.layers.source}
-              onToggle={(on) => viewerLayers.setLayer('source', on)}
-            />
-          )}
-          {commentsEnabled && (
-            <ViewerLayerToggle
-              icon={Ico.chats(14)}
-              label={t('layers.comments')}
-              pressed={!!commentsOpen}
-              onToggle={() => toggleComments()}
-              badge={comments.unreadCount}
-              badgeLabel={t('header.commentsUnread', { count: comments.unreadCount })}
-            />
-          )}
-        </div>
         {showStats && (
           <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
             <IconButton aria-label={t('stats.toggle.show')} onClick={stats.onToggle} active={!!stats.open}>

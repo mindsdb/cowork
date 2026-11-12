@@ -104,7 +104,10 @@ vi.mock('./workspace/useArtifactWorkspace', () => ({
 vi.mock('./workspace/ArtifactSourceEditor', () => ({ ArtifactSourceEditor: () => null }));
 vi.mock('./workspace/ArtifactComparison', () => ({ ArtifactComparison: () => null }));
 vi.mock('./workspace/TextSelectionComment', () => ({ TextSelectionComment: () => null }));
-vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
+// The revision line, holding the layer toggles the viewer hands it.
+vi.mock('./workspace/ArtifactRevisionBar', () => ({
+  ArtifactRevisionBar: ({ layerControls }) => <div className="artifact-revision-bar">{layerControls}</div>,
+}));
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
 vi.mock('../ConfirmModal', () => ({
   ConfirmModal: ({ open, title, confirmLabel, cancelLabel, onConfirm, onClose }) => (open ? (
@@ -179,12 +182,13 @@ describe('ArtifactViewer quick edit bar', () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('opens on the preview with the bar and Live edit on, and no mode tabs', async () => {
+  it('opens on the preview with the bar always on: no mode tabs and no toggle for the bar', async () => {
     renderViewer();
     await screen.findByTitle('Launch brief');
 
     expect(screen.queryByRole('tab')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Live edit' })).toHaveAttribute('aria-pressed', 'true');
+    // No editable source here, so no Live edit (code editor) toggle either.
+    expect(screen.queryByRole('button', { name: 'Live edit' })).toBeNull();
     expect(bar()).toHaveAttribute('placeholder', 'Ask for a change…');
   });
 
@@ -204,12 +208,12 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(bar()).toBeNull();
   });
 
-  it('leaves a narrow viewer to the code editor while Source is on', async () => {
+  it('leaves a narrow viewer to the code editor while Live edit is on', async () => {
     workspaceMock.source = HTML_SOURCE;
     renderViewer();
     await screen.findByTitle('Launch brief');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Source' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
 
     expect(bar()).toBeNull();
   });
@@ -536,7 +540,7 @@ describe('ArtifactViewer quick edit bar', () => {
     await screen.findByTitle('Launch brief');
 
     expect(bar()).toBeDisabled();
-    expect(screen.getByText('Save or discard your Source changes to ask for a change here.')).toBeInTheDocument();
+    expect(screen.getByText('Save or discard your Live edit changes to ask for a change here.')).toBeInTheDocument();
   });
 
   describe('model picker', () => {
@@ -770,7 +774,7 @@ describe('ArtifactViewer quick edit bar', () => {
     });
   });
 
-  describe('header layers', () => {
+  describe('viewer layers', () => {
     const toggle = (name) => screen.getByRole('button', { name });
     const pressed = (name) => toggle(name).getAttribute('aria-pressed');
     const withBodyWidth = (width) => vi.spyOn(Element.prototype, 'getBoundingClientRect')
@@ -780,19 +784,6 @@ describe('ArtifactViewer quick edit bar', () => {
           : { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} };
       });
     afterEach(() => { vi.restoreAllMocks(); });
-
-    it('turns Live edit off and on, hiding and showing the bar', async () => {
-      renderViewer();
-      await screen.findByTitle('Launch brief');
-
-      fireEvent.click(toggle('Live edit'));
-      expect(pressed('Live edit')).toBe('false');
-      expect(bar()).toBeNull();
-
-      fireEvent.click(toggle('Live edit'));
-      expect(pressed('Live edit')).toBe('true');
-      expect(bar()).not.toBeNull();
-    });
 
     it('turns Comments on and off', async () => {
       workspaceMock.commentsReady = true;
@@ -807,7 +798,7 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(pressed('Comments')).toBe('false');
     });
 
-    it('combines Comments with Live edit, and with Source', async () => {
+    it('combines Comments with Live edit (the code editor), the bar staying', async () => {
       workspaceMock.commentsReady = true;
       workspaceMock.source = HTML_SOURCE;
       withBodyWidth(1200);
@@ -815,18 +806,28 @@ describe('ArtifactViewer quick edit bar', () => {
       await screen.findByTitle('Launch brief');
 
       fireEvent.click(toggle('Comments'));
+      fireEvent.click(toggle('Live edit'));
+
       expect(pressed('Comments')).toBe('true');
       expect(pressed('Live edit')).toBe('true');
       expect(bar()).not.toBeNull();
+    });
 
-      fireEvent.click(toggle('Source'));
-      expect(pressed('Source')).toBe('true');
-      expect(pressed('Comments')).toBe('true');
-      expect(bar()).not.toBeNull();
+    it('sits on the revision line, not in the header', async () => {
+      workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+
+      const group = screen.getByRole('group', { name: 'Viewer layers' });
+      expect(group.closest('.artifact-revision-bar')).not.toBeNull();
+      expect(group.closest('.artifact-viewer-topbar')).toBeNull();
+      expect(within(group).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments']);
     });
 
     it('remembers each layer on this device', async () => {
       workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
       const view = renderViewer();
       await screen.findByTitle('Launch brief');
       fireEvent.click(toggle('Live edit'));
@@ -834,22 +835,24 @@ describe('ArtifactViewer quick edit bar', () => {
       view.unmount();
 
       expect(JSON.parse(window.localStorage.getItem('cowork.artifactViewer.layers.v1')))
-        .toEqual({ liveEdit: false, source: false, comments: true });
+        .toEqual({ source: true, comments: true });
       renderViewer();
       await screen.findByTitle('Launch brief');
-      expect(pressed('Live edit')).toBe('false');
+      expect(pressed('Live edit')).toBe('true');
       expect(pressed('Comments')).toBe('true');
     });
 
     it('works without storage', async () => {
       vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
       vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+      workspaceMock.commentsReady = true;
       renderViewer();
       await screen.findByTitle('Launch brief');
 
-      expect(pressed('Live edit')).toBe('true');
-      fireEvent.click(toggle('Live edit'));
-      expect(pressed('Live edit')).toBe('false');
+      expect(pressed('Comments')).toBe('false');
+      fireEvent.click(toggle('Comments'));
+      expect(pressed('Comments')).toBe('true');
+      expect(bar()).not.toBeNull();
     });
 
     it('offers only the layers this person may use', async () => {
@@ -859,17 +862,16 @@ describe('ArtifactViewer quick edit bar', () => {
       await screen.findByTitle('Launch brief');
 
       expect(screen.queryByRole('button', { name: 'Live edit' })).toBeNull();
-      expect(screen.queryByRole('button', { name: 'Source' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Comments' })).toBeNull();
     });
 
-    it('puts Source beside the preview on a wide viewer', async () => {
+    it('puts Live edit (the code editor) beside the preview on a wide viewer', async () => {
       workspaceMock.source = HTML_SOURCE;
       withBodyWidth(1200);
       renderViewer();
       await screen.findByTitle('Launch brief');
 
-      fireEvent.click(toggle('Source'));
+      fireEvent.click(toggle('Live edit'));
 
       expect(document.querySelector('.artifact-viewer-canvas')).toHaveClass('is-split');
       expect(screen.getByTestId('source-surface')).not.toHaveAttribute('hidden');
@@ -877,39 +879,39 @@ describe('ArtifactViewer quick edit bar', () => {
       expect(bar()).not.toBeNull();
     });
 
-    it('puts Source in place of the preview on a narrow viewer', async () => {
+    it('puts Live edit in place of the preview on a narrow viewer', async () => {
       workspaceMock.source = HTML_SOURCE;
       withBodyWidth(900);
       renderViewer();
       await screen.findByTitle('Launch brief');
 
-      fireEvent.click(toggle('Source'));
+      fireEvent.click(toggle('Live edit'));
 
       expect(document.querySelector('.artifact-viewer-canvas')).not.toHaveClass('is-split');
       expect(screen.getByTestId('source-surface')).not.toHaveAttribute('hidden');
       expect(screen.getByTestId('preview-surface')).toHaveAttribute('hidden');
     });
 
-    it('asks before turning Source off over unsaved text, and discards on confirm', async () => {
+    it('asks before turning Live edit off over unsaved text, and discards on confirm', async () => {
       workspaceMock.source = HTML_SOURCE;
       workspaceMock.discard.mockClear();
       renderViewer();
       await screen.findByTitle('Launch brief');
-      fireEvent.click(toggle('Source'));
+      fireEvent.click(toggle('Live edit'));
       workspaceMock.dirty = true;
 
-      fireEvent.click(toggle('Source'));
-      const prompt = screen.getByRole('alertdialog', { name: 'Turn off Source?' });
-      expect(pressed('Source')).toBe('true');
+      fireEvent.click(toggle('Live edit'));
+      const prompt = screen.getByRole('alertdialog', { name: 'Turn off Live edit?' });
+      expect(pressed('Live edit')).toBe('true');
 
       fireEvent.click(within(prompt).getByRole('button', { name: 'Keep editing' }));
-      expect(pressed('Source')).toBe('true');
+      expect(pressed('Live edit')).toBe('true');
       expect(workspaceMock.discard).not.toHaveBeenCalled();
 
-      fireEvent.click(toggle('Source'));
-      fireEvent.click(within(screen.getByRole('alertdialog', { name: 'Turn off Source?' })).getByRole('button', { name: 'Discard changes' }));
+      fireEvent.click(toggle('Live edit'));
+      fireEvent.click(within(screen.getByRole('alertdialog', { name: 'Turn off Live edit?' })).getByRole('button', { name: 'Discard changes' }));
       expect(workspaceMock.discard).toHaveBeenCalledTimes(1);
-      expect(pressed('Source')).toBe('false');
+      expect(pressed('Live edit')).toBe('false');
     });
 
     it('shows a published artifact by its address, with copy and open-in-a-tab inside the pill', async () => {
@@ -971,19 +973,6 @@ describe('ArtifactViewer quick edit bar', () => {
       await new Promise((resolve) => { setTimeout(resolve, 400); });
 
       expect(document.activeElement).not.toBe(bar());
-    });
-
-    it('focuses the bar again when Live edit is turned back on', async () => {
-      renderViewer();
-      await screen.findByTitle('Launch brief');
-      await waitFor(() => expect(document.activeElement).toBe(bar()));
-
-      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
-      expect(bar()).toBeNull();
-      screen.getByRole('button', { name: 'Live edit' }).focus();
-      fireEvent.click(screen.getByRole('button', { name: 'Live edit' }));
-
-      await waitFor(() => expect(document.activeElement).toBe(bar()));
     });
 
     it('does not take the caret back after an edit applies', async () => {
