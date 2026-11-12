@@ -258,12 +258,15 @@ function WebBrowserStage({
   }, [sessionId, armRenewal]);
 
   /* A fetch that failed during a reconnect runs again on the back-off, with
-     no error and the frame kept, until RELINK_WAIT_MS after the close. Says
+     no error and the frame kept, until RELINK_WAIT_MS after the close. Each
+     delay falls at random in the later half of its step, so the panes that
+     one router restart closed at once don't fetch again in step. Says
      whether it will. */
   const retryLater = useCallback((call) => {
     const since = downSinceRef.current;
     if (since === null || Date.now() - since >= RELINK_WAIT_MS) return false;
-    const delay = Math.min(RELINK_RETRY_MS * 2 ** retries.current, RELINK_RETRY_MAX_MS);
+    const step = Math.min(RELINK_RETRY_MS * 2 ** retries.current, RELINK_RETRY_MAX_MS);
+    const delay = step * (1 - Math.random() / 2);
     retries.current += 1;
     retryTimer.current = setTimeout(() => {
       retryTimer.current = null;

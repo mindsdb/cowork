@@ -191,7 +191,8 @@ export const VIEWER_THEME = 'browser-theme';
 /* A connection the viewer lost gets a fresh link for RELINK_WAIT_MS after
    the close, past the router's 105 s deadline for the events stream to
    start. A failed link fetch in that time is tried again after
-   RELINK_RETRY_MS, doubling up to RELINK_RETRY_MAX_MS. */
+   RELINK_RETRY_MS, doubling up to RELINK_RETRY_MAX_MS, each delay cut by up
+   to half at random. */
 export const RELINK_WAIT_MS = 120_000;
 export const RELINK_RETRY_MS = 2_000;
 export const RELINK_RETRY_MAX_MS = 30_000;

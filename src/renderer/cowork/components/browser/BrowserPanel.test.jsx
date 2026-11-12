@@ -93,8 +93,11 @@ describe('BrowserPanel', () => {
   // The frames point at a live host: keep happy-dom from loading them, so
   // the tests decide when a frame has loaded.
   let iframeLoading;
+  // The back-off spreads each retry by Math.random(); 0 keeps each at its whole delay.
+  let random;
   beforeEach(() => {
     vi.useFakeTimers();
+    random = vi.spyOn(Math, 'random').mockReturnValue(0);
     embedBrowser.mockReset();
     embedBrowser.mockResolvedValue(link());
     visibility = 'visible';
@@ -103,6 +106,7 @@ describe('BrowserPanel', () => {
     window.happyDOM.settings.disableIframePageLoading = true;
   });
   afterEach(() => {
+    random.mockRestore();
     vi.useRealTimers();
     delete document.visibilityState;
     window.happyDOM.settings.disableIframePageLoading = iframeLoading;
@@ -742,6 +746,21 @@ describe('BrowserPanel', () => {
       expect(screen.getByTitle('Shared browser')).toBe(frame);
       expect(stopShown()).toBeNull();
       expect(embedBrowser).toHaveBeenCalledTimes(3);
+    });
+
+    it('spreads each retry over the later half of its back-off, so panes that one router restart closed fetch apart', async () => {
+      const { frame, port } = await liveViewer();
+      act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
+      random.mockReturnValue(0.5);
+      embedBrowser.mockRejectedValueOnce(serviceUnavailable()).mockResolvedValue(link(2));
+      fromViewer(DROP_CLOSED, port, { code: 4401 });
+      await flush();
+      await act(async () => { vi.advanceTimersByTime(RELINK_RETRY_MS * 0.75 - 1); });
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(embedBrowser).toHaveBeenCalledTimes(3);
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
     });
 
     it('retries a failed link after a close for a frame whose page gave no port', async () => {
