@@ -173,11 +173,17 @@ function WebBrowserStage({
   /* The MessagePort the viewer gave with its ready, when it takes tickets
      in place; null for a viewer that doesn't. */
   const portRef = useRef(null);
+  // Whether the current link's viewer said it is ready, for the close handler.
+  const readyRef = useRef(false);
   /* A stable ref, so a re-render never detaches the frame: React passes null
-     only when the frame goes, and its port goes with it. */
+     only when the frame goes, and its port goes with it. A new frame waits
+     for its own first ready, the one that may give a port. */
   const setFrame = useCallback((node) => {
     frameRef.current = node;
-    if (node) return;
+    if (node) {
+      readyRef.current = false;
+      return;
+    }
     portRef.current?.close();
     portRef.current = null;
   }, []);
@@ -192,8 +198,6 @@ function WebBrowserStage({
   // Whether the ticket last handed over the port is a renewal's.
   const renewingRef = useRef(false);
   const quickCloses = useRef(0);
-  // Whether the current link's viewer said it is ready, for the close handler.
-  const readyRef = useRef(false);
   // Whether the viewer's current socket is live (VIEWER_LIVE), for a viewer with a port.
   const liveRef = useRef(false);
   /* A reconnect after a close: when the latest close came (null when none is
@@ -417,7 +421,12 @@ function WebBrowserStage({
       if (!frameWindow || event.source !== frameWindow) return;
       const type = event.data?.type;
       if (type === VIEWER_READY) {
-        const port = event.ports?.[0] ?? null;
+        /* Only the frame's first ready may give a port. A later one comes
+           from another document in the frame: it draws no ticket, and its
+           close reloads the frame. */
+        const offered = event.ports?.[0] ?? null;
+        const port = readyRef.current ? null : offered;
+        if (offered && !port) offered.close();
         if (portRef.current && portRef.current !== port) portRef.current.close();
         portRef.current = port;
         readyRef.current = true;

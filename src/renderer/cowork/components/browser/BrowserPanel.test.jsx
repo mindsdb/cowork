@@ -459,6 +459,27 @@ describe('BrowserPanel', () => {
       expect(port.postMessage.mock.calls).toEqual([[{ type: 'browser-viewer-pause' }]]);
     });
 
+    it('takes a port only from the first ready in a frame, so a later document in it draws no ticket and its close reloads the frame', async () => {
+      const { frame, port } = await liveViewer();
+      fireEvent.load(frame);
+      const later = fakePort();
+      fromViewer(DROP_READY, later);
+      // The first document's port goes with it, and the later one is refused.
+      expect(port.close).toHaveBeenCalledTimes(1);
+      expect(later.close).toHaveBeenCalledTimes(1);
+      fromViewer(DROP_LIVE, later);
+
+      act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
+      embedBrowser.mockResolvedValue(link(2));
+      fromViewer(DROP_CLOSED, later);
+      await flush();
+      const tickets = (p) => p.postMessage.mock.calls.filter(([m]) => m?.type === 'browser-viewer-ticket');
+      expect(tickets(later)).toEqual([]);
+      expect(tickets(port)).toEqual([]);
+      expect(screen.getByTitle('Shared browser')).not.toBe(frame);
+      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+    });
+
     it('keeps the port open while its frame stays, and closes it when the frame goes', async () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
