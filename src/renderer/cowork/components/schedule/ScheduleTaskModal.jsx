@@ -121,7 +121,7 @@ export default function ScheduleTaskModal({
   }, [open, task?.id, defaultProjectPath, projects]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
-  const upcoming = useMemo(() => nextRuns(form, new Date(), 3), [form]);
+  const upcoming = useMemo(() => formRuns(form, task, new Date()), [form, task]);
   const zone = timeZoneLabel();
   // The same models the chat composer offers. With platform UI off, the
   // operator's picker decides: off shows no field at all (the operator's
@@ -150,7 +150,8 @@ export default function ScheduleTaskModal({
       setError(t('scheduleTaskModal.errorNoPrompt', { agent: displayName }));
       return;
     }
-    const first = upcoming[0];
+    // A preview can outlive its next occurrence while the dialog stays open.
+    const first = formRuns(form, task, new Date())[0];
     if (!first) {
       setError(form.cadence === 'once' ? t('scheduleTaskModal.errorPickFutureTime') : t('scheduleTaskModal.errorPickTime'));
       return;
@@ -318,6 +319,9 @@ export default function ScheduleTaskModal({
                   variant="field"
                   style={fieldSelectStyle}
                   options={modelOptions}
+                  onOpenChange={(open) => {
+                    if (open) Promise.resolve().then(() => modelMeta?.onRefresh?.()).catch(() => {});
+                  }}
                 />
               </Field>
             )}
@@ -360,6 +364,20 @@ export default function ScheduleTaskModal({
 
 
 // ── Helpers ──
+
+// An unrelated edit must not bring a deferred start forward. Only the timing
+// controls relevant to this cadence determine whether the schedule changed.
+function formRuns(form, task, now) {
+  const original = task?.nextRunAt ? new Date(task.nextRunAt) : null;
+  if (original && original > now) {
+    const saved = whenFromDate(original, task.cadence || 'daily');
+    const unchanged = form.cadence === saved.cadence && form.time === saved.time
+      && (form.cadence !== 'weekly' || Number(form.weekday) === saved.weekday)
+      && (form.cadence !== 'once' || form.date === saved.date);
+    if (unchanged) return [original, ...nextRuns(form, original, 2)];
+  }
+  return nextRuns(form, now, 3);
+}
 
 function emptyForm({ defaultProjectPath }) {
   return {
