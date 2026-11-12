@@ -41,6 +41,7 @@ import {
   canUseSharedResource,
   isReservedProjectName,
 } from '../lib/sharedResourceAccess';
+import { useTranslation } from '../../lib/i18n';
 
 // ─── Pin persistence (localStorage) ──────────────────────────────────────
 //
@@ -124,9 +125,10 @@ function sameServerField(a, b) {
 // "+ Schedule task" and the rest of the page-header CTAs. Keeps the
 // type, height, padding and accent-glow consistent across pages.
 function NewProjectButton({ onClick }) {
+  const { t } = useTranslation('projects');
   return (
     <Button variant="primary" className="proj-new-action" onClick={onClick}>
-      {Ico.plus(14)} New project
+      {Ico.plus(14)} {t('projectsView.newProject')}
     </Button>
   );
 }
@@ -137,26 +139,29 @@ const GRID_CLASS = 'px-8 pb-[60px]';
 const LIST_CLASS = 'mx-8 mb-[60px]';
 
 // Sort options for the projects collection. Kept here (and not in
-// the kit) because the choices are page-specific.
-const SORT_OPTIONS = [
-  { id: 'recent',       label: 'Recent' },
-  { id: 'name',         label: 'Name' },
-  { id: 'most-active',  label: 'Most active' },
-  { id: 'least-active', label: 'Least active' },
-];
+// the kit) because the choices are page-specific. Labels translate at render.
+function sortOptions(t) {
+  return [
+    { id: 'recent',       label: t('projectsView.sort.recent') },
+    { id: 'name',         label: t('projectsView.sort.name') },
+    { id: 'most-active',  label: t('projectsView.sort.mostActive') },
+    { id: 'least-active', label: t('projectsView.sort.leastActive') },
+  ];
+}
 
 function ProjectsCounts({ search, total, filtered, pinnedCount }) {
+  const { t } = useTranslation('projects');
   const filterActive = (search || '').trim().length > 0;
   const countText = filterActive
-    ? `${filtered} of ${total} projects`
-    : `${total} ${total === 1 ? 'project' : 'projects'}`;
+    ? t('projectsView.counts.filtered', { filtered, total })
+    : t('projectsView.counts.total', { count: total });
   return (
     <>
       {countText}
       {pinnedCount > 0 && (
         <>
           {' · '}
-          <span className="text-accent">{pinnedCount} pinned</span>
+          <span className="text-accent">{t('projectsView.counts.pinned', { count: pinnedCount })}</span>
         </>
       )}
     </>
@@ -166,58 +171,59 @@ function ProjectsCounts({ search, total, filtered, pinnedCount }) {
 // ─── Project menu (kebab popover) ────────────────────────────────────────
 
 function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletable = false, hideOpen = false, hidePin = false, onClose, onOpen, onRename, onTogglePin, onReveal, onDelete }) {
+  const { t } = useTranslation('projects');
   const canRename = !isReserved && canUseSharedResource(project, 'canRename');
   const directoryIsExternal = project?.capabilities?.directoryIsExternal === true;
   const canDelete = !isReserved && canUseSharedResource(project, 'canDelete');
   const items = [
     !hideOpen && {
       id: 'open',
-      label: 'Open',
+      label: t('projectsView.menu.open'),
       icon: Ico.folder(14),
       onClick: () => onOpen?.(project),
     },
     !hidePin && {
       id: 'pin',
-      label: pinned ? 'Unpin' : 'Pin',
+      label: pinned ? t('projectsView.menu.unpin') : t('projectsView.menu.pin'),
       icon: Ico.pin(14),
       onClick: () => onTogglePin?.(project, !pinned),
     },
     !isReserved && {
       id: 'rename',
-      label: 'Rename…',
+      label: t('projectsView.menu.rename'),
       icon: Ico.edit(14),
       disabled: !canRename,
       // A project pointed at a folder the user chose cannot be renamed
       // because renaming moves the directory, and that folder is theirs.
       // Saying "Admin or creator" there blames the wrong thing.
       hint: !canRename
-        ? (directoryIsExternal ? 'Chosen folder' : 'Admin or creator')
+        ? (directoryIsExternal ? t('projectsView.menu.chosenFolderHint') : t('projectsView.menu.adminOrCreatorHint'))
         : undefined,
       title: !canRename
         ? (directoryIsExternal
-            ? 'This project points at a folder you chose. Rename the folder itself instead.'
-            : 'You do not have permission to rename this project.')
+            ? t('projectsView.menu.chosenFolderRenameTitle')
+            : t('projectsView.noRenamePermission'))
         : undefined,
       onClick: () => onRename?.(project),
     },
     onReveal && {
       id: 'reveal',
-      label: 'Reveal in Finder',
+      label: t('projectsView.menu.revealInFinder'),
       icon: Ico.externalLink(14),
       onClick: () => onReveal?.(project),
     },
     { divider: true },
     {
       id: 'delete',
-      label: 'Delete…',
+      label: t('projectsView.menu.delete'),
       icon: Ico.trash(14),
       danger: true,
       disabled: undeletable || !canDelete,
-      hint: !undeletable && !canDelete ? 'Admin or creator' : undefined,
+      hint: !undeletable && !canDelete ? t('projectsView.menu.adminOrCreatorHint') : undefined,
       title: undeletable
-        ? "The General project can't be deleted — it's the orphan-fallback workspace."
+        ? t('projectsView.menu.generalUndeletable')
         : !canDelete
-          ? 'You do not have permission to delete this project.'
+          ? t('projectsView.menu.noDeletePermission')
           : undefined,
       onClick: () => onDelete?.(project),
     },
@@ -231,7 +237,7 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
       align="end"
       width={200}
       zIndex={60}
-      ariaLabel="Project actions"
+      ariaLabel={t('projectsView.menu.ariaLabel')}
       items={items}
     />
   );
@@ -290,6 +296,7 @@ function ProjectDetail({
   harnessClaudeCodeEnabled,
   showMobileContext = false,
 }) {
+  const { t } = useTranslation('projects');
   const projectTasks = (tasks || [])
     .filter((t) => t.projectName === project.name || t.projectPath === project.path)
     .sort((a, b) => timestampOfProject(b, []) - timestampOfProject(a, []) || 0);
@@ -330,11 +337,11 @@ function ProjectDetail({
       <div className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0">
         {/* Floating expand-rail button (mirrors ChatView). */}
         {!showMobileContext && (
-          <Tooltip content="Expand panel">
+          <Tooltip content={t('projectsView.expandPanel')}>
             <button
               type="button"
               onClick={() => setRailOpen(true)}
-              aria-label="Expand panel"
+              aria-label={t('projectsView.expandPanel')}
               style={{
                 // Dynamic: the resting/hover-mirroring transition delay differs
                 // by railOpen (none vs three/two stagger steps) — not a clean binary class swap.
@@ -355,7 +362,7 @@ function ProjectDetail({
             left-aligned with the detail below. */}
         <div className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-[14px] pr-7 pl-7 border-b border-t-0 border-x-0 border-solid border-line bg-transparent shrink-0 min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0 flex-[1_1_0] overflow-hidden">
-            <Crumb label="Projects" onClick={onShowAll} title="All projects" />
+            <Crumb label={t('projectsView.title')} onClick={onShowAll} title={t('projectsView.allProjects')} />
             <CrumbSep />
             <div
               {...hoverProps}
@@ -395,14 +402,14 @@ function ProjectDetail({
                   aria-live="polite"
                   className="text-xs text-ink-4 shrink-0"
                 >
-                  Deleting…
+                  {t('projectsView.deleting')}
                 </span>
               )}
               {!editing && !isReserved && !deleting && (
                 <button
                   ref={kebabRef}
                   type="button"
-                  aria-label="Project menu"
+                  aria-label={t('projectsView.projectMenu')}
                   onClick={(e) => {
                     e.stopPropagation();
                     const rect = kebabRef.current?.getBoundingClientRect();
@@ -434,7 +441,9 @@ function ProjectDetail({
         />
 
         <div data-scroll="true" className="min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
-          <div className="max-w-[720px] mx-auto flex flex-col gap-7">
+          {/* Composer caps itself at --composer-max-width (640px by default);
+              widen it to match the task list below. */}
+          <div className="max-w-[720px] mx-auto flex flex-col gap-7 [--composer-max-width:720px]">
             <div className="flex flex-col gap-2">
               <SharedResourceAttribution resource={project} />
               <Composer
@@ -466,7 +475,7 @@ function ProjectDetail({
                 codingModelDefault={codingModelDefault}
                 harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
                 sendsMeta
-                placeholder={`Start a new task in ${projectLabel(project)}…`}
+                placeholder={t('projectsView.composerPlaceholder', { project: projectLabel(project) })}
                 // Keyed on the id, not the name: renaming a project must not
                 // orphan the draft the user is in the middle of typing.
                 draftKey={`project:${project.id || project.name}`}
@@ -503,11 +512,11 @@ function ProjectDetail({
       {!showMobileContext && (
         <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_var(--dur-layout)_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
-            <Tooltip content="Collapse panel">
+            <Tooltip content={t('projectsView.collapsePanel')}>
               <button
                 type="button"
                 onClick={() => setRailOpen(false)}
-                aria-label="Collapse panel"
+                aria-label={t('projectsView.collapsePanel')}
                 className="project-detail-rail-toggle cursor-pointer bg-transparent hover:bg-surface-2 border-0 w-[26px] h-[26px] rounded-md inline-grid place-items-center text-ink-3 hover:text-ink [-webkit-app-region:no-drag]"
               >
                 {Ico.panelCollapseRight(16)}
@@ -582,11 +591,12 @@ export default function ProjectsView({
   // Forwarded to ProjectDetail's rail Scheduled Tasks card —
   // clicking a row routes to the schedule detail page.
   onOpenSchedule,
-  agentLabel = 'the agent',
+  agentLabel,
   onOpenSettings,
   codingModelDefault,
   harnessClaudeCodeEnabled,
 }) {
+  const { t } = useTranslation('projects');
   const { pinned, togglePin } = usePinnedProjects();
   // Phones always get the grid; see ViewToggle.
   const { view, setView, effectiveView, isMobile } = useCollectionView('anton:projects-view');
@@ -694,7 +704,7 @@ export default function ProjectsView({
       || (detailProject?.name === oldName ? detailProject : null);
     if (!sourceProject) return;
     if (!canUseSharedResource(sourceProject, 'canRename')) {
-      alert('You do not have permission to rename this project.');
+      alert(t('projectsView.noRenamePermission'));
       return;
     }
     const next = (rawNext || '').trim();
@@ -719,7 +729,7 @@ export default function ProjectsView({
       // App-level listener refetches projects on this event.
       window.dispatchEvent(new CustomEvent('anton:projects-changed'));
     } catch (e) {
-      alert(`Rename failed: ${e?.message || e}`);
+      alert(t('projectsView.renameFailed', { error: String(e?.message || e) }));
     }
   };
 
@@ -838,8 +848,8 @@ export default function ProjectsView({
     // `background: 'var(--bg)'`, which masked the field on this view.
     <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
-        title="Projects"
-        subtitle={`Workspaces ${agentLabel} uses to group conversations, memory, and outputs.`}
+        title={t('projectsView.title')}
+        subtitle={t('projectsView.subtitle', { agent: agentLabel ?? t('projectsView.theAgent') })}
         actions={<NewProjectButton onClick={handleNewProject} />}
         // Bake the breathing room into the header itself rather than a
         // sibling spacer. The previous 18px spacer div collapsed in
@@ -857,10 +867,10 @@ export default function ProjectsView({
               value={search}
               onChange={setSearch}
               inputRef={searchRef}
-              placeholder="Search projects"
+              placeholder={t('projectsView.searchPlaceholder')}
             />
           }
-          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+          sort={<SortPill value={sort} onChange={setSort} options={sortOptions(t)} />}
           view={<ViewToggle value={view} onValueChange={setView} />}
           counts={loading ? null : (
             <ProjectsCounts
@@ -884,10 +894,10 @@ export default function ProjectsView({
         skeletonClassName={effectiveView === 'grid' ? GRID_CLASS : LIST_CLASS}
         empty={{
           icon: Ico.folder(20),
-          title: 'No projects yet',
-          description: 'Create your first project to start grouping conversations and outputs.',
+          title: t('projectsView.empty.title'),
+          description: t('projectsView.empty.description'),
           // proj-new-action: hidden on phones, where the FAB is the create entry.
-          action: { label: 'Create your first project', onClick: handleNewProject, className: 'proj-new-action' },
+          action: { label: t('projectsView.empty.action'), onClick: handleNewProject, className: 'proj-new-action' },
           className: 'mx-8 mb-8',
         }}
       >

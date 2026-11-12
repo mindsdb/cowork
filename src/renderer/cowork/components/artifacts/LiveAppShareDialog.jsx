@@ -12,10 +12,11 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Field, Input, RadioGroup, Radio } from '../ui';
 import { fetchLiveAppShares, shareLiveApp, withdrawLiveAppShare } from '../../api';
 import { isEmailShaped } from '../../lib/emailAddress';
+import { useTranslation } from '../../../lib/i18n';
 import {
-  SHARED_WITH_YOU_LABEL,
+  sharedWithYouLabel,
   SHARE_WITH_EVERYONE,
-  SHARE_WITH_EVERYONE_LABEL,
+  shareWithEveryoneLabel,
   SHARE_WITH_ONE,
   shareAudienceLabel,
 } from '../../lib/liveAppSharing';
@@ -25,18 +26,15 @@ import {
  * copy is the app as it is when they duplicate it, later edits included, and
  * stopping a share leaves the copies already made.
  */
-const AUDIENCE_NOTE = {
-  [SHARE_WITH_ONE]: 'They see your email beside the app, and can duplicate it until you stop.',
-  [SHARE_WITH_EVERYONE]: 'Everyone on this stack, including people who join later, sees your email beside the app, '
-    + 'and can duplicate it until you stop.',
+const AUDIENCE_NOTE_KEY = {
+  [SHARE_WITH_ONE]: 'liveAppShare.audienceNote.one',
+  [SHARE_WITH_EVERYONE]: 'liveAppShare.audienceNote.everyone',
 };
-const COPY_NOTE = 'Each copy is the app as it is when they duplicate it, including changes you make before then, '
-  + 'and runs with its new owner\'s connections. Stopping keeps the copies already made. '
-  + 'Nobody else opens your running app.';
 
 const DONE_MESSAGE_ID = 'live-app-share-done';
 
 export function LiveAppShareDialog({ artifact, onClose }) {
+  const { t } = useTranslation('artifacts');
   const [audience, setAudience] = useState(SHARE_WITH_ONE);
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -85,7 +83,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
     fetchLiveAppShares({ projectId, slug })
       .then((list) => { if (!cancelled) { setShares(list); setSharesError(''); } })
       .catch(() => {
-        if (!cancelled) setSharesError("Couldn't load who this app is shared with. Close and reopen this dialog to try again.");
+        if (!cancelled) setSharesError(t('liveAppShare.loadSharesFailed'));
       });
     return () => { cancelled = true; };
   }, [projectId, slug]);
@@ -108,9 +106,9 @@ export function LiveAppShareDialog({ artifact, onClose }) {
         slug,
         ...(everyone ? { everyone: true } : { email: email.trim() }),
       });
-      setSharedWith(everyone ? SHARE_WITH_EVERYONE_LABEL : (share?.email || email.trim()));
+      setSharedWith(everyone ? shareWithEveryoneLabel() : (share?.email || email.trim()));
     } catch (e) {
-      setError(e?.message || "Couldn't let them duplicate this app.");
+      setError(e?.message || t('liveAppShare.shareFailed'));
     } finally {
       setBusy(false);
     }
@@ -123,7 +121,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
     const next = shares[at + 1] || shares[at - 1] || null;
     const drop = () => {
       setShares((prev) => prev.filter((s) => s.shareId !== share.shareId));
-      setAnnouncement(`${who} can no longer duplicate it.`);
+      setAnnouncement(t('liveAppShare.stopped', { who }));
       setFocusAfterStop({ shareId: next?.shareId || '' });
     };
     setWithdrawing(share.shareId);
@@ -135,7 +133,7 @@ export function LiveAppShareDialog({ artifact, onClose }) {
     } catch (e) {
       // A 404 means the share is already gone, which is what the owner asked for.
       if (e?.status === 404) drop();
-      else setError(e?.message || "Couldn't stop that.");
+      else setError(e?.message || t('liveAppShare.stopFailed'));
     } finally {
       setWithdrawing('');
     }
@@ -151,12 +149,12 @@ export function LiveAppShareDialog({ artifact, onClose }) {
       closeOnBackdrop={!locked}
       closeOnEsc={!locked}
     >
-      <ModalHeader id="live-app-share-title" title="Let others duplicate this app" subtitle={title} onClose={close} />
+      <ModalHeader id="live-app-share-title" title={t('liveAppShare.title')} subtitle={title} onClose={close} />
       <ModalBody>
         <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
         {sharedWith ? (
           <div id={DONE_MESSAGE_ID} className="s-body">
-            {`${sharedWith} can now duplicate it. They find it under "${SHARED_WITH_YOU_LABEL}" on their Live Artifacts page, with your email.`}
+            {t('liveAppShare.done', { who: sharedWith, section: sharedWithYouLabel() })}
           </div>
         ) : (
           <form
@@ -168,18 +166,18 @@ export function LiveAppShareDialog({ artifact, onClose }) {
               value={audience}
               onValueChange={(next) => { setAudience(next); setError(''); }}
               disabled={locked}
-              aria-label="Who can duplicate it"
+              aria-label={t('liveAppShare.whoCanDuplicate')}
               className="grid gap-2"
             >
               <Radio value={SHARE_WITH_ONE} variant="card" size="sm">
-                <span className="text-sm text-ink">One colleague</span>
+                <span className="text-sm text-ink">{t('liveAppShare.oneColleague')}</span>
               </Radio>
               <Radio value={SHARE_WITH_EVERYONE} variant="card" size="sm">
-                <span className="text-sm text-ink">{SHARE_WITH_EVERYONE_LABEL}</span>
+                <span className="text-sm text-ink">{shareWithEveryoneLabel()}</span>
               </Radio>
             </RadioGroup>
             {!everyone && (
-              <Field label="Colleague's email">
+              <Field label={t('liveAppShare.colleagueEmail')}>
                 <Input
                   type="email"
                   value={email}
@@ -193,8 +191,8 @@ export function LiveAppShareDialog({ artifact, onClose }) {
             {error && <Alert variant="danger">{error}</Alert>}
             {sharesError && <p className="m-0 text-xs text-ink-3">{sharesError}</p>}
             {shares.length > 0 && (
-              <section aria-label="Who can duplicate it" className="grid gap-1">
-                <h3 className="m-0 text-[11px] font-semibold text-ink-4">Who can duplicate it</h3>
+              <section aria-label={t('liveAppShare.whoCanDuplicate')} className="grid gap-1">
+                <h3 className="m-0 text-[11px] font-semibold text-ink-4">{t('liveAppShare.whoCanDuplicate')}</h3>
                 <ul className="m-0 p-0 list-none grid gap-1">
                   {shares.map((share) => {
                     const who = shareAudienceLabel(share);
@@ -206,11 +204,11 @@ export function LiveAppShareDialog({ artifact, onClose }) {
                           variant="subtle"
                           className="shrink-0"
                           data-share-id={share.shareId}
-                          aria-label={`Stop letting ${who} duplicate it`}
+                          aria-label={t('liveAppShare.stopAriaLabel', { who })}
                           disabled={locked}
                           onClick={() => stopSharing(share)}
                         >
-                          {withdrawing === share.shareId ? 'Stopping…' : 'Stop'}
+                          {withdrawing === share.shareId ? t('liveAppShare.stopping') : t('liveAppShare.stop')}
                         </Button>
                       </li>
                     );
@@ -219,19 +217,19 @@ export function LiveAppShareDialog({ artifact, onClose }) {
               </section>
             )}
             <div className="s-body" style={{ color: 'var(--ink-3)' }}>
-              {`${AUDIENCE_NOTE[audience]} ${COPY_NOTE}`}
+              {`${t(AUDIENCE_NOTE_KEY[audience])} ${t('liveAppShare.copyNote')}`}
             </div>
           </form>
         )}
       </ModalBody>
       <ModalFooter>
         {sharedWith ? (
-          <Button ref={doneRef} variant="primary" onClick={close} aria-describedby={DONE_MESSAGE_ID}>Done</Button>
+          <Button ref={doneRef} variant="primary" onClick={close} aria-describedby={DONE_MESSAGE_ID}>{t('common.done')}</Button>
         ) : (
           <>
-            <Button variant="subtle" onClick={close} disabled={locked}>Cancel</Button>
+            <Button variant="subtle" onClick={close} disabled={locked}>{t('common.cancel')}</Button>
             <Button variant="primary" onClick={submit} disabled={!canShare}>
-              {busy ? 'Allowing…' : 'Allow'}
+              {busy ? t('liveAppShare.allowing') : t('liveAppShare.allow')}
             </Button>
           </>
         )}

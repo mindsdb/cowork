@@ -1,0 +1,415 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "keep": "Keep",
+    "remove": "Remove",
+    "time": {
+      "justNow": "just now",
+      "minutesShort": "{count}m",
+      "hoursShort": "{count}h",
+      "daysShort": "{count}d"
+    },
+    "opensInBrowser": "Opens in your browser"
+  },
+  "ui": {
+    "actionBar": {
+      "moreActions": "More actions"
+    },
+    "toast": {
+      "dismiss": "Dismiss"
+    },
+    "modal": {
+      "close": "Close"
+    },
+    "select": {
+      "placeholder": "Select…",
+      "selected": "Selected: {label}"
+    },
+    "combobox": {
+      "placeholder": "Select",
+      "search": "Search",
+      "empty": "No results"
+    },
+    "field": {
+      "optional": "(optional)"
+    }
+  },
+  "rail": {
+    "context": {
+      "title": "Context",
+      "memoryDescriptions": {
+        "lessons": "What the agent has learned working here",
+        "rules": "Standing instructions the agent follows",
+        "profile": "Who you are and how you like to work"
+      },
+      "attachmentFallbackName": "Attachment",
+      "attachmentFallbackLower": "attachment",
+      "fileFallbackName": "file",
+      "taskUploadActionsAriaLabel": "Task upload actions",
+      "instructions": "Instructions",
+      "deleteFile": "Delete file",
+      "deleteFileAriaLabel": "Delete {name}",
+      "openNamedInDrive": "Open \"{name}\" in Google Drive",
+      "untitled": "untitled",
+      "openInDrive": "Open in Google Drive",
+      "openNamedInNotion": "Open \"{name}\" in Notion",
+      "openInNotion": "Open in Notion",
+      "removeFromProjectFiles": "Remove from project files",
+      "removeFromProjectFilesAriaLabel": "Remove {name} from project files",
+      "loadAttachmentsFailed": "Could not load attachments",
+      "uploadFailed": "Upload failed.",
+      "emptyMemories": "The agent learns as you work — memories will appear here.",
+      "dropToAdd": "Drop files to add to project",
+      "projectFiles": "Project files",
+      "addToProject": "Add files to this project",
+      "uploading": "Uploading…",
+      "attachFiles": "Attach files",
+      "connecting": "Connecting…",
+      "attachDriveFiles": "Attach Google Drive files",
+      "addDriveFilesFailed": "Could not add Google Drive files.",
+      "addFromSharePoint": "Add files from SharePoint",
+      "emptyProjectFiles": "Add files to give the agent context.",
+      "truncated": "This folder holds more files than the list can show, so some are missing here.",
+      "taskUploads": "Task uploads",
+      "attachToTask": "Attach files to this task",
+      "loadingAttachments": "Loading attachments…",
+      "emptyTaskUploads": "No files attached yet — click to add.",
+      "open": "Open",
+      "moveToProjectFiles": "Move to project files",
+      "moveFailed": "Could not move file.",
+      "projectMemory": "Project memory",
+      "globalMemory": "Global memory",
+      "projectMemorySubtitle": "Project · {name}",
+      "globalScope": "Global",
+      "emptyMemory": "(empty memory)",
+      "memoryPlaceholder": "Memory contents — what should the agent remember?",
+      "deleteFileTitle": "Delete \"{name}\"?",
+      "deleteFileMessage": "The file will be removed from the project working folder. This can't be undone.",
+      "deleteFileFailed": "Could not delete file.",
+      "removeDriveFileTitle": "Remove \"{name}\" from project files?",
+      "removeDriveFileMessage": "Cowork will no longer have access to this file. The file itself is not affected in Google Drive.",
+      "removeFileFailed": "Could not remove file.",
+      "deleteAttachmentMessage": "The file will be removed from this task's uploads. Future turns won't see it. This can't be undone.",
+      "deleteAttachmentFailed": "Could not delete attachment."
+    },
+    "progress": {
+      "title": "Progress"
+    },
+    "card": {
+      "collapse": "Collapse",
+      "expand": "Expand"
+    },
+    "showMore": {
+      "less": "Show less",
+      "more": "+ {count} more"
+    },
+    "scheduled": {
+      "title": "Scheduled Tasks",
+      "empty": "Nothing scheduled here yet."
+    },
+    "artifacts": {
+      "title": "Artifacts",
+      "noServableFile": "This artifact has no servable file yet.",
+      "openFailed": "Could not open file.",
+      "preview": "Preview",
+      "openInOs": "Open in OS",
+      "openInNewTab": "Open in new tab",
+      "download": "Download",
+      "deleteFailed": "Delete failed.",
+      "empty": "No artifacts yet — the agent will save dashboards, reports, and datasets here as it produces them.",
+      "otherInProject": "Other artifacts in this project",
+      "published": "published",
+      "actionsAriaLabel": "Artifact actions",
+      "deleteTitle": "Delete \"{name}\"?",
+      "deleteFallbackName": "artifact",
+      "deleteMessage": "The artifact will be permanently deleted, and sharing will stop first if it's currently shared. This can't be undone."
+    },
+    "shared": {
+      "loadFailed": "Couldn't load the apps you can duplicate.",
+      "duplicateFailed": "Couldn't duplicate this app.",
+      "duplicate": "Duplicate",
+      "duplicating": "Duplicating…",
+      "duplicated": "Duplicated",
+      "haveCopyAriaLabel": "You have a copy of {name}",
+      "haveCopyTitle": "You have a copy. Delete it to duplicate the app again.",
+      "duplicateAriaLabel": "Duplicate {name}",
+      "duplicatedToast": "Duplicated into this project."
+    }
+  },
+  "confirm": {
+    "title": "Are you sure?",
+    "confirm": "Confirm"
+  },
+  "taskMenu": {
+    "schedule": "Schedule",
+    "turnIntoSkill": "Turn into skill",
+    "moveToProject": "Move to project…",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "rename": "Rename",
+    "ariaLabel": "Task actions"
+  },
+  "themeModal": {
+    "title": "Display Settings",
+    "subtitle": "Theme and style — applied live",
+    "subtitleThemeOnly": "Theme — applied live",
+    "theme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "style": "Style",
+    "skins": {
+      "normal": "Normal",
+      "8bit": "8-Bit"
+    },
+    "setByOrg": {
+      "themeAndStyle": "Theme and style are set by your organization.",
+      "theme": "Theme is set by your organization.",
+      "style": "Style is set by your organization."
+    }
+  },
+  "comingSoon": {
+    "cloudTitle": "Coming soon to Cloud",
+    "unavailableTitle": "Feature unavailable",
+    "cloudBodyNamed": "{feature} isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
+    "cloudBody": "This feature isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
+    "unavailableBodyNamed": "{feature} isn’t available in this deployment.",
+    "unavailableBody": "This feature isn’t available in this deployment.",
+    "notNow": "Not now",
+    "download": "Download the app"
+  },
+  "loadStatus": {
+    "retry": "Retry",
+    "failed": "Couldn't load the {what}.",
+    "loading": "Loading {what}…"
+  },
+  "upToDate": "Up to date",
+  "usageBar": {
+    "hideAllowance": "Hide allowance",
+    "hide": "Hide"
+  },
+  "diagnostics": {
+    "copy": "Copy diagnostics",
+    "copied": "Copied",
+    "copyFailed": "Couldn't copy"
+  },
+  "appShell": {
+    "openSidebar": "Open sidebar"
+  },
+  "workspace": {
+    "label": "Workspace",
+    "archived": "That workspace has been archived. Pick another one.",
+    "switchFailed": "We could not switch workspace. Please try again.",
+    "manage": "Manage workspaces",
+    "triggerAriaLabel": "Workspace: {name}"
+  },
+  "workspaceMode": {
+    "code": "Code"
+  },
+  "search": {
+    "label": "Search {product}",
+    "ariaLabel": "Search",
+    "types": {
+      "task": "Tasks",
+      "project": "Projects",
+      "artifact": "Artifacts",
+      "attachment": "Attachments",
+      "schedule": "Schedules",
+      "pin": "Pins"
+    },
+    "recentTasks": "Recent tasks",
+    "failed": "Search failed.",
+    "searching": "Searching...",
+    "noResults": "No {product} results found.",
+    "hint": "Tasks, projects, artifacts, attachments, schedules, and pins are searchable.",
+    "toNavigate": "to navigate",
+    "toOpen": "to open",
+    "toClose": "to close"
+  },
+  "recents": {
+    "untitled": "Untitled",
+    "deleteTask": "Delete this task",
+    "searchPlaceholder": "Search recent tasks…",
+    "searchAriaLabel": "Search recent tasks",
+    "count": "{shown} of {total}",
+    "noMatch": "No tasks match.",
+    "empty": "No recent tasks yet.",
+    "noProject": "(no project)"
+  },
+  "serverHelp": {
+    "online": {
+      "title": "{agent} backend is running",
+      "subtitle": "Live on port {port}. The local Python server is responding to /health."
+    },
+    "starting": {
+      "title": "{agent} backend is starting…",
+      "subtitle": "Spawning the local Python server. This usually takes a few seconds — the modal will reflect the result automatically."
+    },
+    "stopping": {
+      "title": "{agent} backend is stopping…",
+      "subtitle": "Waiting for the local Python server to terminate."
+    },
+    "stopped": {
+      "title": "{agent} backend is stopped",
+      "subtitle": "You stopped the local Python server. Click \"Start backend\" below to bring it back up."
+    },
+    "failed": {
+      "title": "{agent} backend isn't running",
+      "subtitle": "The local Python server didn't start. Below is the most recent error and log tail captured from the process."
+    },
+    "port": "Port",
+    "exitCode": "Exit code",
+    "lastAttempt": "Last attempt",
+    "noError": "No specific start error was captured. Check the log tail below — the python process may have died after a successful start.",
+    "recentLog": "Recent log",
+    "noLog": "(no log captured yet)",
+    "actions": {
+      "start": "Start backend",
+      "starting": "Starting…",
+      "restart": "Restart backend",
+      "restarting": "Restarting…",
+      "stop": "Stop backend",
+      "stopping": "Stopping…"
+    }
+  },
+  "userMenu": {
+    "switchOrgFailed": "We could not change organization. Please try again.",
+    "changingOrg": "Changing organization",
+    "organization": "Organization",
+    "account": "Account",
+    "settings": "Settings",
+    "billing": "Billing & Usage",
+    "members": "Members",
+    "help": "Help & Feedback",
+    "manageOrg": "Manage organization",
+    "logout": "Logout",
+    "signingOut": "Signing out…"
+  },
+  "sidebar": {
+    "soon": "Soon",
+    "renameTask": "Rename task",
+    "runs": "{count, plural, one {# run} other {# runs}}",
+    "agentWorking": "{agent} is working on this task",
+    "active": "Active",
+    "taskMenu": "Task menu",
+    "scheduledTask": "Scheduled task",
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "newTask": "New task",
+    "newCodeTask": "New code task",
+    "nav": {
+      "projects": "Projects",
+      "scheduled": "Scheduled Tasks",
+      "artifacts": "Live Artifacts",
+      "connectedApps": "Connected Apps and Data",
+      "connectApps": "Connect Apps and Data",
+      "allTasks": "All tasks",
+      "connectors": "Connectors",
+      "skills": "Skills",
+      "memories": "Memories",
+      "skillsLibrary": "Skills library",
+      "compare": "Compare Models"
+    },
+    "agent": "Agent",
+    "pinned": "Pinned",
+    "viewAllTasks": "View all tasks",
+    "viewAll": "View all →",
+    "loadingTasks": "Loading tasks",
+    "loadFailed": "Couldn’t load your tasks.",
+    "noTasks": "No tasks yet",
+    "showMore": "Show more",
+    "update": {
+      "manualTooltip": "A new version of {product} is available — download the installer, then quit the app and {step}",
+      "manualTooltipVersion": "A new version of {product} is available ({version}) — download the installer, then quit the app and {step}",
+      "openToUpdate": "open it to update",
+      "dismiss": "Dismiss update notice"
+    },
+    "status": {
+      "details": "Backend status — click for details",
+      "backend": "backend ·",
+      "starting": "starting",
+      "stopping": "stopping",
+      "offline": "offline"
+    },
+    "settings": "Settings",
+    "openSettings": "Open Settings"
+  },
+  "mobile": {
+    "tasks": "Tasks",
+    "titles": {
+      "newTaskIn": "New task · {project}",
+      "conversation": "Conversation",
+      "scheduled": "Scheduled",
+      "connect": "Connect"
+    },
+    "closeMenu": "Close menu",
+    "openMenu": "Open menu",
+    "switchToLight": "Switch to light mode",
+    "switchToDark": "Switch to dark mode",
+    "inProject": "in {project}",
+    "newProject": "New project",
+    "closeCreateMenu": "Close create menu",
+    "createNew": "Create new",
+    "chat": "Chat",
+    "chatSubtitle": "Start or continue a conversation",
+    "noProjects": "No projects yet.",
+    "tapToStart": "Tap to start chatting",
+    "taskCount": "{count, plural, one {# task} other {# tasks}}",
+    "noScheduled": "No scheduled tasks.",
+    "schedule": "Schedule",
+    "noArtifacts": "No live artifacts.",
+    "viewAllArtifacts": "View all artifacts",
+    "total": "{count} total",
+    "noTasks": "No tasks yet.",
+    "untitledTask": "Untitled task",
+    "seeAllTasks": "See all tasks"
+  },
+  "dispatch": {
+    "qrAriaLabel": "Decorative pairing code",
+    "defaultAgent": "the agent",
+    "title": "Dispatch",
+    "heading": "Pair with the {product} Mobile app",
+    "body": "Use the mobile app to talk to {agent} while it works from your desktop. Scan the code to download it on your phone.",
+    "signedIn": "I'm signed in on my phone",
+    "comingSoon": "Coming soon",
+    "later": "Set up later"
+  },
+  "tasks": {
+    "sort": {
+      "recent": "Recent",
+      "name": "Name (A–Z)",
+      "project": "Project"
+    },
+    "allProjects": "All projects",
+    "subtitle": "Every conversation across every project. Sort, filter, and jump straight in.",
+    "searchPlaceholder": "Search tasks",
+    "countFiltered": "{shown} of {total} tasks",
+    "noMatch": "No tasks match these filters.",
+    "clearFilters": "Clear filters",
+    "emptyDescription": "Start a conversation from the home screen — every chat shows up here."
+  },
+  "home": {
+    "greetingFallback": "Let's knock something off your list",
+    "active": "Active",
+    "clearActive": "Clear active",
+    "connectProvider": {
+      "title": "Connect a provider to start chatting",
+      "operatorTitle": "Provider setup is required",
+      "body": "Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.",
+      "operatorBody": "Ask your operator to configure the model provider before starting a task.",
+      "startFree": "Start for free"
+    },
+    "handoffHint": "Edit this prompt, then send when you're ready."
+  },
+  "logout": {
+    "title": "Sign out of {product}?",
+    "messageWebMindsHub": "This signs you out of Cowork. You'll need to sign in again with MindsHub to keep using it.",
+    "messageWeb": "This signs you out of {product}. You'll need to sign in again to keep using it.",
+    "messageDesktop": "This ends your MindsHub session and removes the AI provider API keys saved in Cowork for this account, each organization before it's next used. Projects, files, connected apps and data connections, including their saved passwords, stay here. You'll need to sign in again to keep using Cowork.",
+    "paneSubtitle": "End your MindsHub session and remove the AI provider API keys saved in Cowork for this account. An organization that isn't open is cleared before it's next used. Projects, files, connected apps and data connections, including their saved passwords, stay on this device.",
+    "tooltip": "Sign out and remove saved API keys",
+    "confirm": "Sign out",
+    "failed": "Could not finish signing out. Please try again.",
+    "waitNote": "Still signing you out. You can close this — it finishes on its own."
+  }
+}

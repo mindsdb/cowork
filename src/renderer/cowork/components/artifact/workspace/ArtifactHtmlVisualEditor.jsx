@@ -9,6 +9,18 @@ import {
   HTML_VISUAL_EDITOR_SOURCE,
 } from './htmlVisualEditorRuntime';
 import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
+import { useTranslation } from '../../../../lib/i18n';
+
+/* The frame runtime names a selected element in English (or by the page's own
+   aria-label, which stays as written); these are its generic names. */
+const ELEMENT_LABEL_KEYS = {
+  Heading: 'heading',
+  Paragraph: 'paragraph',
+  'List item': 'listItem',
+  'Button label': 'buttonLabel',
+  Caption: 'caption',
+  Text: 'text',
+};
 
 // The token is a trust boundary: the parent accepts an editing postMessage only
 // when it matches, so the artifact's own scripts must not be able to guess it.
@@ -37,6 +49,7 @@ export function ArtifactHtmlVisualEditor({
   draftUrl,
   onTextSelection,
 }) {
+  const { t } = useTranslation('artifacts');
   const iframeRef = useRef(null);
   const textareaRef = useRef(null);
   const visualValueRef = useRef(value);
@@ -128,7 +141,7 @@ export function ArtifactHtmlVisualEditor({
           setError('');
           onChange(next.content);
         } catch (changeError) {
-          setError(changeError.message || 'This text could not be updated.');
+          setError(changeError.message || t('htmlEditor.updateFailed'));
         }
       } else if (message.type === 'save') {
         onSave?.(visualValueRef.current);
@@ -176,45 +189,49 @@ export function ArtifactHtmlVisualEditor({
   };
 
   const guidance = useMemo(() => {
-    if (showSource) return 'Advanced mode — changes still save as a revision';
+    if (showSource) return t('htmlEditor.advancedMode');
     if (error) return error;
-    if (selection) return `${selection.label || 'Text'} selected — type to change it`;
-    if (!ready) return 'Preparing editable text…';
-    if (editableCount === 0) return 'No directly editable text was found';
-    return 'Click any text in the artifact to edit it';
-  }, [editableCount, error, ready, selection, showSource]);
+    if (selection) {
+      const raw = selection.label || 'Text';
+      const label = Object.hasOwn(ELEMENT_LABEL_KEYS, raw) ? t(`htmlEditor.elements.${ELEMENT_LABEL_KEYS[raw]}`) : raw;
+      return t('htmlEditor.selected', { label });
+    }
+    if (!ready) return t('htmlEditor.preparing');
+    if (editableCount === 0) return t('htmlEditor.noEditable');
+    return t('htmlEditor.clickToEdit');
+  }, [editableCount, error, ready, selection, showSource, t]);
 
   return (
     <div className="artifact-html-visual-editor">
       <div className="artifact-html-edit-toolbar">
         <div className="artifact-html-edit-guidance" role="status">
           <span className={`artifact-html-edit-indicator${selection ? ' is-active' : ''}`} aria-hidden="true" />
-          <strong>{showSource ? 'HTML source' : 'Editing artifact'}</strong>
+          <strong>{showSource ? t('htmlEditor.htmlSource') : t('htmlEditor.editing')}</strong>
           <span className={error ? 'is-error' : ''}>{guidance}</span>
         </div>
         <div className="artifact-html-edit-actions">
           {selection && !showSource && (
             <button type="button" onClick={finishEditing}>
-              {Ico.check(14)} Done
+              {Ico.check(14)} {t('common.done')}
             </button>
           )}
           <button type="button" className="is-secondary" onClick={toggleSource}>
             {showSource ? Ico.edit(14) : Ico.code(14)}
-            {showSource ? 'Back to artifact' : 'Advanced'}
+            {showSource ? t('htmlEditor.back') : t('comparison.advanced')}
           </button>
         </div>
       </div>
 
       {showSource ? (
-        <section className="artifact-source-pane artifact-html-source-pane" aria-label="Artifact HTML source">
+        <section className="artifact-source-pane artifact-html-source-pane" aria-label={t('htmlEditor.sourceAriaLabel')}>
           <div className="artifact-pane-label section-label">
-            <span>HTML source</span>
+            <span>{t('htmlEditor.htmlSource')}</span>
             <code>{source.path}</code>
           </div>
           <textarea
             ref={textareaRef}
             className="artifact-source-textarea"
-            aria-label={`Edit ${source.path}`}
+            aria-label={t('sourceEditor.editAriaLabel', { path: source.path })}
             spellCheck={false}
             value={value}
             onChange={(event) => {
@@ -230,7 +247,7 @@ export function ArtifactHtmlVisualEditor({
             <iframe
               key={frame.key}
               ref={iframeRef}
-              title="Edit artifact on canvas"
+              title={t('htmlEditor.canvasTitle')}
               srcDoc={inlined.content}
               sandbox="allow-scripts"
               className="artifact-html-edit-iframe"

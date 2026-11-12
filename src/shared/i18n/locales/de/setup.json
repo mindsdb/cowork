@@ -1,0 +1,216 @@
+{
+  "install": {
+    "title": "WELT WIRD GELADEN",
+    "subtitle": "die Engine wird installiert",
+    "spriteTitle": "Installation läuft",
+    "preparing": "Installation wird vorbereitet…",
+    "steps": {
+      "xcode": "Xcode-Befehlszeilentools",
+      "git": "git prüfen / installieren",
+      "uv": "uv installieren (Python-Paketmanager)",
+      "coworkServer": "cowork-server installieren",
+      "verify": "Installation prüfen",
+      "server": "Server starten"
+    },
+    "failedAt": "Fehlgeschlagen bei:",
+    "tryAgain": "ERNEUT VERSUCHEN",
+    "consoleIdle": "> Startsequenz gestartet…",
+    "cancel": "INSTALLATION ABBRECHEN",
+    "cancelling": "WIRD ABGEBROCHEN…",
+    "cancelled": "Installation abgebrochen.",
+    "cancellingLog": "Installation wird abgebrochen...",
+    "doneSpriteTitle": "Einrichtung abgeschlossen",
+    "done": "EINRICHTUNG ABGESCHLOSSEN!",
+    "launching": "Ihr Arbeitsbereich wird gestartet…"
+  },
+  "legal": {
+    "terms": "Nutzungsbedingungen",
+    "privacy": "Datenschutzerklärung",
+    "termsHeading": "NUTZUNGSBEDINGUNGEN",
+    "privacyHeading": "DATENSCHUTZERKLÄRUNG",
+    "back": "← ZURÜCK"
+  },
+  "terms": {
+    "title": "LIZENZVEREINBARUNG",
+    "subtitle": "jedes Abenteuer beginnt mit einer Schriftrolle",
+    "spriteTitle": "Lizenz-Schriftrolle",
+    "intro": "Bevor es losgeht, lesen und akzeptieren Sie bitte unsere Richtlinien.",
+    "readTerms": "→ NUTZUNGSBEDINGUNGEN LESEN",
+    "readPrivacy": "→ DATENSCHUTZERKLÄRUNG LESEN",
+    "consentAriaLabel": "Ich habe die Nutzungsbedingungen und die Datenschutzerklärung von MindsDB gelesen und stimme ihnen zu",
+    "consentBefore": "Ich habe die folgenden Dokumente von MindsDB gelesen und stimme ihnen zu:",
+    "consentAnd": "und",
+    "consentAfter": "Mir ist bewusst, dass ich mit dem Aktivieren dieses Kästchens meine Zustimmung erteile, an diese Bedingungen gebunden zu sein.",
+    "accept": "AKZEPTIEREN & WEITER ▶",
+    "nextInstall": "Als Nächstes installieren wir die Systemkomponenten, die {product} benötigt.",
+    "takesAMinute": "Dauert etwa eine Minute."
+  },
+  "theme": {
+    "title": "WÄHLEN SIE IHRE ANZEIGE",
+    "subtitle": "Bildschirm wählen · jederzeit änderbar",
+    "groupAriaLabel": "Anzeige-Design auswählen",
+    "presets": {
+      "midnight": {
+        "name": "MITTERNACHT",
+        "sub": "STANDARD · DUNKEL",
+        "desc": "Der Standard-Look auf nachtblauen Flächen mit neoncyanfarbenem Akzent."
+      },
+      "daylight": {
+        "name": "TAGESLICHT",
+        "sub": "STANDARD · HELL",
+        "desc": "Der Standard-Look auf klaren weißen Flächen mit petrolfarbenem Akzent."
+      },
+      "gameboy": {
+        "name": "GAME BOY",
+        "sub": "8-BIT · HELL",
+        "desc": "Olivgrünes Papier, dunkelgrüne Tinte, Monospace-Schrift. Handheld-Nostalgie für helle Räume."
+      },
+      "arcade": {
+        "name": "ARCADE",
+        "sub": "8-BIT · DUNKEL",
+        "desc": "Phosphor-Cyan auf tiefem Marineblau, CRT-Scanlines, kräftige Monospace-Schrift. Der Spielhallen-Klassiker."
+      }
+    },
+    "custom": {
+      "name": "EIGENES ERSTELLEN",
+      "sub": "BENUTZERDEFINIERT",
+      "desc": "Gestalten Sie Ihr eigenes Design in der App: Akzent, Hintergrund, Ecken, Schrift und Scanlines. Einstellungen → Darstellung → Stil → Benutzerdefiniert."
+    },
+    "cardAriaLabel": "{name} — {sub}",
+    "customAriaLabel": "{name} — eigenes Design in der App gestalten",
+    "pick": "⏎ DRÜCKEN, UM {name} ZU WÄHLEN",
+    "customPrompt": "IN DER APP GESTALTEN – WÄHLEN SIE ZUERST EINE VORLAGE",
+    "back": "← zurück"
+  },
+  "launch": {
+    "tagline": "EINE APP. JEDER AGENT.",
+    "nowPlaying": "jetzt im Spiel:",
+    "nowLoading": "WIRD GELADEN…"
+  },
+  "onboarding": {
+    "errors": {
+      "saveFailed": "Ihre Einstellungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+      "saveToServerFailed": "Ihre Einstellungen konnten nicht auf dem Server gespeichert werden. Bitte versuchen Sie es erneut.",
+      "invalidKey": "Ungültiger API-Schlüssel",
+      "mindsKeySaveFailed": "Der MindsHub-Schlüssel konnte nicht gespeichert werden.",
+      "validationFailed": "Überprüfung fehlgeschlagen",
+      "signInTimedOut": "Zeitüberschreitung bei der Anmeldung: Der Browser hat die Autorisierung nicht abgeschlossen. Versuchen Sie es erneut und schließen Sie den Vorgang im zuletzt geöffneten Tab ab (schließen Sie ältere Tabs mit „You're authorized“), oder drücken Sie {reloadKey}, um neu zu laden.",
+      "signInCancelled": "Die Anmeldung wurde abgebrochen. Versuchen Sie es erneut, wann immer Sie bereit sind.",
+      "signInFailed": "Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+      "signUpFailed": "Registrierung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+      "mindsSetupFailed": "MindsHub-Einrichtung fehlgeschlagen: {reason}",
+      "unexpected": "Unerwarteter Fehler. Bitte versuchen Sie es erneut.",
+      "mindsSetupFailedRetry": "MindsHub konnte nicht eingerichtet werden. Bitte versuchen Sie es erneut."
+    },
+    "welcome": {
+      "title": "Willkommen",
+      "subtitle": "alles wird vorbereitet"
+    },
+    "ready": {
+      "subtitle": "alles startklar",
+      "body": "Ihr Arbeitsbereich ist bereit. Geben Sie dem Agent eine Aufgabe: Er erledigt die Arbeit und liefert Ihnen die Ergebnisse.",
+      "desktop": "Cowork gibt es auch für den Desktop.",
+      "getDesktop": "Desktop-App herunterladen"
+    },
+    "continue": "Weiter",
+    "agreePrefix": "Indem Sie fortfahren, akzeptieren Sie unsere",
+    "agreeAnd": "und unsere",
+    "pickOrg": {
+      "title": "Organisation auswählen",
+      "subtitle": "wer Ihre Nutzung bezahlt",
+      "body": "Sie gehören mehreren Organisationen an. Wählen Sie die Organisation, in der dieser Computer arbeiten soll: Ihr Guthaben deckt Ihre Nutzung, und ihre Administratoren können den Zugriff dieses Computers sehen und widerrufen. Sie können dies später im Kontomenü ändern."
+    },
+    "success": {
+      "title": "Alles bereit",
+      "subtitle": "Sie sind angemeldet",
+      "heading": "Alles startklar!",
+      "workingIn": "Aktiv in",
+      "readyToGo": "Bereit"
+    },
+    "validating": {
+      "spriteTitle": "Wird überprüft",
+      "label": "VERBINDUNG WIRD GETESTET…"
+    },
+    "signupWait": {
+      "spriteTitle": "Warten auf Registrierung",
+      "heading": "SCHLIESSEN SIE DIE REGISTRIERUNG IM BROWSER AB",
+      "body": "Erstellen Sie Ihr Konto und öffnen Sie dann die Bestätigungs-E-Mail, die wir Ihnen senden. Ein Klick auf den Link meldet Sie hier automatisch an.",
+      "cancel": "Abbrechen"
+    },
+    "byok": {
+      "title": "Eigenen Schlüssel verwenden",
+      "subtitle": "LLM-Anbieter hinzufügen, um fortzufahren",
+      "skippedIntro": "Wählen Sie einen LLM-Anbieter. MindsHub können Sie später unter Einstellungen → Anbieter verbinden (erforderlich, um im Web zu teilen).",
+      "noCreditsIntro": "Ihr MindsHub-Konto hat noch kein LLM-Guthaben. Laden Sie Guthaben auf, um verwaltete Modelle zu nutzen, oder verbinden Sie unten Ihren eigenen Anbieter.",
+      "back": "← zurück zu den Kontooptionen",
+      "selectProvider": "Anbieter auswählen",
+      "custom": "Benutzerdefiniert",
+      "baseUrl": "Basis-URL",
+      "baseUrlHint": "Ollama, vLLM, Together, Groq, LM Studio usw.",
+      "model": "Modell",
+      "customModel": "Benutzerdefiniert...",
+      "modelIdPlaceholder": "Modell-ID eingeben...",
+      "modelNamePlaceholder": "Modellnamen eingeben...",
+      "keyLabel": {
+        "anthropic": "Anthropic-API-Schlüssel",
+        "gemini": "Google-AI-API-Schlüssel",
+        "custom": "API-Schlüssel (optional)",
+        "openai": "OpenAI-API-Schlüssel"
+      },
+      "customKeyPlaceholder": "Leer lassen, falls nicht nötig",
+      "connect": "Verbinden"
+    },
+    "minds": {
+      "title": "Los geht’s",
+      "subtitle": "kostenloses Konto erstellen oder anmelden, um fortzufahren",
+      "managedBy": "VERWALTET VON MINDSDB",
+      "benefits": {
+        "routing": "Intelligentes Modell-Routing",
+        "connectors": "Sichere Daten-Connectors",
+        "dashboards": "Dashboards teilen"
+      },
+      "oneMoment": "Einen Moment…",
+      "createAccount": "Kostenloses Konto erstellen",
+      "signIn": "Anmelden",
+      "apiKeyLabel": "MindsHub-API-Schlüssel",
+      "connecting": "Verbindung wird hergestellt…",
+      "connect": "Verbinden",
+      "noAccount": "Kein Konto?",
+      "createOne": "Kostenlos erstellen →",
+      "verifyBefore": "E-Mail-Adresse bestätigt? Nur noch ein Klick auf",
+      "verifyAfter": "und fertig. Eine erneute Registrierung ist nicht nötig.",
+      "continueWithout": "Ohne Konto fortfahren →"
+    }
+  },
+  "checklist": {
+    "title": "Cowork kennenlernen",
+    "closeAriaLabel": "Checkliste schließen",
+    "close": "Schließen",
+    "startFailed": "Der Chat konnte nicht gestartet werden. Bitte versuchen Sie es erneut.",
+    "completeHeading": "Sie kennen jetzt die Grundlagen!",
+    "steps": {
+      "bring-your-work": {
+        "title": "Mit Ihrer eigenen Arbeit beginnen",
+        "description": "Erzählen Sie Cowork, woran Sie arbeiten, und geben Sie ihm eine Datei oder Notizen."
+      },
+      "customize-role": {
+        "title": "Cowork an Ihre Rolle anpassen",
+        "description": "Fügen Sie fertige Tools und Workflows hinzu."
+      },
+      "connect-app": {
+        "title": "App verbinden",
+        "description": "Verknüpfen Sie Google Drive, damit Cowork mit Ihren Dateien arbeiten kann."
+      },
+      "see-it-work": {
+        "title": "Beispiel ausprobieren",
+        "description": "Wählen Sie eines auf der Startseite und sehen Sie zu, wie es entsteht."
+      }
+    }
+  },
+  "firstArtifactTip": {
+    "ariaLabel": "Ihr erstes Live-Artefakt",
+    "body": "Ihr erstes Live-Artefakt ist fertig und befindet sich hier. Öffnen Sie es jederzeit, oder veröffentlichen Sie es, um eine Live-URL zu teilen.",
+    "gotIt": "Verstanden",
+    "showMe": "Zeigen"
+  }
+}

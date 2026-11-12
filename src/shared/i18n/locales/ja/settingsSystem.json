@@ -1,0 +1,210 @@
+{
+  "updates": {
+    "backendVersion": {
+      "loading": "読み込み中…",
+      "unavailable": "取得できません"
+    },
+    "currentVersion": {
+      "title": "現在のバージョン",
+      "subtitle": "現在実行中のバージョンです。サーバーとUIのアップデートは起動時に自動的に適用されます。内部コンポーネントは詳細に表示されます。",
+      "releaseWeek": "リリース週：{range}",
+      "outOfSyncHint": "内部コンポーネントの日付に{days}日の開きがあり、更新が遅れているコンポーネントがあります。詳細をご確認ください。",
+      "outOfSync": "⚠ 不一致",
+      "built": "ビルド日：{date}",
+      "appShell": "デスクトップアプリ",
+      "tooOldHint": "サポート対象：{minVersion}以降、かつ最新のアプリ（{latestVersion}）から{days}日以内のバージョン。",
+      "tooOld": "⚠ 古すぎます",
+      "osCappedHint": "最新のアプリにはmacOS {minMacos}以降が必要なため、このアプリは今後アップデートされません。",
+      "osCapped": "⚠ macOS {macos}ではアップデート不可",
+      "tooOldAlert": "このアプリは、このバージョンの{product}には古すぎます。アプリが{version}にアップデートされるまで、一部の機能は表示されません。下の「ソフトウェアアップデート」を使用してください。",
+      "showDetails": "詳細",
+      "hideDetails": "詳細を隠す",
+      "copy": "コピー",
+      "copied": "コピーしました",
+      "copyFailed": "コピーできませんでした。上の詳細を選択して手動でコピーしてください"
+    },
+    "software": {
+      "title": "ソフトウェアアップデート",
+      "subtitle": "UIとサーバーのアップデートは、アプリの再起動時に自動的に適用されます。新しいバージョンのアプリはバックグラウンドでダウンロードされ、次回の起動時にインストールされます。",
+      "manualAfterFailure": "インストーラを手動でダウンロードすることもできます。",
+      "installerDownloading": "インストーラをダウンロード中です。完了したら{product}を終了し、インストーラを開いてアップデートを完了してください。",
+      "installerDownloadingDeb": "インストーラをダウンロード中です。完了したら{product}を終了し、{step}してください。",
+      "downloadInstallerHint": "インストーラをダウンロードしてから{product}を終了し、インストーラを開いてアップデートを完了してください。",
+      "downloadInstallerHintDeb": "インストーラをダウンロードしてから{product}を終了し、{step}してください。",
+      "offline": "確認できませんでした。オフラインのようです。",
+      "checkFailed": "アップデートを確認できませんでした。もう一度お試しください。",
+      "upToDate": "最新の状態です。",
+      "serverPart": "サーバー → {version}",
+      "agentPart": "エージェント → {version}",
+      "uiPart": "UI → {version}",
+      "newVersion": "新しいバージョン",
+      "checking": "確認中…",
+      "check": "アップデートを確認",
+      "updateReady": "アップデートの準備ができました",
+      "restartToApply": "適用するにはアプリを再起動してください。",
+      "restartToApplyWith": "適用するにはアプリを再起動してください（{changes}）。",
+      "restarting": "再起動中…",
+      "tryAgain": "再試行",
+      "restartNow": "今すぐ再起動",
+      "auto": {
+        "checking": "アプリのアップデートを確認中…",
+        "available": "新しいバージョンのアプリがあります",
+        "downloading": "アプリのアップデートをダウンロード中…",
+        "downloadingPercent": "アプリのアップデートをダウンロード中（{percent}%）",
+        "ready": "アプリのアップデートの準備ができました",
+        "installing": "アプリのアップデートをインストール中…",
+        "failed": "アプリをアップデートできませんでした",
+        "readyHint": "ダウンロードしたアップデートのインストールを完了するには、{product}を再起動してください。",
+        "failedHint": "自動アップデートを完了できませんでした。現在のバージョンは引き続き使用できます。",
+        "availableManualHint": "準備ができたらダウンロードしてください。",
+        "availableHint": "アップデートをダウンロードできます。",
+        "workingHint": "{product}がアップデートを準備している間も、作業を続けられます。",
+        "download": "アップデートをダウンロード",
+        "retry": "再試行"
+      },
+      "newAppVersion": "新しいバージョンのアプリ：{version}",
+      "downloadAgain": "再ダウンロード",
+      "downloadInstaller": "インストーラをダウンロード",
+      "applyFailed": "アップデートを適用できませんでした。もう一度お試しください。"
+    }
+  },
+  "backend": {
+    "web": {
+      "title": "バックエンドはサーバー側で管理されています",
+      "body": "Pythonバックエンドはサーバー上で動作しているため、この画面からは操作できません。"
+    },
+    "status": {
+      "online": {
+        "title": "MindsHubバックエンドは実行中です",
+        "subtitle": "ローカルのPythonサーバーが/healthに応答しています。"
+      },
+      "starting": {
+        "title": "MindsHubバックエンドを起動中…",
+        "subtitle": "ローカルのPythonサーバーを起動しています。通常は数秒で完了します。"
+      },
+      "stopping": {
+        "title": "MindsHubバックエンドを停止中…",
+        "subtitle": "ローカルのPythonサーバーの終了を待っています。"
+      },
+      "stopped": {
+        "title": "MindsHubバックエンドは停止しています",
+        "subtitle": "ローカルのPythonサーバーを停止しました。再開するには、下の「バックエンドを起動」をクリックしてください。"
+      },
+      "failed": {
+        "title": "MindsHubバックエンドが実行されていません",
+        "subtitle": "ローカルのPythonサーバーを起動できませんでした。直近のエラーとログの末尾を下に表示しています。"
+      }
+    },
+    "refreshTooltip": "診断情報を更新",
+    "refresh": "更新",
+    "stopping": "停止中…",
+    "stop": "バックエンドを停止",
+    "starting": "起動中…",
+    "restarting": "再起動中…",
+    "start": "バックエンドを起動",
+    "restart": "バックエンドを再起動",
+    "statusHeading": "ステータス",
+    "port": "ポート",
+    "exit": "終了コード",
+    "started": "起動日時",
+    "noStartError": "起動時のエラーは記録されていません。ログの末尾を確認してください。起動後にプロセスが終了した可能性があります。",
+    "log": "ログ",
+    "noLog": "（ログはまだありません）"
+  },
+  "account": {
+    "username": "ユーザー名",
+    "organization": "組織",
+    "signIn": {
+      "title": "クラウド機能を有効にする",
+      "subtitle": "MindsHubにサインインすると、すべてのモデル、クラウドでの実行、公開機能を1か所で利用できます。",
+      "features": {
+        "router": {
+          "label": "シームレスなモデルルーター",
+          "desc": "Claude、GPT、DeepSeek、Kimiなど、すべてのモデルを1か所で最も簡単に利用できます。"
+        },
+        "remote": {
+          "label": "リモートタスク",
+          "desc": "コードや長時間のタスクを、ノートパソコンではなく管理されたインフラ上で実行します。"
+        },
+        "share": {
+          "label": "共有と共同作業",
+          "desc": "ダッシュボード、レポート、アーティファクトを共有し、一緒に作業できます。"
+        },
+        "unified": {
+          "label": "統合アカウント",
+          "desc": "ログインも請求も1つにまとまり、プロバイダごとにAPIキーを管理する必要はありません。"
+        }
+      },
+      "comingSoon": "近日公開",
+      "error": "サインインを完了できませんでした：{error}",
+      "button": "MindsHubにサインイン / 登録"
+    },
+    "cancel": "キャンセル",
+    "signingOut": "サインアウト中…",
+    "signOut": "サインアウト",
+    "web": {
+      "title": "MindsHubで管理されています",
+      "body": "Web版では、アカウントの管理はMindsHubで行います。"
+    }
+  },
+  "usage": {
+    "actions": {
+      "viewUsage": "使用量を表示",
+      "addFunds": "残高を追加",
+      "setUpAutoTopUp": "自動チャージを設定",
+      "manageAutoTopUp": "自動チャージを管理",
+      "updatePaymentMethod": "支払い方法を更新"
+    },
+    "free": {
+      "title": "Airの無料枠",
+      "badge": "MindsHub Airのみ",
+      "resetsAt": "{time}にリセット",
+      "unlimited": "このアカウントは無制限です。",
+      "used": "無料枠の{percent}を使用済み",
+      "left": "残り{percent}",
+      "meterLabel": "Airの無料枠の使用量",
+      "usedUpUntil": "使い切りました。{time}に補充されるまで、MindsHub Airの料金は残高から支払われます。",
+      "usedUp": "使い切りました。補充されるまで、MindsHub Airの料金は残高から支払われます。",
+      "afterUntil": "使い切った後は、{time}に補充されるまでMindsHub Airは残高を使用します。",
+      "after": "使い切った後は、MindsHub Airは残高を使用します。"
+    },
+    "autoTopUp": {
+      "off": "自動チャージはオフです。残高が少なくなってもタスクを継続できるよう、オンにしてください。",
+      "rule": "残高が{floor}を下回ると、{target}までチャージします。",
+      "on": "オン。",
+      "paymentFailed": "自動チャージに失敗しました：カードに請求できませんでした。再開するには支払い方法を更新してください。",
+      "capReached": "{rule}今月の上限を超えないよう一時停止しています。",
+      "pendingAction": "{rule}直近の請求について銀行の確認を待っています。",
+      "badgeOn": "自動チャージ：オン",
+      "badgeFailed": "自動チャージ失敗",
+      "badgePaused": "自動チャージ一時停止中"
+    },
+    "low": {
+      "off": "残高が少なくなっています。タスクを継続するには、残高を追加するか自動チャージをオンにしてください。",
+      "ok": "残高が少なくなっています。自動チャージで補充されます。",
+      "pending": "残高が少なくなっています。自動チャージは銀行の確認を待っています。",
+      "other": "残高が少なくなっています。タスクを継続するには残高を追加してください。"
+    },
+    "balance": {
+      "title": "残高",
+      "empty": "残高がありません。残高を追加するまで、有料モデルは実行できません。",
+      "usedBy": "有料モデルと、無料トークンを使い切った後のMindsHub Airで使用されます。",
+      "spentRange": "のクレジットを使用（{start}〜{end}）",
+      "spentDate": "のクレジットを使用（{date}）",
+      "spentThisPeriod": "のクレジットを今期に使用",
+      "notOwner": "残高の追加や自動チャージの変更は、組織の請求担当オーナーのみが行えます。"
+    },
+    "signIn": {
+      "title": "使用量を表示するにはサインインしてください",
+      "body": "MindsHubにサインインすると、Airの無料枠と残高がここに表示されます。",
+      "goToAccount": "アカウントへ移動"
+    },
+    "loading": "使用量を読み込み中…",
+    "error": {
+      "title": "使用量を読み込めませんでした",
+      "body": "MindsHubから応答がありません。もう一度お試しいただくか、コンソールで使用量をご確認ください。",
+      "tryAgain": "再試行"
+    },
+    "empty": "このアカウントにはまだ表示できる使用量がありません。"
+  }
+}

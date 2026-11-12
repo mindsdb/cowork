@@ -1,6 +1,8 @@
 // Shared markdown helpers. Currently just chart-intent parsing.
 // Ported from mdb-ai/src/components/Message/utils.js.
 
+import i18n from '../../../lib/i18n';
+
 export const CHART_TYPES = ['bar', 'line', 'pie', 'scatter'];
 
 /**
@@ -10,12 +12,12 @@ export const CHART_TYPES = ['bar', 'line', 'pie', 'scatter'];
 export function parseChartIntent(text) {
   try {
     const intent = JSON.parse(text);
-    if (!intent.type) return { error: 'Missing chart type' };
+    if (!intent.type) return { error: i18n.t('markdown.chart.missingType', { ns: 'chat' }) };
     if (!CHART_TYPES.includes(intent.type)) {
-      return { error: `Unsupported chart type: "${intent.type}". Supported: ${CHART_TYPES.join(', ')}.` };
+      return { error: i18n.t('markdown.chart.unsupportedType', { ns: 'chat', type: intent.type, supported: CHART_TYPES.join(', ') }) };
     }
     return intent;
   } catch (e) {
-    return { error: 'Invalid JSON in chart specification' };
+    return { error: i18n.t('markdown.chart.invalidJson', { ns: 'chat' }) };
   }
 }

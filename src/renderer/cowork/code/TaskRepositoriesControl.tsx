@@ -9,6 +9,7 @@ import {
   type TaskRepositorySetup,
 } from './repositorySetupModels';
 import { TaskRepositoryDrawer } from './TaskRepositoryDrawer';
+import { useTranslation } from '../../lib/i18n';
 
 export function TaskRepositoriesControl({
   projectId,
@@ -31,6 +32,7 @@ export function TaskRepositoriesControl({
   resourceStates?: ProjectResourceState[];
   computers?: CodeComputer[];
 }) {
+  const { t } = useTranslation('code');
   const [open, setOpen] = useState(false);
   const [statuses, setStatuses] = useState<RepositoryStatus[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,7 +53,7 @@ export function TaskRepositoriesControl({
       .catch((reason) => {
         if (active)
           setError(
-            reason instanceof Error ? reason.message : 'Could not check repositories. Refresh to try again.',
+            reason instanceof Error ? reason.message : t('taskRepositories.checkFailed'),
           );
       })
       .finally(() => {
@@ -69,7 +71,7 @@ export function TaskRepositoriesControl({
         variant="subtle"
         size="sm"
         className="code-repositories-launcher"
-        aria-label="Repositories and folders"
+        aria-label={t('taskRepositories.ariaLabel')}
         aria-haspopup="dialog"
         aria-expanded={open}
         disabled={disabled}
@@ -79,11 +81,9 @@ export function TaskRepositoriesControl({
         }}
       >
         <Icon of={Folder} size={14} />
-        <span>
-          {selectedIds.length} {selectedIds.length === 1 ? 'resource' : 'resources'}
-        </span>
+        <span>{t('taskRepositories.resources', { count: selectedIds.length })}</span>
         {hasChanges && (
-          <Icon of={AlertCircle} size={14} className="code-repositories-launcher__warning" aria-label="Local changes" />
+          <Icon of={AlertCircle} size={14} className="code-repositories-launcher__warning" aria-label={t('taskRepositories.localChanges')} />
         )}
         <Icon of={ChevronDown} size={12} />
       </Button>
