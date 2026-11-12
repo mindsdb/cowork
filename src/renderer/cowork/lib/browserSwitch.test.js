@@ -10,6 +10,11 @@ describe('showsBrowserSwitch', () => {
   ])('on in Settings %s, offered here %s: the + menu shows the switch %s', (browserOnInSettings, browseAvailable, shown) => {
     expect(showsBrowserSwitch({ browserOnInSettings, browseAvailable })).toBe(shown);
   });
+
+  it('hides it on the web where MindsHub is not the LLM provider, whatever the server answers', () => {
+    expect(showsBrowserSwitch({ browserOnInSettings: true, browseAvailable: true, webWithoutMindsHub: true })).toBe(false);
+    expect(showsBrowserSwitch({ browserOnInSettings: true, browseAvailable: true, webWithoutMindsHub: false })).toBe(true);
+  });
 });
 
 describe('newTaskBrowserOff', () => {

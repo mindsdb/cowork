@@ -2063,6 +2063,24 @@ export async function testProviders(providers) {
   }
 }
 
+/**
+ * The organization's own decision model, tested with one minimal decision:
+ * the endpoint and key typed in Settings, or the stored ones where left out
+ * (a key of '***' is the stored one). cowork-server only lets an
+ * organization admin (anyone on a desktop) ask, and sends the stored key
+ * only to the stored endpoint.
+ *
+ * @param {{ url?: string, apiKey?: string, model?: string }} target
+ * @returns {Promise<{ ok: boolean, error: string | null, ms?: number }>}
+ */
+export async function testDecisionModel({ url, apiKey, model } = {}) {
+  return req('/settings/test-decision-model', {
+    method: 'POST',
+    body: JSON.stringify({ url: url || null, apiKey: apiKey || null, model: model || null }),
+    timeoutMs: 20_000,
+  });
+}
+
 export async function revealSettingKey(name) {
   // `/settings/reveal-key` returns UNMASKED provider secrets and is
   // loopback-only server-side (`require_local`); on hosted the browser
@@ -3033,10 +3051,16 @@ export async function duplicateLiveApp({ shareId, projectId }) {
  * with `status: 'organization_off'`. On the desktop it means the app's own
  * browser has registered with the local server.
  *
+ * `decisions_model` says what picks the browser's steps: Jev on MindsHub, a
+ * decision model of the organization's own, or nothing (null), and then the
+ * browser doesn't run. A server that predates it sends neither field.
+ *
  * @typedef {Object} BrowseStatus
- * @property {boolean} enabled  The person's own switch (Settings), on by default.
+ * @property {boolean} enabled  The person's own switch (Settings), read as off without a decisions model.
  * @property {boolean} available
  * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled' | 'organization_off'} status
+ * @property {'mindshub' | 'own' | null} [decisions_model]
+ * @property {boolean} [can_set_decisions_model]  Whether the caller may set one up: an organization admin, or anyone on a desktop.
  */
 
 /**

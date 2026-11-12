@@ -7,13 +7,17 @@
 /**
  * Whether the + menu shows its Browser switch: on in Settings, and offered
  * here. Off in Settings, no task gets the browser, so there is nothing to
- * switch; where it isn't offered (a self-hosted stack), neither.
+ * switch; where it isn't offered (a self-hosted stack, no decisions model to
+ * pick its steps), neither. On the web the browser runs in MindsDB's cloud,
+ * which takes only a MindsHub credential, so it is offered only where
+ * MindsHub is the LLM provider (`webWithoutMindsHub` false), whatever an
+ * older server answers.
  *
- * @param {{ browserOnInSettings: boolean, browseAvailable: boolean }} gates
+ * @param {{ browserOnInSettings: boolean, browseAvailable: boolean, webWithoutMindsHub?: boolean }} gates
  * @returns {boolean}
  */
-export function showsBrowserSwitch({ browserOnInSettings, browseAvailable }) {
-  return browserOnInSettings && browseAvailable;
+export function showsBrowserSwitch({ browserOnInSettings, browseAvailable, webWithoutMindsHub = false }) {
+  return browserOnInSettings && browseAvailable && !webWithoutMindsHub;
 }
 
 /**

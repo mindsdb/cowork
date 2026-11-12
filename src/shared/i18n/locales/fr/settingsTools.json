@@ -78,7 +78,17 @@
     "approveStepsHelp": "Activé : {agent} attend votre accord avant une étape qui engage quelque chose, comme un achat, un message ou un formulaire. Désactivé : {agent} continue.",
     "onlyWhenNeededTitle": "N'afficher le navigateur que lorsque j'en ai besoin",
     "onlyWhenNeededHelp": "Désactivez cette option pour toujours voir le navigateur et regarder {agent} naviguer. Amusant pour certains, fastidieux pour d'autres.",
-    "onlyWhenNeededLearn": "À propos de l'affichage du navigateur uniquement en cas de besoin"
+    "onlyWhenNeededLearn": "À propos de l'affichage du navigateur uniquement en cas de besoin",
+    "decisionsAskAdmin": "Demandez à votre administrateur de configurer un modèle de décision pour utiliser le navigateur.",
+    "decisionsSetUp": "Pour choisir ses étapes rapidement, {agent} a besoin d'un modèle de décision. Ajoutez son endpoint et sa clé API, puis testez-le.",
+    "decisionsRemoved": "Désactivé : il n'y a plus de modèle de décision.",
+    "decisionsUrl": "Endpoint du modèle de décision",
+    "decisionsKey": "Clé API",
+    "decisionsKeySaved": "Enregistrée. Saisissez-en une autre pour la remplacer.",
+    "decisionsTest": "Tester et activer",
+    "decisionsTesting": "Test en cours…",
+    "decisionsFailed": "Le modèle de décision n'a pas répondu comme prévu ({error}). Vérifiez l'endpoint et la clé.",
+    "decisionsUntested": "Impossible de tester le modèle de décision. Réessayez."
   },
   "codingAgent": {
     "loadFailed": "Impossible de charger les options de l’agent de code.",

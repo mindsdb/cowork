@@ -6,8 +6,10 @@ import { Switch } from '../../components/ui/Switch';
 import { Tooltip } from '../../components/ui/Tooltip';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
-import { signOutOfBrowserSites } from '../../api';
-import { readBrowseStatus } from '../../lib/browseStatus';
+import { Field, Input } from '../../components/ui';
+import { signOutOfBrowserSites, testDecisionModel } from '../../api';
+import { hasDecisionsModel, readBrowseStatus } from '../../lib/browseStatus';
+import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
 import { host, onInAppBrowserRegistered } from '../../../platform/host';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
@@ -29,8 +31,20 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    registration. A focus or a visible tab while a read is still out waits for
    that read, so its time limit still passes.
 
-   One switch, on by default, saved with the rest of the form. Each task can
+   One switch, off by default, saved with the rest of the form. Each task can
    still switch the browser off from the composer's + menu.
+
+   The browser runs only with a decisions model to pick its steps (the
+   status's `decisions_model`): Jev on MindsHub, or a decision model of the
+   organization's own. Without one the switch reads as off, even when it was
+   saved on and the model was removed later. Whoever may set one up (the
+   status's `can_set_decisions_model`: an organization admin, or anyone on a
+   desktop) turns the switch on to see the endpoint and API key fields, the
+   organization's own decision_model_url and decision_model_api_key; the
+   switch turns on once a test decision answers, and the fields save with the
+   form. Anyone else reads a note to ask their admin. On the web the browser
+   runs in MindsDB's cloud, which takes only a MindsHub credential, so there
+   is no group where MindsHub isn't the LLM provider.
 
    The group says what the browser does with the person's data, as it runs
    today: where websites see the browser come from, how long sign-ins are kept
@@ -107,6 +121,9 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   const [neededHelpOpen, setNeededHelpOpen] = useState(false);
   // The desktop agent's usage events, or null where the shell can't say.
   const [usageEvents, setUsageEvents] = useState(null);
+  // The decision model's fields, open under the switch, and their test.
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [decisionTest, setDecisionTest] = useState({ busy: false, passed: false, note: '' });
   const inApp = host.supportsInAppBrowser;
   // The newest status read: an older one that answers later is dropped.
   const lastRead = useRef(0);
@@ -163,7 +180,13 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     void ask();
   }, []);
 
-  const offered = status?.available === true;
+  // On the web the browser runs only on MindsHub (see above).
+  const offered = status?.available === true && !(host.isWeb && !llmViaMindsHub(settings));
+  // No decisions model, and none tested here since.
+  const needsDecisions = status !== null && !hasDecisionsModel(status) && !decisionTest.passed;
+  const canSetDecisions = status?.can_set_decisions_model === true;
+  const decisionUrl = (settings.decisionModelUrl ?? '').trim();
+  const decisionKey = settings.decisionModelApiKey ?? '';
   const refused = status?.status === 'not_entitled' || status?.status === 'organization_off';
   // No answer yet and the read failed, in a shell that can run a browser.
   const unconfirmed = status === null && readFailed && (host.isWeb || inApp);
@@ -214,19 +237,91 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     </div>
   );
 
+  const turnBrowser = (on) => {
+    if (on && needsDecisions) {
+      // Only once a decision model answers (testDecisions).
+      setSetupOpen(true);
+      return;
+    }
+    setSetupOpen(false);
+    setSetting('browserEnabled', on);
+  };
+
+  const testDecisions = async () => {
+    setDecisionTest({ busy: true, passed: false, note: '' });
+    let answer = null;
+    try {
+      // '***' is the stored key, which the server sends only to the stored endpoint.
+      answer = await testDecisionModel({ url: decisionUrl, apiKey: decisionKey });
+    } catch (err) {
+      setDecisionTest({ busy: false, passed: false, note: err?.message || t('browser.decisionsUntested') });
+      return;
+    }
+    if (answer?.ok !== true) {
+      setDecisionTest({ busy: false, passed: false, note: t('browser.decisionsFailed', { error: answer?.error || '?' }) });
+      return;
+    }
+    setDecisionTest({ busy: false, passed: true, note: '' });
+    setSetupOpen(false);
+    setSetting('browserEnabled', true);
+  };
+
   const browserSwitch = (
     <Switch
-      checked={settings.browserEnabled === true}
-      onCheckedChange={(v) => setSetting('browserEnabled', v)}
+      checked={settings.browserEnabled === true && !needsDecisions}
+      onCheckedChange={turnBrowser}
+      disabled={needsDecisions && !canSetDecisions}
       aria-label={t('browser.sharedBrowser')}
     />
+  );
+
+  /* Why the switch is off without a decisions model, and what to do: the
+     fields for whoever may set one up, a note to ask an admin for anyone else. */
+  let decisionsNote = null;
+  if (needsDecisions) {
+    const removed = settings.browserEnabled === true ? `${t('browser.decisionsRemoved')} ` : '';
+    decisionsNote = canSetDecisions
+      ? `${removed}${t('browser.decisionsSetUp', { agent: agentLabel })}`
+      : `${removed}${t('browser.decisionsAskAdmin')}`;
+  }
+  const decisionFields = needsDecisions && canSetDecisions && (setupOpen || settings.browserEnabled === true) && (
+    <div className="flex flex-col gap-3">
+      <Field label={t('browser.decisionsUrl')}>
+        <Input
+          type="url"
+          value={settings.decisionModelUrl ?? ''}
+          onChange={(v) => setSetting('decisionModelUrl', v)}
+          placeholder="https://api.typesafe.ai/v1/systemone"
+        />
+      </Field>
+      <Field label={t('browser.decisionsKey')}>
+        {/* A saved key reads as '***': the field shows it as saved, and typing replaces it. */}
+        <Input
+          type="password"
+          autoComplete="off"
+          value={decisionKey === '***' ? '' : decisionKey}
+          onChange={(v) => setSetting('decisionModelApiKey', v)}
+          placeholder={decisionKey === '***' ? t('browser.decisionsKeySaved') : ''}
+        />
+      </Field>
+      <div className="flex items-center gap-3">
+        <Button size="sm" disabled={!decisionUrl || !decisionKey || decisionTest.busy} onClick={() => void testDecisions()}>
+          {decisionTest.busy ? t('browser.decisionsTesting') : t('browser.decisionsTest')}
+        </Button>
+        {decisionTest.note && <span role="status" className="text-sm text-ink-3">{decisionTest.note}</span>}
+      </div>
+    </div>
   );
 
   let browserGroup = null;
   if (offered) {
     browserGroup = (
       <SettingsGroup title={t('browser.sharedBrowser')}>
-        <Section title={browserTitle} subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
+        <Section
+          title={browserTitle}
+          subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}
+          notice={decisionsNote && <span className="text-sm text-ink-2">{decisionsNote}</span>}
+        >
           {/* What stays signed in and what the model provider sees: a tooltip on
               the switch, on hover or focus, which the info button also opens on
               a tap or a key, since touch has no hover. */}
@@ -245,8 +340,9 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
             </span>
           </Tooltip>
         </Section>
+        {decisionFields && <div className="pb-4">{decisionFields}</div>}
         {/* The rest only matters with the browser on. */}
-        {settings.browserEnabled === true && (
+        {settings.browserEnabled === true && !needsDecisions && (
           <>
             <Section title={t('browser.approveStepsTitle')} subtitle={approveStepsHelp(agentLabel)}>
               {/* The person's setting (browser_approve_steps), so every device asks alike; on unless turned off. */}

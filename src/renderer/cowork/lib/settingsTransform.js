@@ -81,6 +81,10 @@ export const SETTINGS_KEY_MAP = {
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.
   jev_decisions_enabled: 'jevDecisionsEnabled',
+  // The organization's own decision model (admins set it): with it, or with
+  // Jev on MindsHub, the shared browser has a decisions model to pick its steps.
+  decision_model_url: 'decisionModelUrl',
+  decision_model_api_key: 'decisionModelApiKey',
   limits_enabled: 'limitsEnabled',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',

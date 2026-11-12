@@ -78,7 +78,17 @@
     "approveStepsHelp": "Ein: {agent} wartet auf Ihr OK vor einem Schritt, der etwas verbindlich macht, etwa einen Kauf, eine Nachricht oder ein Formular. Aus: {agent} macht weiter.",
     "onlyWhenNeededTitle": "Browser nur zeigen, wenn ich gebraucht werde",
     "onlyWhenNeededHelp": "Schalten Sie dies aus, um den Browser immer zu sehen und {agent} beim Surfen zuzuschauen. Für manche unterhaltsam, für andere mühsam.",
-    "onlyWhenNeededLearn": "Über die Anzeige des Browsers nur bei Bedarf"
+    "onlyWhenNeededLearn": "Über die Anzeige des Browsers nur bei Bedarf",
+    "decisionsAskAdmin": "Bitten Sie Ihren Administrator, ein Entscheidungsmodell einzurichten, um den Browser zu nutzen.",
+    "decisionsSetUp": "Damit {agent} seine Schritte schnell wählen kann, braucht es ein Entscheidungsmodell. Geben Sie dessen Endpunkt und API-Schlüssel ein und testen Sie es.",
+    "decisionsRemoved": "Aus: Es gibt kein Entscheidungsmodell mehr.",
+    "decisionsUrl": "Endpunkt des Entscheidungsmodells",
+    "decisionsKey": "API-Schlüssel",
+    "decisionsKeySaved": "Gespeichert. Tippen Sie, um ihn zu ersetzen.",
+    "decisionsTest": "Testen und einschalten",
+    "decisionsTesting": "Wird getestet…",
+    "decisionsFailed": "Das Entscheidungsmodell hat nicht wie erwartet geantwortet ({error}). Prüfen Sie Endpunkt und Schlüssel.",
+    "decisionsUntested": "Das Entscheidungsmodell konnte nicht getestet werden. Versuchen Sie es noch einmal."
   },
   "codingAgent": {
     "loadFailed": "Optionen für den Coding-Agent konnten nicht geladen werden.",

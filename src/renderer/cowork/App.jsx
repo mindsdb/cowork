@@ -3903,8 +3903,14 @@ function AppCore() {
      there, no task gets it, so no switch (lib/browserSwitch). */
   // Off unless the person turned it on in Settings (Beta).
   const browserOnInSettings = settings.browserEnabled === true;
-  const browseAvailable = useBrowseAvailable(`${health.status}:${inAppBrowserRegistered}`);
-  const browserSwitchShown = showsBrowserSwitch({ browserOnInSettings, browseAvailable });
+  /* Asked again when a saved setting changes what picks the browser's steps:
+     the provider, the Jev switch, the organization's own decision model. */
+  const browseAvailable = useBrowseAvailable(
+    `${health.status}:${inAppBrowserRegistered}:${settings.planningProvider}:${settings.jevDecisionsEnabled}:${settings.decisionModelUrl}:${settings.decisionModelApiKey}`,
+  );
+  const browserSwitchShown = showsBrowserSwitch({
+    browserOnInSettings, browseAvailable, webWithoutMindsHub: host.isWeb && !llmViaMindsHub(settings),
+  });
   const composerBrowserSwitch = browserSwitchShown
     ? { on: !composerBrowserOff, onChange: (on) => setComposerBrowserOff(!on), agentLabel }
     : null;

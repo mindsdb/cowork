@@ -141337,6 +141337,346 @@
       "text": "4a71b62a02ff"
     }
   },
+  "settingsTools:browser.decisionsAskAdmin": {
+    "de": {
+      "from": "a065110ad960",
+      "text": "8f0ec92bcbf3"
+    },
+    "es": {
+      "from": "a065110ad960",
+      "text": "23dc5db8a610"
+    },
+    "fr": {
+      "from": "a065110ad960",
+      "text": "1e58f4661bf8"
+    },
+    "it": {
+      "from": "a065110ad960",
+      "text": "1dfdf0264ad2"
+    },
+    "ja": {
+      "from": "a065110ad960",
+      "text": "6038d9375732"
+    },
+    "ko": {
+      "from": "a065110ad960",
+      "text": "3fbfd90c39da"
+    },
+    "pt-BR": {
+      "from": "a065110ad960",
+      "text": "013f8e064b7b"
+    },
+    "zh-CN": {
+      "from": "a065110ad960",
+      "text": "b58751d4154c"
+    }
+  },
+  "settingsTools:browser.decisionsFailed": {
+    "de": {
+      "from": "105300f32383",
+      "text": "e2028d5c53a4"
+    },
+    "es": {
+      "from": "105300f32383",
+      "text": "542fb55b924c"
+    },
+    "fr": {
+      "from": "105300f32383",
+      "text": "b0736c45ffb3"
+    },
+    "it": {
+      "from": "105300f32383",
+      "text": "ee6f972ea672"
+    },
+    "ja": {
+      "from": "105300f32383",
+      "text": "c378720447a5"
+    },
+    "ko": {
+      "from": "105300f32383",
+      "text": "369f553e1aa0"
+    },
+    "pt-BR": {
+      "from": "105300f32383",
+      "text": "292d70d038fd"
+    },
+    "zh-CN": {
+      "from": "105300f32383",
+      "text": "79bfde99489b"
+    }
+  },
+  "settingsTools:browser.decisionsKey": {
+    "de": {
+      "from": "16f0ee47f993",
+      "text": "de526edf818f"
+    },
+    "es": {
+      "from": "16f0ee47f993",
+      "text": "13bce4c4b57c"
+    },
+    "fr": {
+      "from": "16f0ee47f993",
+      "text": "aae29063af05"
+    },
+    "it": {
+      "from": "16f0ee47f993",
+      "text": "f9641e49463b"
+    },
+    "ja": {
+      "from": "16f0ee47f993",
+      "text": "4923a7f07bab"
+    },
+    "ko": {
+      "from": "16f0ee47f993",
+      "text": "c0099f474b9d"
+    },
+    "pt-BR": {
+      "from": "16f0ee47f993",
+      "text": "d1d2265669d3"
+    },
+    "zh-CN": {
+      "from": "16f0ee47f993",
+      "text": "5f600b307b4e"
+    }
+  },
+  "settingsTools:browser.decisionsKeySaved": {
+    "de": {
+      "from": "fe659d764753",
+      "text": "d8e8498530b9"
+    },
+    "es": {
+      "from": "fe659d764753",
+      "text": "d4e12ae520b8"
+    },
+    "fr": {
+      "from": "fe659d764753",
+      "text": "6f64a71292b1"
+    },
+    "it": {
+      "from": "fe659d764753",
+      "text": "45c55692053c"
+    },
+    "ja": {
+      "from": "fe659d764753",
+      "text": "2210d75ceb7b"
+    },
+    "ko": {
+      "from": "fe659d764753",
+      "text": "35300ee98995"
+    },
+    "pt-BR": {
+      "from": "fe659d764753",
+      "text": "7a5cb65795e5"
+    },
+    "zh-CN": {
+      "from": "fe659d764753",
+      "text": "479d7b624186"
+    }
+  },
+  "settingsTools:browser.decisionsRemoved": {
+    "de": {
+      "from": "125c16bd48af",
+      "text": "8bba66ad8205"
+    },
+    "es": {
+      "from": "125c16bd48af",
+      "text": "ecde4263216d"
+    },
+    "fr": {
+      "from": "125c16bd48af",
+      "text": "99fa562551f3"
+    },
+    "it": {
+      "from": "125c16bd48af",
+      "text": "aecc669ed561"
+    },
+    "ja": {
+      "from": "125c16bd48af",
+      "text": "f970e3c73027"
+    },
+    "ko": {
+      "from": "125c16bd48af",
+      "text": "0cb7c268a17c"
+    },
+    "pt-BR": {
+      "from": "125c16bd48af",
+      "text": "35ce5148ac30"
+    },
+    "zh-CN": {
+      "from": "125c16bd48af",
+      "text": "1ddbb9f43ba3"
+    }
+  },
+  "settingsTools:browser.decisionsSetUp": {
+    "de": {
+      "from": "b3c1c70bcc0a",
+      "text": "521f1636fbd4"
+    },
+    "es": {
+      "from": "b3c1c70bcc0a",
+      "text": "b18af3d09b53"
+    },
+    "fr": {
+      "from": "b3c1c70bcc0a",
+      "text": "d0e0653b997b"
+    },
+    "it": {
+      "from": "b3c1c70bcc0a",
+      "text": "98c56702cd89"
+    },
+    "ja": {
+      "from": "b3c1c70bcc0a",
+      "text": "401408230e9b"
+    },
+    "ko": {
+      "from": "b3c1c70bcc0a",
+      "text": "267a989a3477"
+    },
+    "pt-BR": {
+      "from": "b3c1c70bcc0a",
+      "text": "1b64a46c9a9e"
+    },
+    "zh-CN": {
+      "from": "b3c1c70bcc0a",
+      "text": "c6898f6ee1b0"
+    }
+  },
+  "settingsTools:browser.decisionsTest": {
+    "de": {
+      "from": "6ed26ed0ff92",
+      "text": "ae180df76a7e"
+    },
+    "es": {
+      "from": "6ed26ed0ff92",
+      "text": "eb90bd10152a"
+    },
+    "fr": {
+      "from": "6ed26ed0ff92",
+      "text": "b070b99fdec5"
+    },
+    "it": {
+      "from": "6ed26ed0ff92",
+      "text": "7a8cd8063c29"
+    },
+    "ja": {
+      "from": "6ed26ed0ff92",
+      "text": "a8c81162d1a5"
+    },
+    "ko": {
+      "from": "6ed26ed0ff92",
+      "text": "62679bb5c4c6"
+    },
+    "pt-BR": {
+      "from": "6ed26ed0ff92",
+      "text": "497645650f28"
+    },
+    "zh-CN": {
+      "from": "6ed26ed0ff92",
+      "text": "1ba632b79a4f"
+    }
+  },
+  "settingsTools:browser.decisionsTesting": {
+    "de": {
+      "from": "407b7a04662f",
+      "text": "be20b70abd93"
+    },
+    "es": {
+      "from": "407b7a04662f",
+      "text": "a3da3a488d2e"
+    },
+    "fr": {
+      "from": "407b7a04662f",
+      "text": "01b679384589"
+    },
+    "it": {
+      "from": "407b7a04662f",
+      "text": "7c86d3823ac4"
+    },
+    "ja": {
+      "from": "407b7a04662f",
+      "text": "497180500115"
+    },
+    "ko": {
+      "from": "407b7a04662f",
+      "text": "907fe7423fe6"
+    },
+    "pt-BR": {
+      "from": "407b7a04662f",
+      "text": "7c137bd38fba"
+    },
+    "zh-CN": {
+      "from": "407b7a04662f",
+      "text": "3d7fedc0ce54"
+    }
+  },
+  "settingsTools:browser.decisionsUntested": {
+    "de": {
+      "from": "53695376e9aa",
+      "text": "3dcac27a0b9e"
+    },
+    "es": {
+      "from": "53695376e9aa",
+      "text": "32499cb05afa"
+    },
+    "fr": {
+      "from": "53695376e9aa",
+      "text": "6e77a1d7c0d9"
+    },
+    "it": {
+      "from": "53695376e9aa",
+      "text": "b8bb02364480"
+    },
+    "ja": {
+      "from": "53695376e9aa",
+      "text": "ddd31103660d"
+    },
+    "ko": {
+      "from": "53695376e9aa",
+      "text": "6bf57323e310"
+    },
+    "pt-BR": {
+      "from": "53695376e9aa",
+      "text": "a1a3e0fdb8cc"
+    },
+    "zh-CN": {
+      "from": "53695376e9aa",
+      "text": "84af8a5437b1"
+    }
+  },
+  "settingsTools:browser.decisionsUrl": {
+    "de": {
+      "from": "4d52c1337b47",
+      "text": "26f49d284c9a"
+    },
+    "es": {
+      "from": "4d52c1337b47",
+      "text": "cd4b7ad0a2f1"
+    },
+    "fr": {
+      "from": "4d52c1337b47",
+      "text": "96a002a9da2f"
+    },
+    "it": {
+      "from": "4d52c1337b47",
+      "text": "f4c7812f98b6"
+    },
+    "ja": {
+      "from": "4d52c1337b47",
+      "text": "3df4d6f4501d"
+    },
+    "ko": {
+      "from": "4d52c1337b47",
+      "text": "662ac9a6907f"
+    },
+    "pt-BR": {
+      "from": "4d52c1337b47",
+      "text": "b86dcfcdac80"
+    },
+    "zh-CN": {
+      "from": "4d52c1337b47",
+      "text": "9343f0a98d87"
+    }
+  },
   "settingsTools:browser.desktopDisclosure": {
     "de": {
       "from": "2e550c9d3a13",

@@ -78,7 +78,17 @@
     "approveStepsHelp": "On: {agent} waits for your OK before a step that commits something, like a purchase, a message or a form. Off: {agent} goes ahead.",
     "onlyWhenNeededTitle": "Only show the browser when I'm needed",
     "onlyWhenNeededHelp": "Turn this off to always see the browser and watch {agent} browse. Fun for some, tedious for others.",
-    "onlyWhenNeededLearn": "About showing the browser only when needed"
+    "onlyWhenNeededLearn": "About showing the browser only when needed",
+    "decisionsAskAdmin": "Ask your admin to set up a decision model to use the browser.",
+    "decisionsSetUp": "To pick its steps quickly, {agent} needs a decision model. Add its endpoint and API key, then test it.",
+    "decisionsRemoved": "Off: there's no decision model anymore.",
+    "decisionsUrl": "Decision model endpoint",
+    "decisionsKey": "API key",
+    "decisionsKeySaved": "Saved. Type to replace it.",
+    "decisionsTest": "Test and turn on",
+    "decisionsTesting": "Testing…",
+    "decisionsFailed": "The decision model didn't answer as expected ({error}). Check the endpoint and key.",
+    "decisionsUntested": "Couldn't test the decision model. Try again."
   },
   "codingAgent": {
     "loadFailed": "Could not load coding agent options.",

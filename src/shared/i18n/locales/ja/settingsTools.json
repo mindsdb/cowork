@@ -78,7 +78,17 @@
     "approveStepsHelp": "オン：購入、メッセージ、フォームなど、確定する操作の前に{agent}があなたの承認を待ちます。オフ：{agent}はそのまま進めます。",
     "onlyWhenNeededTitle": "自分が必要なときだけブラウザを表示",
     "onlyWhenNeededHelp": "オフにすると常にブラウザが表示され、{agent}の操作を見られます。楽しい人もいれば、退屈な人もいます。",
-    "onlyWhenNeededLearn": "必要なときだけブラウザを表示する設定について"
+    "onlyWhenNeededLearn": "必要なときだけブラウザを表示する設定について",
+    "decisionsAskAdmin": "ブラウザを使うには、管理者に判定モデルの設定を依頼してください。",
+    "decisionsSetUp": "{agent} がすばやく手順を選ぶには判定モデルが必要です。エンドポイントと API キーを入力して、テストしてください。",
+    "decisionsRemoved": "オフ: 判定モデルがなくなりました。",
+    "decisionsUrl": "判定モデルのエンドポイント",
+    "decisionsKey": "API キー",
+    "decisionsKeySaved": "保存済みです。入力すると置き換えます。",
+    "decisionsTest": "テストしてオンにする",
+    "decisionsTesting": "テスト中…",
+    "decisionsFailed": "判定モデルが想定どおりに応答しませんでした ({error})。エンドポイントとキーを確認してください。",
+    "decisionsUntested": "判定モデルをテストできませんでした。もう一度お試しください。"
   },
   "codingAgent": {
     "loadFailed": "コーディングエージェントのオプションを読み込めませんでした。",

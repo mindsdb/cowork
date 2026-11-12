@@ -25,9 +25,11 @@ vi.mock('../../api', () => ({
   fetchBrowseStatus: vi.fn(),
   provisionBrowser: vi.fn(),
   signOutOfBrowserSites: vi.fn(),
+  testDecisionModel: vi.fn(),
 }));
 
-import { fetchBrowseStatus, provisionBrowser, signOutOfBrowserSites } from '../../api';
+import { useState } from 'react';
+import { fetchBrowseStatus, provisionBrowser, signOutOfBrowserSites, testDecisionModel } from '../../api';
 import { READ_TIMEOUT_MS } from '../../lib/browseStatus';
 import BrowserSettingsSection, {
   approveStepsHelp,
@@ -529,5 +531,100 @@ describe('BrowserSettingsSection', () => {
       expect(screen.queryByRole('heading', { level: 2, name: 'Shared browser' })).not.toBeInTheDocument();
       expect(screen.queryByRole('switch', { name: 'Shared browser' })).not.toBeInTheDocument();
     });
+  });
+
+  describe('without a decisions model to pick its steps', () => {
+    const NO_DECISIONS = { ...AVAILABLE, enabled: false, decisions_model: null, can_set_decisions_model: false };
+    const ADMIN = { ...NO_DECISIONS, can_set_decisions_model: true };
+
+    // Settings as the form holds them: what setSetting writes reads back.
+    function Form({ initial, onSet }) {
+      const [settings, setSettings] = useState(initial);
+      const setSetting = (key, value) => {
+        onSet(key, value);
+        setSettings((prev) => ({ ...prev, [key]: value }));
+      };
+      return <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel="Cowork" />;
+    }
+
+    beforeEach(() => {
+      testDecisionModel.mockReset();
+    });
+
+    it("tells a member to ask their admin, and its switch can't turn on", async () => {
+      fetchBrowseStatus.mockResolvedValue(NO_DECISIONS);
+      renderSection({ browserEnabled: false });
+      expect(await screen.findByText('Ask your admin to set up a decision model to use the browser.')).toBeInTheDocument();
+      const browserSwitch = screen.getByRole('switch', { name: 'Shared browser' });
+      expect(browserSwitch).not.toBeChecked();
+      expect(browserSwitch).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.queryByLabelText('Decision model endpoint')).not.toBeInTheDocument();
+    });
+
+    it('reads as off when the switch was saved on and the model was removed, and says why', async () => {
+      fetchBrowseStatus.mockResolvedValue(NO_DECISIONS);
+      renderSection({ browserEnabled: true });
+      expect(await screen.findByText(/^Off: there's no decision model anymore\. Ask your admin/)).toBeInTheDocument();
+      expect(screen.getByRole('switch', { name: 'Shared browser' })).not.toBeChecked();
+      expect(screen.queryByRole('switch', { name: 'Approve browser steps' })).not.toBeInTheDocument();
+    });
+
+    it('lets an admin turn it on only once the decision model they enter answers a test', async () => {
+      fetchBrowseStatus.mockResolvedValue(ADMIN);
+      const onSet = vi.fn();
+      render(<Form initial={{ browserEnabled: false, decisionModelUrl: '', decisionModelApiKey: '' }} onSet={onSet} />);
+      const browserSwitch = await screen.findByRole('switch', { name: 'Shared browser' });
+      expect(browserSwitch).not.toHaveAttribute('aria-disabled', 'true');
+      await userEvent.click(browserSwitch);
+      // The fields open; the switch stays off.
+      expect(onSet).not.toHaveBeenCalledWith('browserEnabled', true);
+      expect(browserSwitch).not.toBeChecked();
+      const test = screen.getByRole('button', { name: 'Test and turn on' });
+      expect(test).toBeDisabled();
+      await userEvent.type(screen.getByLabelText('Decision model endpoint'), 'https://decide.example.test/v1/systemone');
+      await userEvent.type(screen.getByLabelText('API key'), 'own-key');
+
+      testDecisionModel.mockResolvedValueOnce({ ok: false, error: 'http_401', ms: 3 });
+      await userEvent.click(test);
+      expect(await screen.findByText(/didn't answer as expected \(http_401\)/)).toBeInTheDocument();
+      expect(onSet).not.toHaveBeenCalledWith('browserEnabled', true);
+
+      testDecisionModel.mockResolvedValueOnce({ ok: true, error: null, ms: 3 });
+      await userEvent.click(test);
+      await waitFor(() => expect(onSet).toHaveBeenCalledWith('browserEnabled', true));
+      expect(testDecisionModel).toHaveBeenLastCalledWith({ url: 'https://decide.example.test/v1/systemone', apiKey: 'own-key' });
+      expect(screen.getByRole('switch', { name: 'Shared browser' })).toBeChecked();
+      expect(screen.queryByLabelText('Decision model endpoint')).not.toBeInTheDocument();
+      // The fields save with the form, as the rest of the page does.
+      expect(onSet).toHaveBeenCalledWith('decisionModelUrl', 'https://decide.example.test/v1/systemone');
+    });
+
+    it('tests a saved key without showing it', async () => {
+      fetchBrowseStatus.mockResolvedValue(ADMIN);
+      testDecisionModel.mockResolvedValue({ ok: true, error: null });
+      render(<Form initial={{ browserEnabled: true, decisionModelUrl: 'https://decide.example.test/d', decisionModelApiKey: '***' }} onSet={vi.fn()} />);
+      const key = await screen.findByLabelText('API key');
+      expect(key).toHaveValue('');
+      expect(key).toHaveAttribute('placeholder', 'Saved. Type to replace it.');
+      await userEvent.click(screen.getByRole('button', { name: 'Test and turn on' }));
+      expect(testDecisionModel).toHaveBeenCalledWith({ url: 'https://decide.example.test/d', apiKey: '***' });
+    });
+
+    it('shows the browser as before with a decisions model, and on a server that predates the field', async () => {
+      for (const status of [{ ...AVAILABLE, decisions_model: 'own' }, AVAILABLE]) {
+        fetchBrowseStatus.mockResolvedValue(status);
+        const { unmount } = renderSection({ browserEnabled: true });
+        expect(await screen.findByRole('switch', { name: 'Approve browser steps' })).toBeInTheDocument();
+        expect(screen.getByRole('switch', { name: 'Shared browser' })).toBeChecked();
+        unmount();
+      }
+    });
+  });
+
+  it('shows no browser on the web where MindsHub is not the LLM provider', async () => {
+    fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    const { container } = renderSection({ browserEnabled: true, planningProvider: 'anthropic' });
+    await settled();
+    expect(container).toBeEmptyDOMElement();
   });
 });
