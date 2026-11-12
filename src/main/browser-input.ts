@@ -459,8 +459,9 @@ function unreached(id: number, intoFrame: boolean): BridgeError {
    after that (a scrolled container) is brought in by the page itself. The
    point is a random one, as a person clicks, or else the first fixed point
    whose hit test reaches the element; when none does, the step is refused
-   rather than pressing what lies there (`unreached`). */
-async function elementPoint(host: StepHost, input: AgentInput, id: number): Promise<{ at: Point; located: Extract<LocateResult, { found: true }> }> {
+   rather than pressing what lies there (`unreached`). A `wheel` may land in
+   a frame inside the element, since a wheel activates nothing there. */
+async function elementPoint(host: StepHost, input: AgentInput, id: number, wheel = false): Promise<{ at: Point; located: Extract<LocateResult, { found: true }> }> {
   let located = await host.page.locate(id, false);
   for (let round = 0; round < 3 && located.found && located.shown && !located.inViewport; round += 1) {
     const { box, viewport } = located;
@@ -487,8 +488,9 @@ async function elementPoint(host: StepHost, input: AgentInput, id: number): Prom
   ];
   const hit = await host.page.hitTest(id, points);
   if (!hit.found) throw stale(id, 'is no longer on the page');
-  if (hit.reaches < 0) throw unreached(id, hit.intoFrame);
-  return { at: points[hit.reaches], located };
+  const reaches = hit.reaches < 0 && wheel ? hit.throughFrame : hit.reaches;
+  if (reaches < 0) throw unreached(id, hit.throughFrame >= 0);
+  return { at: points[reaches], located };
 }
 
 async function targetPoint(host: StepHost, input: AgentInput, target: StepTarget, coords: 'page' | 'screenshot'): Promise<Point> {
@@ -524,7 +526,7 @@ async function pressPoint(host: StepHost, input: AgentInput, target: StepTarget,
       beforePress: async () => {
         const hit = await host.page.hitTest(id, [at]);
         if (!hit.found) throw stale(id, 'is no longer on the page');
-        if (hit.reaches < 0) throw movedUnder(`over element ${id}`, hit.intoFrame || await host.page.intoFrame(at));
+        if (hit.reaches < 0) throw movedUnder(`over element ${id}`, hit.throughFrame >= 0 || await host.page.intoFrame(at));
       },
     };
   }
@@ -587,7 +589,7 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
         const [sx, sy] = SCROLL_DELTAS[step.direction];
         let at: Point;
         if (step.element !== undefined) {
-          at = (await elementPoint(host, input, step.element)).at;
+          at = (await elementPoint(host, input, step.element, true)).at;
         } else {
           const viewport = await host.page.viewport();
           at = { x: viewport.width / 2, y: viewport.height / 2 };

@@ -270,10 +270,10 @@ export type FocusResult =
 
 /** The first of a hit test's points whose hit lands on the element, inside
     it or on one of its labels, and not in a frame there; -1 when every one
-    lands on something else. `intoFrame`: a point landed in a frame owner, or
-    in a custom element sealed from this world, inside the element or one of
-    its labels. */
-export type HitTestResult = { found: false } | { found: true; reaches: number; intoFrame: boolean };
+    lands on something else. `throughFrame`: the first point that lands in a
+    frame owner, or in a custom element sealed from this world, inside the
+    element or one of its labels; -1 when none does. */
+export type HitTestResult = { found: false } | { found: true; reaches: number; throughFrame: number };
 
 /** The focus before each key of a type step: whether it is on a secret field,
     and whether it is still in the field the step types into. */
@@ -1050,15 +1050,12 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'hitTest': {
       const el = world.ids.get(request.id);
       if (!el || !el.isConnected) return { found: false };
-      let intoFrame = false;
-      const reaches = request.points.findIndex(({ x, y }) => {
+      const landings = request.points.map(({ x, y }) => {
         const hit = hitAt(x, y);
-        if (!hit || !landsOn(el, hit)) return false;
-        if (!opaqueHit(hit, x, y)) return true;
-        intoFrame = true;
-        return false;
+        if (!hit || !landsOn(el, hit)) return 'elsewhere';
+        return opaqueHit(hit, x, y) ? 'frame' : 'element';
       });
-      return { found: true, reaches, intoFrame } satisfies HitTestResult;
+      return { found: true, reaches: landings.indexOf('element'), throughFrame: landings.indexOf('frame') } satisfies HitTestResult;
     }
     case 'intoFrame': {
       const { x, y } = request.point;

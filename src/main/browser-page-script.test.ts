@@ -478,10 +478,10 @@ describe('the isolated-world page read', () => {
     try {
       const hitTest = (id: number, points: Array<[number, number]>) =>
         pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })) });
-      expect(hitTest(ids.Go, [[1, 1], [2, 2], [4, 4]])).toEqual({ found: true, reaches: 1, intoFrame: false } satisfies HitTestResult);
-      expect(hitTest(ids.Go, [[4, 4]])).toEqual({ found: true, reaches: 0, intoFrame: false });
-      expect(hitTest(ids.Agree, [[1, 1], [3, 3]])).toEqual({ found: true, reaches: 1, intoFrame: false });
-      expect(hitTest(ids.Go, [[1, 1], [3, 3], [9, 9]])).toEqual({ found: true, reaches: -1, intoFrame: false });
+      expect(hitTest(ids.Go, [[1, 1], [2, 2], [4, 4]])).toEqual({ found: true, reaches: 1, throughFrame: -1 } satisfies HitTestResult);
+      expect(hitTest(ids.Go, [[4, 4]])).toEqual({ found: true, reaches: 0, throughFrame: -1 });
+      expect(hitTest(ids.Agree, [[1, 1], [3, 3]])).toEqual({ found: true, reaches: 1, throughFrame: -1 });
+      expect(hitTest(ids.Go, [[1, 1], [3, 3], [9, 9]])).toEqual({ found: true, reaches: -1, throughFrame: -1 });
       expect(hitTest(999, [[4, 4]])).toEqual({ found: false });
     } finally {
       restore();
@@ -516,14 +516,14 @@ describe('the isolated-world page read', () => {
       const hitTest = (id: number, points: Array<[number, number]>) =>
         pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })) });
       // Every point lands on another site's frame the control wraps, or its label holds.
-      expect(hitTest(ids['More info'], [[1, 1]])).toEqual({ found: true, reaches: -1, intoFrame: true } satisfies HitTestResult);
-      expect(hitTest(ids.Agree, [[2, 2]])).toEqual({ found: true, reaches: -1, intoFrame: true });
+      expect(hitTest(ids['More info'], [[1, 1]])).toEqual({ found: true, reaches: -1, throughFrame: 0 } satisfies HitTestResult);
+      expect(hitTest(ids.Agree, [[2, 2]])).toEqual({ found: true, reaches: -1, throughFrame: 0 });
       // One in an open shadow root inside it, followed there.
-      expect(hitTest(ids['Open widget'], [[3, 3]])).toEqual({ found: true, reaches: -1, intoFrame: true });
+      expect(hitTest(ids['Open widget'], [[3, 3]])).toEqual({ found: true, reaches: -1, throughFrame: 0 });
       // A custom element that shows no open shadow root and draws no text of its own there may hold a frame in a closed one.
-      expect(hitTest(ids.Pay, [[4, 4]])).toEqual({ found: true, reaches: -1, intoFrame: true });
+      expect(hitTest(ids.Pay, [[4, 4]])).toEqual({ found: true, reaches: -1, throughFrame: 0 });
       // A point on the control itself still reaches it.
-      expect(hitTest(ids['More info'], [[1, 1], [6, 6]])).toEqual({ found: true, reaches: 1, intoFrame: true });
+      expect(hitTest(ids['More info'], [[1, 1], [6, 6]])).toEqual({ found: true, reaches: 1, throughFrame: 0 });
     } finally {
       restoreHits();
     }
@@ -531,7 +531,7 @@ describe('the isolated-world page read', () => {
     const restoreText = textBoxesFromParents();
     const restoreIcon = hitTestBy(() => document.getElementById('icon'));
     try {
-      expect(pageWorld(document, world, { kind: 'hitTest', id: ids.Menu, points: [{ x: 15, y: 410 }] })).toEqual({ found: true, reaches: 0, intoFrame: false });
+      expect(pageWorld(document, world, { kind: 'hitTest', id: ids.Menu, points: [{ x: 15, y: 410 }] })).toEqual({ found: true, reaches: 0, throughFrame: -1 });
     } finally {
       restoreIcon();
       restoreText();
