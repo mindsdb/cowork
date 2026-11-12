@@ -19,7 +19,9 @@
  * runs isolated-world script only in a view's main frame's process, so a
  * frame of another site is read in its own process: Target.setAutoAttach
  * (flat) gives each such frame a session on the same debugger, and
- * sendCommand takes its id.
+ * sendCommand takes its id. `focusedField` follows the focus the same way
+ * for a type with focused true, and names the text entry it rests on by its
+ * frame and DOM.describeNode's backend node id.
  *
  * `frameMasks`: the secret fields a screenshot blacks out inside the frames
  * below the main one, each read in its frame's own world, as the web pod's
@@ -380,18 +382,39 @@ export class DebuggerSession {
     return { content: model.content, border: quadBox(model.border) };
   }
 
+  /* How the debugger describes the element `request` answers in frame
+     `frameId`'s world (from `from`), or null when it answers none. */
+  private async described(frameId: string, request: PageWorldRequest, from: string | null): Promise<{ frameId?: string; backendNodeId?: number } | null> {
+    const found = await this.evaluate(frameId, request, true, from);
+    if (found?.subtype !== 'node' || !found.objectId) return null;
+    try {
+      const { node } = await this.send<{ node: { frameId?: string; backendNodeId?: number } }>(
+        'DOM.describeNode',
+        { objectId: found.objectId, depth: 0 },
+        this.frames.get(frameId)?.session,
+      );
+      return node;
+    } finally {
+      await this.release(frameId, found.objectId);
+    }
+  }
+
   /** The frame that the element `request` answers in frame `frameId`'s
       world (from `from`) holds, or null when it answers none or holds no
       frame. */
   async frameOf(frameId: string, request: PageWorldRequest, from: string | null = null): Promise<string | null> {
-    const found = await this.evaluate(frameId, request, true, from);
-    if (found?.subtype !== 'node' || !found.objectId) return null;
-    try {
-      const { node } = await this.send<{ node: { frameId?: string } }>('DOM.describeNode', { objectId: found.objectId, depth: 0 }, this.frames.get(frameId)?.session);
-      return node.frameId ?? null;
-    } finally {
-      await this.release(frameId, found.objectId);
-    }
+    return (await this.described(frameId, request, from))?.frameId ?? null;
+  }
+
+  /** The backend node id of the element `request` answers in frame
+      `frameId`'s world (from `from`), which stays the same while the
+      element does, or null when it answers none. It throws when the
+      debugger names no node. */
+  async nodeOf(frameId: string, request: PageWorldRequest, from: string | null = null): Promise<number | null> {
+    const node = await this.described(frameId, request, from);
+    if (node === null) return null;
+    if (node.backendNodeId === undefined) throw new Error('the debugger named no node');
+    return node.backendNodeId;
   }
 
   /** The closed shadow root of the element `request` answers in frame
@@ -451,6 +474,14 @@ export interface FramePlace {
   id: string;
   url: string;
 }
+
+/** What has the focus for a type with focused true (FrameReads.focusedField):
+    a text entry that isn't secret, with `field` naming it by its frame and
+    its node; a secret field; anything else; or a focus this browser can't
+    read. */
+export type FocusedField =
+  | { kind: 'entry'; field: string }
+  | { kind: 'secret' | 'other' | 'unreadable' };
 
 interface LayoutMetrics {
   cssLayoutViewport: { pageX: number; pageY: number };
@@ -515,32 +546,64 @@ export class FrameReads {
    * takes longer than FRAME_READ_MS.
    */
   async focusedSecret(): Promise<boolean> {
-    const read = async () => this.secretFocusIn(await this.session.mainFrame(), true);
+    const read = async () => this.followFocus(await this.session.mainFrame(), true, true, async (focus) => focus.secret);
     return withTimeout(read(), FRAME_READ_MS).catch(() => true);
   }
 
-  /* `focusedSecret` in frame `frameId`, from its document: `top` for the
-     page's main frame, whose focus may go on into a frame of another site. */
-  private async secretFocusIn(frameId: string, top: boolean): Promise<boolean> {
+  /**
+   * What has the focus for a type with focused true, read where it rests as
+   * `focusedSecret` reads it: a text entry that isn't secret (focusedEntry
+   * in browser-page-script.ts), named by its frame and its node so a later
+   * read tells whether the focus is still on the same field; a secret field;
+   * anything else; or `unreadable`, for whatever `focusedSecret` counts as
+   * secret because it can't read it (a payment provider's frame, a frame of
+   * yet another site inside another site's, a frame with no owner the
+   * debugger can name, a focus past CLOSED_ROOTS_DEEP closed roots, and a
+   * read that fails or takes longer than FRAME_READ_MS).
+   */
+  async focusedField(): Promise<FocusedField> {
+    const unreadable: FocusedField = { kind: 'unreadable' };
+    const read = async () => this.followFocus<FocusedField>(await this.session.mainFrame(), true, unreadable, async (focus, frameId, from) => {
+      if (focus.secret) return { kind: 'secret' };
+      const node = await this.session.nodeOf(frameId, { kind: 'focusedEntry' }, from);
+      return node === null ? { kind: 'other' } : { kind: 'entry', field: `${frameId}/${node}` };
+    });
+    return withTimeout(read(), FRAME_READ_MS).catch(() => unreadable);
+  }
+
+  /* Follows the focus from frame `frameId`'s document (`top` for the page's
+     main frame, whose focus may go on into a frame of another site) through
+     closed shadow roots and into a frame of another site, and answers what
+     `at` makes of the world's read where it rests (its frame, and the closed
+     root it is read from, null for the document). It answers `unread` where
+     it can't follow: a frame of yet another site inside another site's, a
+     frame owner the debugger names no frame of, or more than
+     CLOSED_ROOTS_DEEP closed roots. */
+  private async followFocus<T>(
+    frameId: string,
+    top: boolean,
+    unread: T,
+    at: (focus: FocusedSecret, frameId: string, from: string | null) => Promise<T>,
+  ): Promise<T> {
     let from: string | null = null;
     try {
       for (let roots = 0; roots <= CLOSED_ROOTS_DEEP; roots += 1) {
         const focus: FocusedSecret = await this.session.read<FocusedSecret>(frameId, { kind: 'focusedSecret' }, from);
-        if (focus.secret) return true;
+        if (focus.secret) return await at(focus, frameId, from);
         if (focus.otherSite) {
-          if (!top) return true;
+          if (!top) return unread;
           const inner = await this.session.frameOf(frameId, { kind: 'focusedFrame' }, from);
-          if (!inner) return true;
+          if (!inner) return unread;
           await this.session.attachFrames();
-          return await this.secretFocusIn(inner, false);
+          return await this.followFocus(inner, false, unread, at);
         }
-        if (!focus.sealed) return false;
+        if (!focus.sealed) return await at(focus, frameId, from);
         const root: string | null = await this.session.closedRootOf(frameId, { kind: 'focusedElement' }, from);
+        if (root === null) return await at(focus, frameId, from);
         if (from !== null) await this.session.release(frameId, from);
         from = root;
-        if (from === null) return false;
       }
-      return true;
+      return unread;
     } finally {
       if (from !== null) await this.session.release(frameId, from);
     }

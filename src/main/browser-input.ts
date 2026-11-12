@@ -22,7 +22,10 @@
  * its field and not on a secret one, and stops when it isn't. An editing key
  * into a frame of another site, or into a closed shadow root, is refused
  * when the field focused there is a secret one, or can't be read
- * (`keysGoToSecret`). A click by
+ * (`keysGoToSecret`). A type with focused true names no element: it types
+ * only into a text entry that isn't secret where the focus rests, in a frame
+ * of any site too, and stops once the focus leaves it (`typeIntoFocus`). A
+ * click by
  * number presses only where both the page's hit test and the debugger's,
  * which sees inside closed shadow roots, find its element and no frame. Just
  * before each press, a click or a drag checks its point again, and presses
@@ -40,7 +43,7 @@ import {
   type StepRequest,
   type StepTarget,
 } from '../shared/browser-contract';
-import { type CdpDebugger, FrameReads, withDebugger } from './browser-frames';
+import { type CdpDebugger, type FocusedField, FrameReads, withDebugger } from './browser-frames';
 import type { FocusedSecret, FocusFieldResult, FocusResult, HitTestResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
 import { screenshotScale } from './browser-screenshot';
 
@@ -617,6 +620,44 @@ async function keysGoToSecret(host: StepHost, frames: FrameReads): Promise<boole
   return focus.secret || ((focus.otherSite || focus.sealed) && await frames.focusedSecret());
 }
 
+/* Why a type with focused true types nothing, by what has the focus when
+   it starts. */
+function focusNotTyped(kind: Exclude<FocusedField['kind'], 'entry'>): BridgeError {
+  switch (kind) {
+    case 'secret':
+      return secretField('the focused field');
+    case 'other':
+      return new BridgeError('not_a_text_field', "what has the focus isn't a text field, so nothing was typed; click the field first");
+    case 'unreadable':
+      return new BridgeError('focus_unreadable', "this browser couldn't read what has the focus, so nothing was typed");
+  }
+}
+
+/* A type with focused true: `text` at the caret of the field that has the
+   focus, in a frame of the page's origin or of another site, or in a closed
+   shadow root, read through the debugger (FrameReads.focusedField), with
+   nothing cleared first. It types only into a text entry that isn't secret.
+   Before every key, and before the Enter `submit` adds, it reads the focus
+   again, and stops once the focus is anywhere but the field it began in: on
+   a secret field (403 password_field), on another field or element, or
+   where it can't be read, whatever moved it. */
+async function typeIntoFocus(input: AgentInput, frames: FrameReads, text: string, submit: boolean): Promise<void> {
+  const start = await frames.focusedField();
+  if (start.kind !== 'entry') throw focusNotTyped(start.kind);
+  const keepTyping = async () => {
+    const now = await frames.focusedField();
+    if (now.kind === 'entry' && now.field === start.field) return;
+    if (now.kind === 'secret') throw secretField('the focused field');
+    const why = now.kind === 'unreadable' ? "this browser couldn't read the focus" : 'the focus left the field the step began typing into';
+    throw new BridgeError('stale_element', `${why}, so the rest was not typed; read the page again`);
+  };
+  await input.typeText(text, keepTyping);
+  if (submit) {
+    await keepTyping();
+    await input.press({ modifiers: [], key: ENTER });
+  }
+}
+
 const SCROLL_DELTAS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
 
 /** Runs one checked step. */
@@ -676,6 +717,7 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
         await input.wheel(at, sx * step.amount, sy * step.amount);
       });
     case 'type':
+      if (step.focused) return host.withInput((input, frames) => typeIntoFocus(input, frames, step.text, step.submit));
       return host.withInput(async (input) => {
         const field = await host.page.focusField(step.element, step.clear);
         if (!field.ok) throw focusRefused(step.element, field.reason);

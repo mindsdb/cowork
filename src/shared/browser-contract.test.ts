@@ -213,6 +213,27 @@ describe('step requests', () => {
     }
   });
 
+  it('reads a type with focused true as one into the field that has the focus, with no element, and types at the caret', () => {
+    expect(parseStepRequest({ action: 'type', focused: true, text: 'ada@example.test', submit: false, include_page: true })).toEqual({
+      ok: true,
+      value: { step: { action: 'type', focused: true, text: 'ada@example.test', submit: false }, coords: 'page', includePage: true, intoFrame: false },
+    });
+    expect(parseStepRequest({ action: 'type', focused: true, text: 'x', submit: true })).toMatchObject({ ok: true, value: { step: { submit: true } } });
+    expect(parseStepRequest({ action: 'type', focused: true, text: 'x' })).toMatchObject({ ok: true, value: { step: { submit: false } } });
+  });
+
+  it.each([
+    [{ action: 'type', focused: true, element: 3, text: 'x' }, 'an element as well'],
+    [{ action: 'type', focused: true, x: 10, y: 20, text: 'x' }, 'a point as well'],
+    [{ action: 'type', focused: true, text: 'x', clear: true }, 'a clear, which it never does'],
+    [{ action: 'type', focused: 'true', text: 'x' }, 'a string for true'],
+    [{ action: 'type', focused: false, text: 'x' }, 'false, with no element'],
+    [{ action: 'type', focused: true }, 'no text'],
+    [{ action: 'press', focused: true, key: 'a' }, 'another action'],
+  ] as Array<[Record<string, unknown>, string]>)('refuses a focused type %j (%s)', (body) => {
+    expect(parseStepRequest(body).ok).toBe(false);
+  });
+
   it.each([
     [{ action: 'click', element: '7' }, 'a string id'],
     [{ action: 'click', element: 0 }, 'id 0'],

@@ -122,7 +122,7 @@ describe('the in-app host against the contract fixtures', () => {
       await call('POST', `/sessions/${SESSION}/control`, { holder: 'human', reason: 'Please sign in' });
       return call('GET', `/sessions/${SESSION}/page`);
     }],
-    ...(['password_field', 'stale_element', 'page_blocked', 'page_busy'] as const).map((code): [BridgeErrorCode, () => Promise<{ status: number; body: unknown }>] => [code, () => {
+    ...(['password_field', 'not_a_text_field', 'focus_unreadable', 'stale_element', 'page_blocked', 'page_busy'] as const).map((code): [BridgeErrorCode, () => Promise<{ status: number; body: unknown }>] => [code, () => {
       (host.factory.tabs[0].act as unknown as { mockRejectedValueOnce(e: Error): void }).mockRejectedValueOnce(new BridgeError(code, 'refused'));
       return call('POST', `/sessions/${SESSION}/action`, { action: 'click', element: 3 });
     }]),

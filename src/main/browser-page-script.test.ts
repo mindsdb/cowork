@@ -1128,6 +1128,45 @@ describe('frames', () => {
     expect(pageWorld(document, world, { kind: 'focusedFrame' })).toBeNull();
   });
 
+  it('answers the text entry a type with focused true types into: a text, search, email, url, tel or number input, a textarea or an editor that is not secret, in the page or a same-origin frame', async () => {
+    document.body.innerHTML = `
+      <input id="text"><input id="odd" type="nonsense"><input id="search" type="search"><input id="email" type="email">
+      <input id="url" type="url"><input id="tel" type="tel"><input id="number" type="number"><textarea id="note"></textarea>
+      <div id="editor" contenteditable></div><x-editor id="custom" contenteditable="plaintext-only" tabindex="0"></x-editor>
+      <input id="pw" type="password"><input id="otp" autocomplete="one-time-code"><input id="card" autocomplete="cc-number">
+      <div id="card-editor" contenteditable autocomplete="cc-number"></div>
+      <input id="date" type="date"><input id="box" type="checkbox"><input id="range" type="range"><button id="go">Go</button>
+      <select id="pick"><option>A</option></select><a id="link" href="/x">Link</a>
+      <iframe id="form" srcdoc="<input id='inner' type='email'><input id='innerpw' type='password'>"></iframe>
+      <iframe id="whole" srcdoc="<body contenteditable='true'>draft</body>"></iframe>
+      <iframe id="plain" srcdoc="<p>Nothing to type into</p>"></iframe>`;
+    await framesLoad();
+    const world = freshWorld();
+    const entry = () => pageWorld(document, world, { kind: 'focusedEntry' });
+    for (const id of ['text', 'odd', 'search', 'email', 'url', 'tel', 'number', 'note', 'editor', 'custom']) {
+      (document.getElementById(id) as HTMLElement).focus();
+      expect(entry(), id).toBe(document.getElementById(id));
+    }
+    for (const id of ['pw', 'otp', 'card', 'card-editor', 'date', 'box', 'range', 'go', 'pick', 'link']) {
+      (document.getElementById(id) as HTMLElement).focus();
+      expect(entry(), id).toBeNull();
+    }
+    (document.activeElement as HTMLElement).blur();
+    expect(entry(), 'nothing focused').toBeNull();
+    // Inside a same-origin frame: its field, never its password field.
+    (frameDoc('form').getElementById('inner') as HTMLInputElement).focus();
+    document.getElementById('form')!.focus();
+    expect(entry()).toBe(frameDoc('form').getElementById('inner'));
+    (frameDoc('form').getElementById('innerpw') as HTMLInputElement).focus();
+    document.getElementById('form')!.focus();
+    expect(entry()).toBeNull();
+    // A frame whose whole document is an editor types into its body; a frame with none takes no typing.
+    document.getElementById('whole')!.focus();
+    expect(entry()).toBe(frameDoc('whole').body);
+    document.getElementById('plain')!.focus();
+    expect(entry()).toBeNull();
+  });
+
   it('finds what a screenshot must hide: secret fields in the page, its open shadow roots and its same-origin frames, payment frames by address, and every frame from another site', async () => {
     document.body.innerHTML = `
       <input id="pw" type="password">

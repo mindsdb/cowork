@@ -418,6 +418,126 @@ describe('runStep', () => {
     }
   });
 
+  /* A type with focused true: the model clicked a frame's field by pixel,
+     which has no number, and types into whatever has the focus now. */
+  const typeFocused = (text: string, submit = false) => step({ action: 'type', focused: true, text, submit });
+  /* The reads of the focused text entry, on the session each ran on. */
+  const entryReads = (dbg: ReturnType<typeof host>['dbg']) =>
+    [...sentOf(dbg, 'Runtime.evaluate'), ...sentOf(dbg, 'Runtime.callFunctionOn')]
+      .filter(({ params }) => String(params.expression ?? params.functionDeclaration).includes('"kind":"focusedEntry"'));
+
+  it("types a focused type at the caret of an ordinary field in another site's frame, read in that frame's own world, clearing nothing", async () => {
+    const { dbg, page, stepHost } = host({}, pacing, widget({ entry: 41 }));
+    await runStep(stepHost, typeFocused('ada@exämple.test'));
+    expect(typedText(dbg.sent)).toBe('ada@exmple.test');
+    expect(events(dbg.sent, 'Input.insertText')).toEqual([{ text: 'ä' }]);
+    // Nothing selected or deleted first, and no Enter without submit.
+    expect(events(dbg.sent, 'Input.dispatchKeyEvent').some((e) => ['Backspace', 'Enter'].includes(String(e.key)) || e.modifiers !== 0 && e.key === 'a')).toBe(false);
+    expect(page.focusField).not.toHaveBeenCalled();
+    expect(page.focus).not.toHaveBeenCalled();
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent')).toEqual([]);
+    // Read on the frame's own session before every key, the first one included.
+    const reads = entryReads(dbg);
+    expect(reads.length).toBeGreaterThan([...'ada@exämple.test'].length);
+    expect(reads.every(({ sessionId }) => sessionId === 'session-widget')).toBe(true);
+  });
+
+  it('types a focused type into a field of the page itself, or one the focus rests on inside a closed root, and presses Enter after it only with submit', async () => {
+    const plain = host({}, pacing, { main: { entry: 3 } });
+    await runStep(plain.stepHost, typeFocused('shoes', true));
+    expect(typedText(plain.dbg.sent)).toBe('shoes\r');
+    expect(entryReads(plain.dbg).every(({ sessionId }) => sessionId === undefined)).toBe(true);
+    const sealed = host({}, pacing, { main: { focus: inRoot({ sealed: true }), closedRoots: [inRoot({})], entry: 9 } });
+    await runStep(sealed.stepHost, typeFocused('shoes'));
+    expect(typedText(sealed.dbg.sent)).toBe('shoes');
+    // The entry is read from inside the root the debugger handed the world.
+    expect(sentOf(sealed.dbg, 'Runtime.callFunctionOn').some(({ params }) => String(params.functionDeclaration).includes('"kind":"focusedEntry"'))).toBe(true);
+  });
+
+  it.each([
+    ['a secret field of the page', { main: { focus: inRoot({ secret: true }), entry: 3 } }],
+    ["the password field of another site's frame", widget({ focus: inRoot({ secret: true }) })],
+    ['a secret field in a closed root', sealedMain({ secret: true })],
+    ["a secret field in a closed root inside another site's frame", widget({ focus: inRoot({ sealed: true }), closedRoots: [inRoot({ secret: true })] })],
+  ])('refuses a focused type onto %s as password_field, and types nothing', async (_where, cdp) => {
+    const { dbg, stepHost } = host({}, pacing, cdp);
+    await expect(runStep(stepHost, typeFocused('hunter2'))).rejects.toMatchObject({ code: 'password_field', status: 403 });
+    expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    expect(events(dbg.sent, 'Input.insertText')).toEqual([]);
+  });
+
+  it.each([
+    ['a button of the page, or nothing at all', {}],
+    ["a button in another site's frame", widget()],
+    ['an element in a closed root that takes no text', sealedMain({})],
+  ])('refuses a focused type onto %s as not_a_text_field, and types nothing', async (_where, cdp) => {
+    const { dbg, stepHost } = host({}, pacing, cdp);
+    await expect(runStep(stepHost, typeFocused('shoes'))).rejects.toMatchObject({ code: 'not_a_text_field', status: 409 });
+    expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    expect(events(dbg.sent, 'Input.insertText')).toEqual([]);
+  });
+
+  it.each([
+    ["a payment provider's frame, which is never read", widget({ url: 'https://js.stripe.com/v3/elements-inner-card', entry: 4 })],
+    ['a frame of yet another site inside it', widget({ focus: inRoot({ otherSite: true }), entry: 4 })],
+    ['a frame the debugger finds no owner of', { ...widget({ entry: 4 }), focusedOwnerOf: null }],
+    ['closed roots nested past what a read follows', { main: { focus: inRoot({ sealed: true }), closedRoots: Array.from({ length: 12 }, () => inRoot({ sealed: true })), entry: 4 } }],
+  ])('refuses a focused type whose focus rests in %s as focus_unreadable, and types nothing', async (_where, cdp) => {
+    const { dbg, stepHost } = host({}, pacing, cdp);
+    await expect(runStep(stepHost, typeFocused('shoes'))).rejects.toMatchObject({ code: 'focus_unreadable', status: 409 });
+    expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    expect(events(dbg.sent, 'Input.insertText')).toEqual([]);
+  });
+
+  it("refuses a focused type into another site's frame whose world doesn't answer in time as focus_unreadable", async () => {
+    vi.useFakeTimers();
+    try {
+      const { dbg, stepHost } = host({}, pacing, widget({ hangs: true }));
+      const typed = runStep(stepHost, typeFocused('shoes'));
+      const outcome = expect(typed).rejects.toMatchObject({ code: 'focus_unreadable' });
+      await vi.advanceTimersByTimeAsync(FRAME_READ_MS);
+      await outcome;
+      expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /* The page moves the focus in the frame once `after` keys are in: to
+     `to`'s field, or onto a secret one. */
+  function focusMovesInFrame(after: number, to: Partial<FakeFrame>) {
+    const made = host({}, pacing, widget({ entry: 41 }));
+    const frame = made.dbg.page.frames.find((f) => f.id === 'widget')!;
+    const send = made.dbg.sendCommand;
+    made.dbg.sendCommand = vi.fn(async (method: string, params?: Record<string, unknown>, sessionId?: string) => {
+      if (typedText(made.dbg.sent).length >= after) Object.assign(frame, to);
+      return send(method, params, sessionId);
+    });
+    return made;
+  }
+
+  it.each([
+    ['another field that takes text too', { entry: 42 }, 'stale_element'],
+    ['an element that takes no text', { entry: undefined }, 'stale_element'],
+    ['a secret field', { entry: undefined, focus: inRoot({ secret: true }) }, 'password_field'],
+  ] as const)('stops a focused type once the page moves the focus to %s', async (_where, to, code) => {
+    const { dbg, stepHost } = focusMovesInFrame(3, to);
+    await expect(runStep(stepHost, typeFocused('ada@example.test'))).rejects.toMatchObject({ code });
+    expect(typedText(dbg.sent)).toBe('ada');
+  });
+
+  it('checks the focus again before the Enter a focused type submits with, and presses none once it moved', async () => {
+    const { dbg, stepHost } = focusMovesInFrame(3, { entry: 42 });
+    await expect(runStep(stepHost, typeFocused('ada', true))).rejects.toMatchObject({ code: 'stale_element' });
+    expect(events(dbg.sent, 'Input.dispatchKeyEvent').some((e) => e.key === 'Enter')).toBe(false);
+  });
+
+  it('runs a focused type with into_frame false or missing, since it presses at no point', async () => {
+    const { dbg, stepHost } = host({}, pacing, widget({ entry: 41 }));
+    await runStep(stepHost, step({ action: 'type', focused: true, text: 'x', submit: false, into_frame: false }));
+    expect(typedText(dbg.sent)).toBe('x');
+  });
+
   it("focuses a press's element instead of clicking it, and leaves a secret one alone only for editing keys", async () => {
     const { dbg, page, stepHost } = host();
     await runStep(stepHost, step({ action: 'press', key: 'Enter', element: 4 }));

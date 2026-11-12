@@ -216,6 +216,19 @@ async function startFixtureServer(): Promise<void> {
           + '<input id="u" style="top:0"><input id="p" type="password" value="hunter2" style="top:100px">'
           + '<script>addEventListener("keydown", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "frame-key", key: e.key, target: e.target.id, isTrusted: e.isTrusted }) }))</script>');
     }
+    if (url.pathname === '/frame-entry') {
+      /* The same embedded form twice: from another site at the top, and
+         from the page's own origin below it. */
+      const entry = (at: string, top: number) => `<iframe src="${at}/entry" style="position:absolute;left:0;top:${top}px;width:400px;height:170px;border:0"></iframe>`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Frame entry</title><style>body{margin:0}</style>${entry(origin.replace('127.0.0.1', 'localhost'), 0)}${entry(origin, 200)}`);
+    }
+    if (url.pathname === '/entry') {
+      /* An email field, a button and a password field the person filled, 40 px tall each, at 0, 60 and 120. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Entry</title><style>body{margin:0;background:#fff}input,button{position:absolute;left:0;width:300px;height:40px;border:0;background:#eee;font:20px sans-serif}</style>'
+          + '<input id="email" type="email" style="top:0"><button id="go" style="top:60px">Go</button><input id="pw" type="password" value="hunter2" style="top:120px">');
+    }
     if (url.pathname === '/closed-fields') {
       /* A form the page keeps in a closed shadow root, with an ordinary
          field and a password field the person has filled. */
@@ -693,6 +706,45 @@ test("types into an ordinary field of another site's embedded form, and refuses 
   // A key that edits nothing still goes in.
   expect((await act({ action: 'press', key: 'ArrowLeft' })).status).toBe(200);
   await expect.poll(() => log.filter((e) => e.type === 'frame-key').map((e) => e.key)).toEqual(['ArrowLeft']);
+});
+
+/* The value of field `id` in the /frame-entry page's frame at `at`/entry,
+   read from main. */
+async function entryValue(at: string, id: string): Promise<string> {
+  return String(await app.evaluate(({ webContents }, { page, frame, field }) => webContents.getAllWebContents()
+    .find((contents) => contents.getURL() === page)?.mainFrame.framesInSubtree
+    .find((f) => f.url === frame)?.executeJavaScript(`document.getElementById(${JSON.stringify(field)}).value`), { page: `${origin}/frame-entry`, frame: `${at}/entry`, field: id }));
+}
+
+test("types a focused type into an ordinary field of another site's embedded form and of the page's own, one step each, and refuses one onto a password field or a button", async () => {
+  await openAt('/frame-entry');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
+  const other = origin.replace('127.0.0.1', 'localhost');
+  const typeFocused = (text: string) => act({ action: 'type', focused: true, text, submit: false });
+  // Nothing has the focus yet.
+  const nothing = await typeFocused('x');
+  expect(nothing.status, nothing.body.toString()).toBe(409);
+  expect(nothing.json().error).toBe('not_a_text_field');
+  // The person approved each click into a frame; the typing needs no approval.
+  expect((await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true })).status).toBe(200);
+  const typed = await typeFocused('adé@example.test');
+  expect(typed.status, typed.body.toString()).toBe(200);
+  expect(await entryValue(other, 'email')).toBe('adé@example.test');
+  expect((await act({ action: 'click', x: 20, y: 80, coords: 'page', into_frame: true })).status).toBe(200);
+  const button = await typeFocused('x');
+  expect(button.status, button.body.toString()).toBe(409);
+  expect(button.json().error).toBe('not_a_text_field');
+  expect((await act({ action: 'click', x: 20, y: 140, coords: 'page', into_frame: true })).status).toBe(200);
+  const secret = await typeFocused('x');
+  expect(secret.status, secret.body.toString()).toBe(403);
+  expect(secret.json().error).toBe('password_field');
+  expect(await entryValue(other, 'pw')).toBe('hunter2');
+  // The page's own frame, read in the page's process.
+  expect((await act({ action: 'click', x: 20, y: 220, coords: 'page', into_frame: true })).status).toBe(200);
+  const own = await typeFocused('bo@example.test');
+  expect(own.status, own.body.toString()).toBe(200);
+  expect(await entryValue(origin, 'email')).toBe('bo@example.test');
+  expect(await entryValue(other, 'email')).toBe('adé@example.test');
 });
 
 test('refuses an editing key into a password field the page keeps in a closed shadow root, and types into an ordinary field there', async () => {

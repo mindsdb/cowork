@@ -24,6 +24,11 @@ export interface FakeFrame {
       the first is inside the root of the element `focus` stops on (`sealed`),
       the next inside the root of the element that one stops on. */
   closedRoots?: FocusedSecret[];
+  /** The backend node id of the text entry that isn't secret where the
+      focus rests in this frame, as the frame's own world answers a type
+      with focused true (focusedEntry); none when it rests on anything else.
+      A test changes it to move the focus to another field. */
+  entry?: number;
   /** What the frame's own world finds for a screenshot, in its own viewport's pixels. */
   secrets?: Partial<FoundSecrets>;
   /** The frame's owner element in the page: its content and border boxes in
@@ -124,6 +129,8 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
       }
       case 'DOM.describeNode': {
         if (params.objectId === 'focused-owner') return { node: { localName: 'iframe', nodeName: 'IFRAME', frameId: model.focusedOwnerOf } };
+        const entry = /^entry:(.+):(\d+)$/.exec(String(params.objectId ?? ''));
+        if (entry) return { node: { localName: 'input', nodeName: 'INPUT', backendNodeId: Number(entry[2]) } };
         // The element the focus stops on in a frame, at a closed-root level: its closed root, when it keeps one.
         const host = /^focus:(.+):(\d+)$/.exec(String(params.objectId ?? ''));
         if (host) {
@@ -184,6 +191,7 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
           : { result: { type: 'object', subtype: 'null', value: null } });
         if (expression.includes('"kind":"focusedFrame"')) return node(focus.otherSite && model.focusedOwnerOf ? 'focused-owner' : null);
         if (expression.includes('"kind":"focusedElement"')) return node(focus.sealed ? `focus:${target.id}:${level + 1}` : null);
+        if (expression.includes('"kind":"focusedEntry"')) return node(target.entry === undefined ? null : `entry:${target.id}:${target.entry}`);
         if (expression.includes('"kind":"focusedSecret"')) return { result: { type: 'object', value: focus } };
         if (expression.includes('"kind":"secretBoxes"')) {
           const viewport = target.owner ? { width: target.owner.content.width, height: target.owner.content.height } : SECRETS_NONE.viewport;

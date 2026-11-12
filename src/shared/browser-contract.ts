@@ -286,6 +286,8 @@ export type BridgeErrorCode =
   | 'tab_not_found'
   | 'too_many_saved_tabs'
   | 'human_in_control'
+  | 'not_a_text_field'
+  | 'focus_unreadable'
   | 'stale_element'
   | 'page_blocked'
   | 'page_busy'
@@ -304,6 +306,8 @@ export const BRIDGE_ERROR_STATUS: Record<BridgeErrorCode, number> = {
   too_large: 413,
   too_many_saved_tabs: 409,
   human_in_control: 409,
+  not_a_text_field: 409,
+  focus_unreadable: 409,
   stale_element: 409,
   page_blocked: 409,
   page_busy: 409,
@@ -354,9 +358,15 @@ export type StepTarget = PointTarget | ElementTarget;
 export type MouseButton = 'left' | 'right' | 'middle';
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 
+/** A checked step. A type step names its field by number, or, with
+    `focused`, types into whatever has the focus: a frame's field has no
+    number, so the model clicks it by position first. A focused type types at
+    the caret and clears nothing, and the host types it only into a text entry
+    that isn't secret (typeIntoFocus in src/main/browser-input.ts). */
 export type Step =
   | { action: 'click'; target: StepTarget; button: MouseButton; clicks: 1 | 2 | 3 }
-  | { action: 'type'; element: number; text: string; clear: boolean; submit: boolean }
+  | { action: 'type'; focused?: false; element: number; text: string; clear: boolean; submit: boolean }
+  | { action: 'type'; focused: true; text: string; submit: boolean }
   | { action: 'press'; key: string; element?: number }
   | { action: 'select'; element: number; values: string[] }
   | { action: 'scroll'; direction: ScrollDirection; amount: number; element?: number }
@@ -383,7 +393,8 @@ export type Step =
     arrived under a point that had none (frameGuard in
     src/main/browser-input.ts). Anything else, a missing field included, is
     false, and a press or a drag's release whose point lands in a frame,
-    when the step starts or just before it, is refused. */
+    when the step starts or just before it, is refused. A type with focused
+    true presses at no point, so into_frame never stops it. */
 export interface StepRequest {
   step: Step;
   coords: 'page' | 'screenshot';
@@ -441,6 +452,7 @@ function parseStep(body: Record<string, unknown>): Parsed<Step> {
   if (typeof action !== 'string' || !(STEP_ACTIONS as readonly string[]).includes(action)) {
     return refuse(`unknown action ${typeof action === 'string' ? JSON.stringify(action) : `of type ${typeof action}`}; expected one of ${STEP_ACTIONS.join(', ')}`);
   }
+  if (body.focused !== undefined && action !== 'type') return refuse('focused goes only on a type step');
   switch (action as StepAction) {
     case 'click': {
       const at = target(body, 'click');
@@ -452,11 +464,20 @@ function parseStep(body: Record<string, unknown>): Parsed<Step> {
       return ok({ action: 'click', target: at.value, button: button as MouseButton, clicks });
     }
     case 'type': {
-      const element = elementId(body.element);
-      if (element === null) return refuse('type needs a positive integer "element"');
       if (typeof body.text !== 'string') return refuse('type needs a string "text"');
       if (body.text.length > MAX_TEXT_CHARS) return refuse(`type text is longer than ${MAX_TEXT_CHARS} characters`);
-      return ok({ action: 'type', element, text: body.text, clear: body.clear !== false, submit: body.submit === true });
+      const submit = body.submit === true;
+      if (body.focused === undefined) {
+        const element = elementId(body.element);
+        if (element === null) return refuse('type needs a positive integer "element", or "focused": true to type where the focus is');
+        return ok({ action: 'type', element, text: body.text, clear: body.clear !== false, submit });
+      }
+      if (body.focused !== true) return refuse('focused, when a type step sends it, is true');
+      if (body.element !== undefined || body.x !== undefined || body.y !== undefined) {
+        return refuse('a type with focused true types where the focus is, so it names no element or point');
+      }
+      if (body.clear !== undefined && body.clear !== false) return refuse('a type with focused true types at the caret and clears nothing');
+      return ok({ action: 'type', focused: true, text: body.text, submit });
     }
     case 'press': {
       if (typeof body.key !== 'string' || !body.key || body.key.length > MAX_KEY_CHARS) {

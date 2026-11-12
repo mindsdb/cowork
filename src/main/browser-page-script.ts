@@ -229,6 +229,10 @@ export type PageWorldRequest =
   /* The element the focus rests on, followed as far as this world sees, or
      null. It answers an element, for the debugger to look inside. */
   | { kind: 'focusedElement' }
+  /* The text entry that isn't secret where the focus rests, which a type
+     with focused true types into, or null. It answers an element, which the
+     debugger names by its node (browser-frames.ts). */
+  | { kind: 'focusedEntry' }
   /* Where the focus is while a type step types into element `id`. */
   | { kind: 'typingFocus'; id: number }
   | { kind: 'viewport' }
@@ -422,6 +426,9 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   const isTextField = (el: Element): boolean => tagOf(el) === 'textarea'
     || (tagOf(el) === 'input' && !NOT_TEXT_INPUTS.has(inputType(el)))
     || editable(el) || contentEditable(el);
+  /* The inputs a type with focused true types into, by the type the input
+     takes (an unknown type attribute is a text input). */
+  const TEXT_ENTRY_INPUTS = new Set(['text', 'search', 'email', 'url', 'tel', 'number']);
   const isDisabled = (el: Element): boolean =>
     (el as HTMLButtonElement).disabled === true || el.getAttribute('aria-disabled') === 'true';
 
@@ -1223,6 +1230,21 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return !!active && !active.shadowRoot && (tagOf(active).includes('-') || SHADOW_HOSTS.has(tagOf(active)));
   };
 
+  /* The text entry a type with focused true types into, or null: the
+     focused element, followed as deepActive follows it and on into a
+     same-origin frame whose body has the focus there (a whole-document
+     editor), when it is a text, search, email, url, tel or number input, a
+     textarea, or an editor, and isn't secret. */
+  const focusedEntry = (): Element | null => {
+    const active = deepActive();
+    const inner = active && FRAME_TAGS.has(tagOf(active)) ? frameDocOf(active) : null;
+    const at = inner?.body && inner.activeElement === inner.body ? inner.body : active;
+    if (!at || isSecret(at)) return null;
+    if (tagOf(at) === 'input') return TEXT_ENTRY_INPUTS.has((at as HTMLInputElement).type) ? at : null;
+    if (tagOf(at) === 'textarea') return at;
+    return editable(at) || contentEditable(at) || userModifiable(at) ? at : null;
+  };
+
   /* Selects a field's text so typing replaces it; false when it held none. */
   const selectContents = (el: Element): boolean => {
     const tag = tagOf(el);
@@ -1353,6 +1375,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       return focusedFrameOwner();
     case 'focusedElement':
       return deepActive();
+    case 'focusedEntry':
+      return focusedEntry();
     case 'typingFocus': {
       const el = world.ids.get(request.id);
       return { secret: focusOnSecret(), inField: !!el && el.isConnected && focusIn(el) };
