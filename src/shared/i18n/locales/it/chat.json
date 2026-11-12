@@ -615,5 +615,16 @@
     "closedTitle": "Il browser di questa attività è chiuso",
     "closedDescription": "{agent} lo riaprirà quando ne avrà bisogno.",
     "squeezed": "Allarga la finestra per vedere la pagina"
+  },
+  "notionPicker": {
+    "title": "Aggiungi pagine da Notion",
+    "subtitle": "Cerca nel tuo Notion e scegli le pagine per questo messaggio.",
+    "searchPlaceholder": "Cerca pagine di Notion…",
+    "searchAriaLabel": "Cerca pagine di Notion",
+    "minQuery": "{count, plural, one {Digita almeno # carattere per cercare.} other {Digita almeno # caratteri per cercare.}}",
+    "noResults": "Nessuna pagina trovata.",
+    "database": "Database",
+    "cancel": "Annulla",
+    "add": "{count, plural, =0 {Aggiungi pagina} one {Aggiungi pagina} other {Aggiungi # pagine}}"
   }
 }

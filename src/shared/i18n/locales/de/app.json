@@ -264,5 +264,9 @@
   "addon": {
     "moveFailed": "Die Nachricht konnte nicht in die Warteschlange verschoben werden. Bitte versuchen Sie es erneut.",
     "stayQueued": "{agent} kann sie gerade nicht annehmen. Sie bleibt in der Warteschlange."
+  },
+  "notion": {
+    "connectTitle": "Notion verbinden?",
+    "connectMessage": "Sie müssen Ihren Notion-Workspace verbinden, um Seiten aus Notion hinzuzufügen."
   }
 }
