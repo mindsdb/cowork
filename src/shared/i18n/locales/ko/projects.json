@@ -585,7 +585,8 @@
     "failedToast": "예약된 작업 “{title}”의 최근 실행이 완료되지 않았습니다.",
     "succeededTitle": "예약된 작업 완료",
     "succeededBody": "“{title}”의 실행이 완료되었습니다. 클릭하여 여세요.",
-    "succeededToast": "예약된 작업 “{title}”의 실행이 완료되었습니다."
+    "succeededToast": "예약된 작업 “{title}”의 실행이 완료되었습니다.",
+    "openAction": "작업 열기"
   },
   "scheduleNotifyMenu": {
     "label": "알림",

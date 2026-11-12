@@ -585,7 +585,8 @@
     "failedToast": "La tarea programada «{title}» no terminó su última ejecución.",
     "succeededTitle": "Tarea programada terminada",
     "succeededBody": "«{title}» terminó una ejecución. Haz clic para abrirla.",
-    "succeededToast": "La tarea programada «{title}» terminó una ejecución."
+    "succeededToast": "La tarea programada «{title}» terminó una ejecución.",
+    "openAction": "Abrir tarea"
   },
   "scheduleNotifyMenu": {
     "label": "Notificaciones",

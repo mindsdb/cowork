@@ -585,7 +585,8 @@
     "failedToast": "A tarefa agendada “{title}” não concluiu a última execução.",
     "succeededTitle": "Tarefa agendada concluída",
     "succeededBody": "“{title}” concluiu uma execução. Clique para abrir.",
-    "succeededToast": "A tarefa agendada “{title}” concluiu uma execução."
+    "succeededToast": "A tarefa agendada “{title}” concluiu uma execução.",
+    "openAction": "Abrir tarefa"
   },
   "scheduleNotifyMenu": {
     "label": "Notificações",

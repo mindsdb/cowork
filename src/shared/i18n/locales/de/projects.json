@@ -585,7 +585,8 @@
     "failedToast": "Die geplante Aufgabe „{title}“ hat die letzte Ausführung nicht abgeschlossen.",
     "succeededTitle": "Geplante Aufgabe abgeschlossen",
     "succeededBody": "„{title}“ hat eine Ausführung abgeschlossen. Zum Öffnen klicken.",
-    "succeededToast": "Die geplante Aufgabe „{title}“ hat eine Ausführung abgeschlossen."
+    "succeededToast": "Die geplante Aufgabe „{title}“ hat eine Ausführung abgeschlossen.",
+    "openAction": "Aufgabe öffnen"
   },
   "scheduleNotifyMenu": {
     "label": "Benachrichtigungen",

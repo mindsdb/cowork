@@ -585,7 +585,8 @@
     "failedToast": "定时任务“{title}”上次运行未完成。",
     "succeededTitle": "定时任务已完成",
     "succeededBody": "“{title}”已完成一次运行。点击打开。",
-    "succeededToast": "定时任务“{title}”已完成一次运行。"
+    "succeededToast": "定时任务“{title}”已完成一次运行。",
+    "openAction": "打开任务"
   },
   "scheduleNotifyMenu": {
     "label": "通知",

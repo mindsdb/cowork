@@ -64,13 +64,15 @@ const msg = (key, vars) => i18n.t(`scheduleRunNotice.${key}`, { ns: 'projects', 
 // on click, and a toast in the app otherwise. Only runs that end while the
 // app is open are announced; the task's status covers the rest.
 //
-// `onOpen(schedule, run)` opens the run. `toast({ type, title })` shows the
-// in-app notice.
-export function useScheduleRunNotifications(schedules, { onOpen, toast } = {}) {
+// `onOpen(schedule, run)` opens the run. `toast(notice)` shows the in-app
+// notice and `closeToast(id)` removes it; the notice's action opens the run.
+export function useScheduleRunNotifications(schedules, { onOpen, toast, closeToast } = {}) {
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
   const toastRef = useRef(toast);
   toastRef.current = toast;
+  const closeToastRef = useRef(closeToast);
+  closeToastRef.current = closeToast;
   // A minute of slack, so a clock a little ahead of the server's does not
   // hide every run.
   const sinceRef = useRef(Date.now() - 60_000);
@@ -87,7 +89,19 @@ export function useScheduleRunNotifications(schedules, { onOpen, toast } = {}) {
       // and notifications show on the lock screen.
       const title = schedule.title || msg('untitled');
       if (!allowed) {
-        toastRef.current?.({ type: kind === 'failed' ? 'danger' : 'success', title: msg(`${kind}Toast`, { title }) });
+        const id = `schedule-run-${run.id}`;
+        toastRef.current?.({
+          id,
+          type: kind === 'failed' ? 'danger' : 'success',
+          title: msg(`${kind}Toast`, { title }),
+          actionProps: {
+            children: msg('openAction'),
+            onClick: () => {
+              openRef.current?.(schedule, run);
+              closeToastRef.current?.(id);
+            },
+          },
+        });
         continue;
       }
       const notice = new Notification(msg(`${kind}Title`), {

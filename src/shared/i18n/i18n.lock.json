@@ -118557,6 +118557,40 @@
       "text": "5026b85f09bc"
     }
   },
+  "projects:scheduleRunNotice.openAction": {
+    "de": {
+      "from": "6b5c9394cb7f",
+      "text": "b831c02809ba"
+    },
+    "es": {
+      "from": "6b5c9394cb7f",
+      "text": "c21833e30922"
+    },
+    "fr": {
+      "from": "6b5c9394cb7f",
+      "text": "629ac07c8100"
+    },
+    "it": {
+      "from": "6b5c9394cb7f",
+      "text": "24702be2543c"
+    },
+    "ja": {
+      "from": "6b5c9394cb7f",
+      "text": "321ab6dc3d29"
+    },
+    "ko": {
+      "from": "6b5c9394cb7f",
+      "text": "7b797d98de89"
+    },
+    "pt-BR": {
+      "from": "6b5c9394cb7f",
+      "text": "6851a1e12534"
+    },
+    "zh-CN": {
+      "from": "6b5c9394cb7f",
+      "text": "0a92e7687ea3"
+    }
+  },
   "projects:scheduleRunNotice.succeededBody": {
     "de": {
       "from": "0464e4fa383a",

@@ -585,7 +585,8 @@
     "failedToast": "L’attività pianificata “{title}” non ha completato l’ultima esecuzione.",
     "succeededTitle": "Attività pianificata completata",
     "succeededBody": "“{title}” ha completato un’esecuzione. Fai clic per aprirla.",
-    "succeededToast": "L’attività pianificata “{title}” ha completato un’esecuzione."
+    "succeededToast": "L’attività pianificata “{title}” ha completato un’esecuzione.",
+    "openAction": "Apri attività"
   },
   "scheduleNotifyMenu": {
     "label": "Notifiche",

@@ -5754,6 +5754,7 @@ function AppCore() {
       setRoute('schedule-detail');
     },
     toast: (notice) => toastManager.add(notice),
+    closeToast: (id) => toastManager.close(id),
   });
 
   // Stop a schedule's run in flight the way the chat's Stop does: cancel its

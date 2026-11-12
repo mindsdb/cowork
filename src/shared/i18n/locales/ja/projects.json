@@ -585,7 +585,8 @@
     "failedToast": "スケジュールされたタスク「{title}」の前回の実行は完了しませんでした。",
     "succeededTitle": "スケジュールされたタスクが完了しました",
     "succeededBody": "「{title}」の実行が完了しました。クリックして開きます。",
-    "succeededToast": "スケジュールされたタスク「{title}」の実行が完了しました。"
+    "succeededToast": "スケジュールされたタスク「{title}」の実行が完了しました。",
+    "openAction": "タスクを開く"
   },
   "scheduleNotifyMenu": {
     "label": "通知",

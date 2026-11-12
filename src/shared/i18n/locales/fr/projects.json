@@ -585,7 +585,8 @@
     "failedToast": "La tâche planifiée « {title} » n’a pas terminé sa dernière exécution.",
     "succeededTitle": "Tâche planifiée terminée",
     "succeededBody": "« {title} » a terminé une exécution. Cliquez pour l’ouvrir.",
-    "succeededToast": "La tâche planifiée « {title} » a terminé une exécution."
+    "succeededToast": "La tâche planifiée « {title} » a terminé une exécution.",
+    "openAction": "Ouvrir la tâche"
   },
   "scheduleNotifyMenu": {
     "label": "Notifications",

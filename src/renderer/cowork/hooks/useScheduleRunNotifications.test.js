@@ -88,14 +88,25 @@ describe('useScheduleRunNotifications', () => {
     expect(shown).toHaveLength(1);
   });
 
-  it('shows a toast in the app where notifications are not allowed', async () => {
+  it('shows a toast in the app where notifications are not allowed, which opens the task', async () => {
     FakeNotification.permission = 'denied';
     const toast = vi.fn();
-    renderHook(() => useScheduleRunNotifications([schedule(run())], { toast }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith({
-      type: 'danger', title: 'Scheduled task “Weekly digest” didn’t finish its last run.',
-    }));
+    const closeToast = vi.fn();
+    const onOpen = vi.fn();
+    const failed = schedule(run());
+    renderHook(() => useScheduleRunNotifications([failed], { toast, closeToast, onOpen }));
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+    const notice = toast.mock.calls[0][0];
+    expect(notice).toMatchObject({
+      id: 'schedule-run-run-1',
+      type: 'danger',
+      title: 'Scheduled task “Weekly digest” didn’t finish its last run.',
+      actionProps: { children: 'Open task' },
+    });
     expect(shown).toHaveLength(0);
+    notice.actionProps.onClick();
+    expect(onOpen).toHaveBeenCalledWith(failed, failed.lastRun);
+    expect(closeToast).toHaveBeenCalledWith('schedule-run-run-1');
   });
 
   it('starts with failures on and successes off, and remembers a change', async () => {

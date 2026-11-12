@@ -585,7 +585,8 @@
     "failedToast": "Scheduled task “{title}” didn’t finish its last run.",
     "succeededTitle": "Scheduled task finished",
     "succeededBody": "“{title}” finished a run. Click to open it.",
-    "succeededToast": "Scheduled task “{title}” finished a run."
+    "succeededToast": "Scheduled task “{title}” finished a run.",
+    "openAction": "Open task"
   },
   "scheduleNotifyMenu": {
     "label": "Notifications",
