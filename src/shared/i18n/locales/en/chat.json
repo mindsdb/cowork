@@ -210,7 +210,15 @@
       "returned": "Moved to queue",
       "moveToQueue": "Move to queue",
       "addToTask": "Add to current task",
-      "addingToTask": "Adding to current task"
+      "addingToTask": "Adding to current task",
+      "queued": {
+        "separate": "Queued: this looks like a separate request, so it runs after the current task.",
+        "unsure": "Queued: it wasn't clear this belongs to the current task. Use the arrow to add it now.",
+        "unchecked": "Queued: couldn't check whether this belongs to the current task.",
+        "unavailable": "Queued: the current task can't take messages right now.",
+        "files": "Queued: messages with files run after the current task.",
+        "notRead": "Queued: the task finished before it could read this."
+      }
     }
   },
   "composer": {

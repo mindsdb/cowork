@@ -8,6 +8,7 @@ import {
   foldAddonMessages,
   isAddonMessage,
   newlyReturnedAddons,
+  queuedReasonKey,
 } from './addons';
 
 const live = { conversationId: 'conv-1', text: 'use the sales DB', attachments: [], liveStream: true };
@@ -201,5 +202,26 @@ describe('foldAddonMessages', () => {
   it('keeps an add-on with no turn on the page as a labelled user row', () => {
     const out = foldAddonMessages([user, addon]);
     expect(out[1]).toMatchObject({ id: 'u2', role: 'user', _addon: { decidedBy: 'jev' } });
+  });
+});
+
+
+describe('queuedReasonKey', () => {
+  it('says why a message waits, without naming the decision model', () => {
+    expect(queuedReasonKey('next_task')).toBe('separate');
+    expect(queuedReasonKey('low_confidence')).toBe('unsure');
+    // The check could not run: how a missing decision shows up.
+    for (const r of ['jev_off', 'jev_error', 'jev_timeout']) expect(queuedReasonKey(r)).toBe('unchecked');
+    expect(queuedReasonKey('attachments')).toBe('files');
+    expect(queuedReasonKey('returned')).toBe('notRead');
+    for (const r of ['pod_timeout', 'no_turn', 'not_supported', 'not_found', 'timeout', 'unknown']) {
+      expect(queuedReasonKey(r)).toBe('unavailable');
+    }
+  });
+
+  it('has nothing to say for a message the person queued themselves', () => {
+    expect(queuedReasonKey(null)).toBeNull();
+    expect(queuedReasonKey('moved')).toBeNull();
+    expect(queuedReasonKey('empty')).toBeNull();
   });
 });

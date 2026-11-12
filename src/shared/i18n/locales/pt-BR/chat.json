@@ -210,7 +210,15 @@
       "returned": "Movido para a fila",
       "moveToQueue": "Mover para a fila",
       "addToTask": "Adicionar à tarefa atual",
-      "addingToTask": "Adicionando à tarefa atual"
+      "addingToTask": "Adicionando à tarefa atual",
+      "queued": {
+        "separate": "Na fila: parece um pedido separado, então será executado depois da tarefa atual.",
+        "unsure": "Na fila: não ficou claro se pertence à tarefa atual. Use a seta para adicioná-lo agora.",
+        "unchecked": "Na fila: não foi possível verificar se pertence à tarefa atual.",
+        "unavailable": "Na fila: a tarefa atual não pode receber mensagens agora.",
+        "files": "Na fila: mensagens com arquivos são executadas depois da tarefa atual.",
+        "notRead": "Na fila: a tarefa terminou antes de conseguir ler isto."
+      }
     }
   },
   "composer": {

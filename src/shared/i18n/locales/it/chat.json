@@ -210,7 +210,15 @@
       "returned": "Spostato in coda",
       "moveToQueue": "Sposta in coda",
       "addToTask": "Aggiungi all’attività corrente",
-      "addingToTask": "Aggiunta all’attività corrente"
+      "addingToTask": "Aggiunta all’attività corrente",
+      "queued": {
+        "separate": "In coda: sembra una richiesta separata, quindi verrà eseguita dopo l’attività corrente.",
+        "unsure": "In coda: non era chiaro se appartiene all’attività corrente. Usa la freccia per aggiungerlo ora.",
+        "unchecked": "In coda: non è stato possibile verificare se appartiene all’attività corrente.",
+        "unavailable": "In coda: l’attività corrente non può ricevere messaggi in questo momento.",
+        "files": "In coda: i messaggi con file vengono eseguiti dopo l’attività corrente.",
+        "notRead": "In coda: l’attività è terminata prima di poterlo leggere."
+      }
     }
   },
   "composer": {

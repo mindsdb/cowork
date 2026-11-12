@@ -353,6 +353,25 @@ describe('a message sent while Anton is working (ENG-4194)', () => {
   });
 });
 
+describe('Why a message was queued', () => {
+  it.each([
+    ['next_task', 'separate request'],
+    ['jev_off', "couldn't check whether this belongs"],
+    ['pod_timeout', "can't take messages right now"],
+  ])('marks a %s chip with its reason', async (reason, phrase) => {
+    const user = userEvent.setup();
+    spies.sendAddon.mockImplementation(async () => ({ status: 'queued', reason }));
+    const composer = await startTurn(user);
+    await send(user, composer, 'skip the chart');
+    await screen.findByLabelText('Remove from queue');
+
+    const chip = await screen.findByTestId('queued-reason');
+    await user.hover(chip);
+    expect(await screen.findByText(new RegExp(phrase))).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\bjev\b/i);
+  });
+});
+
 describe('Add to current task on a queued message', () => {
   it('adds it to the running turn on the person\'s say-so', async () => {
     const user = userEvent.setup();

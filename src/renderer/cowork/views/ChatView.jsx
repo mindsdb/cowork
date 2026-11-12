@@ -66,7 +66,7 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
-import { addonRowLabel } from '../lib/addons';
+import { addonRowLabel, queuedReasonKey } from '../lib/addons';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
@@ -3520,7 +3520,16 @@ export default function ChatView({
                     aria-busy={q.addonPending || undefined}
                     className={`inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color,opacity] duration-hover ease-[ease]${q.addonPending ? ' opacity-70' : ''}`}
                   >
-                    <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
+                    {(() => {
+                      const text = <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>;
+                      // Why it waits rather than joining the running task (ENG-4194).
+                      const why = queuedReasonKey(q.queuedReason);
+                      return why ? (
+                        <Tooltip content={t(`chatView.addon.queued.${why}`)}>
+                          <span className="inline-flex min-w-0" data-testid="queued-reason" data-reason={why}>{text}</span>
+                        </Tooltip>
+                      ) : text;
+                    })()}
                     {/* The person's own override of the queue (ENG-4194), like
                         the Coding view's Steer: only while this task's turn is
                         running, and text only — files always wait. */}

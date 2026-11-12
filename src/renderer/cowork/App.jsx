@@ -1214,7 +1214,7 @@ function AppCore() {
     messageQueueRef.current = update(messageQueueRef.current);
   };
 
-  const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
+  const enqueueMessage = (taskId, text, attachments = [], disabledConnections = [], queuedReason = null) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
     // them. Without this the queue stored text only and files were lost.
@@ -1222,7 +1222,13 @@ function AppCore() {
     // turn honors the connection-disable state as it was when the user hit
     // send, not whatever the composer happens to show when it finally
     // drains (which, for a cross-task drain, belongs to another task).
-    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
+    // `queuedReason`: why a message sent while the task ran was queued rather
+    // than added to it (ENG-4194), for the chip's hover line.
+    const item = {
+      id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      text, attachments, disabledConnections,
+      ...(queuedReason ? { queuedReason } : {}),
+    };
     updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
@@ -1305,7 +1311,7 @@ function AppCore() {
       const owner = tasksRef.current.find((t) => taskIds.includes(t.id));
       returned.forEach(({ addonId, text }) => {
         handledAddonsRef.current.add(addonId);
-        enqueueMessage(queueId, text, [], owner?.disabledConnections || []);
+        enqueueMessage(queueId, text, [], owner?.disabledConnections || [], 'returned');
         noteAddon(() => trackAddonQueued('returned'));
       });
     }
@@ -4095,8 +4101,8 @@ function AppCore() {
   };
   // Queue text that did not join the running turn. If that turn ended while we
   // waited, its terminal drain has already run, so drain again.
-  const queueInsteadOfAddon = (taskId, text, disabledConnections) => {
-    enqueueMessage(taskId, text, [], disabledConnections || []);
+  const queueInsteadOfAddon = (taskId, text, disabledConnections, reason = null) => {
+    enqueueMessage(taskId, text, [], disabledConnections || [], reason);
     if (!hasLiveTurnHere(taskId)) drainNextQueuedMessageRef.current?.(taskId);
   };
 
@@ -4120,13 +4126,13 @@ function AppCore() {
         const back = await withdrawAddon(taskId, outcome.addonId);
         if (back?.status === 'withdrawn' && !handledAddonsRef.current.has(outcome.addonId)) {
           handledAddonsRef.current.add(outcome.addonId);
-          queueInsteadOfAddon(taskId, text, disabledConnections);
+          queueInsteadOfAddon(taskId, text, disabledConnections, 'returned');
         }
         return;
       }
       injectAddonEvent(taskId, { state: 'discarded', local_key: localKey });
       noteAddon(() => trackAddonQueued(outcome.reason));
-      queueInsteadOfAddon(taskId, text, disabledConnections);
+      queueInsteadOfAddon(taskId, text, disabledConnections, outcome.reason);
     })();
   };
 
@@ -4142,7 +4148,7 @@ function AppCore() {
       if (handledAddonsRef.current.has(addonId)) return;
       handledAddonsRef.current.add(addonId);
       const owner = tasksRef.current.find((t) => t.id === taskId);
-      queueInsteadOfAddon(taskId, text, owner?.disabledConnections);
+      queueInsteadOfAddon(taskId, text, owner?.disabledConnections, 'moved');
       return;
     }
     if (status === 'already_read') {
@@ -4331,6 +4337,7 @@ function AppCore() {
       // that task ("use the sales DB instead"): offer it to the running turn
       // first (ENG-4194). Only the person's own composer sends: a drained or
       // machine-written prompt (a repair) always queues, as before.
+      let queuedReason = null;
       if (!opts.targetTask && !opts.skipPendingAnswer && hasLiveTurnHere(id)) {
         const eligibility = addonEligibility({
           conversationId: id,
@@ -4344,6 +4351,7 @@ function AppCore() {
           return true;
         }
         noteAddon(() => trackAddonQueued(eligibility.reason));
+        queuedReason = eligibility.reason;
       }
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
@@ -4354,6 +4362,7 @@ function AppCore() {
         text,
         queuedAttachments ?? composerAttachments,
         mutesForSend,
+        queuedReason,
       );
       if (queuedAttachments == null) setComposerAttachments([]);
       // Queued counts as sent: the drain runs it when the slot frees, so a

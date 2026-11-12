@@ -70,6 +70,28 @@ export function addonOutcome(result) {
   return { action: 'queue', reason };
 }
 
+/* Why a message sent while the task ran went to the queue, as the key of
+   the line its queue chip shows on hover (`chat:chatView.addon.queued.*`).
+   Never names the decision model: `unchecked` is the one that says the
+   check could not run, which is how a missing decision shows up. */
+const QUEUED_REASON_KEYS = {
+  next_task: 'separate',
+  low_confidence: 'unsure',
+  jev: 'unsure',
+  jev_off: 'unchecked',
+  jev_error: 'unchecked',
+  jev_timeout: 'unchecked',
+  attachments: 'files',
+  returned: 'notRead',
+};
+
+/** The hover line for a queued message, as a key under
+ *  `chatView.addon.queued`, or null for one the person queued themselves. */
+export function queuedReasonKey(reason) {
+  if (!reason || reason === 'empty' || reason === 'moved') return null;
+  return QUEUED_REASON_KEYS[reason] || 'unavailable';
+}
+
 /** The label under an add-on row, as a `chat` catalog key under
  *  `chatView.addon` (the row calls t() with `{ agent }`), and whether
  *  "Move to queue" is offered. */

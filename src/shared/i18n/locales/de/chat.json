@@ -210,7 +210,15 @@
       "returned": "In die Warteschlange verschoben",
       "moveToQueue": "In die Warteschlange verschieben",
       "addToTask": "Zur aktuellen Aufgabe hinzufügen",
-      "addingToTask": "Wird zur aktuellen Aufgabe hinzugefügt"
+      "addingToTask": "Wird zur aktuellen Aufgabe hinzugefügt",
+      "queued": {
+        "separate": "In der Warteschlange: Das sieht nach einer separaten Anfrage aus und läuft nach der aktuellen Aufgabe.",
+        "unsure": "In der Warteschlange: Es war nicht klar, ob das zur aktuellen Aufgabe gehört. Mit dem Pfeil jetzt hinzufügen.",
+        "unchecked": "In der Warteschlange: Es konnte nicht geprüft werden, ob das zur aktuellen Aufgabe gehört.",
+        "unavailable": "In der Warteschlange: Die aktuelle Aufgabe kann gerade keine Nachrichten annehmen.",
+        "files": "In der Warteschlange: Nachrichten mit Dateien laufen nach der aktuellen Aufgabe.",
+        "notRead": "In der Warteschlange: Die Aufgabe war fertig, bevor sie das lesen konnte."
+      }
     }
   },
   "composer": {
