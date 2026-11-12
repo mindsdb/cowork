@@ -29,7 +29,8 @@
  * nothing once the page slid a frame or another element under it
  * (`pressPoint`). A press by position, or a drag's release, whose point lands
  * in a frame is refused, at the step's start and just before it, unless anton
- * says the person approved the step to land in one (`frameGuard`).
+ * says the person approved the step to land in one, and then it goes only
+ * into the frame that was there when the step began (`frameGuard`).
  */
 
 import {
@@ -532,22 +533,42 @@ function movedUnder(where: string, intoFrame: boolean): BridgeError {
   return new BridgeError('stale_element', `${intoFrame ? 'a frame' : 'another element'} moved ${where} as the pointer arrived, so nothing was pressed; read the page again`);
 }
 
+/* Why a press anton sent with into_frame was not sent: the frame under its
+   point is not the one there when the step began. */
+const notTheFrame = (where: string) =>
+  new BridgeError('stale_element', `the frame under ${where} is no longer the one there when the step began, so nothing was pressed; read the page again`);
+
 /* The check a press, or a drag's release, at a point runs when the step
    starts, and the one it hands back to run just before. anton's commit hold
    judged the step by the frames its last page read showed, and a frame can
    arrive under the point after that read: the page moves one there, or the
    person scrolls. A step anton sends with into_frame (`intoFrame`: the person
-   approved a step that may land in a frame) may press into a frame that lies
-   there when it starts. Any other press or release whose point lands in a
-   frame is refused, at the start and just before it; so is one where a frame
-   arrived during the glide. `where` names the point. */
+   approved a step that may land in a frame) may press into the frame that
+   lies there when it starts, and only into that one, at the address it had
+   then (`frameUnder`): once that frame moved away, another one lies over
+   it, it navigated, or the debugger can't say which frame is there, the
+   press is refused, as the web pod lapses an approval bound to a frame that
+   changed. Any other press or release whose point lands in a frame is
+   refused, at the start and just before it; so is one where a frame arrived
+   during the glide. `where` names the point. */
 async function frameGuard(frames: FrameReads, at: Point, intoFrame: boolean, where: string): Promise<() => Promise<void>> {
-  const atStart = await frames.pressLandsInFrame(at);
-  if (atStart && !intoFrame) {
-    throw new BridgeError('stale_element', `a frame is now under ${where}, and the step wasn't approved to press into one, so nothing was pressed; read the page again`);
+  if (!intoFrame) {
+    if (await frames.pressLandsInFrame(at)) {
+      throw new BridgeError('stale_element', `a frame is now under ${where}, and the step wasn't approved to press into one, so nothing was pressed; read the page again`);
+    }
+    return async () => {
+      if (await frames.pressLandsInFrame(at)) throw movedUnder(`under ${where}`, true);
+    };
   }
+  const before = await frames.frameUnder(at);
+  if (before === 'unread') throw new BridgeError('stale_element', `this browser couldn't tell which frame lies under ${where}, so nothing was pressed; read the page again`);
   return async () => {
-    if (!atStart && await frames.pressLandsInFrame(at)) throw movedUnder(`under ${where}`, true);
+    const now = await frames.frameUnder(at);
+    if (before === null) {
+      if (now !== null) throw movedUnder(`under ${where}`, true);
+    } else if (now === null || now === 'unread' || now.id !== before.id || now.url !== before.url) {
+      throw notTheFrame(where);
+    }
   };
 }
 

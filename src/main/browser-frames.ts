@@ -3,11 +3,13 @@
  * while a step has it attached (withAgentInput in browser-input.ts), or a
  * screenshot does (ElectronTab.screenshot in browser-view.ts).
  *
- * `pressLandsInFrame`: where a press at a point lands. The world's own hit
- * test (elementFromPoint) stops at the host of a closed shadow root, so a
- * control that slots its own text over a frame laid in its closed root reads
- * as the control. DOM.getNodeForLocation hit-tests inside closed roots and
- * names the frame of the node it finds, as the web pod's readPoint does.
+ * `frameAt`: where a press at a point lands. The world's own hit test
+ * (elementFromPoint) stops at the host of a closed shadow root, so a control
+ * that slots its own text over a frame laid in its closed root reads as the
+ * control. DOM.getNodeForLocation hit-tests inside closed roots and names the
+ * frame of the node it finds, as the web pod's readPoint does. `frameUnder`
+ * adds the frame's address, which binds a press the person approved into a
+ * frame to that frame.
  *
  * `focusedSecret`: whether an editing key goes into a secret field the
  * world can't see: one inside a closed shadow root, where the world's focus
@@ -338,6 +340,18 @@ export class DebuggerSession {
     return found;
   }
 
+  /** Frame `frameId`'s address now, from its frame tree: the page's, or a
+      frame of another site's own, its session given by auto-attach. '' for
+      an owner that names no frame (frameAt). */
+  async frameAddress(frameId: string): Promise<string> {
+    if (frameId.startsWith(OWNER_NODE)) return '';
+    await this.attachFrames();
+    await this.send('Page.getFrameTree', {}, this.frames.get(frameId)?.session);
+    const url = this.frames.get(frameId)?.url;
+    if (url === undefined) throw new Error('the frame is not known');
+    return url;
+  }
+
   /** The content and border boxes, in the page's viewport, of the element
       that holds frame `frameId`. It fails for one that draws nothing. */
   async ownerBoxes(frameId: string): Promise<{ content: Box; border: Box }> {
@@ -408,6 +422,16 @@ export async function withDebugger<T>(dbg: CdpDebugger, run: (session: DebuggerS
    names them. */
 const FRAME_OWNERS: ReadonlySet<string> = new Set(['iframe', 'frame', 'object', 'embed']);
 
+/* How frameAt names an owner that names no frame of its own (a plugin's
+   embed): by its node, which stays the same while the node does. */
+const OWNER_NODE = 'owner:';
+
+/** A frame a press lands in: its id and its address then. */
+export interface FramePlace {
+  id: string;
+  url: string;
+}
+
 interface LayoutMetrics {
   cssLayoutViewport: { pageX: number; pageY: number };
 }
@@ -417,25 +441,42 @@ export class FrameReads {
   constructor(private readonly session: DebuggerSession) {}
 
   /**
-   * Whether a press at viewport point `at` lands in a frame: on an element
-   * that holds one, or on a node of another frame's document, inside closed
-   * shadow roots too. DOM.getNodeForLocation takes the document's
-   * coordinates, so the page's scroll is added. A read that fails counts as
-   * a frame.
+   * The frame a press at viewport point `at` lands in, inside closed shadow
+   * roots too, or null for none: the frame an element that holds one holds
+   * (an owner that names none stands for one by its node), or the frame of
+   * the node's own document when that isn't the page's. DOM.getNodeForLocation
+   * takes the document's coordinates, so the page's scroll is added. It
+   * throws when the debugger can't say.
    */
+  async frameAt(at: ViewPoint): Promise<string | null> {
+    const main = await this.session.mainFrame();
+    const { cssLayoutViewport: view } = await this.session.send<LayoutMetrics>('Page.getLayoutMetrics');
+    const found = await this.session.send<{ backendNodeId: number; frameId?: string }>('DOM.getNodeForLocation', {
+      x: Math.round(at.x + view.pageX),
+      y: Math.round(at.y + view.pageY),
+    });
+    const { node } = await this.session.send<{ node: { localName?: string; frameId?: string } }>('DOM.describeNode', { backendNodeId: found.backendNodeId, depth: 0 });
+    if (node.frameId) return node.frameId;
+    if (FRAME_OWNERS.has(node.localName ?? '')) return `${OWNER_NODE}${found.backendNodeId}`;
+    if (found.frameId === main) return null;
+    if (!found.frameId) throw new Error("the node's frame is not known");
+    return found.frameId;
+  }
+
+  /** Whether a press at viewport point `at` lands in a frame (frameAt). A
+      read that fails counts as a frame. */
   async pressLandsInFrame(at: ViewPoint): Promise<boolean> {
+    return this.frameAt(at).then((frame) => frame !== null, () => true);
+  }
+
+  /** The frame a press at viewport point `at` lands in and its address now,
+      null for none, or 'unread' when the debugger can't say. */
+  async frameUnder(at: ViewPoint): Promise<FramePlace | null | 'unread'> {
     try {
-      const main = await this.session.mainFrame();
-      const { cssLayoutViewport: view } = await this.session.send<LayoutMetrics>('Page.getLayoutMetrics');
-      const found = await this.session.send<{ backendNodeId: number; frameId?: string }>('DOM.getNodeForLocation', {
-        x: Math.round(at.x + view.pageX),
-        y: Math.round(at.y + view.pageY),
-      });
-      if (found.frameId !== main) return true;
-      const { node } = await this.session.send<{ node: { localName?: string; frameId?: string } }>('DOM.describeNode', { backendNodeId: found.backendNodeId, depth: 0 });
-      return Boolean(node.frameId) || FRAME_OWNERS.has(node.localName ?? '');
+      const id = await this.frameAt(at);
+      return id === null ? null : { id, url: await this.session.frameAddress(id) };
     } catch {
-      return true;
+      return 'unread';
     }
   }
 

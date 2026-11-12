@@ -207,6 +207,21 @@ async function startFixtureServer(): Promise<void> {
           + `<iframe id="f" src="${buy}" style="position:absolute;left:600px;top:0;width:300px;height:100px;border:0"></iframe>`
           + '<script>addEventListener("pointermove", () => { const f = document.getElementById("f"); f.style.left = "0px"; f.style.top = "200px"; }, { once: true })</script>');
     }
+    if (url.pathname === '/swap-frame') {
+      /* Another site's player frame under the point, and its Buy frame,
+         which slides over the player once the pointer moves on the page. */
+      const other = origin.replace('127.0.0.1', 'localhost');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Swap</title><style>body{margin:0}</style>'
+          + `<iframe src="${other}/player" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0"></iframe>`
+          + `<iframe id="f" src="${other}/buy" style="position:absolute;left:600px;top:300px;width:300px;height:100px;border:0;z-index:5"></iframe>`
+          + '<script>addEventListener("pointermove", () => { const f = document.getElementById("f"); f.style.left = "0px"; f.style.top = "0px"; }, { once: true })</script>');
+    }
+    if (url.pathname === '/player') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Player</title><style>html,body{margin:0;height:100%}button{width:100%;height:100%}</style><button>Play video</button>'
+          + '<script>addEventListener("click", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "player-click", isTrusted: e.isTrusted }) }))</script>');
+    }
     if (url.pathname === '/covered') {
       return void res.writeHead(200, { 'content-type': 'text/html' })
         .end('<title>Covered</title><button onclick="document.title = \'clicked\'">Under</button><div style="position:fixed;inset:0;background:rgba(0,0,0,0.3)">Cookie banner</div>');
@@ -593,6 +608,20 @@ test('refuses a click whose point a frame slides over as the pointer arrives, by
   await new Promise((resolve) => setTimeout(resolve, 500));
   expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
   expect((await page()).title).toBe('Moving');
+});
+
+test('presses nothing with into_frame once another frame slides over the approved one as the pointer arrives, and presses the approved one when it stays', async () => {
+  await openAt('/swap-frame');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
+  const swapped = await act({ action: 'click', x: 150, y: 50, coords: 'page', into_frame: true });
+  expect(swapped.status, swapped.body.toString()).toBe(409);
+  expect(swapped.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('the frame under the point (150, 50) is no longer the one there') });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click' || e.type === 'player-click')).toEqual([]);
+  // Read again, the Buy frame now lies under the point, and an approved press goes into it.
+  const approved = await act({ action: 'click', x: 150, y: 50, coords: 'page', into_frame: true });
+  expect(approved.status, approved.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-click')).toEqual([{ type: 'frame-click', isTrusted: true }]);
 });
 
 test('turns shared workers off, since their WebSockets skip the request listener', async () => {

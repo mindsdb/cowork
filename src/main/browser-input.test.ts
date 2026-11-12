@@ -627,6 +627,62 @@ describe('runStep', () => {
     expect(presses(dbg)).toEqual([]);
   });
 
+  /* Two frames of other sites: one under the point when the step begins,
+     which the person approved a press into, and another. */
+  const TWO_SITES = [...OTHER_SITE, { id: 'video', url: 'https://video.other.test/embed', parentId: MAIN_FRAME, remote: true }];
+  const videoOwner = { frameId: MAIN_FRAME, localName: 'iframe', ownsFrame: 'video' };
+  const notTheFrame = (where: string) => `the frame under ${where} is no longer the one there when the step began, so nothing was pressed; read the page again`;
+
+  it.each([
+    ['another frame slides over the point', frameOwner],
+    ['the frame moves away and the page lies under the point', button],
+  ])('presses nothing with into_frame once %s as the pointer arrives', async (_how, after) => {
+    const { dbg, stepHost } = host({}, pacing, { frames: TWO_SITES });
+    const moved = onMouse(dbg, 'mouseMoved');
+    dbg.page.nodeAt = () => (moved.it ? after : videoOwner);
+    await expect(runStep(stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page', into_frame: true }))).rejects.toMatchObject({
+      code: 'stale_element',
+      status: 409,
+      message: notTheFrame('the point (400, 300)'),
+    });
+    expect(presses(dbg)).toEqual([]);
+  });
+
+  it('presses nothing with into_frame once the frame under the point navigated since the step began', async () => {
+    const { dbg, stepHost } = host({}, pacing, { frames: TWO_SITES, nodeAt: () => videoOwner });
+    const video = dbg.page.frames.find((frame) => frame.id === 'video')!;
+    const send = dbg.sendCommand;
+    dbg.sendCommand = vi.fn(async (method: string, params?: Record<string, unknown>, sessionId?: string) => {
+      if (method === 'Input.dispatchMouseEvent' && params?.type === 'mouseMoved') video.url = 'https://shop.other.test/checkout';
+      return send(method, params, sessionId);
+    });
+    await expect(runStep(stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page', into_frame: true }))).rejects.toMatchObject({
+      code: 'stale_element',
+      message: notTheFrame('the point (400, 300)'),
+    });
+    expect(presses(dbg)).toEqual([]);
+  });
+
+  it("presses nothing with into_frame where the debugger can't say which frame lies under the point, since nothing binds the press", async () => {
+    const { dbg, stepHost } = host({}, pacing, { nodeAt: () => null });
+    await expect(runStep(stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page', into_frame: true }))).rejects.toMatchObject({
+      code: 'stale_element',
+      message: "this browser couldn't tell which frame lies under the point (400, 300), so nothing was pressed; read the page again",
+    });
+    expect(mouse(dbg)).toEqual([]);
+  });
+
+  it('lets go where a drag began, with into_frame, once another frame lies under the drop point than when the step began', async () => {
+    const { dbg, stepHost } = host({}, pacing, { frames: TWO_SITES });
+    const pressed = onMouse(dbg, 'mousePressed');
+    dbg.page.nodeAt = (x) => (x >= 500 ? (pressed.it ? frameOwner : videoOwner) : button);
+    await expect(runStep(stepHost, step({ action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page', into_frame: true }))).rejects.toMatchObject({
+      code: 'stale_element',
+      message: notTheFrame('the drop point (600, 300)'),
+    });
+    expect(mouse(dbg).filter((e) => e.type === 'mouseReleased')).toEqual([expect.objectContaining({ x: 400, y: 300, buttons: 0 })]);
+  });
+
   it("checks a double click by position again before its second press, and stops there once a frame lies under the point", async () => {
     const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE });
     const pressed = onMouse(dbg, 'mousePressed');
