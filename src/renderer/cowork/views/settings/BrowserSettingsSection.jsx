@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Info } from 'lucide-react';
 import { Section, SettingsGroup } from './settingsLayout';
 import { asksToApprove } from '../../lib/browserPrefs';
 import { Switch } from '../../components/ui/Switch';
@@ -96,6 +97,8 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   // Whether the last status read failed. It shows only while no answer came.
   const [readFailed, setReadFailed] = useState(false);
   const [signOut, setSignOut] = useState({ busy: false, note: '' });
+  // Whether the browser's help tooltip is open (hover, focus, or a tap on its info button).
+  const [helpOpen, setHelpOpen] = useState(false);
   // The desktop agent's usage events, or null where the shell can't say.
   const [usageEvents, setUsageEvents] = useState(null);
   const inApp = host.supportsInAppBrowser;
@@ -218,9 +221,22 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     browserGroup = (
       <SettingsGroup title={t('browser.sharedBrowser')}>
         <Section title={browserTitle} subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
-          {/* What stays signed in and what the model provider sees: on the switch, on hover. */}
-          <Tooltip content={browserHelp}>
-            <span className="inline-flex">{browserSwitch}</span>
+          {/* What stays signed in and what the model provider sees: a tooltip on
+              the switch, on hover or focus, which the info button also opens on
+              a tap or a key, since touch has no hover. */}
+          <Tooltip content={browserHelp} open={helpOpen} onOpenChange={setHelpOpen} closeOnClick={false}>
+            <span className="inline-flex items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center w-7 h-7 rounded-full border-0 bg-transparent text-ink-3 hover:text-ink cursor-pointer"
+                aria-label={i18n.t('chat:browser.learnWhat', { agent: agentLabel })}
+                aria-expanded={helpOpen}
+                onClick={() => setHelpOpen(true)}
+              >
+                <Info size={15} aria-hidden="true" />
+              </button>
+              {browserSwitch}
+            </span>
           </Tooltip>
         </Section>
         {/* The rest only matters with the browser on. */}

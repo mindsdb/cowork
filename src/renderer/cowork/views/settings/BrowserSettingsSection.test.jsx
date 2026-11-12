@@ -288,6 +288,16 @@ describe('BrowserSettingsSection', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
   });
 
+  it("opens the browser's help on a tap of its info button, since touch has no hover", async () => {
+    fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    renderSection({});
+    await screen.findByRole('switch', { name: 'Shared browser' });
+    expect(screen.queryByText('Sign-ins')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Learn what Cowork sees' }));
+    expect(await screen.findByText('Sign-ins')).toBeInTheDocument();
+    expect(screen.getByText('What the model provider sees')).toBeInTheDocument();
+  });
+
   it('approving browser steps is on until the person turns it off, and is their server-side setting', async () => {
     fetchBrowseStatus.mockResolvedValue(AVAILABLE);
     const setSetting = vi.fn();
