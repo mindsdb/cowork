@@ -555,7 +555,10 @@ export class FrameReads {
    * secret fields, payment frames and frames it can't search in turn. A
    * frame that world searched, which it can't reach in a closed shadow root:
    * the secret fields and payment frames of its own document, its frames
-   * being read on their own; a field both reads find is blacked out twice,
+   * being read on their own. Either way, the copies -webkit-box-reflect
+   * draws there of its secret fields and, whole, of its frames
+   * (FoundSecrets); a copy the page's world draws of the frame itself is
+   * that world's to black out. A field both reads find is blacked out twice,
    * which shows the same. A frame that can't be read (a payment provider's
    * frame, where no world opens, or one that doesn't answer within
    * FRAME_READ_MS) is blacked out whole. A frame whose owner draws nothing
@@ -573,7 +576,7 @@ export class FrameReads {
       const place = found && throughQuad(owner.content, found.viewport);
       if (!found || !place) return [owner.border];
       const content = quadBox(owner.content);
-      return [...found.secrets, ...found.paymentFrames, ...(searched ? [] : found.otherSiteFrames)]
+      return [...found.secrets, ...found.paymentFrames, ...found.mirroredFrames, ...(searched ? [] : found.otherSiteFrames)]
         .map((box) => clip(place(box), content))
         .filter((box): box is Box => box !== null);
     }));

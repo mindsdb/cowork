@@ -1186,6 +1186,66 @@ describe('frames', () => {
     ]);
   });
 
+  it('blacks out the copy -webkit-box-reflect draws of a secret field, scaled as drawn, from the field, an element it is drawn in, or both, and every copy of a frame whole', async () => {
+    document.body.innerHTML = `
+      <div id="below" style="-webkit-box-reflect: below 20px"><input id="card" autocomplete="cc-number"></div>
+      <input id="pw" type="password" style="-webkit-box-reflect: right 10%">
+      <div id="above" style="-webkit-box-reflect: above 5px"><div id="left" style="-webkit-box-reflect: left 0px"><input id="otp" autocomplete="one-time-code"></div></div>
+      <div id="framed" style="-webkit-box-reflect: below 10px"><iframe id="form" style="border: 0" srcdoc="<div id='inner' style='-webkit-box-reflect: below 4px'><input id='pw' type='password'></div>"></iframe></div>
+      <iframe id="ads" src="https://ads.example.test/" style="-webkit-box-reflect: right 0px"></iframe>`;
+    await framesLoad();
+    // Laid out 95 by 20 and drawn at twice that, so its 20 px offset draws 40.
+    place(document.getElementById('below')!, 0, 0, 190, 40);
+    Object.defineProperty(document.getElementById('below')!, 'offsetWidth', { configurable: true, value: 95 });
+    Object.defineProperty(document.getElementById('below')!, 'offsetHeight', { configurable: true, value: 20 });
+    place(document.getElementById('card')!, 0, 0, 190, 40);
+    place(document.getElementById('pw')!, 300, 0, 100, 20);
+    place(document.getElementById('above')!, 0, 200, 200, 100);
+    place(document.getElementById('left')!, 50, 220, 100, 40);
+    place(document.getElementById('otp')!, 60, 230, 50, 20);
+    place(document.getElementById('framed')!, 0, 400, 200, 100);
+    place(document.getElementById('form')!, 0, 400, 200, 100);
+    place(frameDoc('form').getElementById('inner')!, 0, 0, 200, 30);
+    place(frameDoc('form').getElementById('pw')!, 10, 5, 50, 20);
+    place(document.getElementById('ads')!, 300, 400, 300, 50);
+    const found = secretBoxes();
+    expect(found.secrets).toEqual([
+      // Its copy starts 40 px below its box: the 20 px offset, drawn at twice its size.
+      { x: 0, y: 0, width: 190, height: 40 }, { x: 0, y: 80, width: 190, height: 40 },
+      // 10% of its 100 px width beyond its right edge.
+      { x: 300, y: 0, width: 100, height: 20 }, { x: 410, y: 0, width: 100, height: 20 },
+      // Left of its inner box's left edge, above its outer box's top edge, and the outer's copy of the inner's copy.
+      { x: 60, y: 230, width: 50, height: 20 }, { x: -10, y: 230, width: 50, height: 20 }, { x: 60, y: 145, width: 50, height: 20 }, { x: -10, y: 145, width: 50, height: 20 },
+      // In a same-origin frame, its copy placed through the frame as the field is.
+      { x: 10, y: 405, width: 50, height: 20 }, { x: 10, y: 439, width: 50, height: 20 },
+    ]);
+    // The frames' copies, whole: the same-origin one under its reflected parent, and another site's.
+    expect(found.mirroredFrames).toEqual([{ x: 0, y: 510, width: 200, height: 100 }, { x: 600, y: 400, width: 300, height: 50 }]);
+    expect(found.otherSiteFrames).toEqual([{ x: 300, y: 400, width: 300, height: 50 }]);
+    // Every screenshot blacks out the frames' copies, whatever its read of the frames finds.
+    expect(screenshotMasks(found, ['https://ads.example.test/'], 2)).toEqual([...found.secrets, ...found.mirroredFrames]);
+  });
+
+  it('blacks out the whole view for a reflected secret field whose copy it can\'t place: under a turned reflection, at an offset it can\'t read, or past MAX_MIRRORS copies', async () => {
+    const view = { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+    const cases: Array<[string, string]> = [
+      ['turned', '<div id="r" style="transform: rotate(10deg); -webkit-box-reflect: below 0px"><input id="pw" type="password"></div>'],
+      ['unread offset', '<div id="r" style="-webkit-box-reflect: below calc(10px + 5%)"><input id="pw" type="password"></div>'],
+      ['six deep', `${'<div style="-webkit-box-reflect: below 0px">'.repeat(6)}<input id="pw" type="password">${'</div>'.repeat(6)}`],
+    ];
+    for (const [name, html] of cases) {
+      document.body.innerHTML = html;
+      document.querySelectorAll('div').forEach((el) => place(el, 0, 0, 200, 40));
+      place(document.getElementById('pw')!, 10, 10, 100, 20);
+      expect(secretBoxes().secrets, name).toEqual([{ x: 10, y: 10, width: 100, height: 20 }, view]);
+    }
+    // Five deep, 31 copies, each placed.
+    document.body.innerHTML = `${'<div style="-webkit-box-reflect: below 0px">'.repeat(5)}<input id="pw" type="password">${'</div>'.repeat(5)}`;
+    document.querySelectorAll('div').forEach((el) => place(el, 0, 0, 200, 40));
+    place(document.getElementById('pw')!, 10, 10, 100, 20);
+    expect(secretBoxes().secrets).toHaveLength(32);
+  });
+
   it("counts the frame owners in every document it searches, and masks a same-origin frame past its depth as one it can't search", async () => {
     document.body.innerHTML = `
       <iframe id="outer" srcdoc="<iframe id='mid' srcdoc='<p>Deep</p>'></iframe>"></iframe>
@@ -1203,7 +1263,7 @@ describe('frames', () => {
   });
 
   it("takes no screenshot when the frame tree holds a payment frame and the searched documents hold a frame their owners don't account for", () => {
-    const found: FoundSecrets = { secrets: [{ x: 1, y: 1, width: 5, height: 5 }], paymentFrames: [], otherSiteFrames: [{ x: 0, y: 0, width: 50, height: 50 }], owners: 1, viewport: { width: 800, height: 600 } };
+    const found: FoundSecrets = { secrets: [{ x: 1, y: 1, width: 5, height: 5 }], paymentFrames: [], otherSiteFrames: [{ x: 0, y: 0, width: 50, height: 50 }], mirroredFrames: [], owners: 1, viewport: { width: 800, height: 600 } };
     const stripe = 'https://js.stripe.com/v3/elements-inner-card';
     // A payment frame in a closed shadow root, or behind an embed: two frames placed in the searched documents, one owner found.
     expect(screenshotMasks(found, ['https://ads.example.test/', stripe], 2)).toBeNull();

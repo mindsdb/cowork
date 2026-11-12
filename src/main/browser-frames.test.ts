@@ -160,6 +160,18 @@ describe('FrameReads.frameMasks', () => {
     expect(reads.every((expression) => expression.includes('"depth":0'))).toBe(true);
   });
 
+  it("blacks out the copies a reflection inside a frame draws of the frames in it, whole, in a frame the page's world searched too", async () => {
+    const dbg = fakeCdpDebugger({
+      frames: [
+        { id: 'same', url: 'https://a.test/inner', parentId: MAIN_FRAME, origin: 'https://a.test', owner: owner(0, 0), secrets: { mirroredFrames: [box(0, 50, 100, 40)] } },
+        { ...WIDGET, owner: owner(0, 200), secrets: { mirroredFrames: [box(100, 60, 200, 80)] } },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toHaveLength(2);
+    expect(masks).toEqual(expect.arrayContaining([box(0, 50, 100, 40), box(100, 260, 100, 40)]));
+  });
+
   it("blacks out whole a payment provider's frame, which no world opens in, and keeps each mask inside its frame", async () => {
     const dbg = fakeCdpDebugger({
       frames: [

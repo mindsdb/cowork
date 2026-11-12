@@ -75,7 +75,7 @@ const quad = (box: Box) => [box.x, box.y, box.x + box.width, box.y, box.x + box.
 
 const FOCUS_NONE: FocusedSecret = { secret: false, otherSite: false, sealed: false };
 
-const SECRETS_NONE: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], owners: 0, viewport: { width: 400, height: 100 } };
+const SECRETS_NONE: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], mirroredFrames: [], owners: 0, viewport: { width: 400, height: 100 } };
 
 /** A plain page at https://a.test/ with a button everywhere and no frames, unless `page` says otherwise. */
 export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugger {

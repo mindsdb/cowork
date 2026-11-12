@@ -598,7 +598,8 @@ export class ElectronTab implements TabView {
     return false;
   }
 
-  /* Every screenshot blacks out the page's secret fields and payment frames
+  /* Every screenshot blacks out the page's secret fields and payment frames,
+     and the copies a reflection draws of its secret fields and its frames
      (screenshotMasks), and those inside its frames, each read in its own
      world (frameMasks), just before the capture. A page with a payment frame
      it can't place gets no capture at all, and so does one with a frame the

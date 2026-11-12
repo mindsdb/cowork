@@ -30,7 +30,7 @@ const electron = await vi.hoisted(async () => {
     frames: unknown[] = [];
     zoom = 1;
     /* What the page's secret-field read finds for a screenshot. */
-    secrets = { secrets: [] as unknown[], paymentFrames: [] as unknown[], otherSiteFrames: [] as unknown[], owners: 0, viewport: { width: 800, height: 600 } };
+    secrets = { secrets: [] as unknown[], paymentFrames: [] as unknown[], otherSiteFrames: [] as unknown[], mirroredFrames: [] as unknown[], owners: 0, viewport: { width: 800, height: 600 } };
     capturePage = vi.fn(async (_rect?: { x: number; y: number; width: number; height: number }, _options?: { stayHidden?: boolean }): Promise<ImageLike> => {
       const image: ImageLike = {
         getSize: () => ({ width: 800, height: 600 }),

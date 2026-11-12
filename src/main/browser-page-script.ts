@@ -197,15 +197,18 @@ export interface FocusedSecret {
 
 /** What a screenshot must not show, in viewport CSS pixels: secret fields
     (in the page, its open shadow roots and its same-origin frames, placed
-    where each frame draws them, or the whole frame where a transform turns
-    it), payment frames by address, and every frame the search doesn't enter
-    (one from another site, or a same-origin one past SECRET_SEARCH_DEPTH). `owners`
-    counts the frame owners that hold a frame (DomFrame's `framed`) in the
-    documents it searched. */
+    where each frame draws them, or the whole frame where a transform or an
+    offset path turns it) and the copies -webkit-box-reflect draws of them,
+    payment frames by address, every frame the search doesn't enter (one
+    from another site, or a same-origin one past SECRET_SEARCH_DEPTH), and
+    the copies -webkit-box-reflect draws of any frame (`mirroredFrames`),
+    whole. `owners` counts the frame owners that hold a frame (DomFrame's
+    `framed`) in the documents it searched. */
 export interface FoundSecrets {
   secrets: Box[];
   paymentFrames: Box[];
   otherSiteFrames: Box[];
+  mirroredFrames: Box[];
   owners: number;
   viewport: { width: number; height: number };
 }
@@ -1000,6 +1003,57 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
     return false;
   };
+  /* A computed -webkit-box-reflect: the edge of the element's border box it
+     mirrors across, and how far beyond that edge the copy starts, in CSS
+     pixels or as a percentage of the box's size that way. A mask image may
+     follow, which only fades the copy. */
+  const REFLECT = /^(above|below|left|right)\s+(-?[\d.]+(?:e[+-]?\d+)?)(px|%)(\s|$)/;
+  /* Past this many copies of one box, a screenshot blacks out the whole
+     view rather than each copy (a reflection inside a reflection doubles
+     them). */
+  const MAX_MIRRORS = 32;
+  /* The view of the document `el` is in, in its own viewport's pixels. */
+  const wholeView = (el: Element): Box => {
+    const view = el.ownerDocument.defaultView ?? win;
+    return { x: 0, y: 0, width: view.innerWidth, height: view.innerHeight };
+  };
+  /* The copies -webkit-box-reflect draws of `box`, a box drawn inside `el`
+     (both in its document's viewport): one for `el`'s own reflection and for
+     each element it is drawn in that reflects, a copy of a copy included,
+     each mirrored across the reflecting element's border box edge, its
+     offset beyond it scaled as the element is drawn (its box over its
+     laid-out size). A reflection whose offset this can't read, one a
+     transform or an offset path turns (turned), which mirrors across a line
+     no box maps through, or more than MAX_MIRRORS copies, give the whole
+     view instead. */
+  const mirrored = (el: Element, box: Box): Box[] => {
+    let boxes = [box];
+    for (let at: Element | null = el; at; at = drawnParent(at)) {
+      const reflect = styleOf(at).getPropertyValue('-webkit-box-reflect');
+      if (['', 'none'].includes(reflect)) continue;
+      const parsed = REFLECT.exec(reflect);
+      if (!parsed || turned(at)) return [wholeView(el)];
+      const [, side, amount, unit] = parsed;
+      const edge = boxOf(at);
+      const across = side === 'left' || side === 'right';
+      const drawn = across ? edge.width : edge.height;
+      const laid = across ? (at as HTMLElement).offsetWidth : (at as HTMLElement).offsetHeight;
+      const offset = unit === '%' ? (Number(amount) / 100) * drawn : Number(amount) * (laid > 0 ? drawn / laid : 1);
+      /* The mirror line, twice over: a copy's near edge is that minus the
+         original's far edge. */
+      const line = {
+        above: 2 * edge.y - offset,
+        below: 2 * (edge.y + edge.height) + offset,
+        left: 2 * edge.x - offset,
+        right: 2 * (edge.x + edge.width) + offset,
+      }[side as 'above' | 'below' | 'left' | 'right'];
+      boxes = [...boxes, ...boxes.map((b) => (across
+        ? { ...b, x: line - b.x - b.width }
+        : { ...b, y: line - b.y - b.height }))];
+      if (boxes.length - 1 > MAX_MIRRORS) return [wholeView(el)];
+    }
+    return boxes.slice(1);
+  };
   /* How a box in same-origin frame `owner`'s own viewport lands in its
      document's viewport: scaled as the frame is drawn (its box over its
      laid-out size, so a transform that scales it scales the box),
@@ -1021,19 +1075,30 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* What a screenshot must not show. Same-origin frames are searched in
      turn, `maxDepth` deep, each box placed where the frame draws it
      (throughOwner); a frame from another site can't be, and one past that
-     depth isn't. */
+     depth isn't. A secret field's copies that -webkit-box-reflect draws
+     (mirrored) are secrets too, and so is every frame's copy, whole: a read
+     of a frame's fields, here or in the frame's own world
+     (browser-frames.ts), places them in the frame alone. */
   const secretBoxes = (paymentHosts: readonly string[], maxDepth: number): FoundSecrets => {
-    const found: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], owners: 0, viewport };
+    const found: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], mirroredFrames: [], owners: 0, viewport };
     const visit = (root: Node, place: (box: Box) => Box, depth: number) => {
       const add = (into: Box[], el: Element) => {
         const box = boxOf(el);
         if (box.width > 0 && box.height > 0) into.push(place(box));
       };
+      const addMirrored = (into: Box[], el: Element) => {
+        const box = boxOf(el);
+        if (box.width > 0 && box.height > 0) into.push(...mirrored(el, box).map(place));
+      };
       for (const el of elementsIn(root)) {
         if (!FRAME_TAGS.has(tagOf(el))) {
-          if (isField(el) && isSecret(el)) add(found.secrets, el);
+          if (isField(el) && isSecret(el)) {
+            add(found.secrets, el);
+            addMirrored(found.secrets, el);
+          }
           continue;
         }
+        addMirrored(found.mirroredFrames, el);
         if (holdsFrame(el)) found.owners += 1;
         const inner = frameDocOf(el);
         const payment = hostIn(sourceOf(el), paymentHosts) || (!!inner && hostIn(String(inner.location?.href || ''), paymentHosts));
@@ -1456,7 +1521,8 @@ export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrame
   };
 }
 
-/** What a screenshot blacks out: secret fields and payment frames, and every
+/** What a screenshot blacks out: secret fields, payment frames and the
+    frames' copies a reflection draws, and every
     frame the search didn't enter when the frame tree (`frameUrls`) holds a
     payment frame the page's DOM doesn't account for (one nested in another
     site's frame, or one that navigated there). Null, for no screenshot at
@@ -1468,7 +1534,7 @@ export function screenshotMasks(found: FoundSecrets, frameUrls: string[], search
   const payments = frameUrls.filter(isPaymentAddress).length;
   if (payments > 0 && found.owners !== searchedFrames) return null;
   const unaccounted = payments > found.paymentFrames.length;
-  return [...found.secrets, ...found.paymentFrames, ...(unaccounted ? found.otherSiteFrames : [])];
+  return [...found.secrets, ...found.paymentFrames, ...found.mirroredFrames, ...(unaccounted ? found.otherSiteFrames : [])];
 }
 
 /* The isolated world's own global holds the state between reads. That global

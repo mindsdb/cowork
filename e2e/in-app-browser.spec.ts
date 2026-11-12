@@ -269,6 +269,18 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Along same card</title><style>body{margin:0;background:#fff}</style>'
           + '<iframe src="/card" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;offset-path:path(\'M 250 150 L 400 150\');offset-rotate:30deg"></iframe>');
     }
+    if (url.pathname === '/reflected-card') {
+      /* Three card numbers -webkit-box-reflect copies: the page's own field,
+         from (0, 0) to (190, 40), copied 20 px below it; the page's own
+         checkout frame at (300, 0) and another site's at (0, 250), 300 by
+         100, each copied 10 px below it. */
+      const card = `${origin.replace('127.0.0.1', 'localhost')}/card`;
+      const frame = 'position:absolute;width:300px;height:100px;border:0;-webkit-box-reflect:below 10px';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Reflected card</title><style>body{margin:0;background:#fff}input{display:block;margin:0;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
+          + '<div style="position:absolute;left:0;top:0;-webkit-box-reflect:below 20px"><input autocomplete="cc-number" value="4242424242424242"></div>'
+          + `<iframe src="/card" style="${frame};left:300px;top:0"></iframe><iframe src="${card}" style="${frame};left:0;top:250px"></iframe>`);
+    }
     if (url.pathname === '/closed-same-card') {
       /* The page's own checkout frame, in a closed shadow root. */
       return void res.writeHead(200, { 'content-type': 'text/html' })
@@ -813,6 +825,27 @@ test("blacks out a card field where the page's own frame draws it at twice or ha
     expect(await blackIn('/along-same-card', along), 'an offset path, the debugger held').toEqual(blackedOut);
   } finally {
     await holdDebugger('/along-same-card', false);
+  }
+});
+
+test('blacks out the copy -webkit-box-reflect draws of a card field, and the whole copy of a frame, while something else holds the debugger too', async () => {
+  await openAt('/reflected-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
+  const points = [
+    // The page's field, its copy from (0, 60) to (190, 100), and the gap between them.
+    [95, 20], [10, 80], [95, 80], [180, 80], [95, 50],
+    // The page's frame's copy from (300, 110) to (600, 210), its card number's copy from (400, 130) to (590, 170), and the page below it.
+    [410, 150], [495, 150], [580, 150], [320, 120], [320, 230],
+    // Another site's frame's copy from (0, 360) to (300, 460), its card number's copy from (100, 380) to (290, 420), and the page beside it.
+    [195, 400], [20, 370], [350, 400],
+  ];
+  const blackedOut = [true, true, true, true, false, true, true, true, true, false, true, true, false];
+  expect(await blackIn('/reflected-card', points)).toEqual(blackedOut);
+  await holdDebugger('/reflected-card', true);
+  try {
+    expect(await blackIn('/reflected-card', points), 'the debugger held').toEqual(blackedOut);
+  } finally {
+    await holdDebugger('/reflected-card', false);
   }
 });
 
