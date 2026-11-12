@@ -235,6 +235,20 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Scaled card</title><style>body{margin:0;background:#fff}</style>'
           + `<iframe src="${card}" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;transform:scale(2);transform-origin:0 0"></iframe>`);
     }
+    if (url.pathname === '/half-card') {
+      /* Another site's checkout frame, 300 by 100, drawn at half its size. */
+      const card = `${origin.replace('127.0.0.1', 'localhost')}/card`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Half card</title><style>body{margin:0;background:#fff}</style>'
+          + `<iframe src="${card}" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;transform:scale(0.5);transform-origin:0 0"></iframe>`);
+    }
+    if (url.pathname === '/scaled-same-card') {
+      /* The page's own checkout frame, 300 by 100, drawn at `scale` times its size. */
+      const scale = Number(url.searchParams.get('scale'));
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Scaled same card</title><style>body{margin:0;background:#fff}</style>'
+          + `<iframe src="/card" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0;transform:scale(${scale});transform-origin:0 0"></iframe>`);
+    }
     if (url.pathname === '/closed-same-card') {
       /* The page's own checkout frame, in a closed shadow root. */
       return void res.writeHead(200, { 'content-type': 'text/html' })
@@ -735,6 +749,30 @@ test("blacks out a card field where another site's frame draws it at twice its s
   await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
   // CSS points: three on the card number, drawn from (200, 80) to (580, 160); then the frame's background, where an unscaled mask would land.
   expect(await blackIn('/scaled-card', [[220, 120], [390, 120], [560, 150], [150, 60], [100, 170]])).toEqual([true, true, true, false, false]);
+});
+
+test("blacks out a card field where another site's frame draws it at half its size", async () => {
+  await openAt('/half-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // CSS points: three on the card number, drawn from (50, 20) to (145, 40); then where an unscaled mask would land, and the frame's background.
+  expect(await blackIn('/half-card', [[55, 23], [97, 30], [140, 37], [200, 60], [20, 10]])).toEqual([true, true, true, false, false]);
+});
+
+test("blacks out a card field where the page's own frame draws it at twice or half its size, while something else holds the debugger too", async () => {
+  for (const scale of [2, 0.5]) {
+    const route = `/scaled-same-card?scale=${scale}`;
+    await openAt(route);
+    await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+    // CSS points: three on the card number, drawn from (100, 40) to (290, 80) times the scale; then the page or the frame's background where an unscaled mask would land.
+    const points = [[100 * scale + 5, 40 * scale + 3], [195 * scale, 60 * scale], [290 * scale - 5, 80 * scale - 3], scale === 2 ? [150, 60] : [200, 60]];
+    expect(await blackIn(route, points), `scale ${scale}`).toEqual([true, true, true, false]);
+    await holdDebugger(route, true);
+    try {
+      expect(await blackIn(route, points), `scale ${scale}, the debugger held`).toEqual([true, true, true, false]);
+    } finally {
+      await holdDebugger(route, false);
+    }
+  }
 });
 
 test('refuses a click whose point a frame slides over as the pointer arrives, by number and by position, and presses nothing', async () => {

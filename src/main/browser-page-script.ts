@@ -196,9 +196,10 @@ export interface FocusedSecret {
 }
 
 /** What a screenshot must not show, in viewport CSS pixels: secret fields
-    (in the page, its open shadow roots and its same-origin frames), payment
-    frames by address, and every frame the search doesn't enter (one from
-    another site, or a same-origin one past SECRET_SEARCH_DEPTH). `owners`
+    (in the page, its open shadow roots and its same-origin frames, placed
+    where each frame draws them, or the whole frame where a transform turns
+    it), payment frames by address, and every frame the search doesn't enter
+    (one from another site, or a same-origin one past SECRET_SEARCH_DEPTH). `owners`
     counts the frame owners that hold a frame (DomFrame's `framed`) in the
     documents it searched. */
 export interface FoundSecrets {
@@ -979,33 +980,70 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     };
   };
 
+  /* Whether `el`, or an element it is drawn in, is turned, skewed or
+     mirrored by a transform, so no box inside it maps through its box: a
+     computed transform other than a matrix that only scales and moves it, a
+     rotate, or a scale that flips it. */
+  const turned = (el: Element): boolean => {
+    for (let at: Element | null = el; at; at = drawnParent(at)) {
+      const style = styleOf(at);
+      const transform = style.transform || 'none';
+      if (transform !== 'none') {
+        const matrix = /^matrix\(([^)]*)\)$/.exec(transform);
+        const [a, b, c, d] = matrix ? matrix[1].split(',').map(Number) : [NaN, NaN, NaN, NaN];
+        if (!(a > 0 && d > 0 && b === 0 && c === 0)) return true;
+      }
+      if (!['', 'none'].includes(style.getPropertyValue('rotate'))) return true;
+      if (style.getPropertyValue('scale').split(/\s+/).some((value) => Number.parseFloat(value) < 0)) return true;
+    }
+    return false;
+  };
+  /* How a box in same-origin frame `owner`'s own viewport lands in its
+     document's viewport: scaled as the frame is drawn (its box over its
+     laid-out size, so a transform or a zoom that scales it scales the box),
+     from the corner of its content box; for a frame a transform turns, the
+     frame's whole box. */
+  const throughOwner = (owner: Element): ((box: Box) => Box) => {
+    const box = boxOf(owner);
+    if (turned(owner)) return () => box;
+    const { offsetWidth, offsetHeight } = owner as HTMLElement;
+    const sx = offsetWidth > 0 ? box.width / offsetWidth : 1;
+    const sy = offsetHeight > 0 ? box.height / offsetHeight : 1;
+    const style = styleOf(owner);
+    const px = (value: string) => parseFloat(value) || 0;
+    const x = box.x + (px(style.borderLeftWidth) + px(style.paddingLeft)) * sx;
+    const y = box.y + (px(style.borderTopWidth) + px(style.paddingTop)) * sy;
+    return (inner) => ({ x: x + inner.x * sx, y: y + inner.y * sy, width: inner.width * sx, height: inner.height * sy });
+  };
+
   /* What a screenshot must not show. Same-origin frames are searched in
-     turn, `maxDepth` deep, offset by their content box; a frame from another
-     site can't be, and one past that depth isn't. */
+     turn, `maxDepth` deep, each box placed where the frame draws it
+     (throughOwner); a frame from another site can't be, and one past that
+     depth isn't. */
   const secretBoxes = (paymentHosts: readonly string[], maxDepth: number): FoundSecrets => {
     const found: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], owners: 0, viewport };
-    const add = (into: Box[], el: Element, dx: number, dy: number) => {
-      const box = boxOf(el);
-      if (box.width > 0 && box.height > 0) into.push({ x: box.x + dx, y: box.y + dy, width: box.width, height: box.height });
-    };
-    const visit = (root: Node, dx: number, dy: number, depth: number) => {
+    const visit = (root: Node, place: (box: Box) => Box, depth: number) => {
+      const add = (into: Box[], el: Element) => {
+        const box = boxOf(el);
+        if (box.width > 0 && box.height > 0) into.push(place(box));
+      };
       for (const el of elementsIn(root)) {
         if (!FRAME_TAGS.has(tagOf(el))) {
-          if (isField(el) && isSecret(el)) add(found.secrets, el, dx, dy);
+          if (isField(el) && isSecret(el)) add(found.secrets, el);
           continue;
         }
         if (holdsFrame(el)) found.owners += 1;
         const inner = frameDocOf(el);
         const payment = hostIn(sourceOf(el), paymentHosts) || (!!inner && hostIn(String(inner.location?.href || ''), paymentHosts));
-        if (payment) add(found.paymentFrames, el, dx, dy);
-        if (!inner || depth >= maxDepth) add(found.otherSiteFrames, el, dx, dy);
+        if (payment) add(found.paymentFrames, el);
+        if (!inner || depth >= maxDepth) add(found.otherSiteFrames, el);
         else if (!payment) {
-          const box = contentBox(el);
-          visit(inner, dx + box.x, dy + box.y, depth + 1);
+          const into = throughOwner(el);
+          visit(inner, (box) => place(into(box)), depth + 1);
         }
       }
     };
-    visit(doc, 0, 0, 0);
+    visit(doc, (box) => box, 0);
     return found;
   };
 

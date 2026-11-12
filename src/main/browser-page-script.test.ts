@@ -1159,6 +1159,26 @@ describe('frames', () => {
     expect(screenshotMasks(found, ['https://js.stripe.com/v3/elements-inner-card', 'https://ads.example.test/', 'https://js.stripe.com/v3/controller.html'], 3)).toEqual([...found.secrets, ...found.paymentFrames, ...found.otherSiteFrames]);
   });
 
+  it("places a same-origin frame's secret field where the frame draws it, at twice or half its size, and blacks out whole one a transform turns", async () => {
+    document.body.innerHTML = ['twice', 'half', 'turned'].map((id) => `<iframe id="${id}" style="border: 0" srcdoc="<input id='pw' type='password'>"></iframe>`).join('');
+    await framesLoad();
+    // Each frame is laid out 200 by 100 and drawn as its box says.
+    const drawn: Record<string, [number, number, number, number]> = { twice: [0, 0, 400, 200], half: [0, 300, 100, 50], turned: [200, 400, 220, 120] };
+    for (const [id, [x, y, width, height]] of Object.entries(drawn)) {
+      const frame = document.getElementById(id)!;
+      place(frame, x, y, width, height);
+      Object.defineProperty(frame, 'offsetWidth', { configurable: true, value: 200 });
+      Object.defineProperty(frame, 'offsetHeight', { configurable: true, value: 100 });
+      place(frameDoc(id).getElementById('pw')!, 10, 20, 50, 10);
+    }
+    document.getElementById('turned')!.style.transform = 'matrix(0.98, 0.17, -0.17, 0.98, 0, 0)';
+    expect(secretBoxes().secrets).toEqual([
+      { x: 20, y: 40, width: 100, height: 20 },
+      { x: 5, y: 310, width: 25, height: 5 },
+      { x: 200, y: 400, width: 220, height: 120 },
+    ]);
+  });
+
   it("counts the frame owners in every document it searches, and masks a same-origin frame past its depth as one it can't search", async () => {
     document.body.innerHTML = `
       <iframe id="outer" srcdoc="<iframe id='mid' srcdoc='<p>Deep</p>'></iframe>"></iframe>
