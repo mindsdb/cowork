@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { readNotifyPrefs, runsToNotify, useScheduleRunNotifications } from './useScheduleRunNotifications';
+import { useAutoPauseNotifications } from './useAutoPauseNotifications';
 
 const SINCE = Date.parse('2026-11-11T09:00:00Z');
 const run = (over = {}) => ({ id: 'run-1', status: 'failed', finishedAt: '2026-11-11T09:05:00Z', trigger: 'cron', ...over });
@@ -30,9 +31,10 @@ describe('runsToNotify', () => {
     expect(pick([schedule(run())], { prefs: { failed: false, succeeded: false } })).toEqual([]);
   });
 
-  it('leaves the failure that auto-paused a task to the auto-pause notification', () => {
+  it('includes the failure that auto-paused a task for fallback delivery', () => {
     const paused = schedule(run(), { enabled: false, state: 'auto_paused', autoPausedAt: '2026-11-11T09:05:00Z' });
-    expect(pick([paused])).toEqual([]);
+    expect(pick([paused])).toEqual([['run-1', 'failed']]);
+    expect(pick([paused], { prefs: { failed: false, succeeded: false } })).toEqual([]);
   });
 
   it('skips trial runs, runs still going and stopped runs', () => {
@@ -107,6 +109,33 @@ describe('useScheduleRunNotifications', () => {
     notice.actionProps.onClick();
     expect(onOpen).toHaveBeenCalledWith(failed, failed.lastRun);
     expect(closeToast).toHaveBeenCalledWith('schedule-run-run-1');
+  });
+
+  it.each(['denied', 'default', 'unsupported', 'granted'])('delivers an auto-pause once with notification permission %s', (permission) => {
+    if (permission === 'unsupported') vi.stubGlobal('Notification', undefined);
+    else FakeNotification.permission = permission;
+    const toast = vi.fn();
+    const closeToast = vi.fn();
+    const onOpen = vi.fn();
+    const paused = schedule(run(), { enabled: false, state: 'auto_paused', autoPausedAt: '2026-11-11T09:05:00Z' });
+    const { rerender } = renderHook(({ list }) => {
+      useAutoPauseNotifications(list, vi.fn());
+      useScheduleRunNotifications(list, { toast, closeToast, onOpen });
+    }, { initialProps: { list: [paused] } });
+    rerender({ list: [{ ...paused }] });
+    if (permission === 'granted') {
+      expect(shown).toHaveLength(1);
+      expect(shown[0].title).toBe('Scheduled task paused');
+      expect(toast).not.toHaveBeenCalled();
+    } else {
+      expect(shown).toHaveLength(0);
+      expect(toast).toHaveBeenCalledTimes(1);
+      const notice = toast.mock.calls[0][0];
+      expect(notice.actionProps.children).toBe('Open task');
+      notice.actionProps.onClick();
+      expect(onOpen).toHaveBeenCalledWith(paused, paused.lastRun);
+      expect(closeToast).toHaveBeenCalledWith(notice.id);
+    }
   });
 
   it('starts with failures on and successes off, and remembers a change', async () => {

@@ -40,8 +40,8 @@ function writeJson(key, value) {
 // ended at or after `since`, has not been notified, and its ending is one the
 // user asked to hear about.
 //
-// Left out: a trial run, which the user is watching in chat, and the failure
-// that auto-paused its task, which the auto-pause notification already covers.
+// Left out: a trial run, which the user is watching in chat. Auto-paused
+// tasks still need a toast when native notifications are unavailable.
 export function runsToNotify(schedules, { prefs, notified, since }) {
   const known = new Set(notified);
   return (schedules || []).flatMap((schedule) => {
@@ -50,7 +50,7 @@ export function runsToNotify(schedules, { prefs, notified, since }) {
     const finishedAt = Date.parse(run.finishedAt);
     if (!Number.isFinite(finishedAt) || finishedAt < since) return [];
     if (run.status === 'failed') {
-      return prefs.failed && scheduleState(schedule) !== 'auto_paused' ? [{ schedule, run, kind: 'failed' }] : [];
+      return prefs.failed ? [{ schedule, run, kind: 'failed' }] : [];
     }
     if (run.status === 'success') return prefs.succeeded ? [{ schedule, run, kind: 'succeeded' }] : [];
     return [];
@@ -104,6 +104,9 @@ export function useScheduleRunNotifications(schedules, { onOpen, toast, closeToa
         });
         continue;
       }
+      // The existing auto-pause hook owns the native notification. Only
+      // suppress that duplicate, not the in-app fallback above.
+      if (kind === 'failed' && scheduleState(schedule) === 'auto_paused') continue;
       const notice = new Notification(msg(`${kind}Title`), {
         body: msg(`${kind}Body`, { title }),
         tag: `schedule-run-${run.id}`,
