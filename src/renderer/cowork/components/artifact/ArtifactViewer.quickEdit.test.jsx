@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: true,
@@ -48,6 +49,12 @@ vi.mock('../../api', () => ({
   unpublishArtifact: vi.fn(),
   artifactServeUrl: vi.fn(),
   submitArtifactCheck: vi.fn(),
+  // The rule every turn sends picks by (api.js), as it reads with platform UI on.
+  sendablePicks: (model, reasoningEffort) => ({
+    sendsPicks: true,
+    model: model && model !== 'model-router' ? model : null,
+    reasoningEffort: reasoningEffort || null,
+  }),
 }));
 vi.mock('../../lib/artifactCheck', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -101,6 +108,8 @@ vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
+import { ChatTranscriptContext } from '../../lib/chatTranscriptContext';
+import { ModelPickerContext } from '../../lib/modelPickerContext';
 
 const artifact = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
@@ -209,6 +218,8 @@ describe('ArtifactViewer quick edit bar', () => {
       expectedRevisionId: 'r1',
       conversationId: 'conv-1',
       forceRoute: null,
+      model: null,
+      reasoningEffort: null,
     });
     expect(opts.signal).toBeInstanceOf(AbortSignal);
     expect(workspaceMock.load).toHaveBeenCalledTimes(1);
@@ -329,7 +340,7 @@ describe('ArtifactViewer quick edit bar', () => {
     ));
     fireEvent.click(within(thread()).getByRole('button', { name: 'Ask the agent instead' }));
 
-    await within(thread()).findByText(/Continued in chat\./);
+    await within(thread()).findByText('Sent to the chat.');
     expect(workspaceApi.streamQuickEdit.mock.calls[1][1]).toMatchObject({ message: 'Add a chart', forceRoute: 'agent' });
     expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
   });
@@ -343,13 +354,13 @@ describe('ArtifactViewer quick edit bar', () => {
 
     ask('Add last quarter sales from the warehouse');
 
-    await within(thread()).findByText(/Continued in chat\./);
+    await within(thread()).findByText('Sent to the chat.');
     expect(onAddressWithAgent).toHaveBeenCalledWith({
       artifact,
       prompt: 'Add last quarter sales from the warehouse\n\n(About the artifact `launch-brief`.)',
       conversationId: 'conv-1',
     });
-    fireEvent.click(within(thread()).getByRole('button', { name: 'Open chat' }));
+    fireEvent.click(within(thread()).getByRole('button', { name: 'Open in chat' }));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -362,7 +373,7 @@ describe('ArtifactViewer quick edit bar', () => {
 
     ask('Pull the latest numbers');
 
-    await within(thread()).findByText(/Continued in chat\./);
+    await within(thread()).findByText('Sent to the chat.');
     expect(workspaceApi.streamQuickEdit.mock.calls[0][1].conversationId).toBe('origin-chat');
     expect(onAddressWithAgent.mock.calls[0][0].conversationId).toBe('origin-chat');
   });
@@ -402,7 +413,7 @@ describe('ArtifactViewer quick edit bar', () => {
 
       ask('Why is revenue down?');
 
-      await within(thread()).findByText(/Continued in chat\./);
+      await within(thread()).findByText('Sent to the chat.');
       expect(workspaceApi.streamQuickEdit).not.toHaveBeenCalled();
       expect(onAddressWithAgent).toHaveBeenCalledWith({
         artifact,
@@ -423,7 +434,7 @@ describe('ArtifactViewer quick edit bar', () => {
 
     ask('Make the title blue');
 
-    await within(thread()).findByText(/Continued in chat\./);
+    await within(thread()).findByText('Sent to the chat.');
     expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
   });
 
@@ -509,5 +520,164 @@ describe('ArtifactViewer quick edit bar', () => {
 
     expect(bar()).toBeDisabled();
     expect(screen.getByText('Save or discard your Source changes to ask for a change here.')).toBeInTheDocument();
+  });
+
+  describe('model picker', () => {
+    const catalog = {
+      models: [
+        { id: 'claude-sonnet', name: 'Claude Sonnet' },
+        { id: 'fast-model', name: 'Fast model' },
+      ],
+      modelMeta: {
+        modelProviders: {},
+        modelEfforts: {
+          'claude-sonnet': { efforts: ['low', 'medium', 'high'], default: 'high' },
+        },
+      },
+    };
+    const renderWithCatalog = (props = {}) => render(
+      <ModelPickerContext.Provider value={catalog}>
+        <ArtifactViewer open artifact={artifact} onClose={vi.fn()} conversationId="conv-1" {...props} />
+      </ModelPickerContext.Provider>,
+    );
+    const modelPill = () => screen.getByRole('combobox', { name: 'Choose model' });
+
+    it('shows the composer picker beside send, on Model Router with no effort pill', async () => {
+      renderWithCatalog();
+      await screen.findByTitle('Launch brief');
+
+      expect(modelPill()).toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+    });
+
+    it('defaults to medium effort on a model that offers effort, and sends model and effort', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+      renderWithCatalog();
+      await screen.findByTitle('Launch brief');
+
+      const user = userEvent.setup();
+      await user.click(modelPill());
+      await user.click(await screen.findByRole('option', { name: /Claude Sonnet/ }));
+
+      expect(await screen.findByRole('combobox', { name: 'Reasoning effort' })).toHaveTextContent(/Medium/);
+      ask('Make the title blue');
+      await within(thread()).findByText('Made the title blue.');
+      expect(workspaceApi.streamQuickEdit.mock.calls[0][1]).toMatchObject({
+        model: 'claude-sonnet',
+        reasoningEffort: 'medium',
+      });
+    });
+
+    it('shows no effort pill for a model without effort levels, and sends none', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+      renderWithCatalog();
+      await screen.findByTitle('Launch brief');
+
+      const user = userEvent.setup();
+      await user.click(modelPill());
+      await user.click(await screen.findByRole('option', { name: /Fast model/ }));
+
+      expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+      ask('Make the title blue');
+      await within(thread()).findByText('Made the title blue.');
+      expect(workspaceApi.streamQuickEdit.mock.calls[0][1]).toMatchObject({ model: 'fast-model', reasoningEffort: null });
+    });
+
+    it('hides the picker when every message goes to the chat', async () => {
+      workspaceMock.capabilities = { role: 'owner', canEdit: true, canQuickEdit: true, quickEditDirect: false };
+      renderWithCatalog();
+      await screen.findByTitle('Launch brief');
+
+      expect(bar()).toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
+    });
+  });
+
+  describe('Undo states', () => {
+    it('shows the undo in progress, then undone', async () => {
+      let finish;
+      workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+      workspaceApi.undoQuickEdit.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+      ask('Make the title blue');
+
+      fireEvent.click(await within(thread()).findByRole('button', { name: 'Undo' }));
+
+      const busy = await within(thread()).findByRole('button', { name: 'Undoing…' });
+      expect(busy).toBeDisabled();
+      expect(busy).toHaveAttribute('aria-busy', 'true');
+      await act(async () => { finish({ editId: 'qe-edit-1', restored: [], removed: [], revision: null }); });
+      expect(within(thread()).getByRole('status')).toHaveTextContent('Undone.');
+      expect(within(thread()).queryByRole('button', { name: /Undo/ })).toBeNull();
+    });
+  });
+
+  describe('mirroring the chat reply', () => {
+    const PROMPT = 'Add last quarter sales\n\n(About the artifact `launch-brief`.)';
+    function renderInChat(messages, props = {}) {
+      const ui = (msgs) => (
+        <ChatTranscriptContext.Provider value={{ conversationId: 'conv-1', messages: msgs }}>
+          <ArtifactViewer open artifact={artifact} onClose={props.onClose || vi.fn()} conversationId="conv-1" {...props} />
+        </ChatTranscriptContext.Provider>
+      );
+      const view = render(ui(messages));
+      return { ...view, update: (msgs) => view.rerender(ui(msgs)) };
+    }
+
+    it('streams the agent reply into the bar from the chat state, with Open in chat', async () => {
+      const onClose = vi.fn();
+      const onAddressWithAgent = vi.fn(async () => true);
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'escalate', summary: '' }));
+      // The same prompt asked earlier in this chat: the bar must read the reply to its own.
+      const earlier = [
+        { role: 'user', content: PROMPT },
+        { role: 'assistant', content: 'An older answer.' },
+      ];
+      const view = renderInChat(earlier, { onAddressWithAgent, onClose });
+      await screen.findByTitle('Launch brief');
+
+      ask('Add last quarter sales');
+      await within(thread()).findByText('Sent to the chat.');
+
+      view.update([...earlier, { role: 'user', content: PROMPT }, { role: '_streaming', content: 'Pulling the sales', steps: [] }]);
+      expect(await within(thread()).findByText(/Pulling the sales/)).toBeInTheDocument();
+      expect(within(thread()).queryByText('An older answer.')).toBeNull();
+
+      view.update([...earlier, { role: 'user', content: PROMPT }, { role: 'assistant', content: 'Added a Q3 sales column.' }]);
+      expect(await within(thread()).findByText('Added a Q3 sales column.')).toBeInTheDocument();
+      fireEvent.click(within(thread()).getByRole('button', { name: 'Open in chat' }));
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it('says the chat needs an answer while the turn asks a question', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const view = renderInChat([], { onAddressWithAgent: vi.fn(async () => true) });
+      await screen.findByTitle('Launch brief');
+      ask('Add last quarter sales');
+      await within(thread()).findByText('Sent to the chat.');
+
+      view.update([
+        { role: 'user', content: PROMPT },
+        { role: '_streaming', content: '', steps: [{ badge: 'AskUser', status: 'in_progress', data: { answer: null } }] },
+      ]);
+
+      expect(await within(thread()).findByText('Needs your answer in the chat')).toBeInTheDocument();
+      expect(within(thread()).getByRole('button', { name: 'Open in chat' })).toBeInTheDocument();
+    });
+
+    it("ignores another chat's messages", async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      render(
+        <ChatTranscriptContext.Provider value={{ conversationId: 'other', messages: [{ role: 'user', content: PROMPT }, { role: 'assistant', content: 'Not this one.' }] }}>
+          <ArtifactViewer open artifact={artifact} onClose={vi.fn()} conversationId="conv-1" onAddressWithAgent={vi.fn(async () => true)} />
+        </ChatTranscriptContext.Provider>,
+      );
+      await screen.findByTitle('Launch brief');
+      ask('Add last quarter sales');
+
+      await within(thread()).findByText('Sent to the chat.');
+      expect(within(thread()).queryByText('Not this one.')).toBeNull();
+    });
   });
 });

@@ -660,8 +660,6 @@
     "noop": "変更はありませんでした。",
     "failed": "この変更はここでは行えませんでした。",
     "askAgent": "代わりにエージェントに依頼",
-    "continuedInChat": "チャットで続行しました。",
-    "openChat": "チャットを開く",
     "unsavedSource": "ここで変更を依頼するには、ソースの変更を保存または破棄してください。",
     "errors": {
       "stale": "開いた後にこのアーティファクトが変更されました。再読み込みしたので、もう一度お試しください。",
@@ -675,7 +673,12 @@
       "repairPending": "このアーティファクトに対するエージェントの提案が判断待ちです。先に承認または破棄してください。",
       "undoGone": "この変更はここではもう元に戻せません。履歴から戻してください。"
     },
-    "placeholderChat": "このアーティファクトについて質問または変更を依頼…"
+    "placeholderChat": "このアーティファクトについて質問または変更を依頼…",
+    "openInChat": "チャットで開く",
+    "needsAnswer": "チャットで回答が必要です",
+    "workingInChat": "チャットで処理中…",
+    "sentToChat": "チャットに送信しました。",
+    "chatStopped": "チャットのターンは回答前に停止しました。"
   },
   "stats": {
     "toggle": {
@@ -709,5 +712,15 @@
       "temporarilyUnavailable": "統計は一時的に利用できません。",
       "loadFailed": "統計を読み込めませんでした。"
     }
+  },
+  "refPill": {
+    "open": "{title}を開く"
+  },
+  "quickEditCard": {
+    "title": "ビューアーで編集",
+    "count": "{count, plural, other {#件の変更}}",
+    "undone": "取り消し済み",
+    "showAll": "{count, plural, other {すべて表示（#件）}}",
+    "showFewer": "表示を減らす"
   }
 }

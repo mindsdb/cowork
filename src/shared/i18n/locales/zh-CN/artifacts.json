@@ -660,8 +660,6 @@
     "noop": "没有任何更改。",
     "failed": "无法在此处完成该修改。",
     "askAgent": "改为询问智能体",
-    "continuedInChat": "已在聊天中继续。",
-    "openChat": "打开聊天",
     "unsavedSource": "请先保存或放弃“源代码”中的更改，再在此请求修改。",
     "errors": {
       "stale": "你打开此产物后它已被更改。已重新加载，请重试。",
@@ -675,7 +673,12 @@
       "repairPending": "此产物有一条智能体建议正在等待你的决定。请先接受或放弃它。",
       "undoGone": "此修改已无法在此撤销。请使用历史记录回退。"
     },
-    "placeholderChat": "询问或修改此产物…"
+    "placeholderChat": "询问或修改此产物…",
+    "openInChat": "在聊天中打开",
+    "needsAnswer": "需要你在聊天中回答",
+    "workingInChat": "正在聊天中处理…",
+    "sentToChat": "已发送到聊天。",
+    "chatStopped": "聊天轮次在回答前停止了。"
   },
   "stats": {
     "toggle": {
@@ -709,5 +712,15 @@
       "temporarilyUnavailable": "统计暂时不可用。",
       "loadFailed": "无法加载统计。"
     }
+  },
+  "refPill": {
+    "open": "打开{title}"
+  },
+  "quickEditCard": {
+    "title": "已在查看器中编辑",
+    "count": "{count, plural, other {# 项更改}}",
+    "undone": "已撤销",
+    "showAll": "{count, plural, other {显示全部 # 项}}",
+    "showFewer": "收起"
   }
 }

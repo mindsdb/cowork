@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   allocateConversationId,
   mountArtifactPreview,
+  sendablePicks,
   previewArtifact,
   unpublishArtifact,
   artifactServeUrl,
@@ -67,7 +68,13 @@ import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
-import { quickEditChatPrompt, useQuickEdit } from './quickEdit/useQuickEdit';
+import { useQuickEdit } from './quickEdit/useQuickEdit';
+import { countUserPrompts } from '../../lib/quickEditPrompt';
+import { useChatTranscript } from '../../lib/chatTranscriptContext';
+import { requestConversationRefresh } from '../../lib/conversationRefresh';
+import { useModelPickerContext } from '../../lib/modelPickerContext';
+import { ModelEffortPicker, pickedEffort } from '../ModelEffortPicker';
+import { MODEL_ROUTER } from '../../lib/modelCatalog';
 import { useArtifactStats } from './stats/useArtifactStats';
 import { useStatsUiEnabled } from './stats/statsUiAccess';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
@@ -901,6 +908,20 @@ export function ArtifactViewer({
     errors: diagnostics.errors,
   });
 
+  // The chat the viewer sits in, when it does: the bar mirrors the agent's
+  // reply to a message it handed to that chat from the same task state the
+  // transcript renders (no second stream). Another chat's messages are not it.
+  const chatTranscript = useChatTranscript();
+  const chatMessages = chatTranscript
+    && (!conversationId || String(chatTranscript.conversationId || '') === String(conversationId))
+    ? chatTranscript.messages
+    : null;
+  // The bar's model and effort, picked with the composer's own picker and
+  // catalog. Effort null is "no pick": medium where the model offers it.
+  const modelPicker = useModelPickerContext();
+  const [barModel, setBarModel] = useState(MODEL_ROUTER);
+  const [barEffort, setBarEffort] = useState(null);
+
   // Quick edits (ENG-4227): offered in Preview to whoever can edit, when the
   // server turned them on. A file the viewer only previews has nothing to edit.
   const canQuickEdit = workspace.capabilities?.canQuickEdit === true
@@ -919,21 +940,28 @@ export function ArtifactViewer({
     headRevisionId: workspace.currentRevision?.id || null,
     resolveConversation: async () => (await resolveArtifactConversation()) || null,
     // Same send the comment repair uses, with a fresh chat as the last resort.
-    continueInChat: async (message) => {
+    continueInChat: async (prompt) => {
       if (!onAddressWithAgent) return false;
       const target = (await resolveArtifactConversation()) || repairConversationId;
-      const started = await onAddressWithAgent({
-        artifact,
-        prompt: quickEditChatPrompt(artifact, message),
-        conversationId: target,
-      });
+      const started = await onAddressWithAgent({ artifact, prompt, conversationId: target });
       return started !== false;
+    },
+    countInChat: (prompt) => countUserPrompts(chatMessages, prompt),
+    picks: () => {
+      const { model, reasoningEffort } = sendablePicks(
+        barModel?.id,
+        pickedEffort({ model: barModel, effort: barEffort, modelMeta: modelPicker?.modelMeta }),
+      );
+      return { model, reasoningEffort };
     },
     // As after a Source save: the host hears of the new content (its card
     // and any URL it derives), and the preview reloads in the same render.
     onApplied: async () => {
       onReload();
       reportChange({ ...artifact, mtime: Date.now() / 1000 });
+      // The server keeps the edit (or its undo) in the chat's quick-edit card;
+      // the open chat fetches it again to show it.
+      if (conversationId) requestConversationRefresh(conversationId);
       try { await workspace.load(); } catch { /* the preview already shows the change */ }
     },
     onStale: () => { void workspace.load(); },
@@ -1417,6 +1445,19 @@ export function ArtifactViewer({
       {canQuickEdit && workspace.mode === 'preview' && (
         <QuickEditBar
           controller={quickEdit}
+          chatMessages={chatMessages}
+          // Messages go to the chat without a decisions model, and the chat
+          // has its own picker, so the bar shows none then.
+          picker={quickEdit.direct && modelPicker ? (
+            <ModelEffortPicker
+              models={modelPicker.models}
+              modelMeta={modelPicker.modelMeta}
+              model={barModel}
+              onModelChange={(next) => { setBarModel(next); setBarEffort(null); }}
+              effort={barEffort}
+              onEffortChange={setBarEffort}
+            />
+          ) : null}
           // A reload after a quick edit would replace Source text never saved.
           disabledReason={workspace.dirty ? t('quickEdit.unsavedSource') : ''}
           onOpenChat={onClose}

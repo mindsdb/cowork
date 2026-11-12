@@ -776,6 +776,23 @@ function turnStreamController(onEvent) {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
+/**
+ * The model and effort a request may carry, by the same rule every turn
+ * follows. MODEL_ROUTER_ID never leaves the renderer (null is "this account's
+ * Settings decide"); without platform UI only the operator's picker sends
+ * picks. A per-task effort goes with platform UI on, and under the operator's
+ * picker for an effort it lets users pick on the model sent; otherwise none,
+ * so the request cannot override role settings. The viewer's chat bar
+ * (ENG-4227) sends its picks through this too.
+ */
+export function sendablePicks(model, reasoningEffort) {
+  const sendsPicks = PLATFORM_UI || modelPickerMode() !== 'off';
+  const sentModel = (sendsPicks && model && model !== MODEL_ROUTER_ID) ? model : null;
+  const sendsEffort = Boolean(reasoningEffort)
+    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
+  return { sendsPicks, model: sentModel, reasoningEffort: sendsEffort ? reasoningEffort : null };
+}
+
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
@@ -800,14 +817,8 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // picker (lib/modelPicker) sends a model, and App hands it only the
   // models that picker offers. With it off, all callers use
   // operator-configured role settings, including restored tasks.
-  const sendsPicks = PLATFORM_UI || modelPickerMode() !== 'off';
-  const sentModel = (sendsPicks && model && model !== MODEL_ROUTER_ID) ? model : null;
-  // A per-task effort is available with platform UI on, and under the
-  // operator's picker for an effort it lets users pick on the model this
-  // question sends, a retried task's saved effort included. Omit the key
-  // otherwise so this request cannot override role settings.
-  const sendsEffort = Boolean(reasoningEffort)
-    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
+  const { sendsPicks, model: sentModel, reasoningEffort: sentEffort } = sendablePicks(model, reasoningEffort);
+  const sendsEffort = sentEffort !== null;
   (async () => {
     try {
       bumpIdle();
@@ -822,7 +833,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // may still hold at a harness this build has no control left to
           // change. Callers with a per-task pick (the composer) still win.
           harness: harness || 'anton',
-          ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(sendsEffort ? { reasoning_effort: sentEffort } : {}),
           // The picks this question goes back to the default on (App's
           // turnResetPicks), so the server clears the saved ones. Only where
           // this client sends picks at all, and only when there is one.

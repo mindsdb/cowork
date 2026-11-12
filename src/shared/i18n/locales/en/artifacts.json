@@ -660,8 +660,6 @@
     "noop": "Nothing changed.",
     "failed": "That change couldn't be made here.",
     "askAgent": "Ask the agent instead",
-    "continuedInChat": "Continued in chat.",
-    "openChat": "Open chat",
     "unsavedSource": "Save or discard your Source changes to ask for a change here.",
     "errors": {
       "stale": "This artifact changed since you opened it. It has been reloaded; try again.",
@@ -675,7 +673,12 @@
       "repairPending": "An agent suggestion for this artifact is waiting for your decision. Accept or discard it first.",
       "undoGone": "This change can no longer be undone here. Use History to go back."
     },
-    "placeholderChat": "Ask about or change this artifact…"
+    "placeholderChat": "Ask about or change this artifact…",
+    "openInChat": "Open in chat",
+    "needsAnswer": "Needs your answer in the chat",
+    "workingInChat": "Working in the chat…",
+    "sentToChat": "Sent to the chat.",
+    "chatStopped": "The chat turn stopped before it answered."
   },
   "stats": {
     "toggle": {
@@ -709,5 +712,15 @@
       "temporarilyUnavailable": "Stats are temporarily unavailable.",
       "loadFailed": "Could not load stats."
     }
+  },
+  "refPill": {
+    "open": "Open {title}"
+  },
+  "quickEditCard": {
+    "title": "Edited in the viewer",
+    "count": "{count, plural, one {# change} other {# changes}}",
+    "undone": "Undone",
+    "showAll": "{count, plural, other {Show all #}}",
+    "showFewer": "Show fewer"
   }
 }

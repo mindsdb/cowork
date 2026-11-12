@@ -1,18 +1,88 @@
 // The viewer's chat bar (ENG-4227): a thin composer at the bottom of Preview,
-// styled like the review composer, with the thread of quick edits above it.
-// State and the stream live in useQuickEdit; this file only draws them.
+// styled like the review composer, with the thread of quick edits above it
+// and, when the server can edit directly, the composer's model picker beside
+// send. State and the stream live in useQuickEdit; this file only draws them.
+//
+// A message handed to the chat shows the agent's reply here as it streams,
+// read from the chat's own task state (lib/quickEditPrompt chatReplyFor), with
+// a quiet "Open in chat" for the full turn.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Ico from '../../Icons';
 import { ArrowUpIcon } from '../comments/icons';
 import { Spinner, Tooltip } from '../../ui';
+import { MarkdownContent } from '../../markdown/MarkdownContent';
+import { chatReplyFor } from '../../../lib/quickEditPrompt';
 import { useTranslation } from '../../../../lib/i18n';
 
 const MAX_HEIGHT = 120; // px — ~5 lines before the textarea scrolls
 const KNOWN_STAGES = new Set(['reading', 'writing', 'checking', 'fixing']);
 
-function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat }) {
+// A quiet action under a reply: icon and label in ink-3, filled on hover, the
+// composer's ghost-button treatment at reply size.
+function ReplyAction({ icon, label, onClick, disabled = false, busy = false }) {
+  return (
+    <button
+      type="button"
+      className="artifact-quick-edit-action"
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+      onClick={onClick}
+    >
+      {busy ? <Spinner /> : icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function OpenInChat({ onOpenChat }) {
   const { t } = useTranslation('artifacts');
-  const link = 'artifact-quick-edit-link';
+  if (!onOpenChat) return null;
+  return <ReplyAction icon={Ico.arrowUpRight(14)} label={t('quickEdit.openInChat')} onClick={onOpenChat} />;
+}
+
+// The reply of a message that went to the chat, mirrored from it.
+function ChatMirror({ reply, chatMessages, onOpenChat }) {
+  const { t } = useTranslation('artifacts');
+  const mirror = chatMessages ? chatReplyFor(chatMessages, reply.chatPrompt, reply.chatBefore || 0) : null;
+  if (mirror?.needsAnswer) {
+    return (
+      <>
+        <span className="artifact-quick-edit-muted">{t('quickEdit.needsAnswer')}</span>
+        <div className="artifact-quick-edit-actions"><OpenInChat onOpenChat={onOpenChat} /></div>
+      </>
+    );
+  }
+  if (mirror?.text) {
+    return (
+      <>
+        <div className="artifact-quick-edit-mirror" data-live={mirror.live || undefined}>
+          <MarkdownContent text={mirror.text} id={`quick-edit-${reply.id}`} complete={!mirror.live} size="dense" isAssistant animateStreamingWords={false} />
+        </div>
+        <div className="artifact-quick-edit-actions">
+          {mirror.live && <span className="artifact-quick-edit-status"><Spinner /></span>}
+          <OpenInChat onOpenChat={onOpenChat} />
+        </div>
+      </>
+    );
+  }
+  const label = mirror?.failed
+    ? t('quickEdit.chatStopped')
+    : mirror
+      ? t('quickEdit.workingInChat')
+      : t('quickEdit.sentToChat');
+  return (
+    <>
+      <span className="artifact-quick-edit-status" role="status">
+        {mirror && !mirror.failed ? <Spinner /> : null}{label}
+      </span>
+      <div className="artifact-quick-edit-actions"><OpenInChat onOpenChat={onOpenChat} /></div>
+    </>
+  );
+}
+
+function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat, chatMessages }) {
+  const { t } = useTranslation('artifacts');
   if (reply.state === 'running' || reply.state === 'handing-off') {
     const stage = reply.state === 'handing-off'
       ? t('quickEdit.handingOff')
@@ -31,20 +101,27 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat }) {
   }
   if (reply.state === 'applied') {
     return (
-      <span>
-        {reply.summary || t('quickEdit.applied')}
-        {reply.undone ? (
-          <span className="artifact-quick-edit-muted"> {t('quickEdit.undone')}</span>
-        ) : canUndo ? (
-          <>
-            {' '}
-            <button type="button" className={link} disabled={busy || reply.undoing} onClick={onUndo}>
-              {reply.undoing ? t('quickEdit.undoing') : t('quickEdit.undo')}
-            </button>
-          </>
-        ) : null}
-        {reply.undoError && <span className="artifact-quick-edit-error" role="alert"> {reply.undoError}</span>}
-      </span>
+      <>
+        <span>{reply.summary || t('quickEdit.applied')}</span>
+        {(reply.undone || canUndo) && (
+          <div className="artifact-quick-edit-actions">
+            {reply.undone ? (
+              <span className="artifact-quick-edit-action is-done" role="status">
+                {Ico.check(14)}<span>{t('quickEdit.undone')}</span>
+              </span>
+            ) : (
+              <ReplyAction
+                icon={Ico.undo(14)}
+                label={reply.undoing ? t('quickEdit.undoing') : t('quickEdit.undo')}
+                busy={!!reply.undoing}
+                disabled={busy}
+                onClick={onUndo}
+              />
+            )}
+          </div>
+        )}
+        {reply.undoError && <div className="artifact-quick-edit-error" role="alert">{reply.undoError}</div>}
+      </>
     );
   }
   if (reply.state === 'noop') {
@@ -52,34 +129,21 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat }) {
   }
   if (reply.state === 'failed') {
     return (
-      <span>
-        {reply.summary || t('quickEdit.failed')}
-        {' '}
-        <button type="button" className={link} disabled={busy} onClick={onAskAgent}>
-          {t('quickEdit.askAgent')}
-        </button>
-      </span>
+      <>
+        <span>{reply.summary || t('quickEdit.failed')}</span>
+        <div className="artifact-quick-edit-actions">
+          <ReplyAction icon={Ico.sparkle(14)} label={t('quickEdit.askAgent')} disabled={busy} onClick={onAskAgent} />
+        </div>
+      </>
     );
   }
   if (reply.state === 'chat') {
-    return (
-      <span>
-        {t('quickEdit.continuedInChat')}
-        {onOpenChat && (
-          <>
-            {' '}
-            <button type="button" className={link} onClick={onOpenChat}>
-              {t('quickEdit.openChat')}
-            </button>
-          </>
-        )}
-      </span>
-    );
+    return <ChatMirror reply={reply} chatMessages={chatMessages} onOpenChat={onOpenChat} />;
   }
   return <span className="artifact-quick-edit-error" role="alert">{reply.error || t('quickEdit.errors.failed')}</span>;
 }
 
-export function QuickEditBar({ controller, disabledReason = '', onOpenChat }) {
+export function QuickEditBar({ controller, disabledReason = '', onOpenChat, chatMessages = null, picker = null }) {
   const { t } = useTranslation('artifacts');
   const { messages, running, direct = true, send, askAgent, undo, undoableId } = controller;
   const [text, setText] = useState('');
@@ -127,6 +191,7 @@ export function QuickEditBar({ controller, disabledReason = '', onOpenChat }) {
                 onUndo={() => undo(m.id)}
                 onAskAgent={() => askAgent(m.id)}
                 onOpenChat={onOpenChat}
+                chatMessages={chatMessages}
               />
             </div>
           )))}
@@ -157,6 +222,7 @@ export function QuickEditBar({ controller, disabledReason = '', onOpenChat }) {
             }
           }}
         />
+        {picker && <div className="artifact-quick-edit-picker">{picker}</div>}
         <Tooltip content={t('quickEdit.send')}>
           <button
             type="button"

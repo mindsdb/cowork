@@ -660,8 +660,6 @@
     "noop": "No cambió nada.",
     "failed": "Ese cambio no se pudo hacer aquí.",
     "askAgent": "Preguntar al agente",
-    "continuedInChat": "Continúa en el chat.",
-    "openChat": "Abrir chat",
     "unsavedSource": "Guarda o descarta tus cambios en Código fuente para pedir un cambio aquí.",
     "errors": {
       "stale": "Este artefacto cambió desde que lo abriste. Se ha vuelto a cargar; inténtalo de nuevo.",
@@ -675,7 +673,12 @@
       "repairPending": "Una sugerencia del agente para este artefacto espera tu decisión. Acéptala o descártala primero.",
       "undoGone": "Este cambio ya no se puede deshacer aquí. Usa el historial para volver atrás."
     },
-    "placeholderChat": "Pregunta sobre este artefacto o cámbialo…"
+    "placeholderChat": "Pregunta sobre este artefacto o cámbialo…",
+    "openInChat": "Abrir en el chat",
+    "needsAnswer": "Necesita tu respuesta en el chat",
+    "workingInChat": "Trabajando en el chat…",
+    "sentToChat": "Enviado al chat.",
+    "chatStopped": "El turno del chat se detuvo antes de responder."
   },
   "stats": {
     "toggle": {
@@ -709,5 +712,15 @@
       "temporarilyUnavailable": "Las estadísticas no están disponibles temporalmente.",
       "loadFailed": "No se pudieron cargar las estadísticas."
     }
+  },
+  "refPill": {
+    "open": "Abrir {title}"
+  },
+  "quickEditCard": {
+    "title": "Editado en el visor",
+    "count": "{count, plural, one {# cambio} other {# cambios}}",
+    "undone": "Deshecho",
+    "showAll": "{count, plural, other {Mostrar los #}}",
+    "showFewer": "Mostrar menos"
   }
 }

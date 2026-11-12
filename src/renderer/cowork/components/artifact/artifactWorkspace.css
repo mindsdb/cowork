@@ -296,10 +296,24 @@
 .artifact-quick-edit-thread { max-height: 168px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 4px; }
 .artifact-quick-edit-msg { max-width: 82%; padding: 6px 10px; border-radius: 12px; font: 13px/1.45 var(--font-body); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .artifact-quick-edit-msg.is-user { align-self: flex-end; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
-.artifact-quick-edit-msg.is-reply { align-self: flex-start; background: var(--surface-2); color: var(--ink-2); }
+.artifact-quick-edit-msg.is-reply { align-self: flex-start; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; background: var(--surface-2); color: var(--ink-2); font-size: var(--text-sm); }
 .artifact-quick-edit-status { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); }
-.artifact-quick-edit-link { color: var(--accent); font: inherit; text-decoration: underline; }
-.artifact-quick-edit-link:disabled { opacity: .55; text-decoration: none; cursor: default; }
+/* Reply actions (Undo, Ask the agent instead, Open in chat): the composer's
+   ghost button at reply size, quiet until hovered. */
+.artifact-quick-edit-actions { display: flex; align-items: center; gap: 2px; margin-left: -6px; }
+.artifact-quick-edit-action { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px; border: 0; border-radius: var(--r-8); background: transparent; color: var(--ink-3); font: 500 var(--text-xs)/1 var(--font-body); white-space: nowrap; cursor: pointer; transition: background var(--dur-hover) ease, color var(--dur-hover) ease; }
+.artifact-quick-edit-action:hover:not(:disabled) { background: var(--ghost-hover); color: var(--text-strong); }
+.artifact-quick-edit-action:active:not(:disabled) { background: var(--ghost-press); }
+.artifact-quick-edit-action:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+.artifact-quick-edit-action:disabled { cursor: default; opacity: .7; }
+.artifact-quick-edit-action[aria-busy="true"] { opacity: 1; }
+.artifact-quick-edit-action.is-done { color: var(--ink-4); cursor: default; }
+.artifact-quick-edit-mirror { max-width: 100%; }
+.artifact-quick-edit-mirror .markdown-content { font-size: var(--text-sm); }
+.artifact-quick-edit-mirror .markdown-content > :first-child { margin-top: 0; }
+.artifact-quick-edit-mirror .markdown-content > :last-child { margin-bottom: 0; }
+.artifact-quick-edit-picker { display: flex; align-items: center; gap: 2px; flex-shrink: 0; align-self: center; }
+.artifact-quick-edit-picker .meta-pill { height: 24px; padding: 0 8px; font-size: 12px; }
 .artifact-quick-edit-muted { color: var(--ink-4); }
 .artifact-quick-edit-error { color: var(--danger); }
 .artifact-quick-edit-hint { font: 12px/1.4 var(--font-body); padding: 0 4px; }

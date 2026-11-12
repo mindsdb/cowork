@@ -22,6 +22,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import i18n from '../../../../lib/i18n';
 import { answerArtifactCheck } from '../../../lib/artifactCheck';
 import { streamQuickEdit, undoQuickEdit } from '../../../lib/artifactWorkspaceApi';
+import { quickEditChatPrompt } from '../../../lib/quickEditPrompt';
+
+export { quickEditChatPrompt };
 
 const tr = (key, vars) => i18n.t(`quickEdit.${key}`, { ns: 'artifacts', ...vars });
 
@@ -29,18 +32,14 @@ const tr = (key, vars) => i18n.t(`quickEdit.${key}`, { ns: 'artifacts', ...vars 
 // bigger" to know what "it" is, without resending a long session each time.
 const MAX_HISTORY = 12;
 
+function pickFields(picks) {
+  let picked = null;
+  try { picked = picks?.() || null; } catch { picked = null; }
+  return { model: picked?.model ?? null, reasoningEffort: picked?.reasoningEffort ?? null };
+}
+
 let nextId = 0;
 const newId = () => `qe-${(nextId += 1)}`;
-
-/**
- * The chat turn a quick edit becomes when it needs the agent: the user's own
- * words, plus which artifact they were looking at, which the bar knew and the
- * chat would not. Agent-facing, so not translated (like launchLiveAppPrompt).
- */
-export function quickEditChatPrompt(artifact, message) {
-  const name = artifact?.slug || artifact?.title || '';
-  return name ? `${message}\n\n(About the artifact \`${name}\`.)` : message;
-}
 
 // The server's refusals, in the user's words. Its 409s name a `reason`; a
 // stale revision has none and carries the current one instead (the draft
@@ -82,8 +81,14 @@ function undoErrorMessage(error) {
  * @param {string | null} opts.headRevisionId  The draft revision on screen.
  * @param {() => Promise<string | null>} opts.resolveConversation  The chat the
  *   artifact belongs to, or null; the server notes an applied edit there.
- * @param {(message: string) => Promise<boolean>} opts.continueInChat  Send the
- *   message to that chat as a normal turn; false when no turn started.
+ * @param {(prompt: string) => Promise<boolean>} opts.continueInChat  Send the
+ *   prompt (quickEditChatPrompt) to that chat as a normal turn; false when no
+ *   turn started.
+ * @param {(prompt: string) => number} [opts.countInChat]  How many user
+ *   messages in that chat already read `prompt`, so the reply can be found
+ *   after it (lib/quickEditPrompt chatReplyFor).
+ * @param {() => { model: string | null, reasoningEffort: string | null }} [opts.picks]
+ *   The model and effort the bar's picker holds, as the request sends them.
  * @param {() => void | Promise<void>} opts.onApplied  A new revision landed
  *   (applied or undone): reload the workspace and the preview.
  * @param {() => void} [opts.onStale]  The server refused a stale revision.
@@ -94,6 +99,8 @@ export function useQuickEdit(artifact, {
   headRevisionId,
   resolveConversation,
   continueInChat,
+  countInChat,
+  picks,
   onApplied,
   onStale,
 }) {
@@ -108,7 +115,7 @@ export function useQuickEdit(artifact, {
   const headRef = useRef(headRevisionId || null);
   useEffect(() => { headRef.current = headRevisionId || null; }, [headRevisionId]);
   const depsRef = useRef({});
-  depsRef.current = { resolveConversation, continueInChat, onApplied, onStale };
+  depsRef.current = { resolveConversation, continueInChat, countInChat, picks, onApplied, onStale };
 
   // A closed viewer or another artifact ends the edit and the thread with it.
   // Aborting the request closes the stream; the server keeps or undoes the
@@ -149,10 +156,13 @@ export function useQuickEdit(artifact, {
     let finished = false;
 
     const handOff = async (summary) => {
-      patchReply(replyId, { state: 'handing-off', summary });
+      const chatPrompt = quickEditChatPrompt(artifact, message);
+      let chatBefore = 0;
+      try { chatBefore = depsRef.current.countInChat?.(chatPrompt) || 0; } catch { chatBefore = 0; }
+      patchReply(replyId, { state: 'handing-off', summary, chatPrompt, chatBefore });
       let started = false;
       try {
-        started = await depsRef.current.continueInChat?.(message);
+        started = await depsRef.current.continueInChat?.(chatPrompt);
       } catch {
         started = false;
       }
@@ -217,6 +227,9 @@ export function useQuickEdit(artifact, {
         expectedRevisionId: headRef.current,
         conversationId,
         forceRoute,
+        // Only what the picker holds, by the rule every turn sends picks by;
+        // the server falls back to the account's own model and effort.
+        ...pickFields(depsRef.current.picks),
       }, {
         signal: controller.signal,
         onEvent: (event) => {

@@ -51,6 +51,8 @@ import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
 import { handleArtifactCheckEvent } from './lib/artifactCheck';
+import { ModelPickerContext } from './lib/modelPickerContext';
+import { onConversationRefresh } from './lib/conversationRefresh';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -1032,6 +1034,50 @@ function AppCore() {
 
   // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
   // guard; declared first so the wrapper can reference it without a TDZ.
+  // Fetch a conversation's newest page and merge it into the task, the way a
+  // run that finished elsewhere is caught up. Also asked for by the artifact
+  // viewer's chat bar (ENG-4227) after a quick edit, whose group message the
+  // server updates in place in the artifact's chat (lib/conversationRefresh).
+  const refetchConversationMessages = useCallback((cid) => {
+    const knownIds = knownIdsOf(cid);
+    fetchSession(cid).then((fresh) => {
+      if (!fresh || !Array.isArray(fresh.messages)) return;
+      const reconciled = applySessionMessages(cid, fresh.messages);
+      setTasks((tasksPrev) => tasksPrev.map((t) => {
+        if (t.id !== cid) return t;
+        // Only the most recent page — merge against what the task
+        // already has. The server never saved refused questions, so
+        // any the merge dropped go back after it.
+        // With no stream of ours on it, a placeholder or live stub
+        // here is left over from opening the run while the server
+        // still listed it; the merge would carry it past the answer.
+        const local = hasLiveTurnHere(cid)
+          ? t.messages
+          : removeThinkingPlaceholder(stripStreaming(t.messages));
+        const merged = mergeMessagePage(local, reconciled, knownIds);
+        const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
+        return {
+          ...t,
+          messages: [...merged, ...refused],
+          // Same array the merge just used. Inert today — applySessionMessages
+          // neither adds nor removes an id-bearing row, so both see the
+          // same oldest id — but the two decisions must agree on which
+          // rows the page covers, and only one of them should pick.
+          ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
+          status: 'idle',
+        };
+      }));
+    }).catch(() => {});
+  }, [hasLiveTurnHere]);
+
+  // A quick edit changed the artifact's chat (ENG-4227). Skipped while a turn
+  // of ours runs there: the server writes no note then, and the turn's own
+  // end refetches.
+  useEffect(() => onConversationRefresh((cid) => {
+    if (hasLiveTurnHere(cid)) return;
+    refetchConversationMessages(cid);
+  }), [hasLiveTurnHere, refetchConversationMessages]);
+
   const reconcileInFlight = useCallback(async () => {
     const items = await fetchInFlightList();
     // A failed poll returns null, NOT [] — don't reconcile: treating it as "server
@@ -1112,41 +1158,13 @@ function AppCore() {
         // re-render storm.
         setTimeout(() => {
           finished.forEach((cid) => {
-            const knownIds = knownIdsOf(cid);
-            fetchSession(cid).then((fresh) => {
-              if (!fresh || !Array.isArray(fresh.messages)) return;
-              const reconciled = applySessionMessages(cid, fresh.messages);
-              setTasks((tasksPrev) => tasksPrev.map((t) => {
-                if (t.id !== cid) return t;
-                // Only the most recent page — merge against what the task
-                // already has. The server never saved refused questions, so
-                // any the merge dropped go back after it.
-                // With no stream of ours on it, a placeholder or live stub
-                // here is left over from opening the run while the server
-                // still listed it; the merge would carry it past the answer.
-                const local = hasLiveTurnHere(cid)
-                  ? t.messages
-                  : removeThinkingPlaceholder(stripStreaming(t.messages));
-                const merged = mergeMessagePage(local, reconciled, knownIds);
-                const refused = unsavedRefusedQuestions(t.messages).filter((m) => !merged.includes(m));
-                return {
-                  ...t,
-                  messages: [...merged, ...refused],
-                  // Same array the merge just used. Inert today — applySessionMessages
-                  // neither adds nor removes an id-bearing row, so both see the
-                  // same oldest id — but the two decisions must agree on which
-                  // rows the page covers, and only one of them should pick.
-                  ...reconcilePaginationState(t, { ...fresh, messages: reconciled }),
-                  status: 'idle',
-                };
-              }));
-            }).catch(() => {});
+            refetchConversationMessages(cid);
           });
         }, 0);
       }
       return next;
     });
-  }, [abortStream, hasLiveTurnHere]);
+  }, [abortStream, hasLiveTurnHere, refetchConversationMessages]);
 
   const refreshInFlightSet = useCallback(async () => {
     // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
@@ -1846,6 +1864,9 @@ function AppCore() {
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
   }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  // The composer's catalog and picker metadata for the artifact viewer's chat
+  // bar (ENG-4227), the same ones the composer gets.
+  const modelPickerCtx = useMemo(() => ({ models, modelMeta }), [models, modelMeta]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -7064,10 +7085,12 @@ function AppCore() {
 
   return (
     <HubUsageContext.Provider value={hubUsageCtx}>
-      <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
-      <CoworkProvider value={coworkValue}>
-        <CoworkRouterProvider router={routerRef.current} />
-      </CoworkProvider>
+      <ModelPickerContext.Provider value={modelPickerCtx}>
+        <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
+        <CoworkProvider value={coworkValue}>
+          <CoworkRouterProvider router={routerRef.current} />
+        </CoworkProvider>
+      </ModelPickerContext.Provider>
     </HubUsageContext.Provider>
   );
 }

@@ -8,6 +8,8 @@ import '../cowork/styles/tailwind.css';
 import { ArtifactViewer } from '../cowork/components/artifact';
 import type { ArtifactViewerArtifact } from '../cowork/components/artifact';
 import { ToastProvider } from '../cowork/components/ui/Toast';
+import { ChatTranscriptContext } from '../cowork/lib/chatTranscriptContext';
+import { ModelPickerContext } from '../cowork/lib/modelPickerContext';
 
 const MARKDOWN = `# Q3 launch readiness
 
@@ -178,6 +180,8 @@ window.fetch = async (input, init) => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
   if (url.endsWith('/quick-edits/quick-edit-fixture-1/undo')) {
+    // Slow enough to see the bar's undo in progress.
+    await new Promise((resolve) => { setTimeout(resolve, 1500); });
     currentContent = INITIAL_CONTENT;
     currentRevision = { ...REVISION, id: 'rev-undone', number: 6, summary: 'Undid a quick edit' };
     return new Response(JSON.stringify({
@@ -185,6 +189,15 @@ window.fetch = async (input, init) => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
   if (url.endsWith(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}/quick-edits`)) {
+    // A request that needs data goes to the chat, as the router would send it.
+    const asked = JSON.parse(String(init?.body || '{}'));
+    if (/\bdata\b|sales|warehouse/i.test(asked.message || '')) {
+      return new Response(
+        `event: route\ndata: ${JSON.stringify({ route: 'agent', confidence: 0.91, ms: 120, reason: 'jev' })}\n\n`
+        + `event: done\ndata: ${JSON.stringify({ status: 'agent', summary: '', revisionId: null, previousRevisionId: null, changed: [], check: null, editId: null, undoable: false, ms: 130 })}\n\n`,
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      );
+    }
     const previousRevisionId = currentRevision.id;
     currentContent = IS_HTML_SLIDES
       ? currentContent.replace('color: #43d8ef', 'color: #f2b84b')
@@ -348,6 +361,18 @@ document.body.classList.add(theme === 'dark' ? 'gf-theme-dark' : 'gf-theme-light
 document.body.style.margin = '0';
 document.body.style.background = 'var(--bg)';
 
+const CONVERSATION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const QUICK_EDIT_CATALOG = 'canQuickEdit' in QUICK_EDIT_CAPABILITIES ? {
+  models: [
+    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
+    { id: 'gpt-5-mini', name: 'GPT-5 mini' },
+  ],
+  modelMeta: {
+    modelProviders: {},
+    modelEfforts: { 'claude-sonnet-4-5': { efforts: ['low', 'medium', 'high'], default: 'high' } },
+  },
+} : null;
+
 function Fixture() {
   const [artifact, setArtifact] = useState<ArtifactViewerArtifact>({
     id: ARTIFACT_ID,
@@ -374,7 +399,24 @@ function Fixture() {
       : `/api/v1/artifacts/drafts/${PROJECT_REF}/${ARTIFACT_ID}/${ARTIFACT_FILENAME}`,
   });
 
+  // `?quickEdit=1`: the composer's catalog for the bar's picker, and a chat
+  // whose agent answers a message the bar hands it, streamed in words.
+  const [chatMessages, setChatMessages] = useState<Array<Record<string, unknown>>>([]);
+  const answerInChat = async ({ prompt }: { prompt: string }) => {
+    setChatMessages((prev) => [...prev, { role: 'user', content: prompt }]);
+    const words = 'I pulled last quarter’s sales from the warehouse and added a **Q3 revenue** column to the deck, by region. North leads at $4.2M.'.split(' ');
+    for (let n = 1; n <= words.length; n += 1) {
+      await new Promise((resolve) => { setTimeout(resolve, 120); });
+      const text = words.slice(0, n).join(' ');
+      setChatMessages((prev) => [...prev.filter((m) => m.role !== '_streaming'), { role: '_streaming', content: text, steps: [] }]);
+    }
+    setChatMessages((prev) => [...prev.filter((m) => m.role !== '_streaming'), { role: 'assistant', content: words.join(' ') }]);
+    return true;
+  };
+
   return (
+    <ModelPickerContext.Provider value={QUICK_EDIT_CATALOG}>
+    <ChatTranscriptContext.Provider value={{ conversationId: CONVERSATION_ID, messages: chatMessages }}>
     <ArtifactViewer
       open
       artifact={artifact}
@@ -392,9 +434,11 @@ function Fixture() {
         });
       }}
       onDelete={() => undefined}
-      onAddressWithAgent={async () => undefined}
-      conversationId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      onAddressWithAgent={'canQuickEdit' in QUICK_EDIT_CAPABILITIES ? answerInChat : async () => undefined}
+      conversationId={CONVERSATION_ID}
     />
+    </ChatTranscriptContext.Provider>
+    </ModelPickerContext.Provider>
   );
 }
 

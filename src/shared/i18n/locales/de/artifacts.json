@@ -660,8 +660,6 @@
     "noop": "Nichts geändert.",
     "failed": "Diese Änderung konnte hier nicht vorgenommen werden.",
     "askAgent": "Stattdessen den Agenten fragen",
-    "continuedInChat": "Im Chat fortgesetzt.",
-    "openChat": "Chat öffnen",
     "unsavedSource": "Speichere oder verwirf deine Änderungen in „Quelle“, um hier eine Änderung anzufragen.",
     "errors": {
       "stale": "Dieses Artefakt hat sich geändert, seit du es geöffnet hast. Es wurde neu geladen; versuche es noch einmal.",
@@ -675,7 +673,12 @@
       "repairPending": "Ein Vorschlag des Agenten für dieses Artefakt wartet auf deine Entscheidung. Übernimm oder verwirf ihn zuerst.",
       "undoGone": "Diese Änderung kann hier nicht mehr rückgängig gemacht werden. Nutze den Verlauf, um zurückzugehen."
     },
-    "placeholderChat": "Frage zu diesem Artefakt stellen oder es ändern…"
+    "placeholderChat": "Frage zu diesem Artefakt stellen oder es ändern…",
+    "openInChat": "Im Chat öffnen",
+    "needsAnswer": "Braucht deine Antwort im Chat",
+    "workingInChat": "Wird im Chat bearbeitet…",
+    "sentToChat": "An den Chat gesendet.",
+    "chatStopped": "Der Chat-Durchlauf wurde vor einer Antwort beendet."
   },
   "stats": {
     "toggle": {
@@ -709,5 +712,15 @@
       "temporarilyUnavailable": "Statistiken sind vorübergehend nicht verfügbar.",
       "loadFailed": "Statistiken konnten nicht geladen werden."
     }
+  },
+  "refPill": {
+    "open": "{title} öffnen"
+  },
+  "quickEditCard": {
+    "title": "Im Viewer bearbeitet",
+    "count": "{count, plural, one {# Änderung} other {# Änderungen}}",
+    "undone": "Rückgängig",
+    "showAll": "{count, plural, other {Alle # anzeigen}}",
+    "showFewer": "Weniger anzeigen"
   }
 }
