@@ -158,6 +158,35 @@ launch (`@capacitor/app`'s `appUrlOpen` / `getLaunchUrl`). The web app does
 not consume these startup callbacks yet, so this does not complete sign-in:
 the user returns to the sign-in screen and must tap Sign in again.
 
+### Staying signed in
+
+`MindsHubAuth` also has `loadSession()` (resolves `{ session? }`),
+`saveSession({ session })` and `clearSession()`. The web app
+(`src/renderer/lib/mobileSession.ts`) saves the Keycloak tokens there as one
+opaque string after each sign-in and refresh, and at launch refreshes the saved
+session once before Keycloak starts:
+
+- **Keycloak accepts it:** the app starts signed in.
+- **Keycloak refuses it** (400 or 401: expired, revoked, signed out
+  elsewhere): the saved session is cleared and the sign-in screen shows.
+- **Keycloak can't be reached:** the session is kept and the app offers
+  **Try again**, so a bad connection at launch doesn't sign anyone out.
+
+Sign-out clears the saved session before the page reloads. How long someone
+stays signed in is the realm's SSO session limit (refresh tokens are
+session-bound); the app requests no offline token.
+
+Where it lives: **iOS** keeps it in one Keychain item
+(`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so it never syncs or
+restores onto another device), and deletes any item left by an earlier
+install on the first launch. **Android** encrypts it with an AES-GCM key held
+in the Android Keystore and writes only the ciphertext to private
+preferences (`SessionStore`). Keystore keys don't survive an uninstall or a
+backup restore, so leftover ciphertext can't be read and is deleted.
+
+A web build newer than the shell checks for these methods and, without them,
+behaves as before: sign in on every launch.
+
 Local plugins aren't found by `cap sync`, so they are registered by hand:
 `MainViewController.capacitorDidLoad()` on iOS (the scene delegate and
 `Main.storyboard` both use `MainViewController`), and
