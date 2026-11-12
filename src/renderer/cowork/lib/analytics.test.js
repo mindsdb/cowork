@@ -1732,14 +1732,14 @@ describe('artifact sharing events', () => {
     const {
       trackArtifactShareOpened, trackArtifactAccessChangeFailed, trackArtifactLinkCopied, trackArtifactDownloaded,
     } = await importAnalytics();
-    const ref = { artifactId: 'a1', artifactType: 'html', entry: 'list' };
+    const ref = { artifactId: 'a1', artifactType: 'html', entry: 'list', reportId: 'rep-9' };
 
     trackArtifactShareOpened({ ...ref, isShared: null });
     trackArtifactAccessChangeFailed({ ...ref, reason: 'share_org_not_allowed' });
     trackArtifactLinkCopied(ref);
     trackArtifactDownloaded({ ...ref, kind: 'export', format: 'pdf' });
 
-    const common = { artifact_id: 'a1', artifact_type: 'html', entry: 'list', sso_organization_id: 'org-share' };
+    const common = { artifact_id: 'a1', artifact_type: 'html', entry: 'list', report_id: 'rep-9', sso_organization_id: 'org-share' };
     expect((await sentEvent(fetchMock, 'artifact_share_opened')).properties).toMatchObject({ ...common, is_shared: null });
     expect((await sentEvent(fetchMock, 'artifact_access_change_failed')).properties)
       .toMatchObject({ ...common, reason: 'share_org_not_allowed' });

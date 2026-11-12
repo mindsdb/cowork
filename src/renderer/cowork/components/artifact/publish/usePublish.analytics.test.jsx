@@ -179,6 +179,22 @@ describe('on Desktop', () => {
     expect(analytics.trackArtifactPublished).toHaveBeenCalledTimes(1);
   });
 
+  it('puts the page it published on the card, and takes it off on Stop sharing', async () => {
+    apiMock.publishArtifact.mockResolvedValue({ url: 'https://share/new', accessMode: 'public', report_id: 'rep-2' });
+    const onChange = vi.fn();
+    const { result } = renderHook(() => usePublish(LOCAL, { onChange, enabled: true }));
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ reportId: 'rep-2' }));
+
+    apiMock.unpublishArtifact.mockResolvedValue({});
+    const published = { ...LOCAL, publishedUrl: 'https://share/new', accessMode: 'public', reportId: 'rep-2' };
+    const stopped = vi.fn();
+    const hook = renderHook(() => usePublish(published, { onChange: stopped, enabled: true }));
+    await act(async () => { await hook.result.current.unpublish(); });
+    expect(stopped).toHaveBeenLastCalledWith(expect.objectContaining({ publishedUrl: '', reportId: '' }));
+    expect(changed().at(-1)).toMatchObject({ reportId: 'rep-2' });
+  });
+
   it('records a later change of access as a change', async () => {
     apiMock.publishArtifact.mockResolvedValue({ url: 'https://share/x', accessMode: 'password' });
     const published = { ...LOCAL, publishedUrl: 'https://share/x', accessMode: 'public' };

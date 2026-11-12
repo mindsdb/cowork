@@ -97,6 +97,7 @@ function ref(artifact, entry) {
     artifactId: artifactIdentity(artifact) || artifact?.id || '',
     artifactType: artifact?.type || 'unknown',
     entry,
+    reportId: typeof artifact?.reportId === 'string' ? artifact.reportId : '',
   };
 }
 
@@ -126,9 +127,12 @@ export function reportShareOpened(artifact, { entry, isShared = null }) {
  */
 export function reportAccessChanged(artifact, { entry, before, after, reportId = '', access = null }) {
   if (!isReportableAccessChange(before, after)) return false;
+  const card = ref(artifact, entry);
   safely(() => trackArtifactAccessChanged({
-    ...ref(artifact, entry),
-    reportId,
+    ...card,
+    // The save's answer names the page it just published; a withdrawal names
+    // the page the card had.
+    reportId: reportId || card.reportId,
     before: publicView(before),
     after: publicView(after),
     notified: noticeCount(access?.notify) > 0,

@@ -34,7 +34,10 @@ const EVENTS = {
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
   ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
   // The sharing events below all carry { artifact_id (cowork artifact uuid,
-  // as artifact_stats_opened), artifact_type, entry, sso_organization_id }.
+  // as artifact_stats_opened), artifact_type, entry, report_id,
+  // sso_organization_id }. report_id is the published page's id: the save's
+  // answer when there is one, else the card's (cowork-server's `reportId`); ''
+  // when the artifact has no live page, or its server predates the card field.
   // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'rail_delete'|'other'.
   // Deleting a shared artifact reports a pull-back on Desktop only: on Web the
   // server takes the page down as part of the delete, unseen by this client.
@@ -46,7 +49,7 @@ const EVENTS = {
   // (true → false, Stop sharing included). Saving the same access again, or a
   // save that leaves it reaching only its owner, sends nothing. was_shared is
   // null when the panel didn't know the audience before the save.
-  ARTIFACT_ACCESS_CHANGED:  'artifact_access_changed',  // { report_id, was_shared, is_shared, was_audience, audience: 'unpublished'|'public'|'password'|'only_me'|'organization'|'specific'|'unknown', org_wide, team_count, people_count, notified }
+  ARTIFACT_ACCESS_CHANGED:  'artifact_access_changed',  // { was_shared, is_shared, was_audience, audience: 'unpublished'|'public'|'password'|'only_me'|'organization'|'specific'|'unknown', org_wide, team_count, people_count, notified }
   ARTIFACT_ACCESS_CHANGE_FAILED: 'artifact_access_change_failed', // { reason: 'share_org_not_allowed'|'owned_by_other'|'left_live'|'error' } — never counted as a share; 'left_live' is a Stop sharing or delete whose page the server could not take down, so nobody lost access
   ARTIFACT_LINK_COPIED:     'artifact_link_copied',     // {} — only when the copy succeeded
   ARTIFACT_DOWNLOADED:      'artifact_downloaded',      // { kind: 'file'|'export', format? ('pdf'|'docx'|'html', exports only) } — only when the file was saved
@@ -680,11 +683,12 @@ export function trackArtifactStatsOpened({ artifactId, accessMode = null, hasVie
 
 // The sharing events. Callers go through lib/artifactShareAnalytics, which
 // reads the artifact and its audience; these only shape the wire properties.
-function artifactProps({ artifactId, artifactType, entry }) {
+function artifactProps({ artifactId, artifactType, entry, reportId }) {
   return {
     artifact_id: artifactId || '',
     artifact_type: artifactType || 'unknown',
     entry: entry || 'other',
+    report_id: reportId || '',
   };
 }
 
@@ -695,10 +699,9 @@ export function trackArtifactShareOpened({ isShared = null, ...ref } = {}) {
   });
 }
 
-export function trackArtifactAccessChanged({ reportId = '', before, after, notified = false, ...ref } = {}) {
+export function trackArtifactAccessChanged({ before, after, notified = false, ...ref } = {}) {
   capture(EVENTS.ARTIFACT_ACCESS_CHANGED, {
     ...artifactProps(ref),
-    report_id: reportId || '',
     was_shared: typeof before?.shared === 'boolean' ? before.shared : null,
     is_shared: typeof after?.shared === 'boolean' ? after.shared : null,
     was_audience: before?.audience || 'unknown',

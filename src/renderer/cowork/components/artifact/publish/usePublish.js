@@ -281,6 +281,9 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         allowedUserIds: restricted ? (said.userIds ?? asked.userIds) : [],
         ownerOnly: restricted ? (said.ownerOnly ?? asked.ownerOnly) : false,
         artifactKey: r.artifactKey || artifact?.artifactKey || '',
+        // The page just published, so later events name it before the list
+        // reloads.
+        reportId: r.report_id || r.reportId || artifact?.reportId || '',
         modified: false,
       };
       reportAccessChanged(artifact, {
@@ -366,7 +369,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setNotice(left);
       setLinkOwnerRecorded(null);
       setPublishedUrl('');
-      onChange?.({ ...artifact, publishedUrl: '' });
+      onChange?.({ ...artifact, publishedUrl: '', reportId: '' });
       return { ok: true, notice: left };
     } catch (e) {
       setError(tr('stopFailed', { message: String(e?.message || e) }));

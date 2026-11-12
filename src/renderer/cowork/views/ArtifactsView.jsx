@@ -873,6 +873,7 @@ export default function ArtifactsView({
         const requested = readAudienceRequest(access);
         const saved = {
           ...artifact,
+          reportId: r.report_id || artifact.reportId || '',
           publishedUrl: r.url,
           accessMode: m,
           accessProtected: m === 'password',
@@ -926,7 +927,7 @@ export default function ArtifactsView({
     try {
       const leftLive = stopSharingNotice(await unpublishArtifact(publishTargetPath(artifact)));
       reportWithdrawal(artifact, { entry: 'list', before: shareSnapshot(artifact), leftLive: !!leftLive });
-      updateOne({ ...artifact, publishedUrl: '' });
+      updateOne({ ...artifact, publishedUrl: '', reportId: '' });
       // Without the platform UI the deployment decides where shares live,
       // so the toast names no service.
       showToast(leftLive

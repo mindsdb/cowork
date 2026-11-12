@@ -130,6 +130,24 @@ describe('reporting', () => {
     expect(analytics.trackArtifactAccessChanged).not.toHaveBeenCalled();
   });
 
+  it('names the page the card has, and on a save the page the save answered with', () => {
+    const card = { ...artifact, reportId: 'rep-card' };
+    const unpublished = shareSnapshot(null);
+    const shared = shareSnapshot({ publishedUrl: URL, accessMode: 'public' });
+
+    reportDownloaded(card, { entry: 'list' });
+    expect(analytics.trackArtifactDownloaded).toHaveBeenCalledWith(expect.objectContaining({ reportId: 'rep-card' }));
+
+    reportAccessChanged(card, { entry: 'viewer', before: unpublished, after: shared, reportId: 'rep-new' });
+    expect(analytics.trackArtifactAccessChanged).toHaveBeenLastCalledWith(expect.objectContaining({ reportId: 'rep-new' }));
+
+    reportWithdrawal(card, { entry: 'list', before: shared });
+    expect(analytics.trackArtifactAccessChanged).toHaveBeenLastCalledWith(expect.objectContaining({ reportId: 'rep-card' }));
+
+    reportDownloaded({ ...artifact, reportId: undefined }, { entry: 'list' });
+    expect(analytics.trackArtifactDownloaded).toHaveBeenLastCalledWith(expect.objectContaining({ reportId: '' }));
+  });
+
   it('reports a withdrawal as a pull-back only when the page came down', () => {
     const before = shareSnapshot({ publishedUrl: URL, accessMode: 'public' });
     reportWithdrawal(artifact, { entry: 'list', before, leftLive: true });

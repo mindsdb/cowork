@@ -56,8 +56,8 @@ function openMenuItem(name) {
   fireEvent.click(screen.getByText(name));
 }
 
-async function shareWithPeople() {
-  render(<ArtifactsView artifacts={[unpublished]} onArtifactChanged={vi.fn()} />);
+async function shareWithPeople(onArtifactChanged = vi.fn()) {
+  render(<ArtifactsView artifacts={[unpublished]} onArtifactChanged={onArtifactChanged} />);
   openMenuItem('Share');
   const dialog = screen.getByRole('dialog');
   fireEvent.click(within(dialog).getByRole('radio', { name: /Specific people/ }));
@@ -87,6 +87,21 @@ describe('Artifacts page sharing analytics', () => {
       before: { shared: false, audience: 'unpublished' },
       after: { shared: true, audience: 'specific', peopleCount: 1 },
     });
+  });
+
+  it("keeps the card's page id current after a share", async () => {
+    api.publishArtifact.mockResolvedValue({ url: 'https://share/a1', accessMode: 'restricted', report_id: 'rep-1' });
+    const onArtifactChanged = vi.fn();
+    await shareWithPeople(onArtifactChanged);
+    await waitFor(() => expect(onArtifactChanged).toHaveBeenCalledWith(expect.objectContaining({ reportId: 'rep-1' })));
+  });
+
+  it("clears the card's page id on Stop sharing", async () => {
+    api.unpublishArtifact.mockResolvedValue({});
+    const onArtifactChanged = vi.fn();
+    render(<ArtifactsView artifacts={[{ ...published, reportId: 'rep-1' }]} onArtifactChanged={onArtifactChanged} />);
+    openMenuItem('Stop sharing');
+    await waitFor(() => expect(onArtifactChanged).toHaveBeenCalledWith(expect.objectContaining({ publishedUrl: '', reportId: '' })));
   });
 
   it('records a failed share as a failure only', async () => {
