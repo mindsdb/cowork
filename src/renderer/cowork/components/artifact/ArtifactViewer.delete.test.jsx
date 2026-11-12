@@ -54,6 +54,7 @@ vi.mock('./publish/usePublish', () => ({
   usePublish: () => ({
     publishedUrl: 'https://view.example/artifact',
     accessMode: 'public',
+    accessLoaded: true,
     artifactKey: 'artifact/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     busy: false,
   }),
@@ -78,6 +79,8 @@ vi.mock('./ArtifactViewerBody', () => ({
 }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
+const shareReport = vi.hoisted(() => ({ reportAccessChanged: vi.fn() }));
+vi.mock('../../lib/artifactShareAnalytics', async (importOriginal) => ({ ...(await importOriginal()), ...shareReport }));
 vi.mock('../ConfirmModal', () => ({
   ConfirmModal: ({ open, onConfirm }) => (open ? <button onClick={onConfirm}>Confirm delete</button> : null),
 }));
@@ -125,6 +128,23 @@ describe('published artifact deletion from the viewer', () => {
     setOrgMode(false);
     await deleteFromViewer();
     expect(unpublishArtifact).toHaveBeenCalledWith(artifact.path);
+  });
+
+  it('records deleting a shared artifact on Desktop as a pull-back', async () => {
+    setOrgMode(false);
+    await deleteFromViewer();
+    expect(shareReport.reportAccessChanged).toHaveBeenCalledTimes(1);
+    expect(shareReport.reportAccessChanged.mock.calls[0][1]).toMatchObject({
+      entry: 'viewer_delete',
+      before: { shared: true, audience: 'public' },
+      after: { shared: false, audience: 'unpublished' },
+    });
+  });
+
+  it('records nothing on Web, where the server takes the page down', async () => {
+    setOrgMode(true);
+    await deleteFromViewer();
+    expect(shareReport.reportAccessChanged).not.toHaveBeenCalled();
   });
 
   it('stays open and says so when the deleted artifact\'s page is still live', async () => {

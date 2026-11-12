@@ -452,7 +452,11 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
           if (v && !open) {
             reportShareOpened(pub.artifact, {
               entry: 'viewer',
-              isShared: shareState.kind === 'unknown' ? null : isSharedWithSomeone,
+              // Unknown until the artifact's access has been read, whatever the
+              // card's default mode says.
+              isShared: shareState.kind === 'unknown' || (isPublished && !pub.accessLoaded)
+                ? null
+                : isSharedWithSomeone,
             });
           }
           setOpen(v);

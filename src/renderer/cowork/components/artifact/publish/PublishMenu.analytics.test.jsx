@@ -34,6 +34,14 @@ describe('PublishMenu analytics', () => {
     expect(report.reportShareOpened).toHaveBeenCalledWith(ARTIFACT, { entry: 'viewer', isShared: true });
   });
 
+  it('says it does not know yet while the access of a published artifact is unread', () => {
+    render(<PublishMenu controller={makeController({ publishedUrl: 'https://view.example/r/a', accessLoaded: false })} />);
+
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(report.reportShareOpened).toHaveBeenCalledWith(ARTIFACT, { entry: 'viewer', isShared: null });
+  });
+
   it('says an artifact without a link is not shared', () => {
     render(<PublishMenu controller={makeController()} />);
 

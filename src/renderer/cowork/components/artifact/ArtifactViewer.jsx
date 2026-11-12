@@ -43,6 +43,7 @@ import {
 } from '../../lib/draftLinkRules';
 import { setDraftLinks, useDraftLinks } from '../../../lib/draftLinks';
 import { trackArtifactStatsOpened } from '../../lib/analytics';
+import { UNKNOWN_SHARE_SNAPSHOT, reportAccessChanged, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
@@ -1077,6 +1078,11 @@ export function ArtifactViewer({
       let leftLive = '';
       if (needsClientUnpublishBeforeDelete({ orgMode, published: isPublished })) {
         leftLive = stopSharingNotice(await unpublishArtifact(actionPath));
+        reportAccessChanged(artifact, {
+          entry: 'viewer_delete',
+          before: pub.accessLoaded ? shareSnapshot(pub) : UNKNOWN_SHARE_SNAPSHOT,
+          after: shareSnapshot(null),
+        });
       }
       await deleteArtifactAndSync(artifact);
       setConfirmDelete(false);

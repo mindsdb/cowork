@@ -34,7 +34,9 @@ const EVENTS = {
   ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
   // The sharing events below all carry { artifact_id (cowork artifact uuid,
   // as artifact_stats_opened), artifact_type, entry, sso_organization_id }.
-  // `entry` is where the person acted: 'viewer'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'other'.
+  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'other'.
+  // Deleting a shared artifact reports a pull-back on Desktop only: on Web the
+  // server takes the page down as part of the delete, unseen by this client.
   // Audiences are categories and counts only, never an email, name or password.
   ARTIFACT_SHARE_OPENED:    'artifact_share_opened',    // { is_shared: true|false|null (null while Web still reads who has access) } — the Share panel or dialog opened
   // Every successful save that changes who can open the artifact, while it
