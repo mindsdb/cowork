@@ -50,7 +50,12 @@ export const controlShape = shape({
 
 export const sessionInfoShape = shape(
   { session_id: str, control: controlShape },
-  { running: bool, url: nullable(str), title: str, viewers: int, created_at: str, last_active_at: str },
+  {
+    running: bool, url: nullable(str), title: str, viewers: int, created_at: str, last_active_at: str,
+    // The router's: the task's tab budget, and the tabs a recycled session noted.
+    max_tabs: nullable(int),
+    parked_tabs: list(shape({ url: str }, { title: str })),
+  },
 );
 
 export const openSessionShape = shape({ session_id: str, resumed: bool, url: nullable(str) });
