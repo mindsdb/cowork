@@ -131,11 +131,11 @@ describe('a refused connect', () => {
   });
 
   it("passes the server's own sentence through for a refusal before the check", () => {
-    const err = Object.assign(new Error('The API address cannot include a path; type only the address, like api.example.com.'), {
+    const err = Object.assign(new Error('The API address cannot include a path; type only the address, like api.example.com. If your provider\'s address includes a path or version such as /v2, ask Anton to build the connector again with it in the connector\'s paths.'), {
       code: 'invalid_address', body: { detail: { code: 'invalid_address', message: 'x' } },
     });
 
-    expect(describeConnectFailure(err)).toBe('The API address cannot include a path; type only the address, like api.example.com.');
+    expect(describeConnectFailure(err)).toBe('The API address cannot include a path; type only the address, like api.example.com. If your provider\'s address includes a path or version such as /v2, ask Anton to build the connector again with it in the connector\'s paths.');
   });
 
   it('falls back to a plain sentence', () => {
