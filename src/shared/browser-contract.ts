@@ -15,7 +15,7 @@
  * which refusal it got.
  */
 
-/** GET /healthz's `api`. Bumped with any shape change, in anton's fixtures too. */
+/** GET /healthz's `api`. Bumped with any shape change. */
 export const BROWSER_HOST_API = 2;
 
 /** A task's session id and a project key. anton's BrowserConfig and the renderer's
@@ -80,10 +80,15 @@ export const STEP_TIMEOUT_MS = 33_000;
 
 /** A step settles before it answers (ElectronTab.act in
     src/main/browser-view.ts). One that started a main-frame request or a
-    navigation waits until those requests are done and the page has shown no
-    change for SETTLE_QUIET_MS, at most SETTLE_MAX_MS, and always inside
-    STEP_TIMEOUT_MS; one that started neither answers at once. The web pod
-    holds the same two numbers, and action.json's `limits` pins both. */
+    navigation, or changed the page in place, waits until those requests are
+    done, nothing shown is marked aria-busy and the page has shown no change
+    for SETTLE_QUIET_MS, at most SETTLE_MAX_MS, and always inside
+    STEP_TIMEOUT_MS; after an in-place change that started nothing it stops
+    SETTLE_QUIET_MS past its first look, so a page that changes on its own (a
+    ticker) doesn't hold every step to the cap. One that changed nothing and
+    started neither answers at once, unless the page shows something marked
+    aria-busy. The web pod holds the same two numbers, and action.json's
+    `limits` pins both. */
 export const SETTLE_MAX_MS = 3_000;
 export const SETTLE_QUIET_MS = 400;
 
