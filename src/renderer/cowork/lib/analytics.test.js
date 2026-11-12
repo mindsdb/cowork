@@ -908,6 +908,15 @@ describe('billing + provisioning events (ENG-1533)', () => {
     expect(event.properties.trigger).toBe('token_limit');
   });
 
+  it('billing_opened arms the post-payment availability follow-up (ENG-4147)', async () => {
+    mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+    const { creditsFlowState } = await import('./creditsFlow');
+    expect(creditsFlowState().armedAt).toBeNull();
+    trackBillingOpened('locked_model_row');
+    expect(creditsFlowState().armedAt).not.toBeNull();
+  });
+
   it('billing_opened: every trigger a renderer call site sends is named in the EVENTS vocabulary', () => {
     /* The comment on EVENTS.BILLING_OPENED is the list a funnel query is
        written from. A trigger that is sent but not listed there is a cohort

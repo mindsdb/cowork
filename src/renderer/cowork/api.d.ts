@@ -33,6 +33,8 @@ export interface RecommendedModels {
   modelDisabledReasons?: Record<string, string>;
   /** MindsHub's display label per model id. Absent ⇒ derive from the id. */
   modelLabels?: Record<string, string>;
+  /** Refresh scopes the server honors ('all', 'minds'); absent on servers that predate them. */
+  refreshScopes?: string[];
   /** MindsHub's authoritative maker per model id, deciding the picker section. */
   modelProviders?: Record<string, string>;
   /**
@@ -48,7 +50,7 @@ export interface RecommendedModels {
  * Fetch the backend's recommended-models map (MindsHub's live `/v1/models`
  * for minds-cloud). Returns null if the request fails.
  */
-export function fetchRecommendedModels(): Promise<RecommendedModels | null>;
+export function fetchRecommendedModels(opts?: { refresh?: boolean; scope?: 'all' | 'minds' }): Promise<RecommendedModels | null>;
 
 export interface ConnectorConnection {
   engine: string;

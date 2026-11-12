@@ -20,6 +20,7 @@ import { diagnostic } from '../../../shared/diagnostics';
 
 import { host } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
+import { startCreditsFlow } from './creditsFlow';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
@@ -830,6 +831,8 @@ export function trackTurnFailed(conversationId, event) {
 // `kind` names which in-chat usage notice was clicked ('free_low', 'free_used',
 // 'auto_top_up_failed'), so `usage_alert` can be split by notice.
 export function trackBillingOpened(trigger, workspaceMode, kind) {
+  // Every billing link passes here, so it is where the post-payment availability follow-up arms.
+  startCreditsFlow();
   capture(EVENTS.BILLING_OPENED, {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,

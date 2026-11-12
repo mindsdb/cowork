@@ -79,8 +79,10 @@ import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
 import { useHubUsage } from './hooks/useHubUsage';
+import { useModelAvailabilityTriggers } from './hooks/useModelAvailabilityTriggers';
 import { HubUsageContext } from './lib/hubUsageContext';
 import { usageTransitions } from './lib/usageWarnings';
+import { createAvailabilityRefresher, mergeChangesNothing, REFRESH_SCOPE, serverHonorsRefreshScope } from './lib/modelRefresh';
 import { currentTurnAnchorId, dropNoticesFromTurn, withUsageNotices } from './lib/usageNoticePlacement';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useOrgBranding } from './hooks/useOrgBranding';
@@ -1808,23 +1810,22 @@ function AppCore() {
   // Picker metadata for the composer's model menu, passed as one bag so the
   // components in between don't grow a prop each. The composer groups rather than
   // App because ChatView builds its own single-item list, which stays ungrouped.
-  // Re-check wallet availability when the composer's model menu opens, so a top-up
-  // made outside the app unlocks its models without a restart. This is what makes
-  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
-  // otherwise refreshed only by the Settings picker, so a user who hits "Add
-  // credits" (which opens an external browser), tops up and comes back would find
-  // the row still greyed until they visited Settings or restarted. Settings has had
-  // this since ENG-412; this is parity with it.
-  //
-  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
-  // lets an empty response overwrite it, and a model absent from the map counts as
-  // available — so this can never lock the picker.
-  const refreshModelAvailability = useCallback(async () => {
-    const data = await fetchRecommendedModels({ refresh: true });
-    // keepOrder: the menu is already open on the list we hold when this lands.
-    const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
-    if (merged) setSettings((prev) => ({ ...prev, ...merged }));
-  }, [settings]);
+  // One throttled re-check for every picker outside Settings ('all') and the availability
+  // triggers ('minds'). A deferred call is queued, not dropped; stale responses are dropped.
+  const availability = useRef(null);
+  if (!availability.current) {
+    availability.current = createAvailabilityRefresher({
+      fetch: (scope) => fetchRecommendedModels({ refresh: true, scope }),
+      // keepOrder: a menu may be open on this list. Skipping a no-op keeps App from re-rendering per poll.
+      apply: (data) => setSettings((prev) => {
+        const merged = mergeRecommendedModels(prev, data, { keepOrder: true });
+        return merged && !mergeChangesNothing(prev, merged) ? { ...prev, ...merged } : prev;
+      }),
+    });
+  }
+  useEffect(() => () => availability.current?.cancel(), []);
+  const refreshModelAvailability = useCallback(() => availability.current.refresh(REFRESH_SCOPE.all), []);
+  const refreshCreditLocks = useCallback(() => availability.current.refresh(REFRESH_SCOPE.minds), []);
 
   const modelMeta = useMemo(() => ({
     modelProviders: settings.modelProviders,
@@ -3427,6 +3428,14 @@ function AppCore() {
   // finishes too, so a task that just spent the last free tokens flips the
   // notice without waiting for the next tick.
   const { usage: hubUsage, refresh: refreshHubUsage } = useHubUsage(codeAccountUser);
+  useModelAvailabilityTriggers({
+    refresh: refreshCreditLocks,
+    modelEnabled: settings.modelEnabled,
+    modelDisabledReasons: settings.modelDisabledReasons,
+    mindsIds: settings.recommendedModels?.['minds-cloud'],
+    usage: hubUsage,
+    canNarrowRefresh: () => serverHonorsRefreshScope(REFRESH_SCOPE.minds),
+  });
   const hubUsageCtx = useMemo(() => ({
     usage: hubUsage,
     providerType: providerValueToType(settings.planningProvider) || 'minds-cloud',
