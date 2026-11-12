@@ -1007,5 +1007,39 @@ describe('BrowserPanel', () => {
       expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
       expect(screen.getByTitle('Shared browser')).toBe(frame);
     });
+
+    it('renews nothing for a live that crosses the pause, and reloads the frame when the ticket it hands as the tab shows never goes live', async () => {
+      const { frame, port } = await liveViewer();
+      setVisibility('hidden');
+      // The viewer posted this before the pause reached it.
+      fromViewer(DROP_LIVE, port);
+      await act(async () => { vi.advanceTimersByTime(2 * 60 * 60_000); });
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+
+      embedBrowser.mockResolvedValue(link(2));
+      setVisibility('visible');
+      await flush();
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
+      embedBrowser.mockResolvedValue(link(3));
+      await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS); });
+      expect(screen.getByTitle('Shared browser')).not.toBe(frame);
+      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+    });
+
+    it('relinks when the network comes back after the fetch as the tab shows failed, even after a live that crossed the pause', async () => {
+      const { frame, port } = await liveViewer();
+      setVisibility('hidden');
+      fromViewer(DROP_LIVE, port);
+      embedBrowser.mockRejectedValue(new TypeError('Failed to fetch'));
+      setVisibility('visible');
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+
+      embedBrowser.mockResolvedValue(link(3));
+      await act(async () => { window.dispatchEvent(new Event('online')); });
+      expect(embedBrowser).toHaveBeenCalledTimes(3);
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok3' });
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+    });
   });
 });

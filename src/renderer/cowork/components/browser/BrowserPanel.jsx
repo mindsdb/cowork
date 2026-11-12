@@ -426,8 +426,11 @@ function WebBrowserStage({
         return;
       }
       /* The viewer's current socket got the pod's hello: this connection
-         began now, unless the socket is a renewal's. */
+         began now, unless the socket is a renewal's. While the tab is hidden
+         the pane paused this viewer, and a live it posted before the pause
+         reached it is stale: its socket is closed. */
       if (type === VIEWER_LIVE) {
+        if (tabHidden()) return;
         liveRef.current = true;
         if (!renewingRef.current) sinceRef.current = Date.now();
         renewingRef.current = false;
