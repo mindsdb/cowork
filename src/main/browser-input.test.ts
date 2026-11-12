@@ -12,7 +12,7 @@ import {
   type StepHost,
   withAgentInput,
 } from './browser-input';
-import type { LocateResult, TypingFocus } from './browser-page-script';
+import type { HitTestResult, LocateResult, TypingFocus } from './browser-page-script';
 
 const pacing: Pacing = { sleep: async () => {}, random: () => 0.5 };
 
@@ -67,6 +67,7 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing) {
     focus: vi.fn(async () => ({ ok: true as const })),
     select: vi.fn(async () => ({ ok: true as const, chosen: ['x'] })),
     viewport: vi.fn(async () => VIEWPORT),
+    hitTest: vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: 0 })),
     ...over,
   };
   const nav = { load: vi.fn(async () => {}), back: vi.fn(async () => {}), forward: vi.fn(async () => {}), reload: vi.fn(async () => {}) };
@@ -352,6 +353,31 @@ describe('runStep', () => {
     await expect(runStep(stepHost, step({ action: 'click', element: 99 }))).rejects.toMatchObject({ code: 'stale_element', message: 'element 99 is no longer on the page' });
     await expect(runStep(host().stepHost, step({ action: 'press', key: 'Hyper+q' }))).rejects.toMatchObject({ code: 'bad_request' });
     await expect(runStep(host().stepHost, step({ action: 'press', key: 'Return' }))).rejects.toMatchObject({ code: 'bad_request', message: expect.stringContaining('KeyboardEvent.key') });
+  });
+
+  it('refuses a click by number when every point it would press lands on another element, and presses nothing', async () => {
+    const hitTest = vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: -1 }));
+    const { dbg, stepHost } = host({ hitTest });
+    await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
+      code: 'stale_element',
+      status: 409,
+      message: 'element 7 is covered by another element, such as a dialog or banner; deal with that first, or take a screenshot',
+    });
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+    // The random point first, then the same fixed points out from the middle, all inside the box.
+    const [, points] = hitTest.mock.calls[0] as unknown as [number, Array<{ x: number; y: number }>];
+    expect(points).toHaveLength(10);
+    expect(points[1]).toEqual({ x: 200, y: 120 });
+    expect(points.every((p) => p.x > 100 && p.x < 300 && p.y > 100 && p.y < 140)).toBe(true);
+  });
+
+  it('presses the first point that reaches the element, and refuses one gone by then as stale', async () => {
+    const { dbg, stepHost } = host({ hitTest: vi.fn(async () => ({ found: true as const, reaches: 3 })) });
+    await runStep(stepHost, step({ action: 'click', element: 7 }));
+    // Offset (0.25, 0) of the 200 by 40 box at (100, 100).
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').find((e) => e.type === 'mousePressed')).toMatchObject({ x: 250, y: 120 });
+    const gone = host({ hitTest: vi.fn(async () => ({ found: false as const })) });
+    await expect(runStep(gone.stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({ code: 'stale_element', message: 'element 7 is no longer on the page' });
   });
 
   it('scrolls an element into view with wheel ticks before clicking it', async () => {

@@ -27,6 +27,7 @@ import {
   challengesFrom,
   type FocusFieldResult,
   type FocusResult,
+  type HitTestResult,
   type LocateResult,
   PAGE_READ_TIMEOUT_MS,
   PAGE_WORLD_ID,
@@ -263,7 +264,7 @@ export class ElectronTab implements TabView {
 
   async read(maxText: number): Promise<PageSnapshot> {
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS });
-    return pageAnswer(raw, challengesFrom(this.subframeUrls(), raw.frames));
+    return pageAnswer(raw, challengesFrom(this.subframeUrls(), raw.frameOwners));
   }
 
   /** Starts the page's secret-field watch on its current document
@@ -300,6 +301,7 @@ export class ElectronTab implements TabView {
         focus: (id, editing) => inStep<FocusResult>({ kind: 'focus', id, editing }),
         select: (id, values) => inStep<SelectResult>({ kind: 'select', id, values }),
         viewport: () => inStep<{ width: number; height: number }>({ kind: 'viewport' }),
+        hitTest: (id, points) => inStep<HitTestResult>({ kind: 'hitTest', id, points }),
       },
       nav: {
         load: (url) => unlessTakenOver(signal, () => this.load(url)),

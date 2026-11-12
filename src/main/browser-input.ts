@@ -28,7 +28,7 @@ import {
   type StepRequest,
   type StepTarget,
 } from '../shared/browser-contract';
-import type { FocusFieldResult, FocusResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
+import type { FocusFieldResult, FocusResult, HitTestResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
 import { screenshotScale } from './browser-screenshot';
 
 /** The only commands main ever sends through a view's debugger. */
@@ -391,6 +391,8 @@ export interface PageReader {
   focus(id: number, editing: boolean): Promise<FocusResult>;
   select(id: number, values: string[]): Promise<SelectResult>;
   viewport(): Promise<{ width: number; height: number }>;
+  /** Which of `points` a click reaches element `id` at. */
+  hitTest(id: number, points: Point[]): Promise<HitTestResult>;
 }
 
 export interface Navigation {
@@ -425,9 +427,20 @@ function focusRefused(id: number, reason: Extract<FocusFieldResult, { ok: false 
   }
 }
 
+/* The points a click by number tries after its random one, as fractions of
+   the element's visible box from its middle: the middle, then the same points
+   out toward the edges every time, as on the web pod. */
+const FIXED_POINTS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0], [-0.25, 0], [0.25, 0], [0, -0.25], [0, 0.25], [-0.4, -0.4], [0.4, -0.4], [-0.4, 0.4], [0.4, 0.4],
+];
+
 /* A point inside the element, scrolled into view first. The scroll is wheel
    ticks over the page, as a person scrolls; a box that is still out of view
-   after that (a scrolled container) is brought in by the page itself. */
+   after that (a scrolled container) is brought in by the page itself. The
+   point is a random one, as a person clicks, or else the first fixed point
+   whose hit test reaches the element; when none does, something covers it
+   (a dialog, a banner, a frame laid over it), and the step is refused
+   rather than pressing what covers it. */
 async function elementPoint(host: StepHost, input: AgentInput, id: number): Promise<{ at: Point; located: Extract<LocateResult, { found: true }> }> {
   let located = await host.page.locate(id, false);
   for (let round = 0; round < 3 && located.found && located.shown && !located.inViewport; round += 1) {
@@ -446,8 +459,19 @@ async function elementPoint(host: StepHost, input: AgentInput, id: number): Prom
   const right = Math.min(box.x + box.width, viewport.width);
   const bottom = Math.min(box.y + box.height, viewport.height);
   if (right <= left || bottom <= top) throw stale(id, 'is outside the view');
+  const width = right - left;
+  const height = bottom - top;
   const spread = () => 0.3 + host.pacing.random() * 0.4;
-  return { at: { x: left + (right - left) * spread(), y: top + (bottom - top) * spread() }, located };
+  const points: Point[] = [
+    { x: left + width * spread(), y: top + height * spread() },
+    ...FIXED_POINTS.map(([dx, dy]) => ({ x: left + width * (0.5 + dx), y: top + height * (0.5 + dy) })),
+  ];
+  const hit = await host.page.hitTest(id, points);
+  if (!hit.found) throw stale(id, 'is no longer on the page');
+  if (hit.reaches < 0) {
+    throw stale(id, 'is covered by another element, such as a dialog or banner; deal with that first, or take a screenshot');
+  }
+  return { at: points[hit.reaches], located };
 }
 
 async function targetPoint(host: StepHost, input: AgentInput, target: StepTarget, coords: 'page' | 'screenshot'): Promise<Point> {

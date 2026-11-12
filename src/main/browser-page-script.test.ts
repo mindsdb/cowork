@@ -6,6 +6,7 @@ import {
   challengesFrom,
   type FocusFieldResult,
   type FocusResult,
+  type HitTestResult,
   type LocateResult,
   pageAnswer,
   pageWorld,
@@ -51,8 +52,32 @@ function watchedWorld(): PageWorldState {
   return world;
 }
 
-function snapshot(world: PageWorldState, maxText = 3000): RawSnapshot {
-  return pageWorld(document, world, { kind: 'snapshot', maxText, maxElements: 300 }) as RawSnapshot;
+function snapshot(world: PageWorldState, maxText = 3000, maxElements = 300): RawSnapshot {
+  return pageWorld(document, world, { kind: 'snapshot', maxText, maxElements }) as RawSnapshot;
+}
+
+/* happy-dom gives a text node no boxes, so each text node here takes its
+   parent element's box, as Chromium gives a line of text its own. */
+function textBoxesFromParents(): () => void {
+  const original = document.createRange;
+  document.createRange = () => {
+    let node: Node | null = null;
+    return {
+      selectNodeContents: (target: Node) => { node = target; },
+      getClientRects: () => {
+        const box = node?.parentElement?.getBoundingClientRect();
+        return box && (box.width || box.height) ? [box] : [];
+      },
+    } as unknown as Range;
+  };
+  return () => { document.createRange = original; };
+}
+
+/* happy-dom has no hit test, so each test says what lies at each point. */
+function hitTestBy(at: (x: number, y: number) => Element | null): () => void {
+  const original = document.elementFromPoint;
+  document.elementFromPoint = at;
+  return () => { document.elementFromPoint = original; };
 }
 
 const SIGN_IN = `
@@ -113,11 +138,11 @@ describe('the isolated-world page read', () => {
     document.body.innerHTML = `${SIGN_IN}<iframe data-box="300x65" title="Widget containing a Cloudflare security challenge" src="https://challenges.cloudflare.com/cdn-cgi/x"></iframe>`;
     layout();
     const raw = snapshot(freshWorld());
-    const answer = pageAnswer(raw, challengesFrom(['https://challenges.cloudflare.com/cdn-cgi/x'], raw.frames));
+    const answer = pageAnswer(raw, challengesFrom(['https://challenges.cloudflare.com/cdn-cgi/x'], raw.frameOwners));
     expect(problems(pageShape, answer)).toEqual([]);
     expect(answer.challenges).toEqual([{ host: 'challenges.cloudflare.com', kind: 'cloudflare' }]);
     expect(answer).not.toHaveProperty('boxes');
-    expect(answer).not.toHaveProperty('frames');
+    expect(answer).not.toHaveProperty('frameOwners');
     expect(pageWorld(document, freshWorld(), { kind: 'viewport' })).toEqual({ width: window.innerWidth, height: window.innerHeight });
   });
 
@@ -275,25 +300,148 @@ describe('the isolated-world page read', () => {
     expect(snapshot(freshWorld()).elements.map((e) => e.name)).toEqual(['Inside']);
   });
 
-  it('cuts the text at max_text and says so', () => {
-    document.body.innerHTML = `<p>${'word '.repeat(100)}</p>`;
-    const page = snapshot(freshWorld(), 50);
-    expect(page.text).toHaveLength(50);
-    expect(page.truncated).toBe(true);
+  it('cuts the text at max_text, and truncated says only that more elements exist than are listed', () => {
+    document.body.innerHTML = `<p>${'word '.repeat(100)}</p><button data-box>One</button><button data-box>Two</button><button data-box>Three</button>`;
+    layout();
+    const cut = snapshot(freshWorld(), 50);
+    expect(cut.text).toHaveLength(50);
+    expect(cut.truncated).toBe(false);
+    const capped = snapshot(freshWorld(), 3000, 2);
+    expect(capped.elements.map((e) => e.name)).toEqual(['One', 'Two']);
+    expect(capped.truncated).toBe(true);
   });
 
-  it('lists frame elements and whether each one shows', () => {
+  it('answers no text for max_text 0', () => {
+    document.body.innerHTML = `<p>${'word '.repeat(100)}</p>`;
+    expect(snapshot(freshWorld(), 0).text).toBe('');
+  });
+
+  it('lists no frame as an element, and records every frame owner and whether it shows, for the checks', () => {
     document.body.innerHTML = `
       <iframe id="cf" title="Widget containing a Cloudflare security challenge" src="https://challenges.cloudflare.com/cdn-cgi/x"></iframe>
-      <iframe id="rc" src="https://www.google.com/recaptcha/api2/anchor?k=x"></iframe>`;
+      <iframe id="rc" src="https://www.google.com/recaptcha/api2/anchor?k=x"></iframe>
+      <iframe id="tab" tabindex="0" onclick="go()" src="https://ads.example.test/"></iframe>`;
     place(document.getElementById('cf')!, 10, 10, 300, 65);
     place(document.getElementById('rc')!, 0, 0, 0, 0);
-    const page = snapshot(freshWorld());
-    expect(page.frames).toEqual([
+    place(document.getElementById('tab')!, 10, 100, 300, 250);
+    const world = freshWorld();
+    const page = snapshot(world);
+    expect(page.frameOwners).toEqual([
       { url: 'https://challenges.cloudflare.com/cdn-cgi/x', visible: true },
       { url: 'https://www.google.com/recaptcha/api2/anchor?k=x', visible: false },
+      { url: 'https://ads.example.test/', visible: true },
     ]);
-    expect(page.elements).toEqual([{ id: 1, role: 'clickable', name: 'Widget containing a Cloudflare security challenge' }]);
+    expect(page.elements).toEqual([]);
+    expect(page.boxes).toEqual([]);
+    expect(world.ids.size).toBe(0);
+  });
+
+  it('past the cap, lists the elements in view first, each group in page order, and numbers only those it lists', () => {
+    document.body.innerHTML = Array.from({ length: 6 }, (_, i) => `<button id="b${i + 1}">Button ${i + 1}</button>`).join('');
+    // Buttons 1 to 3 sit above the view, scrolled past; 4 to 6 are in it.
+    for (let i = 1; i <= 6; i += 1) place(document.getElementById(`b${i}`)!, 10, i <= 3 ? -400 + i * 30 : (i - 4) * 30 + 10, 80, 20);
+    const world = freshWorld();
+    const capped = snapshot(world, 3000, 4);
+    expect(capped.elements.map((e) => [e.name, e.offscreen ?? false])).toEqual([
+      ['Button 4', false], ['Button 5', false], ['Button 6', false], ['Button 1', true],
+    ]);
+    expect(capped.truncated).toBe(true);
+    expect(world.byElement.has(document.getElementById('b2')!)).toBe(false);
+    expect(world.byElement.has(document.getElementById('b3')!)).toBe(false);
+    // Everything fits: page order, as before, so a scroll alone never reorders the list.
+    const all = snapshot(world, 3000, 6);
+    expect(all.elements.map((e) => e.name)).toEqual(['Button 1', 'Button 2', 'Button 3', 'Button 4', 'Button 5', 'Button 6']);
+    expect(all.truncated).toBe(false);
+  });
+
+  it("keeps a secret editor's text out of the page text and every name", () => {
+    const CARD = '4242 4242 4242 4242';
+    const editor = (id: string) => `<div data-box id="${id}" contenteditable autocomplete="cc-number">${CARD}</div>`;
+    document.body.innerHTML = `
+      ${editor('bare')}
+      <div data-box tabindex="0">Pay with ${editor('wrapped')}</div>
+      <label>Saved card ${editor('labelled')} <input data-box type="checkbox"></label>
+      <button data-box aria-labelledby="named">x</button>${editor('named')}
+      <p data-box>Total: $12.00</p>`;
+    layout();
+    const restore = textBoxesFromParents();
+    try {
+      window.scrollTo(0, 0);
+      const page = snapshot(freshWorld());
+      expect(page.text).toContain('Total: $12.00');
+      expect(JSON.stringify(page)).not.toContain('4242');
+      expect(page.elements.find((e) => e.role === 'checkbox')).toMatchObject({ name: 'Saved card' });
+    } finally {
+      restore();
+    }
+  });
+
+  describe('the page text', () => {
+    /* 40 paragraphs of 100 characters, 30 px apart, with the view scrolled
+       to `scrollY`: paragraph N sits at (N - 1) * 30 - scrollY. */
+    function longPage(scrollY: number): () => void {
+      document.body.innerHTML = Array.from({ length: 40 }, (_, i) => `<p>${`Paragraph ${i + 1} `.padEnd(100, 'x')}</p>`).join('');
+      document.querySelectorAll('p').forEach((p, i) => place(p, 0, i * 30 - scrollY, 600, 20));
+      window.scrollTo(0, scrollY);
+      return textBoxesFromParents();
+    }
+
+    afterEach(() => window.scrollTo(0, 0));
+
+    it('starts at the top of the view once the page is scrolled past what fits, then the start of the page', () => {
+      const restore = longPage(900);
+      try {
+        const text = snapshot(freshWorld(), 3000).text;
+        expect(text.startsWith('… Paragraph 31 x')).toBe(true);
+        expect(text).toContain('Paragraph 40 x');
+        expect(text).toContain(' … (above the view) Paragraph 1 x');
+        expect(text.length).toBeLessThanOrEqual(3000);
+        // A budget the view alone fills gets no text from above it.
+        const short = snapshot(freshWorld(), 500).text;
+        expect(short.startsWith('… Paragraph 31 x')).toBe(true);
+        expect(short).not.toContain('above the view');
+        expect(short).toHaveLength(500);
+      } finally {
+        restore();
+      }
+    });
+
+    it('reads an unscrolled page, or a scrolled one whose text fits, as before', () => {
+      const restore = longPage(0);
+      try {
+        const before = (document.body.innerText).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+        expect(snapshot(freshWorld(), 3000).text).toBe(before.slice(0, 3000));
+        window.scrollTo(0, 900);
+        expect(snapshot(freshWorld(), 10_000).text).toBe(before);
+      } finally {
+        restore();
+      }
+    });
+  });
+
+  it('tells which point a click reaches an element at: on it, inside it or on its label, and none when something covers it', () => {
+    document.body.innerHTML = '<label id="l">Agree <input data-box id="agree" type="checkbox"></label><button data-box id="go"><span id="inner">Go</span></button><div id="banner">Cookies</div>';
+    layout();
+    const world = freshWorld();
+    const ids = Object.fromEntries(snapshot(world).elements.map((e) => [e.name, e.id]));
+    const at: Record<string, Element> = {
+      '1,1': document.getElementById('banner')!,
+      '2,2': document.getElementById('inner')!,
+      '3,3': document.getElementById('l')!,
+      '4,4': document.getElementById('go')!,
+    };
+    const restore = hitTestBy((x, y) => at[`${x},${y}`] ?? null);
+    try {
+      const hitTest = (id: number, points: Array<[number, number]>) =>
+        pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })) });
+      expect(hitTest(ids.Go, [[1, 1], [2, 2], [4, 4]])).toEqual({ found: true, reaches: 1 } satisfies HitTestResult);
+      expect(hitTest(ids.Go, [[4, 4]])).toEqual({ found: true, reaches: 0 });
+      expect(hitTest(ids.Agree, [[1, 1], [3, 3]])).toEqual({ found: true, reaches: 1 });
+      expect(hitTest(ids.Go, [[1, 1], [3, 3], [9, 9]])).toEqual({ found: true, reaches: -1 });
+      expect(hitTest(999, [[4, 4]])).toEqual({ found: false });
+    } finally {
+      restore();
+    }
   });
 
   it('locates an element and reports a secret one', () => {

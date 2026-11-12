@@ -71,6 +71,13 @@ async function startFixtureServer(): Promise<void> {
     if (url.pathname === '/set-cookie') {
       return void res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'e2e=kept; Max-Age=3600; Path=/' }).end('<title>Set</title>set');
     }
+    if (url.pathname === '/long') {
+      /* 150 lines 30 px apart, about 6,000 characters: more than a page
+         read's default 3,000. */
+      const lines = Array.from({ length: 150 }, (_, i) => `<p>Line ${i + 1} of the long page says hello.</p>`).join('');
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Long</title><style>body{margin:0;font:16px sans-serif}p{margin:0;height:30px;line-height:30px}</style>${lines}`);
+    }
     if (url.pathname === '/echo-cookie') {
       const cookie = (req.headers.cookie ?? '').replace(/[<>&]/g, '');
       return void res.writeHead(200, { 'content-type': 'text/html' }).end(`<title>Echo</title><p>cookie:[${cookie}]</p>`);
@@ -224,6 +231,19 @@ test('scrolls an element into view before clicking it', async () => {
   const far = await element('Far away');
   expect((await act({ action: 'click', element: far })).status).toBe(200);
   await expect.poll(() => log.some((e) => e.type === 'click' && e.target === 'far' && e.isTrusted)).toBe(true);
+});
+
+test('reads the text the person sees once the page is scrolled past what a read holds', async () => {
+  await openAt('/long');
+  expect((await page()).text.startsWith('Line 1 of the long page')).toBe(true);
+  expect((await act({ action: 'scroll', direction: 'down', amount: 3600 })).status).toBe(200);
+  await expect.poll(async () => (await page()).scroll.y).toBeGreaterThan(3000);
+  const read = await page();
+  // Lines are 30 px tall, so the first line in view is the one the scroll reached.
+  const top = Math.floor(read.scroll.y / 30) + 1;
+  expect(read.text.startsWith(`… Line ${top} of the long page`), read.text.slice(0, 80)).toBe(true);
+  expect(read.text).toContain(`Line ${top + 5} of the long page`);
+  expect(read.text).toContain('… (above the view) Line 1 of the long page');
 });
 
 test('turns shared workers off, since their WebSockets skip the request listener', async () => {

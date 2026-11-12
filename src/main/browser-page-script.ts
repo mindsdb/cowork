@@ -29,10 +29,14 @@
  * password the person shows before then, with no read in between, reads as
  * an ordinary field. It watches the document and the open shadow roots it
  * finds, and a toggle in a closed shadow root counts only once a read has
- * seen the field as secret. Challenge frames are reported when the person can
- * see them: the page lists its frame elements and whether each one shows, and
- * main joins them with the frame tree's URLs (`challengesFrom`), which counts
- * a check frame with no element in the DOM by its presence.
+ * seen the field as secret. A secret editor's text (a contenteditable field
+ * with a secret autocomplete) stays out of the page text and out of every
+ * name. Challenge frames are reported when the person can see them: the page
+ * lists its frame elements and whether each one shows, and main joins them
+ * with the frame tree's URLs (`challengesFrom`), which counts a check frame
+ * with no element in the DOM by its presence. A frame is never an element: a
+ * click by number never lands inside one, and each click by number presses a
+ * point whose hit test reaches its element (`hitTest`).
  */
 
 import type { Challenge, PageElement, PageScroll, PageSnapshot } from '../shared/browser-contract';
@@ -70,6 +74,11 @@ export interface DomFrame {
   visible: boolean;
 }
 
+export interface ViewPoint {
+  x: number;
+  y: number;
+}
+
 export type PageWorldRequest =
   | { kind: 'snapshot'; maxText: number; maxElements: number }
   | { kind: 'locate'; id: number; reveal: boolean }
@@ -82,6 +91,8 @@ export type PageWorldRequest =
   /* Focuses an element for a key press; `editing` when the key edits text. */
   | { kind: 'focus'; id: number; editing: boolean }
   | { kind: 'select'; id: number; values: string[] }
+  /* Which of `points` (viewport CSS pixels) a click reaches element `id` at. */
+  | { kind: 'hitTest'; id: number; points: ViewPoint[] }
   | { kind: 'watch' };
 
 export interface RawSnapshot {
@@ -90,10 +101,11 @@ export interface RawSnapshot {
   scroll: PageScroll;
   elements: PageElement[];
   text: string;
+  /** More shown elements exist than `elements` lists. */
   truncated: boolean;
   /** Every frame element in the page's DOM (open shadow roots included), and
       whether the person can see it: a non-empty box in the viewport, not hidden. */
-  frames: DomFrame[];
+  frameOwners: DomFrame[];
   /** Boxes of the numbered elements in the viewport, in CSS pixels, for screenshot labels. */
   boxes: ElementBox[];
   viewport: { width: number; height: number };
@@ -128,6 +140,10 @@ export type FocusResult =
   | { ok: true }
   | { ok: false; reason: 'not_found' | 'secret' | 'unfocusable' };
 
+/** The first of a hit test's points whose hit lands on the element, inside
+    it or on one of its labels; -1 when every one lands on something else. */
+export type HitTestResult = { found: false } | { found: true; reaches: number };
+
 /** The focus before each key of a type step: whether it is on a secret field,
     and whether it is still in the field the step types into. */
 export interface TypingFocus {
@@ -153,6 +169,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   const viewport = { width: Math.round(win.innerWidth), height: Math.round(win.innerHeight) };
   const clean = (value: string | null | undefined, max: number): string =>
     (value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+  /* A cut that never splits a character in two. */
+  const cut = (text: string, max: number): string => {
+    const head = text.slice(0, max);
+    return /[\uD800-\uDBFF]$/.test(head) ? head.slice(0, -1) : head;
+  };
 
   const tagOf = (el: Element): string => el.tagName.toLowerCase();
   const inputType = (el: Element): string => (el.getAttribute('type') || 'text').toLowerCase();
@@ -162,6 +183,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   };
   /* Editable as part of an editor, its own attribute or not. */
   const contentEditable = (el: Element | null): boolean => (el as HTMLElement | null)?.isContentEditable === true;
+  /* The element's own window's computed style, for an element of a frame too. */
+  const styleOf = (el: Element): CSSStyleDeclaration => (el.ownerDocument.defaultView ?? win).getComputedStyle(el);
   const boxOf = (el: Element): Box => {
     const rect = el.getBoundingClientRect();
     return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
@@ -197,7 +220,6 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     if (tag === 'button' || tag === 'summary') return 'button';
     if (tag === 'select') return (el as HTMLSelectElement).multiple ? 'listbox' : 'combobox';
     if (tag === 'textarea') return 'textbox';
-    if (tag === 'iframe') return 'clickable';
     if (tag === 'input') {
       const type = inputType(el);
       if (type === 'hidden') return '';
@@ -216,25 +238,50 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
 
   const textOf = (el: Element): string => (el as HTMLElement).innerText ?? el.textContent ?? '';
 
-  /* A label's own words: a label that wraps its control would otherwise name a
-     list box after every option in it. */
-  const labelText = (label: Element, control: Element): string => {
+  /* Whether `el` is a secret editor or inside one: its editing host, the
+     nearest element whose contenteditable makes it editable, is secret. */
+  const inSecretEditor = (el: Element): boolean => {
+    const host = el.closest('[contenteditable]');
+    return !!host && editable(host) && isSecret(host);
+  };
+  const holdsSecretEditor = (root: ParentNode): boolean =>
+    Array.from(root.querySelectorAll('[contenteditable]')).some((el) => editable(el) && isSecret(el));
+  /* The text of `node` and below it, a secret field's subtree and `skip`
+     left out. */
+  const textWithoutSecrets = (node: Node, skip: Node | null = null): string => {
     let text = '';
-    const walk = (node: Node) => {
-      if (node === control) return;
-      if (node.nodeType === 3) text += node.textContent || '';
-      else node.childNodes.forEach(walk);
+    const walk = (at: Node) => {
+      if (at === skip) return;
+      if (at.nodeType === 3) text += at.textContent || '';
+      else if (at.nodeType !== 1 || !isSecret(at as Element)) at.childNodes.forEach(walk);
     };
-    walk(label);
+    walk(node);
     return text;
   };
+  /* An element's text as a name may show it: none for a secret editor, and
+     a secret field inside it left out. With no secret editor inside, it is
+     `source` as before, so ordinary names don't change. */
+  const shownText = (el: Element, source: 'innerText' | 'textContent'): string => {
+    if (inSecretEditor(el)) return '';
+    if (holdsSecretEditor(el)) return textWithoutSecrets(el);
+    return source === 'innerText' ? textOf(el) : el.textContent ?? '';
+  };
+
+  /* A label's own words: a label that wraps its control would otherwise name a
+     list box after every option in it. */
+  const labelText = (label: Element, control: Element): string =>
+    (inSecretEditor(label) ? '' : textWithoutSecrets(label, control));
 
   const nameOf = (el: Element, role: string): string => {
     const aria = clean(el.getAttribute('aria-label'), 120);
     if (aria) return aria;
     const labelledBy = el.getAttribute('aria-labelledby');
     if (labelledBy) {
-      const text = clean(labelledBy.split(/\s+/).map((id) => doc.getElementById(id)?.textContent || '').join(' '), 120);
+      const named = labelledBy.split(/\s+/).map((id) => {
+        const target = el.ownerDocument.getElementById(id);
+        return target ? shownText(target, 'textContent') : '';
+      });
+      const text = clean(named.join(' '), 120);
       if (text) return text;
     }
     const labels = (el as HTMLInputElement).labels;
@@ -243,7 +290,6 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       if (text) return text;
     }
     const tag = tagOf(el);
-    if (tag === 'iframe') return clean(el.getAttribute('title') || el.getAttribute('name') || 'frame', 120);
     if (tag === 'input' && ['button', 'submit', 'reset'].includes(inputType(el))) {
       return clean((el as HTMLInputElement).value || inputType(el), 120);
     }
@@ -251,7 +297,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       const hint = clean(el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('name'), 120);
       if (hint) return hint;
     }
-    const text = clean(textOf(el), 120);
+    const text = clean(shownText(el, 'innerText'), 120);
     if (text) return text;
     const img = el.querySelector('img[alt]');
     return clean(img?.getAttribute('alt') || el.getAttribute('title') || el.getAttribute('placeholder'), 120);
@@ -297,6 +343,110 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return found;
   };
 
+  /* Today's page text: innerText, with runs of spaces and blank lines folded. */
+  const fullText = (d: Document): string =>
+    (d.body ? textOf(d.body) : '').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+
+  /* Whether the person scrolled away from the top: the page, or a scrolled
+     box around the middle of the view. */
+  const scrolledAway = (d: Document): boolean => {
+    const view = d.defaultView;
+    if (!view) return false;
+    if (view.scrollY > 0) return true;
+    for (let el = d.elementFromPoint(view.innerWidth / 2, view.innerHeight / 2); el; el = el.parentElement) {
+      if (el.scrollTop > 0 && /^(auto|scroll)$/.test(styleOf(el).overflowY)) return true;
+    }
+    return false;
+  };
+
+  /* Elements whose text a person never reads as the page's. */
+  const UNREAD_TEXT = new Set(['script', 'style', 'noscript', 'template', 'textarea', 'select', 'option', 'title']);
+
+  /*
+   * The page's text in reading order, the light DOM innerText reads, with
+   * secret fields and editors left out. `above` holds the text nodes whose
+   * every line sits above the view, or above a scrolled box they are in;
+   * `shown` the rest. Rects come from a detached Range, so nothing is
+   * selected, scrolled or focused.
+   */
+  const textByView = (d: Document): { all: string; shown: string; above: string } => {
+    const all: string[] = [];
+    const shownParts: string[] = [];
+    const aboveParts: string[] = [];
+    const range = d.createRange();
+    const walk = (node: Node, clipTop: number): void => {
+      if (node.nodeType === 3) {
+        const parent = node.parentElement;
+        const visibility = parent ? styleOf(parent).visibility : 'hidden';
+        if (visibility === 'hidden' || visibility === 'collapse') return;
+        range.selectNodeContents(node);
+        const rects = Array.from(range.getClientRects());
+        if (!rects.length) return;
+        const text = node.textContent || '';
+        all.push(text);
+        (rects.every((rect) => rect.bottom <= clipTop) ? aboveParts : shownParts).push(text);
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      const el = node as Element;
+      if (UNREAD_TEXT.has(tagOf(el)) || isSecret(el)) return;
+      const style = styleOf(el);
+      if (style.display === 'none') return;
+      const check = (el as Element & { checkVisibility?: () => boolean }).checkVisibility;
+      if (style.display !== 'contents' && typeof check === 'function' && !check.call(el)) return;
+      const top = el.scrollTop > 0 ? Math.max(clipTop, el.getBoundingClientRect().top + el.clientTop) : clipTop;
+      // Words in separate blocks, or either side of a line break, stay apart.
+      const apart = tagOf(el) === 'br' || (style.display !== 'contents' && !style.display.startsWith('inline'));
+      if (apart) for (const parts of [all, shownParts, aboveParts]) parts.push(' ');
+      el.childNodes.forEach((child) => walk(child, top));
+      if (apart) for (const parts of [all, shownParts, aboveParts]) parts.push(' ');
+    };
+    if (d.body) walk(d.body, 0);
+    return { all: all.join(''), shown: shownParts.join(''), above: aboveParts.join('') };
+  };
+
+  /*
+   * The page's text, at most `maxText` characters. A page that isn't
+   * scrolled, or whose text fits, reads as innerText always has. Scrolled
+   * past what fits, it starts at the top of the view after a leading '…',
+   * and the start of the text above the view follows when the budget allows.
+   * A secret editor's text is never in it.
+   */
+  const pageText = (d: Document, maxText: number): string => {
+    if (maxText <= 0) return '';
+    const full = fullText(d);
+    const scrolled = scrolledAway(d);
+    const secret = holdsSecretEditor(d);
+    if (!secret && (full.length <= maxText || !scrolled)) return cut(full, maxText);
+    const { all, shown: inView, above } = textByView(d);
+    const everything = clean(all, Infinity);
+    if (!scrolled || everything.length <= maxText) return cut(everything, maxText);
+    let text = cut(clean(`… ${inView}`, Infinity), maxText);
+    const before = clean(above, Infinity);
+    if (before && text.length < maxText - 50) text = cut(`${text} … (above the view) ${before}`, maxText);
+    return text;
+  };
+
+  /* An element's id, minted the first time a read lists it. */
+  const idOf = (el: Element): number => {
+    let id = world.byElement.get(el);
+    if (id === undefined) {
+      id = world.next;
+      world.next += 1;
+      world.byElement.set(el, id);
+      world.ids.set(id, el);
+    }
+    return id;
+  };
+
+  const FRAME_TAGS = new Set(['iframe', 'frame']);
+
+  /*
+   * Every shown element is listed in page order when they all fit. Past
+   * `maxElements`, the ones in view come first, then the rest, each group in
+   * page order, and `truncated` says more exist. Only listed elements get an
+   * id. Frames are never elements; each one is a frame owner.
+   */
   const snapshot = (maxText: number, maxElements: number) => {
     for (const [id, el] of world.ids) {
       if (!el.isConnected) {
@@ -304,29 +454,28 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         world.byElement.delete(el);
       }
     }
-    const elements: Record<string, unknown>[] = [];
-    const boxes: ElementBox[] = [];
-    const frames: DomFrame[] = [];
+    const candidates: Array<{ el: Element; role: string; box: Box; visible: boolean }> = [];
+    const frameOwners: DomFrame[] = [];
     const root = doc.body || doc.documentElement;
     for (const el of root ? elementsIn(root) : []) {
+      if (FRAME_TAGS.has(tagOf(el))) {
+        const box = boxOf(el);
+        frameOwners.push({ url: (el as HTMLIFrameElement).src || '', visible: shown(el, box) && inView(box) });
+        continue;
+      }
       const role = roleOf(el);
       if (!role) continue;
       const box = boxOf(el);
-      const isShown = shown(el, box);
-      const visible = isShown && inView(box);
-      if (tagOf(el) === 'iframe') {
-        const src = (el as HTMLIFrameElement).src;
-        if (src) frames.push({ url: src, visible });
-      }
-      if (!isShown) continue;
-      if (elements.length >= maxElements) continue;
-      let id = world.byElement.get(el);
-      if (id === undefined) {
-        id = world.next;
-        world.next += 1;
-        world.byElement.set(el, id);
-        world.ids.set(id, el);
-      }
+      if (!shown(el, box)) continue;
+      candidates.push({ el, role, box, visible: inView(box) });
+    }
+    const kept = candidates.length <= maxElements
+      ? candidates
+      : [...candidates.filter((c) => c.visible), ...candidates.filter((c) => !c.visible)].slice(0, maxElements);
+    const elements: Record<string, unknown>[] = [];
+    const boxes: ElementBox[] = [];
+    for (const { el, role, box, visible } of kept) {
+      const id = idOf(el);
       elements.push(describe(el, id, role, !visible));
       if (visible) {
         boxes.push({
@@ -338,7 +487,6 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         });
       }
     }
-    const fullText = (doc.body ? textOf(doc.body) : '').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
     const scroller = doc.scrollingElement || doc.documentElement;
     return {
       url: String(doc.location?.href || ''),
@@ -349,9 +497,9 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         viewport: viewport.height,
       },
       elements,
-      text: fullText.slice(0, maxText),
-      truncated: fullText.length > maxText,
-      frames,
+      text: pageText(doc, maxText),
+      truncated: candidates.length > maxElements,
+      frameOwners,
       boxes,
       viewport,
     };
@@ -366,13 +514,33 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* A node's parent, or a shadow root's host. */
   const parentAcross = (node: Node): Node | null => node.parentNode ?? (node.nodeType === 11 ? (node as ShadowRoot).host ?? null : null);
 
+  /* Whether `node` is `el` or inside it, across shadow roots. */
+  const within = (el: Node, node: Node | null): boolean => {
+    for (let at = node; at; at = parentAcross(at)) if (at === el) return true;
+    return false;
+  };
+
+  /* The element a click at (x, y) lands on, followed into open shadow roots. */
+  const hitAt = (x: number, y: number): Element | null => {
+    let hit = doc.elementFromPoint(x, y);
+    while (hit?.shadowRoot) {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
+    return hit;
+  };
+
+  /* Whether a click that lands on `hit` reaches `el`: it is `el`, inside it,
+     or on one of its labels. */
+  const reaches = (el: Element, hit: Element | null): boolean =>
+    !!hit && (within(el, hit) || Array.from((el as HTMLInputElement).labels ?? []).some((label) => within(label, hit)));
+
   /* Whether the focus is on `el` or inside it, across shadow roots, or on the
      editing host `el` is part of. */
   const focusIn = (el: Element): boolean => {
     const active = deepActive();
-    for (let at: Node | null = active; at; at = parentAcross(at)) {
-      if (at === el) return true;
-    }
+    if (within(el, active)) return true;
     return contentEditable(el) && contentEditable(active) && !!active?.contains(el);
   };
 
@@ -495,6 +663,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return { ok: true, chosen: matches.map((m) => clean((m as HTMLOptionElement).label || (m as HTMLOptionElement).text, 120)) };
+    }
+    case 'hitTest': {
+      const el = world.ids.get(request.id);
+      if (!el || !el.isConnected) return { found: false };
+      return { found: true, reaches: request.points.findIndex((point) => reaches(el, hitAt(point.x, point.y))) };
     }
     case 'watch':
       world.observer ??= new MutationObserver(onMutations);

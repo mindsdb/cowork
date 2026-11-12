@@ -56,8 +56,9 @@ const electron = vi.hoisted(() => {
         return { found: true, box: { x: 10, y: 10, width: 100, height: 20 }, shown: true, inViewport: true, secret: false, disabled: false, tag: 'button', viewport: { width: 800, height: 600 } };
       }
       if (code.includes('"kind":"focusedSecret"')) return { secret: false };
+      if (code.includes('"kind":"hitTest"')) return { found: true, reaches: 0 };
       if (code.includes('"kind":"watch"')) return { ok: true };
-      return { url: this.url, title: 'Title', scroll: { y: 0, height: 600, viewport: 600 }, elements: [], text: '', truncated: false, frames: [], boxes: [], viewport: { width: 800, height: 600 } };
+      return { url: this.url, title: 'Title', scroll: { y: 0, height: 600, viewport: 600 }, elements: [], text: '', truncated: false, frameOwners: [], boxes: [], viewport: { width: 800, height: 600 } };
     });
   }
   class WebContentsView {
