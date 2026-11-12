@@ -24,7 +24,9 @@
  * main-frame request or a navigation, or finds the page aria-busy, waits
  * until those requests are done and the page has gone quiet; one that only
  * changed the page in place waits a moment for quiet at most, and one that
- * did none of these answers at once. The step's change watch
+ * did none of these answers SETTLE_QUIET_MS into its settle, so a request
+ * it starts by then (a search box's suggestions) is waited for. The step's
+ * change watch
  * (browser-page-script.ts) and the profile's request count (RequestsInFlight
  * in browser-profile.ts) say whether it changed what the page shows.
  */
@@ -487,7 +489,9 @@ export class ElectronTab implements TabView {
   /*
    * The step's settle, after its input. A step that started nothing (no
    * change the watch counted, no main-frame request, no navigation) on a
-   * page that shows nothing aria-busy answers at once. Any other waits until
+   * page that shows nothing aria-busy answers SETTLE_QUIET_MS into its
+   * settle, so a request it starts by then is waited for, as the web pod
+   * waits on a search box's debounced suggestions. Any other waits until
    * the page's main-frame requests are done, nothing it shows is aria-busy
    * and it has shown no change for SETTLE_QUIET_MS, at most SETTLE_MAX_MS,
    * and always inside the step's budget: a change in place may be a spinner
@@ -502,7 +506,10 @@ export class ElectronTab implements TabView {
    * once with null. Never throws: the step ran.
    */
   private async quiet(watch: StepWatch, request: StepRequest, signal: AbortSignal): Promise<boolean | null> {
-    const deadline = Math.min(Date.now() + SETTLE_MAX_MS, watch.startedAt + STEP_TIMEOUT_MS - SETTLE_MARGIN_MS);
+    const settleStart = Date.now();
+    const deadline = Math.min(settleStart + SETTLE_MAX_MS, watch.startedAt + STEP_TIMEOUT_MS - SETTLE_MARGIN_MS);
+    // Before this, the settle never ends for quiet: the step may still start a request.
+    const requestWindow = settleStart + SETTLE_QUIET_MS;
     const takenOver = new Promise<null>((resolve) => {
       if (signal.aborted) resolve(null);
       signal.addEventListener('abort', () => resolve(null), { once: true });
@@ -530,11 +537,13 @@ export class ElectronTab implements TabView {
       last = await mark();
       const requests = this.requests.of(this.contentsId);
       if (last?.busy || requests?.sent || navigated()) brief = Infinity;
-      if (!last?.changes && brief !== Infinity) break;
       const now = Date.now();
-      const lastChange = Math.max(watch.watchStartedAt, requests?.lastEndedAt ?? 0, last ? now - last.sinceLastMs : 0);
-      const quiet = !requests?.pending && !last?.busy && now - lastChange >= SETTLE_QUIET_MS;
-      if (quiet || now >= Math.min(deadline, brief)) break;
+      if (now >= requestWindow) {
+        if (!last?.changes && brief !== Infinity) break;
+        const lastChange = Math.max(watch.watchStartedAt, requests?.lastEndedAt ?? 0, last ? now - last.sinceLastMs : 0);
+        if (!requests?.pending && !last?.busy && now - lastChange >= SETTLE_QUIET_MS) break;
+      }
+      if (now >= Math.min(deadline, brief)) break;
       await pause(Math.min(SETTLE_POLL_MS, brief - now));
     }
     if (signal.aborted) return null;

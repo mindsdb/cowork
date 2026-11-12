@@ -86,9 +86,10 @@ export const STEP_TIMEOUT_MS = 33_000;
     STEP_TIMEOUT_MS; after an in-place change that started nothing it stops
     SETTLE_QUIET_MS past its first look, so a page that changes on its own (a
     ticker) doesn't hold every step to the cap. One that changed nothing and
-    started neither answers at once, unless the page shows something marked
-    aria-busy. The web pod holds the same two numbers, and action.json's
-    `limits` pins both. */
+    started neither answers SETTLE_QUIET_MS into its settle, unless the page
+    shows something marked aria-busy, so a request it starts by then (a
+    search box's suggestions) is waited for, as on the web pod. The web pod
+    holds the same two numbers, and action.json's `limits` pins both. */
 export const SETTLE_MAX_MS = 3_000;
 export const SETTLE_QUIET_MS = 400;
 

@@ -658,14 +658,17 @@ describe('ElectronTab', () => {
       });
     }
 
-    it('answers at once a step that changed nothing and started no request; one that changed the page in place waits for it to go quiet', async () => {
+    it('answers a step that changed nothing and started no request SETTLE_QUIET_MS into its settle; one that changed the page in place waits for it to go quiet', async () => {
       const { tab, contents } = setup();
       vi.useFakeTimers();
       try {
         const still = timed(tab, { action: 'press', key: 'Enter' });
-        await vi.advanceTimersByTimeAsync(400);
+        await vi.advanceTimersByTimeAsync(SETTLE_QUIET_MS);
+        expect(still.outcome).toBeNull();
+        // The key takes at most 80 ms; the settle then polls every 100 ms.
+        await vi.advanceTimersByTimeAsync(200);
         expect(still.outcome).toEqual({ changed: false });
-        expect(worldCalls(contents, 'changeMark')).toHaveLength(1);
+        expect(still.at).toBeGreaterThanOrEqual(SETTLE_QUIET_MS);
         onFirstKey(contents, () => contents.pageChanges(2));
         const changing = timed(tab, { action: 'press', key: 'Enter' });
         await vi.advanceTimersByTimeAsync(SETTLE_QUIET_MS - 50);
@@ -697,6 +700,28 @@ describe('ElectronTab', () => {
         await vi.advanceTimersByTimeAsync(300);
         expect(step.outcome).toEqual({ changed: true });
         expect(step.at).toBeGreaterThanOrEqual(2_500 + SETTLE_QUIET_MS);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('waits SETTLE_QUIET_MS into its settle for a request a step that changed nothing starts then, as a search box fetches its suggestions after a pause, and answers with what it brought', async () => {
+      const { tab, contents, requests } = setup();
+      onFirstKey(contents, () => {
+        setTimeout(() => requests.sent(mainFrameRequest(contents, 48)), 300);
+        setTimeout(() => {
+          requests.ended(mainFrameRequest(contents, 48));
+          contents.pageChanges();
+        }, 1_000);
+      });
+      vi.useFakeTimers();
+      try {
+        const step = timed(tab, { action: 'press', key: 'Enter' });
+        await vi.advanceTimersByTimeAsync(1_000 + SETTLE_QUIET_MS - 100);
+        expect(step.outcome).toBeNull();
+        await vi.advanceTimersByTimeAsync(400);
+        expect(step.outcome).toEqual({ changed: true });
+        expect(step.at).toBeGreaterThanOrEqual(1_000 + SETTLE_QUIET_MS);
       } finally {
         vi.useRealTimers();
       }
