@@ -1,14 +1,7 @@
 import { useEffect, useRef, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { ActionBar, type ActionBarProps } from '../components/ui/ActionBar';
+import { isEditable } from '../lib/editable';
 import './task-control.css';
-
-
-function isEditable(element: Element | null): boolean {
-  if (!element) return false;
-  if (element instanceof HTMLTextAreaElement) return true;
-  if (element instanceof HTMLInputElement) return !['radio', 'checkbox', 'button', 'submit'].includes(element.type);
-  return element instanceof HTMLElement && element.isContentEditable;
-}
 
 
 /**

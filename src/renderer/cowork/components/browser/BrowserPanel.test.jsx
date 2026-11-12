@@ -403,6 +403,53 @@ describe('BrowserPanel', () => {
       expect(port.postMessage.mock.calls).toEqual([[{ type: 'browser-viewer-focus' }]]);
     });
 
+    it("leaves the keyboard in the start page's field while the person types in it, and gives it once they sent it", async () => {
+      const onSend = vi.fn();
+      render(<BrowserPanel sessionId="t-abc" startBlank agentLabel="Anton" onClose={() => {}} taskKey="t" onSend={onSend} />);
+      await flush();
+      const port = fakePort();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' }, [port]);
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'about:blank' });
+      await flush();
+      const field = screen.getByLabelText('What to look up');
+      field.focus();
+      fireEvent.change(field, { target: { value: 'half typed' } });
+
+      // A page opens while they type: the rest of their keys stay in the field.
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://other.example/form' });
+      await flush();
+      expect(document.activeElement).toBe(field);
+      expect(port.postMessage).not.toHaveBeenCalled();
+
+      // Back to a blank tab, then they send: the field turns off, and the next page gets the keyboard.
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'about:blank' });
+      await act(async () => { vi.advanceTimersByTime(START_FADE_MS); });
+      const again = screen.getByLabelText('What to look up');
+      again.focus();
+      fireEvent.change(again, { target: { value: 'flights to Lisbon' } });
+      fireEvent.submit(again.closest('form'));
+      expect(onSend).toHaveBeenCalledTimes(1);
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://www.kayak.com/' });
+      await flush();
+      expect(document.activeElement).toBe(screen.getByTitle('Shared browser'));
+      expect(port.postMessage.mock.calls).toEqual([[{ type: 'browser-viewer-focus' }]]);
+    });
+
+    it('takes no keyboard while the tab is hidden', async () => {
+      render(<BrowserPanel sessionId="t-abc" startBlank agentLabel="Anton" onClose={() => {}} taskKey="t" onSend={vi.fn()} />);
+      await flush();
+      const port = fakePort();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' }, [port]);
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'about:blank' });
+      await flush();
+      setVisibility('hidden');
+      // The viewer posted this before the pause reached it.
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://other.example/form' });
+      await flush();
+      expect(document.activeElement).toBe(document.body);
+      expect(port.postMessage.mock.calls).toEqual([[{ type: 'browser-viewer-pause' }]]);
+    });
+
     it('keeps the port open while its frame stays, and closes it when the frame goes', async () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();

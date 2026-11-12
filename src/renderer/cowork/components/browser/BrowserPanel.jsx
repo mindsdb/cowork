@@ -518,33 +518,33 @@ function WebBrowserStage({
   const blankTab = isBlankPage(pageUrl) || (startBlank && !pageUrl);
   const startOver = startsHere && !error && (opening || (viewUrl && viewerReady && blankTab));
   /* The keyboard goes to a viewer whose ready carried a port, unless the
-     start page covers it or the person's focus is elsewhere
-     (paneMayTakeFocus): when it is ready, and again each time the start page
-     leaves it. A viewer with no port gets no focus: it can't pass it to its
-     picture. */
+     start page covers it, the tab is hidden or the person's focus is
+     elsewhere (paneMayTakeFocus): when it is ready, and again each time the
+     start page leaves it. A viewer with no port gets no focus: it can't pass
+     it to its picture. */
   const covered = Boolean(startOver);
   useEffect(() => {
     const frame = frameRef.current;
     const port = portRef.current;
-    if (!viewerReady || covered || !frame || !port || !paneMayTakeFocus(frame)) return;
+    if (!viewerReady || covered || !frame || !port || tabHidden() || !paneMayTakeFocus(frame)) return;
     frame.focus({ preventScroll: true });
     port.postMessage({ type: VIEWER_FOCUS });
   }, [viewerReady, covered]);
-  /* Once a page opens, the start page fades out rather than vanishing. */
+  /* Once a page opens, the start page fades out rather than vanishing. It
+     turns to leaving in the same render, so it never unmounts in between:
+     the fade runs, and a field the person is typing in keeps their focus
+     (paneMayTakeFocus). */
   const [leaving, setLeaving] = useState(false);
-  const shownRef = useRef(false);
+  const [wasOver, setWasOver] = useState(false);
+  if (Boolean(startOver) !== wasOver) {
+    setWasOver(Boolean(startOver));
+    setLeaving(!startOver);
+  }
   useEffect(() => {
-    if (startOver) {
-      shownRef.current = true;
-      setLeaving(false);
-      return undefined;
-    }
-    if (!shownRef.current) return undefined;
-    shownRef.current = false;
-    setLeaving(true);
+    if (!leaving) return undefined;
     const timer = setTimeout(() => setLeaving(false), START_FADE_MS);
     return () => clearTimeout(timer);
-  }, [startOver]);
+  }, [leaving]);
   useEffect(() => {
     if (!waiting) return undefined;
     const timer = setTimeout(() => setSlow(true), STARTING_TIMEOUT_MS);

@@ -53,11 +53,15 @@ describe("the pane's privacy note on a phone", () => {
 });
 
 describe('paneMayTakeFocus', () => {
-  it('lets the pane take focus from the page body, from nothing, or from inside the pane, and never from elsewhere', () => {
+  it('lets the pane take focus from the page body, from nothing, or from inside the pane but a field there, and never from elsewhere', () => {
     render(
       <>
         <button type="button">Elsewhere</button>
-        <BrowserFrame hint="" onClose={vi.fn()}><iframe title="page" /><button type="button">Inside</button></BrowserFrame>
+        <BrowserFrame hint="" onClose={vi.fn()}>
+          <iframe title="page" />
+          <button type="button">Inside</button>
+          <input type="text" aria-label="Inside field" />
+        </BrowserFrame>
       </>,
     );
     const frame = screen.getByTitle('page');
@@ -69,6 +73,13 @@ describe('paneMayTakeFocus', () => {
 
     screen.getByRole('button', { name: 'Elsewhere' }).focus();
     expect(paneMayTakeFocus(frame)).toBe(false);
+
+    // A field in the pane keeps the keyboard while the person can type in it.
+    const field = screen.getByRole('textbox', { name: 'Inside field' });
+    field.focus();
+    expect(paneMayTakeFocus(frame)).toBe(false);
+    field.disabled = true;
+    expect(paneMayTakeFocus(frame)).toBe(true);
 
     Object.defineProperty(document, 'activeElement', { configurable: true, get: () => null });
     try {
