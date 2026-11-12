@@ -1109,17 +1109,20 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
 /** The longest frame address a page answer carries. */
 const MAX_FRAME_ADDRESS = 1024;
 
-/** A frame's address as a page answer gives it: origin and path for http
-    and https, about:blank or about:srcdoc, otherwise the scheme alone. */
+/** A frame's address as a page answer gives it (page.json): origin and path
+    for http and https, about:blank or about:srcdoc, otherwise the scheme
+    alone, and '' for one that doesn't parse. An owner with no src (an empty
+    address) shows about:blank. */
 export function frameAddress(address: string): string {
+  if (!address) return 'about:blank';
   let url: URL;
   try {
     url = new URL(address);
   } catch {
-    return 'about:blank';
+    return '';
   }
   if (url.protocol === 'http:' || url.protocol === 'https:') return `${url.origin}${url.pathname}`.slice(0, MAX_FRAME_ADDRESS);
-  if (url.protocol === 'about:') return url.pathname === 'srcdoc' ? 'about:srcdoc' : 'about:blank';
+  if (url.protocol === 'about:' && (url.pathname === 'blank' || url.pathname === 'srcdoc')) return `about:${url.pathname}`;
   return url.protocol;
 }
 

@@ -958,7 +958,11 @@ describe('the page answer', () => {
     ['https://user:pw@forms.example.test:8443/a/b?q=1#h', 'https://forms.example.test:8443/a/b'],
     ['about:srcdoc', 'about:srcdoc'],
     ['about:blank', 'about:blank'],
+    ['about:blank#top', 'about:blank'],
+    // An owner with no src shows about:blank.
     ['', 'about:blank'],
+    ['about:version', 'about:'],
+    ['not an address', ''],
     ['data:text/html,<p>hi</p>', 'data:'],
     ['blob:https://a.test/0f3c', 'blob:'],
   ])('writes the frame address %s as %s', (address, written) => {
