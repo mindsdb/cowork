@@ -14,7 +14,7 @@
 
 import { diagnostic } from '../../../shared/diagnostics';
 import { approveBrowserStep, declineBrowserStep, readBrowserApproveSteps } from '../api';
-import { getBrowserPrefs } from './browserPrefs';
+import { getBrowserPrefs, isLeftToPerson } from './browserPrefs';
 import i18n from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(`messages.browserApproval.${key}`, { ns: 'projects', ...vars });
@@ -102,12 +102,12 @@ export async function declineBrowserApproval(ids, decline = declineBrowserStep) 
 }
 
 /* Clicks by position: the agent's browser asks once per page before it
-   clicks at a point its element list doesn't name. On the desktop, whose
-   browser holds nothing, that card is the only gate on such a click, Place
-   order included. So it shows, like a step that commits something (a
-   purchase, a message, a deletion), while the person approves browser steps
-   (Settings > Shared browser, on by default); with that off, the app
-   approves both itself and never shows them (isAutoApprovedCard). */
+   clicks at a point its element list doesn't name. Clicks by position run
+   without the person's approval, whatever the setting: the app approves that
+   card itself and never shows it. A step that commits something (a purchase,
+   a message, a deletion) keeps its card while the person approves browser
+   steps (Settings > Shared browser, on by default); with that off, the app
+   approves it too (isAutoApprovedCard). */
 export const POSITION_APPROVE_DETAIL = 'Allow clicks by position on this page';
 
 /* How long a position card waits on the automatic approval before it shows,
@@ -146,17 +146,33 @@ export function isBrowserStepCard(data) {
 
 /**
  * Whether the app approves this card for the person and keeps it out of
- * sight: a click by position or a held browser step, only once the person
- * turned Approve browser steps off (Settings > Shared browser). While they
- * approve steps, the default, every such card shows.
+ * sight: a click by position always; a held browser step only once the
+ * person turned Approve browser steps off (Settings > Shared browser). While
+ * they approve steps, the default, a held step's card shows.
  *
  * @param {Parameters<typeof isBrowserStepCard>[0]} data
  * @param {{ askToApprove?: boolean }} [prefs]
  * @returns {boolean}
  */
 export function isAutoApprovedCard(data, prefs = getBrowserPrefs()) {
-  if (prefs.askToApprove !== false) return false;
-  return isPositionClickCard(data) || isBrowserStepCard(data);
+  if (isPositionClickCard(data)) return true;
+  // A card the person turned approvals off from is still theirs to answer.
+  return prefs.askToApprove === false && isBrowserStepCard(data) && !isLeftToPerson(data?.question_id);
+}
+
+/**
+ * Whether a step is the person's turn in the browser: an unanswered card the
+ * browser asks them (a held step to approve, a sign-in, a CAPTCHA or another
+ * hand-over, all `browser:` cards). A card the app approves for them is not.
+ *
+ * @param {{ badge?: string, data?: object } | null | undefined} step
+ * @returns {boolean}
+ */
+export function isPersonsBrowserTurn(step) {
+  if (step?.badge !== 'AskUser' || step.data?.answer) return false;
+  const data = step.data;
+  if (isAutoApprovedCard(data)) return false;
+  return isBrowserStepCard(data) || String(data?.question_id || '').startsWith('browser:');
 }
 
 /**

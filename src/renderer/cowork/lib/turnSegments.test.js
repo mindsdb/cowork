@@ -154,15 +154,19 @@ describe('position-click cards', () => {
   const POSITION = [{ value: 'approve', label: 'Approve', detail: 'Allow clicks by position on this page' }];
   afterEach(() => { resetBrowserPrefsForTests(); });
 
-  it('with approvals off, drops an answered one, so the work around it stays one block', () => {
-    syncBrowserPrefs({ browserApproveSteps: false });
+  it('drops an answered one whatever the setting, so the work around it stays one block', () => {
     const steps = [work('a'), question('browser:approve:t:p', { answer: { status: 'answered', values: ['approve'] }, options: POSITION }), work('b')];
+    expect(shape(splitTurnSegments(steps))).toEqual([['a', 'b']]);
+    syncBrowserPrefs({ browserApproveSteps: false });
     expect(shape(splitTurnSegments(steps))).toEqual([['a', 'b']]);
   });
 
-  it('while the person approves steps, keeps an answered one: they answered it', () => {
-    const steps = [work('a'), question('browser:approve:t:p', { answer: { status: 'answered', values: ['approve'] }, options: POSITION }), work('b')];
+  it('keeps an answered held step while the person approves steps: they answered it', () => {
+    const STEP = [{ value: 'approve', label: 'Approve', detail: 'Take this step once' }, { value: 'cancel', label: 'Cancel' }];
+    const steps = [work('a'), question('browser:approve:t:p', { answer: { status: 'answered', values: ['approve'] }, options: STEP }), work('b')];
     expect(shape(splitTurnSegments(steps))).toEqual([['a'], 'Q:question-browser:approve:t:p', ['b']]);
+    syncBrowserPrefs({ browserApproveSteps: false });
+    expect(shape(splitTurnSegments(steps))).toEqual([['a', 'b']]);
   });
 
   it('keeps one still waiting, in case the app could not approve it', () => {

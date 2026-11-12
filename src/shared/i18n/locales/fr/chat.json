@@ -290,6 +290,7 @@
     "hintCustom": "…ou saisissez votre propre réponse ci-dessous.",
     "hintSelectOnly": "Choisissez une option ci-dessus : une réponse saisie ne sera pas acceptée. Passez la question pour écrire autre chose.",
     "skip": "Passer",
+    "skipApprovals": "Ignorer les approbations pour les étapes suivantes",
     "send": "Envoyer",
     "skipped": "Question passée.",
     "timedOut": "Aucune réponse : délai dépassé.",

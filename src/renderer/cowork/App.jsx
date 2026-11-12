@@ -166,12 +166,13 @@ import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
+import { artifactsOnScreen } from './lib/voice/screenArtifacts';
 import {
   desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
 } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
-import { approveIfApprovalsOff, isAutoApprovedCard } from './lib/browserApproval';
-import { forgetLegacyBrowserPrefs, syncBrowserPrefs } from './lib/browserPrefs';
+import { approveIfApprovalsOff, autoApprovePositionClick, isAutoApprovedCard, isPositionClickCard } from './lib/browserApproval';
+import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
 import { Outlet } from 'react-router-dom';
 
@@ -661,7 +662,9 @@ function AppCore() {
   const [settings, setSettings] = useState(loadCachedSettings);
   // Approve browser steps is the person's setting (lib/browserPrefs.js): the
   // cards read it as it changes here, and the old device-only copy goes.
-  useEffect(() => { syncBrowserPrefs({ browserApproveSteps: settings.browserApproveSteps }); }, [settings.browserApproveSteps]);
+  useEffect(() => {
+    syncBrowserPrefs({ browserApproveSteps: settings.browserApproveSteps, browserOnlyWhenNeeded: settings.browserOnlyWhenNeeded });
+  }, [settings.browserApproveSteps, settings.browserOnlyWhenNeeded]);
   useEffect(() => { forgetLegacyBrowserPrefs(); }, []);
   // Whether this session's settings have arrived from the server, so a choice
   // that depends on them (such as the models an operator offers) is final.
@@ -1484,20 +1487,25 @@ function AppCore() {
   // time a question appears while messages are queued, hands them back to
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
-  // With Approve browser steps off (Settings > Shared browser), clicks by
-  // position and held browser steps are approved for the person, once per
-  // card, and never shown (lib/browserApproval.js). The setting is read fresh
-  // from the server first, so approvals turned on from another device since
-  // this tab read settings count: then the card shows. A card the approval
-  // didn't land on shows after POSITION_AUTO_APPROVE_MS, so the person can
-  // still answer it.
+  // Clicks by position are approved for the person whatever the setting,
+  // and so are held browser steps with Approve browser steps off (Settings >
+  // Shared browser): once per card, never shown (lib/browserApproval.js). For
+  // a held step the setting is read fresh from the server first, so approvals
+  // turned on from another device since this tab read settings count: then
+  // the card shows. A card the approval didn't land on shows after
+  // POSITION_AUTO_APPROVE_MS, so the person can still answer it.
   const autoApprovedRef = useRef(new Set());
   const approvePositionClicks = (taskIds, steps) => {
     (steps || []).forEach((s) => {
       const questionId = s.badge === 'AskUser' && !s.data?.answer ? s.data?.question_id : null;
       if (!questionId || autoApprovedRef.current.has(questionId) || !isAutoApprovedCard(s.data)) return;
       autoApprovedRef.current.add(questionId);
-      void approveIfApprovalsOff({ conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer })
+      const approval = { conversationIds: taskIds, questionId, isWeb: host.isWeb, submit: submitAnswer };
+      if (isPositionClickCard(s.data)) {
+        void autoApprovePositionClick(approval).catch(() => false);
+        return;
+      }
+      void approveIfApprovalsOff(approval)
         .then((outcome) => {
           if (outcome === 'asks') setSettings((prev) => ({ ...prev, browserApproveSteps: true }));
         })
@@ -2652,6 +2660,8 @@ function AppCore() {
     });
     return result;
   }, []);
+  // A held step's card can turn Approve browser steps off (its Skip approvals).
+  useEffect(() => setBrowserSettingSaver(saveSettings), [saveSettings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
   const resolvedTask = tasks.find((t) => t.id === activeTaskId) || null;
@@ -3884,8 +3894,14 @@ function AppCore() {
      there, no task gets it, so no switch (lib/browserSwitch). */
   // Off unless the person turned it on in Settings (Beta).
   const browserOnInSettings = settings.browserEnabled === true;
-  const browseAvailable = useBrowseAvailable(`${health.status}:${inAppBrowserRegistered}`);
-  const browserSwitchShown = showsBrowserSwitch({ browserOnInSettings, browseAvailable });
+  /* Asked again when a saved setting changes what picks the browser's steps:
+     the provider, the Jev switch, the organization's own decision model. */
+  const browseAvailable = useBrowseAvailable(
+    `${health.status}:${inAppBrowserRegistered}:${settings.planningProvider}:${settings.jevDecisionsEnabled}:${settings.decisionModelUrl}:${settings.decisionModelApiKey}`,
+  );
+  const browserSwitchShown = showsBrowserSwitch({
+    browserOnInSettings, browseAvailable, webWithoutMindsHub: host.isWeb && !llmViaMindsHub(settings),
+  });
   const composerBrowserSwitch = browserSwitchShown
     ? { on: !composerBrowserOff, onChange: (on) => setComposerBrowserOff(!on), agentLabel }
     : null;
@@ -5177,6 +5193,11 @@ function AppCore() {
       setTimeout(() => setVoicePrefs({ voice }), 300);
       return `Switching to ${voiceLabel(voice)}; the call reconnects in that voice.`;
     },
+    // The person asked to hang up: the card's X, once the goodbye is said.
+    hang_up: () => {
+      if (!voiceCall.hangUpAfterAnswer()) return 'There is no call to hang up.';
+      return 'Hanging up once your answer is said: say only a brief goodbye, or nothing.';
+    },
   };
   operateFromCallRef.current = (request) => runOperator({
     request,
@@ -5184,6 +5205,7 @@ function AppCore() {
     snapshot: () => describeScreen({
       ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callBusy(),
       browserPage: pageOriginForContext(carriedPageRef.current?.() || ''),
+      artifacts: artifactsOnScreen(),
     }),
     actions: callActions,
   });

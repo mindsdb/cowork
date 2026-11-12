@@ -290,6 +290,7 @@
     "hintCustom": "…oppure scrivi la tua risposta qui sotto.",
     "hintSelectOnly": "Scegli un’opzione qui sopra: una risposta scritta non verrà accettata. Salta per scrivere altro.",
     "skip": "Salta",
+    "skipApprovals": "Salta le approvazioni per i prossimi passaggi",
     "send": "Invia",
     "skipped": "Saltata.",
     "timedOut": "Nessuna risposta: tempo scaduto.",

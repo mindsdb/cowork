@@ -498,13 +498,13 @@ describe('AskUserCard position-click card', () => {
     resetBrowserPrefsForTests();
   });
 
-  it('shows while the person approves browser steps, the default', () => {
+  it('stays hidden while the person approves browser steps, the default: the app approves it', () => {
     resetBrowserPrefsForTests();
-    renderCard(POSITION);
-    expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
+    const { container } = renderCard(POSITION);
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it('with approvals off, stays hidden while the app approves it, and shows if that does not land', () => {
+  it('with approvals off too, stays hidden while the app approves it, and shows if that does not land', () => {
     syncBrowserPrefs({ browserApproveSteps: false });
     vi.useFakeTimers();
     const { container } = renderCard(POSITION);
@@ -513,8 +513,7 @@ describe('AskUserCard position-click card', () => {
     expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
   });
 
-  it('with approvals off, never shows once answered', () => {
-    syncBrowserPrefs({ browserApproveSteps: false });
+  it('never shows once answered', () => {
     const { container } = renderCard({ ...POSITION, answer: { status: 'answered', values: ['approve'], text: '' } });
     expect(container).toBeEmptyDOMElement();
   });

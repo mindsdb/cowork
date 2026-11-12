@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { onInAppBrowserRegistered } from '../../platform/host';
-import { readBrowseStatus } from '../lib/browseStatus';
+import { hasDecisionsModel, readBrowseStatus } from '../lib/browseStatus';
 
 /* After a read fails, the hook asks again after these delays, one per
    failure in a row, and then at the last one for as long as reads fail. A
@@ -10,7 +10,8 @@ export const RETRY_DELAYS_MS = [5_000, 15_000, 60_000];
 
 /**
  * Whether this deployment offers the shared browser to this person now, as
- * GET /browse/status last answered `available`.
+ * GET /browse/status last answered `available`, with a decisions model to
+ * pick its steps (lib/browseStatus.js hasDecisionsModel).
  *
  * It reads the status as Settings does (lib/browseStatus.js). False until
  * the first read settles, after an answered `available: false`, and on a
@@ -55,7 +56,7 @@ export function useBrowseAvailable(askAgain) {
       asking = true;
       readBrowseStatus().then(
         (status) => {
-          if (live && mine === asks) settle(status?.available === true);
+          if (live && mine === asks) settle(status?.available === true && hasDecisionsModel(status));
         },
         () => {
           if (!live || mine !== asks) return;

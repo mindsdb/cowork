@@ -75,7 +75,21 @@
     "usageEventsTitle": "使用事件",
     "sendUsageEvents": "发送匿名使用事件",
     "approveStepsTitle": "批准浏览器步骤",
-    "approveStepsHelp": "开启：在执行购买、发送消息或提交表单等会产生实际结果的步骤前，{agent} 会等待你确认。关闭：{agent} 直接继续。"
+    "approveStepsHelp": "开启：在执行购买、发送消息或提交表单等会产生实际结果的步骤前，{agent} 会等待你确认。关闭：{agent} 直接继续。",
+    "onlyWhenNeededTitle": "仅在需要我时显示浏览器",
+    "onlyWhenNeededHelp": "关闭后会一直显示浏览器，你可以看着 {agent} 浏览。有人觉得有趣，有人觉得乏味。",
+    "onlyWhenNeededLearn": "关于仅在需要时显示浏览器",
+    "decisionsAskAdmin": "请让你的管理员设置一个决策模型，才能使用浏览器。",
+    "decisionsSetUp": "{agent} 需要一个决策模型才能快速选择步骤。请添加它的端点和 API 密钥，然后进行测试。",
+    "decisionsRemoved": "已关闭：决策模型已不存在。",
+    "decisionsUrl": "决策模型端点",
+    "decisionsKey": "API 密钥",
+    "decisionsKeySaved": "已保存。输入新的即可替换。",
+    "decisionsTest": "测试并开启",
+    "decisionsTesting": "正在测试…",
+    "decisionsFailed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
+    "decisionsUntested": "无法测试决策模型。请重试。",
+    "ownDecisionsLine": "你组织的决策模型还会收到每个浏览器步骤的目标、网页的地址、标题、元素名称和前 1,500 个字符，以及最近的步骤（包括之前访问的地址），但不包括字段值或你输入的内容。"
   },
   "codingAgent": {
     "loadFailed": "无法加载编程智能体选项。",
@@ -177,5 +191,20 @@
     "instructionsPlaceholder": "此聊天的角色 / 语气",
     "save": "保存",
     "removeRoute": "移除路由"
+  },
+  "decisionModel": {
+    "title": "决策模型",
+    "endpointTitle": "你组织的决策模型",
+    "help": "在你不使用 MindsHub 时，它让 {agent} 的浏览器快速选择步骤，并判断哪些消息需要完整的智能体。任何接受 TypeSafe 决策请求的端点都可以。",
+    "url": "端点 URL",
+    "key": "API 密钥",
+    "keySaved": "已保存。输入新的即可替换。",
+    "model": "模型名称",
+    "test": "测试",
+    "testing": "正在测试…",
+    "passed": "已在 {ms} 毫秒内响应。",
+    "failed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
+    "untested": "无法测试决策模型。请重试。",
+    "remove": "移除"
   }
 }

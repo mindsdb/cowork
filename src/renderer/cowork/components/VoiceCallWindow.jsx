@@ -47,7 +47,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
       >
         <span className="voice-call__spin" aria-hidden="true" />
         <span className="voice-call__connecting" aria-live="polite">{call.analyzing ? t('voiceCall.analyzing') : t('voiceCall.connectingVoice')}</span>
-        <button type="button" className="voice-call__x" onClick={call.end} aria-label={t('voiceCall.endCall')} title={t('voiceCall.endCall')}>
+        <button type="button" className="voice-call__x" onClick={call.hangUp} aria-label={t('voiceCall.endCall')} title={t('voiceCall.endCall')}>
           {Ico.close(12)}
         </button>
       </div>
@@ -66,7 +66,7 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
       <button
         type="button"
         className="voice-call__x"
-        onClick={ended ? call.dismiss : call.end}
+        onClick={ended ? call.dismiss : call.hangUp}
         aria-label={ended ? t('voiceCall.close') : t('voiceCall.endCall')}
         title={ended ? t('voiceCall.close') : t('voiceCall.endCall')}
       >

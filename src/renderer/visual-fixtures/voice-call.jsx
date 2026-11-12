@@ -29,7 +29,7 @@ function fakeVoice({ seed = 1, loud = 1 } = {}) {
 
 const base = {
   notice: '', captions: { user: '', agent: '', last: null }, agentSpeaking: false,
-  working: false, micOn: true, start() {}, end() {}, toggleMic() {}, signOff() {}, dismiss() {},
+  working: false, micOn: true, start() {}, end() {}, hangUp() {}, toggleMic() {}, signOff() {}, dismiss() {},
 };
 const CASES = [
   { label: 'Anton talking', call: { ...base, phase: 'live', meters: { current: { agent: fakeVoice({ seed: 1 }), user: null } } } },

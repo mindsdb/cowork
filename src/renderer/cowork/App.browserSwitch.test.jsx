@@ -155,6 +155,25 @@ function pane() {
 }
 
 describe('the Browser switch and pane through App', () => {
+  it.each([
+    ['no decisions model picks its steps', { ...AVAILABLE, decisions_model: null }, {}],
+    ['the web with an LLM provider other than MindsHub', AVAILABLE, { planningProvider: 'anthropic' }],
+  ])('offers no Browser switch where the browser does not run: %s', async (_name, status, settings) => {
+    const { fetchSettings } = await import('./api');
+    fetchSettings.mockResolvedValue({ configReady: true, browserEnabled: true, ...settings });
+    try {
+      spies.fetchBrowseStatus.mockResolvedValue(status);
+      const user = userEvent.setup();
+      await openHomeComposer(user);
+      await waitFor(() => expect(spies.fetchBrowseStatus).toHaveBeenCalled());
+      await act(async () => {});
+      await user.click(screen.getByRole('button', { name: 'Add context' }));
+      expect(screen.queryByRole('switch', { name: /the browser (on|off) for this task/ })).toBeNull();
+    } finally {
+      fetchSettings.mockResolvedValue({ configReady: true, browserEnabled: true });
+    }
+  });
+
   it("keeps the person's Off for a task started from Home after a re-ask hides the switch", async () => {
     spies.fetchBrowseStatus.mockResolvedValue(AVAILABLE);
     const user = userEvent.setup();

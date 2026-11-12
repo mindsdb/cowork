@@ -290,6 +290,7 @@
     "hintCustom": "…or type your own answer below.",
     "hintSelectOnly": "Pick an option above — a typed reply won't be accepted. Skip to type something else.",
     "skip": "Skip",
+    "skipApprovals": "Skip approvals for later steps",
     "send": "Send",
     "skipped": "Skipped.",
     "timedOut": "No answer — timed out.",

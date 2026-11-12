@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 import { Section, SettingsGroup } from './settingsLayout';
-import { asksToApprove } from '../../lib/browserPrefs';
+import { asksToApprove, showsOnlyWhenNeeded } from '../../lib/browserPrefs';
 import { Switch } from '../../components/ui/Switch';
 import { Tooltip } from '../../components/ui/Tooltip';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
-import { signOutOfBrowserSites } from '../../api';
-import { readBrowseStatus } from '../../lib/browseStatus';
+import { Field, Input } from '../../components/ui';
+import { signOutOfBrowserSites, testDecisionModel } from '../../api';
+import { hasDecisionsModel, readBrowseStatus } from '../../lib/browseStatus';
+import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
 import { host, onInAppBrowserRegistered } from '../../../platform/host';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
@@ -29,13 +31,28 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    registration. A focus or a visible tab while a read is still out waits for
    that read, so its time limit still passes.
 
-   One switch, on by default, saved with the rest of the form. Each task can
+   One switch, off by default, saved with the rest of the form. Each task can
    still switch the browser off from the composer's + menu.
+
+   The browser runs only with a decisions model to pick its steps (the
+   status's `decisions_model`): Jev on MindsHub, or a decision model of the
+   organization's own. Without one the switch reads as off, even when it was
+   saved on and the model was removed later. Whoever may set one up (the
+   status's `can_set_decisions_model`: an organization admin, or anyone on a
+   desktop) turns the switch on to see the endpoint and API key fields, the
+   organization's own decision_model_url and decision_model_api_key; the
+   switch turns on once a test decision answers, and the fields save with the
+   form. Anyone else reads a note to ask their admin. On the web the browser
+   runs in MindsDB's cloud, which takes only a MindsHub credential, so there
+   is no group where MindsHub isn't the LLM provider.
 
    The group says what the browser does with the person's data, as it runs
    today: where websites see the browser come from, how long sign-ins are kept
-   and reused, and that page text and screenshots go to the model provider. On
-   the desktop it also says that the agent's code runs as the person.
+   and reused, that page text and screenshots go to the model provider, and
+   what the decisions model gets for each step. That is Jev on MindsHub on the
+   desktop too when the LLM is MindsHub: the desktop's browser is local so it
+   needs no browser server, not to keep its pages from MindsHub. On the
+   desktop it also says that the agent's code runs as the person.
 
    Every desktop also gets a switch for the agent's anonymous usage events, in
    its own group whatever the browser's status, since it covers all of the
@@ -90,6 +107,10 @@ export function approveStepsHelp(agentLabel) {
   return i18n.t('settingsTools:browser.approveStepsHelp', { agent: agentLabel });
 }
 
+export function onlyWhenNeededHelp(agentLabel) {
+  return i18n.t('settingsTools:browser.onlyWhenNeededHelp', { agent: agentLabel });
+}
+
 export default function BrowserSettingsSection({ settings, setSetting, agentLabel = 'Anton', signedInToMindsHub = false }) {
   const { t } = useTranslation('settingsTools');
   // The last BrowseStatus answer (api.js), or null before the first one.
@@ -99,8 +120,13 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   const [signOut, setSignOut] = useState({ busy: false, note: '' });
   // Whether the browser's help tooltip is open (hover, focus, or a tap on its info button).
   const [helpOpen, setHelpOpen] = useState(false);
+  // The same for Only show the browser when I'm needed.
+  const [neededHelpOpen, setNeededHelpOpen] = useState(false);
   // The desktop agent's usage events, or null where the shell can't say.
   const [usageEvents, setUsageEvents] = useState(null);
+  // The decision model's fields, open under the switch, and their test.
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [decisionTest, setDecisionTest] = useState({ busy: false, passed: false, note: '' });
   const inApp = host.supportsInAppBrowser;
   // The newest status read: an older one that answers later is dropped.
   const lastRead = useRef(0);
@@ -157,7 +183,13 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     void ask();
   }, []);
 
-  const offered = status?.available === true;
+  // On the web the browser runs only on MindsHub (see above).
+  const offered = status?.available === true && !(host.isWeb && !llmViaMindsHub(settings));
+  // No decisions model, and none tested here since.
+  const needsDecisions = status !== null && !hasDecisionsModel(status) && !decisionTest.passed;
+  const canSetDecisions = status?.can_set_decisions_model === true;
+  const decisionUrl = (settings.decisionModelUrl ?? '').trim();
+  const decisionKey = settings.decisionModelApiKey ?? '';
   const refused = status?.status === 'not_entitled' || status?.status === 'organization_off';
   // No answer yet and the read failed, in a shell that can run a browser.
   const unconfirmed = status === null && readFailed && (host.isWeb || inApp);
@@ -195,6 +227,15 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     </>
   );
 
+  /* What the decisions model gets, on either browser: Jev on MindsHub (the
+     desktop's in-app browser asks it too when the LLM is MindsHub), or the
+     organization's own decision model. */
+  let decisionsLine = '';
+  if (status?.decisions_model === 'own') decisionsLine = t('browser.ownDecisionsLine');
+  else if (!inApp || status?.decisions_model === 'mindshub') decisionsLine = t('browser.webJevLine');
+  const contentLine = inApp ? pageContentLine(agentLabel, { signedInToMindsHub }) : pageContentLine(agentLabel);
+  const providerSees = decisionsLine ? `${contentLine} ${decisionsLine}` : contentLine;
+
   const browserHelp = (
     <div className="flex flex-col gap-2 max-w-[340px] text-left">
       <p className="m-0">
@@ -203,24 +244,96 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
       </p>
       <p className="m-0">
         <strong>{t('browser.providerSeesTitle')}</strong>{' '}
-        <span>{inApp ? pageContentLine(agentLabel, { signedInToMindsHub }) : `${pageContentLine(agentLabel)} ${t('browser.webJevLine')}`}</span>
+        <span>{providerSees}</span>
       </p>
     </div>
   );
 
+  const turnBrowser = (on) => {
+    if (on && needsDecisions) {
+      // Only once a decision model answers (testDecisions).
+      setSetupOpen(true);
+      return;
+    }
+    setSetupOpen(false);
+    setSetting('browserEnabled', on);
+  };
+
+  const testDecisions = async () => {
+    setDecisionTest({ busy: true, passed: false, note: '' });
+    let answer = null;
+    try {
+      // '***' is the stored key, which the server sends only to the stored endpoint.
+      answer = await testDecisionModel({ url: decisionUrl, apiKey: decisionKey, model: (settings.decisionModel ?? '').trim() });
+    } catch (err) {
+      setDecisionTest({ busy: false, passed: false, note: err?.message || t('browser.decisionsUntested') });
+      return;
+    }
+    if (answer?.ok !== true) {
+      setDecisionTest({ busy: false, passed: false, note: t('browser.decisionsFailed', { error: answer?.error || '?' }) });
+      return;
+    }
+    setDecisionTest({ busy: false, passed: true, note: '' });
+    setSetupOpen(false);
+    setSetting('browserEnabled', true);
+  };
+
   const browserSwitch = (
     <Switch
-      checked={settings.browserEnabled === true}
-      onCheckedChange={(v) => setSetting('browserEnabled', v)}
+      checked={settings.browserEnabled === true && !needsDecisions}
+      onCheckedChange={turnBrowser}
+      disabled={needsDecisions && !canSetDecisions}
       aria-label={t('browser.sharedBrowser')}
     />
+  );
+
+  /* Why the switch is off without a decisions model, and what to do: the
+     fields for whoever may set one up, a note to ask an admin for anyone else. */
+  let decisionsNote = null;
+  if (needsDecisions) {
+    const removed = settings.browserEnabled === true ? `${t('browser.decisionsRemoved')} ` : '';
+    decisionsNote = canSetDecisions
+      ? `${removed}${t('browser.decisionsSetUp', { agent: agentLabel })}`
+      : `${removed}${t('browser.decisionsAskAdmin')}`;
+  }
+  const decisionFields = needsDecisions && canSetDecisions && (setupOpen || settings.browserEnabled === true) && (
+    <div className="flex flex-col gap-3">
+      <Field label={t('browser.decisionsUrl')}>
+        <Input
+          type="url"
+          value={settings.decisionModelUrl ?? ''}
+          onChange={(v) => setSetting('decisionModelUrl', v)}
+          placeholder="https://api.typesafe.ai/v1/systemone"
+        />
+      </Field>
+      <Field label={t('browser.decisionsKey')}>
+        {/* A saved key reads as '***': the field shows it as saved, and typing replaces it. */}
+        <Input
+          type="password"
+          autoComplete="off"
+          value={decisionKey === '***' ? '' : decisionKey}
+          onChange={(v) => setSetting('decisionModelApiKey', v)}
+          placeholder={decisionKey === '***' ? t('browser.decisionsKeySaved') : ''}
+        />
+      </Field>
+      <div className="flex items-center gap-3">
+        <Button size="sm" disabled={!decisionUrl || !decisionKey || decisionTest.busy} onClick={() => void testDecisions()}>
+          {decisionTest.busy ? t('browser.decisionsTesting') : t('browser.decisionsTest')}
+        </Button>
+        {decisionTest.note && <span role="status" className="text-sm text-ink-3">{decisionTest.note}</span>}
+      </div>
+    </div>
   );
 
   let browserGroup = null;
   if (offered) {
     browserGroup = (
       <SettingsGroup title={t('browser.sharedBrowser')}>
-        <Section title={browserTitle} subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}>
+        <Section
+          title={browserTitle}
+          subtitle={inApp ? desktopDisclosure(agentLabel) : webDisclosure(agentLabel)}
+          notice={decisionsNote && <span className="text-sm text-ink-2">{decisionsNote}</span>}
+        >
           {/* What stays signed in and what the model provider sees: a tooltip on
               the switch, on hover or focus, which the info button also opens on
               a tap or a key, since touch has no hover. */}
@@ -239,8 +352,9 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
             </span>
           </Tooltip>
         </Section>
+        {decisionFields && <div className="pb-4">{decisionFields}</div>}
         {/* The rest only matters with the browser on. */}
-        {settings.browserEnabled === true && (
+        {settings.browserEnabled === true && !needsDecisions && (
           <>
             <Section title={t('browser.approveStepsTitle')} subtitle={approveStepsHelp(agentLabel)}>
               {/* The person's setting (browser_approve_steps), so every device asks alike; on unless turned off. */}
@@ -249,6 +363,29 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
                 onCheckedChange={(on) => setSetting('browserApproveSteps', on)}
                 aria-label={t('browser.approveStepsTitle')}
               />
+            </Section>
+            <Section title={t('browser.onlyWhenNeededTitle')}>
+              {/* The person's setting (browser_only_when_needed), on unless
+                  turned off. Its help is a tooltip like the browser's own,
+                  which the info button opens on a tap or a key. */}
+              <Tooltip content={<span className="block max-w-[300px] text-left">{onlyWhenNeededHelp(agentLabel)}</span>} open={neededHelpOpen} onOpenChange={setNeededHelpOpen} closeOnClick={false}>
+                <span className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-full border-0 bg-transparent text-ink-3 hover:text-ink cursor-pointer"
+                    aria-label={t('browser.onlyWhenNeededLearn')}
+                    aria-expanded={neededHelpOpen}
+                    onClick={() => setNeededHelpOpen(true)}
+                  >
+                    <Info size={15} aria-hidden="true" />
+                  </button>
+                  <Switch
+                    checked={showsOnlyWhenNeeded(settings)}
+                    onCheckedChange={(on) => setSetting('browserOnlyWhenNeeded', on)}
+                    aria-label={t('browser.onlyWhenNeededTitle')}
+                  />
+                </span>
+              </Tooltip>
             </Section>
             {signOutRow}
           </>

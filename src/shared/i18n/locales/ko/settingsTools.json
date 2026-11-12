@@ -75,7 +75,21 @@
     "usageEventsTitle": "사용 이벤트",
     "sendUsageEvents": "익명 사용 이벤트 보내기",
     "approveStepsTitle": "브라우저 단계 승인",
-    "approveStepsHelp": "켜기: 구매, 메시지, 양식처럼 무언가를 확정하는 단계 전에 {agent}이(가) 승인을 기다립니다. 끄기: {agent}이(가) 그대로 진행합니다."
+    "approveStepsHelp": "켜기: 구매, 메시지, 양식처럼 무언가를 확정하는 단계 전에 {agent}이(가) 승인을 기다립니다. 끄기: {agent}이(가) 그대로 진행합니다.",
+    "onlyWhenNeededTitle": "내가 필요할 때만 브라우저 표시",
+    "onlyWhenNeededHelp": "끄면 브라우저가 항상 표시되어 {agent}이(가) 탐색하는 모습을 볼 수 있습니다. 누군가에게는 재미있고, 누군가에게는 지루합니다.",
+    "onlyWhenNeededLearn": "필요할 때만 브라우저를 표시하는 설정 정보",
+    "decisionsAskAdmin": "브라우저를 사용하려면 관리자에게 결정 모델 설정을 요청하세요.",
+    "decisionsSetUp": "{agent}이(가) 단계를 빠르게 고르려면 결정 모델이 필요합니다. 엔드포인트와 API 키를 입력한 뒤 테스트하세요.",
+    "decisionsRemoved": "꺼짐: 결정 모델이 더 이상 없습니다.",
+    "decisionsUrl": "결정 모델 엔드포인트",
+    "decisionsKey": "API 키",
+    "decisionsKeySaved": "저장되었습니다. 입력하면 바뀝니다.",
+    "decisionsTest": "테스트하고 켜기",
+    "decisionsTesting": "테스트 중…",
+    "decisionsFailed": "결정 모델이 예상대로 응답하지 않았습니다({error}). 엔드포인트와 키를 확인하세요.",
+    "decisionsUntested": "결정 모델을 테스트할 수 없습니다. 다시 시도하세요.",
+    "ownDecisionsLine": "조직의 결정 모델도 각 브라우저 단계의 목표, 페이지 주소, 제목, 요소 이름, 처음 1,500자, 그리고 이전 주소를 포함한 최근 단계를 받습니다. 필드 값이나 사용자가 입력한 내용은 받지 않습니다."
   },
   "codingAgent": {
     "loadFailed": "코딩 에이전트 옵션을 불러오지 못했습니다.",
@@ -177,5 +191,20 @@
     "instructionsPlaceholder": "이 채팅의 페르소나/어조",
     "save": "저장",
     "removeRoute": "라우트 제거"
+  },
+  "decisionModel": {
+    "title": "결정 모델",
+    "endpointTitle": "조직의 결정 모델",
+    "help": "MindsHub를 사용하지 않을 때 {agent}의 브라우저가 단계를 빠르게 고르고, 어떤 메시지에 전체 에이전트가 필요한지 판단하게 해 줍니다. TypeSafe의 결정 요청을 받는 엔드포인트라면 무엇이든 됩니다.",
+    "url": "엔드포인트 URL",
+    "key": "API 키",
+    "keySaved": "저장되었습니다. 입력하면 바뀝니다.",
+    "model": "모델 이름",
+    "test": "테스트",
+    "testing": "테스트 중…",
+    "passed": "{ms}ms 만에 응답했습니다.",
+    "failed": "결정 모델이 예상대로 응답하지 않았습니다({error}). 엔드포인트와 키를 확인하세요.",
+    "untested": "결정 모델을 테스트할 수 없습니다. 다시 시도하세요.",
+    "remove": "삭제"
   }
 }

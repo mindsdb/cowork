@@ -54,7 +54,9 @@ import ProjectBrowsers from '../components/browser/ProjectBrowsers';
 import { browserInsteadRequest } from '../lib/connectorWebsites';
 import TopShortcuts from '../components/TopShortcuts';
 import VoiceOrb from '../components/VoiceOrb';
-import { isPositionClickCard } from '../lib/browserApproval';
+import { isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApproval';
+import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
+import { useBrowserPrefs } from '../lib/browserPrefs';
 import Button from '../components/ui/Button';
 import { createBrowserWarmUp } from '../lib/browserWarmUp';
 import { useNativeOverlay } from '../lib/nativeOverlay';
@@ -660,9 +662,12 @@ function justFinished(message) {
 }
 
 function TurnSegments({ steps, startedAt, endedAt = null, conversationId, conversationLive, reopenable = false, reply = null, onAnswered, onAnswerAsMessage, onActivateStep, live = null, idPrefix = '', collapseOnMount = false, agentLabel = null, onMoveAddonToQueue = null }) {
+  // Only show the browser when I'm needed (Settings): a turn's browser steps
+  // are one row, labelled by the latest (lib/browserSteps.js).
+  const { onlyWhenNeeded } = useBrowserPrefs();
   const segments = useMemo(
-    () => splitTurnSegments(steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
-    [steps, startedAt, endedAt, conversationLive, reopenable, reply],
+    () => splitTurnSegments(onlyWhenNeeded ? groupBrowserSteps(steps) : steps, { startedAt, endedAt, conversationLive, reopenable, reply }),
+    [steps, startedAt, endedAt, conversationLive, reopenable, reply, onlyWhenNeeded],
   );
   const liveIdx = live ? liveSegmentIndex(segments) : -1;
   // The live segment sits right before a pending question, if there is one.
@@ -2263,9 +2268,25 @@ export default function ChatView({
     setShownBrowserId(null);
   }, [task.id]);
   const liveBrowserId = browserSessionIdIn(streamingMsg?.steps);
+  /* With Only show the browser when I'm needed on (Settings, the default),
+     the pane doesn't open while the agent browses: only when it's the
+     person's turn, a card the browser asks them (a held step to approve, a
+     sign-in, a CAPTCHA or another hand-over), keyed by that card so each
+     new one opens it again. The browser button opens it at any time. */
+  const { onlyWhenNeeded } = useBrowserPrefs();
+  const personsTurnId = (streamingMsg?.steps || []).find(isPersonsBrowserTurn)?.data?.question_id || null;
+  const personsTurnBrowserId = personsTurnId
+    ? (liveBrowserId || latestBrowserSessionIdIn(visibleMessages, streamingMsg))
+    : null;
   useEffect(() => {
-    if (browserOn && liveBrowserId) setShownBrowserId(liveBrowserId);
-  }, [browserOn, liveBrowserId, task.id]);
+    if (browserOn && liveBrowserId && !onlyWhenNeeded) setShownBrowserId(liveBrowserId);
+  }, [browserOn, liveBrowserId, task.id, onlyWhenNeeded]);
+  useEffect(() => {
+    if (!browserOn || !onlyWhenNeeded || !personsTurnBrowserId) return;
+    // A phone push notification is the natural follow-up here once the iPhone app lands.
+    setShownBrowserId(personsTurnBrowserId);
+    setBrowserMinimized(false);
+  }, [browserOn, onlyWhenNeeded, personsTurnId, personsTurnBrowserId, task.id]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
   // A request (a voice call's show_browser) applies once: coming back to the
   // task later doesn't open the pane again.
@@ -2298,7 +2319,7 @@ export default function ChatView({
      the answer shows. */
   const [browserMinimized, setBrowserMinimized] = useState(false);
   useEffect(() => { setBrowserMinimized(false); }, [task.id]);
-  useEffect(() => { if (liveBrowserId) setBrowserMinimized(false); }, [liveBrowserId]);
+  useEffect(() => { if (liveBrowserId && !onlyWhenNeeded) setBrowserMinimized(false); }, [liveBrowserId, onlyWhenNeeded]);
   const wasStreamingRef = useRef(false);
   useEffect(() => {
     if (wasStreamingRef.current && !isStreaming && isMobile && browserOpen) setBrowserMinimized(true);
@@ -2525,8 +2546,13 @@ export default function ChatView({
      Browser step shows its session in the pane; any other step opens its
      cells in the scratchpad viewer, under its message's key `prefix`. */
   const activateStep = (prefix) => (step) => {
-    if (step?.badge === BROWSER_BADGE) {
-      if (viewable(step.data?.sessionId)) setShownBrowserId(step.data.sessionId);
+    // A Browser step, a browser call or a turn's browser row shows its browser.
+    if (step?.badge === BROWSER_BADGE || step?.badge === BROWSER_ACTION_BADGE) {
+      const sessionId = step.data?.sessionId || latestBrowserId;
+      if (viewable(sessionId)) {
+        setShownBrowserId(sessionId);
+        setBrowserMinimized(false);
+      }
       return;
     }
     if (prefix) setOpenScratchpadStepId(prefixId(prefix, step.id));

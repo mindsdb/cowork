@@ -75,7 +75,21 @@
     "usageEventsTitle": "Eventos de uso",
     "sendUsageEvents": "Enviar eventos de uso anónimos",
     "approveStepsTitle": "Aprobar pasos del navegador",
-    "approveStepsHelp": "Activado: {agent} espera tu aprobación antes de un paso que compromete algo, como una compra, un mensaje o un formulario. Desactivado: {agent} sigue adelante."
+    "approveStepsHelp": "Activado: {agent} espera tu aprobación antes de un paso que compromete algo, como una compra, un mensaje o un formulario. Desactivado: {agent} sigue adelante.",
+    "onlyWhenNeededTitle": "Mostrar el navegador solo cuando me necesite",
+    "onlyWhenNeededHelp": "Desactívalo para ver siempre el navegador y mirar cómo navega {agent}. Divertido para algunos, tedioso para otros.",
+    "onlyWhenNeededLearn": "Acerca de mostrar el navegador solo cuando se te necesita",
+    "decisionsAskAdmin": "Pide a tu administrador que configure un modelo de decisión para usar el navegador.",
+    "decisionsSetUp": "Para elegir sus pasos rápido, {agent} necesita un modelo de decisión. Agrega su endpoint y su clave de API, y luego pruébalo.",
+    "decisionsRemoved": "Desactivado: ya no hay un modelo de decisión.",
+    "decisionsUrl": "Endpoint del modelo de decisión",
+    "decisionsKey": "Clave de API",
+    "decisionsKeySaved": "Guardada. Escribe para reemplazarla.",
+    "decisionsTest": "Probar y activar",
+    "decisionsTesting": "Probando…",
+    "decisionsFailed": "El modelo de decisión no respondió como se esperaba ({error}). Revisa el endpoint y la clave.",
+    "decisionsUntested": "No se pudo probar el modelo de decisión. Vuelve a intentarlo.",
+    "ownDecisionsLine": "El modelo de decisión de tu organización también recibe el objetivo de cada paso del navegador, la dirección de la página, el título, los nombres de los elementos y los primeros 1500 caracteres, y los pasos recientes, incluidas las direcciones anteriores, sin valores de campos ni lo que escribes."
   },
   "codingAgent": {
     "loadFailed": "No se pudieron cargar las opciones del agente de código.",
@@ -177,5 +191,20 @@
     "instructionsPlaceholder": "personalidad / tono para este chat",
     "save": "Guardar",
     "removeRoute": "Quitar ruta"
+  },
+  "decisionModel": {
+    "title": "Modelo de decisión",
+    "endpointTitle": "El modelo de decisión de tu organización",
+    "help": "Es lo que permite que el navegador de {agent} elija sus pasos rápido cuando no usas MindsHub, y que decida qué mensajes necesitan el agente completo. Sirve cualquier endpoint que acepte la solicitud de decisión de TypeSafe.",
+    "url": "URL del endpoint",
+    "key": "Clave de API",
+    "keySaved": "Guardada. Escribe para reemplazarla.",
+    "model": "Nombre del modelo",
+    "test": "Probar",
+    "testing": "Probando…",
+    "passed": "Respondió en {ms} ms.",
+    "failed": "El modelo de decisión no respondió como se esperaba ({error}). Revisa el endpoint y la clave.",
+    "untested": "No se pudo probar el modelo de decisión. Vuelve a intentarlo.",
+    "remove": "Quitar"
   }
 }

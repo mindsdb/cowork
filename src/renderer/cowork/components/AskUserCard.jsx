@@ -6,12 +6,15 @@ import {
   browserApprovalIds,
   declineBrowserApproval,
   isBrowserApprovalCard,
+  isBrowserStepCard,
   isAutoApprovedCard,
+  isPositionClickCard,
   POSITION_AUTO_APPROVE_MS,
   recordBrowserApproval,
 } from '../lib/browserApproval';
 import { host } from '../../platform/host';
-import { useBrowserPrefs } from '../lib/browserPrefs';
+import { saveApproveSteps, useBrowserPrefs } from '../lib/browserPrefs';
+import { Switch } from './ui/Switch';
 import { MarkdownContent, MarkdownPlainText } from './markdown/MarkdownContent';
 import ChatCardShell from './ChatCardShell';
 import { cn } from '../lib/cn';
@@ -56,9 +59,9 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
 
   const settled = !reopened && (Boolean(answer) || expired || gone);
 
-  /* With Approve browser steps off, a position card or a held browser step
-     is approved by the app (App.jsx approvePositionClicks): it stays hidden,
-     and shows only if that approval hasn't landed in time. */
+  /* A position card always, and a held browser step with Approve browser
+     steps off, is approved by the app (App.jsx approvePositionClicks): it
+     stays hidden, and shows only if that approval hasn't landed in time. */
   const browserPrefs = useBrowserPrefs();
   const positionCard = !reopened && isAutoApprovedCard(q, browserPrefs);
   const [positionLate, setPositionLate] = useState(false);
@@ -67,6 +70,17 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
     const timer = setTimeout(() => setPositionLate(true), POSITION_AUTO_APPROVE_MS);
     return () => clearTimeout(timer);
   }, [positionCard, settled]);
+
+  /* A held browser step's card offers Skip approvals: it turns Approve
+     browser steps off (the person's setting, as in Settings) for later
+     steps. This card still needs its own answer (lib/browserPrefs.js). */
+  const offersSkip = !reopened && !settled && isBrowserStepCard(q) && !isPositionClickCard(q);
+  const [skipSaving, setSkipSaving] = useState(false);
+  const setSkipApprovals = async (skip) => {
+    setSkipSaving(true);
+    await saveApproveSteps(!skip, skip ? q.question_id : null);
+    setSkipSaving(false);
+  };
 
   // Only a multi-line prompt is markdown: the ask_user tool asks for one
   // plain-text line, and markdown would lose text in it ("<div>" vanishes,
@@ -297,6 +311,19 @@ export default function AskUserCard({ step, conversationId, onAnswered, onAnswer
       </div>
 
       {refusal && !settled ? <div role="alert" className="mt-2 text-xs text-danger">{refusal}</div> : null}
+
+      {offersSkip ? (
+        <div className="mt-2 flex items-center justify-end gap-2 px-3">
+          <span aria-hidden className="text-xs text-ink-4">{t('askUser.skipApprovals')}</span>
+          <Switch
+            size="sm"
+            checked={browserPrefs.askToApprove === false}
+            disabled={skipSaving}
+            onCheckedChange={(skip) => void setSkipApprovals(skip)}
+            aria-label={t('askUser.skipApprovals')}
+          />
+        </div>
+      ) : null}
     </ChatCardShell>
   );
 }
