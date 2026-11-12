@@ -34,8 +34,10 @@
 // show its rows (`replay`), and replay never queues: only the live path calls
 // `newlyReturnedAddons`.
 
-/** How long the app waits for the server's verdict before queueing instead. */
-export const ADDON_REQUEST_TIMEOUT_MS = 4000;
+/** How long the app waits for the server's verdict. The server bounds the
+ *  request to 8 s, so a longer wait means no answer came back at all — and
+ *  then nobody knows whether it was added (see `addonOutcome`'s `unclear`). */
+export const ADDON_REQUEST_TIMEOUT_MS = 10000;
 
 export const ADDON_BADGE = 'Addon';
 

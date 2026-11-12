@@ -4220,7 +4220,10 @@ function AppCore() {
       noteAddon(() => trackAddonQueued(outcome.reason));
       // Already settled by its stream (handed back while the request was out).
       if (addonHandled(localKey)) { settle(undefined); return; }
-      settle(settledSlot(outcome.reason));
+      // No answer (a timeout, a network error, a body we do not know): the
+      // server may have added it, so it waits paused in its slot rather than
+      // run a second time. Its stream showing it added or read removes it.
+      settle(outcome.unclear ? UNCONFIRMED : settledSlot(outcome.reason));
     })();
   };
 

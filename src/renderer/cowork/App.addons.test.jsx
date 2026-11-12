@@ -280,7 +280,6 @@ describe('a message sent while Anton is working (ENG-4194)', () => {
 
   it.each([
     ['an older server without the route', { status: 'unsupported' }, 'unsupported'],
-    ['a timeout', { status: 'timeout' }, 'timeout'],
     ['no running turn', { status: 'not_found' }, 'not_found'],
   ])('queues on %s', async (_case, result, reason) => {
     const user = userEvent.setup();
@@ -457,6 +456,62 @@ describe('Add to current task on a queued message', () => {
 });
 
 describe('self-review: whose add-on, and never losing or doubling one (ENG-4194)', () => {
+  it.each([
+    ['a timeout', { status: 'timeout' }, 'timeout'],
+    ['a network error', { status: 'error' }, 'error'],
+  ])('pauses a message on %s, since the server may have added it', async (_case, result, reason) => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    spies.sendAddon.mockImplementation(async () => result);
+
+    await send(user, composer, 'also Q3');
+
+    const chip = await screen.findByTestId('queued-chip');
+    await waitFor(() => expect(chip).toHaveAttribute('data-paused', 'true'));
+    expect(screen.getByRole('button', { name: 'Send again' })).toBeInTheDocument();
+    expect(trackAddonQueued).toHaveBeenCalledWith(reason);
+    // Never run on its own when the turn ends.
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the paused chip once the stream shows the message was added after all', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    spies.sendAddon.mockImplementation(async () => ({ status: 'timeout' }));
+    await send(user, composer, 'also Q3');
+    await waitFor(() => expect(screen.getByTestId('queued-chip')).toHaveAttribute('data-paused', 'true'));
+    const { localKey } = spies.sendAddon.mock.calls[0][2];
+
+    await emit({ type: 'response.addon', addon_id: 'ad7', local_key: localKey, state: 'added', text: 'also Q3', decided_by: 'jev' });
+
+    await waitFor(() => expect(screen.queryByTestId('queued-chip')).toBeNull());
+    expect(addonRow()).toHaveAttribute('data-addon-state', 'added');
+  });
+
+  it('keeps the reserved slot while the verdict is out, then pauses it in place', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    const verdict = deferred();
+    spies.sendAddon.mockImplementationOnce(() => verdict.promise);
+    await send(user, composer, 'first follow-up');
+    // A later message with no add-on offer (it carries nothing special: the
+    // server queues it at once).
+    spies.sendAddon.mockImplementationOnce(async () => ({ status: 'queued', reason: 'next_task' }));
+    await send(user, composer, 'second follow-up');
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    // The held slot is shown, pending, ahead of the later message.
+    await waitFor(() => expect(screen.getAllByTestId('queued-chip')).toHaveLength(2));
+    expect(screen.getAllByTestId('queued-chip')[0]).toHaveTextContent('first follow-up');
+
+    await act(async () => { verdict.resolve({ status: 'timeout' }); await verdict.promise; });
+    // Paused in its own place; the later message runs.
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('second follow-up');
+    expect(screen.getByTestId('queued-chip')).toHaveTextContent('first follow-up');
+    expect(screen.getByTestId('queued-chip')).toHaveAttribute('data-paused', 'true');
+  });
+
   it('never shows or queues an add-on another client sent', async () => {
     const user = userEvent.setup();
     await startTurn(user);
