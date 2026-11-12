@@ -5,6 +5,7 @@ import {
   approveIfApprovalsOff,
   autoApprovePositionClick,
   isPositionClickCard,
+  isPersonsBrowserTurn,
   isAutoApprovedCard,
   isBrowserStepCard,
   STEP_APPROVE_DETAIL,
@@ -196,5 +197,19 @@ describe('approving for the person only with approvals off on the server', () =>
     expect(await approveIfApprovalsOff({ ...args, submit, readAsks: async () => true })).toBe('asks');
     expect(await approveIfApprovalsOff({ ...args, submit, readAsks: async () => null })).toBe('unread');
     expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe("the person's turn in the browser", () => {
+  const ask = (data) => ({ badge: 'AskUser', data });
+  const STEP = [{ value: 'approve', label: 'Approve', detail: 'Take this step once' }, { value: 'cancel', label: 'Cancel' }];
+  it('is an unanswered held step, sign-in or other hand-over, not a click by position or an answered card', () => {
+    resetBrowserPrefsForTests();
+    expect(isPersonsBrowserTurn(ask({ question_id: 'browser:approve:t:p', options: STEP }))).toBe(true);
+    expect(isPersonsBrowserTurn(ask({ question_id: 'browser:9f2c', options: [{ value: 'later' }, { value: 'stop' }] }))).toBe(true);
+    expect(isPersonsBrowserTurn(ask({ question_id: 'q1', options: [{ value: 'approve', detail: POSITION_APPROVE_DETAIL }] }))).toBe(false);
+    expect(isPersonsBrowserTurn(ask({ question_id: 'browser:9f2c', options: [], answer: { status: 'answered' } }))).toBe(false);
+    expect(isPersonsBrowserTurn(ask({ question_id: 'ask:q', options: [{ value: 'yes' }] }))).toBe(false);
+    expect(isPersonsBrowserTurn({ badge: 'Tool', data: { question_id: 'browser:x' } })).toBe(false);
   });
 });

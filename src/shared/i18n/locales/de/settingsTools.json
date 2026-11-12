@@ -75,7 +75,10 @@
     "usageEventsTitle": "Nutzungsereignisse",
     "sendUsageEvents": "Anonyme Nutzungsereignisse senden",
     "approveStepsTitle": "Browser-Schritte bestätigen",
-    "approveStepsHelp": "Ein: {agent} wartet auf Ihr OK vor einem Schritt, der etwas verbindlich macht, etwa einen Kauf, eine Nachricht oder ein Formular. Aus: {agent} macht weiter."
+    "approveStepsHelp": "Ein: {agent} wartet auf Ihr OK vor einem Schritt, der etwas verbindlich macht, etwa einen Kauf, eine Nachricht oder ein Formular. Aus: {agent} macht weiter.",
+    "onlyWhenNeededTitle": "Browser nur zeigen, wenn ich gebraucht werde",
+    "onlyWhenNeededHelp": "Schalten Sie dies aus, um den Browser immer zu sehen und {agent} beim Surfen zuzuschauen. Für manche unterhaltsam, für andere mühsam.",
+    "onlyWhenNeededLearn": "Über die Anzeige des Browsers nur bei Bedarf"
   },
   "codingAgent": {
     "loadFailed": "Optionen für den Coding-Agent konnten nicht geladen werden.",

@@ -290,6 +290,7 @@
     "hintCustom": "…或在下方输入你自己的回答。",
     "hintSelectOnly": "请从上方选择一个选项，输入的回复不会被接受。点击“跳过”可输入其他内容。",
     "skip": "跳过",
+    "skipApprovals": "后续步骤跳过批准",
     "send": "发送",
     "skipped": "已跳过。",
     "timedOut": "未回答：已超时。",

@@ -75,7 +75,10 @@
     "usageEventsTitle": "Événements d’utilisation",
     "sendUsageEvents": "Envoyer des événements d’utilisation anonymes",
     "approveStepsTitle": "Approuver les étapes du navigateur",
-    "approveStepsHelp": "Activé : {agent} attend votre accord avant une étape qui engage quelque chose, comme un achat, un message ou un formulaire. Désactivé : {agent} continue."
+    "approveStepsHelp": "Activé : {agent} attend votre accord avant une étape qui engage quelque chose, comme un achat, un message ou un formulaire. Désactivé : {agent} continue.",
+    "onlyWhenNeededTitle": "N'afficher le navigateur que lorsque j'en ai besoin",
+    "onlyWhenNeededHelp": "Désactivez cette option pour toujours voir le navigateur et regarder {agent} naviguer. Amusant pour certains, fastidieux pour d'autres.",
+    "onlyWhenNeededLearn": "À propos de l'affichage du navigateur uniquement en cas de besoin"
   },
   "codingAgent": {
     "loadFailed": "Impossible de charger les options de l’agent de code.",

@@ -74,6 +74,9 @@ export const SETTINGS_KEY_MAP = {
   // Whether the person approves consequential browser steps on a card (default
   // on; lib/browserPrefs.js reads anything but false as on).
   browser_approve_steps: 'browserApproveSteps',
+  // Whether the browser pane opens by itself only when the person is needed,
+  // with a turn's browser steps as one row (default on; lib/browserPrefs.js).
+  browser_only_when_needed: 'browserOnlyWhenNeeded',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.

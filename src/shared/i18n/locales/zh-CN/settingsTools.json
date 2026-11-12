@@ -75,7 +75,10 @@
     "usageEventsTitle": "使用事件",
     "sendUsageEvents": "发送匿名使用事件",
     "approveStepsTitle": "批准浏览器步骤",
-    "approveStepsHelp": "开启：在执行购买、发送消息或提交表单等会产生实际结果的步骤前，{agent} 会等待你确认。关闭：{agent} 直接继续。"
+    "approveStepsHelp": "开启：在执行购买、发送消息或提交表单等会产生实际结果的步骤前，{agent} 会等待你确认。关闭：{agent} 直接继续。",
+    "onlyWhenNeededTitle": "仅在需要我时显示浏览器",
+    "onlyWhenNeededHelp": "关闭后会一直显示浏览器，你可以看着 {agent} 浏览。有人觉得有趣，有人觉得乏味。",
+    "onlyWhenNeededLearn": "关于仅在需要时显示浏览器"
   },
   "codingAgent": {
     "loadFailed": "无法加载编程智能体选项。",

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 import { Section, SettingsGroup } from './settingsLayout';
-import { asksToApprove } from '../../lib/browserPrefs';
+import { asksToApprove, showsOnlyWhenNeeded } from '../../lib/browserPrefs';
 import { Switch } from '../../components/ui/Switch';
 import { Tooltip } from '../../components/ui/Tooltip';
 import Button from '../../components/ui/Button';
@@ -90,6 +90,10 @@ export function approveStepsHelp(agentLabel) {
   return i18n.t('settingsTools:browser.approveStepsHelp', { agent: agentLabel });
 }
 
+export function onlyWhenNeededHelp(agentLabel) {
+  return i18n.t('settingsTools:browser.onlyWhenNeededHelp', { agent: agentLabel });
+}
+
 export default function BrowserSettingsSection({ settings, setSetting, agentLabel = 'Anton', signedInToMindsHub = false }) {
   const { t } = useTranslation('settingsTools');
   // The last BrowseStatus answer (api.js), or null before the first one.
@@ -99,6 +103,8 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
   const [signOut, setSignOut] = useState({ busy: false, note: '' });
   // Whether the browser's help tooltip is open (hover, focus, or a tap on its info button).
   const [helpOpen, setHelpOpen] = useState(false);
+  // The same for Only show the browser when I'm needed.
+  const [neededHelpOpen, setNeededHelpOpen] = useState(false);
   // The desktop agent's usage events, or null where the shell can't say.
   const [usageEvents, setUsageEvents] = useState(null);
   const inApp = host.supportsInAppBrowser;
@@ -249,6 +255,29 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
                 onCheckedChange={(on) => setSetting('browserApproveSteps', on)}
                 aria-label={t('browser.approveStepsTitle')}
               />
+            </Section>
+            <Section title={t('browser.onlyWhenNeededTitle')}>
+              {/* The person's setting (browser_only_when_needed), on unless
+                  turned off. Its help is a tooltip like the browser's own,
+                  which the info button opens on a tap or a key. */}
+              <Tooltip content={<span className="block max-w-[300px] text-left">{onlyWhenNeededHelp(agentLabel)}</span>} open={neededHelpOpen} onOpenChange={setNeededHelpOpen} closeOnClick={false}>
+                <span className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-full border-0 bg-transparent text-ink-3 hover:text-ink cursor-pointer"
+                    aria-label={t('browser.onlyWhenNeededLearn')}
+                    aria-expanded={neededHelpOpen}
+                    onClick={() => setNeededHelpOpen(true)}
+                  >
+                    <Info size={15} aria-hidden="true" />
+                  </button>
+                  <Switch
+                    checked={showsOnlyWhenNeeded(settings)}
+                    onCheckedChange={(on) => setSetting('browserOnlyWhenNeeded', on)}
+                    aria-label={t('browser.onlyWhenNeededTitle')}
+                  />
+                </span>
+              </Tooltip>
             </Section>
             {signOutRow}
           </>

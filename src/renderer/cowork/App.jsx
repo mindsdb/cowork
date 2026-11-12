@@ -174,7 +174,7 @@ import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePre
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
 import { approveIfApprovalsOff, autoApprovePositionClick, isAutoApprovedCard, isPositionClickCard } from './lib/browserApproval';
-import { forgetLegacyBrowserPrefs, syncBrowserPrefs } from './lib/browserPrefs';
+import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
 import { Outlet } from 'react-router-dom';
 
@@ -664,7 +664,9 @@ function AppCore() {
   const [settings, setSettings] = useState(loadCachedSettings);
   // Approve browser steps is the person's setting (lib/browserPrefs.js): the
   // cards read it as it changes here, and the old device-only copy goes.
-  useEffect(() => { syncBrowserPrefs({ browserApproveSteps: settings.browserApproveSteps }); }, [settings.browserApproveSteps]);
+  useEffect(() => {
+    syncBrowserPrefs({ browserApproveSteps: settings.browserApproveSteps, browserOnlyWhenNeeded: settings.browserOnlyWhenNeeded });
+  }, [settings.browserApproveSteps, settings.browserOnlyWhenNeeded]);
   useEffect(() => { forgetLegacyBrowserPrefs(); }, []);
   // Whether this session's settings have arrived from the server, so a choice
   // that depends on them (such as the models an operator offers) is final.
@@ -2660,6 +2662,8 @@ function AppCore() {
     });
     return result;
   }, []);
+  // A held step's card can turn Approve browser steps off (its Skip approvals).
+  useEffect(() => setBrowserSettingSaver(saveSettings), [saveSettings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
   const resolvedTask = tasks.find((t) => t.id === activeTaskId) || null;

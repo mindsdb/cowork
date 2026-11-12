@@ -43,6 +43,8 @@ const openBrowserAt = vi.fn();
 import ChatView, { BROWSER_DONE_MESSAGE } from './ChatView';
 import { browserStep } from '../lib/browserSession';
 import { NOWHERE } from '../components/browser/LocalBrowserStage';
+import { resetBrowserPrefsForTests, syncBrowserPrefs } from '../lib/browserPrefs';
+import { BROWSER_ACTION_BADGE } from '../lib/browserSteps';
 
 const VIEW = `${window.location.origin}/browser/sessions/t-abc/view?et=tok`;
 const step = (sessionId = 't-abc') => browserStep({ session_id: sessionId }, 1);
@@ -113,12 +115,15 @@ describe('ChatView shared browser pane', () => {
     iframeLoading = window.happyDOM.settings.disableIframePageLoading;
     window.happyDOM.settings.disableIframePageLoading = true;
     setWidth(1400);
+    // These show the browser whenever the agent browses: Only show the browser when I'm needed off.
+    syncBrowserPrefs({ browserOnlyWhenNeeded: false });
   });
   afterEach(() => {
     window.happyDOM.settings.disableIframePageLoading = iframeLoading;
     setWidth(1024);
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    resetBrowserPrefsForTests();
   });
 
   it('never opens for a past Browser step while the browser is off, and mints nothing', async () => {
@@ -449,5 +454,77 @@ describe('ChatView shared browser pane', () => {
     expect(shell.bounds).toEqual([NOWHERE, { x: 600, y: 56, width: 600, height: 700 }]);
     expect(shell.shown).toEqual(['t-abc']);
     expect(shell.hides).toBe(0);
+  });
+});
+
+describe("ChatView shared browser pane, shown only when the person is needed (the default)", () => {
+  let iframeLoading;
+  beforeEach(() => {
+    shell.isWeb = true;
+    shell.inApp = false;
+    embedBrowser.mockReset();
+    embedBrowser.mockResolvedValue({ session_id: 't-abc', view_url: VIEW, ticket_expires_at: 1_900_000_000, lease_expires_at: 1_900_000_780 });
+    iframeLoading = window.happyDOM.settings.disableIframePageLoading;
+    window.happyDOM.settings.disableIframePageLoading = true;
+    setWidth(1400);
+    resetBrowserPrefsForTests();
+  });
+  afterEach(() => {
+    window.happyDOM.settings.disableIframePageLoading = iframeLoading;
+    setWidth(1024);
+    vi.restoreAllMocks();
+    resetBrowserPrefsForTests();
+  });
+
+  const asked = { id: 'u1', role: 'user', content: 'Go' };
+  const card = (questionId, options) => ({
+    id: `ask-${questionId}`, label: 'Question for you', badge: 'AskUser', status: 'in_progress', startedAt: 2,
+    data: { question_id: questionId, prompt: 'Your turn', options },
+  });
+  const HELD = card('browser:approve:t-abc:pa-1', [{ value: 'approve', label: 'Approve', detail: 'Take this step once' }, { value: 'cancel', label: 'Cancel' }]);
+  const HAND_OVER = card('browser:9f2c', [{ value: 'later', label: 'Finish later' }, { value: 'stop', label: 'Stop' }]);
+  const POSITION = card('browser:approve:t-abc:pa-2', [{ value: 'approve', label: 'Approve', detail: 'Allow clicks by position on this page' }]);
+  const live = (...extra) => ({ ...liveTurn(), steps: [step(), ...extra] });
+
+  it('stays closed while the agent browses', async () => {
+    render(<ChatView task={task('n-1', [asked, live()])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).toBeNull();
+    expect(embedBrowser).not.toHaveBeenCalled();
+  });
+
+  it('opens when a held step waits for the person, and again for the next card after they close it', async () => {
+    const { rerender } = render(<ChatView task={task('n-2', [asked, live()])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    rerender(<ChatView task={task('n-2', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    fireEvent.click(within(pane()).getByRole('button', { name: 'Close browser' }));
+    expect(pane()).toBeNull();
+    rerender(<ChatView task={task('n-2', [asked, live({ ...HELD, data: { ...HELD.data, answer: { status: 'answered', values: ['approve'] } } }, HAND_OVER)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+  });
+
+  it('opens for a hand-over (a sign-in, a CAPTCHA), but not for a click by position the app approves', async () => {
+    const { unmount } = render(<ChatView task={task('n-3', [asked, live(POSITION)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).toBeNull();
+    unmount();
+    render(<ChatView task={task('n-4', [asked, live(HAND_OVER)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+  });
+
+  it("still opens from the browser button, and shows the turn's browser steps as one row", async () => {
+    const call = (id, label, status = 'completed') => ({ id, label, badge: BROWSER_ACTION_BADGE, icon: 'globe', status, startedAt: 1, completedAt: status === 'completed' ? 2 : null });
+    const turn = live(call('s2', 'Opening united.com'), call('s3', 'Find flights to Boston', 'in_progress'));
+    render(<ChatView task={task('n-5', [asked, turn])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(screen.queryByText('Opening united.com')).toBeNull();
+    expect(screen.queryByText('Opened the browser')).toBeNull();
+    expect(screen.getAllByText('Find flights to Boston').length).toBeGreaterThan(0);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show browser' })); });
+    expect(pane()).not.toBeNull();
   });
 });

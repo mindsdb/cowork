@@ -75,7 +75,10 @@
     "usageEventsTitle": "Usage events",
     "sendUsageEvents": "Send anonymous usage events",
     "approveStepsTitle": "Approve browser steps",
-    "approveStepsHelp": "On: {agent} waits for your OK before a step that commits something, like a purchase, a message or a form. Off: {agent} goes ahead."
+    "approveStepsHelp": "On: {agent} waits for your OK before a step that commits something, like a purchase, a message or a form. Off: {agent} goes ahead.",
+    "onlyWhenNeededTitle": "Only show the browser when I'm needed",
+    "onlyWhenNeededHelp": "Turn this off to always see the browser and watch {agent} browse. Fun for some, tedious for others.",
+    "onlyWhenNeededLearn": "About showing the browser only when needed"
   },
   "codingAgent": {
     "loadFailed": "Could not load coding agent options.",

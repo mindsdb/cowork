@@ -290,6 +290,7 @@
     "hintCustom": "…o escribe tu propia respuesta abajo.",
     "hintSelectOnly": "Elige una opción de arriba; no se aceptará una respuesta escrita. Omite la pregunta para escribir otra cosa.",
     "skip": "Omitir",
+    "skipApprovals": "Omitir aprobaciones en los próximos pasos",
     "send": "Enviar",
     "skipped": "Omitida.",
     "timedOut": "Sin respuesta: se agotó el tiempo.",

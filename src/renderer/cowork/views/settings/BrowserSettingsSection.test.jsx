@@ -31,6 +31,7 @@ import { fetchBrowseStatus, provisionBrowser, signOutOfBrowserSites } from '../.
 import { READ_TIMEOUT_MS } from '../../lib/browseStatus';
 import BrowserSettingsSection, {
   approveStepsHelp,
+  onlyWhenNeededHelp,
   DESKTOP_SIGN_INS,
   NOT_ENTITLED,
   ORGANIZATION_OFF,
@@ -283,6 +284,7 @@ describe('BrowserSettingsSection', () => {
     expect(toggle).not.toBeChecked();
     // Off: only the switch; approvals and sign-out show once it is on.
     expect(screen.queryByRole('switch', { name: 'Approve browser steps' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: "Only show the browser when I'm needed" })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Use the shared browser/ })).toHaveTextContent('Beta');
     expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
@@ -307,6 +309,25 @@ describe('BrowserSettingsSection', () => {
     fireEvent.click(toggle);
     expect(setSetting).toHaveBeenCalledWith('browserApproveSteps', false);
     expect(screen.getByText(approveStepsHelp('Cowork'))).toBeInTheDocument();
+  });
+
+  it("offers Only show the browser when I'm needed, on by default, with its help a tap away", async () => {
+    fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    const setSetting = vi.fn();
+    renderSection({ browserEnabled: true }, setSetting);
+    const toggle = await screen.findByRole('switch', { name: "Only show the browser when I'm needed" });
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    expect(setSetting).toHaveBeenCalledWith('browserOnlyWhenNeeded', false);
+    expect(screen.queryByText(onlyWhenNeededHelp('Cowork'))).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'About showing the browser only when needed' }));
+    expect(await screen.findByText(onlyWhenNeededHelp('Cowork'))).toBeInTheDocument();
+  });
+
+  it('shows the browser always only when that setting says false', async () => {
+    fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    renderSection({ browserEnabled: true, browserOnlyWhenNeeded: false });
+    expect(await screen.findByRole('switch', { name: "Only show the browser when I'm needed" })).not.toBeChecked();
   });
 
   it('shows approvals off only when the setting says false', async () => {

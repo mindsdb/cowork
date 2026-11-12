@@ -75,7 +75,10 @@
     "usageEventsTitle": "Eventos de uso",
     "sendUsageEvents": "Enviar eventos de uso anónimos",
     "approveStepsTitle": "Aprobar pasos del navegador",
-    "approveStepsHelp": "Activado: {agent} espera tu aprobación antes de un paso que compromete algo, como una compra, un mensaje o un formulario. Desactivado: {agent} sigue adelante."
+    "approveStepsHelp": "Activado: {agent} espera tu aprobación antes de un paso que compromete algo, como una compra, un mensaje o un formulario. Desactivado: {agent} sigue adelante.",
+    "onlyWhenNeededTitle": "Mostrar el navegador solo cuando me necesite",
+    "onlyWhenNeededHelp": "Desactívalo para ver siempre el navegador y mirar cómo navega {agent}. Divertido para algunos, tedioso para otros.",
+    "onlyWhenNeededLearn": "Acerca de mostrar el navegador solo cuando se te necesita"
   },
   "codingAgent": {
     "loadFailed": "No se pudieron cargar las opciones del agente de código.",

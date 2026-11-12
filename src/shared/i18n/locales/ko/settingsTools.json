@@ -75,7 +75,10 @@
     "usageEventsTitle": "사용 이벤트",
     "sendUsageEvents": "익명 사용 이벤트 보내기",
     "approveStepsTitle": "브라우저 단계 승인",
-    "approveStepsHelp": "켜기: 구매, 메시지, 양식처럼 무언가를 확정하는 단계 전에 {agent}이(가) 승인을 기다립니다. 끄기: {agent}이(가) 그대로 진행합니다."
+    "approveStepsHelp": "켜기: 구매, 메시지, 양식처럼 무언가를 확정하는 단계 전에 {agent}이(가) 승인을 기다립니다. 끄기: {agent}이(가) 그대로 진행합니다.",
+    "onlyWhenNeededTitle": "내가 필요할 때만 브라우저 표시",
+    "onlyWhenNeededHelp": "끄면 브라우저가 항상 표시되어 {agent}이(가) 탐색하는 모습을 볼 수 있습니다. 누군가에게는 재미있고, 누군가에게는 지루합니다.",
+    "onlyWhenNeededLearn": "필요할 때만 브라우저를 표시하는 설정 정보"
   },
   "codingAgent": {
     "loadFailed": "코딩 에이전트 옵션을 불러오지 못했습니다.",

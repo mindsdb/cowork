@@ -20,7 +20,8 @@ vi.mock('../../platform/host', async (importOriginal) => {
 });
 
 import AskUserCard from './AskUserCard';
-import { resetBrowserPrefsForTests, syncBrowserPrefs } from '../lib/browserPrefs';
+import { resetBrowserPrefsForTests, setBrowserSettingSaver, syncBrowserPrefs } from '../lib/browserPrefs';
+import { isAutoApprovedCard } from '../lib/browserApproval';
 
 const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
@@ -215,5 +216,45 @@ describe('a commit-hold card while the person turned approvals off', () => {
     expect(container).toBeEmptyDOMElement();
     act(() => { syncBrowserPrefs({ browserApproveSteps: true }); });
     expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
+  });
+});
+
+describe("a held step's Skip approvals", () => {
+  it('turns Approve browser steps off for later steps, and leaves this card to the person', async () => {
+    const save = vi.fn(async (patch) => { syncBrowserPrefs(patch); });
+    setBrowserSettingSaver(save);
+    render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
+    const skip = screen.getByRole('switch', { name: 'Skip approvals for later steps' });
+    expect(skip).not.toBeChecked();
+    await act(async () => { fireEvent.click(skip); });
+    expect(save).toHaveBeenCalledWith({ browserApproveSteps: false });
+    expect(screen.getByRole('switch', { name: 'Skip approvals for later steps' })).toBeChecked();
+    // This card still needs its own answer: it shows, and the app doesn't approve it.
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
+    expect(isAutoApprovedCard(card(HOLD).data)).toBe(false);
+    expect(isAutoApprovedCard(card(`browser:approve:t-abc:pa-later`).data)).toBe(true);
+    expect(submitAnswer).not.toHaveBeenCalled();
+    resetBrowserPrefsForTests();
+  });
+
+  it('turns approvals back on when switched off again', async () => {
+    const save = vi.fn(async (patch) => { syncBrowserPrefs(patch); });
+    setBrowserSettingSaver(save);
+    syncBrowserPrefs({ browserApproveSteps: true });
+    render(<AskUserCard step={card(HOLD)} conversationId="c1" />);
+    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'Skip approvals for later steps' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'Skip approvals for later steps' })); });
+    expect(save).toHaveBeenLastCalledWith({ browserApproveSteps: true });
+    resetBrowserPrefsForTests();
+  });
+
+  it('is not on an answered card, nor on a question that is not a held step', () => {
+    const held = card(HOLD);
+    const { unmount } = render(<AskUserCard step={{ ...held, data: { ...held.data, answer: { status: 'answered', values: ['approve'], text: '' } } }} conversationId="c1" />);
+    expect(screen.queryByRole('switch')).toBeNull();
+    unmount();
+    const other = card('ask:q1');
+    render(<AskUserCard step={{ ...other, data: { ...other.data, options: [{ value: 'yes', label: 'Yes' }] } }} conversationId="c1" />);
+    expect(screen.queryByRole('switch')).toBeNull();
   });
 });

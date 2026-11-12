@@ -40,7 +40,13 @@ describe('favicon settings translation', () => {
 describe('shared browser settings', () => {
   it('maps only the switch and the approvals choice', () => {
     const browserKeys = Object.keys(SETTINGS_KEY_MAP).filter((key) => key.startsWith('browser_'));
-    expect(browserKeys).toEqual(['browser_enabled', 'browser_approve_steps']);
+    expect(browserKeys).toEqual(['browser_enabled', 'browser_approve_steps', 'browser_only_when_needed']);
+  });
+
+  it('round-trips Only show the browser when needed as a server setting', () => {
+    expect(transformSettingsRows([{ key: 'browser_only_when_needed', value: 'false' }]).browserOnlyWhenNeeded).toBe(false);
+    expect(diffSettingsForWrite({ browserOnlyWhenNeeded: false }, { browserOnlyWhenNeeded: true }))
+      .toEqual({ browser_only_when_needed: 'false' });
   });
 
   it('round-trips Approve browser steps as a server setting', () => {

@@ -75,7 +75,10 @@
     "usageEventsTitle": "使用状況イベント",
     "sendUsageEvents": "匿名の使用状況イベントを送信",
     "approveStepsTitle": "ブラウザのステップを承認",
-    "approveStepsHelp": "オン：購入、メッセージ、フォームなど、確定する操作の前に{agent}があなたの承認を待ちます。オフ：{agent}はそのまま進めます。"
+    "approveStepsHelp": "オン：購入、メッセージ、フォームなど、確定する操作の前に{agent}があなたの承認を待ちます。オフ：{agent}はそのまま進めます。",
+    "onlyWhenNeededTitle": "自分が必要なときだけブラウザを表示",
+    "onlyWhenNeededHelp": "オフにすると常にブラウザが表示され、{agent}の操作を見られます。楽しい人もいれば、退屈な人もいます。",
+    "onlyWhenNeededLearn": "必要なときだけブラウザを表示する設定について"
   },
   "codingAgent": {
     "loadFailed": "コーディングエージェントのオプションを読み込めませんでした。",

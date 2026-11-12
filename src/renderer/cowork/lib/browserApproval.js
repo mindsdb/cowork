@@ -14,7 +14,7 @@
 
 import { diagnostic } from '../../../shared/diagnostics';
 import { approveBrowserStep, declineBrowserStep, readBrowserApproveSteps } from '../api';
-import { getBrowserPrefs } from './browserPrefs';
+import { getBrowserPrefs, isLeftToPerson } from './browserPrefs';
 import i18n from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(`messages.browserApproval.${key}`, { ns: 'projects', ...vars });
@@ -156,7 +156,23 @@ export function isBrowserStepCard(data) {
  */
 export function isAutoApprovedCard(data, prefs = getBrowserPrefs()) {
   if (isPositionClickCard(data)) return true;
-  return prefs.askToApprove === false && isBrowserStepCard(data);
+  // A card the person turned approvals off from is still theirs to answer.
+  return prefs.askToApprove === false && isBrowserStepCard(data) && !isLeftToPerson(data?.question_id);
+}
+
+/**
+ * Whether a step is the person's turn in the browser: an unanswered card the
+ * browser asks them (a held step to approve, a sign-in, a CAPTCHA or another
+ * hand-over, all `browser:` cards). A card the app approves for them is not.
+ *
+ * @param {{ badge?: string, data?: object } | null | undefined} step
+ * @returns {boolean}
+ */
+export function isPersonsBrowserTurn(step) {
+  if (step?.badge !== 'AskUser' || step.data?.answer) return false;
+  const data = step.data;
+  if (isAutoApprovedCard(data)) return false;
+  return isBrowserStepCard(data) || String(data?.question_id || '').startsWith('browser:');
 }
 
 /**

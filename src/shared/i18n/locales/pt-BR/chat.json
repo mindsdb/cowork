@@ -290,6 +290,7 @@
     "hintCustom": "…ou digite sua própria resposta abaixo.",
     "hintSelectOnly": "Escolha uma opção acima; uma resposta digitada não será aceita. Pule para digitar outra coisa.",
     "skip": "Pular",
+    "skipApprovals": "Pular aprovações nas próximas etapas",
     "send": "Enviar",
     "skipped": "Pulada.",
     "timedOut": "Sem resposta: o tempo esgotou.",

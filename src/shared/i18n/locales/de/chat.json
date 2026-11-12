@@ -290,6 +290,7 @@
     "hintCustom": "…oder geben Sie unten Ihre eigene Antwort ein.",
     "hintSelectOnly": "Wählen Sie oben eine Option – eine eingegebene Antwort wird nicht akzeptiert. Überspringen Sie die Frage, um etwas anderes einzugeben.",
     "skip": "Überspringen",
+    "skipApprovals": "Bestätigungen für weitere Schritte überspringen",
     "send": "Senden",
     "skipped": "Übersprungen.",
     "timedOut": "Keine Antwort – Zeit abgelaufen.",
