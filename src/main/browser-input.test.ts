@@ -68,6 +68,7 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing) {
     select: vi.fn(async () => ({ ok: true as const, chosen: ['x'] })),
     viewport: vi.fn(async () => VIEWPORT),
     hitTest: vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: 0, intoFrame: false })),
+    intoFrame: vi.fn(async () => false),
     ...over,
   };
   const nav = { load: vi.fn(async () => {}), back: vi.fn(async () => {}), forward: vi.fn(async () => {}), reload: vi.fn(async () => {}) };
@@ -378,6 +379,64 @@ describe('runStep', () => {
       status: 409,
       message: "element 7 holds a frame, or a part of the page this browser can't read, where a click by number would land; click inside it by position from a screenshot",
     });
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+  });
+
+  it('checks the point of a click by number again just before each press, and presses nothing once a frame moved over it', async () => {
+    // The point reaches the element before the pointer moves, and a frame covers it once the pointer arrives.
+    const hitTest = vi.fn()
+      .mockResolvedValueOnce({ found: true, reaches: 0, intoFrame: false } satisfies HitTestResult)
+      .mockResolvedValue({ found: true, reaches: -1, intoFrame: true } satisfies HitTestResult);
+    const { dbg, stepHost } = host({ hitTest });
+    await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
+      code: 'stale_element',
+      status: 409,
+      message: 'a frame moved over element 7 as the pointer arrived, so nothing was pressed; read the page again',
+    });
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+    // The check before the press asks about the one point the press lands on.
+    const [, [pressed]] = hitTest.mock.calls[0] as [number, Array<{ x: number; y: number }>];
+    expect(hitTest.mock.calls[1]).toEqual([7, [pressed]]);
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').at(-1)).toMatchObject({ type: 'mouseMoved', ...pressed });
+  });
+
+  it("checks again before a double click's second press, and stops there once something moved over the point", async () => {
+    const hitTest = vi.fn()
+      .mockResolvedValueOnce({ found: true, reaches: 0, intoFrame: false } satisfies HitTestResult)
+      .mockResolvedValueOnce({ found: true, reaches: 0, intoFrame: false } satisfies HitTestResult)
+      .mockResolvedValue({ found: true, reaches: -1, intoFrame: false } satisfies HitTestResult);
+    const { dbg, stepHost } = host({ hitTest });
+    await expect(runStep(stepHost, step({ action: 'click', element: 7, clicks: 2 }))).rejects.toMatchObject({
+      code: 'stale_element',
+      message: 'another element moved over element 7 as the pointer arrived, so nothing was pressed; read the page again',
+    });
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed').map((e) => e.clickCount)).toEqual([1]);
+  });
+
+  it('presses nothing for a click or a drag by position once a frame moved under the point since the step began, and presses into one that was there all along', async () => {
+    const arrives = host({ intoFrame: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true) });
+    await expect(runStep(arrives.stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page' }))).rejects.toMatchObject({
+      code: 'stale_element',
+      status: 409,
+      message: 'a frame moved under the point (400, 300) as the pointer arrived, so nothing was pressed; read the page again',
+    });
+    expect(arrives.page.intoFrame).toHaveBeenCalledWith({ x: 400, y: 300 });
+    expect(events(arrives.dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+    const dragged = host({ intoFrame: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true) });
+    await expect(runStep(dragged.stepHost, step({ action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page' }))).rejects.toMatchObject({ code: 'stale_element' });
+    expect(events(dragged.dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+    // A frame under the point from the start is what the step was asked to click.
+    const there = host({ intoFrame: vi.fn(async () => true) });
+    await runStep(there.stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page' }));
+    expect(events(there.dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toHaveLength(1);
+  });
+
+  it('checks the element a drag starts on again just before the press', async () => {
+    const hitTest = vi.fn()
+      .mockResolvedValueOnce({ found: true, reaches: 0, intoFrame: false } satisfies HitTestResult)
+      .mockResolvedValue({ found: true, reaches: -1, intoFrame: true } satisfies HitTestResult);
+    const { dbg, stepHost } = host({ hitTest });
+    await expect(runStep(stepHost, step({ action: 'drag', from: { element: 5 }, to: { x: 600, y: 300 }, coords: 'page' }))).rejects.toMatchObject({ code: 'stale_element' });
     expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
   });
 

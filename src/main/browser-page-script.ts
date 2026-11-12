@@ -201,6 +201,8 @@ export type PageWorldRequest =
   | { kind: 'select'; id: number; values: string[] }
   /* Which of `points` (viewport CSS pixels) a click reaches element `id` at. */
   | { kind: 'hitTest'; id: number; points: ViewPoint[] }
+  /* Whether a click at `point` lands in a frame, or where this world can't see. */
+  | { kind: 'intoFrame'; point: ViewPoint }
   /* A step's change watch, under the step's token. `at` is where the step's
      pointer ended, or null for a step without one. */
   | { kind: 'changeStart'; token: number }
@@ -1047,6 +1049,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         return false;
       });
       return { found: true, reaches, intoFrame } satisfies HitTestResult;
+    }
+    case 'intoFrame': {
+      const { x, y } = request.point;
+      const hit = hitAt(x, y);
+      return !!hit && opaqueHit(hit, x, y);
     }
     case 'changeStart': {
       stopChanges();

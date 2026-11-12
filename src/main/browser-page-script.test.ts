@@ -533,6 +533,17 @@ describe('the isolated-world page read', () => {
     }
   });
 
+  it('tells whether a click at a point lands in a frame, or in a custom element sealed from this world', () => {
+    document.body.innerHTML = '<iframe id="buy" src="https://shop.other.test/buy"></iframe><x-pay id="sealed"></x-pay><button id="go">Go</button>';
+    const restore = hitTestBy((x) => document.getElementById(['buy', 'sealed', 'go'][x])!);
+    try {
+      const intoFrame = (x: number) => pageWorld(document, freshWorld(), { kind: 'intoFrame', point: { x, y: 5 } });
+      expect([intoFrame(0), intoFrame(1), intoFrame(2)]).toEqual([true, true, false]);
+    } finally {
+      restore();
+    }
+  });
+
   it('locates an element and reports a secret one', () => {
     document.body.innerHTML = SIGN_IN;
     layout();
