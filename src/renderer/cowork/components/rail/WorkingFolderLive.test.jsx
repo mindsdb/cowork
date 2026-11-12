@@ -57,6 +57,12 @@ vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
 }));
+// The sharing analytics run for real down to the sink.
+const trackArtifactAccessChanged = vi.hoisted(() => vi.fn());
+vi.mock('../../lib/analytics', async (importOriginal) => ({
+  ...(await importOriginal()),
+  trackArtifactAccessChanged,
+}));
 // The shared document gate, stubbed per test.
 const canPreviewDocument = vi.fn(() => false);
 vi.mock('../../preview/kinds', () => ({
@@ -64,7 +70,7 @@ vi.mock('../../preview/kinds', () => ({
 }));
 
 import { WorkingFolderLive } from './WorkingFolderLive';
-import { fetchArtifacts } from '../../api';
+import { fetchArtifacts, unpublishArtifact } from '../../api';
 import { setOrgMode } from '../../../lib/orgMode';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
@@ -923,5 +929,41 @@ describe('artifacts rail on desktop', () => {
     expect(screen.getByText('Open in OS')).toBeInTheDocument();
     expect(screen.queryByText('Open in new tab')).toBeNull();
     expect(screen.queryByText('Download')).toBeNull();
+  });
+});
+
+describe('deleting from the rail on Desktop', () => {
+  beforeEach(() => {
+    hostState.isWeb = false; hostState.isElectron = true; hostState.localApi = true;
+    trackArtifactAccessChanged.mockClear();
+    unpublishArtifact.mockReset().mockResolvedValue({});
+    deleteArtifactAndSync.mockReset().mockResolvedValue(undefined);
+  });
+
+  async function deleteFromRail(artifact) {
+    await renderRail(artifact);
+    fireEvent.click(within(await openKebab()).getByText('Delete'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+    await vi.waitFor(() => expect(deleteArtifactAndSync).toHaveBeenCalledTimes(1));
+  }
+
+  it('records taking a publicly shared artifact down as one pull-back', async () => {
+    await deleteFromRail(draft({ publishedUrl: SHARED_URL, accessMode: 'public' }));
+
+    expect(unpublishArtifact).toHaveBeenCalledTimes(1);
+    expect(trackArtifactAccessChanged).toHaveBeenCalledTimes(1);
+    expect(trackArtifactAccessChanged).toHaveBeenCalledWith(expect.objectContaining({
+      artifactId: '11111111111111111111111111111111',
+      entry: 'rail_delete',
+      before: expect.objectContaining({ shared: true, audience: 'public' }),
+      after: expect.objectContaining({ shared: false, audience: 'unpublished' }),
+    }));
+  });
+
+  it('records nothing for an artifact that was never shared', async () => {
+    await deleteFromRail(draft());
+
+    expect(unpublishArtifact).not.toHaveBeenCalled();
+    expect(trackArtifactAccessChanged).not.toHaveBeenCalled();
   });
 });

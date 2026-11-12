@@ -21,6 +21,7 @@ import { diagnostic } from '../../../shared/diagnostics';
 import { host } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 import { startCreditsFlow } from './creditsFlow';
+import { subscribeOrganizationChanges } from './organizationChanges';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
@@ -34,7 +35,7 @@ const EVENTS = {
   ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
   // The sharing events below all carry { artifact_id (cowork artifact uuid,
   // as artifact_stats_opened), artifact_type, entry, sso_organization_id }.
-  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'other'.
+  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'rail_delete'|'other'.
   // Deleting a shared artifact reports a pull-back on Desktop only: on Web the
   // server takes the page down as part of the delete, unseen by this client.
   // Audiences are categories and counts only, never an email, name or password.
@@ -266,6 +267,10 @@ const identity = {
   distinctId: null,
   cacheExpiry: 0,
 };
+// An in-place organization switch (a desktop shell that switches without
+// reloading the document) re-reads the token on the next event, so the
+// organization the events name is the one switched to.
+subscribeOrganizationChanges(() => { identity.cacheExpiry = 0; });
 // Synchronous guard against the merge firing twice when two events resolve
 // identity in the same tick, before the async localStorage marker is written.
 // Entries are cleared on failure so a later event can still retry.
@@ -614,9 +619,9 @@ function capture(event, properties = {}, envelope = {}) {
       // than absent: a filter on the property counts the row and the column looks
       // populated. `app_version` and `is_internal` follow the same rule.
       //
-      // Still stale for up to five minutes after an in-place org switch, because
-      // getDistinctId returns early on its own cache and never re-resolves inside
-      // the window. forgetIdentity fixes the post-expiry case only.
+      // An in-place org switch expires the identity cache (the
+      // subscribeOrganizationChanges call above), and a switch that reloads the
+      // document starts a fresh one, so neither replays the previous org.
       if (event === EVENTS.TOKEN_CAP_HIT) {
         if (identity.personProps.organization_id) {
           eventProps.sso_organization_id = identity.personProps.organization_id;

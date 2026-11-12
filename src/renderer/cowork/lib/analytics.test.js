@@ -1748,6 +1748,28 @@ describe('artifact sharing events', () => {
       .toMatchObject({ ...common, kind: 'export', format: 'pdf' });
   });
 
+  it('names the organization switched to in place, not the cached one', async () => {
+    const tokenFor = (id) => fakeJwt({ sub: 'user-share', email: 'owner@example.com', activate_organization: { id, name: id } });
+    getAccessToken.mockResolvedValue(tokenFor('org-A'));
+    const fetchMock = mockFetch();
+    const { trackArtifactLinkCopied } = await importAnalytics();
+    const { notifyOrganizationChanged } = await import('./organizationChanges');
+    const copiedOrgs = () => fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .filter((b) => b.event === 'artifact_link_copied')
+      .map((b) => b.properties.sso_organization_id);
+
+    trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+    await vi.waitFor(() => expect(copiedOrgs()).toEqual(['org-A']));
+
+    getAccessToken.mockResolvedValue(tokenFor('org-B'));
+    notifyOrganizationChanged('user-share');
+    trackArtifactLinkCopied({ artifactId: 'a1', entry: 'viewer' });
+
+    await vi.waitFor(() => expect(copiedOrgs()).toHaveLength(2));
+    expect(copiedOrgs()).toEqual(['org-A', 'org-B']);
+  });
+
   it('a file download sends no format', async () => {
     const fetchMock = mockFetch();
     const { trackArtifactDownloaded } = await importAnalytics();

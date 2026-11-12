@@ -114,6 +114,54 @@ describe('on Web, an artifact published automatically as "only me"', () => {
   });
 });
 
+describe('on Web, a draft that is published automatically while its viewer is open', () => {
+  const DRAFT = { id: ID, projectId: 'proj-1', type: 'html', publishedUrl: '' };
+  const AUTOPUBLISHED = { ...DRAFT, publishedUrl: 'https://share/abc', accessMode: 'restricted', ownerOnly: null };
+  // What the access route answers for a draft: the schema default, not a share.
+  const DRAFT_ACCESS = {
+    accessMode: 'public', accessEmails: [], orgAllowed: false, ownerOnly: false,
+    allowedTeamIds: [], allowedUserIds: [],
+  };
+  const ONLY_ME_ACCESS = { ...DRAFT_ACCESS, accessMode: 'restricted', ownerOnly: true };
+
+  beforeEach(() => {
+    setOrgMode(true);
+    wsMock.loadArtifactAccess.mockResolvedValueOnce(DRAFT_ACCESS).mockResolvedValue(ONLY_ME_ACCESS);
+    wsMock.setArtifactAccess.mockResolvedValue({ url: 'https://share/abc', report_id: 'rep-1', accessMode: 'public' });
+  });
+  afterEach(() => setOrgMode(false));
+
+  async function openDraftThenAutopublish() {
+    const hook = renderHook(({ artifact }) => usePublish(artifact, { enabled: true }), { initialProps: { artifact: DRAFT } });
+    await waitFor(() => expect(hook.result.current.accessLoaded).toBe(true));
+    hook.rerender({ artifact: AUTOPUBLISHED });
+    return hook;
+  }
+
+  it('records the first public share as a first share once the access is read again', async () => {
+    const { result } = await openDraftThenAutopublish();
+    await waitFor(() => expect(result.current.accessLoaded).toBe(true));
+
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+
+    expect(changed()).toEqual([expect.objectContaining({
+      before: expect.objectContaining({ shared: false, audience: 'only_me' }),
+      after: expect.objectContaining({ shared: true, audience: 'public' }),
+    })]);
+  });
+
+  it('records the first public share with an unknown before while that read is pending', async () => {
+    const { result } = await openDraftThenAutopublish();
+
+    await act(async () => { await result.current.publish({ mode: 'public' }); });
+
+    expect(changed()).toEqual([expect.objectContaining({
+      before: expect.objectContaining({ shared: null, audience: 'unknown' }),
+      after: expect.objectContaining({ shared: true, audience: 'public' }),
+    })]);
+  });
+});
+
 describe('on Desktop', () => {
   const LOCAL = { id: ID, type: 'html', path: '/p/.anton/artifacts/r/index.html', accessMode: 'public' };
 

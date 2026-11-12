@@ -66,7 +66,11 @@ export async function downloadArtifactFile(artifact, { actionPath, entry = 'othe
   return saved;
 }
 
-async function saveArtifactFile(artifact, { actionPath } = {}) {
+/**
+ * Saves the file like downloadArtifactFile but reports nothing, for a caller
+ * that reports the save as something else (an export).
+ */
+export async function saveArtifactFile(artifact, { actionPath } = {}) {
   if (host.isMobileShell) return false;
   const rawPath = actionPath || artifact?.canonicalPath || artifact?.path || '';
   const filename = downloadFilename(rawPath, artifact?.title || 'artifact');

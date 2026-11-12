@@ -162,6 +162,14 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setOwnerOnly(audience.ownerOnly);
       setTeamIds(audience.teamIds);
       setUserIds(audience.userIds);
+    } else if (!publishedUrl && artifact?.publishedUrl) {
+      // Published from outside this hook (autopublish): the audience read while
+      // it was a draft is the route's default, not who it reaches now.
+      setAccessLoaded(false);
+      if (enabled) {
+        openReadPendingRef.current = true;
+        setReadAgain((n) => n + 1);
+      }
     }
     // A refresh learns the key from the server, but its report back to the
     // parent doesn't carry it, so an access change in that report would reset
