@@ -676,5 +676,38 @@
       "undoGone": "Questa modifica non può più essere annullata qui. Usa la cronologia per tornare indietro."
     },
     "placeholderChat": "Chiedi qualcosa su questo artefatto o modificalo…"
+  },
+  "stats": {
+    "toggle": {
+      "show": "Statistiche",
+      "hide": "Nascondi statistiche"
+    },
+    "title": "Statistiche",
+    "close": "Chiudi il pannello delle statistiche",
+    "loading": "Caricamento delle statistiche",
+    "retry": "Riprova",
+    "trackViews": "Conta le visualizzazioni",
+    "trackingOff": "Il conteggio è disattivato. Attivalo per iniziare a contare le visualizzazioni.",
+    "metrics": {
+      "viewsInPeriod": "Visualizzazioni (30 giorni)",
+      "uniqueViewers": "Visitatori unici (30 giorni)",
+      "totalViews": "Visualizzazioni totali",
+      "lastViewed": "Ultima visualizzazione"
+    },
+    "daysInUtc": "Giorni in UTC",
+    "chartLabel": "Visualizzazioni al giorno",
+    "viewers": {
+      "email": "Email",
+      "lastSeen": "Ultima visita",
+      "restrictedOnly": "I nomi dei visitatori vengono registrati solo quando la condivisione è limitata."
+    },
+    "noViews": "Ancora nessuna visualizzazione",
+    "errors": {
+      "otherAccount": "Le statistiche non sono disponibili per questo account.",
+      "unavailable": "Le statistiche non sono disponibili per questo artefatto.",
+      "reconnect": "Riconnetti MindsHub per vedere le statistiche.",
+      "temporarilyUnavailable": "Le statistiche sono temporaneamente non disponibili.",
+      "loadFailed": "Impossibile caricare le statistiche."
+    }
   }
 }

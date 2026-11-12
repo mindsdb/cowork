@@ -17,6 +17,8 @@ export function ArtifactViewerHeader({
   authorship = null,
   workspace,
   review,
+  // `{ open, onToggle }` for the Stats side panel; absent on surfaces without it.
+  stats = null,
   publication,
   actions,
   // `{ errors, dismissed, dismiss }` from usePreviewDiagnostics.
@@ -39,6 +41,7 @@ export function ArtifactViewerHeader({
     isPublished,
     disabledReason,
   } = publication;
+  const showStats = !!stats && isPublished && canManage;
   const {
     canOpenInBrowserTab,
     canOpenLocalFile,
@@ -160,7 +163,7 @@ export function ArtifactViewerHeader({
         )}
       </div>
 
-      {/* Right — preview errors, comments, publishing, more actions, and close. */}
+      {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
       <div className="artifact-viewer-action-zone" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {commentsEnabled && (
@@ -182,6 +185,13 @@ export function ArtifactViewerHeader({
               </span>
             )}
           </div>
+        )}
+        {showStats && (
+          <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
+            <IconButton aria-label={t('stats.toggle.show')} onClick={stats.onToggle} active={!!stats.open}>
+              {Ico.chartColumn(16)}
+            </IconButton>
+          </Tooltip>
         )}
         {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
             desktop-only, on the grounds that org mode's window is a review

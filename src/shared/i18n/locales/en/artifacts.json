@@ -676,5 +676,38 @@
       "undoGone": "This change can no longer be undone here. Use History to go back."
     },
     "placeholderChat": "Ask about or change this artifact…"
+  },
+  "stats": {
+    "toggle": {
+      "show": "Stats",
+      "hide": "Hide stats"
+    },
+    "title": "Stats",
+    "close": "Close stats panel",
+    "loading": "Loading stats",
+    "retry": "Retry",
+    "trackViews": "Track views",
+    "trackingOff": "Tracking is off. Turn it on to start counting views.",
+    "metrics": {
+      "viewsInPeriod": "Views (30 days)",
+      "uniqueViewers": "Unique viewers (30 days)",
+      "totalViews": "Total views",
+      "lastViewed": "Last viewed"
+    },
+    "daysInUtc": "Days in UTC",
+    "chartLabel": "Views per day",
+    "viewers": {
+      "email": "Email",
+      "lastSeen": "Last seen",
+      "restrictedOnly": "Viewer names are recorded only when sharing is restricted."
+    },
+    "noViews": "No views yet",
+    "errors": {
+      "otherAccount": "Stats are not available for this account.",
+      "unavailable": "Stats are not available for this artifact.",
+      "reconnect": "Reconnect MindsHub to see stats.",
+      "temporarilyUnavailable": "Stats are temporarily unavailable.",
+      "loadFailed": "Could not load stats."
+    }
   }
 }

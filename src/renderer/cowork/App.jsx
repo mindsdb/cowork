@@ -602,11 +602,24 @@ export default function App() {
   );
 }
 
+// The picks a send to `task` goes back to the default on: its own Model Router
+// or "Operator default" pick, and an effort the composer left on "Default"
+// (''). Both go out as no value, which cowork-server reads as "keep the saved
+// pick", as it must for a pinned model the picker no longer offers. Naming
+// them in reset_picks makes the server clear them, so a reload shows the
+// default too. A same-tick override sends a value, so it resets nothing.
+export function turnResetPicks(task, { modelOverride, effortOverride } = {}) {
+  return [
+    ...(!modelOverride && task?.model === MODEL_ROUTER_ID ? ['model'] : []),
+    ...(effortOverride == null && task?.reasoningEffort === '' ? ['reasoning_effort'] : []),
+  ];
+}
+
 // Cmd+K's starting list before anything is typed: the five most recently
 // updated tasks and the first three projects, from state App already holds.
-function searchRecents(tasks, projects) {
+export function searchRecents(tasks, projects) {
   const labelFor = (task) => {
-    const project = projects.find((p) => p.name === task.projectId || p.path === task.projectPath);
+    const project = resolveTaskProject(task, projects);
     return project ? projectLabel(project) : undefined;
   };
   return [
@@ -2461,10 +2474,13 @@ function AppCore() {
     ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: tApp('tasks.configuredPlanningModel') }))
-    : selectedModel;
-  // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
-  // it has one, else whatever the home composer currently shows.
-  const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
+    : (currentTask ? MODEL_ROUTER : selectedModel);
+  /* A task with no saved pick is on the default: Model Router and the
+     "Default" effort (''), which is what the server runs a turn that sends
+     neither on. The home composer's picks seed a new task when it is created;
+     an existing task never borrows them, since a send would then save them
+     onto the conversation. */
+  const currentTaskEffort = currentTask ? (currentTask.reasoningEffort ?? '') : selectedEffort;
 
   /* "Switch to MindsHub Air" escape hatch on the model-denial and drained-wallet
      cards (ENG-1304): offered only while Air itself is payable — the free
@@ -4336,23 +4352,14 @@ function AppCore() {
     // opts.modelOverride carries a same-tick model switch (the "Switch to
     // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
-    // visible here yet. The `selectedModel` fallback is the on-screen model
-    // picker, so only a live send to the task on screen may inherit it; a
-    // drained off-screen task must not pick up whatever model the current
-    // view happens to show — it falls through to the server default instead.
-    const taskModel = sendableModelId(opts.modelOverride
-      || targetTask.model
-      || (opts.targetTask ? null : selectedModel?.id)
-      || null);
+    // visible here yet. A task with no pick sends none and runs on the
+    // server default, as currentTaskModel shows it; it never borrows the
+    // home composer's pick, which the server would then save on the chat.
+    const taskModel = sendableModelId(opts.modelOverride || targetTask.model || null);
     // Sibling precedence chain to taskModel (ENG-1940): a same-tick
-    // override, else the task's own saved pick, else — only for a live
-    // send to the task on screen — the home composer's current pick.
-    // selectedEffort defaults to '', so the trailing `|| null` collapses
-    // that (and any other falsy pick) to null the same way taskModel's does.
-    const taskEffort = (opts.effortOverride
-      ?? targetTask.reasoningEffort
-      ?? (opts.targetTask ? null : selectedEffort))
-      || null;
+    // override, else the task's own saved pick. The "Default" effort ('')
+    // collapses to null, so it sends no effort.
+    const taskEffort = (opts.effortOverride ?? targetTask.reasoningEffort) || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -4488,6 +4495,7 @@ function AppCore() {
       projectPath: taskProjectPath,
       model: taskModel,
       reasoningEffort: taskEffort,
+      resetPicks: turnResetPicks(targetTask, opts),
       attachmentIds,
       disabledConnections: disabledForSend,
       browserOff: browserOffForSend,

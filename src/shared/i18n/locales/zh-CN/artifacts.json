@@ -676,5 +676,38 @@
       "undoGone": "此修改已无法在此撤销。请使用历史记录回退。"
     },
     "placeholderChat": "询问或修改此产物…"
+  },
+  "stats": {
+    "toggle": {
+      "show": "统计",
+      "hide": "隐藏统计"
+    },
+    "title": "统计",
+    "close": "关闭统计面板",
+    "loading": "正在加载统计",
+    "retry": "重试",
+    "trackViews": "统计浏览量",
+    "trackingOff": "浏览统计已关闭。开启后开始统计浏览量。",
+    "metrics": {
+      "viewsInPeriod": "浏览量（30 天）",
+      "uniqueViewers": "独立访客（30 天）",
+      "totalViews": "总浏览量",
+      "lastViewed": "最近浏览"
+    },
+    "daysInUtc": "日期按 UTC",
+    "chartLabel": "每日浏览量",
+    "viewers": {
+      "email": "邮箱",
+      "lastSeen": "最近访问",
+      "restrictedOnly": "仅在共享受限时记录访客名称。"
+    },
+    "noViews": "暂无浏览",
+    "errors": {
+      "otherAccount": "此账户无法使用统计。",
+      "unavailable": "此产物无法使用统计。",
+      "reconnect": "重新连接 MindsHub 以查看统计。",
+      "temporarilyUnavailable": "统计暂时不可用。",
+      "loadFailed": "无法加载统计。"
+    }
   }
 }
