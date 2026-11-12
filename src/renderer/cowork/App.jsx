@@ -5354,7 +5354,7 @@ function AppCore() {
     onOpenUrl: openOffTaskBrowser,
     onSend: sendFromOffTaskBrowser,
   };
-  const offTaskPane = offTaskBrowserOpen && route !== 'task' && (offTaskBrowser || (host.isWeb && !offTaskBlank) ? (
+  const offTaskPane = offTaskBrowserOpen && browserSwitchShown && route !== 'task' && (offTaskBrowser || (host.isWeb && !offTaskBlank) ? (
     <BrowserPanel
       {...offTaskPaneProps}
       sessionId={offTaskBrowser?.sessionId ?? null}
@@ -5415,7 +5415,8 @@ function AppCore() {
     };
   }
   const offTaskShortcuts = (
-    <TopShortcuts onShowBrowser={() => setOffTaskBrowserOpen(true)} />
+    // The browser's button only while the shared browser is on (Settings, beta) and offered.
+    <TopShortcuts onShowBrowser={browserSwitchShown ? () => setOffTaskBrowserOpen(true) : null} />
   );
   // Where the call's card goes: in the sidebar above its footer while the
   // sidebar is docked open, floating in that corner otherwise.
@@ -6813,10 +6814,10 @@ function AppCore() {
     // The call starts from the round button where its card shows (VoiceLauncher), not the top bar.
     callShortcut: null,
     accountUser: codeAccountUser,
-    onShowBrowser: () => {
+    onShowBrowser: browserSwitchShown ? () => {
       if (route === 'task') setTaskBrowserSignal((n) => n + 1);
       else setOffTaskBrowserOpen(true);
-    },
+    } : null,
   };
 
   // Desktop corner button. Each Appearance switch gates only its own control

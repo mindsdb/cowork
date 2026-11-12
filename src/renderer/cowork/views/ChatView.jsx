@@ -2375,7 +2375,8 @@ export default function ChatView({
   const latestBrowserId = latestBrowserSessionIdIn(visibleMessages, streamingMsg);
   // Always there where a browser can show: the browser Anton last used here,
   // or the blank page.
-  const showBrowserShortcut = !browserPaneOpen && (host.isWeb || host.supportsInAppBrowser);
+  // Only while the shared browser is on for this task (Settings, beta, and the task's own switch).
+  const showBrowserShortcut = !browserPaneOpen && Boolean(browserOn) && (host.isWeb || host.supportsInAppBrowser);
   // An address typed in the blank page opens in the task's own browser, with
   // no agent: through the server on the web, the app's own browser on the
   // desktop. The real pane then shows it.
