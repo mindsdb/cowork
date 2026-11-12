@@ -48,8 +48,11 @@ import i18n, { useTranslation } from '../../../lib/i18n';
 
    The group says what the browser does with the person's data, as it runs
    today: where websites see the browser come from, how long sign-ins are kept
-   and reused, and that page text and screenshots go to the model provider. On
-   the desktop it also says that the agent's code runs as the person.
+   and reused, that page text and screenshots go to the model provider, and
+   what the decisions model gets for each step. That is Jev on MindsHub on the
+   desktop too when the LLM is MindsHub: the desktop's browser is local so it
+   needs no browser server, not to keep its pages from MindsHub. On the
+   desktop it also says that the agent's code runs as the person.
 
    Every desktop also gets a switch for the agent's anonymous usage events, in
    its own group whatever the browser's status, since it covers all of the
@@ -224,6 +227,15 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     </>
   );
 
+  /* What the decisions model gets, on either browser: Jev on MindsHub (the
+     desktop's in-app browser asks it too when the LLM is MindsHub), or the
+     organization's own decision model. */
+  let decisionsLine = '';
+  if (status?.decisions_model === 'own') decisionsLine = t('browser.ownDecisionsLine');
+  else if (!inApp || status?.decisions_model === 'mindshub') decisionsLine = t('browser.webJevLine');
+  const contentLine = inApp ? pageContentLine(agentLabel, { signedInToMindsHub }) : pageContentLine(agentLabel);
+  const providerSees = decisionsLine ? `${contentLine} ${decisionsLine}` : contentLine;
+
   const browserHelp = (
     <div className="flex flex-col gap-2 max-w-[340px] text-left">
       <p className="m-0">
@@ -232,7 +244,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
       </p>
       <p className="m-0">
         <strong>{t('browser.providerSeesTitle')}</strong>{' '}
-        <span>{inApp ? pageContentLine(agentLabel, { signedInToMindsHub }) : `${pageContentLine(agentLabel)} ${t('browser.webJevLine')}`}</span>
+        <span>{providerSees}</span>
       </p>
     </div>
   );
@@ -252,7 +264,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
     let answer = null;
     try {
       // '***' is the stored key, which the server sends only to the stored endpoint.
-      answer = await testDecisionModel({ url: decisionUrl, apiKey: decisionKey });
+      answer = await testDecisionModel({ url: decisionUrl, apiKey: decisionKey, model: (settings.decisionModel ?? '').trim() });
     } catch (err) {
       setDecisionTest({ busy: false, passed: false, note: err?.message || t('browser.decisionsUntested') });
       return;

@@ -32,6 +32,7 @@ import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } f
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import OrgBrandingFields from './OrgBrandingFields';
 import BrowserSettingsSection from './BrowserSettingsSection';
+import DecisionModelSettingsGroup from './DecisionModelSettingsGroup';
 import VoiceSettingsSection from './VoiceSettingsSection';
 import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
 import ComputersSettingsSection from './ComputersSettingsSection';
@@ -2016,6 +2017,12 @@ export default function SettingsView({
               })()}
             </SettingsGroup>
           </div>}
+          {/* The organization's own decision model, beside its LLM provider:
+              shown only to whoever may change it (the server's
+              routing.canSetDecisionModel). */}
+          <div className="order-3">
+            <DecisionModelSettingsGroup settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} />
+          </div>
         </div>
 
         <SettingsGroup title={t('memory.title')}>

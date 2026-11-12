@@ -88,7 +88,8 @@
     "decisionsTest": "测试并开启",
     "decisionsTesting": "正在测试…",
     "decisionsFailed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
-    "decisionsUntested": "无法测试决策模型。请重试。"
+    "decisionsUntested": "无法测试决策模型。请重试。",
+    "ownDecisionsLine": "你组织的决策模型还会收到每个浏览器步骤的目标、网页的地址、标题、元素名称和前 1,500 个字符，以及最近的步骤（包括之前访问的地址），但不包括字段值或你输入的内容。"
   },
   "codingAgent": {
     "loadFailed": "无法加载编程智能体选项。",
@@ -190,5 +191,20 @@
     "instructionsPlaceholder": "此聊天的角色 / 语气",
     "save": "保存",
     "removeRoute": "移除路由"
+  },
+  "decisionModel": {
+    "title": "决策模型",
+    "endpointTitle": "你组织的决策模型",
+    "help": "在你不使用 MindsHub 时，它让 {agent} 的浏览器快速选择步骤，并判断哪些消息需要完整的智能体。任何接受 TypeSafe 决策请求的端点都可以。",
+    "url": "端点 URL",
+    "key": "API 密钥",
+    "keySaved": "已保存。输入新的即可替换。",
+    "model": "模型名称",
+    "test": "测试",
+    "testing": "正在测试…",
+    "passed": "已在 {ms} 毫秒内响应。",
+    "failed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
+    "untested": "无法测试决策模型。请重试。",
+    "remove": "移除"
   }
 }

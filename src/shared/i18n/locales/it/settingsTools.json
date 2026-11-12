@@ -88,7 +88,8 @@
     "decisionsTest": "Prova e attiva",
     "decisionsTesting": "Prova in corso…",
     "decisionsFailed": "Il modello di decisione non ha risposto come previsto ({error}). Controlla l'endpoint e la chiave.",
-    "decisionsUntested": "Impossibile provare il modello di decisione. Riprova."
+    "decisionsUntested": "Impossibile provare il modello di decisione. Riprova.",
+    "ownDecisionsLine": "Il modello di decisione della tua organizzazione riceve anche l’obiettivo di ogni passaggio nel browser, l’indirizzo, il titolo, i nomi degli elementi e i primi 1.500 caratteri della pagina, oltre ai passaggi recenti, inclusi gli indirizzi precedenti, ma non i valori dei campi né ciò che digiti."
   },
   "codingAgent": {
     "loadFailed": "Impossibile caricare le opzioni dell’agente di codice.",
@@ -190,5 +191,20 @@
     "instructionsPlaceholder": "personalità / tono per questa chat",
     "save": "Salva",
     "removeRoute": "Rimuovi instradamento"
+  },
+  "decisionModel": {
+    "title": "Modello di decisione",
+    "endpointTitle": "Il modello di decisione della tua organizzazione",
+    "help": "È ciò che permette al browser di {agent} di scegliere i passaggi in fretta quando non usi MindsHub, e di decidere quali messaggi richiedono l’agente completo. Va bene qualsiasi endpoint che accetti la richiesta di decisione di TypeSafe.",
+    "url": "URL dell’endpoint",
+    "key": "Chiave API",
+    "keySaved": "Salvata. Digita per sostituirla.",
+    "model": "Nome del modello",
+    "test": "Prova",
+    "testing": "Prova in corso…",
+    "passed": "Ha risposto in {ms} ms.",
+    "failed": "Il modello di decisione non ha risposto come previsto ({error}). Controlla l'endpoint e la chiave.",
+    "untested": "Impossibile provare il modello di decisione. Riprova.",
+    "remove": "Rimuovi"
   }
 }

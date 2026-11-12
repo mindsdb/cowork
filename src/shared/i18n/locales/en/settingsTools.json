@@ -88,7 +88,8 @@
     "decisionsTest": "Test and turn on",
     "decisionsTesting": "Testing…",
     "decisionsFailed": "The decision model didn't answer as expected ({error}). Check the endpoint and key.",
-    "decisionsUntested": "Couldn't test the decision model. Try again."
+    "decisionsUntested": "Couldn't test the decision model. Try again.",
+    "ownDecisionsLine": "Your organization's decision model also gets the goal of each browser step, the page's address, title, element names and first 1,500 characters, and the recent steps, earlier addresses included, without field values or what you type."
   },
   "codingAgent": {
     "loadFailed": "Could not load coding agent options.",
@@ -190,5 +191,20 @@
     "instructionsPlaceholder": "persona / tone for this chat",
     "save": "Save",
     "removeRoute": "Remove route"
+  },
+  "decisionModel": {
+    "title": "Decision model",
+    "endpointTitle": "Your organization's decision model",
+    "help": "What lets {agent}'s browser pick its steps quickly when you don't use MindsHub, and decide which messages need the full agent. Any endpoint that takes TypeSafe's decision request works.",
+    "url": "Endpoint URL",
+    "key": "API key",
+    "keySaved": "Saved. Type to replace it.",
+    "model": "Model name",
+    "test": "Test",
+    "testing": "Testing…",
+    "passed": "It answered in {ms} ms.",
+    "failed": "The decision model didn't answer as expected ({error}). Check the endpoint and key.",
+    "untested": "Couldn't test the decision model. Try again.",
+    "remove": "Remove"
   }
 }

@@ -88,7 +88,8 @@
     "decisionsTest": "Testen und einschalten",
     "decisionsTesting": "Wird getestet…",
     "decisionsFailed": "Das Entscheidungsmodell hat nicht wie erwartet geantwortet ({error}). Prüfen Sie Endpunkt und Schlüssel.",
-    "decisionsUntested": "Das Entscheidungsmodell konnte nicht getestet werden. Versuchen Sie es noch einmal."
+    "decisionsUntested": "Das Entscheidungsmodell konnte nicht getestet werden. Versuchen Sie es noch einmal.",
+    "ownDecisionsLine": "Das Entscheidungsmodell Ihrer Organisation erhält außerdem das Ziel jedes Browserschritts, die Adresse, den Titel, die Elementnamen und die ersten 1.500 Zeichen der Seite sowie die letzten Schritte einschließlich früherer Adressen, jedoch keine Feldwerte und nichts, was Sie eingeben."
   },
   "codingAgent": {
     "loadFailed": "Optionen für den Coding-Agent konnten nicht geladen werden.",
@@ -190,5 +191,20 @@
     "instructionsPlaceholder": "Persona / Ton für diesen Chat",
     "save": "Speichern",
     "removeRoute": "Route entfernen"
+  },
+  "decisionModel": {
+    "title": "Entscheidungsmodell",
+    "endpointTitle": "Das Entscheidungsmodell Ihrer Organisation",
+    "help": "Damit wählt der Browser von {agent} seine Schritte schnell, wenn Sie MindsHub nicht nutzen, und entscheidet, welche Nachrichten den vollständigen Agenten brauchen. Jeder Endpunkt, der die Entscheidungsanfrage von TypeSafe annimmt, funktioniert.",
+    "url": "Endpunkt-URL",
+    "key": "API-Schlüssel",
+    "keySaved": "Gespeichert. Tippen Sie, um ihn zu ersetzen.",
+    "model": "Modellname",
+    "test": "Testen",
+    "testing": "Wird getestet…",
+    "passed": "Antwort in {ms} ms.",
+    "failed": "Das Entscheidungsmodell hat nicht wie erwartet geantwortet ({error}). Prüfen Sie Endpunkt und Schlüssel.",
+    "untested": "Das Entscheidungsmodell konnte nicht getestet werden. Versuchen Sie es noch einmal.",
+    "remove": "Entfernen"
   }
 }

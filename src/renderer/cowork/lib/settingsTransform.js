@@ -85,6 +85,7 @@ export const SETTINGS_KEY_MAP = {
   // Jev on MindsHub, the shared browser has a decisions model to pick its steps.
   decision_model_url: 'decisionModelUrl',
   decision_model_api_key: 'decisionModelApiKey',
+  decision_model: 'decisionModel',
   limits_enabled: 'limitsEnabled',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',

@@ -465,6 +465,24 @@ describe('BrowserSettingsSection', () => {
       expect(screen.queryByText(/Jev/)).not.toBeInTheDocument();
     });
 
+    it('says what Jev on MindsHub gets when it picks the steps, as on the web', async () => {
+      fetchBrowseStatus.mockResolvedValue({ ...AVAILABLE, decisions_model: 'mindshub' });
+      renderSection({}, vi.fn(), { signedInToMindsHub: true });
+      await screen.findByText(desktopDisclosure('Cowork'));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      const line = `${pageContentLine('Cowork', { signedInToMindsHub: true })} ${WEB_JEV_LINE}`;
+      expect(await screen.findByText(line)).toBeInTheDocument();
+    });
+
+    it("says what the organization's own decision model gets", async () => {
+      fetchBrowseStatus.mockResolvedValue({ ...AVAILABLE, decisions_model: 'own' });
+      renderSection();
+      await screen.findByText(desktopDisclosure('Cowork'));
+      await userEvent.hover(screen.getByRole('switch', { name: 'Shared browser' }));
+      expect(await screen.findByText(/^When Cowork reads a page.* Your organization's decision model also gets the goal of each browser step/)).toBeInTheDocument();
+      expect(screen.queryByText(/Jev/)).not.toBeInTheDocument();
+    });
+
     it('names MindsHub as the model provider while the app is signed in to it', async () => {
       renderSection({}, vi.fn(), { signedInToMindsHub: true });
       const line = pageContentLine('Cowork', { signedInToMindsHub: true });
@@ -592,7 +610,7 @@ describe('BrowserSettingsSection', () => {
       testDecisionModel.mockResolvedValueOnce({ ok: true, error: null, ms: 3 });
       await userEvent.click(test);
       await waitFor(() => expect(onSet).toHaveBeenCalledWith('browserEnabled', true));
-      expect(testDecisionModel).toHaveBeenLastCalledWith({ url: 'https://decide.example.test/v1/systemone', apiKey: 'own-key' });
+      expect(testDecisionModel).toHaveBeenLastCalledWith({ url: 'https://decide.example.test/v1/systemone', apiKey: 'own-key', model: '' });
       expect(screen.getByRole('switch', { name: 'Shared browser' })).toBeChecked();
       expect(screen.queryByLabelText('Decision model endpoint')).not.toBeInTheDocument();
       // The fields save with the form, as the rest of the page does.
@@ -602,12 +620,12 @@ describe('BrowserSettingsSection', () => {
     it('tests a saved key without showing it', async () => {
       fetchBrowseStatus.mockResolvedValue(ADMIN);
       testDecisionModel.mockResolvedValue({ ok: true, error: null });
-      render(<Form initial={{ browserEnabled: true, decisionModelUrl: 'https://decide.example.test/d', decisionModelApiKey: '***' }} onSet={vi.fn()} />);
+      render(<Form initial={{ browserEnabled: true, decisionModelUrl: 'https://decide.example.test/d', decisionModelApiKey: '***', decisionModel: 'jev-own' }} onSet={vi.fn()} />);
       const key = await screen.findByLabelText('API key');
       expect(key).toHaveValue('');
       expect(key).toHaveAttribute('placeholder', 'Saved. Type to replace it.');
       await userEvent.click(screen.getByRole('button', { name: 'Test and turn on' }));
-      expect(testDecisionModel).toHaveBeenCalledWith({ url: 'https://decide.example.test/d', apiKey: '***' });
+      expect(testDecisionModel).toHaveBeenCalledWith({ url: 'https://decide.example.test/d', apiKey: '***', model: 'jev-own' });
     });
 
     it('shows the browser as before with a decisions model, and on a server that predates the field', async () => {
