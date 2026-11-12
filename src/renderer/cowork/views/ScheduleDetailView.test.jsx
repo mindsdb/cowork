@@ -284,6 +284,19 @@ describe('ScheduleDetailView — how the last run went', () => {
     expect(props.onRunNow).toHaveBeenCalledWith('s1');
   });
 
+  it('keeps the Settings shortcut when repeated limit stops auto-pause the task', async () => {
+    const lastRun = failed('stopped_at_limit', { error: 'Raise Max Steps per Task in Settings to let it do more.' });
+    const { props, user } = setup({ task: {
+      ...TASK, enabled: false, state: 'auto_paused', consecutiveFailures: 3,
+      autoPausedAt: '2026-10-14T09:00:00Z', lastRun,
+    }, onOpenSettings: vi.fn() });
+    const box = (await screen.findByText('Paused after 3 failed runs in a row')).closest('[role="alert"]');
+    expect(within(box).getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+    expect(within(box).getByRole('button', { name: 'Review run' })).toBeInTheDocument();
+    await user.click(within(box).getByRole('button', { name: 'Open Settings' }));
+    expect(props.onOpenSettings).toHaveBeenCalledWith('agent');
+  });
+
   it('labels a run that stopped at a limit in the run list', async () => {
     vi.mocked(fetchScheduleRuns).mockResolvedValue({
       runs: [{ id: 'run-4', status: 'failed', outcome: 'stopped_at_limit', startedAt: '2026-10-02T09:00:00Z', error: 'Run reached its step limit.' }],

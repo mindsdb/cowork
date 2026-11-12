@@ -98,7 +98,7 @@ export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onRev
     conversationId && (
       <Button key="review" size="sm" variant={alert.kind === 'partial' || alert.kind === 'limit' || alert.kind === 'failed' ? 'default' : 'subtle'} onClick={() => onReviewRun?.(conversationId)}>{t('scheduleRunAlert.reviewRun')}</Button>
     ),
-    alert.kind === 'limit' && onOpenSettings && (
+    (alert.kind === 'limit' || (alert.kind === 'auto_paused' && lastRunStoppedAtLimit(task))) && onOpenSettings && (
       <Button key="settings" size="sm" variant="subtle" onClick={() => onOpenSettings('agent')}>{t('scheduleRunAlert.openSettings')}</Button>
     ),
     (alert.kind === 'partial' || alert.kind === 'limit') && (
