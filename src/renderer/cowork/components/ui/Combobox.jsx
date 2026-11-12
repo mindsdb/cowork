@@ -183,7 +183,7 @@ export function Combobox({
               // popup's rounded corners. The 320px floor keeps the longest
               // catalog names on one line under a compact trigger such as the
               // composer's model pill; at 240px they truncated (ENG-2591).
-              'flex flex-col overflow-hidden w-[max(var(--anchor-width),320px)] max-w-[var(--available-width)]',
+              'flex flex-col overflow-hidden w-[max(var(--anchor-width),380px)] max-w-[var(--available-width)]',
               // Same bordered-popup treatment as Select/Menu. `border-solid`
               // is load-bearing: preflight is disabled, so a bare `border`
               // sets width but leaves style at the UA default `none`.
@@ -245,7 +245,7 @@ export function Combobox({
                         key={item.value}
                         value={item}
                         disabled={item.disabled}
-                        title={item.title}
+                        title={item.title ?? (typeof item.label === 'string' ? (item.note ? `${item.label} (${item.note})` : item.label) : undefined)}
                         className={cn(
                           'grid items-center gap-[6px]',
                           (item.icon || item.tag || item.action) ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
@@ -258,10 +258,11 @@ export function Combobox({
                         <span className={cn('inline-flex justify-center', item.icon ? 'text-ink-3' : 'text-accent')}>
                           {item.icon || <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>}
                         </span>
-                        {/* Wraps rather than truncates: a name is the one
-                            thing a row must show in full, and a locked row's
-                            tag plus action can leave it under 100px. */}
-                        <span className="min-w-0 break-words">
+                        {/* One line: a long name ends in an ellipsis and
+                            shows in full on hover (the row's title). The
+                            popup is wide enough that a locked row's tag
+                            plus action still leaves room for the name. */}
+                        <span className="min-w-0 truncate whitespace-nowrap">
                           {item.label}
                           {item.note && <span className="text-ink-4"> ({item.note})</span>}
                         </span>
