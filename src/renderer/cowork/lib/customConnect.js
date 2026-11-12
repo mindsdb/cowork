@@ -19,19 +19,39 @@ const NO_CHECK_NOTE = 'This connector has no connection check, so it cannot be c
 const MARKER = '__custom_connection__';
 
 /**
+ * Where the connector sends the member's key, in one sentence, from the
+ * server's summary (an auth type and the names that carry a value).
+ * @param {{type?: string, names?: string[]}|null|undefined} summary
+ * @returns {string} The sentence, or '' when there is no usable summary.
+ */
+export function keySentAs(summary) {
+  const names = Array.isArray(summary?.names) ? summary.names.filter((n) => typeof n === 'string' && n) : [];
+  if (summary?.type === 'basic') return 'Sent as HTTP Basic sign-in.';
+  if (summary?.type === 'header' && names.length) {
+    return `Sent as the ${names.join(', ')} header${names.length > 1 ? 's' : ''}.`;
+  }
+  if (summary?.type === 'query' && names.length) {
+    return `Sent in the request URL as ${names.join(', ')}.`;
+  }
+  return '';
+}
+
+/**
  * Shape a custom connector's spec into its cloud connect form.
  * @param {object} spec The connect spec App builds from the connector's form.
  * @param {object|null} check The connector's check, or null when it has none.
  * @param {string} label The connector's label, the connection's default name.
+ * @param {{type?: string, names?: string[]}|null} [authSummary] Where the key is sent.
  * @returns {object}
  */
-export function toCustomConnectSpec(spec, check, label) {
+export function toCustomConnectSpec(spec, check, label, authSummary = null) {
   const templateFields = Array.isArray(spec?.fields) ? spec.fields : [];
   const hasCheck = Boolean(check && typeof check === 'object');
+  const sentAs = keySentAs(authSummary);
   return {
     ...spec,
     _custom_connect: { connectorId: spec?._connector_id || spec?.engine, label, hasCheck },
-    form_warning: hasCheck ? TEMPLATE_NOTE : NO_CHECK_NOTE,
+    form_warning: hasCheck ? [TEMPLATE_NOTE, sentAs].filter(Boolean).join(' ') : NO_CHECK_NOTE,
     actions: hasCheck
       ? [{ id: 'submit', label: 'Connect', kind: 'primary' }, { id: 'cancel', label: 'Cancel', kind: 'cancel' }]
       : [{ id: 'cancel', label: 'Close', kind: 'cancel' }],
@@ -61,7 +81,7 @@ export function toCustomConnectSpec(spec, check, label) {
  */
 export function connectSpecFor({ full, baseSpec, label, orgMode, editingConnection = null }) {
   if (!orgMode) return baseSpec;
-  if (full?.custom) return toCustomConnectSpec(baseSpec, full.check || null, label);
+  if (full?.custom) return toCustomConnectSpec(baseSpec, full.check || null, label, full.auth_summary || null);
   return toCloudSpec(baseSpec, editingConnection);
 }
 

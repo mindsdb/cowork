@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   ADDRESS_FIELD,
+  keySentAs,
   connectSpecFor,
   desktopOnlyOffer,
   mayConnectThroughChat,
@@ -21,7 +22,7 @@ const SPEC = {
     { name: 'api_key', label: 'API key', type: 'password', secret: true, required: true, description: 'Use https://api.acme.example' },
   ],
 };
-const CHECK = { path: '/v1/me', headers: { Authorization: 'Bearer {api_key}' } };
+const CHECK = { path: '/v1/me' };
 
 describe('the custom connect form', () => {
   it('puts an empty API address with our own help before the template fields', () => {
@@ -36,6 +37,35 @@ describe('the custom connect form', () => {
     expect(spec.form_warning).toMatch(/Anton wrote the field names and help/);
     expect(spec._custom_connect).toEqual({ connectorId: 'acme_crm', label: 'Acme CRM', hasCheck: true });
     expect(spec.actions.map((a) => a.kind)).toEqual(['primary', 'cancel']);
+  });
+
+  it.each([
+    [{ type: 'header', names: ['X-Api-Key'] }, 'Sent as the X-Api-Key header.'],
+    [{ type: 'header', names: ['Authorization', 'X-Workspace'] }, 'Sent as the Authorization, X-Workspace headers.'],
+    [{ type: 'basic', names: [] }, 'Sent as HTTP Basic sign-in.'],
+    [{ type: 'query', names: ['access_key'] }, 'Sent in the request URL as access_key.'],
+  ])('says where the key is sent for %j', (summary, sentence) => {
+    expect(keySentAs(summary)).toBe(sentence);
+
+    const spec = toCustomConnectSpec(SPEC, CHECK, 'Acme CRM', summary);
+
+    expect(spec.form_warning).toBe(`Anton wrote the field names and help below. Check them against your provider before entering a key. ${sentence}`);
+  });
+
+  it.each([null, undefined, {}, { type: 'header', names: [] }, { type: 'query' }, { type: 'oauth', names: ['x'] }])(
+    'adds nothing without a usable summary (%j)',
+    (summary) => {
+      expect(keySentAs(summary)).toBe('');
+      expect(toCustomConnectSpec(SPEC, CHECK, 'Acme CRM', summary).form_warning).toBe(
+        'Anton wrote the field names and help below. Check them against your provider before entering a key.',
+      );
+    },
+  );
+
+  it('says nothing of the key when the template cannot be connected', () => {
+    const spec = toCustomConnectSpec(SPEC, null, 'Acme CRM', { type: 'header', names: ['X-Api-Key'] });
+
+    expect(spec.form_warning).not.toMatch(/Sent as/);
   });
 
   it('asks for nothing and says why when the template has no check', () => {
@@ -121,6 +151,14 @@ describe('the form a picked connector opens', () => {
 
     expect(spec._custom_connect).toMatchObject({ connectorId: 'acme_crm', hasCheck: true });
     expect(spec.fields[0].name).toBe(ADDRESS_FIELD);
+  });
+
+  it('carries the server summary of where the key is sent', () => {
+    const withSummary = { ...full, auth_summary: { type: 'query', names: ['access_key'] } };
+
+    const spec = connectSpecFor({ full: withSummary, baseSpec: SPEC, label: 'Acme CRM', orgMode: true });
+
+    expect(spec.form_warning).toMatch(/Sent in the request URL as access_key\.$/);
   });
 
   it('is the spec as is on desktop, custom or not', () => {
