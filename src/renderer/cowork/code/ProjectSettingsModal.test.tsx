@@ -420,7 +420,7 @@ describe('ProjectSettingsModal', () => {
     await user.click(await screen.findByRole('combobox', { name: 'Default coding model' }));
     await user.click(screen.getByRole('option', { name: 'Claude Fable 5' }));
     await user.click(screen.getByRole('combobox', { name: 'Default coding permissions' }));
-    await user.click(screen.getByRole('option', { name: 'Workspace auto' }));
+    await user.click(screen.getByRole('option', { name: 'Approve for me' }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({

@@ -1037,16 +1037,16 @@
       "title": "Inspect and explain without changing files."
     },
     "supervised": {
-      "label": "Ask first",
-      "title": "Pause before commands that need your approval."
+      "label": "Ask for approval",
+      "title": "Always ask before editing files outside the task or using the internet."
     },
     "workspace": {
-      "label": "Workspace auto",
-      "title": "Work autonomously inside this task’s isolated copy."
+      "label": "Approve for me",
+      "title": "A reviewer approves routine requests and blocks risky ones."
     },
     "fullAccess": {
       "label": "Full access",
-      "title": "Work autonomously without filesystem restrictions."
+      "title": "Unrestricted access to the internet and every file on your computer."
     }
   },
   "branchSelect": {

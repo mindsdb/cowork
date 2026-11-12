@@ -813,7 +813,7 @@ Each milestone evidence file should record pass/fail/not-applicable for the foll
 | Task lifecycle | New; running; queued message; steering; approval; stopped; failed; completed; restored |
 | Concurrency | Two tasks minimum; stress case with six tasks; child/background load where relevant |
 | Scale | Long history; large repository; large diff; noisy process; binary/large file states |
-| Permissions | Read only; Ask first; Workspace auto; Full access; advanced rules after M8 |
+| Permissions | Ask for approval; Approve for me; Full access (Read only kept for projects and tasks saved with it); advanced rules after M8 |
 | Engine | Codex; declared unsupported capability paths; no additional agents in this programme |
 | Inference | Selected MindsHub model reaches each supported harness; availability, credit, usage, and error behavior remain coherent |
 | UX | Keyboard; pointer; selectable text; focus restoration; dark/light; reduced motion |

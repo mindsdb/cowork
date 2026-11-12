@@ -358,7 +358,7 @@ describe('NewTaskPanel', () => {
     const agentPicker = screen.getByRole('combobox', { name: 'Coding agent' });
     const permissionPicker = screen.getByRole('combobox', { name: 'Coding permissions' });
     expect(agentPicker).toHaveTextContent('Codex');
-    expect(permissionPicker).toHaveTextContent('Ask first');
+    expect(permissionPicker).toHaveTextContent('Ask for approval');
     expect(agentPicker).not.toHaveTextContent('Agent:');
     expect(permissionPicker).not.toHaveTextContent('Coding permissions:');
     expect(screen.queryByRole('button', { name: 'Add folder' })).not.toBeInTheDocument();

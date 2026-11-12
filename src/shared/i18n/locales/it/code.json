@@ -1037,16 +1037,16 @@
       "title": "Esamina e spiega senza modificare i file."
     },
     "supervised": {
-      "label": "Chiedi prima",
-      "title": "Si ferma prima dei comandi che richiedono la tua approvazione."
+      "label": "Chiedi approvazione",
+      "title": "Chiede sempre prima di modificare file fuori dall’attività o di usare Internet."
     },
     "workspace": {
-      "label": "Auto nell’area di lavoro",
-      "title": "Lavora in autonomia nella copia isolata di questa attività."
+      "label": "Approva per me",
+      "title": "Un revisore approva le richieste di routine e blocca quelle rischiose."
     },
     "fullAccess": {
       "label": "Accesso completo",
-      "title": "Lavora in autonomia senza restrizioni sul file system."
+      "title": "Accesso senza restrizioni a Internet e a tutti i file del tuo computer."
     }
   },
   "branchSelect": {
