@@ -1,7 +1,7 @@
 // The comments inbox and Stats share one docked slot, and comment mode is off
 // while Stats is open, so at most one header switch is on at a time.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 
 const publishMock = vi.hoisted(() => ({ url: '', accessMode: 'restricted', accessLoaded: true }));
@@ -73,7 +73,7 @@ vi.mock('./ArtifactViewerHeader', () => ({
   ArtifactViewerHeader: ({ review, stats }) => (
     <>
       <button type="button" aria-pressed={!!review.open} onClick={review.onToggle}>Comments</button>
-      <button type="button" aria-pressed={!!stats.open} onClick={stats.onToggle}>Stats</button>
+      {stats && <button type="button" aria-pressed={!!stats.open} onClick={stats.onToggle}>Stats</button>}
     </>
   ),
 }));
@@ -100,6 +100,7 @@ vi.mock('../ui/Modal', () => ({
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 import { ArtifactViewer } from './ArtifactViewer';
+import { setStatsUiEnabled } from './stats/statsUiAccess';
 
 const CARD = {
   // Dashed on purpose: the event carries the normalized bare-hex identity.
@@ -135,9 +136,29 @@ beforeEach(() => {
   };
   layerMock.exitMode.mockClear();
   analyticsMock.trackArtifactStatsOpened.mockClear();
+  setStatsUiEnabled(true);
+});
+
+afterEach(() => {
+  setStatsUiEnabled(false);
 });
 
 describe('ArtifactViewer side panel', () => {
+  it('hides Stats until the hidden UI is turned on', async () => {
+    setStatsUiEnabled(false);
+    renderViewer();
+    await settle();
+
+    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull();
+    expect(panels().stats).toBe('false');
+    expect(statsMock.enabled.every((enabled) => enabled === false)).toBe(true);
+
+    act(() => setStatsUiEnabled(true));
+    click('Stats');
+
+    expect(panels().stats).toBe('true');
+  });
+
   it('turns comment mode and the inbox off when Stats opens', async () => {
     renderViewer();
     await settle();

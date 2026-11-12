@@ -62,6 +62,7 @@ import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { useArtifactStats } from './stats/useArtifactStats';
+import { useStatsUiEnabled } from './stats/statsUiAccess';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import './artifactWorkspace.css';
@@ -548,9 +549,10 @@ export function ArtifactViewer({
     (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
   );
 
-  // Stats are for the owner of a published artifact only. The header applies
-  // the same rule to its button.
-  const statsAvailable = !!pub.publishedUrl && canManage;
+  // Stats are for the owner of a published artifact only, and only where the
+  // hidden Stats UI is turned on. The header applies the same rule to its button.
+  const statsUiEnabled = useStatsUiEnabled();
+  const statsAvailable = statsUiEnabled && !!pub.publishedUrl && canManage;
   const statsOpen = open && statsAvailable && sidePanel === 'stats';
   const stats = useArtifactStats(artifact, { enabled: statsOpen });
   // Stats closes when it stops being available and with the viewer, so the
@@ -1116,7 +1118,7 @@ export function ArtifactViewer({
     controller: comments,
     onToggle: toggleComments,
   };
-  const headerStats = { open: sidePanel === 'stats', onToggle: toggleStats };
+  const headerStats = statsUiEnabled ? { open: sidePanel === 'stats', onToggle: toggleStats } : null;
   const bodyStats = {
     open: statsOpen,
     controller: stats,
