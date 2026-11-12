@@ -845,7 +845,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
      read, as the web pod's FRAME_MIN_SCALE. */
   const FRAME_MIN_SCALE = 0.5;
   /* The share of its laid-out size `el` is drawn at, the smaller of its
-     width's and its height's, transforms and zoom applied: 1 when it has no
+     width's and its height's, its transforms applied: 1 when it has no
      laid-out size to compare. */
   const drawnScale = (el: Element): number => {
     const { offsetWidth, offsetHeight } = el as HTMLElement;
@@ -1000,7 +1000,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   };
   /* How a box in same-origin frame `owner`'s own viewport lands in its
      document's viewport: scaled as the frame is drawn (its box over its
-     laid-out size, so a transform or a zoom that scales it scales the box),
+     laid-out size, so a transform that scales it scales the box),
      from the corner of its content box; for a frame a transform turns, the
      frame's whole box. */
   const throughOwner = (owner: Element): ((box: Box) => Box) => {
