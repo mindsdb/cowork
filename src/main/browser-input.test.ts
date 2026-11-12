@@ -67,7 +67,7 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing) {
     focus: vi.fn(async () => ({ ok: true as const })),
     select: vi.fn(async () => ({ ok: true as const, chosen: ['x'] })),
     viewport: vi.fn(async () => VIEWPORT),
-    hitTest: vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: 0 })),
+    hitTest: vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: 0, intoFrame: false })),
     ...over,
   };
   const nav = { load: vi.fn(async () => {}), back: vi.fn(async () => {}), forward: vi.fn(async () => {}), reload: vi.fn(async () => {}) };
@@ -356,7 +356,7 @@ describe('runStep', () => {
   });
 
   it('refuses a click by number when every point it would press lands on another element, and presses nothing', async () => {
-    const hitTest = vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: -1 }));
+    const hitTest = vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: -1, intoFrame: false }));
     const { dbg, stepHost } = host({ hitTest });
     await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
       code: 'stale_element',
@@ -371,8 +371,18 @@ describe('runStep', () => {
     expect(points.every((p) => p.x > 100 && p.x < 300 && p.y > 100 && p.y < 140)).toBe(true);
   });
 
+  it('refuses a click by number whose points land in a frame inside the element, says so, and presses nothing', async () => {
+    const { dbg, stepHost } = host({ hitTest: vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: -1, intoFrame: true })) });
+    await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
+      code: 'stale_element',
+      status: 409,
+      message: "element 7 holds a frame, or a part of the page this browser can't read, where a click by number would land; click inside it by position from a screenshot",
+    });
+    expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+  });
+
   it('presses the first point that reaches the element, and refuses one gone by then as stale', async () => {
-    const { dbg, stepHost } = host({ hitTest: vi.fn(async () => ({ found: true as const, reaches: 3 })) });
+    const { dbg, stepHost } = host({ hitTest: vi.fn(async () => ({ found: true as const, reaches: 3, intoFrame: false })) });
     await runStep(stepHost, step({ action: 'click', element: 7 }));
     // Offset (0.25, 0) of the 200 by 40 box at (100, 100).
     expect(events(dbg.sent, 'Input.dispatchMouseEvent').find((e) => e.type === 'mousePressed')).toMatchObject({ x: 250, y: 120 });

@@ -85,7 +85,7 @@ const electron = vi.hoisted(() => {
       }
       if (code.includes('"kind":"focusedSecret"')) return this.focus;
       if (code.includes('"kind":"secretBoxes"')) return this.secrets;
-      if (code.includes('"kind":"hitTest"')) return { found: true, reaches: 0 };
+      if (code.includes('"kind":"hitTest"')) return { found: true, reaches: 0, intoFrame: false };
       if (code.includes('"kind":"watch"')) return { ok: true };
       const token = Number(/"token":(\d+)/.exec(code)?.[1]);
       if (code.includes('"kind":"changeStart"')) {

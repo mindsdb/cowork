@@ -340,24 +340,39 @@ describe('the isolated-world page read', () => {
     expect(snapshot(freshWorld(), 0).text).toBe('');
   });
 
-  it('lists no frame as an element, and records every frame owner and whether it shows, for the checks', () => {
+  it('lists no frame as an element, an object or an embed that names itself a control included, and records every frame owner and whether it shows, for the checks', () => {
     document.body.innerHTML = `
       <iframe id="cf" title="Widget containing a Cloudflare security challenge" src="https://challenges.cloudflare.com/cdn-cgi/x"></iframe>
       <iframe id="rc" src="https://www.google.com/recaptcha/api2/anchor?k=x"></iframe>
-      <iframe id="tab" tabindex="0" onclick="go()" src="https://ads.example.test/"></iframe>`;
+      <iframe id="tab" tabindex="0" onclick="go()" src="https://ads.example.test/"></iframe>
+      <object id="obj" data="https://shop.other.test/buy" type="text/html" role="button" aria-label="Dismiss"></object>
+      <embed id="emb" src="https://shop.other.test/buy" type="text/html" tabindex="0" title="Close">`;
     place(document.getElementById('cf')!, 10, 10, 300, 65);
     place(document.getElementById('rc')!, 0, 0, 0, 0);
     place(document.getElementById('tab')!, 10, 100, 300, 250);
+    place(document.getElementById('obj')!, 10, 360, 300, 100);
+    place(document.getElementById('emb')!, 10, 470, 300, 100);
     const world = freshWorld();
     const page = snapshot(world);
     expect(page.frameOwners).toEqual([
       { url: 'https://challenges.cloudflare.com/cdn-cgi/x', visible: true },
       { url: 'https://www.google.com/recaptcha/api2/anchor?k=x', visible: false },
       { url: 'https://ads.example.test/', visible: true },
+      { url: 'https://shop.other.test/buy', visible: true },
+      { url: 'https://shop.other.test/buy', visible: true },
     ]);
     expect(page.elements).toEqual([]);
     expect(page.boxes).toEqual([]);
     expect(world.ids.size).toBe(0);
+  });
+
+  it('keeps the focus on an embed or an object it may not read into, so an editing key there counts as one into another site', () => {
+    document.body.innerHTML = '<embed id="emb" src="https://shop.other.test/buy" type="text/html" tabindex="0"><object id="obj" data="https://shop.other.test/buy" type="text/html" tabindex="0"></object>';
+    const world = freshWorld();
+    for (const id of ['emb', 'obj']) {
+      (document.getElementById(id) as HTMLElement).focus();
+      expect(pageWorld(document, world, { kind: 'focusedSecret' }), id).toEqual({ secret: false, otherSite: true } satisfies FocusedSecret);
+    }
   });
 
   it('past the cap, lists the elements in view first, each group in page order, and numbers only those it lists', () => {
@@ -458,13 +473,63 @@ describe('the isolated-world page read', () => {
     try {
       const hitTest = (id: number, points: Array<[number, number]>) =>
         pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })) });
-      expect(hitTest(ids.Go, [[1, 1], [2, 2], [4, 4]])).toEqual({ found: true, reaches: 1 } satisfies HitTestResult);
-      expect(hitTest(ids.Go, [[4, 4]])).toEqual({ found: true, reaches: 0 });
-      expect(hitTest(ids.Agree, [[1, 1], [3, 3]])).toEqual({ found: true, reaches: 1 });
-      expect(hitTest(ids.Go, [[1, 1], [3, 3], [9, 9]])).toEqual({ found: true, reaches: -1 });
+      expect(hitTest(ids.Go, [[1, 1], [2, 2], [4, 4]])).toEqual({ found: true, reaches: 1, intoFrame: false } satisfies HitTestResult);
+      expect(hitTest(ids.Go, [[4, 4]])).toEqual({ found: true, reaches: 0, intoFrame: false });
+      expect(hitTest(ids.Agree, [[1, 1], [3, 3]])).toEqual({ found: true, reaches: 1, intoFrame: false });
+      expect(hitTest(ids.Go, [[1, 1], [3, 3], [9, 9]])).toEqual({ found: true, reaches: -1, intoFrame: false });
       expect(hitTest(999, [[4, 4]])).toEqual({ found: false });
     } finally {
       restore();
+    }
+  });
+
+  it('never counts a point that lands in a frame, or in a custom element sealed from this world, as reaching the control around it', async () => {
+    document.body.innerHTML = `
+      <div data-box="400x120" id="wrap" tabindex="0" aria-label="More info"><iframe id="buy" src="https://shop.other.test/buy"></iframe></div>
+      <label data-box="400x40" id="agree-label">Agree <input data-box id="agree" type="checkbox"><iframe id="terms" src="https://terms.other.test/"></iframe></label>
+      <div data-box="400x120" id="host-wrap" role="button" aria-label="Open widget"><div id="host"></div></div>
+      <div data-box="400x40" id="sealed-wrap" role="button" aria-label="Pay"><x-pay id="sealed"></x-pay></div>
+      <button data-box="400x40" id="icon-button" aria-label="Menu"><x-icon id="icon">menu</x-icon></button>`;
+    layout();
+    place(document.getElementById('icon')!, 10, 400, 400, 40);
+    const inner = document.getElementById('host')!.attachShadow({ mode: 'open' });
+    inner.innerHTML = '<iframe id="shadow-frame" src="https://shop.other.test/buy"></iframe>';
+    const world = freshWorld();
+    const ids = Object.fromEntries(snapshot(world).elements.map((e) => [e.name, e.id]));
+    const at: Record<string, Element> = {
+      '1,1': document.getElementById('buy')!,
+      '2,2': document.getElementById('terms')!,
+      '3,3': document.getElementById('host')!,
+      '4,4': document.getElementById('sealed')!,
+      '5,5': document.getElementById('icon')!,
+      '6,6': document.getElementById('wrap')!,
+    };
+    const restoreHits = hitTestBy((x, y) => at[`${x},${y}`] ?? null);
+    // happy-dom's shadow roots have no hit test of their own.
+    Object.defineProperty(inner, 'elementFromPoint', { configurable: true, value: () => inner.getElementById('shadow-frame') });
+    try {
+      const hitTest = (id: number, points: Array<[number, number]>) =>
+        pageWorld(document, world, { kind: 'hitTest', id, points: points.map(([x, y]) => ({ x, y })) });
+      // Every point lands on another site's frame the control wraps, or its label holds.
+      expect(hitTest(ids['More info'], [[1, 1]])).toEqual({ found: true, reaches: -1, intoFrame: true } satisfies HitTestResult);
+      expect(hitTest(ids.Agree, [[2, 2]])).toEqual({ found: true, reaches: -1, intoFrame: true });
+      // One in an open shadow root inside it, followed there.
+      expect(hitTest(ids['Open widget'], [[3, 3]])).toEqual({ found: true, reaches: -1, intoFrame: true });
+      // A custom element that shows no open shadow root and draws no text of its own there may hold a frame in a closed one.
+      expect(hitTest(ids.Pay, [[4, 4]])).toEqual({ found: true, reaches: -1, intoFrame: true });
+      // A point on the control itself still reaches it.
+      expect(hitTest(ids['More info'], [[1, 1], [6, 6]])).toEqual({ found: true, reaches: 1, intoFrame: true });
+    } finally {
+      restoreHits();
+    }
+    // A custom element's own text, which a click there lands on, reaches its control.
+    const restoreText = textBoxesFromParents();
+    const restoreIcon = hitTestBy(() => document.getElementById('icon'));
+    try {
+      expect(pageWorld(document, world, { kind: 'hitTest', id: ids.Menu, points: [{ x: 15, y: 410 }] })).toEqual({ found: true, reaches: 0, intoFrame: false });
+    } finally {
+      restoreIcon();
+      restoreText();
     }
   });
 

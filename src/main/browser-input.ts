@@ -434,13 +434,21 @@ const FIXED_POINTS: ReadonlyArray<readonly [number, number]> = [
   [0, 0], [-0.25, 0], [0.25, 0], [0, -0.25], [0, 0.25], [-0.4, -0.4], [0.4, -0.4], [-0.4, 0.4], [0.4, 0.4],
 ];
 
+/* Why no point of a click by number reaches its element: a frame inside it
+   (or a part of the page the isolated world can't read) takes the click, or
+   something covers it (a dialog, a banner, a frame laid over it). */
+function unreached(id: number, intoFrame: boolean): BridgeError {
+  return intoFrame
+    ? stale(id, "holds a frame, or a part of the page this browser can't read, where a click by number would land; click inside it by position from a screenshot")
+    : stale(id, 'is covered by another element, such as a dialog or banner; deal with that first, or take a screenshot');
+}
+
 /* A point inside the element, scrolled into view first. The scroll is wheel
    ticks over the page, as a person scrolls; a box that is still out of view
    after that (a scrolled container) is brought in by the page itself. The
    point is a random one, as a person clicks, or else the first fixed point
-   whose hit test reaches the element; when none does, something covers it
-   (a dialog, a banner, a frame laid over it), and the step is refused
-   rather than pressing what covers it. */
+   whose hit test reaches the element; when none does, the step is refused
+   rather than pressing what lies there (`unreached`). */
 async function elementPoint(host: StepHost, input: AgentInput, id: number): Promise<{ at: Point; located: Extract<LocateResult, { found: true }> }> {
   let located = await host.page.locate(id, false);
   for (let round = 0; round < 3 && located.found && located.shown && !located.inViewport; round += 1) {
@@ -468,9 +476,7 @@ async function elementPoint(host: StepHost, input: AgentInput, id: number): Prom
   ];
   const hit = await host.page.hitTest(id, points);
   if (!hit.found) throw stale(id, 'is no longer on the page');
-  if (hit.reaches < 0) {
-    throw stale(id, 'is covered by another element, such as a dialog or banner; deal with that first, or take a screenshot');
-  }
+  if (hit.reaches < 0) throw unreached(id, hit.intoFrame);
   return { at: points[hit.reaches], located };
 }
 

@@ -34,9 +34,11 @@
  * name. Challenge frames are reported when the person can see them: the page
  * lists its frame elements and whether each one shows, and main joins them
  * with the frame tree's URLs (`challengesFrom`), which counts a check frame
- * with no element in the DOM by its presence. A frame is never an element: a
- * click by number never lands inside one, and each click by number presses a
- * point whose hit test reaches its element (`hitTest`).
+ * with no element in the DOM by its presence. A frame owner (an iframe, a
+ * frame, an object or an embed) is never an element, and each click by number
+ * presses a point whose hit test reaches its element (`hitTest`) without
+ * landing in a frame owner or in a custom element sealed from this world, so
+ * a click by number never lands inside a frame.
  *
  * Each agent step runs a change watch (`changeStart`, `changeMark`,
  * `changeStop`) under the step's token: a MutationObserver over the document
@@ -250,8 +252,11 @@ export type FocusResult =
   | { ok: false; reason: 'not_found' | 'secret' | 'unfocusable' };
 
 /** The first of a hit test's points whose hit lands on the element, inside
-    it or on one of its labels; -1 when every one lands on something else. */
-export type HitTestResult = { found: false } | { found: true; reaches: number };
+    it or on one of its labels, and not in a frame there; -1 when every one
+    lands on something else. `intoFrame`: a point landed in a frame owner, or
+    in a custom element sealed from this world, inside the element or one of
+    its labels. */
+export type HitTestResult = { found: false } | { found: true; reaches: number; intoFrame: boolean };
 
 /** The focus before each key of a type step: whether it is on a secret field,
     and whether it is still in the field the step types into. */
@@ -316,14 +321,18 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     const bottom = px(style.borderBottomWidth) + px(style.paddingBottom);
     return { x: box.x + left, y: box.y + top, width: Math.max(0, box.width - left - right), height: Math.max(0, box.height - top - bottom) };
   };
-  /* A frame owner's document, when this world may read it: same origin. */
+  /* A frame owner's document, when this world may read it: same origin. An
+     embed shows none. */
   const frameDocOf = (owner: Element): Document | null => {
     try {
-      return (owner as HTMLIFrameElement).contentDocument;
+      return (owner as HTMLIFrameElement).contentDocument ?? null;
     } catch {
       return null;
     }
   };
+  /* The address a frame owner names: an object's data, the others' src. */
+  const sourceOf = (owner: Element): string =>
+    (tagOf(owner) === 'object' ? (owner as HTMLObjectElement).data : (owner as HTMLIFrameElement).src) || '';
   /* Whether `address`'s host is one of `hosts`, or a name under one. */
   const hostIn = (address: string, hosts: readonly string[]): boolean => {
     let host: string;
@@ -608,7 +617,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return id;
   };
 
-  const FRAME_TAGS = new Set(['iframe', 'frame']);
+  /* Elements that may hold another document: a click on one lands in it. */
+  const FRAME_TAGS = new Set(['iframe', 'frame', 'object', 'embed']);
 
   interface Candidate { el: Element; role: string; box: Box; visible: boolean }
 
@@ -663,7 +673,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     let reads = 0;
     return [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen }): RawFrame => {
       const inner = frameDocOf(owner);
-      const src = (owner as HTMLIFrameElement).src || '';
+      const src = sourceOf(owner);
       const url = inner ? String(inner.location?.href || src) : src;
       const refusedAddress = (address: string) =>
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
@@ -718,7 +728,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
     const frameOwners = owners.map((owner): DomFrame => {
       const box = boxOf(owner);
-      return { url: (owner as HTMLIFrameElement).src || '', visible: shown(owner, box) && inView(box) };
+      return { url: sourceOf(owner), visible: shown(owner, box) && inView(box) };
     });
     const scroller = doc.scrollingElement || doc.documentElement;
     return {
@@ -755,7 +765,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
           continue;
         }
         const inner = frameDocOf(el);
-        const payment = hostIn((el as HTMLIFrameElement).src || '', paymentHosts) || (!!inner && hostIn(String(inner.location?.href || ''), paymentHosts));
+        const payment = hostIn(sourceOf(el), paymentHosts) || (!!inner && hostIn(String(inner.location?.href || ''), paymentHosts));
         if (payment) add(found.paymentFrames, el, dx, dy);
         if (!inner) add(found.otherSiteFrames, el, dx, dy);
         else if (!payment) {
@@ -800,10 +810,28 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return hit;
   };
 
-  /* Whether a click that lands on `hit` reaches `el`: it is `el`, inside it,
-     or on one of its labels. */
-  const reaches = (el: Element, hit: Element | null): boolean =>
-    !!hit && (within(el, hit) || Array.from((el as HTMLInputElement).labels ?? []).some((label) => within(label, hit)));
+  /* Whether a click that lands on `hit` lands on `el`: it is `el`, inside
+     it, or on one of its labels. */
+  const landsOn = (el: Element, hit: Element): boolean =>
+    within(el, hit) || Array.from((el as HTMLInputElement).labels ?? []).some((label) => within(label, hit));
+
+  /* Whether (x, y) lies on text `el` holds itself, which a click there lands
+     on. */
+  const ownTextAt = (el: Element, x: number, y: number): boolean => {
+    const range = el.ownerDocument.createRange();
+    return Array.from(el.childNodes).some((child) => {
+      if (child.nodeType !== 3) return false;
+      range.selectNodeContents(child);
+      return Array.from(range.getClientRects()).some((rect) => x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom);
+    });
+  };
+
+  /* Whether a click on `hit` at (x, y) lands where this world can't see: in
+     a frame owner's document, or in a custom element that shows no open
+     shadow root and has no text of its own there, whose closed shadow root
+     may hold a frame. */
+  const opaqueHit = (hit: Element, x: number, y: number): boolean =>
+    FRAME_TAGS.has(tagOf(hit)) || (tagOf(hit).includes('-') && !hit.shadowRoot && !ownTextAt(hit, x, y));
 
   /* Whether the focus is on `el` or inside it, across shadow roots, or on the
      editing host `el` is part of. */
@@ -992,7 +1020,15 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'hitTest': {
       const el = world.ids.get(request.id);
       if (!el || !el.isConnected) return { found: false };
-      return { found: true, reaches: request.points.findIndex((point) => reaches(el, hitAt(point.x, point.y))) };
+      let intoFrame = false;
+      const reaches = request.points.findIndex(({ x, y }) => {
+        const hit = hitAt(x, y);
+        if (!hit || !landsOn(el, hit)) return false;
+        if (!opaqueHit(hit, x, y)) return true;
+        intoFrame = true;
+        return false;
+      });
+      return { found: true, reaches, intoFrame } satisfies HitTestResult;
     }
     case 'changeStart': {
       stopChanges();
