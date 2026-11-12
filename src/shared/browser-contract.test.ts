@@ -206,7 +206,7 @@ describe('step requests', () => {
     });
   });
 
-  it('reads into_frame, which anton sends true only for a step the person approved to land in a frame, and takes anything else as false', () => {
+  it('reads into_frame, which anton sends true after the person approves a one-step card for a step that may land in a frame, and takes anything else as false', () => {
     expect(parseStepRequest({ action: 'click', x: 10, y: 20, into_frame: true })).toMatchObject({ ok: true, value: { intoFrame: true } });
     for (const into_frame of [undefined, false, 'true', 1, null]) {
       expect(parseStepRequest({ action: 'click', x: 10, y: 20, into_frame }), String(into_frame)).toMatchObject({ ok: true, value: { intoFrame: false } });

@@ -370,11 +370,20 @@ export type Step =
 
 /** POST /sessions/{id}/action, checked. Points are in page CSS pixels, or in
     the latest screenshot's pixels when `coords` is "screenshot".
-    `intoFrame` is the body's into_frame: anton sends true only for a step it
-    raised to the one-step card because it may land in a frame, once the
-    person approved it. Anything else, a missing field included, is false,
-    and a press or a drag's release whose point lands in a frame is refused
-    (runStep in src/main/browser-input.ts). */
+    `intoFrame` is the body's into_frame. anton sends true after the person
+    approves a one-step card for a step whose point may land in a frame,
+    whatever held the step: a click by position anton raised for the frame,
+    a click on a consent page, or a drag from a commit control. It sends
+    false on every other body, a click after the person's approval of
+    clicks by position on the page included. With true, a press or a drag's
+    release is bound to the frame under its point when the step starts: it
+    goes only into that frame, at the address it had then, and is refused
+    once that frame moved away, another lies there, it navigated, or the
+    debugger can't say which frame lies there, and so is one where a frame
+    arrived under a point that had none (frameGuard in
+    src/main/browser-input.ts). Anything else, a missing field included, is
+    false, and a press or a drag's release whose point lands in a frame,
+    when the step starts or just before it, is refused. */
 export interface StepRequest {
   step: Step;
   coords: 'page' | 'screenshot';

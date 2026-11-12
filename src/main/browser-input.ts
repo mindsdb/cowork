@@ -29,8 +29,9 @@
  * nothing once the page slid a frame or another element under it
  * (`pressPoint`). A press by position, or a drag's release, whose point lands
  * in a frame is refused, at the step's start and just before it, unless anton
- * says the person approved the step to land in one, and then it goes only
- * into the frame that was there when the step began (`frameGuard`).
+ * says the person approved a one-step card for a step that may land in one,
+ * and then it goes only into the frame that was there when the step began
+ * (`frameGuard`).
  */
 
 import {
@@ -543,7 +544,8 @@ const notTheFrame = (where: string) =>
    judged the step by the frames its last page read showed, and a frame can
    arrive under the point after that read: the page moves one there, or the
    person scrolls. A step anton sends with into_frame (`intoFrame`: the person
-   approved a step that may land in a frame) may press into the frame that
+   approved a one-step card for a step whose point may land in a frame,
+   whatever held it) may press into the frame that
    lies there when it starts, and only into that one, at the address it had
    then (`frameUnder`): once that frame moved away, another one lies over
    it, it navigated, or the debugger can't say which frame is there, the
