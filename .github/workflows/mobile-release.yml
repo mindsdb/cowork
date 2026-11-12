@@ -17,7 +17,7 @@ name: Mobile release
 # No `pull_request` trigger: the PR pipeline is dev-build-deploy.yml alone, and
 # the unsigned PR build is mobile-smoke.yml, called from it.
 #
-# run-tree-ok: the only other `push` workflow is publish-ui.yml on `ui-v*` tags, which never coincide with `mobile-v*`; this file is the single entry point for a mobile tag.
+# run-tree-ok: the other `push` workflows filter on branches (main, staging) or on `ui-v*` tags (publish-ui.yml), so none fires for a `mobile-v*` tag; this file is the single entry point for a mobile tag.
 on:
   push:
     tags:

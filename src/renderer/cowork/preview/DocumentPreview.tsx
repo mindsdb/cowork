@@ -122,14 +122,14 @@ export function previewFailureReason({ code, limit }: Pick<PreviewFailure, 'code
    deck counts the slides it drew, since either the slide cap or the element
    cap can end it. */
 export function truncationLine(type: DocumentPreviewType, units: number, downloads: boolean): string {
-  const line = tr(`documentPreview.truncated.${type}`, {
+  const line = tr(`documentPreview.${host.isMobileShell ? 'truncatedMobile' : 'truncated'}.${type}`, {
     action: downloads ? 'download' : 'open',
     count: units,
     rows: CAPS.maxSheetRows,
     columns: CAPS.maxSheetColumns,
     pages: CAPS.maxPdfPages,
   });
-  return host.isMobileShell ? `${line.split('. ')[0]}. ${MOBILE_DOWNLOAD_NOTE}` : line;
+  return host.isMobileShell ? `${line} ${MOBILE_DOWNLOAD_NOTE}` : line;
 }
 
 interface FailureProps {

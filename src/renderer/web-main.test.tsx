@@ -23,6 +23,7 @@ const rendered = {
   providerInitOptions: null as unknown,
   shellRoot: null as null | { shell: unknown; initOptions: unknown },
   handoffAtProvider: null as string | null,
+  settingsAtAuth: null as string | null,
   app: false,
   identityRequired: false,
   identityToken: null as string | null,
@@ -31,6 +32,12 @@ const rendered = {
 };
 
 // Mirrors @react-keycloak/core's provider: LoadingComponent until init resolves.
+const languageState = vi.hoisted(() => ({ ready: Promise.resolve() }));
+vi.mock('./lib/i18n', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./lib/i18n')>(),
+  whenI18nReady: () => languageState.ready,
+}));
+
 const keycloakState = { initialized: true };
 const skinState = { skin: 'normal', seed: () => {} };
 const brandState = { brand: null as { iconUrl: string } | null };
@@ -45,6 +52,7 @@ vi.mock('@react-keycloak/web', () => ({
     rendered.provider = true;
     rendered.providerInitOptions = initOptions;
     rendered.handoffAtProvider = window.sessionStorage.getItem('anton.consoleHandoff');
+    rendered.settingsAtAuth = window.sessionStorage.getItem('anton.settingsDeepLink');
     if (!keycloakState.initialized && LoadingComponent) return LoadingComponent;
     onTokens?.({ token: 'initial-token' });
     return children ?? null;
@@ -64,6 +72,7 @@ vi.mock('./App', () => ({
 vi.mock('./MobileShellRoot', () => ({
   MobileShellRoot: ({ children, shell, initOptions }: { children?: unknown; shell: unknown; initOptions: unknown }) => {
     rendered.shellRoot = { shell, initOptions };
+    rendered.settingsAtAuth = window.sessionStorage.getItem('anton.settingsDeepLink');
     return children ?? null;
   },
 }));
@@ -108,6 +117,7 @@ async function renderOnHost(hostname: string, search = '') {
   rendered.providerInitOptions = null;
   rendered.shellRoot = null;
   rendered.handoffAtProvider = null;
+  rendered.settingsAtAuth = null;
   rendered.app = false;
   rendered.identityRequired = false;
   rendered.identityToken = null;
@@ -148,6 +158,27 @@ describe('web-main auth wrapper selection', () => {
       writable: true,
       value: realLocation,
     });
+  });
+
+  it.each([false, true])('waits for language loading before mounting auth (mobile=%s)', async (mobile) => {
+    let ready!: () => void;
+    languageState.ready = new Promise<void>((resolve) => { ready = resolve; });
+    const userAgent = navigator.userAgent;
+    vi.stubGlobal('navigator', { userAgent: mobile ? 'MindsHubCowork-iOS/1.0.0' : userAgent });
+    try {
+      await renderOnHost('cowork.mindshub.ai');
+      expect(rendered.provider).toBe(false);
+      expect(rendered.shellRoot).toBeNull();
+      expect(rendered.app).toBe(false);
+      await act(async () => { ready(); });
+      expect(mobile ? rendered.shellRoot !== null : rendered.provider).toBe(true);
+      expect(rendered.app).toBe(true);
+    } finally {
+      ready();
+      languageState.ready = Promise.resolve();
+      vi.unstubAllGlobals();
+      delete document.documentElement.dataset.shell;
+    }
   });
 
   // The regression this PR fixes: a Keycloak login on this host dead-ends on
@@ -284,6 +315,12 @@ describe('web-main console handoff', () => {
     });
   });
 
+  it('captures a settings link before browser authentication', async () => {
+    const r = await renderOnHost('cowork.mindshub.ai', '?settings=appearance&section=branding');
+    expect(r.provider).toBe(true);
+    expect(JSON.parse(r.settingsAtAuth ?? 'null')).toMatchObject({ page: 'branding', section: null });
+  });
+
   it('saves nothing for an ordinary visit', async () => {
     const r = await renderOnHost('cowork.mindshub.ai');
 
@@ -373,6 +410,20 @@ describe('web-main inside the mobile app (ENG-4023)', () => {
     expect(document.documentElement.dataset.shell).toBe('ios');
     expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content'))
       .toBe('width=device-width, initial-scale=1.0, viewport-fit=cover');
+  });
+
+  it('captures a settings link before mobile authentication', async () => {
+    window.sessionStorage.removeItem('anton.settingsDeepLink');
+    setUserAgent(`${realUserAgent} MindsHubCowork-iOS/1.0.0`);
+    adapterState.adapter = { login: () => {} };
+    try {
+      const r = await renderOnHost('cowork.mindshub.ai', '?settings=appearance&section=style');
+      expect(r.shellRoot).not.toBeNull();
+      expect(JSON.parse(r.settingsAtAuth ?? 'null')).toMatchObject({ page: 'appearance', section: 'style' });
+    } finally {
+      adapterState.adapter = null;
+      window.sessionStorage.removeItem('anton.settingsDeepLink');
+    }
   });
 
   it('leaves a plain mobile browser on the web login and viewport', async () => {

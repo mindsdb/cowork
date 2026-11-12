@@ -8,7 +8,7 @@ name: Mobile smoke
 # Node 22, not 20: Capacitor 8's CLI requires Node >= 22.
 
 # `workflow_call` from the PR pipeline (dev-build-deploy.yml, only when the PR
-# touches mobile/ or this file), so every PR event lands in one run tree.
+# touches mobile/, this file, or build-android.yml), so every PR event lands in one run tree.
 # Concurrency belongs to the caller. `workflow_dispatch` for a manual run.
 on:
   workflow_call:
@@ -45,6 +45,8 @@ jobs:
         with:
           command: npm ci
           working-directory: mobile
+      - name: Check Android release prerequisites without secrets
+        run: ruby fastlane/test/android_workflow_test.rb
       - name: Check release labels without uploading
         run: ruby fastlane/test/release_test.rb
       - name: Typecheck capacitor.config.ts

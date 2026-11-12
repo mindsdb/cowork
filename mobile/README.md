@@ -349,6 +349,17 @@ testers. It calls one workflow per platform, both driven by fastlane
   branch): inputs `environment`, `staging` (default) or `prod`, and
   `platform`, `both` (default), `ios` or `android`.
 
+The first manual staging release waits until this workflow is on the default
+branch (`main`), where GitHub exposes **Run workflow**. Merging into `staging`
+alone does not enable that button. Once available, select the `staging` ref
+and `environment: staging`. Keep `mobile-v*` tags production-only.
+
+Production signing and store credentials currently use repository secrets.
+Restricting production releases to approved tags requires a separate migration:
+move the credentials into a protected GitHub environment, bind the platform jobs
+to it, configure its allowed deployment tags, and remove the repository copies.
+A tag/version match alone does not enforce that policy.
+
 The two platform jobs are independent; one failing doesn't stop the other.
 The `.ipa` (with dSYMs) and `.aab` are kept as run artifacts.
 
@@ -431,7 +442,7 @@ The team id and profile name are read from the profile itself; no
 | `ANDROID_KEY_ALIAS` | Key alias (`upload` above) | |
 | `ANDROID_KEY_PASSWORD` | Key password (same as the store password for PKCS12) | |
 | `PLAY_SERVICE_ACCOUNT_JSON_B64` | Play Developer API service account key | Google Cloud -> IAM -> Service accounts -> create, Keys -> add JSON key. In Play Console -> Users and permissions, invite its email with release permissions for the app. Base64 the JSON. |
-| `GOOGLE_SERVICES_JSON_B64` | Firebase config (optional) | Firebase -> project settings -> Android app `ai.mindshub.cowork` -> `google-services.json`, base64 it. When set, CI writes `android/app/google-services.json` and the google-services plugin is applied. When not, the build skips Firebase and has no push notifications (the workflow logs a warning). See [Push notifications](#push-notifications). |
+| `GOOGLE_SERVICES_JSON_B64` | Firebase config (required for prod) | Firebase -> project settings -> Android app `ai.mindshub.cowork` -> `google-services.json`, base64 it. When set, CI writes `android/app/google-services.json` and the google-services plugin is applied. Production builds fail early if it is missing or blank. Staging builds may omit it and have no push notifications (the workflow logs a warning). See [Push notifications](#push-notifications). |
 
 Optional repository variable: `PLAY_RELEASE_STATUS` (`draft` until the Play
 app's first release is out; see above).

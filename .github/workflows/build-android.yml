@@ -52,8 +52,8 @@ jobs:
     steps:
       # First, because missing secrets are what everyone hits before the Play
       # account setup is finished. Lists names only, never values.
-      # GOOGLE_SERVICES_JSON_B64 is optional: without it the build has no
-      # Firebase, so push notifications are off on Android (warned below).
+      # Firebase is required for prod. Staging may omit it while accounts
+      # are being set up; that build has no push (warned below).
       - name: Check required secrets
         env:
           ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
@@ -61,10 +61,13 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PLAY_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON_B64 }}
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: |
           missing=()
-          for name in ANDROID_UPLOAD_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS \
-                      ANDROID_KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON_B64; do
+          required=(ANDROID_UPLOAD_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS
+                    ANDROID_KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON_B64)
+          if [ "$COWORK_ENV" = prod ]; then required+=(GOOGLE_SERVICES_JSON_B64); fi
+          for name in "${required[@]}"; do
             [ -n "${!name//[[:space:]]/}" ] || missing+=("$name")
           done
           if [ "${#missing[@]}" -gt 0 ]; then
@@ -108,7 +111,7 @@ jobs:
         working-directory: mobile
         run: npx cap sync android
 
-      # Optional: android/app/build.gradle applies the google-services plugin
+      # Optional for staging: android/app/build.gradle applies the google-services plugin
       # only when this file exists and is non-empty. Without it the app works
       # but has no push (the web app sees MindsHubPush.isSupported() = false).
       - name: Write google-services.json (if provided)
