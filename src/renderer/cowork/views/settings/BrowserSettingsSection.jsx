@@ -224,14 +224,19 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
             <span className="inline-flex">{browserSwitch}</span>
           </Tooltip>
         </Section>
-        <Section title={t('browser.approveStepsTitle')} subtitle={approveStepsHelp(agentLabel)}>
-          <Switch
-            checked={browserPrefs.askToApprove}
-            onCheckedChange={(on) => setBrowserPrefs({ askToApprove: on })}
-            aria-label={t('browser.approveStepsTitle')}
-          />
-        </Section>
-        {signOutRow}
+        {/* The rest only matters with the browser on. */}
+        {settings.browserEnabled === true && (
+          <>
+            <Section title={t('browser.approveStepsTitle')} subtitle={approveStepsHelp(agentLabel)}>
+              <Switch
+                checked={browserPrefs.askToApprove}
+                onCheckedChange={(on) => setBrowserPrefs({ askToApprove: on })}
+                aria-label={t('browser.approveStepsTitle')}
+              />
+            </Section>
+            {signOutRow}
+          </>
+        )}
       </SettingsGroup>
     );
   } else if (refused) {

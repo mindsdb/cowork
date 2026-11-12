@@ -49,7 +49,8 @@ import BrowserSettingsSection, {
 
 const AVAILABLE = { enabled: true, available: true, status: 'running' };
 
-function renderSection(settings = {}, setSetting = vi.fn(), props = {}) {
+// The browser on, unless a test says otherwise: most tests are about its settings.
+function renderSection(settings = { browserEnabled: true }, setSetting = vi.fn(), props = {}) {
   return render(<BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel="Cowork" {...props} />);
 }
 
@@ -278,9 +279,12 @@ describe('BrowserSettingsSection', () => {
 
   it('shows the switch in its own group once the server offers the browser, off and marked Beta until turned on', async () => {
     fetchBrowseStatus.mockResolvedValue(AVAILABLE);
-    renderSection();
+    renderSection({});
     const toggle = await screen.findByRole('switch', { name: 'Shared browser' });
     expect(toggle).not.toBeChecked();
+    // Off: only the switch; approvals and sign-out show once it is on.
+    expect(screen.queryByRole('switch', { name: 'Approve browser steps' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Use the shared browser/ })).toHaveTextContent('Beta');
     expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
   });
