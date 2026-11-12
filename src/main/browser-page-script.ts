@@ -128,9 +128,14 @@ export interface ElementBox extends Box {
   id: number;
 }
 
+/** A frame owner in the page's DOM: the address it names, whether the person
+    can see it, and whether it holds one of the document's child frames
+    (`framed`): an HTML iframe or frame always does, an object only while it
+    shows a page, and an embed never says. */
 export interface DomFrame {
   url: string;
   visible: boolean;
+  framed: boolean;
 }
 
 export interface ViewPoint {
@@ -212,8 +217,9 @@ export interface RawSnapshot {
   text: string;
   /** More shown elements exist than `elements` lists. */
   truncated: boolean;
-  /** Every frame element in the page's DOM (open shadow roots included), and
-      whether the person can see it: a non-empty box in the viewport, not hidden. */
+  /** Every frame owner in the page's DOM (open shadow roots included):
+      whether the person can see it (a non-empty box in the viewport, not
+      hidden or transparent), and whether it holds a frame. */
   frameOwners: DomFrame[];
   /** The ones a click can land in, on-screen first, and what a read one holds. */
   frames: RawFrame[];
@@ -625,6 +631,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
 
   /* Elements that may hold another document: a click on one lands in it. */
   const FRAME_TAGS = new Set(['iframe', 'frame', 'object', 'embed']);
+  const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
+  /* Whether a frame owner holds one of its document's child frames, as
+     DomFrame's `framed` says. An SVG element named iframe holds none. */
+  const holdsFrame = (owner: Element): boolean => owner.namespaceURI === HTML_NAMESPACE
+    && (tagOf(owner) === 'iframe' || tagOf(owner) === 'frame' || (tagOf(owner) === 'object' && !!(owner as HTMLObjectElement).contentWindow));
 
   interface Candidate { el: Element; role: string; box: Box; visible: boolean }
 
@@ -735,7 +746,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     }
     const frameOwners = owners.map((owner): DomFrame => {
       const box = boxOf(owner);
-      return { url: sourceOf(owner), visible: shown(owner, box) && inView(box) };
+      return { url: sourceOf(owner), visible: shown(owner, box) && inView(box), framed: holdsFrame(owner) };
     });
     const scroller = doc.scrollingElement || doc.documentElement;
     return {
@@ -1106,21 +1117,24 @@ export function isPaymentAddress(address: string): boolean {
   return !!host && PAYMENT_FRAME_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
 }
 
-/* The addresses of the main frame's child frames that no frame owner in the
-   page's DOM accounts for: one in a closed shadow root, or an object's or
-   embed's. The page read can't place them. */
+/* The addresses of the main frame's child frames the page read can't place.
+   Each owner that holds a frame (`framed`) holds one of them, so the two
+   number the same unless the DOM hides one (in a closed shadow root, or
+   behind an embed) or the tree and the DOM disagree. Then it gives the
+   children no such owner's address matches, or every child when each one
+   matched, so that a count off in either direction holds every click by
+   position on the page. */
 function unplacedFrames(childFrameUrls: string[], owners: DomFrame[]): string[] {
-  const missing = childFrameUrls.length - owners.length;
-  if (missing <= 0) return [];
-  const sources = owners.map((owner) => owner.url);
+  const framed = owners.filter((owner) => owner.framed);
+  if (framed.length === childFrameUrls.length) return [];
+  const sources = framed.map((owner) => owner.url);
   const unmatched = childFrameUrls.filter((url) => {
     const at = sources.indexOf(url);
     if (at === -1) return true;
     sources.splice(at, 1);
     return false;
   });
-  const pool = unmatched.length >= missing ? unmatched : childFrameUrls;
-  return pool.slice(pool.length - missing);
+  return unmatched.length ? unmatched : childFrameUrls;
 }
 
 /** The page answer anton reads: the read without main's own fields, with the
