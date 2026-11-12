@@ -4,16 +4,16 @@ import { ANTON_REQUEST_TIMEOUT_MS, parseStepRequest, SETTLE_MAX_MS, SETTLE_QUIET
 import type { TabHooks } from './browser-sessions';
 import { PAGE_READ_TIMEOUT_MS, PAGE_WORLD_ID, SECRET_SEARCH_DEPTH } from './browser-page-script';
 
-/* A WebContentsView whose page answers the isolated-world reads the tab sends. */
-const electron = vi.hoisted(() => {
+/* A WebContentsView whose page answers the isolated-world reads the tab
+   sends, and whose debugger answers the reads a step makes through it
+   (tests/browser-fake-cdp.ts). */
+const electron = await vi.hoisted(async () => {
+  const { fakeCdpDebugger } = await import('../../tests/browser-fake-cdp');
   let nextId = 1;
   class FakeContents {
     id = nextId++;
     listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
     openHandler: ((details: { url: string }) => unknown) | null = null;
-    attached = false;
-    attaches = 0;
-    sent: string[] = [];
     destroyed = false;
     url = 'about:blank';
     world: unknown[] = [];
@@ -35,19 +35,11 @@ const electron = vi.hoisted(() => {
       return image;
     });
     navigationHistory = { canGoBack: () => false, canGoForward: () => false, goBack: vi.fn(), goForward: vi.fn() };
-    debugger = {
-      attach: () => {
-        this.attached = true;
-        this.attaches += 1;
-      },
-      detach: () => { this.attached = false; },
-      isAttached: () => this.attached,
-      sendCommand: async (method: string) => {
-        if (!this.attached) throw new Error('detached');
-        this.sent.push(method);
-        return {};
-      },
-    };
+    debugger = fakeCdpDebugger();
+    get attached() { return this.debugger.isAttached(); }
+    get attaches() { return this.debugger.attaches; }
+    /* The methods the debugger was sent, in order. */
+    get sent() { return this.debugger.sent.map(([method]) => method); }
     on(name: string, cb: (...args: unknown[]) => void) {
       (this.listeners[name] ??= []).push(cb);
       return this;

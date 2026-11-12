@@ -128,6 +128,16 @@ async function startFixtureServer(): Promise<void> {
         .end(`<title>Sealed</title><div id="w" tabindex="0" aria-label="More info" style="${box}"></div>`
           + `<script>document.getElementById("w").attachShadow({ mode: "closed" }).innerHTML = '<iframe src="${buy}" style="${box}"></iframe>'</script>`);
     }
+    if (url.pathname === '/sealed-slot-frame') {
+      /* A control that slots its own text, which fills it, over another
+         site's frame laid in its closed shadow root: the page's own hit test
+         stops at the control and finds its text at every point. */
+      const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
+      const sealed = `<style>iframe{position:absolute;left:0;top:0;width:100%;height:100%;border:0}</style><slot></slot><iframe src="${buy}"></iframe>`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Sealed slot</title><x-btn id="w" role="button" style="display:block;position:relative;width:400px;height:120px;margin:0;overflow:hidden;font:100px/120px sans-serif">Continue</x-btn>'
+          + `<script>document.getElementById("w").attachShadow({ mode: "closed" }).innerHTML = ${JSON.stringify(sealed)}</script>`);
+    }
     if (url.pathname === '/clear-frame') {
       /* Another site's frame drawn fully transparent over a button. */
       const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
@@ -384,6 +394,16 @@ test('refuses a click by number on a control whose closed shadow root holds a fr
   // The frame tree's child has no owner in the DOM, so it is listed with no box.
   await expect.poll(async () => (await page()).frames.map((f: { box: unknown }) => f.box), { timeout: 10_000 }).toEqual([null]);
   const reply = await act({ action: 'click', element: await element('More info') });
+  expect(reply.status, reply.body.toString()).toBe(409);
+  expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+});
+
+test("refuses a click by number on a control that slots its own text over a frame in its closed shadow root, and presses nothing", async () => {
+  await openAt('/sealed-slot-frame');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  const reply = await act({ action: 'click', element: await element('Continue') });
   expect(reply.status, reply.body.toString()).toBe(409);
   expect(reply.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame') });
   await new Promise((resolve) => setTimeout(resolve, 500));

@@ -1,12 +1,12 @@
 /*
  * The agent's input into the in-app browser.
  *
- * Main attaches the view's debugger for one agent step, sends only the
- * Input.* commands below (plus focus emulation, so typing reaches a field while
- * the app's window is in the background), and detaches when the step ends,
- * failures included. It never sends Runtime, Page, Network, Debugger, Console
- * or Log commands, and browser-sessions.ts never runs a step while the person
- * holds the browser, so no debugger is attached during their turn.
+ * Main attaches the view's debugger for one agent step, sends the Input.*
+ * commands below (plus focus emulation, so typing reaches a field while the
+ * app's window is in the background) and the reads browser-frames.ts makes,
+ * and detaches when the step ends, failures included. browser-sessions.ts
+ * never runs a step while the person holds the browser, so no debugger is
+ * attached during their turn.
  *
  * Input looks like a person's: the mouse moves along an eased, slightly curved
  * path to a random point inside the element, and text is typed key by key
@@ -19,9 +19,12 @@
  * type or press step focuses its element rather than clicking it, and a type,
  * a select or a press of a key that edits text into a secret field gets 403
  * password_field. Before every key, typing checks that the focus is still in
- * its field and not on a secret one, and stops when it isn't. Just before each
- * press, a click or a drag checks its point again, and presses nothing once
- * the page slid a frame or another element under it (`pressPoint`).
+ * its field and not on a secret one, and stops when it isn't. A click by
+ * number presses only where both the page's hit test and the debugger's,
+ * which sees inside closed shadow roots, find its element and no frame. Just
+ * before each press, a click or a drag checks its point again, and presses
+ * nothing once the page slid a frame or another element under it
+ * (`pressPoint`).
  */
 
 import {
@@ -30,24 +33,9 @@ import {
   type StepRequest,
   type StepTarget,
 } from '../shared/browser-contract';
+import { type CdpDebugger, FrameReads, withDebugger } from './browser-frames';
 import type { FocusFieldResult, FocusResult, HitTestResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
 import { screenshotScale } from './browser-screenshot';
-
-/** The only commands main ever sends through a view's debugger. */
-export const ALLOWED_CDP_METHODS: ReadonlySet<string> = new Set([
-  'Input.dispatchMouseEvent',
-  'Input.dispatchKeyEvent',
-  'Input.insertText',
-  'Emulation.setFocusEmulationEnabled',
-]);
-
-/** The part of Electron's webContents.debugger this module uses. */
-export interface CdpDebugger {
-  attach(protocolVersion?: string): void;
-  detach(): void;
-  isAttached(): boolean;
-  sendCommand(method: string, params?: Record<string, unknown>): Promise<unknown>;
-}
 
 /** Waiting and randomness, injected so tests run fast and repeatably. */
 export interface Pacing {
@@ -360,30 +348,24 @@ export class AgentInput {
 }
 
 /**
- * Attaches the debugger, runs one step's input and detaches, whatever happens.
- * Only allow-listed methods are sent. A debugger that is already attached
- * means something else holds it, so the step is refused rather than shared.
+ * Attaches the debugger, runs one step's input and the reads it needs
+ * (browser-frames.ts), and detaches, whatever happens (withDebugger). Only
+ * allow-listed methods are sent. A debugger that is already attached means
+ * something else holds it, so the step is refused rather than shared.
  */
 export async function withAgentInput<T>(
   dbg: CdpDebugger,
   start: Point,
   pacing: Pacing,
-  run: (input: AgentInput) => Promise<T>,
+  run: (input: AgentInput, frames: FrameReads) => Promise<T>,
 ): Promise<{ result: T; mouse: Point }> {
-  if (dbg.isAttached()) throw new BridgeError('page_busy', 'the page is busy with another step');
-  dbg.attach('1.3');
-  try {
-    const send = (method: string, params: Record<string, unknown>) => {
-      if (!ALLOWED_CDP_METHODS.has(method)) throw new Error(`refused to send ${method} to the page`);
-      return dbg.sendCommand(method, params);
-    };
+  return withDebugger(dbg, async (session) => {
+    const send = (method: string, params: Record<string, unknown>) => session.send(method, params);
     await send('Emulation.setFocusEmulationEnabled', { enabled: true });
     const input = new AgentInput(send, pacing, start);
-    const result = await run(input);
+    const result = await run(input, new FrameReads(session));
     return { result, mouse: input.position };
-  } finally {
-    if (dbg.isAttached()) dbg.detach();
-  }
+  });
 }
 
 // ---- Steps -----------------------------------------------------------------------
@@ -418,7 +400,7 @@ export interface StepHost {
   nav: Navigation;
   pacing: Pacing;
   /** Runs `run` with the debugger attached for this one step. */
-  withInput<T>(run: (input: AgentInput) => Promise<T>): Promise<T>;
+  withInput<T>(run: (input: AgentInput, frames: FrameReads) => Promise<T>): Promise<T>;
 }
 
 const stale = (id: number, why: string) => new BridgeError('stale_element', `element ${id} ${why}`);
@@ -454,14 +436,44 @@ function unreached(id: number, intoFrame: boolean): BridgeError {
     : stale(id, 'is covered by another element, such as a dialog or banner; deal with that first, or take a screenshot');
 }
 
+/* The first of `points` a click reaches element `id` at: the page's hit test
+   lands on the element there (`hitTest`), and the debugger's, which sees
+   inside closed shadow roots, finds no frame there (`pressLandsInFrame`). A
+   control that slots its own text over a frame in its closed shadow root
+   reads to the page's hit test as the control, at every point. When no point
+   reaches it, the step is refused rather than pressing what lies there
+   (`unreached`). A `wheel` may land in a frame inside the element, since a
+   wheel activates nothing there. */
+async function reachingPoint(host: StepHost, frames: FrameReads, id: number, points: Point[], wheel: boolean): Promise<Point> {
+  let intoFrame = false;
+  for (let from = 0; from < points.length;) {
+    const hit = await host.page.hitTest(id, points.slice(from));
+    if (!hit.found) throw stale(id, 'is no longer on the page');
+    intoFrame ||= hit.throughFrame >= 0;
+    if (hit.reaches < 0) {
+      if (wheel && hit.throughFrame >= 0) return points[from + hit.throughFrame];
+      break;
+    }
+    const at = points[from + hit.reaches];
+    if (wheel || !(await frames.pressLandsInFrame(at))) return at;
+    intoFrame = true;
+    from += hit.reaches + 1;
+  }
+  throw unreached(id, intoFrame);
+}
+
 /* A point inside the element, scrolled into view first. The scroll is wheel
    ticks over the page, as a person scrolls; a box that is still out of view
    after that (a scrolled container) is brought in by the page itself. The
    point is a random one, as a person clicks, or else the first fixed point
-   whose hit test reaches the element; when none does, the step is refused
-   rather than pressing what lies there (`unreached`). A `wheel` may land in
-   a frame inside the element, since a wheel activates nothing there. */
-async function elementPoint(host: StepHost, input: AgentInput, id: number, wheel = false): Promise<{ at: Point; located: Extract<LocateResult, { found: true }> }> {
+   that reaches the element (`reachingPoint`). */
+async function elementPoint(
+  host: StepHost,
+  input: AgentInput,
+  frames: FrameReads,
+  id: number,
+  wheel = false,
+): Promise<{ at: Point; located: Extract<LocateResult, { found: true }> }> {
   let located = await host.page.locate(id, false);
   for (let round = 0; round < 3 && located.found && located.shown && !located.inViewport; round += 1) {
     const { box, viewport } = located;
@@ -486,15 +498,11 @@ async function elementPoint(host: StepHost, input: AgentInput, id: number, wheel
     { x: left + width * spread(), y: top + height * spread() },
     ...FIXED_POINTS.map(([dx, dy]) => ({ x: left + width * (0.5 + dx), y: top + height * (0.5 + dy) })),
   ];
-  const hit = await host.page.hitTest(id, points);
-  if (!hit.found) throw stale(id, 'is no longer on the page');
-  const reaches = hit.reaches < 0 && wheel ? hit.throughFrame : hit.reaches;
-  if (reaches < 0) throw unreached(id, hit.throughFrame >= 0);
-  return { at: points[reaches], located };
+  return { at: await reachingPoint(host, frames, id, points, wheel), located };
 }
 
-async function targetPoint(host: StepHost, input: AgentInput, target: StepTarget, coords: 'page' | 'screenshot'): Promise<Point> {
-  if ('element' in target) return (await elementPoint(host, input, target.element)).at;
+async function targetPoint(host: StepHost, input: AgentInput, frames: FrameReads, target: StepTarget, coords: 'page' | 'screenshot'): Promise<Point> {
+  if ('element' in target) return (await elementPoint(host, input, frames, target.element)).at;
   const viewport = await host.page.viewport();
   const scale = coords === 'screenshot' ? screenshotScale(viewport.width) : 1;
   const at = { x: target.x * scale, y: target.y * scale };
@@ -517,20 +525,27 @@ function movedUnder(where: string, intoFrame: boolean): BridgeError {
    reach its element at the point, frames aside (`hitTest`); a click by
    position must not land in a frame that wasn't under the point when the step
    began (`intoFrame`). */
-async function pressPoint(host: StepHost, input: AgentInput, target: StepTarget, coords: 'page' | 'screenshot'): Promise<{ at: Point; beforePress: () => Promise<void> }> {
+async function pressPoint(
+  host: StepHost,
+  input: AgentInput,
+  frames: FrameReads,
+  target: StepTarget,
+  coords: 'page' | 'screenshot',
+): Promise<{ at: Point; beforePress: () => Promise<void> }> {
   if ('element' in target) {
     const id = target.element;
-    const { at } = await elementPoint(host, input, id);
+    const { at } = await elementPoint(host, input, frames, id);
     return {
       at,
       beforePress: async () => {
         const hit = await host.page.hitTest(id, [at]);
         if (!hit.found) throw stale(id, 'is no longer on the page');
         if (hit.reaches < 0) throw movedUnder(`over element ${id}`, hit.throughFrame >= 0 || await host.page.intoFrame(at));
+        if (await frames.pressLandsInFrame(at)) throw movedUnder(`over element ${id}`, true);
       },
     };
   }
-  const at = await targetPoint(host, input, target, coords);
+  const at = await targetPoint(host, input, frames, target, coords);
   const frameAtStart = await host.page.intoFrame(at);
   return {
     at,
@@ -572,24 +587,24 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
       if (step.button === 'middle' && platform !== 'darwin' && platform !== 'win32') {
         throw new BridgeError('bad_request', "the agent can't paste the person's selection, which a middle click does on Linux; click with the left or right button");
       }
-      return host.withInput(async (input) => {
-        const { at, beforePress } = await pressPoint(host, input, step.target, coords);
+      return host.withInput(async (input, frames) => {
+        const { at, beforePress } = await pressPoint(host, input, frames, step.target, coords);
         await input.click(at, step.button, step.clicks, beforePress);
       });
     case 'hover':
-      return host.withInput(async (input) => input.hover(await targetPoint(host, input, step.target, coords)));
+      return host.withInput(async (input, frames) => input.hover(await targetPoint(host, input, frames, step.target, coords)));
     case 'drag':
-      return host.withInput(async (input) => {
-        const from = await pressPoint(host, input, step.from, coords);
-        const to = await targetPoint(host, input, step.to, coords);
+      return host.withInput(async (input, frames) => {
+        const from = await pressPoint(host, input, frames, step.from, coords);
+        const to = await targetPoint(host, input, frames, step.to, coords);
         await input.drag(from.at, to, from.beforePress);
       });
     case 'scroll':
-      return host.withInput(async (input) => {
+      return host.withInput(async (input, frames) => {
         const [sx, sy] = SCROLL_DELTAS[step.direction];
         let at: Point;
         if (step.element !== undefined) {
-          at = (await elementPoint(host, input, step.element, true)).at;
+          at = (await elementPoint(host, input, frames, step.element, true)).at;
         } else {
           const viewport = await host.page.viewport();
           at = { x: viewport.width / 2, y: viewport.height / 2 };

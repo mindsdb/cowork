@@ -41,6 +41,7 @@ import {
   type StepRequest,
   STEP_TIMEOUT_MS,
 } from '../shared/browser-contract';
+import type { FrameReads } from './browser-frames';
 import { type AgentInput, type Pacing, type Point, realPacing, runStep, type StepHost, withAgentInput } from './browser-input';
 import {
   type ChangeMark,
@@ -402,7 +403,7 @@ export class ElectronTab implements TabView {
         forward: () => unlessTakenOver(signal, () => this.forward()),
         reload: () => unlessTakenOver(signal, () => this.reload()),
       },
-      withInput: async <T>(run: (input: AgentInput) => Promise<T>) => {
+      withInput: async <T>(run: (input: AgentInput, frames: FrameReads) => Promise<T>) => {
         if (signal.aborted) throw tookOver();
         const start = this.mouse ?? (await unlessTakenOver(signal, () => this.viewportCenter()));
         // The person may have taken over while the page answered.

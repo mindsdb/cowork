@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BridgeError, parseStepRequest, STEP_TIMEOUT_MS, type StepRequest } from '../shared/browser-contract';
+import { type FakeCdpPage, fakeCdpDebugger, MAIN_FRAME, type SentCommand, sentOf } from '../../tests/browser-fake-cdp';
+import { ALLOWED_CDP_METHODS } from './browser-frames';
 import {
   AgentInput,
-  ALLOWED_CDP_METHODS,
-  type CdpDebugger,
   KEYED_CHARS,
   type Pacing,
   parseKeyCombo,
@@ -15,31 +15,6 @@ import {
 import type { HitTestResult, LocateResult, TypingFocus } from './browser-page-script';
 
 const pacing: Pacing = { sleep: async () => {}, random: () => 0.5 };
-
-function fakeDebugger() {
-  let attached = false;
-  const sent: Array<[string, Record<string, unknown>]> = [];
-  const dbg: CdpDebugger & { sent: typeof sent; attaches: number; detaches: number } = {
-    sent,
-    attaches: 0,
-    detaches: 0,
-    attach: vi.fn(() => {
-      attached = true;
-      dbg.attaches += 1;
-    }),
-    detach: vi.fn(() => {
-      attached = false;
-      dbg.detaches += 1;
-    }),
-    isAttached: () => attached,
-    sendCommand: vi.fn(async (method: string, params?: Record<string, unknown>) => {
-      if (!attached) throw new Error('not attached');
-      sent.push([method, params ?? {}]);
-      return {};
-    }),
-  };
-  return dbg;
-}
 
 const VIEWPORT = { width: 1600, height: 900 };
 
@@ -57,8 +32,8 @@ function located(over: Partial<Extract<LocateResult, { found: true }>> = {}): Lo
   };
 }
 
-function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing) {
-  const dbg = fakeDebugger();
+function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing, cdp: Partial<FakeCdpPage> = {}) {
+  const dbg = fakeCdpDebugger(cdp);
   const page: PageReader = {
     locate: vi.fn(async () => located()),
     focusedSecret: vi.fn(async () => false),
@@ -87,11 +62,11 @@ function step(body: Record<string, unknown>): StepRequest {
   return parsed.value;
 }
 
-const events = (sent: Array<[string, Record<string, unknown>]>, method: string) =>
+const events = (sent: SentCommand[], method: string) =>
   sent.filter(([m]) => m === method).map(([, p]) => p);
 
 /* The text each typed key put in, in order. */
-const typedText = (sent: Array<[string, Record<string, unknown>]>) =>
+const typedText = (sent: SentCommand[]) =>
   events(sent, 'Input.dispatchKeyEvent').filter((e) => e.type === 'keyDown').map((e) => e.text).join('');
 
 /* The focus a type step finds before each key: it moves to a secret field
@@ -103,17 +78,17 @@ const focusLeavesWhen = (moved: () => boolean) => vi.fn(async (): Promise<Typing
 
 describe('withAgentInput', () => {
   it('attaches for one step, sends only allowed methods and detaches', async () => {
-    const dbg = fakeDebugger();
+    const dbg = fakeCdpDebugger();
     await withAgentInput(dbg, { x: 0, y: 0 }, pacing, (input) => input.click({ x: 10, y: 10 }, 'left', 1));
     expect(dbg.attaches).toBe(1);
     expect(dbg.detaches).toBe(1);
     expect(dbg.sent.length).toBeGreaterThan(3);
     expect(dbg.sent.every(([method]) => ALLOWED_CDP_METHODS.has(method))).toBe(true);
-    expect(dbg.sent[0]).toEqual(['Emulation.setFocusEmulationEnabled', { enabled: true }]);
+    expect(dbg.sent[0]).toEqual(['Emulation.setFocusEmulationEnabled', { enabled: true }, undefined]);
   });
 
   it('detaches after a failure too', async () => {
-    const dbg = fakeDebugger();
+    const dbg = fakeCdpDebugger();
     await expect(withAgentInput(dbg, { x: 0, y: 0 }, pacing, async () => {
       throw new BridgeError('stale_element', 'gone');
     })).rejects.toMatchObject({ code: 'stale_element' });
@@ -122,7 +97,7 @@ describe('withAgentInput', () => {
   });
 
   it('refuses a method outside the allow-list before it reaches the debugger', async () => {
-    const dbg = fakeDebugger();
+    const dbg = fakeCdpDebugger();
     const sneaky = async (input: AgentInput) => {
       const send = (input as unknown as { send: (m: string, p: object) => Promise<unknown> }).send;
       await send('Runtime.evaluate', { expression: '1' });
@@ -133,7 +108,7 @@ describe('withAgentInput', () => {
   });
 
   it('refuses a step while something else holds the debugger', async () => {
-    const dbg = fakeDebugger();
+    const dbg = fakeCdpDebugger();
     dbg.attach();
     await expect(withAgentInput(dbg, { x: 0, y: 0 }, pacing, async () => {})).rejects.toMatchObject({ code: 'page_busy' });
   });
@@ -380,6 +355,61 @@ describe('runStep', () => {
       message: "element 7 holds a frame, or a part of the page this browser can't read, where a click by number would land; click inside it by position from a screenshot",
     });
     expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
+  });
+
+  /* A control that slots its own text over a frame laid in its closed shadow
+     root: the page's world hit-tests to the host and finds the slotted text
+     there, so it says every point reaches the control. The debugger's hit
+     test sees inside the closed root and finds the frame. */
+  const OTHER_SITE = [{ id: 'buy', url: 'https://shop.other.test/buy', parentId: MAIN_FRAME, remote: true }];
+  const frameOwner = { frameId: MAIN_FRAME, localName: 'iframe', ownsFrame: 'buy' };
+  const button = { frameId: MAIN_FRAME, localName: 'button' };
+  const presses = (dbg: { sent: SentCommand[] }) =>
+    events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed');
+
+  it("refuses a click by number whose points the debugger's hit test finds in a frame, though the page's own says they reach the element, and presses nothing", async () => {
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE, nodeAt: () => frameOwner });
+    await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
+      code: 'stale_element',
+      status: 409,
+      message: "element 7 holds a frame, or a part of the page this browser can't read, where a click by number would land; click inside it by position from a screenshot",
+    });
+    expect(presses(dbg)).toEqual([]);
+  });
+
+  it('presses the first point of a click by number that the debugger finds outside a frame inside the element', async () => {
+    // The frame covers the left half of the 200 by 40 box at (100, 100).
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE, nodeAt: (x) => (x <= 200 ? frameOwner : button) });
+    await runStep(stepHost, step({ action: 'click', element: 7 }));
+    // The random point and the middle are (200, 120), then (150, 120), then (250, 120).
+    expect(presses(dbg)).toEqual([expect.objectContaining({ x: 250, y: 120 })]);
+  });
+
+  it("hit-tests in the page's coordinates, and counts a node of another frame's document, or a point it can't read, as a frame", async () => {
+    const scrolled = host({}, pacing, { scroll: { x: 0, y: 500 } });
+    await runStep(scrolled.stepHost, step({ action: 'click', element: 7 }));
+    expect(sentOf(scrolled.dbg, 'DOM.getNodeForLocation')[0].params).toEqual({ x: 200, y: 620 });
+    const sameOrigin = host({}, pacing, { frames: [{ id: 'same', url: 'https://a.test/inner', parentId: MAIN_FRAME }], nodeAt: () => ({ frameId: 'same', localName: 'button' }) });
+    await expect(runStep(sameOrigin.stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({ message: expect.stringContaining('holds a frame') });
+    const unread = host({}, pacing, { nodeAt: () => null });
+    await expect(runStep(unread.stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({ message: expect.stringContaining('holds a frame') });
+    expect([...presses(sameOrigin.dbg), ...presses(unread.dbg)]).toEqual([]);
+  });
+
+  it("checks the point of a click by number with the debugger again just before each press, and presses nothing once it finds a frame there", async () => {
+    // The page's world says the point reaches the element throughout; a frame slides over it as the pointer glides.
+    let glided = false;
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE, nodeAt: () => (glided ? frameOwner : button) });
+    const send = dbg.sendCommand;
+    dbg.sendCommand = vi.fn(async (method: string, params?: Record<string, unknown>, sessionId?: string) => {
+      if (method === 'Input.dispatchMouseEvent' && params?.type === 'mouseMoved') glided = true;
+      return send(method, params, sessionId);
+    });
+    await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
+      code: 'stale_element',
+      message: 'a frame moved over element 7 as the pointer arrived, so nothing was pressed; read the page again',
+    });
+    expect(presses(dbg)).toEqual([]);
   });
 
   it('checks the point of a click by number again just before each press, and presses nothing once a frame moved over it', async () => {
