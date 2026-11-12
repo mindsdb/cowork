@@ -10,6 +10,7 @@ import { host } from '../../../platform/host';
 import { useNativeOverlayOpen } from '../../lib/nativeOverlay';
 import { BrowserFrame } from './BrowserFrame';
 import { BlankStartOver } from './BlankBrowserPanel';
+import { controlHint, siteOf } from './controlHint';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The desktop pane: the app's own browser, a native view the app's main
@@ -79,19 +80,6 @@ function hostOf(url) {
   try {
     const { protocol, host: name } = new URL(url);
     return protocol === 'http:' || protocol === 'https:' ? name : '';
-  } catch {
-    return '';
-  }
-}
-
-/* Where the page is, as the browser reads it: an http(s) page's host, else
-   its scheme and path (about:blank). Never text the page chooses, such as
-   its title or an address's query or fragment: a fragment changes in place,
-   with no navigation the app checks. */
-function siteOf(url) {
-  try {
-    const { protocol, host: name, pathname } = new URL(url);
-    return protocol === 'http:' || protocol === 'https:' ? name : `${protocol}${pathname}`;
   } catch {
     return '';
   }
@@ -250,15 +238,7 @@ export function LocalBrowserStage({
 
   const personHolds = state?.control.holder === 'human';
   const site = siteOf(state?.url ?? '');
-  const reason = state?.control.reason ?? '';
-  // The page's own host leads the agent's reason, so a lookalike page can't
-  // pass its words off as the app's.
-  const turnSite = site || t('browser.aNewTab');
-  const hint = personHolds
-    ? (reason
-      ? t('browser.yourTurnReason', { site: turnSite, reason, agent: agentLabel })
-      : t('browser.yourTurn', { site: turnSite, agent: agentLabel }))
-    : t('browser.agentUsing', { agent: agentLabel });
+  const hint = controlHint(t, { holder: state?.control.holder, reason: state?.control.reason ?? '', url: state?.url ?? '', agentLabel });
   /* The oldest download still waiting keeps the line until the person
      answers it, so a page can't slip a newer one under their click; with
      none waiting, the newest. Save and Don't save arm a moment after a

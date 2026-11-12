@@ -25737,40 +25737,6 @@
       "text": "d681c6e2947a"
     }
   },
-  "chat:browser.hint": {
-    "de": {
-      "from": "4af4cfb670d8",
-      "text": "3b1152944fd2"
-    },
-    "es": {
-      "from": "4af4cfb670d8",
-      "text": "adcbd750ddbf"
-    },
-    "fr": {
-      "from": "4af4cfb670d8",
-      "text": "db2bc917dc14"
-    },
-    "it": {
-      "from": "4af4cfb670d8",
-      "text": "f23e2828b9ed"
-    },
-    "ja": {
-      "from": "4af4cfb670d8",
-      "text": "d1233ad95172"
-    },
-    "ko": {
-      "from": "4af4cfb670d8",
-      "text": "4399c78fc17b"
-    },
-    "pt-BR": {
-      "from": "4af4cfb670d8",
-      "text": "669b03eb1b3e"
-    },
-    "zh-CN": {
-      "from": "4af4cfb670d8",
-      "text": "5fdee7b0268e"
-    }
-  },
   "chat:browser.learnWhat": {
     "de": {
       "from": "e20779b9e11c",

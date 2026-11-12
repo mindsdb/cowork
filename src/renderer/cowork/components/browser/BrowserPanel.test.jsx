@@ -282,6 +282,37 @@ describe('BrowserPanel', () => {
     });
   });
 
+  describe('the hint', () => {
+    const AGENT_USING = 'Cowork is using it. Take over to use it yourself.';
+
+    it("the web pane's hint names Take over and follows who holds the browser", async () => {
+      render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      expect(screen.getByText(AGENT_USING)).toBeInTheDocument();
+
+      messageFrom(frameWindow(), { type: 'browser-viewer-url', url: 'https://www.kayak.com/flights' });
+      messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'human', reason: 'sign in' });
+      expect(screen.getByText('Your turn on www.kayak.com: sign in. Click Done to hand it back to Cowork.')).toBeInTheDocument();
+      expect(screen.queryByText(/Click in it to take over/)).toBeNull();
+
+      messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'agent' });
+      expect(screen.getByText(AGENT_USING)).toBeInTheDocument();
+    });
+
+    it('starts another session with the agent holding the browser', async () => {
+      const { rerender } = render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-control', holder: 'human', reason: '' });
+      expect(screen.getByText('Your turn on a new tab. Click Done to hand it back to Cowork.')).toBeInTheDocument();
+
+      embedBrowser.mockResolvedValue({ ...link(), session_id: 't-def', view_url: `${window.location.origin}/browser/sessions/t-def/view?et=tok` });
+      rerender(<BrowserPanel sessionId="t-def" agentLabel="Cowork" onClose={() => {}} />);
+      await flush();
+      expect(embedBrowser).toHaveBeenLastCalledWith('t-def');
+      expect(screen.getByText(AGENT_USING)).toBeInTheDocument();
+    });
+  });
+
   describe('the frame', () => {
     it('is sandboxed without allow-same-origin', async () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);

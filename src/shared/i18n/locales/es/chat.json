@@ -578,7 +578,6 @@
     "webPaneNote": "Lo que muestra este panel y lo que escribes aquí, incluidas las contraseñas, pasa por Cloudflare y por el servicio de navegador de MindsDB de camino al sitio y de vuelta. Las lecturas de página y capturas de pantalla de {agent} van al proveedor del modelo que atiende tu turno.",
     "unexpectedAddress": "El navegador devolvió una dirección inesperada.",
     "couldNotOpen": "No se pudo abrir el navegador.",
-    "hint": "Tú y {agent} lo comparten. Haz clic en él para tomar el control.",
     "reload": "Recargar la vista del navegador",
     "tryAgain": "Reintentar",
     "slowTitle": "Tu navegador está tardando más de lo normal",

@@ -14,15 +14,19 @@ import { host } from '../../../platform/host';
 import { BrowserFrame, paneMayTakeFocus } from './BrowserFrame';
 import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
 import { LocalBrowserStage } from './LocalBrowserStage';
+import { controlHint } from './controlHint';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The person's browser beside the chat. The agent drives it through its
-   browser tool; the person watches, and can click and type in it at any time
-   (sign in, solve a CAPTCHA, take over).
+   browser tool; the person watches, and can click and type in it (sign in,
+   solve a CAPTCHA). The header's hint says who holds it and names Take over
+   (controlHint).
 
    On the desktop it is the app's own browser, shown natively
    (LocalBrowserStage). On the web it is the browser router's viewer, framed
-   below.
+   below. There the browser service refuses the person's input while the
+   agent's step sends input, and the viewer says so; Take over hands the
+   person the browser and stops the step.
 
    The viewer is the browser router's page, framed through a link the pane
    fetches with POST /browse/embed. The router honors a link's ticket once.
@@ -90,6 +94,9 @@ const STOPPED = {
   'task-cap': () => ({ title: i18n.t('browser.stopped.taskCapTitle', { ns: 'chat' }), description: i18n.t('browser.stopped.taskCapDescription', { ns: 'chat', count: 4 }) }),
 };
 
+/** @type {{ holder: 'human' | 'agent', reason: string }} */
+const AGENT_HOLDS = Object.freeze({ holder: 'agent', reason: '' });
+
 function tabHidden() {
   return document.visibilityState === 'hidden';
 }
@@ -118,7 +125,7 @@ export function isBlankPage(url) {
    the person signs in to stay signed in for later tasks. The Jev and sign-in
    lines are Settings' own, so the two surfaces can't drift. The sign-in line
    shows whoever holds the browser: the pane hears that from the viewer
-   (browser-viewer-control) only to pass it to the chat. */
+   (browser-viewer-control) for its hint, and passes it to the chat. */
 export function webPaneNote(agentLabel) {
   return `${i18n.t('browser.webPaneNote', { ns: 'chat', agent: agentLabel })} ${i18n.t('settingsTools:browser.webJevLine')} ${i18n.t('settingsTools:browser.webSignIns')}`;
 }
@@ -153,6 +160,9 @@ function WebBrowserStage({
   const [slow, setSlow] = useState(false);
   // The page the viewer shows, as it reports it: a blank tab gets the start page.
   const [pageUrl, setPageUrl] = useState('');
+  // Who holds the browser, as the viewer says, for the hint; each session starts with the agent.
+  const [control, setControl] = useState(AGENT_HOLDS);
+  useEffect(() => { setControl(AGENT_HOLDS); }, [sessionId]);
   /* Bumped when the starting clock starts over on a request from the
      person, the tab or the network, so the clock restarts even while the
      pane is still waiting. */
@@ -437,9 +447,11 @@ function WebBrowserStage({
         if (text) onDraftRef.current?.(browserRequestFor(text));
         return;
       }
-      // Who holds the browser: 'human' when Anton handed it to the person.
+      // Who holds the browser: 'human' when the agent handed it to the person or they took over.
       if (type === VIEWER_CONTROL) {
-        onControlRef.current?.(event.data?.holder === 'human' ? 'human' : 'agent', String(event.data?.reason || '').slice(0, 300));
+        const holds = { holder: event.data?.holder === 'human' ? 'human' : 'agent', reason: String(event.data?.reason || '').slice(0, 300) };
+        setControl(holds);
+        onControlRef.current?.(holds.holder, holds.reason);
         return;
       }
       if (type !== VIEWER_CLOSED) return;
@@ -541,7 +553,7 @@ function WebBrowserStage({
 
   return (
     <BrowserFrame
-      hint={t('browser.hint', { agent: agentLabel })}
+      hint={controlHint(t, { ...control, url: pageUrl, agentLabel })}
       below={<BrowserNote agentLabel={agentLabel}>{webPaneNote(agentLabel)}</BrowserNote>}
       actions={<Button icon size="sm" variant="subtle" aria-label={t('browser.reload')} onClick={retry}>{Ico.reload(14)}</Button>}
       onClose={onClose}

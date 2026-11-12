@@ -578,7 +578,6 @@
     "webPaneNote": "What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site. {agent}'s page reads and screenshots go to the model provider that serves your turn.",
     "unexpectedAddress": "The browser returned an unexpected address.",
     "couldNotOpen": "Could not open the browser.",
-    "hint": "You and {agent} share this. Click in it to take over.",
     "reload": "Reload browser view",
     "tryAgain": "Try again",
     "slowTitle": "Your browser is taking longer than usual",

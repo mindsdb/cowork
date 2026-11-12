@@ -578,7 +578,6 @@
     "webPaneNote": "Was dieser Bereich anzeigt und was Sie hier eingeben, einschließlich Passwörtern, läuft auf dem Weg zur Website und zurück über Cloudflare und den Browserdienst von MindsDB. Die Seiteninhalte und Screenshots, die {agent} liest, gehen an den Modellanbieter, der Ihre Runde bearbeitet.",
     "unexpectedAddress": "Der Browser hat eine unerwartete Adresse zurückgegeben.",
     "couldNotOpen": "Der Browser konnte nicht geöffnet werden.",
-    "hint": "Sie und {agent} teilen sich diesen Browser. Klicken Sie hinein, um zu übernehmen.",
     "reload": "Browseransicht neu laden",
     "tryAgain": "Erneut versuchen",
     "slowTitle": "Ihr Browser braucht länger als üblich",
