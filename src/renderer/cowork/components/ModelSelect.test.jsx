@@ -16,6 +16,7 @@ vi.mock('../lib/analytics', async (importOriginal) => {
 });
 
 import { ModelSelect } from './ModelSelect';
+import { host } from '../../platform/host';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
@@ -300,6 +301,21 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     await user.click(within(row).getByRole('button', { name: 'Add credits' }));
 
     expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('inside the mobile app, keeps the Needs credits tag and attaches no Add credits button', async () => {
+    const user = userEvent.setup();
+    host.isMobileShell = true;
+    try {
+      render(<Harness options={LOCKED} />);
+
+      await user.click(screen.getByRole('combobox'));
+      const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+      expect(within(row).getByText('Needs credits')).toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
+    } finally {
+      host.isMobileShell = false;
+    }
   });
 
   it('leaves an affordable row without one', async () => {

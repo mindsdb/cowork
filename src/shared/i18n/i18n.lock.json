@@ -123487,6 +123487,40 @@
       "text": "81f09c59884f"
     }
   },
+  "settings:agent.modelNeedsCreditsNoLink": {
+    "de": {
+      "from": "1672b6c1e3db",
+      "text": "371ae9e970c2"
+    },
+    "es": {
+      "from": "1672b6c1e3db",
+      "text": "930b64a1fed4"
+    },
+    "fr": {
+      "from": "1672b6c1e3db",
+      "text": "9f79b0d84f8b"
+    },
+    "it": {
+      "from": "1672b6c1e3db",
+      "text": "7add16536f03"
+    },
+    "ja": {
+      "from": "1672b6c1e3db",
+      "text": "d3e87ce279ef"
+    },
+    "ko": {
+      "from": "1672b6c1e3db",
+      "text": "ce8b230be752"
+    },
+    "pt-BR": {
+      "from": "1672b6c1e3db",
+      "text": "4e898dd9c812"
+    },
+    "zh-CN": {
+      "from": "1672b6c1e3db",
+      "text": "9cb400840d5c"
+    }
+  },
   "settings:agent.modelRestricted": {
     "de": {
       "from": "529643f08bcb",

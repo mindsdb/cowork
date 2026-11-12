@@ -331,6 +331,7 @@
     "modelUnavailable": "{model}は利用できません。別のモデルを選択するか、管理者にお問い合わせください。",
     "modelRestricted": "{model}は組織の管理者によって制限されています。別のモデルを選択してください。",
     "modelNeedsCredits": "{model}にはクレジットが必要です。使用するには{link}。",
+    "modelNeedsCreditsNoLink": "{model}にはクレジットが必要です。",
     "topUpBalance": "残高をチャージしてください",
     "modelBudgetReached": "組織の予算を使い切ったため、{model}を実行できません。",
     "viewBudgets": "予算を表示"

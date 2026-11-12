@@ -57,6 +57,17 @@ describe('UsageBar', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
   });
 
+  it('inside the mobile app, keeps the copy and drops its billing actions', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      render(<UsageBar warning={balanceLow} isBillingOwner />);
+      expect(screen.getByText('You have $8.42 left.')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
   it('the standing figure can be closed, and stays closed as the number moves', async () => {
     const user = userEvent.setup();
     const { rerender } = render(<UsageBar warning={atRest} usageKnown />);

@@ -77,6 +77,22 @@ describe('ChatView usage notices', () => {
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeInTheDocument();
   });
 
+  it('inside the mobile app, keeps the line and the failure but offers no billing link', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      render(<ChatView task={task([
+        { kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' },
+        { kind: 'auto_top_up_failed', createdAt: '2099-08-28T10:01:00Z' },
+      ])} />);
+      expect(screen.getByText('Auto top up failed')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'View usage' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Update payment method' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
   // The cards used to be appended after every turn, so after a top-up a
   // "running low" card sat below the newer messages.
   it('leaves a notice at the turn it happened in when the conversation continues', () => {
