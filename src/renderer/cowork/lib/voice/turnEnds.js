@@ -5,6 +5,9 @@
 // during the turn (a new task is renamed to the server's id), and a call that
 // sent the turn waits for the report that names its task.
 
+// The error a turn ends with when it was stopped.
+export const TURN_STOPPED = 'The task was stopped.';
+
 const waiters = new Set();
 
 /**

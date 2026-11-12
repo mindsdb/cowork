@@ -164,7 +164,7 @@ import TopShortcuts from './components/TopShortcuts';
 import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
 import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
-import { createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
+import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
 import {
   desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageUrlForContext,
@@ -174,7 +174,7 @@ import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
 import { approveIfApprovalsOff, isAutoApprovedCard } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, syncBrowserPrefs } from './lib/browserPrefs';
-import { reportTurnEnd, waitForTurnEnd } from './lib/voice/turnEnds';
+import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
 import { Outlet } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -1581,6 +1581,14 @@ function AppCore() {
     });
   }, []);
 
+  // A turn's end, for a voice call waiting on it (lib/voice/turnEnds.js). A
+  // turn whose Stop is under way ended stopped, whatever partial answer its
+  // cancelled frame carried, so the call never hears it as finished.
+  const reportTurnDone = (ids, content, finalId) => {
+    const stopped = ids.some((tid) => tid && stoppingRef.current.has(tid));
+    reportTurnEnd(ids, stopped ? { error: TURN_STOPPED, finalId } : { content: content || '', finalId });
+  };
+
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
     /*
@@ -1657,6 +1665,16 @@ function AppCore() {
       drainNextQueuedMessageRef.current?.(cidToCancel);
       return;
     }
+
+    /*
+     * The turn ends stopped for whatever waits on it (a voice call's work).
+     * When the cancel answers before the cancelled frame, abortStream below
+     * reaps the record and the turn's own terminal never reports; when the
+     * frame came first, it already reported stopped (reportTurnDone) and this
+     * finds no one waiting.
+     */
+    const stoppedTask = tasksRef.current.find((t) => t.id === cidToCancel);
+    reportTurnEnd([cidToCancel, stoppedTask?.renamedFrom], { error: TURN_STOPPED });
 
     /*
      * Tear down the record for the conversation being stopped, not whichever
@@ -4358,7 +4376,7 @@ function AppCore() {
           // now (keyed to the resolved conversation id the panel reads).
           openStreamedForm(finalId, finalContent);
         }
-        reportTurnEnd([finalId, resolvedId, taskId], { content: finalContent || '', finalId });
+        reportTurnDone([finalId, resolvedId, taskId], finalContent, finalId);
         reloadArtifacts();
         // This turn held the shared stream slot; drain anything queued
         // against any task while it ran (ENG-1378).
@@ -4370,7 +4388,7 @@ function AppCore() {
         releaseStream(resolvedId || taskId, sessionCtrl);
         if (superseded) return;
         releaseLiveSteps([resolvedId, taskId]);
-        reportTurnEnd([resolvedId, taskId], { error: event?.code === 'cancelled' ? 'The task was stopped.' : message });
+        reportTurnEnd([resolvedId, taskId], { error: event?.code === 'cancelled' ? TURN_STOPPED : message });
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === sessionCtrl) activeStreamCtrlRef.current = null;
         void (async () => {
@@ -4863,7 +4881,7 @@ function AppCore() {
           persistTurnState(resolvedId, finalAssistantMessageId, finalSteps, finalStartedAt);
           openStreamedForm(resolvedId, finalContent);
         }
-        reportTurnEnd([resolvedId, id], { content: finalContent || '', finalId: resolvedId });
+        reportTurnDone([resolvedId, id], finalContent, resolvedId);
         reloadArtifacts();
         // Drain the next queued message now that the single stream slot is
         // free. Sweeps every task's queue (preferring this task for FIFO
@@ -4880,7 +4898,7 @@ function AppCore() {
         // Same as onDone: a later visit must hydrate from the server.
         clearOptimisticConversation(resolvedId);
         releaseLiveSteps([resolvedId, id]);
-        reportTurnEnd([resolvedId, id], { error: event?.code === 'cancelled' ? 'The task was stopped.' : message });
+        reportTurnEnd([resolvedId, id], { error: event?.code === 'cancelled' ? TURN_STOPPED : message });
         if (event?.code === 'cancelled') return;
         if (activeStreamCtrlRef.current === ctrl) activeStreamCtrlRef.current = null;
         void (async () => {
@@ -4908,18 +4926,29 @@ function AppCore() {
   // names the task (`taskId`), or asks for a new one (`newTask`, in `project`
   // when given).
   // Sends the request and resolves once Anton has it: {taskId, finished}, where
-  // `finished` resolves with his answer when the turn ends.
+  // `finished` resolves with his answer when the request's own turn ends. In
+  // a task whose turn is running (one the person typed), the request queues
+  // behind it, and `finished` follows its queue item to the turn that runs it
+  // (askInTask), not the running turn. A wait that gives up rejects with
+  // `timedOut`.
   const sendFromCall = async (request, { taskId = null, newTask = false, project = null } = {}) => {
     const callTaskId = newTask ? null : (taskId || callTaskIdRef.current);
     const existing = callTaskId && tasksRef.current.find((t) => t.id === callTaskId);
     const id = existing ? existing.id : allocateConversationId();
     callTaskIdRef.current = id;
-    const turn = waitForTurnEnd(id);
-    const sent = existing
-      ? await handleSendInTask(request, [], { targetTask: existing })
-      : await handleSendFromHome(request, {
-        conversationId: id, attachments: [], disabledConnections: [], ...(project ? { project } : {}),
+    if (existing) {
+      const { sent, finished } = await askInTask({
+        taskId: id,
+        queueWatch: callQueueWatchRef.current,
+        send: (onQueued) => handleSendInTask(request, [], { targetTask: existing, onQueued }),
       });
+      if (!sent) throw new Error(`${agentLabel} couldn't take the request.`);
+      return { taskId: id, finished };
+    }
+    const turn = waitForTurnEnd(id);
+    const sent = await handleSendFromHome(request, {
+      conversationId: id, attachments: [], disabledConnections: [], ...(project ? { project } : {}),
+    });
     if (sent === false) {
       turn.cancel();
       throw new Error(`${agentLabel} couldn't take the request.`);
@@ -4937,7 +4966,9 @@ function AppCore() {
   const reportCallWork = (work, { content = '', error = '' }) => {
     const title = tasksRef.current.find((t) => t.id === work.taskId)?.title;
     const where = title ? ` in "${title}"` : '';
-    const news = error
+    const news = error === TURN_STOPPED
+      ? `${agentLabel}'s work on "${work.request}"${where} was stopped before it finished.`
+      : error
       ? `${agentLabel} couldn't finish "${work.request}"${where}: ${error}`
       : `${agentLabel} finished "${work.request}"${where}: ${String(content || '').slice(0, 1200)}`;
     // A call that is up (or connecting, or fading out) says it; one hanging up
@@ -5027,7 +5058,11 @@ function AppCore() {
       work.taskId = sent.taskId;
       sent.finished.then(
         (content) => { if (work.settle()) reportCallWork(work, { content }); },
-        (err) => { if (work.settle()) reportCallWork(work, { error: err?.message || 'something went wrong' }); },
+        (err) => {
+          if (!work.settle()) return;
+          if (err?.timedOut) callWorkGone();
+          else reportCallWork(work, { error: err?.message || 'something went wrong' });
+        },
       );
       voiceCall.armAway();
       const title = tasksRef.current.find((t) => t.id === sent.taskId)?.title;
