@@ -1,7 +1,7 @@
 // The quick-edit group message in a chat (ENG-4227), and older one-edit notes.
 import { describe, expect, it } from 'vitest';
 import {
-  isFoldedLegacyRequest, legacyQuickEditGroup, legacyQuickEditNote, quickEditGroupOf, withQuickEditGroup,
+  isFoldedLegacyRequest, legacyQuickEditGroup, legacyQuickEditNote, planQuickEditCards, quickEditGroupOf, withQuickEditGroup,
 } from './quickEditGroup';
 import { hydrateMessagesFromServerEvents } from './conversationHistory';
 
@@ -80,5 +80,75 @@ describe('older one-edit notes', () => {
   it('leaves ordinary answers alone, even ones quoting the phrase', () => {
     expect(legacyQuickEditNote({ role: 'assistant', content: `As I said: ${NOTE}` })).toBeNull();
     expect(legacyQuickEditNote({ role: 'user', content: NOTE })).toBeNull();
+  });
+});
+
+describe('planQuickEditCards', () => {
+  const note = (summary, at) => ({
+    role: 'assistant',
+    content: `I edited this artifact directly from its viewer (quick edit): ${summary}\nSaved as draft revision 2; not published.`,
+    created_at: at,
+  });
+  const request = (text) => ({ role: 'user', content: text });
+  const serverGroup = (slug, edits) => ({
+    role: 'assistant',
+    harness: 'cowork-quick-edit',
+    content: 'model-facing',
+    quickEditGroup: { type: 'response.quick_edit_group', kind: 'quick_edit_group', artifactId: `id-${slug}`, artifactSlug: slug, artifactTitle: slug.toUpperCase(), edits },
+  });
+  const edit = (id, at) => ({ editId: id, request: id, summary: `${id} done`, at });
+
+  it('merges three adjacent older pairs into one card at the first note', () => {
+    const messages = [
+      request('blue'), note('Blue.', '2026-11-12T12:08:00'),
+      request('bigger'), note('Bigger.', '2026-11-12T12:12:00'),
+      request('bold'), note('Bold.', '2026-11-12T12:13:00'),
+    ];
+    const { cards, hidden } = planQuickEditCards(messages);
+    expect([...cards.keys()]).toEqual([1]);
+    expect(cards.get(1).edits.map((e) => e.request)).toEqual(['blue', 'bigger', 'bold']);
+    expect([...hidden].sort()).toEqual([0, 2, 3, 4, 5]);
+  });
+
+  it('merges an older note with an adjacent server group, which names the artifact, in time order', () => {
+    const messages = [
+      request('blue'), note('Blue.', '2026-11-12T12:08:00Z'),
+      serverGroup('deck-1', [edit('e2', '2026-11-12T12:12:00Z'), edit('e3', '2026-11-12T12:13:00Z')]),
+    ];
+    const { cards } = planQuickEditCards(messages);
+    const card = cards.get(1);
+    expect(card.artifactSlug).toBe('deck-1');
+    expect(card.artifactTitle).toBe('DECK-1');
+    expect(card.edits.map((e) => e.editId)).toHaveLength(3);
+    expect(card.edits.map((e) => e.summary)).toEqual(['Blue.', 'e2 done', 'e3 done']);
+  });
+
+  it('keeps cards split by a user message, or by an answer, apart', () => {
+    const split = [
+      serverGroup('deck-1', [edit('e1')]),
+      request('what changed?'),
+      serverGroup('deck-1', [edit('e2')]),
+    ];
+    expect([...planQuickEditCards(split).cards.keys()]).toEqual([0, 2]);
+    const answered = [
+      request('blue'), note('Blue.'),
+      { role: 'assistant', content: 'Anything else?' },
+      request('bold'), note('Bold.'),
+    ];
+    expect([...planQuickEditCards(answered).cards.keys()]).toEqual([1, 4]);
+  });
+
+  it('keeps groups for different artifacts separate', () => {
+    const messages = [serverGroup('deck-1', [edit('e1')]), serverGroup('deck-2', [edit('e2')])];
+    const { cards, hidden } = planQuickEditCards(messages);
+    expect([...cards.keys()]).toEqual([0, 1]);
+    expect(hidden.size).toBe(0);
+  });
+
+  it('merges two adjacent groups for the same artifact', () => {
+    const messages = [serverGroup('deck-1', [edit('e1')]), serverGroup('deck-1', [edit('e2')])];
+    const { cards, hidden } = planQuickEditCards(messages);
+    expect(cards.get(0).edits.map((e) => e.editId)).toEqual(['e1', 'e2']);
+    expect([...hidden]).toEqual([1]);
   });
 });

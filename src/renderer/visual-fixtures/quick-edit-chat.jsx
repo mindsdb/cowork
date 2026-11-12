@@ -41,14 +41,34 @@ document.body.classList.add(theme === 'dark' ? 'gf-theme-dark' : 'gf-theme-light
 document.body.style.margin = '0';
 document.body.style.background = 'var(--bg)';
 
-const at = (min) => `2026-11-12T14:${String(min).padStart(2, '0')}:00Z`;
+const at = (min) => `2026-11-12T12:${String(min).padStart(2, '0')}:00Z`;
+const oldNote = (n, summary, min) => ({
+  id: `n${n}`,
+  role: 'assistant',
+  harness: 'cowork-quick-edit',
+  created_at: at(min),
+  content: `I edited this artifact directly from its viewer (quick edit): ${summary}\nFiles changed: index.html.\nSaved as draft revision ${n + 1}; not published.`,
+});
+/* `?view=pill`: a short and a long message from the bar, each with its pill.
+   Otherwise: two edits saved as older request-and-note pairs, then the
+   server's group for the same artifact, drawn as one card. */
+const PILL_VIEW = new URLSearchParams(window.location.search).get('view') === 'pill';
 const task = {
   id: 'conv-fixture',
   title: 'MindsHub explainer',
   status: 'idle',
-  messages: [
-    { id: 'u1', role: 'user', content: `Can you add a short pricing section?\n\n(About the artifact \`${SLUG}\`.)` },
-    { id: 'a1', role: 'assistant', content: 'Added a pricing section after the features, with the three plans side by side.' },
+  messages: PILL_VIEW ? [
+    { id: 'u1', role: 'user', content: `hi\n\n(About the artifact \`${SLUG}\`.)` },
+    { id: 'a1', role: 'assistant', content: 'Hi! What would you like to change in the explainer?' },
+    { id: 'u2', role: 'user', content: `Can you add a short pricing section after the features, with the three plans side by side and a note that annual billing saves two months?\n\n(About the artifact \`${SLUG}\`.)` },
+    { id: 'a2', role: 'assistant', content: 'Added a pricing section after the features, with the three plans side by side.' },
+  ] : [
+    { id: 'u0', role: 'user', content: 'Build a one-page explainer for MindsHub.' },
+    { id: 'a0', role: 'assistant', content: 'Here is the explainer, saved as an artifact.' },
+    { id: 'u1', role: 'user', content: 'make the headline teal' },
+    oldNote(1, 'Made the headline teal.', 8),
+    { id: 'u2', role: 'user', content: 'tighten the hero spacing' },
+    oldNote(2, 'Reduced the hero padding and the gap under the title.', 12),
     {
       id: 'g1',
       role: 'assistant',
@@ -61,10 +81,8 @@ const task = {
         artifactSlug: SLUG,
         artifactTitle: CARD.title,
         edits: [
-          { editId: 'e1', request: 'make the headline teal', summary: 'Made the headline teal.', changed: ['index.html'], at: at(2) },
-          { editId: 'e2', request: 'tighten the hero spacing', summary: 'Reduced the hero padding and the gap under the title.', changed: ['index.html'], at: at(4) },
-          { editId: 'e3', request: 'bigger CTA', summary: 'Made the call-to-action button larger.', changed: ['index.html'], at: at(5), undone: true },
-          { editId: 'e4', request: 'rename “Plans” to “Pricing”', summary: 'Renamed the Plans heading to Pricing.', changed: ['index.html'], at: at(7) },
+          { editId: 'e3', request: 'bigger CTA', summary: 'Made the call-to-action button larger.', changed: ['index.html'], at: at(13), undone: true },
+          { editId: 'e4', request: 'rename “Plans” to “Pricing”', summary: 'Renamed the Plans heading to Pricing.', changed: ['index.html'], at: at(15) },
         ],
       },
     },

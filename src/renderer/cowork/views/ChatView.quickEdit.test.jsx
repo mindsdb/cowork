@@ -118,4 +118,47 @@ describe('ChatView quick edits', () => {
     expect(screen.getAllByText('make the title blue')).toHaveLength(1);
     expect(screen.queryByText(/I edited this artifact directly/)).toBeNull();
   });
+
+  it('draws three adjacent older pairs as one card', () => {
+    const pair = (n, ask, done, at) => [
+      { id: `u${n}`, role: 'user', content: ask },
+      { id: `n${n}`, role: 'assistant', harness: 'cowork-quick-edit', created_at: at, content: `I edited this artifact directly from its viewer (quick edit): ${done}\nSaved as draft revision ${n}; not published.` },
+    ];
+    render(<ChatView task={taskWith([
+      ...pair(1, 'blue title', 'Made the title blue.', '2026-11-12T12:08:00'),
+      ...pair(2, 'bigger', 'Made it bigger.', '2026-11-12T12:12:00'),
+      ...pair(3, 'bold', 'Made it bold.', '2026-11-12T12:13:00'),
+    ])} />);
+
+    const cards = screen.getAllByRole('region', { name: 'Edited in the viewer' });
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByText('3 changes')).toBeInTheDocument();
+    expect(within(cards[0]).getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('draws an older pair and the next server group as one card with the pill', () => {
+    render(<ChatView task={taskWith([
+      { id: 'u1', role: 'user', content: 'blue title' },
+      { id: 'n1', role: 'assistant', harness: 'cowork-quick-edit', content: 'I edited this artifact directly from its viewer (quick edit): Made the title blue.' },
+      {
+        id: 'g1', role: 'assistant', harness: 'cowork-quick-edit', content: 'model-facing',
+        quickEditGroup: {
+          type: 'response.quick_edit_group', kind: 'quick_edit_group', artifactSlug: CARD.slug, artifactTitle: CARD.title,
+          edits: [{ editId: 'e2', request: 'bigger', summary: 'Made it bigger.' }],
+        },
+      },
+    ])} />);
+
+    const cards = screen.getAllByRole('region', { name: 'Edited in the viewer' });
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByText('2 changes')).toBeInTheDocument();
+    expect(within(cards[0]).getByRole('button', { name: 'Open MindsHub explainer' })).toBeInTheDocument();
+  });
+
+  it('puts the pill inside the request bubble, under the text', () => {
+    render(<ChatView task={taskWith([{ id: 'u1', role: 'user', content: PROMPT }])} />);
+    const bubble = screen.getByText('hi').closest('.user-turn-bubble');
+    expect(within(bubble).getByRole('button', { name: 'Open MindsHub explainer' })).toBeInTheDocument();
+  });
 });
+

@@ -130,3 +130,83 @@ export function isFoldedLegacyRequest(messages, index) {
   const m = messages?.[index];
   return m?.role === 'user' && !!legacyQuickEditNote(messages[index + 1]);
 }
+
+const cardAt = (messages, i) => quickEditGroupOf(messages[i]) || legacyQuickEditGroup(messages[i], messages[i - 1]);
+
+const artifactKey = (group) => group.artifactId || group.artifactSlug || null;
+
+// Two cards can be one when they name the same artifact, or when either names
+// none (an older note, which the server never tied to an artifact).
+const compatible = (a, b) => {
+  const ka = artifactKey(a);
+  const kb = artifactKey(b);
+  return !ka || !kb || ka === kb;
+};
+
+const timeOf = (edit) => {
+  const t = edit.at ? Date.parse(edit.at) : NaN;
+  return Number.isNaN(t) ? null : t;
+};
+
+function mergeGroups(parts) {
+  const known = [...parts].reverse().find((p) => artifactKey(p)) || null;
+  const edits = parts.flatMap((p) => p.edits);
+  // Time order when every edit has a time; otherwise the transcript's order,
+  // which is already the order they were saved in.
+  const times = edits.map(timeOf);
+  const ordered = times.every((t) => t !== null)
+    ? edits.map((e, i) => [e, times[i], i]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([e]) => e)
+    : edits;
+  return {
+    artifactId: known?.artifactId || null,
+    artifactSlug: known?.artifactSlug || null,
+    artifactTitle: known?.artifactTitle || null,
+    legacy: parts.every((p) => p.legacy),
+    edits: ordered,
+  };
+}
+
+/**
+ * How the transcript draws quick edits: adjacent cards merged into one.
+ *
+ * Cards are adjacent when nothing but an older note's own request sits
+ * between them (no other user message or answer). Server groups merge when
+ * they are for the same artifact; older notes, which name none, merge with
+ * any neighbour. The merged card is drawn at its first message and takes the
+ * artifact from whichever part names it.
+ *
+ * Returns `{ cards: Map<index, group>, hidden: Set<index> }`: draw `cards`
+ * at their index, and nothing for an index in `hidden` (a merged card's later
+ * parts and every folded request).
+ */
+export function planQuickEditCards(messages) {
+  const cards = new Map();
+  const hidden = new Set();
+  if (!Array.isArray(messages)) return { cards, hidden };
+  let run = null; // { start, parts, merged }
+  const close = () => {
+    if (run) cards.set(run.start, mergeGroups(run.parts));
+    run = null;
+  };
+  for (let i = 0; i < messages.length; i += 1) {
+    if (isFoldedLegacyRequest(messages, i)) {
+      // Part of the note after it: neither ends a run nor is drawn.
+      hidden.add(i);
+      continue;
+    }
+    const group = cardAt(messages, i);
+    if (!group) {
+      close();
+      continue;
+    }
+    if (run && run.parts.every((p) => compatible(p, group))) {
+      run.parts.push(group);
+      hidden.add(i);
+    } else {
+      close();
+      run = { start: i, parts: [group] };
+    }
+  }
+  close();
+  return { cards, hidden };
+}
