@@ -161,7 +161,7 @@ import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
 import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall } from './lib/voice/useVoiceCall';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
-import { desktopTaskSession, latestBrowserSessionIdIn } from './lib/browserSession';
+import { desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
@@ -747,7 +747,7 @@ function AppCore() {
   // Bumped by closing it, so a browser still opening doesn't show after it.
   const offTaskOpenSeqRef = useRef(0);
   const openOffTaskBrowser = async (url) => {
-    offTaskBrowserIdRef.current ||= allocateConversationId();
+    offTaskBrowserIdRef.current ||= offTaskBrowserId(allocateConversationId);
     const seq = offTaskOpenSeqRef.current;
     let sessionId;
     if (host.isWeb) {

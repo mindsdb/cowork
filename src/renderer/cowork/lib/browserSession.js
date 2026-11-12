@@ -226,3 +226,25 @@ export async function desktopTaskSession(conversationId) {
   const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
   return `t-${hex.slice(0, 24)}`;
 }
+
+/* The id of the browser Show browser opens off a task (Home, Projects), kept
+   in this browser's storage so a reload opens the same one instead of
+   another. The server makes the session from it and the signed-in person, so
+   a second person here gets their own. A fresh id when storage is out. */
+const OFF_TASK_BROWSER_KEY = 'cowork.offTaskBrowserId';
+
+export function offTaskBrowserId(allocate, storage = globalThis.localStorage) {
+  try {
+    const kept = storage?.getItem(OFF_TASK_BROWSER_KEY);
+    if (kept && /^[A-Za-z0-9_-]{8,128}$/.test(kept)) return kept;
+  } catch {
+    // Storage blocked: a fresh id for this load.
+  }
+  const id = allocate();
+  try {
+    storage?.setItem(OFF_TASK_BROWSER_KEY, id);
+  } catch {
+    // Not kept: the next load opens another.
+  }
+  return id;
+}
