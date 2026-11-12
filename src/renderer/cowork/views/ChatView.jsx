@@ -50,6 +50,7 @@ import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { BROWSER_BADGE, browserSessionIdIn, conversationUsedBrowser, desktopTaskSession, latestBrowserSessionIdIn } from '../lib/browserSession';
 import { BrowserPanel } from '../components/browser/BrowserPanel';
 import BlankBrowserPanel from '../components/browser/BlankBrowserPanel';
+import ProjectBrowsers from '../components/browser/ProjectBrowsers';
 import { browserInsteadRequest } from '../lib/connectorWebsites';
 import TopShortcuts from '../components/TopShortcuts';
 import VoiceOrb from '../components/VoiceOrb';
@@ -1898,6 +1899,10 @@ export default function ChatView({
   onStartVoiceCall = null,
   // A voice call asked to show this task's browser: {taskId, sessionId, at}.
   browserRequest = null,
+  // The project's tasks ({id, title}), for the browser pane's list of the
+  // project's browsers, and how to go to another task's browser.
+  projectTasks = null,
+  onOpenTaskBrowser = null,
   // The top-right call icon (TopShortcuts' `call`): starts a voice call, and
   // shows one is running; null hides it.
   callShortcut = null,
@@ -2273,6 +2278,16 @@ export default function ChatView({
   }, [openBrowserSignal]);
   // The call icon beside the browser's X, while the browser takes the column.
   const browserCallIcon = callShortcut ? <TopShortcuts call={callShortcut} /> : null;
+  // On the web, the project's browsers beside the pane's X.
+  const projectBrowsers = host.isWeb && browserOn && projectTasks ? (
+    <ProjectBrowsers
+      taskId={task.id}
+      tasks={projectTasks}
+      onReopen={(url) => { void openUrlInTask(url).catch(() => {}); }}
+      onOpenTaskBrowser={onOpenTaskBrowser}
+    />
+  ) : null;
+  const browserActions = projectBrowsers || browserCallIcon ? <>{projectBrowsers}{browserCallIcon}</> : null;
   const openBrowserFromShortcut = () => {
     setBrowserMinimized(false);
     if (viewable(latestBrowserId)) {
@@ -2304,7 +2319,7 @@ export default function ChatView({
           startBlank={openingBrowserOpen || (browserOpen && shownBrowserId === blankOpenedId)}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
           onClose={() => { openSeqRef.current += 1; setOpeningBrowser(false); setShownBrowserId(null); }}
-          extraActions={browserCallIcon}
+          extraActions={browserActions}
           dock={browserDock}
           onControl={onBrowserControl}
           taskKey={task.id}

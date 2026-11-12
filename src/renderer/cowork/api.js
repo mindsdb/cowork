@@ -3003,6 +3003,37 @@ export async function openBrowserAt(conversationId, url) {
   });
 }
 
+/* The project's browsers (ENG-4138, prototype): which of these tasks have an
+   open browser, each with its tabs and the tabs it saved. Web only. Resolves
+   {browsers: [{conversation_id, session_id, url, viewers, holder, tabs, parked_tabs}]}. */
+export async function fetchTaskBrowsers(conversationIds) {
+  return req('/browse/browsers', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_ids: conversationIds.slice(0, 100) }),
+  });
+}
+
+export async function switchTaskTab(conversationId, tabId) {
+  return req('/browse/tabs/switch', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId }),
+  });
+}
+
+/* Closes a tab; `park` keeps a note of it, to reopen when the task needs it. */
+export async function closeTaskTab(conversationId, tabId, { park = true } = {}) {
+  return req('/browse/tabs/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId, park }),
+  });
+}
+
+/* Closes a task's browser; its tabs are noted and reopen when the task needs them. */
+export async function closeTaskBrowser(conversationId) {
+  return req('/browse/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId }),
+  });
+}
+
 export async function provisionBrowser() {
   return req('/browse/provision', {
     method: 'POST',

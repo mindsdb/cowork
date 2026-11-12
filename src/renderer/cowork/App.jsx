@@ -4983,6 +4983,16 @@ function AppCore() {
   // From a composer's + menu: in the task on screen, or a new one from the
   // first request. A click, so the browser plays the avatar's voice.
   // One call at a time: each start offers itself only while neither runs.
+  // The current task's project's tasks, for the browser pane's list of the
+  // project's browsers (ENG-4138, prototype).
+  const projectTasksForBrowsers = useMemo(() => {
+    if (!currentTask) return null;
+    const project = currentTask.projectName || 'general';
+    return tasks
+      .filter((t) => (t.projectName || 'general') === project && /^[A-Za-z0-9_-]{1,64}$/.test(String(t.id)))
+      .slice(0, 100)
+      .map((t) => ({ id: t.id, title: t.title }));
+  }, [tasks, currentTask?.id, currentTask?.projectName]);
   const noCallRunning = facetime.phase === 'idle' && voiceCall.phase === 'idle';
   // Voice calls only where the LLM provider is MindsHub: the call runs on
   // MindsHub. With another provider every call button is hidden.
@@ -6785,6 +6795,8 @@ function AppCore() {
             onStartVideoCall={startVideoCall}
             onStartVoiceCall={startVoiceCall}
             browserRequest={browserRequest}
+            projectTasks={projectTasksForBrowsers}
+            onOpenTaskBrowser={(id, sessionId) => { selectTask(id); setBrowserRequest({ taskId: id, sessionId, at: Date.now() }); }}
             openBrowserSignal={taskBrowserSignal}
             callShortcut={voiceCallShortcut}
             phoneCallCard={callInTaskOnPhone ? <VoiceCallWindow docked call={voiceCall} agentLabel={agentLabel} /> : null}
