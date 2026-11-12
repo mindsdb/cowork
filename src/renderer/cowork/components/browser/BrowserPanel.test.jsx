@@ -49,6 +49,11 @@ function fakePort() {
   return { postMessage: vi.fn(), close: vi.fn() };
 }
 
+// Every message the pane posted to the frame's window that carries a ticket: none may.
+function ticketsOnWindow() {
+  return frameWindow().postMessage.mock.calls.filter(([message]) => message?.type === 'browser-viewer-ticket' || message?.ticket !== undefined);
+}
+
 /* The browser service's dropped connection, step by step: the viewer's
    ready with its port, live, closed 1006, the pane's ticket, live again. */
 const DROP = viewerMessages.drop_sequence;
@@ -734,6 +739,7 @@ describe('BrowserPanel', () => {
       expect(frame).toHaveAttribute('src', `${VIEW}1`);
       expect(document.activeElement).toBe(frame);
       expect(screen.queryByRole('status')).toBeNull();
+      expect(ticketsOnWindow()).toEqual([]);
     });
 
     it('keeps the frame through a network drop and relinks when the network comes back', async () => {
@@ -975,6 +981,92 @@ describe('BrowserPanel', () => {
       expect(screen.getByTitle('Shared browser')).toBe(frame);
     });
 
+    it("takes no port, keyboard or link from another window's ready, live and close", async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      frameWindow();
+      const stranger = { postMessage: vi.fn() };
+      const port = fakePort();
+      messageFrom(stranger, { type: 'browser-viewer-ready' }, [port]);
+      messageFrom(stranger, { type: 'browser-viewer-live' });
+      expect(screen.getByRole('status')).toHaveTextContent('Starting your browser…');
+      act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
+      messageFrom(stranger, { type: 'browser-viewer-closed', code: 1006 });
+      await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS); });
+      expect(document.activeElement).toBe(document.body);
+      expect(port.postMessage).not.toHaveBeenCalled();
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops after a second failed open for a viewer with a port that never goes live', async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      fromViewer(DROP_READY, fakePort());
+      act(() => { vi.advanceTimersByTime(15_000); });
+      embedBrowser.mockResolvedValue(link(2));
+      fromViewer(DROP_CLOSED, null);
+      await flush();
+      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}2`);
+
+      fromViewer(DROP_READY, fakePort());
+      act(() => { vi.advanceTimersByTime(15_000); });
+      fromViewer(DROP_CLOSED, null);
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('The browser view keeps closing. Try again in a moment.')).toBeInTheDocument();
+    });
+
+    it("waits for the viewer's own close after the frame the watchdog reloaded, and counts that close as a failed open", async () => {
+      const { port } = await liveViewer();
+      act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
+      embedBrowser.mockResolvedValue(link(2));
+      fromViewer(DROP_CLOSED, port);
+      await flush();
+      embedBrowser.mockResolvedValue(link(3));
+      await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS); });
+      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}3`);
+
+      // Its viewer says ready and neither goes live nor closes: no second watchdog fetches.
+      fromViewer(DROP_READY, fakePort());
+      await act(async () => { vi.advanceTimersByTime(10 * RELINK_WAIT_MS); });
+      expect(embedBrowser).toHaveBeenCalledTimes(3);
+
+      // The router ends a stream that never starts, and the viewer says so: a failed open.
+      embedBrowser.mockResolvedValue(link(4));
+      fromViewer(DROP_CLOSED, null);
+      await flush();
+      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}4`);
+      fromViewer(DROP_READY, fakePort());
+      act(() => { vi.advanceTimersByTime(15_000); });
+      fromViewer(DROP_CLOSED, null);
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(4);
+      expect(screen.getByText('The browser view keeps closing. Try again in a moment.')).toBeInTheDocument();
+    });
+
+    it('fetches nothing on online for a viewer with a port that is ready and not yet live', async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      fromViewer(DROP_READY, fakePort());
+      await act(async () => { window.dispatchEvent(new Event('online')); });
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+    });
+
+    it('ends the reconnect once the frame a close reloaded is ready with no port, so a later failed link shows at once', async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
+      act(() => { vi.advanceTimersByTime(15_000); });
+      embedBrowser.mockResolvedValue(link(2));
+      messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 1000 });
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
+
+      embedBrowser.mockRejectedValue(new TypeError('Failed to fetch'));
+      await act(async () => { window.dispatchEvent(new Event('online')); });
+      expect(screen.getByText('Failed to fetch')).toBeInTheDocument();
+    });
+
     it('mints nothing on online while its viewer is live', async () => {
       const { frame } = await liveViewer();
       await act(async () => { window.dispatchEvent(new Event('online')); });
@@ -1012,6 +1104,64 @@ describe('BrowserPanel', () => {
       expect(screen.getByTitle('Shared browser')).toBe(frame);
       expect(frame).toHaveAttribute('src', `${VIEW}1`);
       expect(document.activeElement).toBe(frame);
+      expect(ticketsOnWindow()).toEqual([]);
+
+      // That ticket never goes live: the frame reloads with a fresh link once the wait runs out.
+      embedBrowser.mockResolvedValue(link(4));
+      await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS - 1); });
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(screen.getByTitle('Shared browser')).not.toBe(frame);
+      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}4`);
+    });
+
+    it('gives no renewal to a viewer with a port that never went live', async () => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      fromViewer(DROP_READY, fakePort());
+      await act(async () => { vi.advanceTimersByTime(RENEW_AFTER_MS); });
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives a frame reloaded from a live viewer no renewal until its own viewer goes live', async () => {
+      await liveViewer();
+      embedBrowser.mockResolvedValue(link(2));
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reload browser view' })); });
+      const port = fakePort();
+      fromViewer(DROP_READY, port);
+      await act(async () => { vi.advanceTimersByTime(RENEW_AFTER_MS); });
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-viewer-ticket' }));
+    });
+
+    it('gives a link with no lease no renewal', async () => {
+      const { lease_expires_at: _lease, ...noLease } = link();
+      embedBrowser.mockResolvedValue(noLease);
+      await liveViewer();
+      await act(async () => { vi.advanceTimersByTime(2 * 60 * 60_000); });
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts the count of failed opens over when the tab shows again', async () => {
+      const { port } = await liveViewer();
+      // A quick drop counts one failed open.
+      act(() => { vi.advanceTimersByTime(5_000); });
+      embedBrowser.mockResolvedValue(link(2));
+      fromViewer(DROP_CLOSED, port);
+      await flush();
+      setVisibility('hidden');
+      embedBrowser.mockResolvedValue(link(3));
+      setVisibility('visible');
+      await flush();
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok3' });
+
+      // That ticket fails: one failed open since the tab showed, so the frame reloads.
+      act(() => { vi.advanceTimersByTime(15_000); });
+      embedBrowser.mockResolvedValue(link(4));
+      fromViewer(DROP_CLOSED, port);
+      await flush();
+      expect(stopShown()).toBeNull();
+      expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}4`);
     });
 
     it('a connection that drops within 10 s of a renewal relinks and counts nothing', async () => {
