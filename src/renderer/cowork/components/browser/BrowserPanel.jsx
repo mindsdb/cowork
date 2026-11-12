@@ -5,7 +5,9 @@ import Button from '../ui/Button';
 import EmptyState from '../ui/EmptyState';
 import Spinner from '../ui/Spinner';
 import { embedBrowser } from '../../api';
-import { VIEWER_CLOSED, VIEWER_READY, afterViewerClose, browserViewerTheme, viewerLinkFrom } from '../../lib/browserSession';
+import {
+  VIEWER_ASK, VIEWER_CLOSED, VIEWER_CONTROL, VIEWER_READY, VIEWER_URL, afterViewerClose, browserViewerTheme, viewerLinkFrom,
+} from '../../lib/browserSession';
 import { host } from '../../../platform/host';
 import { BrowserFrame } from './BrowserFrame';
 import { BlankStartOver, browserRequestFor } from './BlankBrowserPanel';
@@ -159,7 +161,7 @@ function WebBrowserStage({
       return;
     }
     mintedAt.current = Date.now();
-    setViewUrl(link);
+    setViewUrl(link.viewUrl);
     setGeneration((g) => g + 1);
   }, [sessionId]);
 
@@ -217,7 +219,7 @@ function WebBrowserStage({
         return;
       }
       // The page the viewer shows, for whoever opened the pane.
-      if (type === 'browser-viewer-url') {
+      if (type === VIEWER_URL) {
         const url = String(event.data?.url || '').slice(0, 2048);
         setPageUrl(url);
         onPageUrlRef.current?.(url);
@@ -226,13 +228,13 @@ function WebBrowserStage({
       // A question typed in the viewer's address bar. The viewer is served by
       // the remote browser, so its text never goes out as the person's own:
       // it lands in the composer (`onDraft`), for them to read and send.
-      if (type === 'browser-viewer-ask') {
+      if (type === VIEWER_ASK) {
         const text = String(event.data?.text || '').trim().slice(0, 2000);
         if (text) onDraftRef.current?.(browserRequestFor(text));
         return;
       }
       // Who holds the browser: 'human' when Anton handed it to the person.
-      if (type === 'browser-viewer-control') {
+      if (type === VIEWER_CONTROL) {
         onControlRef.current?.(event.data?.holder === 'human' ? 'human' : 'agent', String(event.data?.reason || '').slice(0, 300));
         return;
       }

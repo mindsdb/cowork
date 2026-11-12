@@ -1,0 +1,57 @@
+{
+  "viewer_to_pane": {
+    "ready": "browser-viewer-ready",
+    "live": "browser-viewer-live",
+    "closed": "browser-viewer-closed",
+    "url": "browser-viewer-url",
+    "ask": "browser-viewer-ask",
+    "control": "browser-viewer-control"
+  },
+  "pane_to_viewer_port": {
+    "ticket": "browser-viewer-ticket",
+    "pause": "browser-viewer-pause",
+    "focus": "browser-viewer-focus"
+  },
+  "pane_to_viewer_window": {
+    "theme": "browser-theme"
+  },
+  "ready_carries_port": true,
+  "drop_sequence": [
+    {
+      "from": "viewer",
+      "message": {
+        "type": "browser-viewer-ready"
+      },
+      "carries_port": true
+    },
+    {
+      "from": "viewer",
+      "message": {
+        "type": "browser-viewer-live"
+      },
+      "carries_port": false
+    },
+    {
+      "from": "viewer",
+      "message": {
+        "type": "browser-viewer-closed",
+        "code": 1006
+      },
+      "carries_port": false
+    },
+    {
+      "from": "pane",
+      "message": {
+        "type": "browser-viewer-ticket"
+      },
+      "carries_port": false
+    },
+    {
+      "from": "viewer",
+      "message": {
+        "type": "browser-viewer-live"
+      },
+      "carries_port": false
+    }
+  ]
+}
