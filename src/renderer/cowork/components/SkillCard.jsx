@@ -27,9 +27,10 @@ import {
   canUseSharedResource,
   isReservedProjectName,
 } from '../lib/sharedResourceAccess';
+import { useTranslation } from '../../lib/i18n';
 import {
-  SKILL_SHARING_LABEL,
-  SKILL_SHARING_OPTIONS,
+  skillSharingLabel,
+  skillSharingOptions,
   SKILL_SHARING_PRIVATE,
   sharedFromValue,
 } from '../lib/skillSharing';
@@ -43,17 +44,14 @@ function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
   downloadBlob(new Blob([text ?? ''], { type: mime }), filename);
 }
 
-const SAVED_TEXT = 'Saved to your skills';
-const SHARED_TEXT = 'Saved and shared with everyone';
-const SHARING_KEPT_TEXT = "Saved over the existing skill. Who can use it didn't change: set it on the skill's page.";
-
 function SkillModal({ skill, open, onClose }) {
-  const body = skill.instructions || skill.skill_md || '_No content._';
+  const { t } = useTranslation('library');
+  const body = skill.instructions || skill.skill_md || t('skillCard.noContent');
   return (
     <Modal open={open} onClose={onClose} width="min(640px, 92vw)" labelledBy="skill-card-modal-title">
       <ModalHeader
         id="skill-card-modal-title"
-        title={skill.name || skill.slug || 'Skill'}
+        title={skill.name || skill.slug || t('skillCard.skill')}
         subtitle={skill.description || undefined}
         onClose={onClose}
       />
@@ -68,6 +66,7 @@ function SkillModal({ skill, open, onClose }) {
 }
 
 export default function SkillCard({ skill, projectName }) {
+  const { t } = useTranslation('library');
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -75,7 +74,7 @@ export default function SkillCard({ skill, projectName }) {
   const [sharing, setSharing] = useState(SKILL_SHARING_PRIVATE);
   const { skills, catalogueStatus, reload, canShare } = useSkills();
 
-  const name = skill.name || skill.slug || 'Skill';
+  const name = skill.name || skill.slug || t('skillCard.skill');
   const slug = skill.slug || skill.label;
   const catalogueLoaded = catalogueStatus === 'loaded';
   /* The catalogue status is module-global, so every mounted card sees
@@ -116,7 +115,7 @@ export default function SkillCard({ skill, projectName }) {
     e.stopPropagation();
     const filename = `${skill.slug || skill.label || 'skill'}.md`;
     downloadText(filename, skill.skill_md || skill.instructions || '');
-    setStatus({ kind: 'ok', text: 'Downloaded' });
+    setStatus({ kind: 'ok', text: t('skillCard.downloaded') });
   };
 
   const handleSave = async (e) => {
@@ -168,7 +167,7 @@ export default function SkillCard({ skill, projectName }) {
 
     try {
       await saveSkillAndSync(exists ? payload : createPayload, exists);
-      markSaved(sharedOnCreate ? SHARED_TEXT : SAVED_TEXT);
+      markSaved(sharedOnCreate ? t('skillCard.savedShared') : t('skillCard.savedToSkills'));
     } catch (err) {
       // A stale list can race another create. Refresh before considering an
       // update so hosted Cowork never turns a 409 into a PUT without a fresh
@@ -183,20 +182,20 @@ export default function SkillCard({ skill, projectName }) {
             setStatus({
               kind: 'error',
               text: collision
-                ? 'You do not have permission to replace this shared skill.'
-                : 'Could not verify permission to replace this shared skill. Try again.',
+                ? t('skillCard.noPermission')
+                : t('skillCard.verifyFailed'),
             });
             return;
           }
           await saveSkillAndSync(payload, true);
           /* The update keeps the existing skill's sharing, so a person who
              answered the question learns their answer did not apply. */
-          markSaved(asksSharing ? SHARING_KEPT_TEXT : SAVED_TEXT);
+          markSaved(asksSharing ? t('skillCard.sharingKept') : t('skillCard.savedToSkills'));
         } catch (err2) {
-          setStatus({ kind: 'error', text: err2?.message || 'Could not save skill.' });
+          setStatus({ kind: 'error', text: err2?.message || t('skillCard.saveFailed') });
         }
       } else {
-        setStatus({ kind: 'error', text: err?.message || 'Could not save skill.' });
+        setStatus({ kind: 'error', text: err?.message || t('skillCard.saveFailed') });
       }
     } finally {
       setSaving(false);
@@ -236,18 +235,18 @@ export default function SkillCard({ skill, projectName }) {
                 <span style={{ color: status.kind === 'error' ? 'var(--danger)' : 'var(--success, #1F8F5F)' }}>
                   {status.text}
                 </span>
-              ) : isSaved ? 'Saved' : 'Draft · not saved'}
+              ) : isSaved ? t('skillCard.saved') : t('skillCard.draft')}
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Tooltip content="Download skill">
+            <Tooltip content={t('skillCard.download')}>
               <Button
                 icon
                 size="sm"
                 variant="subtle"
                 onClick={handleDownload}
-                aria-label="Download skill"
+                aria-label={t('skillCard.download')}
               >
                 {Ico.download(16)}
               </Button>
@@ -263,9 +262,9 @@ export default function SkillCard({ skill, projectName }) {
               >
                 <Select
                   size="sm"
-                  ariaLabel={SKILL_SHARING_LABEL}
-                  title={SKILL_SHARING_LABEL}
-                  options={SKILL_SHARING_OPTIONS}
+                  ariaLabel={skillSharingLabel()}
+                  title={skillSharingLabel()}
+                  options={skillSharingOptions()}
                   value={sharing}
                   onValueChange={setSharing}
                   disabled={saving}
@@ -278,10 +277,10 @@ export default function SkillCard({ skill, projectName }) {
               size="sm"
               variant={saved ? 'subtle' : 'primary'}
               disabled={saving || saved || !canSave}
-              title={!canSave ? 'You do not have permission to replace this shared skill.' : undefined}
+              title={!canSave ? t('skillCard.noPermission') : undefined}
               onClick={handleSave}
             >
-              {saved ? 'Saved' : saving ? 'Saving…' : !canSave ? 'Read only' : 'Save skill'}
+              {saved ? t('skillCard.saved') : saving ? t('skillCard.saving') : !canSave ? t('skillCard.readOnly') : t('skillCard.save')}
             </Button>
           </div>
         </div>

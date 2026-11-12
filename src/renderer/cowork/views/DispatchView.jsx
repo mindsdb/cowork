@@ -1,6 +1,7 @@
 import Ico from '../components/Icons';
 import { Badge, Button } from '../components/ui';
 import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
+import { useTranslation } from '../../lib/i18n';
 
 function buildQrCells() {
   const size = 25;
@@ -39,12 +40,13 @@ function buildQrCells() {
 const QR = buildQrCells();
 
 function DecorativeQr() {
+  const { t } = useTranslation('shell');
   const cell = 8;
   const pad = 4;
   const dim = QR.size * cell + pad * 2;
 
   return (
-    <svg viewBox={`0 0 ${dim} ${dim}`} role="img" aria-label="Decorative pairing code">
+    <svg viewBox={`0 0 ${dim} ${dim}`} role="img" aria-label={t('dispatch.qrAriaLabel')}>
       <rect width={dim} height={dim} fill="#fff" />
       {QR.cells.map((filled, index) => {
         if (!filled) return null;
@@ -85,18 +87,19 @@ function PairingIllustration() {
   );
 }
 
-export default function DispatchView({ onSetUpLater, agentLabel = 'the agent' }) {
+export default function DispatchView({ onSetUpLater, agentLabel }) {
+  const { t } = useTranslation('shell');
+  const agent = agentLabel === undefined ? t('dispatch.defaultAgent') : agentLabel;
   return (
     <div className="dispatch-view">
-      <header className="dispatch-top">Dispatch</header>
+      <header className="dispatch-top">{t('dispatch.title')}</header>
       <main className="dispatch-content">
         <section className="dispatch-pair" aria-labelledby="dispatch-title">
           <PairingIllustration />
 
-          <h1 id="dispatch-title">Pair with the {STOCK_PRODUCT_NAME} Mobile app</h1>
+          <h1 id="dispatch-title">{t('dispatch.heading', { product: STOCK_PRODUCT_NAME })}</h1>
           <p>
-            Use the mobile app to talk to {agentLabel} while it works from your desktop.
-            Scan the code to download it on your phone.
+            {t('dispatch.body', { agent })}
           </p>
 
           <div className="dispatch-qr">
@@ -106,11 +109,11 @@ export default function DispatchView({ onSetUpLater, agentLabel = 'the agent' })
           <div className="dispatch-actions">
             <Button variant="primary" size="xl" disabled aria-disabled="true">
               {Ico.check(16)}
-              <span>I'm signed in on my phone</span>
-              <Badge variant="inverse" size="sm">Coming soon</Badge>
+              <span>{t('dispatch.signedIn')}</span>
+              <Badge variant="inverse" size="sm">{t('dispatch.comingSoon')}</Badge>
             </Button>
             <Button variant="subtle" size="xl" onClick={onSetUpLater}>
-              Set up later
+              {t('dispatch.later')}
             </Button>
           </div>
         </section>

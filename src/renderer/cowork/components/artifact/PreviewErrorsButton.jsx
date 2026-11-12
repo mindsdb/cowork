@@ -8,8 +8,9 @@ import { Popover } from '@base-ui/react/popover';
 import Ico from '../Icons';
 import { Button, OutsidePressLayer, Tooltip } from '../ui';
 import { IconButton } from './ArtifactViewerIconButton';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
-const errorCount = (n) => `${n} ${n === 1 ? 'error' : 'errors'}`;
+const reported = (count) => i18n.t('previewErrors.reported', { ns: 'artifacts', count });
 
 // Where an error came from, short enough for one line: the shim reports the
 // script's full URL, and only its last segment tells the user anything. A
@@ -17,7 +18,7 @@ const errorCount = (n) => `${n} ${n === 1 ? 'error' : 'errors'}`;
 // no meaningful segment, so those keep only the line.
 function errorLocation({ file, line }) {
   if (!file) return '';
-  if (/^(about|data|blob):/i.test(file)) return line ? `line ${line}` : '';
+  if (/^(about|data|blob):/i.test(file)) return line ? i18n.t('previewErrors.line', { ns: 'artifacts', line }) : '';
   const name = file.split(/[?#]/)[0].split('/').filter(Boolean).pop() || file;
   return line ? `${name}:${line}` : name;
 }
@@ -36,6 +37,7 @@ function neighbourButton(el) {
 // undismissed error, so the open state starts closed every time the set
 // comes back instead of reopening the popover on its own.
 function PreviewErrorsPopover({ errors, onDismiss }) {
+  const { t } = useTranslation('artifacts');
   const [open, setOpen] = useState(false);
   const triggerRef = useRef(null);
   // Dismissing unmounts the trigger, so Base UI has nowhere to return focus
@@ -57,11 +59,11 @@ function PreviewErrorsPopover({ errors, onDismiss }) {
         />
       )}
       <Popover.Root open={open} onOpenChange={setOpen}>
-        <Tooltip content="Preview errors">
+        <Tooltip content={t('previewErrors.title')}>
           <Popover.Trigger
             className="data-[popup-open]:!bg-surface-2"
             render={(
-              <IconButton ref={triggerRef} aria-label={`Preview errors, ${errors.length}`}>
+              <IconButton ref={triggerRef} aria-label={t('previewErrors.ariaLabel', { count: errors.length })}>
                 {/* The glyph carries its own color: IconButton's hover
                     handlers rewrite the button's, which would turn it grey. */}
                 <span className="inline-flex text-danger">{Ico.warning(16)}</span>
@@ -76,7 +78,7 @@ function PreviewErrorsPopover({ errors, onDismiss }) {
               style={{ width: 'min(400px, 92vw)' }}
             >
               <Popover.Title className="s-h3 m-0 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
-                {`The preview reported ${errorCount(errors.length)}`}
+                {reported(errors.length)}
               </Popover.Title>
               <ul className="list-none m-0 py-2 px-4 max-h-[280px] overflow-y-auto">
                 {/* Rows hold no state, so an index key is safe even though
@@ -105,7 +107,7 @@ function PreviewErrorsPopover({ errors, onDismiss }) {
                 {/* One dismissal for the whole set. It holds for this set only:
                     a different error brings the button back, because after a
                     repair a page often breaks in a new way. */}
-                <Button size="sm" onClick={dismiss}>Dismiss</Button>
+                <Button size="sm" onClick={dismiss}>{t('publish.dismiss')}</Button>
               </div>
             </Popover.Popup>
           </Popover.Positioner>
@@ -121,11 +123,12 @@ function PreviewErrorsPopover({ errors, onDismiss }) {
 // a region inserted together with its text is not reliably announced, and
 // the banner this replaced was announced as soon as the first error landed.
 export function PreviewErrorsButton({ diagnostics }) {
+  useTranslation('artifacts');
   const visible = diagnostics.errors.length > 0 && !diagnostics.dismissed;
   return (
     <>
       <span className="sr-only" role="status" aria-live="polite">
-        {visible ? `The preview reported ${errorCount(diagnostics.errors.length)}` : ''}
+        {visible ? reported(diagnostics.errors.length) : ''}
       </span>
       {visible && (
         <PreviewErrorsPopover errors={diagnostics.errors} onDismiss={diagnostics.dismiss} />

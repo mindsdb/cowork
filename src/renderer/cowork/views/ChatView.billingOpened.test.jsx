@@ -173,6 +173,46 @@ describe('billing_opened trigger per call site', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
+  it('model_access_denied: a billing owner lands on the add-credits dialog', async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('model_access_denied', 'Payment required.'))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('model_access_denied');
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+  });
+
+  it('model_access_denied: a member gets the billing page, not a dialog they cannot submit', async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: false }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('model_access_denied', 'Payment required.'))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it('model_disabled: even a billing owner gets the plain billing page, since credits cannot re-enable it', async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('model_disabled', 'Model disabled.'))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Top up balance' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
   it('model_disabled: the same card records the code that rendered, not a credit denial', async () => {
     const user = userEvent.setup();
     render(<ModelUnavailableCard code="model_disabled" failedModel="opus" />);

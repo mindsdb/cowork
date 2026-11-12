@@ -19,6 +19,7 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { host } from '../../platform/host';
+import i18n, { useTranslation } from '../../lib/i18n';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import type { DocumentPreviewType, PreviewErrorCode, PreviewFailure, PreviewFailureLimit, RenderSummary } from './contract';
@@ -57,9 +58,28 @@ function downloadsFile(fileAction: DocumentPreviewProps['fileAction']): boolean 
   return (fileAction ?? (host.isWeb ? 'download' : 'open')) === 'download';
 }
 
+const tr = (key: string, vars?: Record<string, unknown>): string =>
+  i18n.t(key, { ns: 'artifacts', ...vars });
+
+/* The notes, in the current language. The English constants below stay for
+   callers and tests that match the text. */
+export const previewFailedNote = () => tr('documentPreview.failed');
+export const previewFailedDownloadedNote = () => tr('documentPreview.failedDownloaded');
+export const downloadFailedNote = () => tr('documentPreview.downloadFailed');
+
 export const PREVIEW_FAILED_NOTE = "Couldn't preview this file";
 export const PREVIEW_FAILED_DOWNLOADED_NOTE = "Couldn't preview this file; downloaded instead.";
 export const DOWNLOAD_FAILED_NOTE = "Couldn't download this file.";
+
+/* A record whose values are read through i18n each time, so they follow the
+   current language. */
+function translatedRecord<K extends string>(entries: Record<K, () => string>): Readonly<Record<K, string>> {
+  const record = {} as Record<K, string>;
+  for (const key of Object.keys(entries) as K[]) {
+    Object.defineProperty(record, key, { enumerable: true, get: entries[key] });
+  }
+  return Object.freeze(record);
+}
 
 const MIB = 1024 * 1024;
 
@@ -68,31 +88,28 @@ const MIB = 1024 * 1024;
 const CAPS = previewLimits({ touch: false });
 
 /* What the note says for a failure that names no limit. */
-export const PREVIEW_FAILURE_REASONS: Readonly<Record<PreviewErrorCode, string>> = {
-  'too-large': 'Too large to preview.',
-  'zip-limit': "The file unpacks past the preview's archive limits.",
-  'parse-failed': "The file can't be read.",
-  unsupported: 'The file uses something the preview does not support.',
-  timeout: 'The preview took too long.',
-  internal: 'The preview stopped on an unexpected error.',
-};
-
-const count = (value: number) => value.toLocaleString('en-US');
+export const PREVIEW_FAILURE_REASONS: Readonly<Record<PreviewErrorCode, string>> = translatedRecord({
+  'too-large': () => tr('documentPreview.reasons.tooLarge'),
+  'zip-limit': () => tr('documentPreview.reasons.zipLimit'),
+  'parse-failed': () => tr('documentPreview.reasons.parseFailed'),
+  unsupported: () => tr('documentPreview.reasons.unsupported'),
+  timeout: () => tr('documentPreview.reasons.timeout'),
+  internal: () => tr('documentPreview.reasons.internal'),
+});
 
 /* What the note says for a failure past a limit: the limit and its value,
    from the parent's own caps. The frame names only which limit it passed, so
    no text from the frame reaches the note. */
-export const PREVIEW_LIMIT_REASONS: Readonly<Record<PreviewFailureLimit, string>> = {
-  maxBytes: `Too large to preview: the file is larger than ${CAPS.maxBytes / MIB} MiB, the preview limit.`,
-  maxInflatedBytes: `Too large to preview: the file unpacks to more than ${CAPS.maxInflatedBytes / MIB} MiB, the preview limit.`,
-  maxZipEntryInflatedBytes:
-    `Too large to preview: a part of the file unpacks to more than ${CAPS.maxZipEntryInflatedBytes / MIB} MiB, the preview limit.`,
-  maxZipEntries: `Too large to preview: the file holds more than ${count(CAPS.maxZipEntries)} parts, the preview limit.`,
-  maxDocxNodes: `Too large to preview: the document would build more than ${count(CAPS.maxDocxNodes)} elements, the preview limit.`,
-  readyTimeoutMs: `The preview took too long: it didn't start within ${CAPS.readyTimeoutMs / 1000} seconds, the preview limit.`,
-  progressTimeoutMs:
-    `The preview took too long: it made no progress for ${CAPS.progressTimeoutMs / 1000} seconds, the preview limit.`,
-};
+export const PREVIEW_LIMIT_REASONS: Readonly<Record<PreviewFailureLimit, string>> = translatedRecord({
+  maxBytes: () => tr('documentPreview.limits.maxBytes', { mib: CAPS.maxBytes / MIB }),
+  maxInflatedBytes: () => tr('documentPreview.limits.maxInflatedBytes', { mib: CAPS.maxInflatedBytes / MIB }),
+  maxZipEntryInflatedBytes: () =>
+    tr('documentPreview.limits.maxZipEntryInflatedBytes', { mib: CAPS.maxZipEntryInflatedBytes / MIB }),
+  maxZipEntries: () => tr('documentPreview.limits.maxZipEntries', { count: CAPS.maxZipEntries }),
+  maxDocxNodes: () => tr('documentPreview.limits.maxDocxNodes', { count: CAPS.maxDocxNodes }),
+  readyTimeoutMs: () => tr('documentPreview.limits.readyTimeoutMs', { seconds: CAPS.readyTimeoutMs / 1000 }),
+  progressTimeoutMs: () => tr('documentPreview.limits.progressTimeoutMs', { seconds: CAPS.progressTimeoutMs / 1000 }),
+});
 
 /* The note's reason line: the limit the file passed when the failure names
    one, else the code's own reason. */
@@ -100,26 +117,17 @@ export function previewFailureReason({ code, limit }: Pick<PreviewFailure, 'code
   return limit ? PREVIEW_LIMIT_REASONS[limit] : PREVIEW_FAILURE_REASONS[code];
 }
 
-/* What a truncated preview of each type shows, from the summary's units. A
+/* What a truncated preview of each type says, from the summary's units. A
    deck counts the slides it drew, since either the slide cap or the element
    cap can end it. */
-const TRUNCATED_PART: Readonly<Record<DocumentPreviewType, { shown(units: number): string; whole: string }>> = {
-  xlsx: {
-    shown: () =>
-      `Showing up to ${count(CAPS.maxSheetRows)} rows and ${count(CAPS.maxSheetColumns)} columns of each sheet.`,
-    whole: 'sheet',
-  },
-  pptx: {
-    shown: (units) => (units === 1 ? 'Showing the first slide.' : `Showing the first ${count(units)} slides.`),
-    whole: 'deck',
-  },
-  pdf: { shown: () => `Showing the first ${count(CAPS.maxPdfPages)} pages.`, whole: 'file' },
-  docx: { shown: () => 'Showing part of this document.', whole: 'file' },
-};
-
 export function truncationLine(type: DocumentPreviewType, units: number, downloads: boolean): string {
-  const { shown, whole } = TRUNCATED_PART[type];
-  return `${shown(units)} ${downloads ? 'Download' : 'Open'} has the full ${whole}.`;
+  return tr(`documentPreview.truncated.${type}`, {
+    action: downloads ? 'download' : 'open',
+    count: units,
+    rows: CAPS.maxSheetRows,
+    columns: CAPS.maxSheetColumns,
+    pages: CAPS.maxPdfPages,
+  });
 }
 
 interface FailureProps {
@@ -134,6 +142,7 @@ interface FailureProps {
    downloads there, which waits for a click: a desktop download can ask where
    to save, so a failed preview never opens that dialog on its own. */
 function FailureNote({ failure, downloads, download, openInDefaultApp }: FailureProps) {
+  const { t } = useTranslation('artifacts');
   const [downloaded, setDownloaded] = useState<boolean | null>(null);
   const started = useRef(false);
   const downloadsOnFailure = downloads && host.isWeb;
@@ -150,12 +159,12 @@ function FailureNote({ failure, downloads, download, openInDefaultApp }: Failure
   return (
     <div className="document-preview-note" role="status">
       <p className="document-preview-note-title">
-        {downloads && downloaded ? PREVIEW_FAILED_DOWNLOADED_NOTE : PREVIEW_FAILED_NOTE}
+        {downloads && downloaded ? previewFailedDownloadedNote() : previewFailedNote()}
       </p>
       <p className="document-preview-note-reason">{previewFailureReason(failure)}</p>
       {downloads
-        ? (!downloadsOnFailure || downloaded === false) && <Button onClick={save}>Download</Button>
-        : <Button onClick={openInDefaultApp}>Open</Button>}
+        ? (!downloadsOnFailure || downloaded === false) && <Button onClick={save}>{t('documentPreview.download')}</Button>
+        : <Button onClick={openInDefaultApp}>{t('documentPreview.open')}</Button>}
     </div>
   );
 }
@@ -173,6 +182,7 @@ interface TruncationBarProps {
    download says so beside the button, which stays for a retry; the viewer's
    own error would replace the frame, so the bar keeps the message itself. */
 function TruncationBar({ previewType, units, downloads, download, openInDefaultApp }: TruncationBarProps) {
+  const { t } = useTranslation('artifacts');
   const [saveFailed, setSaveFailed] = useState(false);
   const save = () => {
     setSaveFailed(false);
@@ -182,10 +192,10 @@ function TruncationBar({ previewType, units, downloads, download, openInDefaultA
     <div className="document-preview-truncated" role="note">
       <span>{truncationLine(previewType, units, downloads)}</span>
       {downloads && saveFailed && (
-        <span className="document-preview-truncated-error" role="alert">{DOWNLOAD_FAILED_NOTE}</span>
+        <span className="document-preview-truncated-error" role="alert">{downloadFailedNote()}</span>
       )}
       <Button onClick={downloads ? save : openInDefaultApp}>
-        {downloads ? 'Download' : 'Open'}
+        {downloads ? t('documentPreview.download') : t('documentPreview.open')}
       </Button>
     </div>
   );
@@ -197,6 +207,7 @@ interface LoadedFile {
 }
 
 function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, onLoadError, fileAction }: DocumentPreviewProps) {
+  const { t } = useTranslation('artifacts');
   const downloads = downloadsFile(fileAction);
   const [loaded, setLoaded] = useState<LoadedFile | null>(null);
   const [summary, setSummary] = useState<RenderSummary | null>(null);
@@ -247,14 +258,14 @@ function DocumentPreviewBody({ source, fetchFile, download, openInDefaultApp, on
           previewType={source.previewType}
           bytes={loaded.bytes}
           bundle={loaded.bundle}
-          title={`Preview of ${source.filename}`}
+          title={t('documentPreview.frameTitle', { filename: source.filename })}
           onRendered={setSummary}
           onError={setFailure}
         />
       )}
       {!summary && (
         <div className="document-preview-loading" aria-live="polite">
-          <Spinner /> Loading preview…
+          <Spinner /> {t('documentPreview.loading')}
         </div>
       )}
       {summary?.truncated && (

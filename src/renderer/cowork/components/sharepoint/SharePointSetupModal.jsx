@@ -15,14 +15,12 @@ import {
   fetchConnector,
   fetchSavedConnection,
 } from '../../api';
+import { useTranslation } from '../../../lib/i18n';
+import { productName } from '../../../lib/deploymentBrand';
 
 import { SHAREPOINT_ENGINE } from '../../lib/connectorIds';
 
 export { SHAREPOINT_ENGINE };
-
-const BUILT_IN_HELP =
-  'An admin registers an app in Microsoft Entra with the Graph application permission Sites.Selected, '
-  + 'grants admin consent, creates a client secret, and gives the app read access to each site listed here.';
 
 const EMPTY = { name: '', userLabel: '', tenantId: '', clientId: '', siteUrls: '' };
 
@@ -36,6 +34,7 @@ const EMPTY = { name: '', userLabel: '', tenantId: '', clientId: '', siteUrls: '
  * @param {(saved: {name: string, user_label: string|null}) => void} [props.onSaved]
  */
 export default function SharePointSetupModal({ open, name = null, onClose, onSaved }) {
+  const { t } = useTranslation('library');
   const [busy, setBusy] = useState(false);
   const editing = Boolean(name);
   const close = busy ? undefined : onClose;
@@ -50,8 +49,8 @@ export default function SharePointSetupModal({ open, name = null, onClose, onSav
     >
       <ModalHeader
         id="sharepoint-setup-title"
-        title={editing ? 'Edit SharePoint connection' : 'Connect SharePoint'}
-        subtitle="Cowork checks the key with Microsoft before saving it."
+        title={editing ? t('sharepoint.setup.editTitle') : t('sharepoint.setup.connectTitle')}
+        subtitle={t('sharepoint.setup.subtitle', { product: productName('Cowork') })}
         onClose={close}
       />
       {open && (
@@ -66,6 +65,7 @@ export default function SharePointSetupModal({ open, name = null, onClose, onSav
  * the typed client secret included, goes away with it.
  */
 function SetupForm({ name, busy, setBusy, onCancel, onSaved }) {
+  const { t } = useTranslation('library');
   const editing = Boolean(name);
   const [values, setValues] = useState(EMPTY);
   const [secret, setSecret] = useState('');
@@ -103,7 +103,7 @@ function SetupForm({ name, busy, setBusy, onCancel, onSaved }) {
         });
         setSecretSaved(fields.client_secret === CONNECTIONS_VAULT_KEEP);
       })
-      .catch((err) => { if (active) setError(err?.message || 'The saved connection could not be loaded.'); })
+      .catch((err) => { if (active) setError(err?.message || t('sharepoint.setup.loadFailed')); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [editing, name]);
@@ -137,7 +137,7 @@ function SetupForm({ name, busy, setBusy, onCancel, onSaved }) {
       window.dispatchEvent(new CustomEvent('anton:connections-changed'));
       onSaved?.(saved);
     } catch (err) {
-      setError(err?.message || 'SharePoint could not be saved.');
+      setError(err?.message || t('sharepoint.setup.saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -151,30 +151,30 @@ function SetupForm({ name, busy, setBusy, onCancel, onSaved }) {
         <div className="flex flex-col gap-3">
           {error && <Alert variant="danger">{error}</Alert>}
           <p className="text-sm text-ink-2">
-            {BUILT_IN_HELP}{' '}
+            {t('sharepoint.setup.help')}{' '}
             {howTo && (
               <button type="button" className="text-accent underline" onClick={() => setHowToOpen(true)}>
-                Setup steps
+                {t('sharepoint.setup.steps')}
               </button>
             )}
           </p>
           {!editing && (
-            <Field label="Connection name" help="Letters and digits, joined by single - or _." required>
+            <Field label={t('sharepoint.setup.name')} help={t('sharepoint.setup.nameHelp')} required>
               <Input value={values.name} onChange={set('name')} disabled={busy} autoComplete="off" />
             </Field>
           )}
-          <Field label="Label" optional help={editing ? "A saved label can be changed here but not removed." : undefined}>
+          <Field label={t('skillModal.label')} optional help={editing ? t('sharepoint.setup.labelHelp') : undefined}>
             <Input value={values.userLabel} onChange={set('userLabel')} disabled={busy || loading} autoComplete="off" />
           </Field>
-          <Field label="Directory (tenant) ID" required>
+          <Field label={t('sharepoint.setup.tenantId')} required>
             <Input value={values.tenantId} onChange={set('tenantId')} disabled={busy || loading} autoComplete="off" />
           </Field>
-          <Field label="Application (client) ID" required>
+          <Field label={t('sharepoint.setup.clientId')} required>
             <Input value={values.clientId} onChange={set('clientId')} disabled={busy || loading} autoComplete="off" />
           </Field>
           <Field
-            label="Client secret"
-            help={editing && secretSaved ? 'Saved. Leave empty to keep it.' : undefined}
+            label={t('sharepoint.setup.clientSecret')}
+            help={editing && secretSaved ? t('sharepoint.setup.secretSaved') : undefined}
             required={!(editing && secretSaved)}
           >
             <Input
@@ -186,20 +186,20 @@ function SetupForm({ name, busy, setBusy, onCancel, onSaved }) {
               placeholder={editing && secretSaved ? '••••••••' : undefined}
             />
           </Field>
-          <Field label="Site addresses" help="One per line, such as https://contoso.sharepoint.com/sites/team." required>
+          <Field label={t('sharepoint.setup.sites')} help={t('sharepoint.setup.sitesHelp')} required>
             <Textarea value={values.siteUrls} onChange={set('siteUrls')} rows={3} disabled={busy || loading} />
           </Field>
         </div>
       </ModalBody>
       <ModalFooter>
-        <Button type="button" variant="subtle" onClick={onCancel} disabled={busy}>Cancel</Button>
+        <Button type="button" variant="subtle" onClick={onCancel} disabled={busy}>{t('skillModal.cancel')}</Button>
         <Button type="submit" variant="primary" disabled={!complete || busy || loading}>
-          {busy ? 'Checking…' : 'Save'}
+          {busy ? t('recipients.checking') : t('skillModal.save')}
         </Button>
       </ModalFooter>
       <HowToModal
         open={howToOpen}
-        title="How to · SharePoint"
+        title={t('sharepoint.setup.howTo')}
         content={howTo || ''}
         onClose={() => setHowToOpen(false)}
       />

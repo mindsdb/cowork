@@ -15,6 +15,7 @@ import Ico from '../Icons';
 import { Alert } from '../ui';
 import { patchForm, setForm, getForm } from '../datavault/formStore';
 import { parseFormSpec } from '../datavault/parseFormSpec';
+import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* A code block's scrolling body. With `overflowCue`, a line wider than the
    block gets a fade on the right edge (gone once scrolled to the end) and a
@@ -22,6 +23,7 @@ import { parseFormSpec } from '../datavault/parseFormSpec';
    nothing until the user scrolls, so the tail of a long line can go unseen.
    Measured on mount, when the code changes, on scroll, and on resize. */
 function CodeBlockPre({ overflowCue, source, children }) {
+  const { t } = useTranslation('chat');
   const preRef = useRef(null);
   const [overflow, setOverflow] = useState({ wide: false, atEnd: true });
   useEffect(() => {
@@ -51,13 +53,14 @@ function CodeBlockPre({ overflowCue, source, children }) {
         {overflow.wide && !overflow.atEnd ? <div className="anton-code-block-fade" aria-hidden="true" /> : null}
       </div>
       {overflow.wide ? (
-        <div className="anton-code-block-overflow-note">Scroll sideways to see the rest of the line.</div>
+        <div className="anton-code-block-overflow-note">{t('markdown.scrollSideways')}</div>
       ) : null}
     </>
   );
 }
 
 export function MarkdownCode(props) {
+  const { t } = useTranslation('chat');
   const lang = props?.className?.replace('language-', '') || '';
   const text = String(props?.children ?? '');
   const isBlock = props?.block === true;
@@ -162,15 +165,15 @@ export function MarkdownCode(props) {
       // → DataVaultFormPanel dispatches a recovery message.
       setForm(conversationId, {
         form_id: 'fm_parse_error',
-        title: 'Form did not parse',
-        subtitle: "The agent sent a form spec that was not valid JSON.",
+        title: i18n.t('markdown.form.parseErrorTitle', { ns: 'chat' }),
+        subtitle: i18n.t('markdown.form.parseErrorSubtitle', { ns: 'chat' }),
         logo: 'database',
         logo_color: 'var(--danger)',
         fields: [],
         form_error: parseError,
         actions: [
-          { id: 'retry', label: 'Ask the agent to retry', kind: 'primary' },
-          { id: 'dismiss', label: 'Dismiss', kind: 'cancel' },
+          { id: 'retry', label: i18n.t('markdown.form.askRetry', { ns: 'chat' }), kind: 'primary' },
+          { id: 'dismiss', label: i18n.t('markdown.form.dismiss', { ns: 'chat' }), kind: 'cancel' },
         ],
         // Carry the raw text so the panel can offer a "show raw" peek.
         _raw: text.length > 1000 ? text.slice(0, 1000) + '\n…' : text,
@@ -204,20 +207,20 @@ export function MarkdownCode(props) {
           display: 'inline-flex', alignItems: 'center', gap: 8,
         }}>
           <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(14)}</span>
-          Preparing form…
+          {t('markdown.form.preparing')}
         </div>
       );
     }
     if (!formSpec) {
       return (
-        <Alert variant="danger" title="Form spec did not parse." className="my-2">
+        <Alert variant="danger" title={t('markdown.form.specDidNotParse')} className="my-2">
           {parseError && (
             <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
               {parseError}
             </span>
           )}
           <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>
-            Use the side panel to ask the agent to retry.
+            {t('markdown.form.useSidePanel')}
           </span>
         </Alert>
       );
@@ -239,7 +242,7 @@ export function MarkdownCode(props) {
         tabIndex={0}
         onClick={reopenPanel}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reopenPanel(); } }}
-        title="Open in the side panel"
+        title={t('markdown.form.openInSidePanel')}
         style={{
           margin: '8px 0',
           padding: '10px 12px',
@@ -254,8 +257,8 @@ export function MarkdownCode(props) {
       >
         <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(14)}</span>
         <span>
-          <strong style={{ color: 'var(--ink)' }}>{formSpec.title || 'Form'}</strong>
-          {' — fill it out in the side panel →'}
+          <strong style={{ color: 'var(--ink)' }}>{formSpec.title || t('markdown.form.form')}</strong>
+          {t('markdown.form.fillItOut')}
         </span>
       </div>
     );
@@ -268,10 +271,10 @@ export function MarkdownCode(props) {
   if (enableCharts && lang === 'chart') {
     if (!complete) return <ChartLoadingState />;
     if (!chartIntent || chartIntent.error) {
-      return <ChartErrorState error={chartIntent?.error || 'Invalid chart specification'} />;
+      return <ChartErrorState error={chartIntent?.error || t('markdown.chart.invalidSpec')} />;
     }
     return (
-      <ChartErrorState error="`chart` intent format requires a backend compile endpoint (not wired yet). Use `chartjs` for full configs." />
+      <ChartErrorState error={t('markdown.chart.intentUnsupported')} />
     );
   }
 
@@ -299,7 +302,7 @@ export function MarkdownCode(props) {
             type="button"
             className="anton-code-block-copy"
             data-copy-code=""
-            aria-label={isPlaintext ? 'Copy code' : `Copy ${highlighted.language} code`}
+            aria-label={isPlaintext ? t('markdown.copyCode') : t('markdown.copyLanguageCode', { language: highlighted.language })}
           >
             <span className="anton-code-block-copy-icon anton-code-block-copy-icon--idle" aria-hidden="true">
               {Ico.copy(12)}
@@ -312,7 +315,7 @@ export function MarkdownCode(props) {
                 they were reading. The delegated click listener in
                 MarkdownContent mutates this span's textContent, which
                 is what the live region picks up. */}
-            <span className="anton-code-block-copy-label" aria-live="polite">Copy</span>
+            <span className="anton-code-block-copy-label" aria-live="polite">{t('markdown.copy')}</span>
           </button>
         </div>
         <CodeBlockPre overflowCue={overflowCue} source={raw}>

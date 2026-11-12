@@ -1,0 +1,860 @@
+{
+  "messages": {
+    "usage": {
+      "actions": {
+        "viewUsage": "使用量を表示",
+        "addFunds": "残高を追加",
+        "setUpAutoTopUp": "自動チャージを設定",
+        "manageAutoTopUp": "自動チャージを管理",
+        "updatePaymentMethod": "支払い方法を更新"
+      },
+      "noFreeGrant": "このアカウントにはMindsHub Airの無料トークンが含まれていません。MindsHub Airも他のモデルと同様に残高を使用します。",
+      "allowanceStop": {
+        "noGrant": "{noGrant}残高がないため、続けるには残高を追加してください。",
+        "withTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加するか、{time}の補充までお待ちください。",
+        "noTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加してください。"
+      },
+      "freeServingPaused": {
+        "until": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
+        "dailyReset": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。"
+      },
+      "resting": {
+        "resetsAt": "{time}にリセットされます。",
+        "noReset": "Airは無料トークンを使い切るまで利用できます。"
+      },
+      "balanceEmptySentence": "残高がありません。",
+      "percentLeft": "無料枠の残り：{percent}",
+      "autoTopUpFailed": {
+        "title": "自動チャージに失敗しました",
+        "body": "カードに請求できませんでした。残高を追加するか、支払い方法を更新してください。"
+      },
+      "balanceEmpty": {
+        "title": "残高がありません",
+        "body": "新しいタスクを開始するには残高を追加してください。",
+        "freeUsedToo": "無料枠も使い切りました。残高を追加するか、無料枠の補充をお待ちください。",
+        "freeUsedTooWithTime": "無料枠も使い切りました。残高を追加するか、{time}の補充までお待ちください。"
+      },
+      "balanceLow": {
+        "title": "残高が少なくなっています",
+        "autoRefills": "残り{usd}です。{floor}を下回ると、自動チャージで{target}まで補充されます。",
+        "autoCovers": "残り{usd}です。自動チャージで補充されます。",
+        "autoPending": "残り{usd}です。自動チャージは銀行の処理を待っています。",
+        "autoCapReached": "残り{usd}です。月間上限を超えないよう、自動チャージは一時停止しています。続けるには残高を追加してください。",
+        "body": "残り{usd}です。残高を追加するか、自動チャージをオンにしてください。"
+      },
+      "freeUsed": {
+        "title": "無料枠を使い切りました",
+        "body": "無料枠が補充されるまで、MindsHub Airは残高を使用します。",
+        "bodyWithTime": "{time}に無料枠が補充されるまで、MindsHub Airは残高を使用します。",
+        "bodyWithUsd": "無料枠が補充されるまで、MindsHub Airは残高（残り{usd}）を使用します。",
+        "bodyWithUsdWithTime": "{time}に無料枠が補充されるまで、MindsHub Airは残高（残り{usd}）を使用します。"
+      },
+      "freeLow": {
+        "body": "その後は、無料枠が補充されるまでMindsHub Airは残高を使用します。",
+        "bodyWithTime": "その後は、{time}に無料枠が補充されるまでMindsHub Airは残高を使用します。",
+        "balanceLowToo": "残高も少なくなっています（{usd}）。"
+      },
+      "budgetExceeded": {
+        "raise": "オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。",
+        "airHasRoom": "オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。"
+      }
+    },
+    "scheduleWhen": {
+      "timeZone": "{city}時間",
+      "onceNoDate": "{time}に1回",
+      "once": "{day} {time}に1回",
+      "every15": "15分ごと",
+      "every30": "30分ごと",
+      "hourly": "毎時{minute}分",
+      "daily": "毎日{time}",
+      "weekdays": "平日の毎日{time}",
+      "weekly": "毎週{weekday} {time}",
+      "weeklyNoDay": "毎週{time}"
+    },
+    "scheduleCopy": {
+      "missedOnceServer": "この時刻にサーバーが停止していた場合、1時間以内に復旧すればタスクが実行されます。それを過ぎると「未実行」となり、手動で実行できます。",
+      "missedOnceApp": "この時刻にMindsHubが閉じていた場合、1時間以内に再度開けばタスクが実行されます。それを過ぎると「未実行」となり、手動で実行できます。",
+      "missedRecurringServer": "実行予定時刻にサーバーが停止していた場合、復旧時に過去7日間で最も新しい未実行分を1回だけ実行します。それ以外の未実行分はスキップされます。",
+      "missedRecurringApp": "実行予定時刻にMindsHubが閉じていた場合、再度開いた時に過去7日間で最も新しい未実行分を1回だけ実行します。それ以外の未実行分はスキップされます。",
+      "missedLabelServer": "この時刻にサーバーが停止している場合",
+      "missedLabelApp": "この時刻にMindsHubが閉じている場合",
+      "missedOnceTitleServer": "サーバーの停止中に、この1回限りのタスクの実行時刻が過ぎました",
+      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました"
+    },
+    "stopScheduleRun": {
+      "unreachable": "実行を停止するためにサーバーに接続できませんでした。もう一度お試しください。",
+      "failed": "実行を停止できませんでした。もう一度お試しください。",
+      "starting": "実行はまだ開始処理中です。少し待ってから、もう一度「停止」をお試しください。"
+    },
+    "providerStatus": {
+      "probe": {
+        "rateLimited": "短時間にリクエストが集中しています。少し待ってから、もう一度テストしてください。",
+        "policyUnavailable": "請求機能が一時的に利用できません。しばらくしてからもう一度お試しください。"
+      },
+      "row": {
+        "walletEmpty": "利用できるクレジットがありません。MindsHubを使用するには残高を追加してください。",
+        "allowanceExhausted": "MindsHub Airの無料トークンがなく、残高もありません。",
+        "freeAirPaused": "無料のMindsHub Airは現在一時停止しています。",
+        "budgetExceeded": "組織の予算を使い切りました。"
+      },
+      "missingApiKey": "右側でAPIキーを追加してください。",
+      "missingBaseUrl": "右側でベースURLを追加してください。",
+      "http": {
+        "unauthorized": "認証エラー：APIキーが拒否されました。",
+        "forbidden": "アクセス拒否：APIキーにアクセス権がありません。",
+        "notFound": "エンドポイントが見つかりません。ベースURLを確認してください。",
+        "rateLimited": "レート制限中です。しばらくしてからもう一度お試しください。",
+        "unreachable": "現在プロバイダーに接続できません（HTTP {code}）。",
+        "rejected": "プロバイダーがリクエストを拒否しました（HTTP {code}）。"
+      },
+      "connectError": "プロバイダーに接続できませんでした。ネットワークまたはDNSに問題があります。",
+      "timeout": "プロバイダーから時間内に応答がありませんでした。",
+      "tls": "プロバイダーへの接続でTLS／証明書の問題が発生しました。"
+    },
+    "witPhrases": {
+      "thinking": {
+        "0": "頭をウォームアップ中",
+        "1": "状況を把握中",
+        "2": "切り口を検討中",
+        "3": "進め方を下書き中",
+        "4": "質問を整理中",
+        "5": "知識をざっと確認中",
+        "6": "ツールを選定中",
+        "7": "手順を整理中",
+        "8": "全体像を見極め中",
+        "9": "どこから始めるか検討中",
+        "10": "手がかりを探索中",
+        "11": "プランを組み立て中"
+      },
+      "working": {
+        "0": "数字を計算中",
+        "1": "データに丁寧に問い合わせ中",
+        "2": "データを整理中",
+        "3": "難関に挑戦中",
+        "4": "糸をたぐり寄せ中",
+        "5": "金脈を掘り当て中",
+        "6": "全体像をまとめ中",
+        "7": "計算を念入りに検証中",
+        "8": "データをプロット中",
+        "9": "集中して作業中",
+        "10": "手がかりをたどり中",
+        "11": "力仕事を担当中"
+      },
+      "reasoning": {
+        "0": "インサイトを抽出中",
+        "1": "回答を作成中",
+        "2": "表現を磨き中",
+        "3": "データを知見に変換中",
+        "4": "パズルを組み立て中",
+        "5": "点と点をつなぎ中",
+        "6": "要素を織り合わせ中",
+        "7": "事実を突き合わせ中",
+        "8": "言葉を選び中",
+        "9": "読みやすく整え中",
+        "10": "ストーリーを仕上げ中",
+        "11": "もう少しです、お待ちください"
+      }
+    },
+    "responseStream": {
+      "reasoning": "推論中…",
+      "responseFailed": "応答に失敗しました",
+      "questionForYou": "あなたへの質問",
+      "runningCode": "コードを実行中",
+      "toolCall": "ツール呼び出し",
+      "rateLimitedWaiting": "レート制限中 — 待機しています",
+      "waitingForModel": "モデルを待っています",
+      "standIn": {
+        "0": "開始しています…",
+        "1": "作業中です…",
+        "2": "取りかかっています…",
+        "3": "準備しています…",
+        "4": "セットアップしています…",
+        "5": "必要な情報を集めています…",
+        "6": "最初の手順を整理しています…",
+        "7": "進め方を計画しています…",
+        "8": "詳細を詰めています…",
+        "9": "土台を整えています…",
+        "10": "じっくり考えています…",
+        "11": "手順を組み立てています…",
+        "12": "材料をそろえています…",
+        "13": "最初の部分に取りかかっています…",
+        "14": "ひととおり目を通しています…",
+        "15": "順に進めています…",
+        "16": "腕まくりしています…",
+        "17": "ウォームアップしています…",
+        "18": "状況を確認しています…",
+        "19": "まずは基本から…"
+      },
+      "artifact": "アーティファクト",
+      "skill": "スキル"
+    },
+    "compare": {
+      "unjudgeable": {
+        "both": "両方のモデルが完了前にクレジットを使い切ったため、このターンは評価できません。",
+        "one": "{name}が完了前にクレジットを使い切ったため、このターンは評価できません。",
+        "bothBudget": "両方のモデルが完了前に組織の予算上限に達したため、このターンは評価できません。",
+        "oneBudget": "{name}が完了前に組織の予算上限に達したため、このターンは評価できません。"
+      },
+      "verdict": {
+        "tie": "ほぼ同等",
+        "neither": "どちらでもない",
+        "none": "評価なし"
+      },
+      "status": {
+        "continued": "タスクとして継続",
+        "working": "作業中",
+        "waiting": "待機中",
+        "done": "完了",
+        "outOfCredits": "クレジット不足",
+        "rateLimited": "レート制限中",
+        "failed": "失敗",
+        "stopped": "停止",
+        "budgetReached": "予算上限に到達"
+      },
+      "block": {
+        "loadFailed": "一方の読み込みに失敗しました。続けて送信する前に、上で再試行してください。",
+        "loading": "両方のモデルの読み込みが終わると、続けて送信できます。",
+        "checkFailed": "どちらかがまだ作業中かどうかを確認できませんでした。",
+        "sending": "両方のモデルにタスクを送信しています…",
+        "firstFailed": "タスクはまだどちらのモデルにも届いていません。上でもう一度送信してください。",
+        "outOfCreditsBoth": "残高がなくなったため、両方のモデルが停止しました。比較を続けるには残高を追加してください。",
+        "outOfCreditsOne": "残高がなくなったため、{name}が停止しました。比較を続けるには残高を追加してください。",
+        "bothWorking": "両方のモデルが完了すると、続けて送信できます。",
+        "oneWorking": "{name}が完了すると、続けて送信できます。",
+        "bothContinued": "両方ともタスクとして継続されたため、この比較にはこれ以上メッセージを送信できません。",
+        "sideContinued": "{name}はタスクとして継続されました。{other}にのみ送信できます。",
+        "sideWorking": "{name}はまだ作業中です。{other}にのみ送信するか、完了をお待ちください。"
+      },
+      "twiceTheCredits": "比較では2つのモデルを実行するため、1つのタスクの約2倍のクレジットを使用します。",
+      "turnsTitle": "{nameA}：{countA, plural, other {#ターン}} · {nameB}：{countB, plural, other {#ターン}}",
+      "cost": {
+        "truncated": "セッションが長すぎてすべてを集計できなかったため、これは最小値です。",
+        "unpriced": "料金を算出できなかった呼び出しは含まれていません。"
+      },
+      "usage": {
+        "inputDetail": "新規 {fresh} · キャッシュ済み {cached} · キャッシュへの書き込み {written}",
+        "notPriced": "料金未算出",
+        "turn": "ターン{turn}",
+        "total": "合計"
+      }
+    },
+    "orgSharing": {
+      "counts": {
+        "teams": "{count, plural, other {#チーム}}",
+        "people": "{count, plural, other {#人}}",
+        "outsideEmails": "{count, plural, other {外部のメールアドレス#件}}"
+      },
+      "list": {
+        "two": "{first}と{second}",
+        "three": "{first}、{second}、{third}"
+      },
+      "orgAdminOnlyHint": "組織の全員と共有できるのは管理者のみです",
+      "orgArtifactShareWithheldHint": "あなたのロールでは組織の全員と共有できません",
+      "mindsHubUnreachableHint": "MindsHubに接続できませんでした",
+      "mindsHubUnreachablePermissions": "共有できる範囲を確認するためにMindsHubに接続できませんでした。",
+      "mindsHubUnreachableEdit": "変更できるかどうかを確認するためにMindsHubに接続できませんでした。",
+      "mindsHubUnreachableTeams": "MindsHubに接続できずチームを読み込めなかったため、チームと共有されたスキルは表示されていません。",
+      "mindsHubThrottled": "MindsHubがリクエストを制限しています。1分ほどしてからもう一度お試しください。",
+      "onlyMeTitle": "自分のみ",
+      "onlyMeDesc": {
+        "skill": "他のユーザーは使用できません",
+        "artifact": "他のユーザーは開けません"
+      },
+      "specificTitle": "特定のチームとユーザー",
+      "specificDesc": {
+        "skill": "チームまたは同僚を選択",
+        "artifact": "チーム、同僚、または外部のメールアドレスを選択"
+      },
+      "alwaysOnLabel": "すべてのタスクに常に含める",
+      "thisSkill": "このスキル",
+      "alwaysOnHelp": {
+        "on": "Antonはすべてのタスクに{name}を含めます。",
+        "off": "Antonは関連がある場合にのみ{name}を使用します。"
+      },
+      "alwaysOnOrgAdminHint": "全員と共有されたスキルを常時オンにできるのは管理者のみです",
+      "alwaysOnEditorHint": "これを変更できるのは、このスキルを編集できるユーザーのみです",
+      "alwaysOnBadge": "常時オン",
+      "alwaysOnBadgeHint": "共有されている全員のすべてのタスクに含まれます",
+      "everyoneAt": "{org}の全員",
+      "everyoneInOrganization": "組織の全員",
+      "everyoneAtDesc": "組織内の誰でも",
+      "yourOrganization": "あなたの組織",
+      "unknownPerson": "不明なユーザー",
+      "recipients": {
+        "addEmail": "メールアドレスを1つ以上追加してください。",
+        "outside": "{org}外：{count}",
+        "addTeamPersonOrEmail": "チーム、ユーザー、またはメールアドレスを1つ以上追加してください。",
+        "addTeamOrPerson": "チームまたはユーザーを1つ以上追加してください。"
+      },
+      "teamBadge": "チーム：{team}",
+      "sections": {
+        "mine": "自分のもの",
+        "sharedWithMe": "自分と共有",
+        "team": "自分のチーム",
+        "builtin": "組み込み"
+      },
+      "share": {
+        "everyoneAt": "{org}の全員と共有中",
+        "everyoneInOrganization": "組織の全員と共有中",
+        "with": "{phrase}と共有中",
+        "notYet": "まだ共有されていません",
+        "public": "公開リンク：URLを知っている人は誰でも開けます",
+        "password": "パスワードで保護",
+        "shared": "共有中"
+      }
+    },
+    "sharedResourceAccess": {
+      "otherActor": "別のメンバー",
+      "unknownActor": "不明"
+    },
+    "liveAppSharing": {
+      "shareLabel": "他のユーザーに複製を許可…",
+      "everyoneLabel": "このスタックの全員",
+      "sharedWithYouLabel": "複製できるアプリ",
+      "copyGoesToGeneral": "コピーは「General」プロジェクトに保存されます。",
+      "from": "提供元：{owner}",
+      "fromForEveryone": "提供元：{owner} · 全員向け",
+      "duplicatedFrom": "{owner}から複製",
+      "thisApp": "このアプリ",
+      "duplicateTitle": "「{name}」を複製しますか？",
+      "duplicateDisclaimer": "{owner}がこのアプリの複製を許可しています。コピーはあなた自身の接続で実行され、それらの接続で利用できるものすべてにアクセスできます。起動する前に内容を確認してください。"
+    },
+    "liveAppState": {
+      "liveAt": "{host}で公開中",
+      "live": "公開中",
+      "stoppedAt": "{when}に停止",
+      "stopped": "停止",
+      "stoppedLineReason": "{stopped}（{reason}）。再起動するにはエージェントに依頼してください。",
+      "stoppedLine": "{stopped}。再起動するにはエージェントに依頼してください。",
+      "checkFailed": "このアプリが実行中かどうかを確認できませんでした。再読み込みしてもう一度お試しください。",
+      "runsAtOwnAddress": "このライブアプリは専用のアドレスで実行されます。",
+      "runningAskAddress": "このライブアプリは実行中です。アドレスはエージェントに確認してください。",
+      "notRunning": "このライブアプリは実行されていません。起動するにはエージェントに依頼してください。",
+      "launch": "起動"
+    },
+    "skillSharing": {
+      "label": "使用できるユーザー",
+      "private": {
+        "label": "自分のみ",
+        "description": "自分だけが表示・使用できます。"
+      },
+      "everyone": {
+        "label": "全員（読み取り専用）",
+        "description": "ここにいる全員が使用できます。変更できるのは自分だけです。"
+      },
+      "createHint": "これはあとからスキルのページで変更できます。"
+    },
+    "artifactAuthorship": {
+      "unknownOwner": "不明なオーナー",
+      "otherMemberDescription": "このプロジェクトの別のメンバーが作成しました。確認はできますが、変更はできません。",
+      "unknownOwnerDescription": "このアーティファクトのオーナーは記録されていません。"
+    },
+    "artifactExport": {
+      "cannotExport": "このファイルはエクスポートできません。",
+      "alreadyRunning": "すでにエクスポートを実行中です。しばらくしてからもう一度お試しください。",
+      "pdfBusy": "PDFエクスポートが混み合っています。もう一度お試しください。",
+      "pdfTooLong": "PDFエクスポートに時間がかかりすぎました。",
+      "failed": "このファイルをエクスポートできませんでした。",
+      "omittedReferences": "{count, plural, other {このアーティファクト外の#個の項目は含まれていません。}}",
+      "notSaved": "{filename}をエクスポートしましたが、ダウンロードできませんでした。"
+    },
+    "artifactPaths": {
+      "noPath": "このアーティファクトにはファイルパスが含まれていませんでした。",
+      "relativeNoProject": "このアーティファクトのパスは相対パスですが、タスクにプロジェクトフォルダがありません。",
+      "outsideProject": "このアーティファクトのパスはプロジェクトフォルダの外を指しています。"
+    },
+    "artifactActions": {
+      "noPreviewDownloaded": "このファイル形式はプレビューできないため、ダウンロードしました。"
+    },
+    "browserApproval": {
+      "unreadable": "この承認リクエストを確認できないため、何も実行されませんでした。",
+      "lapsed": "このステップはブラウザで待機していないため、何も実行されませんでした。",
+      "unavailable": "ここではブラウザを利用できないため、何も実行されませんでした。",
+      "refusedReason": "ブラウザでこのステップを承認できませんでした：{reason}。",
+      "refused": "ブラウザでこのステップを承認できませんでした。もう一度お試しください。",
+      "notConfirmed": "ブラウザが承認を確認しなかったため、何も実行されませんでした。もう一度お試しください。"
+    },
+    "browserSession": {
+      "opened": "ブラウザを開きました"
+    },
+    "figureSources": {
+      "noSource": "出典なし：この回答のどのステップもこの数値を返していません。利用する前に確認してください。",
+      "repeated": "以前の回答からの再掲",
+      "aFile": "ファイル",
+      "fromPage": "出典：{name}、{page}ページ",
+      "from": "出典：{name}",
+      "fromQueryLabel": "出典（クエリ）：{label}",
+      "fromQuery": "出典：クエリ",
+      "fromWebLabel": "出典（Web）：{label}",
+      "fromWeb": "出典：Web",
+      "fromStepLabel": "出典（ステップ）：{label}",
+      "fromStep": "出典：ステップ",
+      "andMore": "{source}ほか{count}件"
+    },
+    "connectionIdentity": {
+      "unrecognizedConnector": "不明なコネクタ"
+    },
+    "datasourceSubmission": {
+      "errors": {
+        "nameRequired": "あとで区別できるよう、この接続に名前を付けてください。",
+        "tlsModeRequired": "このサーバーの証明書の検証方法を選択してください。",
+        "caRequired": "CA証明書を貼り付けるか、公的な認証局を選択してください。",
+        "caTooLarge": "このCA証明書は上限の64 KiBを超えています。このサーバーに必要なチェーンのみを貼り付けてください。"
+      },
+      "hints": {
+        "tlsFailed": "サーバーの証明書を検証できませんでした。セルフホストのデータベースは通常、自身で生成した証明書を提示するため、クライアント側では検証できません。このサーバーがそれに該当する場合は、「Only connect if the certificate is signed by a public authority」をオフにしてください。",
+        "destinationForbidden": "このアドレスにはここから接続できません。データベースはプライベートやローカルではなく、パブリックなアドレス上にある必要があります。",
+        "authenticationFailed": "サーバーがユーザー名またはパスワードを拒否しました。",
+        "insufficientPrivileges": "このアカウントでは、この接続の対象を何も読み取れません。スキーマを指定した場合は、その綴りと大文字・小文字（PostgreSQLでは名前の一部として扱われます）を確認し、アカウントにそのスキーマのUSAGE権限とテーブルのSELECT権限があることを確認してください。書き込みもできるアカウントは問題ありませんが、スーパーユーザー権限を持つアカウントや、サーバー上のファイルを読み取れるアカウントは、データベースの範囲を超えてアクセスできるため拒否されます。",
+        "connectionFailed": "サーバーから応答がありませんでした。ホストとポート、およびファイアウォールで接続が許可されていることを確認してください。",
+        "tls": {
+          "refusedLogin": "サーバーがパスワードそのものを要求しましたが、この接続ではサーバーの証明書を検証しないため、パスワードは送信されませんでした。",
+          "refusedLoginOrHandshake": "サーバーが暗号化接続を完了しなかったか、パスワードそのものを要求しました。この接続ではサーバーの証明書を検証しないため、パスワードは送信されませんでした。",
+          "refusedPgLogin": "サーバーが要求したログイン方式は、サーバーの証明書を検証しないこの接続では許可されていないため、パスワードは送信されませんでした。",
+          "refusedPgLoginOrHandshake": "サーバーが暗号化接続を完了しなかったか、サーバーの証明書を検証しないこの接続では許可されていないログイン方式を要求しました。パスワードは送信されませんでした。",
+          "turnChecksOnCheckbox": "サーバーの証明書が公的な認証局によって署名されている場合は、「Only connect if the certificate is signed by a public authority」をオンにして、もう一度お試しください。",
+          "turnChecksOnMysql": "「Certificate」で「Signed by a public authority」を選択するか、「Signed by my own certificate authority」を選択してサーバーのCA証明書を貼り付け、もう一度お試しください。",
+          "pgScramFallback": "サーバーがTLSに対応していない場合や、証明書が公的な認証局によって署名されていない場合は、サーバーの管理者に依頼して、このアカウントをSCRAM-SHA-256ログインに切り替えてもらってください。",
+          "mysqlUnverifiedCertificate": "サーバーの証明書を検証できませんでした。サーバーが自己署名証明書またはプライベート認証局を使用している場合は、「Certificate」で「Signed by my own certificate authority」を選択し、その認証局の証明書を貼り付けてください。「Encrypt when offered, don't check the certificate」でも接続できますが、その場合、サーバーがパスワードそのものを要求するたびに（再起動後など）ログインに失敗する可能性があります。",
+          "mysqlCustomCaMismatch": "貼り付けたCA証明書ではサーバーの証明書を検証できませんでした。それがこのサーバーの証明書に署名した認証局であること、また入力したホストがその証明書に記載された名前であることを確認してください。"
+        }
+      },
+      "state": {
+        "connected": "接続済み",
+        "failed": "接続できませんでした",
+        "pending": "接続を確認しています",
+        "pendingDetail": "認証情報は暗号化して保存されます。確認が完了するとこのページが更新されます。"
+      }
+    },
+    "fileDrop": {
+      "uploading": "アップロード中…"
+    },
+    "authenticatedResource": {
+      "loadFailedStatus": "ファイルを読み込めませんでした（{status}）",
+      "loadFailed": "ファイルを読み込めませんでした"
+    },
+    "artifactWorkspaceApi": {
+      "requestFailed": "リクエストに失敗しました（{status}）",
+      "draftLoadFailed": "非公開の下書きを読み込めませんでした（{status}）"
+    },
+    "skillsStore": {
+      "catalogueInvalid": "スキルカタログのレスポンスが無効でした。"
+    },
+    "modelCatalog": {
+      "modelRouter": {
+        "label": "Model Router",
+        "desc": "このアカウントで設定されたモデルに自動的にルーティングします"
+      },
+      "operatorDefault": "運営者のデフォルト",
+      "restricted": {
+        "title": "組織の管理者がこのモデルを制限しています。",
+        "tag": "制限あり"
+      },
+      "needsCredits": "クレジットが必要",
+      "budgetReached": {
+        "tag": "予算上限に到達",
+        "title": "組織の予算を使い切りました。オーナーまたは管理者が「予算」で上限を引き上げられます。"
+      }
+    },
+    "settingsTransform": {
+      "routerSubtitle": {
+        "legacy": "各ターンでの、応答するか委任するかの高速判定と、履歴の要約に使用されます。",
+        "gateOffUntilPicked": "履歴の要約に使用されます。各チャットターンの前に行う、応答するか委任するかの判定は、ここでモデルを選択するまでオフになります。",
+        "gateOffNoModel": "履歴の要約に使用されます。各チャットターンの前に行う、応答するか委任するかの判定はオフです（利用できるモデルがありません）。",
+        "followsPick": "履歴の要約と、各チャットターンの前に行う、応答するか委任するかの判定に使用されます。この判定には厳しいレイテンシ制限があるため、最も賢いモデルではなく、最も速いモデルを選択してください。",
+        "gateRunsOn": "履歴の要約に使用されます。各チャットターンの前に行う、応答するか委任するかの判定は、この選択ではなく{model}で実行されます。",
+        "gateRunsOnWithProvider": "履歴の要約に使用されます。各チャットターンの前に行う、応答するか委任するかの判定は、この選択ではなく{model}（{provider}）で実行されます。"
+      },
+      "staleModel": "{model}（旧モデル — モデルを選び直してください）",
+      "otherModel": "その他…",
+      "latestNote": "最新"
+    },
+    "time": {
+      "justNow": "たった今",
+      "ago": {
+        "s": "{value}秒前",
+        "m": "{value}分前",
+        "h": "{value}時間前",
+        "d": "{value}日前"
+      },
+      "in": {
+        "s": "{value}秒後",
+        "m": "{value}分後",
+        "h": "{value}時間後",
+        "d": "{value}日後"
+      }
+    },
+    "turnError": {
+      "tryAgain": "再試行",
+      "setUpMindsHub": "MindsHubを設定"
+    },
+    "surface": {
+      "tasksNote": "{other, select, desktop {デスクトップアプリ} other {Webアプリ}}で作成したタスクは、そちらにのみ表示されます。",
+      "artifactsNote": "{other, select, desktop {デスクトップアプリ} other {Webアプリ}}で作成したアーティファクトは、そちらにのみ表示されます。"
+    },
+    "antonErrors": {
+      "noProvider": "このアカウントにはLLMプロバイダーが接続されていません。MindsHubで無料で始めるか、「設定」で独自のプロバイダーを追加してください。",
+      "couldNotComplete": "このタスクを完了できませんでした。"
+    },
+    "displayToggle": {
+      "switchStyle": "{style}スタイルに切り替え"
+    },
+    "conversationHistory": {
+      "thinkingDots": "考え中...",
+      "thinking": "考え中…",
+      "runningTask": "タスクを実行中…",
+      "finishedReasoning": "推論が完了しました",
+      "updatedContext": "コンテキストを更新しました",
+      "agentPhase": "{agent}：{phase}",
+      "agentWorking": "{agent}が作業中",
+      "unexpectedError": "予期しないエラーが発生しました。"
+    },
+    "cloudConnector": {
+      "editTitle": "{name}を編集"
+    },
+    "artifactRepair": {
+      "queued": "変更を適用中",
+      "ready": "変更の確認待ち",
+      "accepted": "変更を適用しました",
+      "rejected": "変更を破棄しました",
+      "noChange": "変更は必要ありませんでした",
+      "conflict": "変更を適用できませんでした",
+      "cancelled": "キャンセルしました",
+      "discarded": "提案を却下しました",
+      "sent": "エージェントに送信しました"
+    }
+  },
+  "scheduleCommon": {
+    "untitled": "無題のスケジュール",
+    "deleteTitle": "スケジュール済みタスクを削除しますか？",
+    "deleteMessage": "「{title}」は完全に削除されます。この操作は元に戻せません。",
+    "delete": "削除",
+    "keep": "残す",
+    "deleting": "削除中…",
+    "edit": "編集",
+    "noProject": "プロジェクトなし",
+    "breadcrumb": "スケジュール済みタスク"
+  },
+  "scheduleStatus": {
+    "pausedFinishing": "一時停止 · 実行を終了中",
+    "running": "実行中",
+    "autoPaused": "自動で一時停止",
+    "paused": "一時停止中",
+    "missed": "未実行",
+    "lastFailed": "前回失敗",
+    "lastRunFailed": "前回の実行に失敗",
+    "done": "完了",
+    "active": "有効"
+  },
+  "scheduleRow": {
+    "cadence": {
+      "once": "1回のみ",
+      "every15": "15分ごと",
+      "every30": "30分ごと",
+      "hourly": "毎時",
+      "daily": "毎日",
+      "weekdays": "平日",
+      "weekly": "毎週"
+    },
+    "openProject": "{project}を開く",
+    "descriptionWithNext": "{sentence} · 次回：{next}",
+    "stop": "停止",
+    "run": "実行",
+    "pause": "一時停止",
+    "resume": "再開"
+  },
+  "scheduleRunAlert": {
+    "finishingTitle": "一時停止中 — 現在の実行は最後まで続きます",
+    "finishingNote": "一時停止中は新しい実行は開始されません。「実行を停止」を押すと今すぐ終了しますが、すでに完了した処理はそのまま残ります。",
+    "missedNote": "1時間以上遅れたため、自動では実行されませんでした。今すぐ実行するか、編集して新しい時刻を設定してください。",
+    "autoPausedTitleCount": "{count}回連続で実行に失敗したため一時停止しました",
+    "autoPausedTitle": "実行の失敗が続いたため一時停止しました",
+    "autoPausedNote": "「再開」を押すとスケジュールが再び有効になり、保留中の実行が行われる場合があります。「今すぐ実行」を押すと、今すぐ1回だけ実行します。",
+    "partialTitle": "前回の実行は途中で停止しました",
+    "partialNote": "一部の操作は完了している可能性があります。再実行する前に実行内容を確認してください。",
+    "failedTitle": "前回の実行に失敗しました",
+    "resume": "再開",
+    "runNow": "今すぐ実行",
+    "reviewRun": "実行を確認",
+    "runAgain": "再実行"
+  },
+  "scheduleTaskModal": {
+    "cadence": {
+      "once": "1回のみ",
+      "every15": "15分ごと",
+      "every30": "30分ごと",
+      "hourly": "1時間ごと",
+      "daily": "毎日",
+      "weekdays": "平日の毎日",
+      "weekly": "毎週"
+    },
+    "errorNoPrompt": "{agent}にやってほしいことを入力してください。",
+    "errorPickFutureTime": "未来の時刻を選択してください。",
+    "errorPickTime": "時刻を選択してください。",
+    "errorSave": "スケジュールを保存できませんでした。",
+    "editTitle": "スケジュール済みタスクを編集",
+    "createTitle": "タスクをスケジュール",
+    "editSubtitle": "変更は次回の実行から適用されます。",
+    "createSubtitleWeb": "{agent}は、このタブを閉じていても自動で実行します。",
+    "createSubtitleDesktop": "{agent}は、MindsHubが開いている間に自動で実行します。",
+    "promptLabel": "{agent}に何をしてほしいですか？",
+    "promptPlaceholder": "{agent}に依頼する内容…",
+    "when": "日時",
+    "howOften": "頻度",
+    "dayOfWeek": "曜日",
+    "date": "日付",
+    "atMinute": "分：",
+    "at": "時刻：",
+    "time": "時刻",
+    "nextRuns": "{count, plural, other {次回の実行：{runs}}}",
+    "timePassed": "その時刻はすでに過ぎています。",
+    "name": "名前",
+    "namePlaceholder": "プロンプトから自動で命名",
+    "project": "プロジェクト",
+    "cancel": "キャンセル",
+    "saveAndRunOnce": "保存して1回実行",
+    "saving": "保存中…",
+    "saveChanges": "変更を保存",
+    "schedule": "スケジュール"
+  },
+  "scheduledView": {
+    "sort": {
+      "next": "次回の実行",
+      "name": "名前",
+      "created": "作成日が新しい順"
+    },
+    "trialRunFailed": "「{title}」を保存しましたが、試行実行を開始できませんでした：{reason}",
+    "trialRunFallback": "「今すぐ実行」をお試しください。",
+    "deleteFailed": "スケジュールを削除できませんでした。",
+    "actionFailed": "スケジュールの操作に失敗しました。",
+    "title": "スケジュール済みタスク",
+    "subtitleDesktop": "スケジュール済みタスクは{product}が開いている間に実行されます。閉じている間に実行予定があった場合、{agent}は再度開いた時に過去7日間で最も新しい1件を実行します。",
+    "subtitleWeb": "スケジュール済みタスクはサーバー上で実行されるため、このタブを閉じていても実行されます。サーバーの停止中に実行予定があった場合、{agent}は復旧時に過去7日間で最も新しい1件を実行します。",
+    "scheduleTask": "タスクをスケジュール",
+    "searchPlaceholder": "スケジュール済みタスクを検索",
+    "filteredCount": "{total}件中{shown}件のスケジュール済みタスク",
+    "count": "{count, plural, other {#件のスケジュール済みタスク}}",
+    "missedCount": "{count, plural, other {#件の未実行}}",
+    "autoPausedOne": "「{title}」は連続して実行に失敗したため一時停止しました",
+    "autoPausedMany": "{count}件のスケジュール済みタスクが、連続して実行に失敗したため一時停止しました",
+    "review": "確認",
+    "reviewNamed": "「{title}」を確認",
+    "emptyTitle": "スケジュール済みタスクはまだありません",
+    "emptyDescription": "{agent}にタスクを繰り返し実行させましょう。月曜日のダイジェスト、1時間ごとのログチェック、毎日のKPIスナップショットなど。",
+    "emptyAction": "最初のタスクをスケジュール",
+    "needsAttention": "要対応",
+    "everythingElse": "その他"
+  },
+  "scheduleDetail": {
+    "runStatus": {
+      "running": "実行中",
+      "success": "成功",
+      "failed": "失敗",
+      "cancelled": "停止"
+    },
+    "sentence": "{when}（{zone}）",
+    "runningNow": "現在実行中",
+    "nextRun": "次回の実行：{when}",
+    "notFound": "スケジュールが見つかりません。",
+    "backToList": "スケジュール済みタスクに戻る",
+    "actionFailed": "操作に失敗しました。",
+    "allScheduledTasks": "すべてのスケジュール済みタスク",
+    "enabledAriaLabel": "スケジュールを有効にする",
+    "stopping": "停止中…",
+    "stopRun": "実行を停止",
+    "running": "実行中…",
+    "runNow": "今すぐ実行",
+    "scheduleAriaLabel": "スケジュール",
+    "accountDefaultModel": "アカウントのデフォルトモデル",
+    "succeededCount": "{total, plural, other {#回中{succeeded}回成功}}",
+    "promptAriaLabel": "プロンプト",
+    "runs": "実行履歴",
+    "loading": "読み込み中…",
+    "noRuns": "まだ実行されていません。「今すぐ実行」をクリックして試してみましょう。",
+    "manual": "手動",
+    "statusWithReason": "{status}：{reason}",
+    "openFailedRun": "{when}の失敗した実行を開く：{reason}",
+    "openRun": "{when}の実行を開く",
+    "showOlder": "以前の実行を表示"
+  },
+  "contextFileModal": {
+    "download": "ダウンロード",
+    "revealInFinder": "Finderで表示",
+    "reveal": "場所を表示",
+    "openInDefaultApp": "デフォルトのアプリで開く",
+    "open": "開く",
+    "binary": {
+      "cantDisplay": "このファイルはインラインで表示できません（バイナリ、サイズが大きすぎる、またはテキスト以外）。",
+      "useActions": "表示するには、下の操作を使用してください。",
+      "downloading": "ダウンロード中…"
+    },
+    "projectInstructions": "プロジェクトの指示",
+    "instructionsPlaceholder": "このプロジェクトでのエージェントの作業方法を指示してください。コードベースの規約、出力の好み、避けるべきことなど…",
+    "fileContentsPlaceholder": "ファイルの内容",
+    "noInstructionsYet": "（指示はまだありません。「編集」をクリックして追加してください）",
+    "emptyFile": "（空のファイル）",
+    "thisFileCapitalized": "このファイル",
+    "thisFile": "このファイル",
+    "noLongerAttached": "{name}はこのチャットに添付されていません。",
+    "noLongerInProject": "{path}はこのプロジェクト内にありません。",
+    "couldNotLoadImage": "画像を読み込めませんでした。",
+    "couldNotLoadPreview": "プレビューを読み込めませんでした",
+    "couldNotReadFile": "ファイルを読み取れませんでした",
+    "couldNotSave": "保存できませんでした",
+    "couldNotDelete": "削除できませんでした",
+    "deleteConfirm": {
+      "title": "{name}を削除しますか？",
+      "message": "この操作は元に戻せません。"
+    },
+    "delete": "削除",
+    "loading": "読み込み中…",
+    "readOnly": "読み取り専用です。この共有リソースを編集する権限がありません。",
+    "preview": "プレビュー",
+    "file": "ファイル",
+    "deletePermanently": "完全に削除します。",
+    "noDeletePermission": "この共有リソースを削除する権限がありません。",
+    "noEditPermission": "この共有リソースを編集する権限がありません。",
+    "cancel": "キャンセル",
+    "saving": "保存中…",
+    "save": "保存",
+    "close": "閉じる",
+    "edit": "編集"
+  },
+  "newProjectModal": {
+    "remove": "削除",
+    "fileSizeKb": "{size} KB",
+    "nameRequired": "プロジェクト名は必須です。",
+    "folderUnsupported": "このサーバーは、プロジェクトでフォルダを指定する機能に対応していません。「{name}」は通常のプロジェクトとして作成され、フォルダの選択は解除されました。フォルダを使用するにはCoworkをアップデートしてください。不要な場合はそのプロジェクトを削除してください。",
+    "couldNotCreate": "プロジェクトを作成できませんでした。",
+    "couldNotOpenPicker": "フォルダ選択画面を開けませんでした。",
+    "title": "新しいプロジェクトを開始",
+    "nameLabel": "プロジェクト名",
+    "instructionsLabel": "指示",
+    "savedAs": "保存先：",
+    "instructionsPlaceholder": "このプロジェクトでのエージェントの作業方法を指示してください。コードベースの規約、出力の好み、避けるべきことなど…",
+    "locationLabel": "場所",
+    "locationHelpChosen": "エージェントはこのフォルダ内の既存のファイルを使って作業します。Coworkはフォルダ内にskills/と.anton/フォルダを追加します。プロジェクトを削除してもファイルはそのまま残ります。",
+    "locationHelpDefault": "デフォルトでは、Coworkがプロジェクト用の新しいフォルダを作成します。",
+    "changeFolder": "フォルダを変更",
+    "useExistingFolder": "既存のフォルダを使用",
+    "clear": "クリア",
+    "filesLabel": "ファイル",
+    "optional": "（任意）",
+    "dropFiles": "ここにファイルをドロップするか、",
+    "clickToBrowse": "クリックして選択",
+    "dropHint": "参考資料、スキーマ、サンプルなど、エージェントに知っておいてほしいもの。",
+    "cancel": "キャンセル",
+    "creating": "作成中…",
+    "create": "作成"
+  },
+  "projectCard": {
+    "untitledTask": "無題のタスク",
+    "stats": {
+      "tasks": "{count, plural, other {#件のタスク}}",
+      "memories": "{count, plural, other {#件のメモリ}}",
+      "schedules": "{count, plural, other {#件のスケジュール}}",
+      "artifacts": "{count, plural, other {#件のアーティファクト}}"
+    },
+    "pin": "プロジェクトをピン留め",
+    "unpin": "プロジェクトのピン留めを解除",
+    "menu": "プロジェクトメニュー",
+    "deleting": "削除中…",
+    "sharedReadOnly": "あなたと共有 · 読み取り専用",
+    "noActivity": "まだアクティビティはありません",
+    "running": "{count}件実行中"
+  },
+  "sharedProjectFiles": {
+    "unavailable": "この共有プロジェクトは利用できません。オーナーまたは運営者がアクセス権を削除した可能性があります。",
+    "notText": "このファイルはテキストとして表示できません。まだ利用可能な場合はダウンロードしてください。",
+    "downloadUnavailable": "ダウンロードできません。アクセス権が削除された可能性があります。",
+    "ariaLabel": "共有プロジェクトのファイル",
+    "projectsCrumb": "プロジェクト",
+    "allProjects": "すべてのプロジェクト",
+    "sharedReadOnly": "あなたと共有 · 読み取り専用",
+    "intro": "ファイルを閲覧・ダウンロードできます。このプロジェクトの編集やタスクの実行ができるのはオーナーのみです。",
+    "loadingFiles": "ファイルを読み込み中…",
+    "files": "ファイル",
+    "noFiles": "共有されたファイルはまだありません。",
+    "truncated": "このプロジェクトには、一覧に表示しきれないほど多くのファイルがあります。",
+    "download": "ダウンロード",
+    "loadingFile": "ファイルを読み込み中…",
+    "selectFile": "読むファイルを選択してください。HTMLはソースとして表示されます。"
+  },
+  "sharedProjectReference": {
+    "title": "プロジェクトID：{id}",
+    "label": "プロジェクト · {id}"
+  },
+  "projectPicker": {
+    "couldNotCreate": "プロジェクトを作成できませんでした。",
+    "choose": "プロジェクトを選択",
+    "workInProject": "プロジェクトで作業",
+    "searchOrCreate": "検索または作成…",
+    "searchProjects": "プロジェクトを検索…",
+    "noMatch": "「{query}」に一致するプロジェクトはありません。",
+    "noProjects": "プロジェクトはまだありません。",
+    "creating": "作成中…",
+    "createPrefix": "作成：",
+    "quotedName": "「{name}」",
+    "newProject": "新規プロジェクト"
+  },
+  "moveToProjectModal": {
+    "title": "プロジェクトに移動",
+    "subtitleNamed": "「{title}」とその成果物を移動",
+    "subtitle": "このタスクとその成果物を移動",
+    "searchPlaceholder": "プロジェクトを検索、または新しい名前を入力…",
+    "createNew": "「{name}」を作成",
+    "alreadyIn": "このタスクはすでに「{name}」にあります。",
+    "noOtherProjects": "他のプロジェクトはまだありません。名前を入力して作成してください。",
+    "moveEverythingAriaLabel": "すべてを移動（このタスクが作成したファイルとアーティファクト）",
+    "moveEverything": "すべてを移動（このタスクが作成したファイルとアーティファクト）",
+    "cancel": "キャンセル",
+    "moving": "移動中…",
+    "moveTo": "{name}に移動",
+    "move": "移動"
+  },
+  "projectsView": {
+    "newProject": "新規プロジェクト",
+    "sort": {
+      "recent": "最近",
+      "name": "名前",
+      "mostActive": "アクティビティが多い順",
+      "leastActive": "アクティビティが少ない順"
+    },
+    "counts": {
+      "filtered": "{total}件中{filtered}件のプロジェクト",
+      "total": "{count, plural, other {#件のプロジェクト}}",
+      "pinned": "{count, plural, other {ピン留め#件}}"
+    },
+    "menu": {
+      "open": "開く",
+      "pin": "ピン留め",
+      "unpin": "ピン留めを解除",
+      "rename": "名前を変更…",
+      "chosenFolderHint": "選択したフォルダ",
+      "adminOrCreatorHint": "管理者または作成者",
+      "chosenFolderRenameTitle": "このプロジェクトは選択したフォルダを参照しています。フォルダ自体の名前を変更してください。",
+      "revealInFinder": "Finderで表示",
+      "delete": "削除…",
+      "generalUndeletable": "「General」プロジェクトは、所属先のない項目の受け皿となるワークスペースのため削除できません。",
+      "noDeletePermission": "このプロジェクトを削除する権限がありません。",
+      "ariaLabel": "プロジェクトの操作"
+    },
+    "noRenamePermission": "このプロジェクトの名前を変更する権限がありません。",
+    "renameFailed": "名前を変更できませんでした：{error}",
+    "expandPanel": "パネルを展開",
+    "collapsePanel": "パネルを折りたたむ",
+    "title": "プロジェクト",
+    "allProjects": "すべてのプロジェクト",
+    "deleting": "削除中…",
+    "projectMenu": "プロジェクトメニュー",
+    "composerPlaceholder": "{project}で新しいタスクを開始…",
+    "subtitle": "{agent}が会話、メモリ、成果物をまとめるためのワークスペースです。",
+    "theAgent": "エージェント",
+    "searchPlaceholder": "プロジェクトを検索",
+    "empty": {
+      "title": "プロジェクトはまだありません",
+      "description": "最初のプロジェクトを作成して、会話や成果物をまとめましょう。",
+      "action": "最初のプロジェクトを作成"
+    }
+  }
+}

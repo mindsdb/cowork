@@ -12,6 +12,7 @@ import { codingApi, type CodeComputer, type ProjectResource, type ProjectResourc
 import { RepositoryLocalChanges } from './RepositoryLocalChanges';
 import { RepositoryBranchSelect } from './RepositoryBranchSelect';
 import { branchNameIssue, type RepositoryStatus, type TaskRepositorySetup } from './repositorySetupModels';
+import { useTranslation } from '../../lib/i18n';
 import './task-repositories.css';
 
 export function TaskRepositoryDrawer({
@@ -47,6 +48,7 @@ export function TaskRepositoryDrawer({
   onApply: (ids: string[], setup: TaskRepositorySetup) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation('code');
   const titleId = useId();
   const branchId = useId();
   const [ids, setIds] = useState(selectedIds);
@@ -73,7 +75,7 @@ export function TaskRepositoryDrawer({
     );
   const unavailable = statuses.some((status) => ids.includes(status.resource_id) && !status.available);
   const issue =
-    invalidBranch || (conflictingName ? 'That branch already exists. Choose a new task branch name.' : '');
+    invalidBranch || (conflictingName ? t('repositoryDrawer.branchExists') : '');
   useEffect(() => {
     if (!repositories.length)
       setDraft((current) => ({ ...current, branch: null, include_local_changes: false }));
@@ -93,7 +95,9 @@ export function TaskRepositoryDrawer({
         if (loaded.some(([, branches]) => branches.includes(draft.branch!))) return;
       } catch (reason) {
         if (mounted.current) setBranchCheckError(
-          `${reason instanceof Error ? reason.message : 'Could not check remote branches.'} Apply again to retry.`,
+          t('repositoryDrawer.retryApply', {
+            message: reason instanceof Error ? reason.message : t('repositoryDrawer.remoteCheckFailed'),
+          }),
         );
         return;
       } finally {
@@ -121,20 +125,17 @@ export function TaskRepositoryDrawer({
       labelledBy={titleId}
     >
       <div className="code-repository-drawer__header">
-        <span className="section-label">New task</span>
-        <ModalHeader id={titleId} title="Repositories & folders" onClose={onClose} />
+        <span className="section-label">{t('repositoryDrawer.newTask')}</span>
+        <ModalHeader id={titleId} title={t('repositoryDrawer.title')} onClose={onClose} />
       </div>
       <ModalBody padding="24px" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {!local && (
-          <Alert>
-            Choose this computer to set task branches and include local changes. Resource selection works on
-            any computer.
-          </Alert>
+          <Alert>{t('repositoryDrawer.remoteNotice')}</Alert>
         )}
         {local && (
           <div className="code-repository-branch-field">
             <label htmlFor={branchId}>
-              New branch for this task <span>Optional</span>
+              {t('repositoryDrawer.branchLabel')} <span>{t('repositoryDrawer.optional')}</span>
             </label>
             <Input
               id={branchId}
@@ -147,15 +148,15 @@ export function TaskRepositoryDrawer({
               aria-describedby={`${branchId}-hint`}
             />
             <small id={`${branchId}-hint`} className={issue ? 'is-error' : ''}>
-              {issue || 'Created in each selected repository. Leave blank for an automatic name.'}
+              {issue || t('repositoryDrawer.branchHint')}
             </small>
             {branchCheckError && <Alert variant="danger">{branchCheckError}</Alert>}
           </div>
         )}
-        <section className="code-repository-list" aria-label="Include in this task">
+        <section className="code-repository-list" aria-label={t('repositoryDrawer.includeInTask')}>
           <div className="code-repository-list__labels section-label">
-            <span>Include in this task</span>
-            <span>{local ? 'Start from' : ''}</span>
+            <span>{t('repositoryDrawer.includeInTask')}</span>
+            <span>{local ? t('repositoryDrawer.startFrom') : ''}</span>
           </div>
           {resources.map((resource) => {
             const checked = ids.includes(resource.id);
@@ -164,9 +165,9 @@ export function TaskRepositoryDrawer({
             const computer = computers.find((item) => item.id === access?.required_computer_id);
             const location =
               access?.status === 'offline'
-                ? `${computer?.name || 'Required computer'} is offline`
+                ? t('repositoryDrawer.computerOffline', { name: computer?.name || t('repositoryDrawer.requiredComputer') })
                 : access?.required_computer_id && !computer?.is_local
-                  ? `Only on ${computer?.name || 'its linked computer'}`
+                  ? t('repositoryDrawer.onlyOn', { name: computer?.name || t('repositoryDrawer.linkedComputer') })
                   : access?.status === 'unavailable'
                     ? access.detail
                     : '';
@@ -182,7 +183,7 @@ export function TaskRepositoryDrawer({
                   <Checkbox
                     size="sm"
                     checked={checked}
-                    aria-label={`Include ${resource.name}`}
+                    aria-label={t('repositoryDrawer.include', { name: resource.name })}
                     disabled={checkingBranches || (checked && ids.length === 1)}
                     onCheckedChange={() =>
                       setIds(checked ? ids.filter((id) => id !== resource.id) : [...ids, resource.id])
@@ -195,13 +196,15 @@ export function TaskRepositoryDrawer({
                     <small>
                       {location ||
                         (resource.kind === 'local_folder'
-                          ? 'Local folder · copied into this task'
+                          ? t('repositoryDrawer.localFolder')
                           : !local
-                            ? 'On the selected computer'
+                            ? t('repositoryDrawer.onSelectedComputer')
                             : state?.detail ||
                               (state?.local
-                                ? `On this computer: ${state.branch || 'detached HEAD'}${state.change_count ? '' : ' · clean'}`
-                                : loading ? 'Checking repository…' : 'Status unavailable'))}
+                                ? t(state.change_count ? 'repositoryDrawer.onThisComputer' : 'repositoryDrawer.onThisComputerClean', {
+                                  branch: state.branch || 'detached HEAD',
+                                })
+                                : loading ? t('repositoryDrawer.checkingRepository') : t('repositoryDrawer.statusUnavailable')))}
                     </small>
                   </span>
                 </label>
@@ -232,15 +235,15 @@ export function TaskRepositoryDrawer({
               <span aria-live="polite">
                 {loading ? (
                   <>
-                    <Spinner /> Checking repositories…
+                    <Spinner /> {t('repositoryDrawer.checkingRepositories')}
                   </>
                 ) : (
-                  'Local checkout status'
+                  t('repositoryDrawer.checkoutStatus')
                 )}
               </span>
               <Button size="sm" variant="subtle" disabled={loading || checkingBranches} onClick={onRefresh}>
                 <Icon of={RefreshCw} size={14} />
-                Refresh
+                {t('repositoryDrawer.refresh')}
               </Button>
             </div>
             {error && <Alert variant="danger">{error}</Alert>}
@@ -254,7 +257,7 @@ export function TaskRepositoryDrawer({
             ))}
             {repositories.length > 0 && (
               <fieldset className="code-repository-policy">
-                <legend id={`${titleId}-changes`}>Local changes</legend>
+                <legend id={`${titleId}-changes`}>{t('repositoryDrawer.localChanges')}</legend>
                 <RadioGroup
                   className="code-repository-policy__options"
                   aria-labelledby={`${titleId}-changes`}
@@ -264,14 +267,14 @@ export function TaskRepositoryDrawer({
                 >
                   <Radio value="committed" variant="card" size="sm">
                     <span>
-                      <strong>Start from committed code</strong>
-                      <small>Leave local changes on this computer.</small>
+                      <strong>{t('repositoryDrawer.committedTitle')}</strong>
+                      <small>{t('repositoryDrawer.committedHint')}</small>
                     </span>
                   </Radio>
                   <Radio value="include" variant="card" size="sm">
                     <span>
-                      <strong>Include my local changes</strong>
-                      <small>Copy them into this task. Keep originals.</small>
+                      <strong>{t('repositoryDrawer.includeTitle')}</strong>
+                      <small>{t('repositoryDrawer.includeHint')}</small>
                     </span>
                   </Radio>
                 </RadioGroup>
@@ -282,8 +285,7 @@ export function TaskRepositoryDrawer({
       </ModalBody>
       <ModalFooter align="space-between">
         <span className="code-repository-count">
-          {repositories.length} {repositories.length === 1 ? 'repository' : 'repositories'} ·{' '}
-          {ids.length - repositories.length} {ids.length - repositories.length === 1 ? 'folder' : 'folders'}
+          {t('repositoryDrawer.count', { repositories: repositories.length, folders: ids.length - repositories.length })}
         </span>
         <Button
           variant="primary"
@@ -291,7 +293,7 @@ export function TaskRepositoryDrawer({
           aria-busy={checkingBranches}
           onClick={apply}
         >
-          {checkingBranches ? <><Spinner /> Checking branches…</> : 'Apply to task'}
+          {checkingBranches ? <><Spinner /> {t('repositoryDrawer.checkingBranches')}</> : t('repositoryDrawer.apply')}
         </Button>
       </ModalFooter>
     </Modal>

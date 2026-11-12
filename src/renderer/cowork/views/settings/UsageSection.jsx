@@ -16,6 +16,7 @@ import {
   isBalanceEmpty,
 } from '../../lib/usageWarnings';
 import { SettingsSectionPanel } from './settingsLayout';
+import { useTranslation } from '../../../lib/i18n';
 
 /* Settings → Usage (ENG-1782). The lightweight view of what the console's
    billing page shows: the free MindsHub Air allowance with when it refills, the
@@ -30,10 +31,13 @@ function openConsole(action, isBillingOwner) {
   host.openExternal(usageActionUrl(action, { isBillingOwner }));
 }
 
+// Labels come from the catalog by the action's key; the English `label` on
+// USAGE_ACTIONS stays the fallback for an action this section doesn't know.
 function ActionButton({ action, isBillingOwner, variant = 'default' }) {
+  const { t } = useTranslation('settingsSystem');
   return (
     <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner)}>
-      {action.label}
+      {t(`usage.actions.${action.key}`, { defaultValue: action.label })}
       <Icon of={ExternalLink} size={12} />
     </Button>
   );
@@ -43,7 +47,12 @@ function ActionButton({ action, isBillingOwner, variant = 'default' }) {
 // can describe, so show nothing rather than a wrong number.
 const describableGrant = (free) => !!free && (free.limit === -1 || free.limit > 0);
 
+// Splits a translated sentence around one styled value, so the value can sit in
+// its own element without the sentence being built from fragments.
+const SLOT = '\u2060SLOT\u2060';
+
 function FreeTokensCard({ free, isBillingOwner }) {
+  const { t } = useTranslation('settingsSystem');
   if (!describableGrant(free)) return null;
   const unlimited = free.limit === -1;
   const remaining = Math.max(0, free.remaining || 0);
@@ -56,31 +65,33 @@ function FreeTokensCard({ free, isBillingOwner }) {
   // A clock time, like the other two surfaces. `periodLabel` below keeps a
   // date, because a billing period is one.
   const reset = formatResetTime(free.resetsAt);
+  const [usedBefore, usedAfter] = t('usage.free.used', { percent: SLOT }).split(SLOT);
   return (
     <div className={CARD}>
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
-          <div className="text-base font-semibold text-ink">Free Air allowance</div>
-          <Badge variant="muted" size="xs">MindsHub Air only</Badge>
+          <div className="text-base font-semibold text-ink">{t('usage.free.title')}</div>
+          <Badge variant="muted" size="xs">{t('usage.free.badge')}</Badge>
         </div>
-        {reset && <div className="text-[12px] text-ink-3">Resets at {reset}</div>}
+        {reset && <div className="text-[12px] text-ink-3">{t('usage.free.resetsAt', { time: reset })}</div>}
       </div>
       {unlimited ? (
-        <div className="text-[13px] text-ink-2">Unlimited on this account.</div>
+        <div className="text-[13px] text-ink-2">{t('usage.free.unlimited')}</div>
       ) : (
         <>
           <div className="flex items-baseline justify-between mb-2">
             <div className="text-[13px] text-ink-2 tabular-nums">
+              {usedBefore}
               <span className="text-[20px] font-semibold text-ink">{formatPercentShort(fraction)}</span>
-              {' '}of your allowance used
+              {usedAfter}
             </div>
-            <div className="text-[13px] text-ink-3 tabular-nums">{formatPercentShort(fractionLeft)} left</div>
+            <div className="text-[13px] text-ink-3 tabular-nums">{t('usage.free.left', { percent: formatPercentShort(fractionLeft) })}</div>
           </div>
-          <Meter value={fraction} tone={exhausted ? 'danger' : low ? 'warning' : 'accent'} label="Free Air allowance used" />
+          <Meter value={fraction} tone={exhausted ? 'danger' : low ? 'warning' : 'accent'} label={t('usage.free.meterLabel')} />
           <div className="text-[12px] text-ink-3 mt-2">
             {exhausted
-              ? `Used up. MindsHub Air is billing your balance${reset ? ` until it refills at ${reset}` : ' until it refills'}.`
-              : `After that, MindsHub Air uses your balance${reset ? ` until it refills at ${reset}` : ''}.`}
+              ? (reset ? t('usage.free.usedUpUntil', { time: reset }) : t('usage.free.usedUp'))
+              : (reset ? t('usage.free.afterUntil', { time: reset }) : t('usage.free.after'))}
           </div>
         </>
       )}
@@ -91,70 +102,72 @@ function FreeTokensCard({ free, isBillingOwner }) {
   );
 }
 
-function autoTopUpLine(auto) {
-  if (!auto?.enabled) return { text: 'Auto top up is off. Turn it on so tasks keep running when your balance gets low.', tone: 'text-ink-3' };
+function autoTopUpLine(t, auto) {
+  if (!auto?.enabled) return { text: t('usage.autoTopUp.off'), tone: 'text-ink-3' };
   const target = auto.rechargeToUsd != null ? formatUsd(auto.rechargeToUsd) : null;
   const floor = auto.thresholdUsd != null ? formatUsd(auto.thresholdUsd) : null;
-  const rule = target && floor ? `Tops up to ${target} when your balance drops below ${floor}.` : 'On.';
+  const rule = target && floor ? t('usage.autoTopUp.rule', { target, floor }) : t('usage.autoTopUp.on');
   switch (auto.status) {
     case 'payment_failed':
-      return { text: "Auto top up failed: we couldn't charge your card. Update your payment method to resume it.", tone: 'text-danger-text' };
+      return { text: t('usage.autoTopUp.paymentFailed'), tone: 'text-danger-text' };
     case 'cap_reached':
-      return { text: `${rule} Paused to stay within this month's cap.`, tone: 'text-warning-text' };
+      return { text: t('usage.autoTopUp.capReached', { rule }), tone: 'text-warning-text' };
     case 'pending_action':
-      return { text: `${rule} Waiting on your bank to confirm the latest charge.`, tone: 'text-warning-text' };
+      return { text: t('usage.autoTopUp.pendingAction', { rule }), tone: 'text-warning-text' };
     default:
       return { text: rule, tone: 'text-ink-3' };
   }
 }
 
 // Mirrors the usage bar's balance_low copy, so "turn on" only shows when auto top up is off.
-function lowBalanceLine(auto) {
-  if (!auto?.enabled) return 'Running low. Add funds or turn on auto top up to keep tasks running.';
-  if (auto.status === 'ok') return 'Running low. Auto top up will refill it.';
-  if (auto.status === 'pending_action') return 'Running low. Auto top up is waiting on your bank.';
-  return 'Running low. Add funds to keep tasks running.';
+function lowBalanceLine(t, auto) {
+  if (!auto?.enabled) return t('usage.low.off');
+  if (auto.status === 'ok') return t('usage.low.ok');
+  if (auto.status === 'pending_action') return t('usage.low.pending');
+  return t('usage.low.other');
 }
 
-function periodLabel(spend) {
+function spentLabel(t, spend) {
   const fmt = (iso) => formatResetDate(iso);
   const a = fmt(spend?.periodStart);
   const b = fmt(spend?.periodEnd);
-  if (a && b) return `${a} to ${b}`;
-  return a || b || 'this period';
+  if (a && b) return t('usage.balance.spentRange', { start: a, end: b });
+  if (a || b) return t('usage.balance.spentDate', { date: a || b });
+  return t('usage.balance.spentThisPeriod');
 }
 
 function BalanceCard({ balance, auto, spend, isBillingOwner }) {
+  const { t } = useTranslation('settingsSystem');
   if (!balance) return null;
   const empty = isBalanceEmpty(balance);
   const low = !empty && balance.alert === 'low';
   const amountTone = empty ? 'text-danger-text' : low ? 'text-warning-text' : 'text-ink';
-  const autoLine = autoTopUpLine(auto);
+  const autoLine = autoTopUpLine(t, auto);
   return (
     <div className={CARD}>
       <div className="flex items-center justify-between gap-3 mb-1">
-        <div className="text-base font-semibold text-ink">Balance</div>
-        {auto?.enabled && auto.status === 'ok' && <Badge variant="success" size="xs" dot>Auto top up on</Badge>}
-        {auto?.enabled && auto.status === 'payment_failed' && <Badge variant="danger" size="xs" dot>Auto top up failed</Badge>}
-        {auto?.enabled && (auto.status === 'cap_reached' || auto.status === 'pending_action') && <Badge variant="warning" size="xs" dot>Auto top up paused</Badge>}
+        <div className="text-base font-semibold text-ink">{t('usage.balance.title')}</div>
+        {auto?.enabled && auto.status === 'ok' && <Badge variant="success" size="xs" dot>{t('usage.autoTopUp.badgeOn')}</Badge>}
+        {auto?.enabled && auto.status === 'payment_failed' && <Badge variant="danger" size="xs" dot>{t('usage.autoTopUp.badgeFailed')}</Badge>}
+        {auto?.enabled && (auto.status === 'cap_reached' || auto.status === 'pending_action') && <Badge variant="warning" size="xs" dot>{t('usage.autoTopUp.badgePaused')}</Badge>}
       </div>
       <div className={`text-[26px] font-semibold tabular-nums leading-tight ${amountTone}`}>{formatUsd(balance.usd)}</div>
       <div className="text-[12px] text-ink-3 mt-1">
         {empty
-          ? "Empty. Paid models won't run until you add funds."
+          ? t('usage.balance.empty')
           : low
-            ? lowBalanceLine(auto)
-            : 'Used by paid models, and by MindsHub Air once the free tokens run out.'}
+            ? lowBalanceLine(t, auto)
+            : t('usage.balance.usedBy')}
       </div>
       {spend && (
         <div className="flex items-baseline gap-2 mt-3 text-[13px] text-ink-2 tabular-nums">
           <span className="font-semibold text-ink">{formatUsd(spend.usd)}</span>
-          <span>credit spent {periodLabel(spend)}</span>
+          <span>{spentLabel(t, spend)}</span>
         </div>
       )}
       <div className={`text-[12px] mt-3 ${autoLine.tone}`}>{autoLine.text}</div>
       {!isBillingOwner && (
-        <div className="text-[12px] text-ink-3 mt-2">Only your organization's billing owner can add funds or change auto top up.</div>
+        <div className="text-[12px] text-ink-3 mt-2">{t('usage.balance.notOwner')}</div>
       )}
       <div className="flex flex-wrap gap-2 mt-3">
         <ActionButton action={USAGE_ACTIONS.addFunds} isBillingOwner={isBillingOwner} variant="primary" />
@@ -167,6 +180,7 @@ function BalanceCard({ balance, auto, spend, isBillingOwner }) {
 }
 
 export default function UsageSection({ isSsoConnected = false, onOpenAccount }) {
+  const { t } = useTranslation('settingsSystem');
   const accountUser = useAccountUser(isSsoConnected);
   const ctx = useHubUsageContext();
   const usage = ctx?.usage;
@@ -175,26 +189,26 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
   if (!accountUser) {
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
-        <div className="text-base font-semibold text-ink">Sign in to see your usage</div>
-        <div className="text-[13px] text-ink-3">Your free Air allowance and your balance show up here once you're signed in to MindsHub.</div>
-        {onOpenAccount && <Button variant="primary" size="sm" onClick={onOpenAccount}>Go to Account</Button>}
+        <div className="text-base font-semibold text-ink">{t('usage.signIn.title')}</div>
+        <div className="text-[13px] text-ink-3">{t('usage.signIn.body')}</div>
+        {onOpenAccount && <Button variant="primary" size="sm" onClick={onOpenAccount}>{t('usage.signIn.goToAccount')}</Button>}
       </div>
     );
   } else if (usage === null || usage === undefined) {
     // First read still in flight. Not an error, and not a place for numbers.
     body = (
-      <div className={`${CARD} text-[13px] text-ink-3`} role="status">Loading usage…</div>
+      <div className={`${CARD} text-[13px] text-ink-3`} role="status">{t('usage.loading')}</div>
     );
   } else if (!usage.reachable) {
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
-        <div className="text-base font-semibold text-ink">Couldn't load usage</div>
-        <div className="text-[13px] text-ink-3">MindsHub didn't answer. Try again, or check your usage in the console.</div>
+        <div className="text-base font-semibold text-ink">{t('usage.error.title')}</div>
+        <div className="text-[13px] text-ink-3">{t('usage.error.body')}</div>
         <div className="flex gap-2">
           {ctx?.refresh && (
             <Button variant="default" size="sm" onClick={() => ctx.refresh()}>
               <Icon of={RefreshCw} size={12} />
-              Try again
+              {t('usage.error.tryAgain')}
             </Button>
           )}
           <ActionButton action={USAGE_ACTIONS.viewUsage} isBillingOwner={false} />
@@ -207,7 +221,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
         <FreeTokensCard free={usage.freeTokens} isBillingOwner={usage.isBillingOwner} />
         <BalanceCard balance={usage.balance} auto={usage.autoTopUp} spend={usage.creditSpend} isBillingOwner={usage.isBillingOwner} />
         {!describableGrant(usage.freeTokens) && !usage.balance && (
-          <div className={`${CARD} text-[13px] text-ink-3`}>No usage to show for this account yet.</div>
+          <div className={`${CARD} text-[13px] text-ink-3`}>{t('usage.empty')}</div>
         )}
       </>
     );

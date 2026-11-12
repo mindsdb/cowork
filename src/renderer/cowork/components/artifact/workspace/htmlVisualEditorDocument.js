@@ -1,4 +1,5 @@
 import { parse, parseFragment, serialize } from 'parse5';
+import i18n from '../../../../lib/i18n';
 import {
   createHtmlVisualEditorRuntime,
   HTML_VISUAL_EDITOR_ATTRIBUTE,
@@ -284,7 +285,7 @@ export function applyHtmlVisualEditAtRanges(content, elements, elementId, html) 
     || start > end
     || end > content.length
   ) {
-    throw new Error('The selected text block is no longer available.');
+    throw new Error(i18n.t('htmlEditor.blockGone', { ns: 'artifacts' }));
   }
 
   const nextHtml = sanitizeHtmlVisualEdit(html);

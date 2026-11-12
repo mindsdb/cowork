@@ -1,0 +1,216 @@
+{
+  "install": {
+    "title": "ワールドを読み込み中",
+    "subtitle": "エンジンをインストールしています",
+    "spriteTitle": "インストール中",
+    "preparing": "インストールを準備中…",
+    "steps": {
+      "xcode": "Xcodeコマンドラインツール",
+      "git": "gitの確認とインストール",
+      "uv": "uv（Pythonパッケージマネージャー）のインストール",
+      "coworkServer": "cowork-serverのインストール",
+      "verify": "インストールの確認",
+      "server": "サーバーの起動"
+    },
+    "failedAt": "失敗したステップ：",
+    "tryAgain": "再試行",
+    "consoleIdle": "> 起動シーケンスを開始しました…",
+    "cancel": "インストールをキャンセル",
+    "cancelling": "キャンセル中…",
+    "cancelled": "インストールをキャンセルしました。",
+    "cancellingLog": "インストールをキャンセルしています...",
+    "doneSpriteTitle": "セットアップ完了",
+    "done": "セットアップ完了！",
+    "launching": "ワークスペースを起動しています…"
+  },
+  "legal": {
+    "terms": "利用規約",
+    "privacy": "プライバシーポリシー",
+    "termsHeading": "利用規約",
+    "privacyHeading": "プライバシーポリシー",
+    "back": "← 戻る"
+  },
+  "terms": {
+    "title": "使用許諾契約",
+    "subtitle": "冒険は一巻の巻物から始まる",
+    "spriteTitle": "契約の巻物",
+    "intro": "ご利用を始める前に、以下のポリシーをご確認のうえ同意してください。",
+    "readTerms": "→ 利用規約を読む",
+    "readPrivacy": "→ プライバシーポリシーを読む",
+    "consentAriaLabel": "MindsDBの利用規約およびプライバシーポリシーを読み、同意します",
+    "consentBefore": "私は、以下のMindsDBの規約を読み、同意します：",
+    "consentAnd": "および",
+    "consentAfter": "このチェックボックスをオンにすることにより、これらの規約に拘束されることに同意したものとなることを理解しています。",
+    "accept": "同意して続行 ▶",
+    "nextInstall": "次に、{product}に必要なシステムコンポーネントをインストールします。",
+    "takesAMinute": "1分ほどで完了します。"
+  },
+  "theme": {
+    "title": "画面を選ぶ",
+    "subtitle": "お好みの画面を選択 · あとからいつでも変更できます",
+    "groupAriaLabel": "表示テーマを選択",
+    "presets": {
+      "midnight": {
+        "name": "ミッドナイト",
+        "sub": "スタンダード · ダーク",
+        "desc": "深夜のような暗い背景に、ネオンシアンのアクセントを効かせた定番デザイン。"
+      },
+      "daylight": {
+        "name": "デイライト",
+        "sub": "スタンダード · ライト",
+        "desc": "すっきりとした白い背景に、ティールのアクセントを効かせた定番デザイン。"
+      },
+      "gameboy": {
+        "name": "GAME BOY",
+        "sub": "8-Bit · ライト",
+        "desc": "オリーブ色の紙に深緑のインク、等幅フォント。明るい部屋で楽しむ携帯ゲーム機の懐かしさ。"
+      },
+      "arcade": {
+        "name": "アーケード",
+        "sub": "8-Bit · ダーク",
+        "desc": "深いネイビーに蛍光シアン、ブラウン管の走査線、太めの等幅フォント。往年のゲームセンターの名機。"
+      }
+    },
+    "custom": {
+      "name": "自分で作る",
+      "sub": "カスタム",
+      "desc": "アクセント、背景、角の丸み、フォント、走査線まで、アプリ内で自分だけのテーマを作成できます。設定 → 外観 → スタイル → カスタム。"
+    },
+    "cardAriaLabel": "{name} — {sub}",
+    "customAriaLabel": "{name} — アプリ内で自分だけのテーマを作成",
+    "pick": "⏎ を押して{name}を選択",
+    "customPrompt": "アプリ内で作成できます — まずはプリセットを選んでください",
+    "back": "← 戻る"
+  },
+  "launch": {
+    "tagline": "ひとつのアプリで、あらゆるエージェントを。",
+    "nowPlaying": "プレイ中：",
+    "nowLoading": "NOW LOADING…"
+  },
+  "onboarding": {
+    "errors": {
+      "saveFailed": "設定を保存できませんでした。もう一度お試しください。",
+      "saveToServerFailed": "設定をサーバーに保存できませんでした。もう一度お試しください。",
+      "invalidKey": "APIキーが無効です",
+      "mindsKeySaveFailed": "MindsHubキーを保存できませんでした。",
+      "validationFailed": "検証に失敗しました",
+      "signInTimedOut": "サインインがタイムアウトしました。ブラウザでの認証が完了しませんでした。もう一度お試しのうえ、新しく開いたタブで手続きを完了してください（以前の「You're authorized」タブは閉じてください）。または{reloadKey}を押して再読み込みしてください。",
+      "signInCancelled": "サインインがキャンセルされました。準備ができたら、もう一度お試しください。",
+      "signInFailed": "サインインできませんでした。もう一度お試しください。",
+      "signUpFailed": "アカウントを作成できませんでした。もう一度お試しください。",
+      "mindsSetupFailed": "MindsHubのセットアップに失敗しました：{reason}",
+      "unexpected": "予期しないエラーが発生しました。もう一度お試しください。",
+      "mindsSetupFailedRetry": "MindsHubをセットアップできませんでした。もう一度お試しください。"
+    },
+    "welcome": {
+      "title": "ようこそ",
+      "subtitle": "準備しています"
+    },
+    "ready": {
+      "subtitle": "準備が整いました",
+      "body": "ワークスペースの準備ができました。エージェントにタスクを任せると、作業を進めて結果を届けてくれます。",
+      "desktop": "Coworkはデスクトップでもご利用いただけます。",
+      "getDesktop": "デスクトップアプリを入手"
+    },
+    "continue": "続行",
+    "agreePrefix": "続行すると、以下に同意したものとみなされます：",
+    "agreeAnd": "および",
+    "pickOrg": {
+      "title": "組織を選択",
+      "subtitle": "使用量を支払う組織",
+      "body": "複数の組織に所属しています。このコンピュータで使用する組織を選んでください。使用量はその組織のクレジットから支払われ、組織の管理者はこのコンピュータのアクセスを確認・取り消すことができます。あとからアカウントメニューで変更できます。"
+    },
+    "success": {
+      "title": "準備完了",
+      "subtitle": "サインインしました",
+      "heading": "準備が整いました！",
+      "workingIn": "使用中の組織：",
+      "readyToGo": "いつでも始められます"
+    },
+    "validating": {
+      "spriteTitle": "検証中",
+      "label": "接続を確認中…"
+    },
+    "signupWait": {
+      "spriteTitle": "登録を待っています",
+      "heading": "ブラウザで登録を完了してください",
+      "body": "アカウントを作成したら、お送りする確認メールを開いてください。メール内のリンクをクリックすると、こちらで自動的にサインインされます。",
+      "cancel": "キャンセル"
+    },
+    "byok": {
+      "title": "自分のキーを使う",
+      "subtitle": "続行するにはLLMプロバイダーを追加してください",
+      "skippedIntro": "使用するLLMプロバイダーを選んでください。MindsHubはあとから「設定 → プロバイダー」で接続できます（Webで共有する場合に必要です）。",
+      "noCreditsIntro": "MindsHubアカウントにLLMクレジットがまだありません。チャージしてマネージドモデルを使うか、下で自分のプロバイダーを接続してください。",
+      "back": "← アカウントの選択に戻る",
+      "selectProvider": "プロバイダーを選択",
+      "custom": "カスタム",
+      "baseUrl": "ベースURL",
+      "baseUrlHint": "Ollama、vLLM、Together、Groq、LM Studioなど",
+      "model": "モデル",
+      "customModel": "カスタム...",
+      "modelIdPlaceholder": "モデルIDを入力...",
+      "modelNamePlaceholder": "モデル名を入力...",
+      "keyLabel": {
+        "anthropic": "Anthropic APIキー",
+        "gemini": "Google AI APIキー",
+        "custom": "APIキー（任意）",
+        "openai": "OpenAI APIキー"
+      },
+      "customKeyPlaceholder": "不要な場合はEnterでスキップ",
+      "connect": "接続"
+    },
+    "minds": {
+      "title": "はじめましょう",
+      "subtitle": "無料アカウントを作成するか、サインインして続行してください",
+      "managedBy": "MindsDBによる管理",
+      "benefits": {
+        "routing": "スマートなモデルルーティング",
+        "connectors": "安全なデータコネクタ",
+        "dashboards": "ダッシュボードを共有"
+      },
+      "oneMoment": "少々お待ちください…",
+      "createAccount": "無料アカウントを作成",
+      "signIn": "サインイン",
+      "apiKeyLabel": "MindsHub APIキー",
+      "connecting": "接続中…",
+      "connect": "接続",
+      "noAccount": "アカウントをお持ちでない場合",
+      "createOne": "無料で作成 →",
+      "verifyBefore": "メールアドレスの確認は済みましたか？あとは",
+      "verifyAfter": "をクリックするだけです。再登録は不要です。",
+      "continueWithout": "アカウントなしで続行 →"
+    }
+  },
+  "checklist": {
+    "title": "Coworkを使ってみよう",
+    "closeAriaLabel": "チェックリストを閉じる",
+    "close": "閉じる",
+    "startFailed": "チャットを開始できませんでした。もう一度お試しください。",
+    "completeHeading": "基本はばっちりです！",
+    "steps": {
+      "bring-your-work": {
+        "title": "自分の仕事から始める",
+        "description": "取り組んでいることをCoworkに伝えて、ファイルやメモを渡しましょう。"
+      },
+      "customize-role": {
+        "title": "役割に合わせてCoworkをカスタマイズ",
+        "description": "すぐに使えるツールやワークフローを追加できます。"
+      },
+      "connect-app": {
+        "title": "アプリを接続",
+        "description": "Google Driveを連携すると、Coworkがファイルを操作できるようになります。"
+      },
+      "see-it-work": {
+        "title": "サンプルを試す",
+        "description": "ホームでサンプルを選んで、作成される様子を見てみましょう。"
+      }
+    }
+  },
+  "firstArtifactTip": {
+    "ariaLabel": "初めてのライブアーティファクト",
+    "body": "初めてのライブアーティファクトができました。ここにあります。いつでも開けるほか、公開してライブURLを共有することもできます。",
+    "gotIt": "OK",
+    "showMe": "表示"
+  }
+}

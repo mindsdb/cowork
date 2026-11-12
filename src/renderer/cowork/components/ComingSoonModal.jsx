@@ -10,6 +10,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
 import { Button } from './ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
+import { useTranslation } from '../../lib/i18n';
 
 // Marketing download page. `os=auto` lets that page detect the visitor's OS
 // server-side and serve the right installer; `from` tags the referral source
@@ -19,6 +20,7 @@ const DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cowork-web';
 // `offer`, when set, replaces the download with a way to connect the API now:
 // { label, onAccept }, worded by the caller.
 export default function ComingSoonModal({ feature, onClose, offer = null }) {
+  const { t } = useTranslation('shell');
   return (
     <Modal
       open={feature != null}
@@ -28,24 +30,23 @@ export default function ComingSoonModal({ feature, onClose, offer = null }) {
     >
       <ModalHeader
         id="coming-soon-title"
-        title={PLATFORM_UI ? 'Coming soon to Cloud' : 'Feature unavailable'}
+        title={PLATFORM_UI ? t('comingSoon.cloudTitle') : t('comingSoon.unavailableTitle')}
         onClose={onClose}
       />
       <ModalBody>
         <p className="s-body">
-          {feature ? `${feature} isn’t` : 'This feature isn’t'}{' '}
           {PLATFORM_UI
             ? (offer
-              ? 'available on Cloud just yet. You can connect it now as a custom connector.'
-              : 'available on Cloud just yet. In the meantime, you can use it in the desktop app.')
-            : 'available in this deployment.'}
+              ? `${feature || 'This feature'} isn’t available on Cloud just yet. You can connect it now as a custom connector.`
+              : (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody')))
+            : (feature ? t('comingSoon.unavailableBodyNamed', { feature }) : t('comingSoon.unavailableBody'))}
         </p>
       </ModalBody>
       {PLATFORM_UI ? (
         <ModalFooter
           cancel={(
             <Button variant="subtle" onClick={onClose}>
-              Not now
+              {t('comingSoon.notNow')}
             </Button>
           )}
         >
@@ -67,14 +68,14 @@ export default function ComingSoonModal({ feature, onClose, offer = null }) {
                 onClose();
               }}
             >
-              Download the app
+              {t('comingSoon.download')}
             </Button>
           )}
         </ModalFooter>
       ) : (
         <ModalFooter>
           <Button variant="subtle" onClick={onClose}>
-            Close
+            {t('ui.modal.close')}
           </Button>
         </ModalFooter>
       )}
