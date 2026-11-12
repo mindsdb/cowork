@@ -668,7 +668,13 @@
       "busy": "Another change to this artifact is still running. Try again when it finishes.",
       "failed": "The change could not be made.",
       "stopped": "The change stopped before it finished.",
-      "chatFailed": "Couldn't continue in the chat. Try again from the chat."
-    }
+      "chatFailed": "Couldn't continue in the chat. Try again from the chat.",
+      "filesChanged": "Files this change touched were changed again since, so it can't be undone here.",
+      "filesChangedNamed": "{paths} changed again since, so this change can't be undone here.",
+      "alreadyUndone": "This change was already undone.",
+      "repairPending": "An agent suggestion for this artifact is waiting for your decision. Accept or discard it first.",
+      "undoGone": "This change can no longer be undone here. Use History to go back."
+    },
+    "placeholderChat": "Ask about or change this artifact…"
   }
 }

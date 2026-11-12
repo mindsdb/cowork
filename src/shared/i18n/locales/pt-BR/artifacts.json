@@ -668,7 +668,13 @@
       "busy": "Outra alteração neste artefato ainda está em andamento. Tente novamente quando terminar.",
       "failed": "Não foi possível fazer a alteração.",
       "stopped": "A alteração parou antes de terminar.",
-      "chatFailed": "Não foi possível continuar no chat. Tente novamente pelo chat."
-    }
+      "chatFailed": "Não foi possível continuar no chat. Tente novamente pelo chat.",
+      "filesChanged": "Os arquivos desta alteração mudaram de novo depois, então ela não pode ser desfeita aqui.",
+      "filesChangedNamed": "{paths} mudou de novo depois, então esta alteração não pode ser desfeita aqui.",
+      "alreadyUndone": "Esta alteração já foi desfeita.",
+      "repairPending": "Uma sugestão do agente para este artefato aguarda sua decisão. Aceite ou descarte-a primeiro.",
+      "undoGone": "Esta alteração não pode mais ser desfeita aqui. Use o histórico para voltar."
+    },
+    "placeholderChat": "Pergunte sobre este artefato ou altere-o…"
   }
 }

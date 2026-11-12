@@ -668,7 +668,13 @@
       "busy": "Une autre modification de cet artefact est encore en cours. Réessayez une fois terminée.",
       "failed": "La modification n'a pas pu être faite.",
       "stopped": "La modification s'est arrêtée avant la fin.",
-      "chatFailed": "Impossible de continuer dans le chat. Réessayez depuis le chat."
-    }
+      "chatFailed": "Impossible de continuer dans le chat. Réessayez depuis le chat.",
+      "filesChanged": "Les fichiers de cette modification ont été modifiés depuis ; elle ne peut pas être annulée ici.",
+      "filesChangedNamed": "{paths} a été modifié depuis ; cette modification ne peut pas être annulée ici.",
+      "alreadyUndone": "Cette modification a déjà été annulée.",
+      "repairPending": "Une suggestion de l'agent pour cet artefact attend votre décision. Acceptez-la ou abandonnez-la d'abord.",
+      "undoGone": "Cette modification ne peut plus être annulée ici. Utilisez l'historique pour revenir en arrière."
+    },
+    "placeholderChat": "Posez une question sur cet artefact ou modifiez-le…"
   }
 }

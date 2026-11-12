@@ -81,7 +81,7 @@ function ReplyStatus({ reply, canUndo, busy, onUndo, onAskAgent, onOpenChat }) {
 
 export function QuickEditBar({ controller, disabledReason = '', onOpenChat }) {
   const { t } = useTranslation('artifacts');
-  const { messages, running, send, askAgent, undo, undoableId } = controller;
+  const { messages, running, direct = true, send, askAgent, undo, undoableId } = controller;
   const [text, setText] = useState('');
   const taRef = useRef(null);
   const threadRef = useRef(null);
@@ -142,7 +142,8 @@ export function QuickEditBar({ controller, disabledReason = '', onOpenChat }) {
           ref={taRef}
           rows={1}
           value={text}
-          placeholder={t('quickEdit.placeholder')}
+          // Chat only: the bar is a way into the chat, for questions too.
+          placeholder={direct ? t('quickEdit.placeholder') : t('quickEdit.placeholderChat')}
           aria-label={t('quickEdit.inputLabel')}
           disabled={!!disabledReason}
           className="flex-1 min-w-0 resize-none outline-none border-0 bg-transparent

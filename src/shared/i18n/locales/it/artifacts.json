@@ -668,7 +668,13 @@
       "busy": "Un'altra modifica a questo artefatto è ancora in corso. Riprova quando termina.",
       "failed": "Non è stato possibile fare la modifica.",
       "stopped": "La modifica si è interrotta prima di finire.",
-      "chatFailed": "Impossibile continuare nella chat. Riprova dalla chat."
-    }
+      "chatFailed": "Impossibile continuare nella chat. Riprova dalla chat.",
+      "filesChanged": "I file di questa modifica sono stati cambiati di nuovo, quindi non può essere annullata qui.",
+      "filesChangedNamed": "{paths} è stato cambiato di nuovo, quindi questa modifica non può essere annullata qui.",
+      "alreadyUndone": "Questa modifica è già stata annullata.",
+      "repairPending": "Un suggerimento dell'agente per questo artefatto attende la tua decisione. Accettalo o scartalo prima.",
+      "undoGone": "Questa modifica non può più essere annullata qui. Usa la cronologia per tornare indietro."
+    },
+    "placeholderChat": "Chiedi qualcosa su questo artefatto o modificalo…"
   }
 }

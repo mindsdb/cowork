@@ -14,6 +14,7 @@ import {
   requestArtifactExport,
   setArtifactAccess,
   streamQuickEdit,
+  undoQuickEdit,
 } from './artifactWorkspaceApi';
 import { authFetch } from '../api';
 
@@ -444,5 +445,34 @@ describe('streamQuickEdit', () => {
       detail: { currentRevision: { id: 'r3' } },
     });
     expect(onEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('undoQuickEdit', () => {
+  const artifact = { id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70', projectId: 'proj-1' };
+  afterEach(() => { authFetch.mockReset(); });
+
+  it('posts the edit id and the expected revision to the undo route', async () => {
+    authFetch.mockResolvedValue(new Response(JSON.stringify({
+      editId: 'qe1', restored: ['index.html'], removed: [], revision: { id: 'r3' },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    await expect(undoQuickEdit(artifact, 'qe1', { expectedRevisionId: 'r2' })).resolves.toMatchObject({ revision: { id: 'r3' } });
+
+    const [url, init] = authFetch.mock.calls[0];
+    expect(url).toBe('/api/v1/artifacts/workspace/proj-1/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/quick-edits/qe1/undo');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ expectedRevisionId: 'r2' });
+  });
+
+  it('keeps the reason and paths of a refusal', async () => {
+    authFetch.mockResolvedValue(new Response(JSON.stringify({
+      detail: { message: 'changed', reason: 'files_changed', paths: ['app.js'] },
+    }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+
+    await expect(undoQuickEdit(artifact, 'qe1')).rejects.toMatchObject({
+      status: 409, detail: { reason: 'files_changed', paths: ['app.js'] },
+    });
+    expect(JSON.parse(authFetch.mock.calls[0][1].body)).toEqual({ expectedRevisionId: null });
   });
 });

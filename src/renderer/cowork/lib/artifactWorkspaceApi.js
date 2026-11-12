@@ -271,6 +271,23 @@ export async function streamQuickEdit(artifact, body, { signal, onEvent } = {}) 
   }
 }
 
+/*
+ * Undo one applied quick edit (ENG-4227): the server puts back every file it
+ * changed and removes those it created, all or nothing, and answers
+ * `{ editId, restored, removed, revision | null }`. `expectedRevisionId` is
+ * the edit's `done.revisionId`, or null. 409s carry a `reason`
+ * (files_changed with `paths`, already_undone, quick_edit_running) or, when
+ * stale, `currentRevision`; 404 means the undo is no longer kept.
+ */
+export function undoQuickEdit(artifact, editId, { expectedRevisionId = null } = {}) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/quick-edits/${encodeURIComponent(editId)}/undo`, {
+    method: 'POST',
+    body: JSON.stringify({ expectedRevisionId }),
+  });
+}
+
 export function restoreArtifactRevision(artifact, revisionId, expectedRevisionId) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

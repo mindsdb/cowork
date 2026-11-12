@@ -668,7 +668,13 @@
       "busy": "Eine andere Änderung an diesem Artefakt läuft noch. Versuche es erneut, wenn sie fertig ist.",
       "failed": "Die Änderung konnte nicht vorgenommen werden.",
       "stopped": "Die Änderung wurde vor dem Abschluss abgebrochen.",
-      "chatFailed": "Im Chat konnte nicht fortgefahren werden. Versuche es im Chat erneut."
-    }
+      "chatFailed": "Im Chat konnte nicht fortgefahren werden. Versuche es im Chat erneut.",
+      "filesChanged": "Dateien dieser Änderung wurden seitdem erneut geändert, daher kann sie hier nicht rückgängig gemacht werden.",
+      "filesChangedNamed": "{paths} wurde seitdem erneut geändert, daher kann diese Änderung hier nicht rückgängig gemacht werden.",
+      "alreadyUndone": "Diese Änderung wurde bereits rückgängig gemacht.",
+      "repairPending": "Ein Vorschlag des Agenten für dieses Artefakt wartet auf deine Entscheidung. Übernimm oder verwirf ihn zuerst.",
+      "undoGone": "Diese Änderung kann hier nicht mehr rückgängig gemacht werden. Nutze den Verlauf, um zurückzugehen."
+    },
+    "placeholderChat": "Frage zu diesem Artefakt stellen oder es ändern…"
   }
 }

@@ -5,18 +5,23 @@
 //
 // The thread holds the user's messages and one reply per message. A reply
 // carries the route, the stage the edit is at, and how it ended:
-//   applied   → the preview reloads; Undo restores the revision before it
+//   applied   → the preview reloads; Undo (when the server kept one) puts
+//               back every file the edit changed
 //   agent /
 //   escalate  → the message is sent to the artifact's chat (`continueInChat`)
 //   failed    → the summary, and "Ask the agent instead" (forceRoute "agent")
 //   noop      → nothing changed
 // A check the server asks for mid-edit is answered by the open preview, the
 // same way an agent turn's check is (lib/artifactCheck).
+//
+// With `direct` false (capabilities.quickEditDirect: no decisions model serves
+// the user's provider) the server would only answer `done{status:"agent"}`, so
+// the bar skips the request and sends every message straight to the chat.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import i18n from '../../../../lib/i18n';
 import { answerArtifactCheck } from '../../../lib/artifactCheck';
-import { restoreArtifactRevision, streamQuickEdit } from '../../../lib/artifactWorkspaceApi';
+import { streamQuickEdit, undoQuickEdit } from '../../../lib/artifactWorkspaceApi';
 
 const tr = (key, vars) => i18n.t(`quickEdit.${key}`, { ns: 'artifacts', ...vars });
 
@@ -37,20 +42,43 @@ export function quickEditChatPrompt(artifact, message) {
   return name ? `${message}\n\n(About the artifact \`${name}\`.)` : message;
 }
 
-// The two refusals a user can act on, in their words. A stale revision carries
-// the current one (same shape as the draft PUT); anything else the server
-// refuses with 409 is an edit or a repair already running on this artifact.
+// The server's refusals, in the user's words. Its 409s name a `reason`; a
+// stale revision has none and carries the current one instead (the draft
+// PUT's shape).
 export function quickEditErrorMessage(error) {
+  const detail = error?.detail && typeof error.detail === 'object' ? error.detail : null;
   if (error?.status === 409) {
-    return error?.detail?.currentRevision ? tr('errors.stale') : tr('errors.busy');
+    if (detail?.currentRevision) return tr('errors.stale');
+    switch (detail?.reason) {
+      case 'files_changed': {
+        const paths = Array.isArray(detail.paths) ? detail.paths.filter(Boolean) : [];
+        return paths.length
+          ? tr('errors.filesChangedNamed', { paths: paths.slice(0, 3).join(', ') })
+          : tr('errors.filesChanged');
+      }
+      case 'already_undone':
+        return tr('errors.alreadyUndone');
+      case 'repair_pending':
+        return tr('errors.repairPending');
+      default:
+        return tr('errors.busy');
+    }
   }
   return error?.message || tr('errors.failed');
+}
+
+function undoErrorMessage(error) {
+  // Only the last few undos are kept; an older one answers 404.
+  if (error?.status === 404) return tr('errors.undoGone');
+  return quickEditErrorMessage(error);
 }
 
 /**
  * @param {object} artifact
  * @param {object} opts
  * @param {boolean} opts.enabled  The bar is shown (canQuickEdit, the user can edit).
+ * @param {boolean} [opts.direct]  The server can edit directly (quickEditDirect);
+ *   false sends every message to the chat.
  * @param {string | null} opts.headRevisionId  The draft revision on screen.
  * @param {() => Promise<string | null>} opts.resolveConversation  The chat the
  *   artifact belongs to, or null; the server notes an applied edit there.
@@ -62,6 +90,7 @@ export function quickEditErrorMessage(error) {
  */
 export function useQuickEdit(artifact, {
   enabled,
+  direct = true,
   headRevisionId,
   resolveConversation,
   continueInChat,
@@ -85,7 +114,9 @@ export function useQuickEdit(artifact, {
   // Aborting the request closes the stream; the server keeps or undoes the
   // edit on its own.
   useEffect(() => {
-    setMessages([]);
+    // Same state back when there is nothing to clear: a closed viewer mounted
+    // in every chat must not render again for nothing.
+    setMessages((prev) => (prev.length ? [] : prev));
     setRunning(false);
     return () => {
       controllerRef.current?.abort();
@@ -139,7 +170,8 @@ export function useQuickEdit(artifact, {
             state: 'applied',
             summary,
             revisionId: done.revisionId || null,
-            previousRevisionId: done.previousRevisionId || null,
+            editId: typeof done.editId === 'string' && done.editId ? done.editId : null,
+            undoable: done.undoable === true && !!done.editId,
           });
           await depsRef.current.onApplied?.();
           break;
@@ -159,6 +191,18 @@ export function useQuickEdit(artifact, {
     };
 
     let settling = null;
+    // Chat only: nothing for the server to route, so no route or stages.
+    if (!direct && !forceRoute) {
+      try {
+        await handOff('');
+      } finally {
+        if (controllerRef.current === controller) {
+          controllerRef.current = null;
+          setRunning(false);
+        }
+      }
+      return true;
+    }
     try {
       let conversationId = null;
       try {
@@ -179,7 +223,10 @@ export function useQuickEdit(artifact, {
           if (!live()) return;
           switch (event?.type) {
             case 'route':
-              patchReply(replyId, { route: event.route === 'agent' ? 'agent' : 'edit' });
+              patchReply(replyId, {
+                route: event.route === 'agent' ? 'agent' : 'edit',
+                routeReason: typeof event.reason === 'string' ? event.reason : null,
+              });
               break;
             case 'progress':
               patchReply(replyId, { stage: typeof event.stage === 'string' ? event.stage : null });
@@ -217,7 +264,7 @@ export function useQuickEdit(artifact, {
       }
     }
     return true;
-  }, [artifact, patchReply]);
+  }, [artifact, direct, patchReply]);
 
   const send = useCallback((text) => run(text), [run]);
 
@@ -229,26 +276,26 @@ export function useQuickEdit(artifact, {
     return run(reply.request, { forceRoute: 'agent' });
   }, [run]);
 
-  // Undo restores the revision the edit started from, through the same
-  // restore the revision history uses. Offered for the newest edit only:
-  // restoring an older one would also drop every change made after it.
+  // Undo puts back every file the edit changed and removes those it created
+  // (POST .../quick-edits/{editId}/undo). The server refuses it once a file
+  // was changed again, so it is offered for the newest edit only.
   const undo = useCallback(async (replyId) => {
     const reply = messagesRef.current.find((m) => m.id === replyId);
-    if (!reply?.previousRevisionId || controllerRef.current) return false;
+    if (!reply?.undoable || !reply.editId || controllerRef.current) return false;
     patchReply(replyId, { undoing: true, undoError: '' });
     try {
-      const restored = await restoreArtifactRevision(
-        artifact,
-        reply.previousRevisionId,
-        headRef.current || reply.revisionId,
-      );
-      if (restored?.revision?.id) headRef.current = restored.revision.id;
+      const undone = await undoQuickEdit(artifact, reply.editId, {
+        expectedRevisionId: reply.revisionId || null,
+      });
+      if (undone?.revision?.id) headRef.current = undone.revision.id;
       patchReply(replyId, { undoing: false, undone: true });
       await depsRef.current.onApplied?.();
       return true;
     } catch (error) {
       if (error?.status === 409 && error?.detail?.currentRevision) depsRef.current.onStale?.();
-      patchReply(replyId, { undoing: false, undoError: quickEditErrorMessage(error) });
+      // Nothing left to undo here: say why and stop offering it.
+      const settled = error?.status === 404 || error?.detail?.reason === 'already_undone';
+      patchReply(replyId, { undoing: false, undoError: undoErrorMessage(error), ...(settled ? { undoable: false } : {}) });
       return false;
     }
   }, [artifact, patchReply]);
@@ -259,11 +306,11 @@ export function useQuickEdit(artifact, {
     setRunning(false);
   }, []);
 
-  // The newest applied edit that is still the head is the one Undo is for.
-  const undoableId = [...messages].reverse()
-    .find((m) => m.state === 'applied' && !m.undone)?.id || null;
+  // Undo is for the newest applied edit, when the server kept its undo.
+  const newestApplied = [...messages].reverse().find((m) => m.state === 'applied' && !m.undone);
+  const undoableId = newestApplied?.undoable ? newestApplied.id : null;
 
-  return { messages, running, send, askAgent, undo, undoableId, cancel };
+  return { messages, running, direct, send, askAgent, undo, undoableId, cancel };
 }
 
 export default useQuickEdit;

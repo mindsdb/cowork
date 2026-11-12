@@ -668,7 +668,13 @@
       "busy": "Otro cambio en este artefacto sigue en curso. Inténtalo de nuevo cuando termine.",
       "failed": "No se pudo hacer el cambio.",
       "stopped": "El cambio se detuvo antes de terminar.",
-      "chatFailed": "No se pudo continuar en el chat. Inténtalo de nuevo desde el chat."
-    }
+      "chatFailed": "No se pudo continuar en el chat. Inténtalo de nuevo desde el chat.",
+      "filesChanged": "Los archivos de este cambio se modificaron de nuevo después, así que no se puede deshacer aquí.",
+      "filesChangedNamed": "{paths} cambió de nuevo después, así que este cambio no se puede deshacer aquí.",
+      "alreadyUndone": "Este cambio ya se deshizo.",
+      "repairPending": "Una sugerencia del agente para este artefacto espera tu decisión. Acéptala o descártala primero.",
+      "undoGone": "Este cambio ya no se puede deshacer aquí. Usa el historial para volver atrás."
+    },
+    "placeholderChat": "Pregunta sobre este artefacto o cámbialo…"
   }
 }

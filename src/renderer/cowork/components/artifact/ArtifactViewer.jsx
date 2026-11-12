@@ -854,6 +854,9 @@ export function ArtifactViewer({
     || '';
   const quickEdit = useQuickEdit(artifact, {
     enabled: open && canQuickEdit,
+    // Without a decisions model every message goes to the chat. An older
+    // server that sends no flag edits directly, as it did before the flag.
+    direct: workspace.capabilities?.quickEditDirect !== false,
     headRevisionId: workspace.currentRevision?.id || null,
     resolveConversation: async () => (await resolveArtifactConversation()) || null,
     // Same send the comment repair uses, with a fresh chat as the last resort.

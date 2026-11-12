@@ -67,7 +67,7 @@ const IS_COMMENTS_DOWN = SEARCH_PARAMS.get('comments') === 'down';
 // `?quickEdit=1`: the server offers quick edits (ENG-4227), and the bar's
 // request streams a direct edit that lands as a new revision.
 const QUICK_EDIT_CAPABILITIES = SEARCH_PARAMS.get('quickEdit') === '1' && !(SEARCH_PARAMS.get('role') === 'reviewer' || SEARCH_PARAMS.get('owner') === 'unknown')
-  ? { canQuickEdit: true }
+  ? { canQuickEdit: true, quickEditDirect: SEARCH_PARAMS.get('direct') !== 'off' }
   : {};
 const PROJECT_REF = IS_DESKTOP ? 'local' : '11111111-1111-1111-1111-111111111111';
 const INITIAL_CONTENT = IS_HTML_SLIDES ? HTML_SLIDES : MARKDOWN;
@@ -177,6 +177,13 @@ window.fetch = async (input, init) => {
       currentRevision,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
+  if (url.endsWith('/quick-edits/quick-edit-fixture-1/undo')) {
+    currentContent = INITIAL_CONTENT;
+    currentRevision = { ...REVISION, id: 'rev-undone', number: 6, summary: 'Undid a quick edit' };
+    return new Response(JSON.stringify({
+      editId: 'quick-edit-fixture-1', restored: [ARTIFACT_FILENAME], removed: [], revision: currentRevision,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
   if (url.endsWith(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}/quick-edits`)) {
     const previousRevisionId = currentRevision.id;
     currentContent = IS_HTML_SLIDES
@@ -194,6 +201,8 @@ window.fetch = async (input, init) => {
         previousRevisionId,
         changed: [ARTIFACT_FILENAME],
         check: { status: 'passed', findings: [] },
+        editId: 'quick-edit-fixture-1',
+        undoable: true,
         ms: 4200,
       }],
     ];

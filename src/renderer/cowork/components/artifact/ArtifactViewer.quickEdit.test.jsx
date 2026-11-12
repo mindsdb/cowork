@@ -37,7 +37,7 @@ const workspaceApi = vi.hoisted(() => ({
   loadArtifactDraftDocument: vi.fn(),
   loadArtifactDraftText: vi.fn(),
   streamQuickEdit: vi.fn(),
-  restoreArtifactRevision: vi.fn(),
+  undoQuickEdit: vi.fn(),
 }));
 const answerArtifactCheck = vi.hoisted(() => vi.fn(async () => true));
 
@@ -130,7 +130,8 @@ const plays = (...events) => async (_artifact, _body, { onEvent }) => {
 
 const applied = {
   type: 'done', status: 'applied', summary: 'Made the title blue.',
-  revisionId: 'r2', previousRevisionId: 'r1', changed: ['index.html'], check: null, ms: 900,
+  revisionId: 'r2', previousRevisionId: 'r1', changed: ['index.html'], check: null,
+  editId: 'qe-edit-1', undoable: true, ms: 900,
 };
 
 function renderViewer(props = {}) {
@@ -149,7 +150,7 @@ describe('ArtifactViewer quick edit bar', () => {
       content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
     });
     workspaceApi.streamQuickEdit.mockReset();
-    workspaceApi.restoreArtifactRevision.mockReset();
+    workspaceApi.undoQuickEdit.mockReset();
     answerArtifactCheck.mockClear();
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -221,7 +222,9 @@ describe('ArtifactViewer quick edit bar', () => {
     ask('Make the title blue');
     await within(thread()).findByText('Made the title blue.');
 
-    workspaceApi.streamQuickEdit.mockImplementation(plays({ ...applied, revisionId: 'r3', previousRevisionId: 'r2', summary: 'Made it bigger.' }));
+    workspaceApi.streamQuickEdit.mockImplementation(plays({
+      ...applied, revisionId: 'r3', previousRevisionId: 'r2', editId: 'qe-edit-2', summary: 'Made it bigger.',
+    }));
     ask('Now make it bigger');
     await within(thread()).findByText('Made it bigger.');
 
@@ -235,9 +238,11 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(within(thread()).getAllByRole('button', { name: 'Undo' })).toHaveLength(1);
   });
 
-  it('undoes an applied edit through the revision restore', async () => {
+  it('undoes every file of an applied edit through its undo route', async () => {
     workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
-    workspaceApi.restoreArtifactRevision.mockResolvedValue({ revision: { id: 'r4' }, content: '' });
+    workspaceApi.undoQuickEdit.mockResolvedValue({
+      editId: 'qe-edit-1', restored: ['index.html', 'app.js'], removed: ['chart.js'], revision: { id: 'r4' },
+    });
     renderViewer();
     await screen.findByTitle('Launch brief');
     ask('Make the title blue');
@@ -245,9 +250,56 @@ describe('ArtifactViewer quick edit bar', () => {
     fireEvent.click(await within(thread()).findByRole('button', { name: 'Undo' }));
 
     expect(await within(thread()).findByText('Undone.')).toBeInTheDocument();
-    expect(workspaceApi.restoreArtifactRevision).toHaveBeenCalledWith(artifact, 'r1', 'r2');
+    expect(workspaceApi.undoQuickEdit).toHaveBeenCalledWith(artifact, 'qe-edit-1', { expectedRevisionId: 'r2' });
     expect(workspaceMock.load).toHaveBeenCalledTimes(2);
     expect(within(thread()).queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+
+  it('sends a null expected revision when the edit left the tracked source alone', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(plays({ ...applied, revisionId: null }));
+    workspaceApi.undoQuickEdit.mockResolvedValue({ editId: 'qe-edit-1', restored: ['app.js'], removed: [], revision: null });
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    ask('Fix the button');
+
+    fireEvent.click(await within(thread()).findByRole('button', { name: 'Undo' }));
+
+    await within(thread()).findByText('Undone.');
+    expect(workspaceApi.undoQuickEdit).toHaveBeenCalledWith(artifact, 'qe-edit-1', { expectedRevisionId: null });
+  });
+
+  it('offers no Undo when the server kept none', async () => {
+    workspaceApi.streamQuickEdit.mockImplementation(plays({ ...applied, editId: null, undoable: false }));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+
+    ask('Make the title blue');
+
+    await within(thread()).findByText('Made the title blue.');
+    expect(within(thread()).queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+
+  it.each([
+    [{ status: 409, detail: { message: 'x', reason: 'files_changed', paths: ['app.js', 'style.css'] } },
+      'app.js, style.css changed again since, so this change can\'t be undone here.', false],
+    [{ status: 409, detail: { message: 'x', reason: 'already_undone' } }, 'This change was already undone.', true],
+    [{ status: 409, detail: { message: 'x', reason: 'quick_edit_running' } },
+      'Another change to this artifact is still running.', false],
+    [{ status: 409, detail: { message: 'x', currentRevision: { id: 'r9' } } },
+      'This artifact changed since you opened it.', false],
+    [{ status: 404, detail: 'gone' }, 'This change can no longer be undone here.', true],
+  ])('says why an undo was refused (%#)', async (refusal, text, settled) => {
+    workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+    workspaceApi.undoQuickEdit.mockRejectedValue(Object.assign(new Error('refused'), refusal));
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    ask('Make the title blue');
+
+    fireEvent.click(await within(thread()).findByRole('button', { name: 'Undo' }));
+
+    expect(await within(thread()).findByRole('alert')).toHaveTextContent(text);
+    // Undo stays for a refusal that may pass later, and goes when nothing is left to undo.
+    expect(within(thread()).queryByRole('button', { name: 'Undo' }) === null).toBe(settled);
   });
 
   it('says nothing changed on noop', async () => {
@@ -337,9 +389,47 @@ describe('ArtifactViewer quick edit bar', () => {
     expect(answerArtifactCheck).toHaveBeenCalledWith(request);
   });
 
+  describe('without a decisions model (quickEditDirect false)', () => {
+    beforeEach(() => {
+      workspaceMock.capabilities = { role: 'owner', canEdit: true, canQuickEdit: true, quickEditDirect: false };
+    });
+
+    it('invites questions too, and sends every message straight to the chat', async () => {
+      const onAddressWithAgent = vi.fn(async () => true);
+      renderViewer({ onAddressWithAgent });
+      await screen.findByTitle('Launch brief');
+      expect(bar()).toHaveAttribute('placeholder', 'Ask about or change this artifact…');
+
+      ask('Why is revenue down?');
+
+      await within(thread()).findByText(/Continued in chat\./);
+      expect(workspaceApi.streamQuickEdit).not.toHaveBeenCalled();
+      expect(onAddressWithAgent).toHaveBeenCalledWith({
+        artifact,
+        prompt: 'Why is revenue down?\n\n(About the artifact `launch-brief`.)',
+        conversationId: 'conv-1',
+      });
+    });
+  });
+
+  it('takes a route the server sent with its reason', async () => {
+    const onAddressWithAgent = vi.fn(async () => true);
+    workspaceApi.streamQuickEdit.mockImplementation(plays(
+      { type: 'route', route: 'agent', confidence: 1, ms: 0, reason: 'no_decisions_model' },
+      { type: 'done', status: 'agent', summary: '', editId: null, undoable: false },
+    ));
+    renderViewer({ onAddressWithAgent });
+    await screen.findByTitle('Launch brief');
+
+    ask('Make the title blue');
+
+    await within(thread()).findByText(/Continued in chat\./);
+    expect(onAddressWithAgent).toHaveBeenCalledTimes(1);
+  });
+
   it('turns a 409 into words', async () => {
-    workspaceApi.streamQuickEdit.mockRejectedValueOnce(Object.assign(new Error('RepairAlreadyPending'), {
-      status: 409, detail: 'RepairAlreadyPending',
+    workspaceApi.streamQuickEdit.mockRejectedValueOnce(Object.assign(new Error('running'), {
+      status: 409, detail: { message: 'running', reason: 'quick_edit_running' },
     }));
     renderViewer();
     await screen.findByTitle('Launch brief');
@@ -347,6 +437,12 @@ describe('ArtifactViewer quick edit bar', () => {
 
     expect(await within(thread()).findByRole('alert'))
       .toHaveTextContent('Another change to this artifact is still running.');
+
+    workspaceApi.streamQuickEdit.mockRejectedValueOnce(Object.assign(new Error('pending'), {
+      status: 409, detail: { message: 'pending', reason: 'repair_pending', repairId: 'rp1' },
+    }));
+    ask('Make the title blue');
+    await within(thread()).findByText(/An agent suggestion for this artifact is waiting/);
 
     workspaceApi.streamQuickEdit.mockRejectedValueOnce(Object.assign(new Error('stale'), {
       status: 409, detail: { currentRevision: { id: 'r9' } },
