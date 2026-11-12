@@ -29,7 +29,6 @@ vi.mock('../../api', () => ({
 
 import { fetchBrowseStatus, provisionBrowser, signOutOfBrowserSites } from '../../api';
 import { READ_TIMEOUT_MS } from '../../lib/browseStatus';
-import { getBrowserPrefs, resetBrowserPrefsForTests } from '../../lib/browserPrefs';
 import BrowserSettingsSection, {
   approveStepsHelp,
   DESKTOP_SIGN_INS,
@@ -289,19 +288,31 @@ describe('BrowserSettingsSection', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Shared browser' })).toBeInTheDocument();
   });
 
-  it('approving browser steps is off until the person turns it on, and stays on this device', async () => {
-    window.localStorage.removeItem('cowork.browserSteps');
-    resetBrowserPrefsForTests();
+  it("opens the browser's help on a tap of its info button, since touch has no hover", async () => {
     fetchBrowseStatus.mockResolvedValue(AVAILABLE);
-    renderSection();
+    renderSection({});
+    await screen.findByRole('switch', { name: 'Shared browser' });
+    expect(screen.queryByText('Sign-ins')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Learn what Cowork sees' }));
+    expect(await screen.findByText('Sign-ins')).toBeInTheDocument();
+    expect(screen.getByText('What the model provider sees')).toBeInTheDocument();
+  });
+
+  it('approving browser steps is on until the person turns it off, and is their server-side setting', async () => {
+    fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    const setSetting = vi.fn();
+    renderSection({ browserEnabled: true }, setSetting);
     const toggle = await screen.findByRole('switch', { name: 'Approve browser steps' });
-    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeChecked();
     fireEvent.click(toggle);
-    expect(getBrowserPrefs().askToApprove).toBe(true);
-    expect(JSON.parse(window.localStorage.getItem('cowork.browserSteps'))).toEqual({ askToApprove: true });
+    expect(setSetting).toHaveBeenCalledWith('browserApproveSteps', false);
     expect(screen.getByText(approveStepsHelp('Cowork'))).toBeInTheDocument();
-    resetBrowserPrefsForTests();
-    window.localStorage.removeItem('cowork.browserSteps');
+  });
+
+  it('shows approvals off only when the setting says false', async () => {
+    fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    renderSection({ browserEnabled: true, browserApproveSteps: false });
+    expect(await screen.findByRole('switch', { name: 'Approve browser steps' })).not.toBeChecked();
   });
 
   it.each([

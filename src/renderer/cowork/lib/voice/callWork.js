@@ -9,6 +9,8 @@
 // - `sendForOwnTurn()` sends a request into a task and resolves with the end
 //   of the turn that runs that request, not just the next turn there: a send
 //   that queues behind other work waits for its own queue item's turn.
+// - `askInTask()` is the same for ask_anton in a task that exists: its
+//   `finished` resolves with the answer of the request's own turn.
 
 import { waitForTurnEnd } from './turnEnds';
 
@@ -114,4 +116,21 @@ export async function sendForOwnTurn({ taskId, send, queueWatch, timeoutMs = OWN
   }
   if (sent === false) settle({ content: '', error: 'not sent' });
   return { sent: sent !== false, turn };
+}
+
+/**
+ * ask_anton's send into an existing task (sendForOwnTurn's arguments): in a
+ * task whose turn is running, the request queues and `finished` waits for the
+ * turn that runs it, not the running one. Resolves with `{sent, finished}`,
+ * where `finished` resolves with the answer, or rejects with the turn's error
+ * (`timedOut: true` on the error when the wait gave up).
+ */
+export async function askInTask(args) {
+  const { sent, turn } = await sendForOwnTurn(args);
+  const finished = turn.then(({ content, error, timedOut }) => {
+    if (timedOut) throw Object.assign(new Error('no answer in time'), { timedOut: true });
+    if (error) throw new Error(String(error));
+    return content;
+  });
+  return { sent, finished };
 }

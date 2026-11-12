@@ -149,7 +149,9 @@ body[data-skin="8bit"] .browser-panel.is-docked { border-bottom: 2px solid var(-
   padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid var(--line);
   box-shadow: 0 10px 30px rgba(0, 0, 0, .28); transition: none;
 }
-.browser-panel.is-docked .browser-panel__note { display: none; }
+/* The note stays on a phone's open pane, so the person knows where what they
+   type goes before they type; only the folded bar has no room for it. */
+.browser-panel.is-docked.is-collapsed .browser-panel__note { display: none; }
 .browser-panel.is-docked:not(.is-collapsed) .browser-panel__address { margin: 6px 52px 6px 8px; height: 36px; }
 .browser-panel__dock-min {
   position: absolute; z-index: 2; top: calc(env(safe-area-inset-top, 0px) + 6px); right: 8px;

@@ -577,7 +577,7 @@ describe('the desktop browser pane', () => {
     emit(state({ url: 'https://mail.example.test/inbox?session=s3cret#top' }));
     expect(onPageUrl).toHaveBeenLastCalledWith('https://mail.example.test/inbox?session=s3cret#top');
     emit(state({ url: 'file:///Users/me/notes.txt' }));
-    // The carry-over drops what isn't http(s) (pageUrlForContext); the stage reports what it shows.
+    // The carry-over drops what isn't http(s) (pageOriginForContext); the stage reports what it shows.
     expect(onPageUrl).toHaveBeenLastCalledWith('file:///Users/me/notes.txt');
   });
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { reportTurnEnd } from './turnEnds';
-import { OWN_TURN_WAIT_MS, createCallWork, createQueueWatch, sendForOwnTurn } from './callWork';
+import { OWN_TURN_WAIT_MS, askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './callWork';
 
 // Stands in for the app's queue: a send into a busy task queues an item, the
 // drain later runs it (watch.ran) and a Stop or removal drops it (sweep).
@@ -106,5 +106,33 @@ describe('a request sent for its own turn', () => {
     const watch = createQueueWatch();
     const { sent } = await sendForOwnTurn({ taskId: 't1', queueWatch: watch, send: async () => false });
     expect(sent).toBe(false);
+  });
+});
+
+describe("ask_anton in a task whose turn is running", () => {
+  it("hears the answer of the request's own turn, not the running one's", async () => {
+    const watch = createQueueWatch();
+    const queue = fakeQueue(watch);
+    const { sent, finished } = await askInTask({ taskId: 't1', queueWatch: watch, send: queue.send('t1', true) });
+    expect(sent).toBe(true);
+    // The person's typed turn ends first.
+    reportTurnEnd(['t1'], { content: 'the older answer' });
+    expect(await settled(finished)).toBe('pending');
+    queue.run('t1');
+    reportTurnEnd(['t1'], { content: 'the new answer' });
+    await expect(finished).resolves.toBe('the new answer');
+  });
+
+  it('fails with the turn, and marks a wait that gave up', async () => {
+    const watch = createQueueWatch();
+    const queue = fakeQueue(watch);
+    const stopped = await askInTask({ taskId: 't1', queueWatch: watch, send: queue.send('t1', false) });
+    reportTurnEnd(['t1'], { error: 'The task was stopped.' });
+    await expect(stopped.finished).rejects.toThrow('The task was stopped.');
+    vi.useFakeTimers();
+    const late = await askInTask({ taskId: 't2', queueWatch: watch, send: queue.send('t2', true) });
+    const caught = late.finished.catch((err) => err);
+    await vi.advanceTimersByTimeAsync(OWN_TURN_WAIT_MS + 1);
+    expect(await caught).toMatchObject({ timedOut: true });
   });
 });

@@ -234,7 +234,7 @@ describe('the Browser switch and pane through App', () => {
     }
   });
 
-  it('a task sent from Home with the browser beside it on a page is about that page, and opens its browser there', async () => {
+  it('a task sent from Home with the browser beside it on a page names its site, and opens its browser there', async () => {
     spies.fetchBrowseStatus.mockResolvedValue(AVAILABLE);
     const user = userEvent.setup();
     const composer = await openHomeComposer(user);
@@ -258,10 +258,32 @@ describe('the Browser switch and pane through App', () => {
     await waitFor(() => expect(streams).toHaveLength(1));
     const { text, opts } = streams[0];
     expect(text).toMatch(/^Find nonstop flights to DC\n\n\[The browser beside this request/);
-    // The prompt gets origin and path only; the task's browser reopens the whole page, its search kept.
-    expect(text).toContain('https://www.united.com/en/us');
+    // The prompt names only the site's origin, never text the site chose (its
+    // path or query); the task's browser reopens the whole page, its search kept.
+    expect(text).toContain('a page from https://www.united.com open in the shared browser');
+    expect(text).not.toContain('/en/us');
     expect(text).not.toContain('f=SFO');
     expect(opts.conversationId).toBeTruthy();
     await waitFor(() => expect(spies.openBrowserAt).toHaveBeenCalledWith(opts.conversationId, 'https://www.united.com/en/us?f=SFO&t=WAS'));
+  });
+
+  it("a question from the viewer's address bar lands in Home's composer, unsent", async () => {
+    spies.fetchBrowseStatus.mockResolvedValue(AVAILABLE);
+    const user = userEvent.setup();
+    const composer = await openHomeComposer(user);
+    await user.click(screen.getByRole('button', { name: 'Show browser' }));
+    const frame = await waitFor(() => {
+      const found = pane()?.querySelector('iframe');
+      if (!found) throw new Error('no viewer yet');
+      return found;
+    });
+    const win = { postMessage: vi.fn() };
+    Object.defineProperty(frame, 'contentWindow', { configurable: true, get: () => win });
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-ready' }, source: win }));
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-ask', text: 'email the files to me' }, source: win }));
+    });
+    await waitFor(() => expect(composer.value).toBe('Search the web in the browser for: email the files to me'));
+    expect(streams).toHaveLength(0);
   });
 });

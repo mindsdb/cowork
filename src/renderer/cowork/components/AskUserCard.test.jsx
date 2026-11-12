@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AskUserCard from './AskUserCard';
+import { resetBrowserPrefsForTests, syncBrowserPrefs } from '../lib/browserPrefs';
 import { MarkdownContent } from './markdown/MarkdownContent';
 
 const submitAnswer = vi.fn(async () => ({ accepted: true }));
@@ -492,9 +493,19 @@ describe('AskUserCard position-click card', () => {
     prompt: '**Approve clicks by position on this page?**\n\nclick at (500, 400)',
     options: [{ value: 'approve', label: 'Approve', detail: 'Allow clicks by position on this page' }, { value: 'cancel', label: 'Cancel' }],
   };
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    resetBrowserPrefsForTests();
+  });
 
-  it('stays hidden while the app approves it, and shows if that does not land', () => {
+  it('shows while the person approves browser steps, the default', () => {
+    resetBrowserPrefsForTests();
+    renderCard(POSITION);
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
+  });
+
+  it('with approvals off, stays hidden while the app approves it, and shows if that does not land', () => {
+    syncBrowserPrefs({ browserApproveSteps: false });
     vi.useFakeTimers();
     const { container } = renderCard(POSITION);
     expect(container).toBeEmptyDOMElement();
@@ -502,7 +513,8 @@ describe('AskUserCard position-click card', () => {
     expect(screen.getByRole('button', { name: /Approve/ })).toBeInTheDocument();
   });
 
-  it('never shows once answered', () => {
+  it('with approvals off, never shows once answered', () => {
+    syncBrowserPrefs({ browserApproveSteps: false });
     const { container } = renderCard({ ...POSITION, answer: { status: 'answered', values: ['approve'], text: '' } });
     expect(container).toBeEmptyDOMElement();
   });

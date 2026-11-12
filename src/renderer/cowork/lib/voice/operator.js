@@ -64,8 +64,9 @@ export function describeScreen({
   } else {
     lines.push('On screen: Home. A request for work starts a new task.');
   }
-  // The browser beside Home or a project: a new task from here is about its page, and takes it along.
-  if (browserPage) lines.push(`The browser beside the page is open on ${browserPage}: a request for work is about it.`);
+  // The browser beside Home or a project: a new task from here takes its page
+  // along. Only the site's origin, never text the site chose.
+  if (browserPage) lines.push(`The browser beside the page is open on a page from ${browserPage}; a new task from here opens it too.`);
   const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
   if (callTask) lines.push(`The task this call last gave Anton work in: "${callTask.title || 'Untitled'}" (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}.`);
   if (working) {

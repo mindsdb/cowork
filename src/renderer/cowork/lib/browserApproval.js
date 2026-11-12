@@ -13,7 +13,7 @@
    directly. */
 
 import { diagnostic } from '../../../shared/diagnostics';
-import { approveBrowserStep, declineBrowserStep } from '../api';
+import { approveBrowserStep, declineBrowserStep, readBrowserApproveSteps } from '../api';
 import { getBrowserPrefs } from './browserPrefs';
 import i18n from '../../lib/i18n';
 
@@ -102,12 +102,12 @@ export async function declineBrowserApproval(ids, decline = declineBrowserStep) 
 }
 
 /* Clicks by position: the agent's browser asks once per page before it
-   clicks at a point its element list doesn't name. That card is only noise
-   for the person (the point is on the page the agent is already working on),
-   so the app approves it itself and never shows it. A step that commits
-   something (a purchase, a message, a deletion) keeps its card only when the
-   person asked to approve browser steps (Settings > Shared browser); that is
-   off by default, and the app approves those too (isAutoApprovedCard). */
+   clicks at a point its element list doesn't name. On the desktop, whose
+   browser holds nothing, that card is the only gate on such a click, Place
+   order included. So it shows, like a step that commits something (a
+   purchase, a message, a deletion), while the person approves browser steps
+   (Settings > Shared browser, on by default); with that off, the app
+   approves both itself and never shows them (isAutoApprovedCard). */
 export const POSITION_APPROVE_DETAIL = 'Allow clicks by position on this page';
 
 /* How long a position card waits on the automatic approval before it shows,
@@ -146,15 +146,17 @@ export function isBrowserStepCard(data) {
 
 /**
  * Whether the app approves this card for the person and keeps it out of
- * sight: clicks by position always; any held browser step unless the person
- * asked to approve steps themselves (Settings > Shared browser).
+ * sight: a click by position or a held browser step, only once the person
+ * turned Approve browser steps off (Settings > Shared browser). While they
+ * approve steps, the default, every such card shows.
  *
  * @param {Parameters<typeof isBrowserStepCard>[0]} data
  * @param {{ askToApprove?: boolean }} [prefs]
  * @returns {boolean}
  */
 export function isAutoApprovedCard(data, prefs = getBrowserPrefs()) {
-  return isPositionClickCard(data) || (!prefs.askToApprove && isBrowserStepCard(data));
+  if (prefs.askToApprove !== false) return false;
+  return isPositionClickCard(data) || isBrowserStepCard(data);
 }
 
 /**
@@ -180,4 +182,20 @@ export async function autoApprovePositionClick({ conversationIds, questionId, is
     return result?.status !== 'error' && result?.status !== 'rejected';
   }
   return false;
+}
+
+/**
+ * Approves a card for the person (autoApprovePositionClick) only once the
+ * server confirms they turned Approve browser steps off: a choice made on
+ * another device since this tab read settings counts at once, and a setting
+ * that can't be read leaves the card to the person.
+ *
+ * @param {Parameters<typeof autoApprovePositionClick>[0] & { readAsks?: typeof readBrowserApproveSteps }} args
+ * @returns {Promise<'approved' | 'failed' | 'asks' | 'unread'>}
+ */
+export async function approveIfApprovalsOff({ readAsks = readBrowserApproveSteps, ...args }) {
+  const asks = await readAsks();
+  if (asks === null) return 'unread';
+  if (asks) return 'asks';
+  return (await autoApprovePositionClick(args)) ? 'approved' : 'failed';
 }

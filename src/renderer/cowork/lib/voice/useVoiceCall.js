@@ -10,8 +10,8 @@
 // - `onAsk(request)` sends it to Anton the way a typed message goes and
 //   resolves with Anton's answer, which goes back as `session.commentary.append`
 //   for GPT-Live to say (its 500-token limit: forTheAvatar trims it).
-// - Hang-up sends `session.close` and waits briefly for `session.closed`, so
-//   the session ends and its usage is final.
+// - Hang-up stops the microphone at once, then sends `session.close` and waits
+//   briefly for `session.closed`, so the session ends and its usage is final.
 // - `meters` holds an AnalyserNode for each voice ({agent, user}), for the
 //   card's sound waves. Listening only: the audio element plays the voice.
 // - A session's voice is fixed when it starts, so `switchVoice` hangs up at
@@ -158,6 +158,10 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     setLingering(false);
     analyzingRef.current = false;
     setAnalyzing(false);
+    // A request still out belongs to the call that is going: the next call
+    // starts with no work, so its idle stop isn't held off for good.
+    workingRef.current = false;
+    setWorking(false);
     if (!current) return;
     current.microphone?.getTracks().forEach((t) => t.stop());
     try { current.channel?.close(); } catch { /* already closed */ }
@@ -335,6 +339,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     setPreviewing(kind === 'preview');
     setCaptions({ user: '', agent: '', last: null });
     setWorking(false);
+    workingRef.current = false;
     setMicOn(kind !== 'preview' && kind !== 'callBack');
     heard.current = { pending: '', lastTurn: '' };
     let mine = null;
@@ -413,6 +418,9 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     setPhase('ending');
     const ending = call.current;
     ending.ending = true;
+    // The microphone goes off now, not when the session confirms it closed.
+    ending.microphone?.getTracks().forEach((t) => t.stop());
+    setMicOn(false);
     if (send({ type: 'session.close' })) {
       // session.closed cleans up; this is the backstop, for this call only: a
       // call started since (a call-back) is not this one's to end.

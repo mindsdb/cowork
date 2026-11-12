@@ -2449,6 +2449,7 @@ export default function ChatView({
           onControl={onBrowserControl}
           taskKey={task.id}
           onSend={onSend ? (text) => onSend(text) : undefined}
+          onDraft={(text) => setComposerPrefill((prev) => ({ text, bump: (prev?.bump || 0) + 1, append: true }))}
           onOpenUrl={openUrlInTask}
         />
       )}

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -39,5 +41,13 @@ describe('BrowserFrame expanded on a phone', () => {
     expect(screen.queryByText('Browser')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Minimize browser' }));
     expect(onToggle).toHaveBeenCalled();
+  });
+});
+
+describe("the pane's privacy note on a phone", () => {
+  const css = readFileSync(resolve(__dirname, 'browser-panel.css'), 'utf8');
+  it('stays on the open pane, and folds away only with the bar', () => {
+    expect(css).not.toMatch(/\.browser-panel\.is-docked \.browser-panel__note\s*\{\s*display:\s*none/);
+    expect(css).toMatch(/\.browser-panel\.is-docked\.is-collapsed \.browser-panel__note\s*\{\s*display:\s*none/);
   });
 });

@@ -221,13 +221,12 @@ export function typedUrl(raw) {
   }
 }
 
-/* A page's address as the app passes it on (a task sent beside the browser,
-   the voice call's view of the screen): http or https only, its origin and
-   path, without the query or fragment, which can carry tokens, and capped.
-   '' for anything else. */
-export const PAGE_URL_MAX_CHARS = 300;
-
-export function pageUrlForContext(raw) {
+/* A page as the app names it in a prompt (a task sent beside the browser,
+   the voice call's view of the screen): only its origin, for http or https.
+   The path, query and fragment are the site's to choose (a redirect can
+   write a whole instruction into a path) and can carry tokens, so they never
+   go into what the agent reads as the person's request. '' for anything else. */
+export function pageOriginForContext(raw) {
   let url;
   try {
     url = new URL(String(raw || ''));
@@ -235,7 +234,7 @@ export function pageUrlForContext(raw) {
     return '';
   }
   if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname) return '';
-  return `${url.origin}${url.pathname}`.slice(0, PAGE_URL_MAX_CHARS);
+  return url.origin;
 }
 
 /* The desktop browser's session for a task: anton's own name for it

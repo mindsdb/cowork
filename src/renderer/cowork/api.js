@@ -1901,6 +1901,18 @@ async function readSettings({ validate = true } = {}) {
   return result;
 }
 
+/* The person's Approve browser steps setting as the server holds it now
+   (browser_approve_steps), read just before the app approves a held browser
+   step for them, so a choice made on another device counts at once: false
+   when they turned approvals off, true otherwise, null when it can't be read. */
+export async function readBrowserApproveSteps() {
+  try {
+    return transformSettingsRows(await req('/settings/')).browserApproveSteps !== false;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchSettings() {
   const op = _settingsLock.then(async () => {
     try {
@@ -3073,14 +3085,14 @@ export function browserClientHints() {
  * @returns {Promise<BrowseStatus>}
  */
 // ─── Voice calls (prototype) ─────────────────────────────────────────────────
-/* Whether this deployment's MindsHub Inference serves live voice. Any failure
-   reads as no. */
+/* Whether this deployment's MindsHub Inference serves live voice. A failed
+   read reads as no, with `failed: true`, so the caller can ask again. */
 export async function fetchVoiceStatus() {
   try {
     const status = await req('/voice/status', { timeoutMs: 15_000, headers: await hubHeaders() });
     return { available: !!status?.available };
   } catch {
-    return { available: false };
+    return { available: false, failed: true };
   }
 }
 

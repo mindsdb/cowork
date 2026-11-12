@@ -38,9 +38,16 @@ describe('favicon settings translation', () => {
 });
 
 describe('shared browser settings', () => {
-  it('maps only the switch', () => {
+  it('maps only the switch and the approvals choice', () => {
     const browserKeys = Object.keys(SETTINGS_KEY_MAP).filter((key) => key.startsWith('browser_'));
-    expect(browserKeys).toEqual(['browser_enabled']);
+    expect(browserKeys).toEqual(['browser_enabled', 'browser_approve_steps']);
+  });
+
+  it('round-trips Approve browser steps as a server setting', () => {
+    expect(transformSettingsRows([{ key: 'browser_approve_steps', value: 'false' }]).browserApproveSteps).toBe(false);
+    expect(transformSettingsRows([{ key: 'browser_approve_steps', value: 'True' }]).browserApproveSteps).toBe(true);
+    expect(diffSettingsForWrite({ browserApproveSteps: false }, { browserApproveSteps: true }))
+      .toEqual({ browser_approve_steps: 'false' });
   });
 
   it('reads no server address, key, proxy switch or city from the settings rows', () => {

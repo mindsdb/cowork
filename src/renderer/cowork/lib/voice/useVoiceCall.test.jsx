@@ -203,6 +203,39 @@ describe('a voice call', () => {
     expect(track.stop).toHaveBeenCalled();
   });
 
+  it('stops the microphone the moment the person hangs up, before the session confirms', async () => {
+    track.stop.mockClear();
+    const { result } = await started({ onAsk: vi.fn(), context: () => '' });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    await act(() => result.current.end());
+    expect(result.current.phase).toBe('ending');
+    expect(track.stop).toHaveBeenCalled();
+    expect(result.current.micOn).toBe(false);
+  });
+
+  it('a call hung up while Anton works leaves the next call free to go quiet and end', async () => {
+    let answer;
+    const onAsk = vi.fn(() => new Promise((resolve) => { answer = resolve; }));
+    const { result } = await started({ onAsk, context: () => '' });
+    act(() => {
+      peer.channel.emit({ type: 'session.started' });
+      peer.channel.emit({ type: 'session.input_transcript.delta', delta: 'Build the report.' });
+      peer.channel.emit({ type: 'session.delegation.created', delegation: { id: 'item_9', target: 'client' } });
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    expect(result.current.working).toBe(true);
+    await act(() => result.current.end());
+    act(() => peer.channel.emit({ type: 'session.closed', reason: 'client_requested' }));
+    expect(result.current.working).toBe(false);
+
+    await act(() => result.current.start());
+    const next = peer;
+    act(() => next.channel.emit({ type: 'session.started' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(IDLE_MS + LINGER_MS + 2_000); });
+    expect(next.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+    answer('Done.');
+  });
+
   it('mutes by turning the microphone track off', async () => {
     const { result } = await started({ onAsk: vi.fn(), context: () => '' });
     act(() => result.current.toggleMic());

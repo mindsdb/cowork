@@ -83,7 +83,8 @@ export function splitTurnSegments(steps, { startedAt = null, endedAt = null, con
   };
   let current = { kind: 'steps', key: 'seg-0', steps: [], startedAt };
   for (const step of list) {
-    // An answered position card was the app's own approval: nothing to show.
+    // With approvals off, an answered position card or held step was the
+    // app's own approval: nothing to show.
     if (isQuestion(step) && step.data?.answer && isAutoApprovedCard(step.data)) continue;
     if (!isQuestion(step) && !isMessage(step) && !isAddon(step)) {
       current.steps.push(step);
