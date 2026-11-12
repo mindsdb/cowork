@@ -486,7 +486,7 @@ describe('self-review: whose add-on, and never losing or doubling one (ENG-4194)
     await emit({ type: 'response.addon', addon_id: 'ad7', local_key: localKey, state: 'added', text: 'also Q3', decided_by: 'jev' });
 
     await waitFor(() => expect(screen.queryByTestId('queued-chip')).toBeNull());
-    expect(addonRow()).toHaveAttribute('data-addon-state', 'added');
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'added'));
   });
 
   it('keeps the reserved slot while the verdict is out, then pauses it in place', async () => {
@@ -633,5 +633,68 @@ describe('self-review: whose add-on, and never losing or doubling one (ENG-4194)
 
     expect(await screen.findByText('Anton could not take it now. It stays in the queue.')).toBeInTheDocument();
     expect(trackAddonOverridden).toHaveBeenCalledWith('to_task', 'busy');
+  });
+});
+
+describe('a message the server queued after the task had already taken it (ENG-4194)', () => {
+  const queuedThenEvent = async (user, verdict) => {
+    const composer = await startTurn(user);
+    spies.sendAddon.mockImplementation(async () => verdict);
+    await send(user, composer, 'use the sales DB');
+    await screen.findByLabelText('Remove from queue');
+    return spies.sendAddon.mock.calls[0][2].localKey;
+  };
+
+  it.each([
+    ['queued normally', { status: 'queued', reason: 'too_many' }],
+    ['paused, unconfirmed', { status: 'timeout' }],
+  ])('a read removes the queued copy (%s) and shows the row as read', async (_case, verdict) => {
+    const user = userEvent.setup();
+    const localKey = await queuedThenEvent(user, verdict);
+
+    await emit({ type: 'response.addon', addon_id: 'ad5', local_key: localKey, state: 'read', text: 'use the sales DB', decided_by: 'jev' });
+
+    await waitFor(() => expect(screen.queryByLabelText('Remove from queue')).toBeNull());
+    expect(addonRow()).toHaveAttribute('data-addon-state', 'read');
+    expect(screen.getByText('Read by Anton')).toBeInTheDocument();
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a read that beats the "queued" answer does not let it back into the queue', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    const verdict = deferred();
+    spies.sendAddon.mockImplementation(() => verdict.promise);
+    await send(user, composer, 'use the sales DB');
+    const { localKey } = spies.sendAddon.mock.calls[0][2];
+
+    await emit({ type: 'response.addon', addon_id: 'ad5', local_key: localKey, state: 'read', text: 'use the sales DB' });
+    await act(async () => { verdict.resolve({ status: 'queued', reason: 'busy' }); await verdict.promise; });
+
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'read'));
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a withdrawn leaves the queued copy alone and shows "Moved to queue"', async () => {
+    const user = userEvent.setup();
+    const localKey = await queuedThenEvent(user, { status: 'queued', reason: 'too_many' });
+
+    await emit({ type: 'response.addon', addon_id: 'ad5', local_key: localKey, state: 'withdrawn', text: 'use the sales DB' });
+
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'withdrawn'));
+    expect(screen.getByText('Moved to queue')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Remove from queue')).toHaveLength(1);
+  });
+
+  it('an added alone does not remove a normally queued copy', async () => {
+    const user = userEvent.setup();
+    const localKey = await queuedThenEvent(user, { status: 'queued', reason: 'too_many' });
+
+    await emit({ type: 'response.addon', addon_id: 'ad5', local_key: localKey, state: 'added', text: 'use the sales DB' });
+
+    expect(screen.getAllByLabelText('Remove from queue')).toHaveLength(1);
   });
 });

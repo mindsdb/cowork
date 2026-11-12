@@ -1315,12 +1315,21 @@ function AppCore() {
   const settledSlot = (reason) => ({
     addonPending: false, addonOffer: false, paused: false, unconfirmed: false, queuedReason: reason,
   });
-  const confirmUnclearAddons = (taskIds, steps) => {
+  // A queued copy of one of this client's add-ons that the running task took
+  // after all must not run again. `read` is proof: the server may answer
+  // "queued" for a message it had already handed the task, then drop the late
+  // `added` but relay `read` — so a read removes the copy, normal or paused.
+  // `added` alone only settles a paused (unconfirmed) copy; `withdrawn` leaves
+  // the copy where it is.
+  const reconcileQueuedAddons = (taskIds, steps) => {
     for (const tid of taskIds.filter(Boolean)) {
       for (const q of messageQueueRef.current[tid] || []) {
-        if (!q.unconfirmed || !q.addonLocalKey) continue;
+        // A slot still waiting on its request counts too: a `read` before the
+        // answer means a later "queued" must not put it back.
+        if (!q.addonLocalKey) continue;
         const shown = steps.find((s) => s?.badge === 'Addon' && s.data?.local_key === q.addonLocalKey);
-        if (shown && (shown.data.state === 'added' || shown.data.state === 'read')) removeFromQueue(tid, q.id);
+        const state = shown?.data?.state;
+        if (state === 'read' || (state === 'added' && q.unconfirmed && !q.addonPending)) removeFromQueue(tid, q.id);
       }
     }
   };
@@ -1365,9 +1374,9 @@ function AppCore() {
         if (reason === 'returned') noteAddon(() => trackAddonQueued('returned'));
       });
     }
-    // A paused add-on the stream now shows as added or read was added after
-    // all: it must not run again from the queue.
-    confirmUnclearAddons(taskIds, steps);
+    // A queued add-on the stream shows the task took after all must not run
+    // again from the queue.
+    reconcileQueuedAddons(taskIds, steps);
     const plan = planQueueDrain(
       steps,
       taskIds,
