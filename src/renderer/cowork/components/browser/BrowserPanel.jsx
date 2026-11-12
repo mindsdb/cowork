@@ -8,7 +8,7 @@ import { embedBrowser } from '../../api';
 import {
   RELINK_RETRY_MAX_MS, RELINK_RETRY_MS, RELINK_WAIT_MS,
   VIEWER_ASK, VIEWER_CLOSED, VIEWER_CONTROL, VIEWER_FOCUS, VIEWER_LIVE, VIEWER_PAUSE, VIEWER_READY, VIEWER_TICKET, VIEWER_URL,
-  afterViewerClose, browserViewerTheme, viewerLinkFrom,
+  afterViewerClose, browserViewerTheme, linkMayComeLater, viewerLinkFrom,
 } from '../../lib/browserSession';
 import { host } from '../../../platform/host';
 import { BrowserFrame, paneMayTakeFocus } from './BrowserFrame';
@@ -34,9 +34,10 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    gives the pane a MessagePort with its ready message. When that viewer
    reports that its live connection closed, the pane fetches a fresh link
    and hands its ticket over the port, so the frame, its picture and the
-   keyboard stay. A fetch that fails then keeps the frame and runs again on a
-   back-off, and at once when the network comes back, until RELINK_WAIT_MS
-   after the close. The pane reloads the frame with a fresh link only for a
+   keyboard stay. A fetch that fails then and may succeed later
+   (linkMayComeLater) keeps the frame and runs again on a back-off, and at
+   once when the network comes back, until RELINK_WAIT_MS after the close; a
+   refusal, such as a person signed out, shows at once. The pane reloads the frame with a fresh link only for a
    page that gave no port, for a ticket that never goes live, and when that
    wait runs out. It also loads a fresh frame when it opens and when the
    person asks, and, for a page with no port, when the tab becomes visible
@@ -75,8 +76,9 @@ export const STARTING_TIMEOUT_MS = 90_000;
 
 /**
  * One link fetch's outcome: the link, or what the pane says instead. `again`
- * is true for a request that failed, which the back-off may repeat, and false
- * for an answer the pane must not use.
+ * is true for a request that may succeed later (linkMayComeLater), which the
+ * back-off may repeat, and false for a refusal or an answer the pane must
+ * not use.
  *
  * @typedef {{ link: import('../../lib/browserSession').ViewerLink }
  *   | { link: null, failure: string, again: boolean }} LinkFetch
@@ -248,7 +250,7 @@ function WebBrowserStage({
       const link = viewerLinkFrom(await embedBrowser(sessionId), sessionId);
       got = link ? { link } : { link: null, failure: i18n.t('browser.unexpectedAddress', { ns: 'chat' }), again: false };
     } catch (err) {
-      got = { link: null, failure: err?.message || i18n.t('browser.couldNotOpen', { ns: 'chat' }), again: true };
+      got = { link: null, failure: err?.message || i18n.t('browser.couldNotOpen', { ns: 'chat' }), again: linkMayComeLater(err) };
     }
     if (seq !== mintSeq.current) return null;
     if (got.link) armRenewal(got.link.renewAfterMs);

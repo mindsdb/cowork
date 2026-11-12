@@ -196,6 +196,22 @@ export const RELINK_WAIT_MS = 120_000;
 export const RELINK_RETRY_MS = 2_000;
 export const RELINK_RETRY_MAX_MS = 30_000;
 
+/**
+ * Whether a failed POST /browse/embed may succeed if the pane asks again: it
+ * got no HTTP answer, or a timeout (408), a rate limit (429), a browser
+ * service failure the app's server passes on as 424, or a server failure
+ * (5xx). Any other answer, such as 401 for a person signed out or 403 for a
+ * browser turned off, is a refusal the pane shows at once.
+ *
+ * @param {unknown} err  What embedBrowser threw: an api.js RefusalError carries `status`.
+ * @returns {boolean}
+ */
+export function linkMayComeLater(err) {
+  const status = /** @type {{ status?: unknown } | null | undefined} */ (err)?.status;
+  if (typeof status !== 'number') return true;
+  return status === 408 || status === 424 || status === 429 || status >= 500;
+}
+
 /* Close codes the pane reads. 4401: the link lapsed or was spent, or the
    viewer's lease ended; the router's starting page also posts it as its own
    link is about to lapse. 4503: no browser slot is free to start one. 4429:

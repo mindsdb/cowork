@@ -76,8 +76,13 @@ function stopShown() {
   return document.querySelector('.browser-panel__empty');
 }
 
+// The embed request's error for an HTTP answer, as api.js's responseError builds it.
+function embedRefused(status) {
+  return Object.assign(new Error(`API /browse/embed returned ${status}`), { status });
+}
+
 function serviceUnavailable() {
-  return Object.assign(new Error('API /browse/embed returned 503'), { status: 503 });
+  return embedRefused(503);
 }
 
 async function flush() {
@@ -854,6 +859,56 @@ describe('BrowserPanel', () => {
       await act(async () => { window.dispatchEvent(new Event('online')); });
       expect(screen.getByTitle('Shared browser')).toHaveAttribute('src', `${VIEW}4`);
       expect(screen.getByTitle('Shared browser')).not.toBe(reloaded);
+    });
+
+    it.each([401, 403])('says why at once when the link after a close is refused (%s), for a viewer with a port', async (status) => {
+      const { port } = await liveViewer();
+      act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
+      embedBrowser.mockRejectedValue(embedRefused(status));
+      fromViewer(DROP_CLOSED, port);
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTitle('Shared browser')).toBeNull();
+      expect(screen.getByText("The browser isn't reachable")).toBeInTheDocument();
+      expect(screen.getByText(`API /browse/embed returned ${status}`)).toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(RELINK_WAIT_MS); });
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([401, 403])('says why at once when the link after a close is refused (%s), for a frame whose page gave no port', async (status) => {
+      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+      await flush();
+      messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
+      act(() => { vi.advanceTimersByTime(15_000); });
+      embedBrowser.mockRejectedValue(embedRefused(status));
+      messageFrom(frameWindow(), { type: 'browser-viewer-closed', code: 1000 });
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('Starting your browser…')).toBeNull();
+      expect(screen.getByText(`API /browse/embed returned ${status}`)).toBeInTheDocument();
+    });
+
+    it('says why at once when the link is refused as the tab shows again', async () => {
+      await liveViewer();
+      setVisibility('hidden');
+      await act(async () => { vi.advanceTimersByTime(60 * 60_000); });
+      embedBrowser.mockRejectedValue(embedRefused(401));
+      setVisibility('visible');
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('API /browse/embed returned 401')).toBeInTheDocument();
+    });
+
+    it.each([408, 424, 429, 502])('tries a link that failed with %s again on the back-off', async (status) => {
+      const { frame, port } = await liveViewer();
+      act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
+      embedBrowser.mockRejectedValueOnce(embedRefused(status)).mockResolvedValue(link(2));
+      fromViewer(DROP_CLOSED, port);
+      await flush();
+      expect(stopShown()).toBeNull();
+      await act(async () => { vi.advanceTimersByTime(RELINK_RETRY_MS); });
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
     });
 
     it('mints nothing on online while its viewer is live', async () => {

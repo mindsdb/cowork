@@ -25,6 +25,7 @@ import {
   browserViewerTheme,
   conversationUsedBrowser,
   isFramableViewUrl,
+  linkMayComeLater,
   viewerLinkFrom,
   withBrowserStep,
 } from './browserSession';
@@ -224,6 +225,20 @@ describe('afterViewerClose', () => {
   it('names the close codes the router and the viewer send', () => {
     expect([LEASE_CLOSE_CODE, NO_BROWSER_SLOT_CLOSE_CODE, TASK_CAP_CLOSE_CODE]).toEqual([4401, 4503, 4429]);
     expect([VIEWER_READY, VIEWER_CLOSED]).toEqual(['browser-viewer-ready', 'browser-viewer-closed']);
+  });
+});
+
+describe('linkMayComeLater', () => {
+  const refused = (status) => Object.assign(new Error(`API /browse/embed returned ${status}`), { status });
+
+  it('tries again after no answer, a timeout, a rate limit or a server failure', () => {
+    expect(linkMayComeLater(new TypeError('Failed to fetch'))).toBe(true);
+    expect(linkMayComeLater(undefined)).toBe(true);
+    for (const status of [408, 424, 429, 500, 502, 503, 504]) expect(linkMayComeLater(refused(status))).toBe(true);
+  });
+
+  it('takes a refusal as the answer', () => {
+    for (const status of [400, 401, 403, 404, 409, 422]) expect(linkMayComeLater(refused(status))).toBe(false);
   });
 });
 
