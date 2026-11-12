@@ -6608,8 +6608,8 @@ function AppCore() {
         setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
       }
     },
-    // The call starts from the round button where its card shows (VoiceLauncher), not the top bar.
-    callShortcut: null,
+    // On a phone the voice button sits in the top bar, beside the browser's.
+    callShortcut: voiceCallShortcut,
     accountUser: codeAccountUser,
     onShowBrowser: browserSwitchShown ? () => {
       if (route === 'task') setTaskBrowserSignal((n) => n + 1);
@@ -7511,8 +7511,8 @@ function AppCore() {
       )}
 
       {!dockVoiceCall && !callInTaskOnPhone && <VoiceCallWindow call={voiceCall} agentLabel={agentLabel} />}
-      {/* The call starts from a round button where its card shows. */}
-      {!dockVoiceCall && <VoiceLauncher call={voiceCallShortcut} />}
+      {/* The call starts from a round button where its card shows (on a phone, the top bar's). */}
+      {!dockVoiceCall && !isMobile && <VoiceLauncher call={voiceCallShortcut} />}
       {/* Narrow, or off Home and Projects: the browser floats over the page. */}
       {offTaskPane && !dockOffTask && offTaskPane}
 
