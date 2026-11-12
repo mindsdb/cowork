@@ -1999,9 +1999,6 @@ export default function ChatView({
   // project's browsers, and how to go to another task's browser.
   projectTasks = null,
   onOpenTaskBrowser = null,
-  // The top-right call icon (TopShortcuts' `call`): starts a voice call, and
-  // shows one is running; null hides it.
-  callShortcut = null,
   // On a phone: the voice call's card, shown at the top of the chat.
   phoneCallCard = null,
   // On a phone: the voice call itself (useVoiceCall's), for the speaking orb
@@ -2257,7 +2254,11 @@ export default function ChatView({
      the next message, so the live turn's own session stays viewable, and its
      Browser step stays clickable, until that turn ends. */
   const [shownBrowserId, setShownBrowserId] = useState(null);
+  // Bumped by closing the pane and by a task change, so a browser still
+  // opening doesn't show after it, or in another task.
+  const openSeqRef = useRef(0);
   useEffect(() => {
+    openSeqRef.current += 1;
     setShownBrowserId(null);
   }, [task.id]);
   const liveBrowserId = browserSessionIdIn(streamingMsg?.steps);
@@ -2265,8 +2266,14 @@ export default function ChatView({
     if (browserOn && liveBrowserId) setShownBrowserId(liveBrowserId);
   }, [browserOn, liveBrowserId, task.id]);
   const viewable = (sessionId) => !!sessionId && (browserOn || sessionId === liveBrowserId);
+  // A request (a voice call's show_browser) applies once: coming back to the
+  // task later doesn't open the pane again.
+  const appliedBrowserRequestRef = useRef(null);
   useEffect(() => {
-    if (browserRequest?.taskId === task.id && browserRequest.sessionId) setShownBrowserId(browserRequest.sessionId);
+    if (browserRequest?.taskId !== task.id || !browserRequest.sessionId) return;
+    if (appliedBrowserRequestRef.current === browserRequest.at) return;
+    appliedBrowserRequestRef.current = browserRequest.at;
+    setShownBrowserId(browserRequest.sessionId);
   }, [browserRequest, task.id]);
   /* Show browser on the web shows the pane at once: the start page while the
      task's browser opens (`openingBrowser`), then that browser, on the blank
@@ -2304,7 +2311,8 @@ export default function ChatView({
   const [browserHandoff, setBrowserHandoff] = useState(null);
   /* Whether a turn ran while the person held the browser: a turn that ended
      waiting for them can't see Done, so Done carries it on (`onBrowserControl`).
-     A turn still running sees Done itself. */
+     A turn still running sees Done itself, and one the person stopped stays
+     stopped (`stopTurn`). */
   const heldThroughTurnRef = useRef(false);
   const streamingRef = useRef(isStreaming);
   streamingRef.current = isStreaming;
@@ -2322,6 +2330,11 @@ export default function ChatView({
     heldThroughTurnRef.current = false;
     if (waiting && onSend) onSend(BROWSER_DONE_MESSAGE);
   };
+  // Stop: the turn didn't end waiting on the person, so Done carries nothing on.
+  const stopTurn = onStop ? (...args) => {
+    heldThroughTurnRef.current = false;
+    return onStop(...args);
+  } : onStop;
   const askingUser = (streamingMsg?.steps || []).some(
     (s) => s.badge === 'AskUser' && !s.data?.answer && !isPositionClickCard(s.data),
   );
@@ -2368,8 +2381,6 @@ export default function ChatView({
   // no agent: through the server on the web, the app's own browser on the
   // desktop. The real pane then shows it.
   /** `url` null opens the task's browser on a blank tab, where the real pane shows the start page. */
-  // Bumped by closing the pane, so a browser still opening doesn't show after it.
-  const openSeqRef = useRef(0);
   const openUrlInTask = async (url) => {
     const seq = openSeqRef.current;
     let sessionId;
@@ -2391,8 +2402,6 @@ export default function ChatView({
     if (openBrowserSignal) openBrowserFromShortcut();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openBrowserSignal]);
-  // The call icon beside the browser's X, while the browser takes the column.
-  const browserCallIcon = callShortcut ? <TopShortcuts call={callShortcut} /> : null;
   // On the web, the project's browsers beside the pane's X.
   const projectBrowsers = host.isWeb && browserOn && projectTasks ? (
     <ProjectBrowsers
@@ -2402,7 +2411,6 @@ export default function ChatView({
       onOpenTaskBrowser={onOpenTaskBrowser}
     />
   ) : null;
-  const browserActions = projectBrowsers || browserCallIcon ? <>{projectBrowsers}{browserCallIcon}</> : null;
   const openBrowserFromShortcut = () => {
     setBrowserMinimized(false);
     if (viewable(latestBrowserId)) {
@@ -2434,7 +2442,7 @@ export default function ChatView({
           startBlank={openingBrowserOpen || (browserOpen && shownBrowserId === blankOpenedId)}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
           onClose={() => { openSeqRef.current += 1; setOpeningBrowser(false); setShownBrowserId(null); }}
-          extraActions={browserActions}
+          extraActions={projectBrowsers}
           dock={browserDock}
           onControl={onBrowserControl}
           taskKey={task.id}
@@ -2449,8 +2457,7 @@ export default function ChatView({
           browserOn={!!browserOn}
           onSend={onSend ? (text) => onSend(text) : undefined}
           onOpenUrl={openUrlInTask}
-          extraActions={browserCallIcon}
-          onClose={() => setBlankBrowser(false)}
+          onClose={() => { openSeqRef.current += 1; setBlankBrowser(false); }}
           dock={browserDock}
         />
       )}
@@ -2764,14 +2771,13 @@ export default function ChatView({
           </button>
         </Tooltip>)}
 
-        {/* Beside it: the browser and call icons. With the rail open they
-            sit beside its Collapse button instead. */}
+        {/* Beside it: the browser icon. With the rail open it sits beside
+            its Collapse button instead. */}
         {!pane && !(effectiveRailOpen || railOverlayOpen) && (
           <TopShortcuts
             className="chat-top-shortcuts absolute top-3.5 z-10"
             style={{ right: expandShown ? 44 : 14 }}
             onShowBrowser={showBrowserShortcut ? openBrowserFromShortcut : null}
-            call={callShortcut}
           />
         )}
 
@@ -3900,7 +3906,7 @@ export default function ChatView({
             modelReadOnly={false}
             hideMeta
             streaming={isStreaming}
-            onStop={onStop}
+            onStop={stopTurn}
             prefill={composerPrefill}
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
@@ -3956,7 +3962,6 @@ export default function ChatView({
           {!pane && (
             <TopShortcuts
               onShowBrowser={showBrowserShortcut ? openBrowserFromShortcut : null}
-              call={callShortcut}
             />
           )}
           <Tooltip content={t('chatView.header.collapsePanel')}>

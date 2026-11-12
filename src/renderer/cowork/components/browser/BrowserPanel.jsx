@@ -75,21 +75,21 @@ function postTheme(frame) {
   );
 }
 
-/* The web pane's note on where things go and what stays. The view and every
-   key typed in it cross Cloudflare and MindsDB's browser service. The
-   agent's page reads go to the model provider and, with Jev on, to Jev. Sites
-   the person signs in to stay signed in for later tasks. The Jev and sign-in
-   lines are Settings' own, so the two surfaces can't drift. The pane can't
-   tell who holds the browser (the viewer posts only that it is ready or
-   closed), so the sign-in line always shows. */
-/** A tab with nothing in it yet, which the start page covers. */
 // How long the start page takes to fade out once a page opens (browser-panel.css).
 export const START_FADE_MS = 250;
 
+/** A tab with nothing in it yet, which the start page covers. */
 export function isBlankPage(url) {
   return url === 'about:blank' || url === 'chrome://newtab/' || url === 'chrome://new-tab-page/';
 }
 
+/* The web pane's note on where things go and what stays. The view and every
+   key typed in it cross Cloudflare and MindsDB's browser service. The
+   agent's page reads go to the model provider and, with Jev on, to Jev. Sites
+   the person signs in to stay signed in for later tasks. The Jev and sign-in
+   lines are Settings' own, so the two surfaces can't drift. The sign-in line
+   shows whoever holds the browser: the pane hears that from the viewer
+   (browser-viewer-control) only to pass it to the chat. */
 export function webPaneNote(agentLabel) {
   return `${i18n.t('browser.webPaneNote', { ns: 'chat', agent: agentLabel })} ${i18n.t('settingsTools:browser.webJevLine')} ${i18n.t('settingsTools:browser.webSignIns')}`;
 }
@@ -216,7 +216,7 @@ function WebBrowserStage({
         postTheme(frameRef.current);
         return;
       }
-      // Who holds the browser: 'human' when Anton handed it to the person.
+      // The page the viewer shows, for whoever opened the pane.
       if (type === 'browser-viewer-url') {
         const url = String(event.data?.url || '').slice(0, 2048);
         setPageUrl(url);
@@ -229,6 +229,7 @@ function WebBrowserStage({
         if (text) onSendRef.current?.(browserRequestFor(text));
         return;
       }
+      // Who holds the browser: 'human' when Anton handed it to the person.
       if (type === 'browser-viewer-control') {
         onControlRef.current?.(event.data?.holder === 'human' ? 'human' : 'agent', String(event.data?.reason || '').slice(0, 300));
         return;

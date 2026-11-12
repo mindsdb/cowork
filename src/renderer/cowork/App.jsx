@@ -167,7 +167,9 @@ import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
-import { desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId } from './lib/browserSession';
+import {
+  desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageUrlForContext,
+} from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
 import { readBrowseStatus } from './lib/browseStatus';
@@ -777,7 +779,7 @@ function AppCore() {
   // Bumped by closing it, so a browser still opening doesn't show after it.
   const offTaskOpenSeqRef = useRef(0);
   const openOffTaskBrowser = async (url) => {
-    offTaskBrowserIdRef.current ||= offTaskBrowserId(allocateConversationId);
+    offTaskBrowserIdRef.current ||= offTaskBrowserId(allocateConversationId, accountId || '');
     const seq = offTaskOpenSeqRef.current;
     let sessionId;
     if (host.isWeb) {
@@ -1946,7 +1948,13 @@ function AppCore() {
         const id = row.id ?? event?.assistant_message_id;
         // A drop's partial answer goes once the turn is reached again: the
         // reattached stream replays it from the start.
-        return [{ ...row, id, role: 'assistant', streamStatus: 'error', ...(dropped && !id ? { _dropped: true } : {}) }];
+        return [{
+          ...row,
+          id,
+          role: 'assistant',
+          streamStatus: 'error',
+          ...(dropped && !id ? { _dropped: true, _userMessageId: event?.user_message_id ?? null } : {}),
+        }];
       })));
       const configError = isAntonConfigError(message, event);
       const displayError = normalizeAntonError(message, event);
@@ -2921,7 +2929,7 @@ function AppCore() {
         if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
         if (status?.in_flight) {
           if (await reconnectInFlight(cid).catch(() => false)) {
-            settle((t) => ({ ...t, messages: withoutDroppedRows(t.messages) }));
+            settle((t) => ({ ...t, messages: withoutDroppedRows(t.messages, droppedError(t)) }));
             return;
           }
           continue;
@@ -2939,7 +2947,7 @@ function AppCore() {
           return {
             ...t,
             status: hasError ? 'error' : 'idle',
-            messages: mergeMessagePage(withoutDroppedRows(t.messages), loaded.messages, knownIds),
+            messages: mergeMessagePage(withoutDroppedRows(t.messages, droppedError(t)), loaded.messages, knownIds),
             ...reconcilePaginationState(t, loaded),
           };
         });
@@ -3650,6 +3658,8 @@ function AppCore() {
   // on web there is no earlier, pre-mount purge to catch it first the way
   // Electron's main.tsx has.
   const accountId = codeAccountUser?.sub ?? null;
+  // The off-task browser is kept per account: another account (or none) picks its own.
+  useEffect(() => { offTaskBrowserIdRef.current = null; }, [accountId]);
   if (purgedAccountRef.current !== accountId) {
     // `undefined` only on the very first pass, which runs during this
     // component's own render and therefore BEFORE the composer below it has
@@ -4018,11 +4028,11 @@ function AppCore() {
 
   // Send from the home screen — creates a new session
   /* The page the browser beside Home or a project shows, when it is a real
-     page (not its blank start page): what a task sent from there is about. */
+     page (not its blank start page): what a task sent from there is about.
+     Its origin and path only: it goes into the task's context. */
   const carriedBrowserPage = () => {
-    const url = offTaskPageUrlRef.current;
     if (!offTaskBrowserOpen || !(route === 'home' || route === 'projects')) return '';
-    return /^https?:\/\//i.test(url) ? url : '';
+    return pageUrlForContext(offTaskPageUrlRef.current);
   };
   /* The new task's own browser opens at that page, and its view shows it;
      the off-task pane closes, since the task now holds the page. */
@@ -5399,8 +5409,8 @@ function AppCore() {
       void voiceCall.start({ voice: getVoicePrefs().voice });
     }
     : null;
-  // The top-right call icon (TopShortcuts): a click starts a voice call; while
-  // one runs it shows that, and the call's card (in the sidebar) ends it.
+  // The voice call's round button (VoiceLauncher): a click starts a voice
+  // call; while one runs it shows that, and the call's card ends it.
   let voiceCallShortcut = null;
   if (!voiceOffered && voiceCall.phase === 'idle') {
     voiceCallShortcut = null;

@@ -170,23 +170,44 @@ describe('ChatView shared browser pane', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("opens the task's real browser on a blank tab from the Show browser icon, with the call icon by the X", async () => {
-    openBrowserAt.mockResolvedValue({ session_id: 't-abc' });
-    render(
-      <ChatView
-        task={task('p-url', [{ id: 'u1', role: 'user', content: 'Hi' }])}
-        onSend={vi.fn()}
-        browserOn
-        callShortcut={{ label: 'Call Anton', onClick: vi.fn() }}
-      />,
+  it('Done after a turn the person stopped sends nothing: the turn stays stopped', async () => {
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    const { container, rerender } = render(
+      <ChatView task={task('p-stop', [pastTurn[0], liveTurn()])} onSend={onSend} onStop={onStop} browserOn />,
     );
+    await act(async () => {});
+    await control('human');
+    await act(async () => { fireEvent.click(container.querySelector('.send-btn.stop')); });
+    expect(onStop).toHaveBeenCalled();
+    rerender(<ChatView task={task('p-stop', pastTurn)} onSend={onSend} onStop={onStop} browserOn />);
+    await act(async () => {});
+    await control('agent');
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("opens the task's real browser on a blank tab from the Show browser icon", async () => {
+    openBrowserAt.mockResolvedValue({ session_id: 't-abc' });
+    render(<ChatView task={task('p-url', [{ id: 'u1', role: 'user', content: 'Hi' }])} onSend={vi.fn()} browserOn />);
     await act(async () => {});
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
 
     expect(openBrowserAt).toHaveBeenCalledWith('p-url', null);
     expect(embedBrowser).toHaveBeenCalledWith('t-abc');
     expect(screen.queryByRole('textbox', { name: 'Address' })).toBeNull();
-    expect(within(pane()).getByRole('button', { name: 'Call Anton' })).toBeInTheDocument();
+  });
+
+  it('keeps a browser still opening in one task from showing in the next', async () => {
+    let opened;
+    openBrowserAt.mockReturnValue(new Promise((resolve) => { opened = resolve; }));
+    const { rerender } = render(<ChatView task={task('p-a', [{ id: 'u1', role: 'user', content: 'Hi' }])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show browser' })); });
+    rerender(<ChatView task={task('p-b', [{ id: 'u2', role: 'user', content: 'Hello' }])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    await act(async () => { opened({ session_id: 't-a' }); });
+    expect(pane()).toBeNull();
+    expect(embedBrowser).not.toHaveBeenCalled();
   });
 
   it('shows the pane with the start page at once while the browser opens, and keeps it closed if closed meanwhile', async () => {
@@ -226,27 +247,22 @@ describe('ChatView shared browser pane', () => {
     expect(pane()).toBeNull();
   });
 
-  it('opens when a voice call asks to show this task\'s browser, and offers a minimized call back', async () => {
-    const onShowCall = vi.fn();
+  it("opens when a voice call asks to show this task's browser, once: not again on coming back to the task", async () => {
+    const request = { taskId: 'p-call', sessionId: 't-abc', at: 1 };
     const { rerender } = render(<ChatView task={task('p-call', pastTurn)} onSend={vi.fn()} browserOn />);
     await act(async () => {});
-    expect(screen.queryByRole('button', { name: 'Show the call with Anton' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Show browser' })).toBeInTheDocument();
+    expect(pane()).toBeNull();
 
-    rerender(
-      <ChatView
-        task={task('p-call', pastTurn)}
-        onSend={vi.fn()}
-        browserOn
-        browserRequest={{ taskId: 'p-call', sessionId: 't-abc', at: 1 }}
-        callShortcut={{ label: 'Show the call with Anton', onClick: onShowCall, live: true }}
-      />,
-    );
+    rerender(<ChatView task={task('p-call', pastTurn)} onSend={vi.fn()} browserOn browserRequest={request} />);
     await act(async () => {});
     expect(pane()).not.toBeNull();
-    // Beside the browser's X too, while the browser takes the column.
-    fireEvent.click(within(pane()).getByRole('button', { name: 'Show the call with Anton' }));
-    expect(onShowCall).toHaveBeenCalled();
+
+    await act(async () => { fireEvent.click(within(pane()).getByRole('button', { name: 'Close browser' })); });
+    rerender(<ChatView task={task('p-other', pastTurn)} onSend={vi.fn()} browserOn browserRequest={request} />);
+    await act(async () => {});
+    rerender(<ChatView task={task('p-call', pastTurn)} onSend={vi.fn()} browserOn browserRequest={request} />);
+    await act(async () => {});
+    expect(pane()).toBeNull();
   });
 
   it('opens for a past Browser step only when the person clicks it', async () => {

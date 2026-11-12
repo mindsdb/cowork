@@ -105,7 +105,9 @@ export async function declineBrowserApproval(ids, decline = declineBrowserStep) 
    clicks at a point its element list doesn't name. That card is only noise
    for the person (the point is on the page the agent is already working on),
    so the app approves it itself and never shows it. A step that commits
-   something (a purchase, a message, a deletion) keeps its card. */
+   something (a purchase, a message, a deletion) keeps its card only when the
+   person asked to approve browser steps (Settings > Shared browser); that is
+   off by default, and the app approves those too (isAutoApprovedCard). */
 export const POSITION_APPROVE_DETAIL = 'Allow clicks by position on this page';
 
 /* How long a position card waits on the automatic approval before it shows,

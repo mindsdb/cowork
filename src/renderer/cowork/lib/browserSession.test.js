@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   offTaskBrowserId,
+  pageUrlForContext,
+  PAGE_URL_MAX_CHARS,
   BROWSER_BADGE,
   LEASE_CLOSE_CODE,
   NO_BROWSER_SLOT_CLOSE_CODE,
@@ -242,16 +244,42 @@ describe('offTaskBrowserId', () => {
   it('keeps one off-task browser across reloads', () => {
     const storage = memory();
     const allocate = vi.fn().mockReturnValueOnce('11111111-aaaa').mockReturnValueOnce('22222222-bbbb');
-    expect(offTaskBrowserId(allocate, storage)).toBe('11111111-aaaa');
-    expect(offTaskBrowserId(allocate, storage)).toBe('11111111-aaaa');
+    expect(offTaskBrowserId(allocate, '', storage)).toBe('11111111-aaaa');
+    expect(offTaskBrowserId(allocate, '', storage)).toBe('11111111-aaaa');
     expect(allocate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one per signed-in account, so two people on one machine get their own', () => {
+    const storage = memory();
+    const allocate = vi.fn().mockReturnValueOnce('aaaaaaaa-1111').mockReturnValueOnce('bbbbbbbb-2222');
+    expect(offTaskBrowserId(allocate, 'user-a', storage)).toBe('aaaaaaaa-1111');
+    expect(offTaskBrowserId(allocate, 'user-b', storage)).toBe('bbbbbbbb-2222');
+    expect(offTaskBrowserId(allocate, 'user-a', storage)).toBe('aaaaaaaa-1111');
+    expect(allocate).toHaveBeenCalledTimes(2);
   });
 
   it('makes a fresh id when storage is blocked or holds something else', () => {
     const blocked = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
-    expect(offTaskBrowserId(() => 'fresh-id-1', blocked)).toBe('fresh-id-1');
+    expect(offTaskBrowserId(() => 'fresh-id-1', '', blocked)).toBe('fresh-id-1');
     const odd = memory();
     odd.setItem('cowork.offTaskBrowserId', '<script>');
-    expect(offTaskBrowserId(() => 'fresh-id-2', odd)).toBe('fresh-id-2');
+    expect(offTaskBrowserId(() => 'fresh-id-2', '', odd)).toBe('fresh-id-2');
+  });
+});
+
+describe('pageUrlForContext', () => {
+  it('keeps the origin and path of an http(s) page, without the query or fragment', () => {
+    expect(pageUrlForContext('https://mail.example.com/inbox/1?token=s3cret#msg')).toBe('https://mail.example.com/inbox/1');
+    expect(pageUrlForContext('http://localhost:3000/a')).toBe('http://localhost:3000/a');
+    expect(pageUrlForContext('https://user:pw@example.com/x')).toBe('https://example.com/x');
+  });
+
+  it('passes on nothing else, and caps a long one', () => {
+    expect(pageUrlForContext('javascript:alert(1)')).toBe('');
+    expect(pageUrlForContext('file:///etc/passwd')).toBe('');
+    expect(pageUrlForContext('about:blank')).toBe('');
+    expect(pageUrlForContext('not a url')).toBe('');
+    expect(pageUrlForContext(null)).toBe('');
+    expect(pageUrlForContext(`https://example.com/${'a'.repeat(500)}`)).toHaveLength(PAGE_URL_MAX_CHARS);
   });
 });

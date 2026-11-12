@@ -113,8 +113,8 @@ export default function MobileShell({
   theme = 'dark',
   showThemeToggle = true,
   onToggleTheme,
-  // The voice call icon beside the theme toggle (TopShortcuts' `call`:
-  // {label, onClick, live, disabled}); null hides it.
+  // The voice call icon beside the theme toggle ({label, onClick, live,
+  // disabled}, as VoiceLauncher's `call`); null hides it.
   callShortcut = null,
   // The browser icon beside it: opens the task's browser, or the blank one.
   onShowBrowser = null,

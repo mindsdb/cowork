@@ -71,7 +71,7 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
           </div>
           <div className="browser-panel__actions">
             {!collapsed && actions}
-            {/* The app's own icons beside the X: the call icon (TopShortcuts). */}
+            {/* The app's own controls beside the X: the project's browsers. */}
             {!collapsed && extraActions}
             {dock ? (
               <Button

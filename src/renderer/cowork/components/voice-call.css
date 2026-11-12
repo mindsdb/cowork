@@ -102,9 +102,6 @@ body[data-skin="8bit"] .voice-call__dot { border-radius: 0; animation: voice-cal
 @keyframes voice-call-blink { 0% { opacity: 1; } 100% { opacity: 0.2; } }
 body[data-skin="8bit"] .voice-call__text-btn { border-radius: 0; border-width: 2px; border-color: var(--ink); }
 
-/* The top-right call icon while a call runs (TopShortcuts). */
-.top-shortcut--live { color: var(--accent); }
-
 @media (max-width: 639.98px) {
   .voice-call {
     top: calc(env(safe-area-inset-top, 0px) + 52px);

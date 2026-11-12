@@ -10,6 +10,7 @@ import { host } from '../../../platform/host';
 import { useNativeOverlayOpen } from '../../lib/nativeOverlay';
 import { BrowserFrame } from './BrowserFrame';
 import { BlankStartOver } from './BlankBrowserPanel';
+import { pageUrlForContext } from '../../lib/browserSession';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
 /* The desktop pane: the app's own browser, a native view the app's main
@@ -169,11 +170,12 @@ export function LocalBrowserStage({
   const signIn = state?.login ?? null;
   /* A blank tab (no address, nothing loading) gets the start page in the
      view's place, as on the web, so the view stays parked while it shows. */
-  // The page it shows, for whoever opened it (the off-task browser's carry-over).
+  // The page it shows, for whoever opened it (the off-task browser's
+  // carry-over): its origin and path only (pageUrlForContext).
   const onPageUrlRef = useRef(onPageUrl);
   onPageUrlRef.current = onPageUrl;
   const shownUrl = state?.url ?? '';
-  useEffect(() => { onPageUrlRef.current?.(shownUrl); }, [shownUrl]);
+  useEffect(() => { onPageUrlRef.current?.(pageUrlForContext(shownUrl)); }, [shownUrl]);
   const startPage = Boolean(state) && !closed && !signIn && !state.url && !state.loading && Boolean(onSend || onOpenUrl);
   const mayDraw = !overlayOpen && !signIn && !startPage;
   // Whether the view may draw now, for the pane's effect below to read.

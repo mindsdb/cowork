@@ -17,14 +17,25 @@ export function isDroppedStream(event) {
     && typeof event?.http_status !== 'number';
 }
 
-/** The rows a drop left behind (the partial answer and its error), gone once the turn is reached again. */
-export function withoutDroppedRows(messages) {
-  return messages.filter((m) => !m._dropped);
+/**
+ * The rows the drop that left `error` left behind (its turn's partial answer
+ * and the error), gone once that turn is reached again. Another turn's drop
+ * keeps its rows. They share the error's `_userMessageId`; without one, they
+ * are the drop's rows after that turn's user message.
+ */
+export function withoutDroppedRows(messages, error) {
+  const at = messages.indexOf(error);
+  if (at < 0) return messages;
+  const turnStart = messages.findLastIndex((m, i) => i < at && m.role === 'user');
+  const ofTurn = (m, i) => (error._userMessageId
+    ? m._userMessageId === error._userMessageId
+    : i > turnStart && i <= at);
+  return messages.filter((m, i) => !(m._dropped && (m === error || ofTurn(m, i))));
 }
 
-/** The error a drop left on this task, if it is still on screen. */
+/** The latest error a drop left on this task, if it is still on screen. */
 export function droppedError(task) {
-  return task?.messages?.find((m) => m._dropped && m.role === 'error') ?? null;
+  return task?.messages?.findLast((m) => m._dropped && m.role === 'error') ?? null;
 }
 
 /** Stop showing that the app is trying to reconnect, keeping the error. */

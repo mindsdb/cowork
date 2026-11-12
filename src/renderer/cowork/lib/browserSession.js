@@ -221,6 +221,23 @@ export function typedUrl(raw) {
   }
 }
 
+/* A page's address as the app passes it on (a task sent beside the browser,
+   the voice call's view of the screen): http or https only, its origin and
+   path, without the query or fragment, which can carry tokens, and capped.
+   '' for anything else. */
+export const PAGE_URL_MAX_CHARS = 300;
+
+export function pageUrlForContext(raw) {
+  let url;
+  try {
+    url = new URL(String(raw || ''));
+  } catch {
+    return '';
+  }
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname) return '';
+  return `${url.origin}${url.pathname}`.slice(0, PAGE_URL_MAX_CHARS);
+}
+
 /* The desktop browser's session for a task: anton's own name for it
    (cowork-server's task_session with no person, "t-" and 24 hex of
    sha256(":" + conversation id)), so the person and the agent share tabs. */
@@ -232,20 +249,22 @@ export async function desktopTaskSession(conversationId) {
 
 /* The id of the browser Show browser opens off a task (Home, Projects), kept
    in this browser's storage so a reload opens the same one instead of
-   another. The server makes the session from it and the signed-in person, so
-   a second person here gets their own. A fresh id when storage is out. */
+   another. Kept per signed-in account (`account`, its sub): on the desktop
+   the session is named from the id alone, so two people on one machine
+   would otherwise share one browser. A fresh id when storage is out. */
 const OFF_TASK_BROWSER_KEY = 'cowork.offTaskBrowserId';
 
-export function offTaskBrowserId(allocate, storage = globalThis.localStorage) {
+export function offTaskBrowserId(allocate, account = '', storage = globalThis.localStorage) {
+  const key = account ? `${OFF_TASK_BROWSER_KEY}:${encodeURIComponent(account)}` : OFF_TASK_BROWSER_KEY;
   try {
-    const kept = storage?.getItem(OFF_TASK_BROWSER_KEY);
+    const kept = storage?.getItem(key);
     if (kept && /^[A-Za-z0-9_-]{8,128}$/.test(kept)) return kept;
   } catch {
     // Storage blocked: a fresh id for this load.
   }
   const id = allocate();
   try {
-    storage?.setItem(OFF_TASK_BROWSER_KEY, id);
+    storage?.setItem(key, id);
   } catch {
     // Not kept: the next load opens another.
   }
