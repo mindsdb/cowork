@@ -6,7 +6,8 @@ import EmptyState from '../ui/EmptyState';
 import Spinner from '../ui/Spinner';
 import { embedBrowser } from '../../api';
 import {
-  VIEWER_ASK, VIEWER_CLOSED, VIEWER_CONTROL, VIEWER_FOCUS, VIEWER_READY, VIEWER_URL,
+  RELINK_RETRY_MAX_MS, RELINK_RETRY_MS, RELINK_WAIT_MS,
+  VIEWER_ASK, VIEWER_CLOSED, VIEWER_CONTROL, VIEWER_FOCUS, VIEWER_LIVE, VIEWER_READY, VIEWER_TICKET, VIEWER_URL,
   afterViewerClose, browserViewerTheme, viewerLinkFrom,
 } from '../../lib/browserSession';
 import { host } from '../../../platform/host';
@@ -24,12 +25,20 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    below.
 
    The viewer is the browser router's page, framed through a link the pane
-   mints with POST /browse/embed. The router honors a link once, so the pane
-   mints a new one every time it shows the viewer: when it opens, when the tab
-   becomes visible again, when the network comes back, when the person asks,
-   and when the viewer reports that its connection closed. Never on a timer.
-   While the tab is hidden the pane drops the frame, so a browser nobody is
-   watching can go to sleep.
+   fetches with POST /browse/embed. The router honors a link's ticket once.
+   The pane keeps one frame per session. A viewer that takes tickets in place
+   gives the pane a MessagePort with its ready message. When that viewer
+   reports that its live connection closed, the pane fetches a fresh link
+   and hands its ticket over the port, so the frame, its picture and the
+   keyboard stay. A fetch that fails then keeps the frame and runs again on a
+   back-off, and at once when the network comes back, until RELINK_WAIT_MS
+   after the close. The pane reloads the frame with a fresh link only for a
+   page that gave no port, for a ticket that never goes live, and when that
+   wait runs out. It also loads a fresh frame when it opens, when the tab
+   becomes visible again and when the person asks, and, for a page with no
+   port, when the network comes back. No timer fetches a link unless a close
+   started a reconnect. While the tab is hidden the pane drops the frame, so a
+   browser nobody is watching can go to sleep.
 
    The browser may still be starting: until the viewer itself says it is
    ready (a VIEWER_READY postMessage), the pane says so. A frame load alone
@@ -50,6 +59,15 @@ export const STARTING_TIMEOUT_MS = 90_000;
  * sentence under it.
  *
  * @typedef {{ title: string, description: string }} PaneStop
+ */
+
+/**
+ * One link fetch's outcome: the link, or what the pane says instead. `again`
+ * is true for a request that failed, which the back-off may repeat, and false
+ * for an answer the pane must not use.
+ *
+ * @typedef {{ link: import('../../lib/browserSession').ViewerLink }
+ *   | { link: null, failure: string, again: boolean }} LinkFetch
  */
 
 const unreachable = () => i18n.t('browser.unreachable', { ns: 'chat' });
@@ -143,39 +161,121 @@ function WebBrowserStage({
     portRef.current?.close();
     portRef.current = null;
   }, []);
-  /* Bumped by every mint and by hiding the tab, so an answer that arrives
-     after a newer request, or after the tab hid, is dropped. */
+  /* Bumped by every link fetch, by a stop and by hiding the tab, so an
+     answer that arrives after a newer request, a stop or the tab hiding is
+     dropped. */
   const mintSeq = useRef(0);
-  const mintedAt = useRef(0);
+  /* When this connection began, for the close rule: the mint for a frame
+     whose page gave no port, the viewer's last live for one that did. */
+  const sinceRef = useRef(0);
   const quickCloses = useRef(0);
   // Whether the current link's viewer said it is ready, for the close handler.
   const readyRef = useRef(false);
+  // Whether the viewer's current socket is live (VIEWER_LIVE), for a viewer with a port.
+  const liveRef = useRef(false);
+  /* A reconnect after a close: when the close came (null when none is under
+     way), the back-off's count and its timer, and the watchdog that reloads
+     the frame when no live comes within RELINK_WAIT_MS. */
+  const downSinceRef = useRef(/** @type {number | null} */ (null));
+  const retries = useRef(0);
+  const retryTimer = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  const watchdog = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   const frameKey = `${viewUrl}:${generation}`;
 
+  // The reconnect is over: the viewer is live or ready, or the pane stopped, hid or closed.
+  const endReconnect = useCallback(() => {
+    downSinceRef.current = null;
+    retries.current = 0;
+    clearTimeout(retryTimer.current);
+    clearTimeout(watchdog.current);
+    retryTimer.current = null;
+    watchdog.current = null;
+  }, []);
+
+  /* POST /browse/embed for this session's viewer. A fetch replaces any
+     retry the back-off holds. Resolves to null when a newer fetch, a stop or
+     the tab hiding overtook it. */
+  const fetchLink = useCallback(async () => {
+    clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    mintSeq.current += 1;
+    const seq = mintSeq.current;
+    /** @type {LinkFetch} */
+    let got;
+    try {
+      const link = viewerLinkFrom(await embedBrowser(sessionId), sessionId);
+      got = link ? { link } : { link: null, failure: i18n.t('browser.unexpectedAddress', { ns: 'chat' }), again: false };
+    } catch (err) {
+      got = { link: null, failure: err?.message || i18n.t('browser.couldNotOpen', { ns: 'chat' }), again: true };
+    }
+    return seq === mintSeq.current ? got : null;
+  }, [sessionId]);
+
+  /* A fetch that failed during a reconnect runs again on the back-off, with
+     no error and the frame kept, until RELINK_WAIT_MS after the close. Says
+     whether it will. */
+  const retryLater = useCallback((call) => {
+    const since = downSinceRef.current;
+    if (since === null || Date.now() - since >= RELINK_WAIT_MS) return false;
+    const delay = Math.min(RELINK_RETRY_MS * 2 ** retries.current, RELINK_RETRY_MAX_MS);
+    retries.current += 1;
+    retryTimer.current = setTimeout(() => {
+      retryTimer.current = null;
+      void call();
+    }, delay);
+    return true;
+  }, []);
+
+  const showFailure = useCallback((description) => {
+    endReconnect();
+    setError({ title: unreachable(), description });
+  }, [endReconnect]);
+
+  // A new frame, with a fresh link.
   const mint = useCallback(async () => {
     // Still opening: the session comes, and with it the link.
     if (!sessionId) return;
-    mintSeq.current += 1;
-    const seq = mintSeq.current;
     setError(null);
     setViewUrl(null);
-    let link = null;
-    let failure = '';
-    try {
-      link = viewerLinkFrom(await embedBrowser(sessionId), sessionId);
-      if (!link) failure = i18n.t('browser.unexpectedAddress', { ns: 'chat' });
-    } catch (err) {
-      failure = err?.message || i18n.t('browser.couldNotOpen', { ns: 'chat' });
-    }
-    if (seq !== mintSeq.current) return;
-    if (failure) {
-      setError({ title: unreachable(), description: failure });
+    const got = await fetchLink();
+    if (!got) return;
+    if (!got.link) {
+      if (got.again && retryLater(mint)) return;
+      showFailure(got.failure);
       return;
     }
-    mintedAt.current = Date.now();
-    setViewUrl(link.viewUrl);
+    sinceRef.current = Date.now();
+    setViewUrl(got.link.viewUrl);
     setGeneration((g) => g + 1);
-  }, [sessionId]);
+  }, [sessionId, fetchLink, retryLater, showFailure]);
+
+  /* A fresh ticket for the open viewer, handed over its port: the frame, its
+     picture and the keyboard stay. Past RELINK_WAIT_MS a failed fetch
+     reloads the frame instead; an answer the pane must not use stops it at
+     once. */
+  const relink = useCallback(async () => {
+    const got = await fetchLink();
+    if (!got) return;
+    if (got.link) {
+      portRef.current?.postMessage({ type: VIEWER_TICKET, ticket: got.link.ticket });
+      return;
+    }
+    if (got.again && retryLater(relink)) return;
+    if (got.again) void mint();
+    else showFailure(got.failure);
+  }, [fetchLink, retryLater, mint, showFailure]);
+
+  /* Reloads the frame when the viewer has a port and no live comes within
+     RELINK_WAIT_MS of the latest close, so a frame reloaded after a close
+     gets the whole wait. A viewer with no port never posts live; its ready
+     ends the reconnect instead. */
+  const armWatchdog = useCallback(() => {
+    clearTimeout(watchdog.current);
+    watchdog.current = setTimeout(() => {
+      watchdog.current = null;
+      if (portRef.current && !liveRef.current) void mint();
+    }, RELINK_WAIT_MS);
+  }, [mint]);
 
   /* A request from the person, the tab or the network, and a new session,
      start the count of failed opens and the starting clock over. */
@@ -189,13 +289,17 @@ function WebBrowserStage({
   // A tab that opens the pane hidden mints once it is visible (below).
   useEffect(() => {
     if (!tabHidden()) retry();
-    return () => { mintSeq.current += 1; };
-  }, [retry]);
+    return () => {
+      mintSeq.current += 1;
+      endReconnect();
+    };
+  }, [retry, endReconnect]);
 
   useEffect(() => {
     const onVisibility = () => {
       if (tabHidden()) {
         mintSeq.current += 1;
+        endReconnect();
         setHidden(true);
         setViewUrl(null);
         setError(null);
@@ -204,8 +308,16 @@ function WebBrowserStage({
       setHidden(false);
       retry();
     };
+    /* A viewer with a port gets a fresh ticket at once when it lost its
+       connection, and nothing while it is live. A viewer with no port gets a
+       fresh frame. */
     const onOnline = () => {
-      if (!tabHidden()) retry();
+      if (tabHidden()) return;
+      if (!portRef.current) {
+        retry();
+        return;
+      }
+      if (!liveRef.current && downSinceRef.current !== null) void relink();
     };
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('online', onOnline);
@@ -213,7 +325,7 @@ function WebBrowserStage({
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', onOnline);
     };
-  }, [retry]);
+  }, [retry, relink, endReconnect]);
 
   /* The viewer asks for the theme once loaded, and reports when its
      connection closes. The sandboxed frame's origin is 'null', so the message's
@@ -228,9 +340,18 @@ function WebBrowserStage({
         if (portRef.current && portRef.current !== port) portRef.current.close();
         portRef.current = port;
         readyRef.current = true;
+        // A viewer with no port never posts live: its ready is all it says.
+        if (!port) endReconnect();
         setViewerReady(true);
         setSlow(false);
         postTheme(frameRef.current);
+        return;
+      }
+      // The viewer's current socket got the pod's hello: this connection began now.
+      if (type === VIEWER_LIVE) {
+        liveRef.current = true;
+        sinceRef.current = Date.now();
+        endReconnect();
         return;
       }
       // The page the viewer shows, for whoever opened the pane.
@@ -254,25 +375,33 @@ function WebBrowserStage({
         return;
       }
       if (type !== VIEWER_CLOSED) return;
+      /* A viewer with a port posts closed once no socket is left. It was
+         ready when the socket it lost was live; a ticket handed in place
+         that never went live is a failed open. */
+      const wasLive = liveRef.current;
+      liveRef.current = false;
       const next = afterViewerClose({
-        mintedAtMs: mintedAt.current,
+        mintedAtMs: sinceRef.current,
         nowMs: Date.now(),
         quickCloses: quickCloses.current,
-        ready: readyRef.current,
+        ready: portRef.current ? wasLive : readyRef.current,
         code: event.data?.code,
       });
       quickCloses.current = next.quickCloses;
       if (next.remint) {
-        void mint();
+        downSinceRef.current ??= Date.now();
+        armWatchdog();
+        void (portRef.current && wasLive ? relink() : mint());
         return;
       }
       mintSeq.current += 1;
+      endReconnect();
       setViewUrl(null);
       setError(STOPPED[next.stop]?.() ?? null);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [mint]);
+  }, [mint, relink, armWatchdog, endReconnect]);
 
   /* Keep the viewer's toolbar in the app's theme as the theme, skin or
      custom accent changes. */
@@ -286,6 +415,7 @@ function WebBrowserStage({
   // A new frame (or a fresh link in flight) waits for its own viewer's ready.
   useEffect(() => {
     readyRef.current = false;
+    liveRef.current = false;
     setViewerReady(false);
     setPageUrl('');
   }, [frameKey]);
