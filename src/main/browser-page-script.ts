@@ -51,9 +51,11 @@
  * one included, with its content box, and reads the ones it may: a shown,
  * same-origin frame, big enough, within the read cap, on no payment, sign-in
  * or consent address, and holding no secret, card or sign-in field. A read frame's elements have no id and no
- * field value. A frame from another site can't be read from here: running
- * script in its own world would let its page see it. `secretBoxes` finds what
- * every screenshot blacks out.
+ * field value. A frame from another site can't be read from here: Electron
+ * runs this world only in the view's own process. Its page read stays out of
+ * reach; browser-frames.ts reads the focus and the secret fields in there
+ * through the debugger, in that frame's own isolated world. `secretBoxes`
+ * finds what every screenshot blacks out.
  */
 
 import {

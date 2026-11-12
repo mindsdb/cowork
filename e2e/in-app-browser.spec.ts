@@ -465,6 +465,26 @@ test("types into an ordinary field of another site's embedded form, and refuses 
   await expect.poll(() => log.filter((e) => e.type === 'frame-key').map((e) => e.key)).toEqual(['ArrowLeft']);
 });
 
+test("blacks out the password field of another site's embedded form in a screenshot, and shows the rest of the form", async () => {
+  await openAt('/frame-fields');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // The frame is 400 CSS pixels wide at the page's top left; its box says how the screenshot scales.
+  const [frame] = (await page()).frames;
+  const scale = frame.box.width / 400;
+  const shot = await call('GET', `/sessions/${SESSION}/screenshot?quality=95`);
+  expect(shot.status, shot.body.toString()).toBe(200);
+  // CSS points: three in the password field (0, 100) to (300, 140), then the ordinary field and the form's background.
+  const points = [[10, 105], [150, 120], [290, 135], [150, 20], [350, 170]].map(([x, y]) => [Math.round(x * scale), Math.round(y * scale)]);
+  const pixels: number[][] = await app.evaluate(({ nativeImage }, { jpeg, at }) => {
+    const image = nativeImage.createFromBuffer(Buffer.from(jpeg, 'base64'));
+    const { width } = image.getSize();
+    const bitmap = image.toBitmap();
+    return at.map(([x, y]) => [...bitmap.subarray((y * width + x) * 4, (y * width + x) * 4 + 3)]);
+  }, { jpeg: shot.body.toString('base64'), at: points });
+  const dark = pixels.map((rgb) => rgb.every((channel) => channel < 40));
+  expect(dark).toEqual([true, true, true, false, false]);
+});
+
 test('refuses a click whose point a frame slides over as the pointer arrives, by number and by position, and presses nothing', async () => {
   await openAt('/moving-frame');
   const byNumber = await act({ action: 'click', element: await element('Go') });

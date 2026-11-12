@@ -8,7 +8,8 @@
  * 409 page_busy when the page doesn't answer in time. Agent steps attach the
  * debugger for the step only (browser-input.ts). Screenshots are captured
  * without showing a hidden tab, with the page's secret fields and payment
- * frames blacked out (browser-screenshot.ts).
+ * frames blacked out (browser-screenshot.ts), those in frames of other sites
+ * too, which a screenshot reads through the debugger (browser-frames.ts).
  *
  * Popups become tabs of the same task, keeping window.opener for sign-in
  * flows, and only right after an agent step or the person's own input. A
@@ -41,9 +42,10 @@ import {
   type StepRequest,
   STEP_TIMEOUT_MS,
 } from '../shared/browser-contract';
-import type { FrameReads } from './browser-frames';
+import { FrameReads, withDebugger } from './browser-frames';
 import { type AgentInput, type Pacing, type Point, realPacing, runStep, type StepHost, withAgentInput } from './browser-input';
 import {
+  type Box,
   type ChangeMark,
   challengesFrom,
   type FocusedSecret,
@@ -534,7 +536,8 @@ export class ElectronTab implements TabView {
   }
 
   /* Every screenshot blacks out the page's secret fields and payment frames
-     (screenshotMasks), read just before the capture. A page with a payment
+     (screenshotMasks), and those inside the frames the page's world can't
+     search (frameMasks), read just before the capture. A page with a payment
      frame it can't place gets no capture at all. */
   async screenshot(annotate: boolean, quality: number): Promise<Screenshot> {
     const raw = annotate ? await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText: 0, maxElements: MAX_ELEMENTS, frames: null }) : null;
@@ -543,9 +546,23 @@ export class ElectronTab implements TabView {
     if (!masks) {
       throw new BridgeError('internal', "the page holds a payment frame this browser can't place to black out, so no screenshot was taken; read the page instead");
     }
+    const inFrames = this.subframeUrls().length ? await this.frameMasks(found.otherSiteFrames) : [];
     const image = await this.contents.capturePage(undefined, { stayHidden: true });
     const width = (raw?.viewport ?? found.viewport).width;
-    return renderScreenshot(image, width, raw?.boxes ?? null, quality, (data, size) => nativeImage.createFromBitmap(data, size), masks);
+    return renderScreenshot(image, width, raw?.boxes ?? null, quality, (data, size) => nativeImage.createFromBitmap(data, size), [...masks, ...inFrames]);
+  }
+
+  /* What a screenshot blacks out inside the frames the page's world can't
+     search, read through the debugger for this capture only
+     (FrameReads.frameMasks). When the debugger can't be had (something else
+     holds it, or the person took over and it was detached) or the read
+     fails, each such frame the world found (`unread`) is blacked out whole. */
+  private async frameMasks(unread: Box[]): Promise<Box[]> {
+    try {
+      return await withDebugger(this.contents.debugger, (session) => new FrameReads(session).frameMasks());
+    } catch {
+      return unread;
+    }
   }
 
   async load(url: string): Promise<void> {

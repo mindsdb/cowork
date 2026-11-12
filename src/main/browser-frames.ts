@@ -1,6 +1,7 @@
 /*
  * What the page's isolated world can't see, read through the view's debugger
- * while a step has it attached (withAgentInput in browser-input.ts).
+ * while a step has it attached (withAgentInput in browser-input.ts), or a
+ * screenshot does (ElectronTab.screenshot in browser-view.ts).
  *
  * `pressLandsInFrame`: where a press at a point lands. The world's own hit
  * test (elementFromPoint) stops at the host of a closed shadow root, so a
@@ -13,6 +14,11 @@
  * isolated-world script only in a view's main frame's process, so the read
  * runs in the frame's own process: Target.setAutoAttach (flat) gives each
  * such frame a session on the same debugger, and sendCommand takes its id.
+ *
+ * `frameMasks`: the secret fields a screenshot blacks out inside the frames
+ * the world can't search, each read in its frame's own world, as the web
+ * pod's frameMasks reads them; a frame that can't be read is blacked out
+ * whole.
  *
  * Every command goes out through `DebuggerSession.send`, which checks it
  * first: only the methods in ALLOWED_CDP_METHODS; input and the page reads on
@@ -29,8 +35,17 @@
  * watch in browser-page-script.ts has no such reach either).
  */
 
-import { BridgeError } from '../shared/browser-contract';
-import { type FocusedSecret, isPaymentAddress, pageWorldSource, type PageWorldRequest, type ViewPoint } from './browser-page-script';
+import { BridgeError, PAYMENT_FRAME_HOSTS } from '../shared/browser-contract';
+import {
+  type Box,
+  type FocusedSecret,
+  type FoundSecrets,
+  isPaymentAddress,
+  pageWorldSource,
+  type PageWorldRequest,
+  SECRET_SEARCH_DEPTH,
+  type ViewPoint,
+} from './browser-page-script';
 
 /** The only commands main ever sends through a view's debugger. */
 export const ALLOWED_CDP_METHODS: ReadonlySet<string> = new Set([
@@ -48,6 +63,8 @@ export const ALLOWED_CDP_METHODS: ReadonlySet<string> = new Set([
   'Runtime.releaseObject',
   'DOM.getNodeForLocation',
   'DOM.describeNode',
+  'DOM.getFrameOwner',
+  'DOM.getBoxModel',
 ]);
 
 /* What a frame's own session may send: its frame tree, and opening and
@@ -74,7 +91,7 @@ export interface CdpDebugger {
 }
 
 interface FrameTree {
-  frame: { id: string; url: string; parentId?: string };
+  frame: { id: string; url: string; parentId?: string; securityOrigin?: string };
   childFrames?: FrameTree[];
 }
 
@@ -86,17 +103,37 @@ interface TargetInfo {
 }
 
 /* A frame as the debugger last reported it: its address, the frame it sits
-   in, and the session of a frame of another site, which runs in its own
-   process (none for a frame in the page's own process). */
+   in, its origin when its frame tree gave one, and the session of a frame of
+   another site, which runs in its own process (none for a frame in the
+   page's own process). */
 interface KnownFrame {
   url: string;
   parentId: string | null;
+  origin?: string;
   session?: string;
 }
 
 interface Evaluated {
   result?: { subtype?: string; objectId?: string; value?: unknown };
   exceptionDetails?: unknown;
+}
+
+/* The box around a quad's four corners (x1, y1, ... x4, y4). */
+function quadBox(quad: number[]): Box {
+  const xs = [quad[0], quad[2], quad[4], quad[6]];
+  const ys = [quad[1], quad[3], quad[5], quad[7]];
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+}
+
+/* The part of `box` inside `within`, or null when none is. */
+function clip(box: Box, within: Box): Box | null {
+  const x = Math.max(box.x, within.x);
+  const y = Math.max(box.y, within.y);
+  const right = Math.min(box.x + box.width, within.x + within.width);
+  const bottom = Math.min(box.y + box.height, within.y + within.height);
+  return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
 }
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -191,6 +228,7 @@ export class DebuggerSession {
     this.frames.set(tree.frame.id, {
       url: tree.frame.url,
       parentId: tree.frame.parentId ?? known?.parentId ?? null,
+      origin: tree.frame.securityOrigin ?? known?.origin,
       session: known?.session ?? session,
     });
     for (const child of tree.childFrames ?? []) this.learn(child, session);
@@ -237,6 +275,35 @@ export class DebuggerSession {
   /** `request`'s answer from frame `frameId`'s own world. */
   async read<T>(frameId: string, request: PageWorldRequest): Promise<T> {
     return (await this.evaluate(frameId, request, false))?.value as T;
+  }
+
+  /** The frames the page's isolated world can't search for secrets
+      (secretBoxes in browser-page-script.ts): each child of a frame it
+      searches (the main one, and below it each frame of the main frame's
+      origin in the page's process that is no payment frame, `depth` deep,
+      as ElectronTab.searchedFrames counts them) that it doesn't search
+      itself. Call it once mainFrame and attachFrames have answered. */
+  unsearchedFrames(main: string, depth: number): string[] {
+    const origin = this.frames.get(main)?.origin;
+    const found: string[] = [];
+    const visit = (parent: string, level: number) => {
+      for (const [id, frame] of this.frames) {
+        if (frame.parentId !== parent) continue;
+        const searched = level < depth && frame.session === undefined && !!origin && frame.origin === origin && !isPaymentAddress(frame.url);
+        if (searched) visit(id, level + 1);
+        else found.push(id);
+      }
+    };
+    visit(main, 0);
+    return found;
+  }
+
+  /** The content and border boxes, in the page's viewport, of the element
+      that holds frame `frameId`. It fails for one that draws nothing. */
+  async ownerBoxes(frameId: string): Promise<{ content: Box; border: Box }> {
+    const { backendNodeId } = await this.send<{ backendNodeId: number }>('DOM.getFrameOwner', { frameId });
+    const { model } = await this.send<{ model: { content: number[]; border: number[] } }>('DOM.getBoxModel', { backendNodeId });
+    return { content: quadBox(model.content), border: quadBox(model.border) };
   }
 
   /** The frame that the element `request` answers in frame `frameId`'s
@@ -324,5 +391,31 @@ export class FrameReads {
       return focus.secret || focus.otherSite;
     };
     return withTimeout(read(), FRAME_READ_MS).catch(() => true);
+  }
+
+  /**
+   * What a screenshot blacks out inside the frames the page's world can't
+   * search (`unsearchedFrames`), in the page's viewport: each one's secret
+   * fields, payment frames and frames it can't search in turn, read in its
+   * own world and kept inside its content box; the whole frame when it
+   * can't be read (a payment provider's frame, where no world opens, or one
+   * that doesn't answer within FRAME_READ_MS). A frame whose owner draws
+   * nothing has nothing to black out.
+   */
+  async frameMasks(): Promise<Box[]> {
+    const main = await this.session.mainFrame();
+    await this.session.attachFrames();
+    const masks = await Promise.all(this.session.unsearchedFrames(main, SECRET_SEARCH_DEPTH).map(async (frameId) => {
+      const owner = await this.session.ownerBoxes(frameId).catch(() => null);
+      if (!owner) return [];
+      const read = this.session.read<FoundSecrets>(frameId, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: SECRET_SEARCH_DEPTH });
+      const found = await withTimeout(read, FRAME_READ_MS).catch(() => null);
+      if (!found) return [owner.border];
+      const { content } = owner;
+      return [...found.secrets, ...found.paymentFrames, ...found.otherSiteFrames]
+        .map((box) => clip({ ...box, x: box.x + content.x, y: box.y + content.y }, content))
+        .filter((box): box is Box => box !== null);
+    }));
+    return masks.flat();
   }
 }

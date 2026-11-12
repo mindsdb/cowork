@@ -2,6 +2,8 @@ import type { BrowserWindow, Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { ANTON_REQUEST_TIMEOUT_MS, parseStepRequest, SETTLE_MAX_MS, SETTLE_QUIET_MS, STEP_TIMEOUT_MS, type StepOutcome, type StepRequest } from '../shared/browser-contract';
 import type { TabHooks } from './browser-sessions';
+import { type FakeFrame, sentOf } from '../../tests/browser-fake-cdp';
+import { FRAME_READ_MS } from './browser-frames';
 import { PAGE_READ_TIMEOUT_MS, PAGE_WORLD_ID, SECRET_SEARCH_DEPTH } from './browser-page-script';
 
 /* A WebContentsView whose page answers the isolated-world reads the tab
@@ -267,6 +269,74 @@ describe('ElectronTab', () => {
     await expect(tab.screenshot(false, 70)).resolves.toMatchObject({ jpeg: Buffer.from('masked') });
     const [, request] = worldCalls(contents, 'secretBoxes').at(-1)!;
     expect(request[0].code).toContain(`"depth":${SECRET_SEARCH_DEPTH}`);
+  });
+
+  describe("a screenshot of a page with another site's frame", () => {
+    /* The page holds one frame of another site, whose owner's content box is
+       400 by 200 at (100, 100); the page's world can't search it, so it
+       lists the owner's border box. */
+    function framed(frame: Partial<FakeFrame> = {}) {
+      const { tab, contents } = setup();
+      const other = { url: 'https://forms.other.test/embed', origin: 'https://forms.other.test', frames: [] };
+      contents.mainFrame.frames = [other];
+      contents.mainFrame.framesInSubtree = [contents.mainFrame, other];
+      const border = { x: 95, y: 95, width: 410, height: 210 };
+      contents.secrets = { ...contents.secrets, owners: 1, otherSiteFrames: [border] };
+      contents.debugger.page.frames.push({
+        id: 'form', url: other.url, parentId: 'main', remote: true, owner: { content: { x: 100, y: 100, width: 400, height: 200 }, border }, ...frame,
+      });
+      let drawn: Buffer | null = null;
+      electron.nativeImage.createFromBitmap.mockImplementation((data: Buffer) => {
+        drawn = data;
+        return { toJPEG: () => Buffer.from('masked') };
+      });
+      // A capture with nothing to black out goes out as it was taken.
+      const black = (x: number, y: number) => {
+        const at = (y * 800 + x) * 4;
+        return !!drawn && [...drawn.subarray(at, at + 4)].join() === '0,0,0,255';
+      };
+      return { tab, contents, black };
+    }
+
+    it('blacks out a secret field inside the frame where it sits, read in the frame\'s own world, and leaves the rest of the frame in view', async () => {
+      // Two secret fields in the frame's own pixels: one inside it, one past its right and bottom edges.
+      const { tab, contents, black } = framed({ secrets: { secrets: [{ x: 10, y: 20, width: 100, height: 30 }, { x: 350, y: 150, width: 200, height: 100 }] } });
+      await tab.screenshot(false, 70);
+      expect([black(150, 130), black(495, 295)]).toEqual([true, true]);
+      // The rest of the frame, and the page past the frame's edge, show.
+      expect([black(300, 200), black(97, 97), black(520, 260), black(495, 320)]).toEqual([false, false, false, false]);
+      expect(sentOf(contents.debugger, 'Page.createIsolatedWorld').map(({ params, sessionId }) => [params.frameId, sessionId])).toEqual([['form', 'session-form']]);
+      expect(contents.attached).toBe(false);
+    });
+
+    it("blacks out the whole frame when its world doesn't answer in time", async () => {
+      const { tab, black } = framed({ hangs: true });
+      vi.useFakeTimers();
+      try {
+        const shot = tab.screenshot(false, 70);
+        await vi.advanceTimersByTimeAsync(FRAME_READ_MS);
+        await shot;
+      } finally {
+        vi.useRealTimers();
+      }
+      expect([black(97, 97), black(300, 200), black(502, 302)]).toEqual([true, true, true]);
+    });
+
+    it('blacks out the whole frame when something else holds the debugger', async () => {
+      const { tab, contents, black } = framed({ secrets: { secrets: [{ x: 10, y: 20, width: 100, height: 30 }] } });
+      contents.debugger.attach();
+      await tab.screenshot(false, 70);
+      expect([black(97, 97), black(300, 200)]).toEqual([true, true]);
+      expect(sentOf(contents.debugger, 'Page.createIsolatedWorld')).toEqual([]);
+    });
+
+    it("reads no frame of the page's own origin, which the page's world searched itself", async () => {
+      const { tab, contents, black } = framed();
+      contents.debugger.page.frames.push({ id: 'same', url: 'https://a.test/inner', parentId: 'main', origin: 'https://a.test', owner: { content: { x: 0, y: 400, width: 100, height: 100 }, border: { x: 0, y: 400, width: 100, height: 100 } } });
+      await tab.screenshot(false, 70);
+      expect(sentOf(contents.debugger, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).toEqual(['form']);
+      expect(black(50, 450)).toBe(false);
+    });
   });
 
   it("refuses a key that edits text into a secret field of another site's frame, read through the debugger, and types into an ordinary one there", async () => {

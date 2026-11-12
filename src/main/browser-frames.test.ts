@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fakeCdpDebugger, MAIN_FRAME, sentOf } from '../../tests/browser-fake-cdp';
-import { type DebuggerSession, withDebugger } from './browser-frames';
+import { type DebuggerSession, FrameReads, withDebugger } from './browser-frames';
 
 const STRIPE = { id: 'card', url: 'https://js.stripe.com/v3/elements-inner-card', parentId: MAIN_FRAME, remote: true };
 const WIDGET = { id: 'widget', url: 'https://login.other.test/embed', parentId: MAIN_FRAME, remote: true };
@@ -77,5 +77,44 @@ describe('withDebugger', () => {
     const dbg = fakeCdpDebugger();
     dbg.attach();
     await expect(withDebugger(dbg, async () => 1)).rejects.toMatchObject({ code: 'page_busy' });
+  });
+});
+
+describe('FrameReads.frameMasks', () => {
+  const box = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
+  const owner = (x: number, y: number) => ({ content: box(x, y, 200, 100), border: box(x - 2, y - 2, 204, 104) });
+  const secret = { secrets: [box(5, 5, 50, 10)] };
+
+  it("reads each frame the page's world can't search in its own world, wherever it sits, and none it searched", async () => {
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // Searched by the page's world: of the page's origin, in its process.
+        { id: 'same', url: 'https://a.test/inner', parentId: MAIN_FRAME, origin: 'https://a.test', owner: owner(0, 0), secrets: secret },
+        // Another site's frame inside it, in its own process.
+        { id: 'nested', url: 'https://forms.other.test/', parentId: 'same', remote: true, owner: owner(0, 200), secrets: secret },
+        // Another origin of the same site, in the page's process.
+        { id: 'sibling', url: 'https://b.a.test/', parentId: MAIN_FRAME, origin: 'https://b.a.test', owner: owner(300, 0), secrets: secret },
+        // A frame its owner doesn't draw.
+        { id: 'hidden', url: 'https://ads.other.test/', parentId: MAIN_FRAME, remote: true, owner: null, secrets: secret },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toHaveLength(2);
+    expect(masks).toEqual(expect.arrayContaining([box(305, 5, 50, 10), box(5, 205, 50, 10)]));
+    const worlds = sentOf(dbg, 'Page.createIsolatedWorld').map(({ params, sessionId }) => [params.frameId, sessionId]);
+    expect(worlds).toHaveLength(2);
+    expect(worlds).toEqual(expect.arrayContaining([['sibling', undefined], ['nested', 'session-nested']]));
+  });
+
+  it("blacks out whole a payment provider's frame, which no world opens in, and keeps each mask inside its frame", async () => {
+    const dbg = fakeCdpDebugger({
+      frames: [
+        { ...STRIPE, owner: owner(0, 0) },
+        { ...WIDGET, owner: owner(0, 200), secrets: { secrets: [box(150, 80, 100, 100)], otherSiteFrames: [box(-20, 0, 40, 40)] } },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toEqual([box(-2, -2, 204, 104), box(150, 280, 50, 20), box(0, 200, 20, 40)]);
+    expect(sentOf(dbg, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).toEqual(['widget']);
   });
 });
