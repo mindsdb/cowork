@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 
 import {
   addonEligibility,
@@ -12,6 +12,10 @@ import {
   newlyReturnedAddons,
   normalizeDecidedBy,
   queuedReasonKey,
+  rememberOwnAddon,
+  isOwnAddon,
+  forgetOwnAddons,
+  __resetOwnAddonsForTests,
 } from './addons';
 
 const live = { conversationId: 'conv-1', text: 'use the sales DB', attachments: [], liveStream: true };
@@ -195,12 +199,26 @@ describe('applyAddonEvent — whose add-on it is', () => {
   const nobody = { isOwn: () => false };
   const mine = (...keys) => ({ isOwn: (k) => keys.includes(k) });
 
-  it('never creates a live row for an add-on another client sent', () => {
+  it('shows the server\'s rows for an add-on another client sent, in every state (ENG-4208)', () => {
     for (const state of ['added', 'read', 'returned', 'withdrawn']) {
-      expect(applyAddonEvent([tool], { state, addon_id: 'theirs', text: 'hi' }, 1, nobody)).toEqual([tool]);
+      const steps = applyAddonEvent([tool], { state, addon_id: 'theirs', text: 'hi' }, 1, nobody);
+      expect(addonState(steps)).toEqual([['theirs', state]]);
+      // Shown, never marked as this client's: no Move to queue, never queued.
+      expect(steps[1].data.own).toBeFalsy();
     }
-    // Nor a pending row under someone else's key.
+    // A row needs the server's text: an event without it shows nothing.
+    expect(applyAddonEvent([tool], { state: 'read', addon_id: 'theirs' }, 1, nobody)).toEqual([tool]);
+    // Only the app's own request shows a pending row.
     expect(applyAddonEvent([], { state: 'sending', local_key: 'k9', text: 'hi' }, 1, nobody)).toEqual([]);
+  });
+
+  it('marks a row as this client\'s once an event names one of its keys', () => {
+    const theirs = applyAddonEvent([], { state: 'added', addon_id: 'ad1', text: 'hi' }, 1, nobody);
+    expect(theirs[0].data.own).toBeFalsy();
+    const mineNow = applyAddonEvent(theirs, { state: 'added', addon_id: 'ad1', local_key: 'k1' }, 2, mine('k1'));
+    expect(mineNow[0].data).toMatchObject({ own: true, local_key: 'k1' });
+    // Idempotent once marked.
+    expect(applyAddonEvent(mineNow, { state: 'added', addon_id: 'ad1' }, 3, mine('ad1'))).toBe(mineNow);
   });
 
   it('creates rows for its own key or id', () => {
@@ -219,6 +237,23 @@ describe('applyAddonEvent — whose add-on it is', () => {
   it('shows saved history replayed from the server', () => {
     const steps = applyAddonEvent([], { state: 'returned', addon_id: 'old', text: 'hi' }, 1, { replay: true, isOwn: () => false });
     expect(addonState(steps)).toEqual([['old', 'returned']]);
+  });
+});
+
+describe('this client\'s own add-ons, per conversation (ENG-4208)', () => {
+  afterEach(() => { __resetOwnAddonsForTests(); });
+
+  it('remembers keys under their conversation and forgets them with it', () => {
+    rememberOwnAddon('k1', 'conv-a');
+    rememberOwnAddon('ad1', 'conv-a');
+    rememberOwnAddon('k2', 'conv-b');
+    expect(isOwnAddon('k1')).toBe(true);
+    expect(isOwnAddon('k2')).toBe(true);
+    forgetOwnAddons('conv-a');
+    expect(isOwnAddon('k1')).toBe(false);
+    expect(isOwnAddon('ad1')).toBe(false);
+    expect(isOwnAddon('k2')).toBe(true);
+    expect(isOwnAddon(null)).toBe(false);
   });
 });
 

@@ -295,7 +295,9 @@ function AddonNote({ label, onMoveToQueue }) {
 }
 
 // A message added to the running task, inside the turn at the point it joined.
-// `onMoveToQueue` is only passed for the live turn.
+// `onMoveToQueue` is only passed for the live turn, and only offered on this
+// client's own messages (`data.own`): another client's — shown since ENG-4208,
+// say after a reload — is never taken into this client's queue.
 function AddonRow({ step, agentLabel, onMoveToQueue }) {
   const { t } = useTranslation('chat');
   const data = step?.data || {};
@@ -309,7 +311,7 @@ function AddonRow({ step, agentLabel, onMoveToQueue }) {
         actions={(
           <AddonNote
             label={label}
-            onMoveToQueue={canMove && onMoveToQueue && data.addon_id
+            onMoveToQueue={canMove && onMoveToQueue && data.addon_id && data.own
               ? () => onMoveToQueue(data.addon_id, data.text || '', data.decided_by || null)
               : null}
           />

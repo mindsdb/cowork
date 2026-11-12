@@ -439,13 +439,20 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
     };
   }
 
+  // The allowance running low is not news to someone whose balance carries
+  // Air past it: that is what the balance is for (ENG-4208, as ENG-4188 did
+  // for the allowance running out).
+  if (freeInUse && f.low && balanceCarriesAir(balance, auto)) return null;
+
   if (freeInUse && f.low) {
     let body = withResetTime(free, 'freeLow.body');
     const actions = [USAGE_ACTIONS.viewUsage];
     if (balanceEmpty) {
       body += ` ${tr('balanceEmptySentence')}`;
       actions.push(USAGE_ACTIONS.addFunds);
-    } else if (balanceLow) {
+    } else if (balanceUsable) {
+      // Past the return above, a usable balance is under the line: say how
+      // much cash is left, since that is what runs out next.
       body += ` ${tr('freeLow.balanceLowToo', { usd })}`;
       actions.push(USAGE_ACTIONS.addFunds);
     }
@@ -520,6 +527,7 @@ export function usageTransitions(prev, next, { model: modelIn = null, providerTy
   // They stay because the step comparison carrying all of that alone does not
   // read as the rule it enforces.
   if (!before.out && !after.out && after.low && spendsFree
+      && !balanceCarriesAir(next.balance, next.autoTopUp)
       && before.fractionLeft !== null && after.fractionLeft !== null
       && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
     out.push({

@@ -26,13 +26,16 @@
 // whose answer was "queued"). The server never relays `ready`; it and any
 // state this file does not know are ignored.
 //
-// Trust (ENG-4194 self-review): only add-ons this client created in this
-// session — a `local_key` it generated, or an `addon_id` its own request was
-// answered with — may create a live row or be queued. Another client's add-on
-// on the same conversation can update a row already shown, never create one,
-// and never puts text in this client's queue. Replayed saved history may still
-// show its rows (`replay`), and replay never queues: only the live path calls
-// `newlyReturnedAddons`.
+// Trust (ENG-4194 self-review, ENG-4208): the rows are display only. Every
+// `response.addon` event from the server's own stream — live, reconnected or
+// replayed — shows its row in whatever state it is in, because the server only
+// relays add-ons it accepted, with the text from its own record; that is what
+// lets a reload during a running turn show every message added to it. Acting on
+// one is narrower: only add-ons this client created in this session (a
+// `local_key` it generated, or an `addon_id` its own request was answered
+// with) may be moved to the queue or queued (`newlyReturnedAddons`), and only
+// the app's own request may show a `sending` row. Rows record whether they are
+// this client's (`data.own`), so another client's never offers Move to queue.
 
 /** How long the app waits for the server's verdict. The server bounds the
  *  request to 8 s, so a longer wait means no answer came back at all — and
@@ -59,19 +62,33 @@ export function normalizeDecidedBy(value) {
   return value === 'user' ? 'user' : 'jev';
 }
 
-// The add-ons this client created in this session: every `local_key` it
-// generated and every `addon_id` its own request was answered with. Kept for
-// the page's life (never persisted), so a stream reconnected in the same
-// session still recognises them and a reload starts empty.
-const ownAddonKeys = new Set();
+// The add-ons this client created in this session, per conversation: every
+// `local_key` it generated and every `addon_id` its own request was answered
+// with. Kept for the page's life (never persisted), so a stream reconnected in
+// the same session still recognises them and a reload starts empty; dropped
+// when the conversation is deleted (`forgetOwnAddons`). Keys are unique on
+// their own (random local keys, server-minted ids), so `isOwnAddon` needs no
+// conversation: the stream reducer that asks does not know which it is in.
+const ownAddonKeys = new Map(); // conversation id → Set of keys
 
 /** Record a key (`local_key` or `addon_id`) as this client's own. */
-export function rememberOwnAddon(key) {
-  if (key) ownAddonKeys.add(String(key));
+export function rememberOwnAddon(key, conversationId = '') {
+  if (!key) return;
+  const cid = String(conversationId ?? '');
+  if (!ownAddonKeys.has(cid)) ownAddonKeys.set(cid, new Set());
+  ownAddonKeys.get(cid).add(String(key));
 }
 
 export function isOwnAddon(key) {
-  return Boolean(key) && ownAddonKeys.has(String(key));
+  if (!key) return false;
+  const k = String(key);
+  for (const keys of ownAddonKeys.values()) if (keys.has(k)) return true;
+  return false;
+}
+
+/** Forget a conversation's own add-ons, once it is gone. */
+export function forgetOwnAddons(conversationId) {
+  ownAddonKeys.delete(String(conversationId ?? ''));
 }
 
 export function __resetOwnAddonsForTests() {
@@ -195,24 +212,41 @@ const FINAL = new Set(['read', 'returned', 'withdrawn']);
  *
  * Event: `{ addon_id?, local_key?, state, text?, decided_by?, revert? }`.
  * A step is found by `addon_id` first, then by `local_key` — never by its
- * words. Only an event for one of this client's own add-ons, or one replayed
- * from saved history (`replay`), may create a row.
+ * words. Any event with text may create a row, live or replayed (ENG-4208):
+ * only `sending` is limited to this client's own add-ons, since only the app
+ * sends it for its own request. A row is marked `own` once an event names one
+ * of this client's keys.
  */
-export function applyAddonEvent(steps, event, ts = Date.now(), { replay = false, isOwn = isOwnAddon } = {}) {
+export function applyAddonEvent(steps, event, ts = Date.now(), { isOwn = isOwnAddon } = {}) {
+  const next = applyAddonState(steps, event, ts, isOwn);
+  return markOwn(next, event, isOwn);
+}
+
+// Stamp `own` on the row an event of this client's names, once.
+function markOwn(list, event, isOwn) {
+  const addonId = event?.addon_id ? String(event.addon_id) : null;
+  const localKey = event?.local_key ? String(event.local_key) : null;
+  if (!isOwn(addonId) && !isOwn(localKey)) return list;
+  const idx = list.findIndex((s) => isAddonStep(s)
+    && ((addonId && s.data?.addon_id === addonId) || (localKey && s.data?.local_key === localKey)));
+  if (idx < 0 || list[idx].data?.own) return list;
+  return list.map((s, i) => (i === idx ? withData(s, { own: true }) : s));
+}
+
+function applyAddonState(steps, event, ts, isOwn) {
   const list = Array.isArray(steps) ? steps : [];
   const state = event?.state;
   const addonId = event?.addon_id ? String(event.addon_id) : null;
   const localKey = event?.local_key ? String(event.local_key) : null;
   const text = typeof event?.text === 'string' ? event.text : '';
   const decidedBy = normalizeDecidedBy(event?.decided_by);
-  const mayCreate = replay || isOwn(addonId) || isOwn(localKey);
 
   const byId = addonId ? list.findIndex((s) => isAddonStep(s) && s.data?.addon_id === addonId) : -1;
   const byLocal = localKey ? list.findIndex((s) => isAddonStep(s) && s.data?.local_key === localKey) : -1;
   const target = byId >= 0 ? byId : byLocal;
   const replaceAt = (idx, step) => list.map((s, i) => (i === idx ? step : s));
   const removeAt = (idx) => list.filter((_, i) => i !== idx);
-  const append = (st) => (text && mayCreate
+  const append = (st) => (text
     ? [...list, addonStep({ key: addonId || localKey, addonId, localKey, text, state: st, decidedBy, ts })]
     : list);
   const ids = () => ({

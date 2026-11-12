@@ -512,14 +512,17 @@ describe('self-review: whose add-on, and never losing or doubling one (ENG-4194)
     expect(screen.getByTestId('queued-chip')).toHaveAttribute('data-paused', 'true');
   });
 
-  it('never shows or queues an add-on another client sent', async () => {
+  it('shows an add-on another client sent, but never queues it or offers to move it (ENG-4208)', async () => {
     const user = userEvent.setup();
     await startTurn(user);
 
     await emit({ type: 'response.addon', addon_id: 'theirs', local_key: 'their_key', state: 'added', text: 'from another device', decided_by: 'jev' });
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'added'));
+    // Not this client's to take back out.
+    expect(screen.queryByRole('button', { name: 'Move to queue' })).toBeNull();
     await emit({ type: 'response.addon', addon_id: 'theirs', state: 'returned', text: 'from another device' });
 
-    expect(addonRow()).toBeNull();
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'returned'));
     expect(screen.queryByLabelText('Remove from queue')).toBeNull();
     await act(async () => { streams[streams.length - 1].opts.onDone(); });
     // Nothing of theirs runs here as a next task.
@@ -622,6 +625,25 @@ describe('self-review: whose add-on, and never losing or doubling one (ENG-4194)
     expect(spies.streamMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a message queued when the code settling its answer throws (ENG-4208)', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    spies.sendAddon.mockImplementation(async () => ({ status: 'queued', reason: 'next_task' }));
+    // Stands in for any bug past the request: the flow must not strand the slot.
+    trackAddonQueued.mockImplementationOnce(() => { throw new Error('boom'); });
+
+    await send(user, composer, 'also Q3');
+
+    const chip = await screen.findByTestId('queued-chip');
+    await waitFor(() => expect(chip).not.toHaveAttribute('aria-busy'));
+    expect(chip).toHaveTextContent('also Q3');
+    // Not paused: it was never added, so it runs as the next task.
+    expect(chip).not.toHaveAttribute('data-paused');
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('also Q3');
+  });
+
   it('says it could not take the message in the person\'s language', async () => {
     const user = userEvent.setup();
     const composer = await startTurn(user);
@@ -696,5 +718,52 @@ describe('a message the server queued after the task had already taken it (ENG-4
     await emit({ type: 'response.addon', addon_id: 'ad5', local_key: localKey, state: 'added', text: 'use the sales DB' });
 
     expect(screen.getAllByLabelText('Remove from queue')).toHaveLength(1);
+  });
+});
+
+describe('reopening a conversation while Anton is working (ENG-4208)', () => {
+  /** Opens Alpha with a producer still running, so it reattaches a tail. */
+  const reattach = async (user) => {
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    await openTask(user);
+    await waitFor(() => expect(streams.some((s) => s.kind === 'tail')).toBe(true));
+    await emit({ type: 'response.created', response: { id: 'resp_1' }, conversation_id: 'conv-a' });
+  };
+  const rowStates = () => screen.queryAllByTestId('addon-row').map((r) => r.getAttribute('data-addon-state'));
+
+  it('shows every message added to the running turn, in its current state', async () => {
+    const user = userEvent.setup();
+    await reattach(user);
+
+    // Sent before the reload: this page never saw their requests.
+    await emit({ type: 'response.addon', addon_id: 'ad1', local_key: 'k_before_1', state: 'added', text: 'use the sales DB', decided_by: 'jev' });
+    await emit({ type: 'response.addon', addon_id: 'ad1', state: 'read', text: 'use the sales DB' });
+    await emit({ type: 'response.addon', addon_id: 'ad2', state: 'added', text: 'only Q3', decided_by: 'user' });
+    await emit({ type: 'response.addon', addon_id: 'ad3', state: 'added', text: 'skip the chart', decided_by: 'jev' });
+    await emit({ type: 'response.addon', addon_id: 'ad3', state: 'withdrawn', text: 'skip the chart' });
+
+    await waitFor(() => expect(rowStates()).toEqual(['read', 'added', 'withdrawn']));
+    expect(screen.getByText('use the sales DB')).toBeInTheDocument();
+    expect(screen.getByText('Read by Anton')).toBeInTheDocument();
+    expect(screen.getByText('Added to current task')).toBeInTheDocument();
+    expect(screen.getByText('Moved to queue')).toBeInTheDocument();
+    // Display only: none of them is this page's to move.
+    expect(screen.queryByRole('button', { name: 'Move to queue' })).toBeNull();
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+  });
+
+  it('never queues a returned message it did not send', async () => {
+    const user = userEvent.setup();
+    await reattach(user);
+
+    await emit({ type: 'response.addon', addon_id: 'ad1', state: 'added', text: 'use the sales DB', decided_by: 'jev' });
+    await emit({ type: 'response.addon', addon_id: 'ad1', state: 'returned', text: 'use the sales DB' });
+
+    await waitFor(() => expect(rowStates()).toEqual(['returned']));
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+    expect(trackAddonQueued).not.toHaveBeenCalled();
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    // The turn ends and nothing runs as a next task here.
+    expect(spies.streamMessage).not.toHaveBeenCalled();
   });
 });
