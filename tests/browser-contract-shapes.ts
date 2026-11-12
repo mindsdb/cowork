@@ -69,6 +69,9 @@ const elementShape = shape(
     checked: nullable(bool),
     disabled: bool,
     offscreen: bool,
+    // The router's: the containers around it, and whether it is in the open dialog.
+    context: str,
+    in_dialog: bool,
     options: list(str),
   },
 );
