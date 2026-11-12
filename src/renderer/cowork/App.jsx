@@ -32,6 +32,8 @@ import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
+import { LanguageHeaderSelect } from './views/settings/LanguageSection';
+import i18n, { useTranslation } from '../lib/i18n';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
 import CompareView from './views/CompareView';
@@ -47,7 +49,8 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
+import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, moveForm as moveDataVaultForm, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
 import { applyFavicon, applyNavTitleColor, applyOrgFavicon } from '../lib/navBranding';
@@ -101,7 +104,7 @@ import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fe
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
-         fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
+         fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer, sendAddon, withdrawAddon,
          fetchRecommendedModels, createConversation, revealSettingKey,
          SHORT_REQUEST_TIMEOUT_MS, listDatasourceConnections, fetchFacetimeStatus} from './api';
 import { answerBody, initialStreamState, liveTurnEndedAt, reduceStream, roundText, settleRound, settleStreamingRow, visibleFirstTake } from './lib/responseStreamAdapter';
@@ -125,7 +128,8 @@ import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackNewTaskMessageSent, sendWithStartVia, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed, trackCodeViewOpened, trackAddonAdded, trackAddonQueued, trackAddonOverridden } from './lib/analytics';
+import { addonEligibility, addonOutcome, newlyReturnedAddons, newAddonLocalKey, rememberOwnAddon } from './lib/addons';
 import { classifyStart } from './components/onboarding/completion';
 import { useWorkspaceAttribute } from './lib/useWorkspaceAttribute';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
@@ -160,17 +164,20 @@ import { Outlet } from 'react-router-dom';
  * available for free-form questions about the form.
 */
 const CONNECT_FOLLOWUPS = [
-  "Have a question about any of the fields? I'm happy to explain.",
-  "Need help finding your credentials? Just ask.",
-  "If anything's unclear, let me know — I can walk you through it.",
-  "Curious what a specific field expects? I can clarify.",
-  "Want more detail on any of the steps? Just ask.",
-  "Have questions before you submit? I'm here.",
-  "Want me to explain any of the fields more deeply? Let me know.",
-  "Happy to clarify anything before you fill it out.",
-  "If you'd like more context on a field, just ask.",
-  "Any questions about the setup? I'm here to help.",
-];
+  'fields', 'credentials', 'unclear', 'fieldExpects', 'steps',
+  'beforeSubmit', 'deeper', 'clarify', 'context', 'setup',
+].map((key) => `connect.followups.${key}`);
+
+/* Translate in the `app` namespace at the moment the text is needed. */
+const tApp = (key, vars) => i18n.t(key, { ns: 'app', ...vars });
+
+/* A translated sentence with one value shown in bold. The value goes in as a
+   marker, so each language keeps its own word order around it. */
+const BOLD_MARK = '\u0000';
+function withBold(key, name, value) {
+  const [before, after = ''] = tApp(key, { [name]: BOLD_MARK }).split(BOLD_MARK);
+  return <>{before}<strong>{value}</strong>{after}</>;
+}
 
 // Print a version/build banner to the browser console on startup so
 // developers and QA can quickly confirm which releases are running.
@@ -348,7 +355,7 @@ export function retireQuestionFromSteps(steps, questionId) {
  *
  * Pure so the decision can be tested without a stream. Returns null when
  * nothing should happen, else {taskId, queueTaskId, questionId, text,
- * attachments}. The
+ * attachments, itemIds}. The
  * caller is responsible for adding `questionId` to the drained set
  * synchronously, before any setState — that is what makes the drain
  * exactly-once even though clearing the queue is async.
@@ -358,14 +365,19 @@ export function planQueueDrain(steps, taskIds, queues, drainedQuestionIds) {
   if (!pending) return null;
   if (drainedQuestionIds?.has(pending.question_id)) return null;
   const ids = (taskIds || []).filter(Boolean);
-  const queueTaskId = ids.find((tid) => ((queues || {})[tid] || []).length > 0);
+  // An add-on whose request is still out (ENG-4194) stays put: the server may
+  // yet add it to the turn, and handing it back as well would send it twice.
+  const drainable = (tid) => ((queues || {})[tid] || []).filter((q) => !q?.addonPending);
+  const queueTaskId = ids.find((tid) => drainable(tid).length > 0);
   if (!queueTaskId) return null;
+  const items = drainable(queueTaskId);
   return {
     taskId: ids[0],
     queueTaskId,
     questionId: pending.question_id,
-    text: drainQueueToInput(queues[queueTaskId]),
-    attachments: drainQueueAttachments(queues[queueTaskId]),
+    text: drainQueueToInput(items),
+    attachments: drainQueueAttachments(items),
+    itemIds: items.map((q) => q.id),
   };
 }
 
@@ -406,7 +418,7 @@ export async function resolvePendingAnswer({ steps, conversationId, text, submit
   if (pending.allow_custom === false && payload.text && !payload.values) {
     return {
       action: 'blocked',
-      message: 'This question needs one of the options above. Pick one, or press Skip if you want to type something else.',
+      message: tApp('askUser.selectOnly'),
     };
   }
   const result = await submit(conversationId, pending.question_id, payload);
@@ -421,8 +433,8 @@ export async function resolvePendingAnswer({ steps, conversationId, text, submit
     return {
       action: 'fail',
       message: status === 'rejected'
-        ? 'That answer was rejected. Try one of the offered options.'
-        : 'Could not send your answer. Please try again.',
+        ? tApp('askUser.rejected')
+        : tApp('askUser.sendFailed'),
     };
   }
   // A success body carries no `status` at all (`{accepted: true}`) — api.js
@@ -440,10 +452,10 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
   const rest = list.filter((a) => !isPendingFileAttachment(a) && !isReferenceOnlyAttachment(a));
   if (pending.length) {
     if (!projectName || !sessionId) {
-      throw new Error('Pick a project and use a saved conversation before sending file attachments.');
+      throw new Error(tApp('attachments.needSavedConversation'));
     }
     if (String(sessionId).startsWith('tmp-')) {
-      throw new Error('Wait until this conversation has started before sending file attachments.');
+      throw new Error(tApp('attachments.waitForStart'));
     }
   }
   let uploaded = [];
@@ -600,12 +612,13 @@ function searchRecents(tasks, projects) {
   };
   return [
     ...[...tasks].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).slice(0, 5)
-      .map((task) => ({ type: 'task', id: task.id, title: task.title || 'Untitled task', subtitle: labelFor(task) })),
+      .map((task) => ({ type: 'task', id: task.id, title: task.title || tApp('common.untitledTask'), subtitle: labelFor(task) })),
     ...projects.slice(0, 3).map((project) => ({ type: 'project', id: project.id || project.name, title: projectLabel(project) })),
   ];
 }
 
 function AppCore() {
+  const { t: tSettings } = useTranslation('settings');
   // Seed from the read-through cache of the last settings fetch, not a literal
   // set of defaults — the server (GET /settings/) is the single source of truth
   // and returns every field's resolved default, so the boot fetch (below) fills
@@ -955,6 +968,18 @@ function AppCore() {
   const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text, attachments}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
+  // Add-ons (ENG-4194) whose text has already gone back to the queue — handed
+  // back unread at turn end, or moved there by the person — so a replayed
+  // `returned` event cannot queue the same words twice.
+  const handledAddonsRef = useRef(new Set());
+  // Add-ons this client asked to take back out ("Move to queue"), so the
+  // server's `withdrawn` for one of them queues it even if the request's own
+  // answer was lost — and another client's withdraw never does.
+  const withdrawRequestedRef = useRef(new Set());
+  const addonHandled = (...keys) => keys.some((k) => k && handledAddonsRef.current.has(k));
+  const markAddonHandled = (...keys) => keys.forEach((k) => { if (k) handledAddonsRef.current.add(k); });
+  // Their analytics must never break a send.
+  const noteAddon = (track) => { try { track(); } catch { /* ignore */ } };
   // `reconnectInFlight` is a mount-frozen useCallback (all its deps are
   // stable), so it cannot close over the render-fresh `drainNextQueuedMessage`
   // without also capturing a stale `handleSendInTask` (and its stale
@@ -1219,7 +1244,7 @@ function AppCore() {
     messageQueueRef.current = update(messageQueueRef.current);
   };
 
-  const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
+  const enqueueMessage = (taskId, text, attachments = [], disabledConnections = [], queuedReason = null, extra = null) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
     // them. Without this the queue stored text only and files were lost.
@@ -1227,8 +1252,29 @@ function AppCore() {
     // turn honors the connection-disable state as it was when the user hit
     // send, not whatever the composer happens to show when it finally
     // drains (which, for a cross-task drain, belongs to another task).
-    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
+    // `queuedReason`: why a message sent while the task ran was queued rather
+    // than added to it (ENG-4194), for the chip's hover line.
+    const item = {
+      id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      text, attachments, disabledConnections,
+      ...(queuedReason ? { queuedReason } : {}),
+      // An add-on's queue state (ENG-4194): `addonPending` while its request
+      // is out, `addonOffer` for the slot a mid-task send holds from the
+      // moment Enter is pressed, `addonLocalKey` to find it again, and
+      // `paused` + `unconfirmed` when nobody can say whether it was added.
+      ...(extra || {}),
+    };
     updateMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
+    return item.id;
+  };
+  // Settle one queued item in place: `patch` merges into it, null removes it.
+  const updateQueueItem = (taskId, itemId, patch) => {
+    if (patch === null) { removeFromQueue(taskId, itemId); return; }
+    updateMessageQueue((prev) => {
+      const arr = prev[taskId];
+      if (!arr || !arr.some((q) => q.id === itemId)) return prev;
+      return { ...prev, [taskId]: arr.map((q) => (q.id === itemId ? { ...q, ...patch } : q)) };
+    });
   };
   const removeFromQueue = (taskId, itemId) => {
     updateMessageQueue((prev) => {
@@ -1239,8 +1285,10 @@ function AppCore() {
       return next;
     });
   };
+  // The first item that may run: a paused one waits for the person.
+  const queueHead = (taskId) => (messageQueueRef.current[taskId] || []).find((q) => !q.paused) || null;
   const popQueueHead = (taskId) => {
-    const head = (messageQueueRef.current[taskId] || [])[0];
+    const head = queueHead(taskId);
     if (!head) return null;
     removeFromQueue(taskId, head.id);
     return head;
@@ -1251,15 +1299,6 @@ function AppCore() {
   // id would never re-match the task (ENG-1378).
   const migrateQueuedMessages = (fromIds, toId) => {
     updateMessageQueue((queues) => mergeQueuesForAdoptedId(queues, fromIds, toId));
-  };
-
-  const clearQueueForTask = (taskId) => {
-    updateMessageQueue((queues) => {
-      if (!queues[taskId]) return queues;
-      const next = { ...queues };
-      delete next[taskId];
-      return next;
-    });
   };
 
   // Fans lib/stampUserMessageId out over the ids a stream can be filed under
@@ -1282,6 +1321,38 @@ function AppCore() {
     });
   };
 
+  // The queued item an add-on of this client's holds (ENG-4194), found by its
+  // local key across every id the stream is known by.
+  const findAddonSlot = (taskIds, keys) => {
+    for (const tid of taskIds.filter(Boolean)) {
+      const item = (messageQueueRef.current[tid] || []).find((q) => q.addonLocalKey && keys.includes(q.addonLocalKey));
+      if (item) return { taskId: tid, item };
+    }
+    return null;
+  };
+  // What a held slot becomes once its add-on is back in the queue for sure.
+  const settledSlot = (reason) => ({
+    addonPending: false, addonOffer: false, paused: false, unconfirmed: false, queuedReason: reason,
+  });
+  // A queued copy of one of this client's add-ons that the running task took
+  // after all must not run again. `read` is proof: the server may answer
+  // "queued" for a message it had already handed the task, then drop the late
+  // `added` but relay `read` — so a read removes the copy, normal or paused.
+  // `added` alone only settles a paused (unconfirmed) copy; `withdrawn` leaves
+  // the copy where it is.
+  const reconcileQueuedAddons = (taskIds, steps) => {
+    for (const tid of taskIds.filter(Boolean)) {
+      for (const q of messageQueueRef.current[tid] || []) {
+        // A slot still waiting on its request counts too: a `read` before the
+        // answer means a later "queued" must not put it back.
+        if (!q.addonLocalKey) continue;
+        const shown = steps.find((s) => s?.badge === 'Addon' && s.data?.local_key === q.addonLocalKey);
+        const state = shown?.data?.state;
+        if (state === 'read' || (state === 'added' && q.unconfirmed && !q.addonPending)) removeFromQueue(tid, q.id);
+      }
+    }
+  };
+
   // Called from every stream's onEvent, right after reduceStream. Keeps
   // liveStepsRef current (so handleSendInTask can see a pending question
   // without threading stream state through the composer) and, the first
@@ -1301,6 +1372,30 @@ function AppCore() {
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
+    // A message added to this turn that Anton never read before the turn ended
+    // comes back as `returned`: it runs as the next task, so nothing is lost.
+    // Queued here, before the stream's terminal drains the queue.
+    // Only this client's own add-ons; one it took back out ("Move to queue")
+    // comes the same way when the server says `withdrawn`.
+    const returned = newlyReturnedAddons(steps, handledAddonsRef.current, {
+      withdrawRequested: withdrawRequestedRef.current,
+    });
+    if (returned.length > 0) {
+      const queueId = taskIds.find(Boolean);
+      const owner = tasksRef.current.find((t) => taskIds.includes(t.id));
+      returned.forEach(({ keys, text, reason }) => {
+        markAddonHandled(...keys);
+        // Its slot may already be in the queue (still waiting on its request,
+        // or paused unconfirmed): settle that one in place, never add another.
+        const slot = findAddonSlot(taskIds, keys);
+        if (slot) updateQueueItem(slot.taskId, slot.item.id, settledSlot(reason));
+        else enqueueMessage(queueId, text, [], owner?.disabledConnections || [], reason);
+        if (reason === 'returned') noteAddon(() => trackAddonQueued('returned'));
+      });
+    }
+    // A queued add-on the stream shows the task took after all must not run
+    // again from the queue.
+    reconcileQueuedAddons(taskIds, steps);
     const plan = planQueueDrain(
       steps,
       taskIds,
@@ -1313,15 +1408,16 @@ function AppCore() {
     // non-empty queue and drain it twice.
     drainedQuestionsRef.current.add(plan.questionId);
     // Clear under the key the messages are filed under, but redirect to the
-    // conversation the task is known by now — see planQueueDrain.
-    clearQueueForTask(plan.queueTaskId);
+    // conversation the task is known by now — see planQueueDrain. Only the
+    // items handed back: an add-on still waiting on its request stays.
+    plan.itemIds.forEach((itemId) => removeFromQueue(plan.queueTaskId, itemId));
     composerRedirectBumpRef.current += 1;
     // Only the newly restored batch, and only under this task's key — never
     // accumulated (that re-injects an earlier drain's text) and never into a
     // shared slot (that discards an earlier drain's text).
     //
     // The files those queued messages were carrying ride the SAME entry as the
-    // text, because they have to travel together: `clearQueueForTask` above
+    // text, because they have to travel together: the removal above
     // deletes the only other reference to them, while `composerAttachments` is a
     // single app-wide list that is not keyed by task. Staging them here would
     // therefore put task A's files on whatever task happens to be on screen, and
@@ -1451,7 +1547,7 @@ function AppCore() {
       endStopping(false);
       toastManagerRef.current?.add({
         type: 'danger',
-        title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
+        title: tApp('tasks.stopFailed'),
       });
       // The turn's own terminal may have run during the wait and skipped this queue.
       drainNextQueuedMessageRef.current?.(cidToCancel);
@@ -2055,10 +2151,8 @@ function AppCore() {
   }, []);
   const reportCodeStopIssue = useCallback(({ discoveryFailed, cancelFailures }) => {
     const title = discoveryFailed
-      ? 'Code Mode is hidden, but running tasks could not be fully checked.'
-      : cancelFailures === 1
-        ? 'Code Mode is hidden, but one task could not be stopped.'
-        : `Code Mode is hidden, but ${cancelFailures} tasks could not be stopped.`;
+      ? tApp('codeMode.stopUnchecked')
+      : tApp('codeMode.stopFailed', { count: cancelFailures });
     toastManagerRef.current?.add({
       type: 'warning',
       title,
@@ -2204,7 +2298,7 @@ function AppCore() {
     shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed
       ? { version: shellUpdate.version, debInstaller: host.getPlatform() === 'linux' }
       : null,
-  });
+  }, tApp);
   // Close Settings once a restart is underway. Its "Restart now" buttons wait
   // on requests that resolve only as the window reloads or the app quits, so
   // without this the modal stays up over the update overlay.
@@ -2377,13 +2471,10 @@ function AppCore() {
       toastManager.add({
         type: payload.permanent ? 'danger' : 'warning',
         timeout: 0,
-        title: (
-          <>
-            <strong>{payload.engine}</strong>
-            {payload.permanent
-              ? ' connection needs to be reconnected — refresh token expired.'
-              : ' connection refresh failed — retrying automatically.'}
-          </>
+        title: withBold(
+          payload.permanent ? 'oauth.reconnectNeeded' : 'oauth.refreshRetrying',
+          'engine',
+          payload.engine,
         ),
       });
     });
@@ -2433,7 +2524,7 @@ function AppCore() {
   const currentTaskModel = currentTask?.model
     ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
         ? MODEL_ROUTER
-        : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
+        : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: tApp('tasks.configuredPlanningModel') }))
     : selectedModel;
   // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
   // it has one, else whatever the home composer currently shows.
@@ -2858,8 +2949,8 @@ function AppCore() {
 
     setTasks((prev) => [{
       id: tempId,
-      title: `Modify ${connection.name || label}`,
-      subtitle: 'just now',
+      title: tApp('modify.taskTitle', { name: connection.name || label }),
+      subtitle: tApp('common.justNow'),
       status: hasLiteralForm ? 'idle' : 'active',
       messages: hasLiteralForm
         ? [
@@ -2872,7 +2963,7 @@ function AppCore() {
                 logo: full.form?.logo || full.logo,
                 logo_color: full.form?.logo_color || full.logo_color,
               },
-              content: `Modify ${connection.name || label}`,
+              content: tApp('modify.taskTitle', { name: connection.name || label }),
               // Modify-specific metadata so ChatView can render the
               // intro card with Cancel + Disconnect actions instead
               // of the plain "fill out the form" affordance.
@@ -2883,14 +2974,14 @@ function AppCore() {
             },
             {
               role: 'assistant',
-              content: `Update the credentials or settings for "${connection.name}" — saving overwrites the existing connection.`,
+              content: tApp('modify.body', { name: connection.name }),
               _client_only: true,
             },
           ]
         : [
             {
               role: 'assistant',
-              content: `Let's update ${connection.name || label}.`,
+              content: tApp('modify.intro', { name: connection.name || label }),
               _client_only: true,
             },
           ],
@@ -2968,8 +3059,8 @@ function AppCore() {
         // method list.
         const synthMethod = {
           id: '__edit_current__',
-          label: 'Currently saved values',
-          description: 'Edit the values stored for this connection.',
+          label: tApp('modify.savedValuesLabel'),
+          description: tApp('modify.savedValuesDescription'),
           fields: syntheticFields,
           // No `submit_action` / `oauth` / `actions` inherited from
           // any spec method — the synthetic stands on its own. The
@@ -2994,6 +3085,8 @@ function AppCore() {
           selected_method: '__edit_current__',
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -3011,6 +3104,8 @@ function AppCore() {
           fields: syntheticFields,
           engine: full.form.engine || full.id,
           _connector_id: full.id,
+          // Saved before connection tests: the form shows the rebuild text, not fields.
+          _needs_rebuild: !!full.needs_rebuild,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
@@ -3033,7 +3128,7 @@ function AppCore() {
     } else {
       // No registry entry — fall back to the chat-agent flow. Anton
       // can still walk the user through the change.
-      Promise.resolve().then(() => sendFromApp(`Update connection ${connection.name} (${label}).`));
+      Promise.resolve().then(() => sendFromApp(tApp('modify.chatRequest', { name: connection.name, label })));
     }
   };
   // Cancel a modify-flow task: drop the synthetic chat task we
@@ -3159,8 +3254,8 @@ function AppCore() {
 
     setTasks((prev) => [{
       id: tempId,
-      title: `Connect ${label}`,
-      subtitle: 'just now',
+      title: tApp('connect.taskTitle', { name: label }),
+      subtitle: tApp('common.justNow'),
       status: hasLiteralForm ? 'idle' : 'active',
       messages: hasLiteralForm
         ? [
@@ -3173,19 +3268,19 @@ function AppCore() {
                 logo: full.form?.logo || full.logo,
                 logo_color: full.form?.logo_color || full.logo_color,
               },
-              content: `Connect ${label}`,
+              content: tApp('connect.taskTitle', { name: label }),
               _client_only: true,
             },
             {
               role: 'assistant',
-              content: CONNECT_FOLLOWUPS[Math.floor(Math.random() * CONNECT_FOLLOWUPS.length)],
+              content: tApp(CONNECT_FOLLOWUPS[Math.floor(Math.random() * CONNECT_FOLLOWUPS.length)]),
               _client_only: true,
             },
           ]
         : [
             {
               role: 'assistant',
-              content: `Let's connect ${label}.`,
+              content: tApp('connect.intro', { name: label }),
               _client_only: true,
             },
           ],
@@ -3222,6 +3317,8 @@ function AppCore() {
         // engine slug; we treat that as the source of truth.
         engine: full.form.engine || full.id,
         _connector_id: full.id,
+        // Saved before connection tests: the form shows the rebuild text, not fields.
+        _needs_rebuild: !!full.needs_rebuild,
         /* Reconnecting a shared connection carries its name so the submit
            (DataVaultFormPanel reads spec._existing_name) updates that entry in
            place instead of saving a second one under a fresh random slug. */
@@ -3629,16 +3726,16 @@ function AppCore() {
   const launchCodingModeTask = async (text, meta) => {
     let generalProject = runnableProjects.find((p) => p.name === 'general');
     const effectiveProject = meta?.project || (canRunProject(selectedProject) ? selectedProject : null) || generalProject;
-    if (!canRunProject(effectiveProject)) throw new Error('Only the owner can run tasks in this shared project.');
+    if (!canRunProject(effectiveProject)) throw new Error(tApp('tasks.ownerOnly'));
     if (!effectiveProject?.path) {
-      throw new Error('Pick a project with a folder before launching Claude Code.');
+      throw new Error(tApp('codeMode.needFolder'));
     }
     if (!meta.model || meta.model === MODEL_ROUTER_ID) {
-      throw new Error('Pick a model before launching Claude Code.');
+      throw new Error(tApp('codeMode.needModel'));
     }
     const authToken = await revealSettingKey('minds');
     if (!authToken) {
-      throw new Error('No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.');
+      throw new Error(tApp('codeMode.noKey'));
     }
     const conversation = await createConversation({
       project: effectiveProject.name,
@@ -3649,12 +3746,12 @@ function AppCore() {
     });
     const taskId = conversation?.id;
     if (!taskId) {
-      throw new Error('Could not create the Claude Code task.');
+      throw new Error(tApp('codeMode.createFailed'));
     }
     setTasks((prev) => [{
       id: taskId,
       title: text.length > 60 ? text.slice(0, 57) + '…' : text,
-      subtitle: 'just now',
+      subtitle: tApp('common.justNow'),
       status: 'idle',
       messages: [{ role: 'user', content: text, attachments: [] }],
       projectName: effectiveProject.name,
@@ -3697,7 +3794,7 @@ function AppCore() {
   // Send from the home screen — creates a new session
   const handleSendFromHome = async (text, meta) => {
     if (!canRunProject(meta?.project) || (route === 'projects' && !canRunProject(selectedProject))) {
-      throw new Error('Only the owner can run tasks in this shared project.');
+      throw new Error(tApp('tasks.ownerOnly'));
     }
     if (meta?.harness === 'claude-code') {
       return launchCodingModeTask(text, meta);
@@ -3720,7 +3817,7 @@ function AppCore() {
       setTasks((prev) => [{
         id: taskId,
         title: text.length > 60 ? text.slice(0, 57) + '…' : text,
-        subtitle: 'just now',
+        subtitle: tApp('common.justNow'),
         status: 'idle',
         messages: [
           // `_unsent`: never reached the server, so hydration drops it.
@@ -3795,7 +3892,7 @@ function AppCore() {
     const newT = {
       id: taskId,
       title: text.length > 60 ? text.slice(0, 57) + '…' : text,
-      subtitle: 'just now',
+      subtitle: tApp('common.justNow'),
       status: 'active',
       messages: [],
       // Locally created: nothing is fetching history for it, because it has
@@ -3897,7 +3994,7 @@ function AppCore() {
                 // "Thinking…". The reply path (handleSendInTask)
                 // uses the default label since the session is
                 // already warm by then.
-                { label: 'Creating task…' },
+                { label: tApp('tasks.creating') },
               ),
             }
           : t,
@@ -4072,6 +4169,168 @@ function AppCore() {
   // repair), so analytics can tell it from one they typed.
   const sendFromApp = (text, meta) => sendWithStartVia('app', () => handleSendFromHome(text, meta));
 
+  // ── Messages sent while a turn runs (ENG-4194) ──────────────────────────
+  // The running turn's stream, when it can still take a message. Its
+  // `injectEvent` puts the app's own `response.addon` rows through the same
+  // reducer as the server's, so they render inside the turn where they joined.
+  const liveAddonCtrl = (taskId) => {
+    const ctrl = liveStreamsRef.current.get(taskId)?.ctrl;
+    return typeof ctrl?.injectEvent === 'function' ? ctrl : null;
+  };
+  const injectAddonEvent = (taskId, ev) => {
+    const ctrl = liveAddonCtrl(taskId);
+    if (!ctrl) return false;
+    ctrl.injectEvent({ type: 'response.addon', ...ev });
+    return true;
+  };
+  // Once an add-on's queue slot is settled, run the queue if its turn has
+  // ended meanwhile: that turn's terminal drain found the slot still waiting.
+  const drainIfIdle = (taskId) => {
+    if (!hasLiveTurnHere(taskId)) drainNextQueuedMessageRef.current?.(taskId);
+  };
+  // What a slot becomes when nobody can say whether the server added it: kept,
+  // but paused until the person sends it again, so it is neither lost nor run
+  // twice.
+  const UNCONFIRMED = {
+    addonPending: false, addonOffer: false, paused: true, unconfirmed: true, queuedReason: null,
+  };
+
+  // After `added`, the turn's stream had already ended, so its `returned` event
+  // had nowhere to land. Take the message back and say what became of the
+  // slot: `null` (Anton read it, or it is already queued elsewhere), the
+  // settled patch, or UNCONFIRMED when the withdraw's answer says nothing.
+  const reclaimAfterTurnEnded = async (taskId, addonId, localKey) => {
+    if (addonHandled(addonId, localKey)) return undefined;
+    const back = await withdrawAddon(taskId, addonId);
+    // Its `returned` may have been handled while the withdraw was out.
+    if (addonHandled(addonId, localKey)) return undefined;
+    markAddonHandled(addonId, localKey);
+    if (back?.status === 'withdrawn') return settledSlot('returned');
+    if (back?.status === 'already_read') return null;
+    return UNCONFIRMED;
+  };
+
+  // A composer send while this task's turn runs: show it in the turn at once
+  // as "Sending…", ask the server, then either keep it there or move it to the
+  // queue exactly as before. Not awaited by the send, so Enter never waits on
+  // Jev; the request gives up after a few seconds and queues.
+  //
+  // Its place in the queue is held from the moment Enter is pressed (a hidden
+  // slot while the turn shows the row), so a message typed after it can never
+  // run before it; the outcome then settles that slot in place.
+  const offerAddon = (taskId, text, disabledConnections) => {
+    const localKey = newAddonLocalKey();
+    rememberOwnAddon(localKey);
+    const responseId = liveAddonCtrl(taskId)?.responseId || null;
+    const slotId = enqueueMessage(taskId, text, [], disabledConnections || [], null, {
+      addonPending: true, addonOffer: true, addonLocalKey: localKey,
+    });
+    injectAddonEvent(taskId, { state: 'sending', local_key: localKey, text });
+    const settle = (patch) => {
+      if (patch !== undefined) updateQueueItem(taskId, slotId, patch);
+      drainIfIdle(taskId);
+    };
+    void (async () => {
+      const outcome = addonOutcome(await sendAddon(taskId, text, { responseId, localKey }));
+      if (outcome.action === 'added') {
+        rememberOwnAddon(outcome.addonId);
+        noteAddon(() => trackAddonAdded(outcome.decidedBy, 'send'));
+        if (injectAddonEvent(taskId, {
+          state: 'added', local_key: localKey, addon_id: outcome.addonId, text, decided_by: outcome.decidedBy,
+        })) {
+          // Its stream may already have handed it back (`returned` settles the
+          // slot in place); otherwise it lives in the turn now.
+          if (!addonHandled(outcome.addonId, localKey)) settle(null);
+          return;
+        }
+        settle(await reclaimAfterTurnEnded(taskId, outcome.addonId, localKey));
+        return;
+      }
+      injectAddonEvent(taskId, { state: 'discarded', local_key: localKey });
+      noteAddon(() => trackAddonQueued(outcome.reason));
+      // Already settled by its stream (handed back while the request was out).
+      if (addonHandled(localKey)) { settle(undefined); return; }
+      // No answer (a timeout, a network error, a body we do not know): the
+      // server may have added it, so it waits paused in its slot rather than
+      // run a second time. Its stream showing it added or read removes it.
+      settle(outcome.unclear ? UNCONFIRMED : settledSlot(outcome.reason));
+    })();
+  };
+
+  // "Move to queue" on a message the running task has not read yet.
+  const handleMoveAddonToQueue = async (taskId, addonId, text, decidedBy) => {
+    if (!taskId || !addonId) return;
+    withdrawRequestedRef.current.add(addonId);
+    injectAddonEvent(taskId, { state: 'withdrawing', addon_id: addonId });
+    const result = await withdrawAddon(taskId, addonId);
+    const status = result?.status || 'error';
+    noteAddon(() => trackAddonOverridden('to_queue', status, decidedBy));
+    if (status === 'withdrawn') {
+      // The row stays, as "Moved to queue"; its own event may already have
+      // queued it (see newlyReturnedAddons).
+      injectAddonEvent(taskId, { state: 'withdrawn', addon_id: addonId });
+      if (addonHandled(addonId)) return;
+      markAddonHandled(addonId);
+      const owner = tasksRef.current.find((t) => t.id === taskId);
+      enqueueMessage(taskId, text, [], owner?.disabledConnections || [], 'moved');
+      drainIfIdle(taskId);
+      return;
+    }
+    if (status === 'already_read') {
+      // Too late: Anton has it. Say so instead of offering the move again.
+      injectAddonEvent(taskId, { state: 'read', addon_id: addonId });
+      return;
+    }
+    injectAddonEvent(taskId, { state: 'added', addon_id: addonId, revert: true });
+    toastManager.add({ type: 'warning', title: tApp('addon.moveFailed') });
+  };
+
+  // "Add to current task" on a queued chip: the person overrides the queue, so
+  // the server adds it without asking Jev. Anything but `added` leaves it
+  // queued — paused, when the answer does not say whether it was added.
+  const handleAddQueuedToTask = async (taskId, itemId) => {
+    const ctrl = taskId ? liveAddonCtrl(taskId) : null;
+    if (!ctrl) return;
+    const item = (messageQueueRef.current[taskId] || []).find((q) => q.id === itemId);
+    if (!item || item.addonPending || item.paused || (item.attachments || []).length > 0) return;
+    const localKey = newAddonLocalKey();
+    rememberOwnAddon(localKey);
+    updateQueueItem(taskId, itemId, { addonPending: true, addonLocalKey: localKey });
+    const outcome = addonOutcome(await sendAddon(taskId, item.text, {
+      force: true, responseId: ctrl.responseId || null, localKey,
+    }));
+    noteAddon(() => trackAddonOverridden('to_task', outcome.action === 'added' ? 'added' : outcome.reason));
+    if (outcome.action === 'added') {
+      rememberOwnAddon(outcome.addonId);
+      if (injectAddonEvent(taskId, {
+        state: 'added', local_key: localKey, addon_id: outcome.addonId, text: item.text, decided_by: outcome.decidedBy,
+      })) {
+        noteAddon(() => trackAddonAdded(outcome.decidedBy, 'queue'));
+        if (!addonHandled(outcome.addonId, localKey)) removeFromQueue(taskId, itemId);
+      } else {
+        // Added, but the turn ended before we could show it: take it back so
+        // it runs from the queue rather than not at all — unless Anton already
+        // read it, when running it again would do the work twice.
+        const patch = await reclaimAfterTurnEnded(taskId, outcome.addonId, localKey);
+        if (patch !== undefined) updateQueueItem(taskId, itemId, patch === null ? null : { ...patch, queuedReason: item.queuedReason || null });
+      }
+    } else if (outcome.unclear) {
+      updateQueueItem(taskId, itemId, UNCONFIRMED);
+    } else {
+      updateQueueItem(taskId, itemId, { addonPending: false });
+      toastManager.add({ type: 'info', title: tApp('addon.stayQueued', { agent: agentLabel || 'Anton' }) });
+    }
+    drainIfIdle(taskId);
+  };
+
+  // "Send again" on a paused chip whose add-on could not be confirmed: the
+  // person says run it, so it rejoins the queue in its place.
+  const handleResendQueued = (taskId, itemId) => {
+    if (!taskId || !itemId) return;
+    updateQueueItem(taskId, itemId, { paused: false, unconfirmed: false });
+    drainIfIdle(taskId);
+  };
+
   // Send inside an existing task
   //
   // Answers `true` when the text is on its way — a stream started, or it was
@@ -4153,9 +4412,7 @@ function AppCore() {
       if (orphaned.length > 0) {
         toastManager.add({
           type: 'warning',
-          title: orphaned.length === 1
-            ? 'Your file was not sent — the agent asked a question first. It is still attached.'
-            : `Your ${orphaned.length} files were not sent — the agent asked a question first. They are still attached.`,
+          title: tApp('attachments.notSent', { count: orphaned.length }),
         });
       }
       // The text became the answer to the agent's question, so it did not start
@@ -4214,6 +4471,26 @@ function AppCore() {
     //      which may remove the new turn. The message waits, and that Stop or
     //      delete drains it once it has finished.
     if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current || hasLiveTurnHere(id)) {
+      // A message typed into a task that is working right now may belong to
+      // that task ("use the sales DB instead"): offer it to the running turn
+      // first (ENG-4194). Only the person's own composer sends: a drained or
+      // machine-written prompt (a repair) always queues, as before.
+      let queuedReason = null;
+      if (!opts.targetTask && !opts.skipPendingAnswer && hasLiveTurnHere(id)) {
+        const eligibility = addonEligibility({
+          conversationId: id,
+          text,
+          attachments: queuedAttachments ?? composerAttachments,
+          liveStream: Boolean(liveAddonCtrl(id)),
+          ending: stoppingRef.current.has(id) || deletingRef.current.has(id) || recoveringRef.current.has(id),
+        });
+        if (eligibility.ok) {
+          offerAddon(id, text, mutesForSend);
+          return true;
+        }
+        noteAddon(() => trackAddonQueued(eligibility.reason));
+        queuedReason = eligibility.reason;
+      }
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
@@ -4223,6 +4500,7 @@ function AppCore() {
         text,
         queuedAttachments ?? composerAttachments,
         mutesForSend,
+        queuedReason,
       );
       if (queuedAttachments == null) setComposerAttachments([]);
       // Queued counts as sent: the drain runs it when the slot frees, so a
@@ -4332,7 +4610,7 @@ function AppCore() {
       // and the staged file for a retry.
       toastManager.add({
         type: 'danger',
-        title: err?.message || 'Could not send your attachment. Please try again.',
+        title: err?.message || tApp('attachments.sendFailed'),
       });
       throw err;
     }
@@ -4392,15 +4670,7 @@ function AppCore() {
       // Migrate the form store so a success-state panel (e.g. the
       // OAuth success screen set just before onContinue was called)
       // survives the ID change and stays visible under the new task id.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4631,6 +4901,11 @@ function AppCore() {
     if (!taskId) return;
     const targetTask = tasksRef.current.find((t) => t.id === taskId);
     if (!targetTask) return;
+    // Its add-on request is still out ("Add to current task", or a mid-task
+    // send holding its place): sending it now as well could run it twice, and
+    // skipping it would run later messages first. That request drains again
+    // once it is answered.
+    if (queueHead(taskId)?.addonPending) return;
     const next = popQueueHead(taskId);
     if (!next) return;
     // handleSendInTask can reject (answer submit, or attachment resolution).
@@ -4783,15 +5058,7 @@ function AppCore() {
       // data-vault-form-patch blocks (keyed to the new id) both
       // find the form. Without this the panel loses its spec and
       // the success patch falls through to a bare setForm.
-      const existingForm = getDataVaultForm(previousId);
-      if (existingForm) {
-        const existingFormState = getDataVaultFormState(previousId);
-        const existingMethod = getDataVaultSelectedMethod(previousId);
-        setDataVaultForm(sid, existingForm);
-        if (existingFormState) setDataVaultFormState(sid, existingFormState);
-        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
-        clearDataVaultForm(previousId);
-      }
+      moveDataVaultForm(previousId, sid);
     };
 
     const flushStreaming = () => {
@@ -4846,6 +5113,9 @@ function AppCore() {
         if (!isCurrentStream(resolvedId || id, vaultCtrl)) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
+        // A custom connector's test waiting on the user: its id goes to the
+        // panel's own store, never into the stream state or the message.
+        if (applyConnectorTestEvent(resolvedId || id, ev)) return;
         streamState = reduceStream(streamState, ev);
         stampUserMessageIdOnTasks([resolvedId, id], streamState.userMessageId);
         updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
@@ -4986,7 +5256,7 @@ function AppCore() {
             _is_probing: false,
             _is_success: false,
             status_text: null,
-            form_error: message || 'Form submission failed.',
+            form_error: message || tApp('tasks.formSubmitFailed'),
           });
         }
         setTasks((prev) => prev.map((t) => {
@@ -4994,7 +5264,7 @@ function AppCore() {
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           return { ...t, status: 'error', messages: [...msgs, {
             role: 'error',
-            content: message || 'Form submission failed.',
+            content: message || tApp('tasks.formSubmitFailed'),
           }] };
         }));
         drainNextQueuedMessage(resolvedId);
@@ -5166,7 +5436,7 @@ function AppCore() {
         // Needs action before it makes sense to move on, so it persists
         // until dismissed, like the OAuth refresh-failure toast.
         timeout: 0,
-        title: "Couldn't delete this chat. It is back in your list; try again.",
+        title: tApp('deleteTask.failed'),
         description: e?.message,
       });
     }
@@ -5257,7 +5527,7 @@ function AppCore() {
       refreshingAfterDeleteRef.current.add(taskId);
       // Said before the fetch, not after it: the click has to register at once,
       // and this spends it on a refresh rather than on the delete.
-      alert('The last delete here left this list unconfirmed, so it will be refreshed now. Check it, then delete again if you still need to.');
+      alert(tApp('deleteTurn.unconfirmedRefresh'));
       try {
         if (await resyncConversationAfterDelete(taskId, unconfirmedDeletes[taskId])) {
           setUnconfirmedDeletes((prev) => {
@@ -5267,7 +5537,7 @@ function AppCore() {
             return next;
           });
         } else {
-          alert('This conversation could not be refreshed. Reload it before deleting anything else in it.');
+          alert(tApp('deleteTurn.refreshFailed'));
         }
       } finally {
         refreshingAfterDeleteRef.current.delete(taskId);
@@ -5308,7 +5578,7 @@ function AppCore() {
         failedOlderCursorRef.current.set(taskId, current.messagesCursor);
         toastManager.add({
           type: 'danger',
-          title: "Couldn't load earlier messages. Try again.",
+          title: tApp('tasks.loadEarlierFailed'),
         });
         return;
       }
@@ -5442,7 +5712,7 @@ function AppCore() {
         return prev.map((x) => (x === t ? next : x));
       });
     });
-    if (!removed) alert('This message changed before it could be deleted. Try again.');
+    if (!removed) alert(tApp('deleteTurn.messageChanged'));
   };
 
   // A task as of every update queued so far: an updater runs after them all,
@@ -5590,14 +5860,14 @@ function AppCore() {
         // The quiet version of this is the one that loses data: the exchange
         // may be gone on the server while the list still shows it.
         alert(failure
-          ? 'Could not confirm this delete, and the conversation could not be refreshed. Reload this conversation before deleting anything else in it.'
-          : 'This exchange was deleted, but the conversation could not be refreshed, so the list may be out of date. Reload this conversation before deleting anything else in it.');
+          ? tApp('deleteTurn.unconfirmedNoRefresh')
+          : tApp('deleteTurn.deletedNoRefresh'));
       } else if (unconfirmed) {
-        alert('Could not confirm this delete. It may still have gone through, so this conversation will be refreshed before the next delete in it.');
+        alert(tApp('deleteTurn.unconfirmed'));
       } else if (failure && refused) {
-        alert(`Could not delete this exchange: ${failure?.message || failure}`);
+        alert(tApp('deleteTurn.failedWithReason', { reason: failure?.message || failure }));
       } else if (gone) {
-        alert('The server did not delete this exchange as shown, so the conversation has been refreshed. Check it, then delete again if you still need to.');
+        alert(tApp('deleteTurn.notDeletedAsShown'));
       }
     } finally {
       // Cleared in the same continuation that truncates the list, so the turn
@@ -5648,7 +5918,7 @@ function AppCore() {
       toastManager.add({
         type: 'danger',
         timeout: 0,
-        title: "Couldn't delete this project. Nothing was removed; try again.",
+        title: tApp('deleteProject.failed'),
         description: e?.message || String(e),
       });
       return;
@@ -5994,7 +6264,7 @@ function AppCore() {
     switch (displayToggleMode(appearanceSettings, look.lockedByOrg)) {
       case 'menu':
         return {
-          label: 'Display settings',
+          label: tApp('display.settings'),
           // Not sun/moon: this opens both controls, so it must not read as
           // the direct theme flip.
           icon: Ico.palette(14),
@@ -6002,7 +6272,7 @@ function AppCore() {
         };
       case 'theme':
         return {
-          label: 'Toggle dark/light mode',
+          label: tApp('display.toggleTheme'),
           icon: theme === 'dark' ? Ico.sun(14) : Ico.moon(14),
           onClick: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
         };
@@ -6301,6 +6571,9 @@ function AppCore() {
             showFigureSources={appearanceSettings.showFigureSources !== false}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
+            onAddQueuedToTask={(itemId) => handleAddQueuedToTask(currentTask?.id, itemId)}
+            onMoveAddonToQueue={(addonId, text, decidedBy) => handleMoveAddonToQueue(currentTask?.id, addonId, text, decidedBy)}
+            onResendQueued={(itemId) => handleResendQueued(currentTask?.id, itemId)}
             onBack={() => {
               // Returning home = "new task in this project". Pre-select
               // the task's project so the home composer is ready to go.
@@ -6412,7 +6685,7 @@ function AppCore() {
               if (result?.status === 'error') {
                 toastManager.add({
                   type: 'danger',
-                  title: 'Could not send your answer. Please try again.',
+                  title: tApp('askUser.sendFailed'),
                 });
               } else if (result?.status === 'rejected') {
                 // From a button press this means the app submitted a shape the
@@ -6420,7 +6693,7 @@ function AppCore() {
                 // user can fix by choosing differently.
                 toastManager.add({
                   type: 'danger',
-                  title: 'That answer was not accepted. Reload the conversation to see the question as it stands now.',
+                  title: tApp('askUser.notAccepted'),
                 });
               }
             }}
@@ -6610,9 +6883,9 @@ function AppCore() {
             offers none to choose from. */}
         {route === 'compare' && !showCompare && (settingsLoaded || pickerMode === 'off') && (
           <EmptyState
-            title="Compare Models isn't available here"
-            description="There are no models to choose from on this deployment, so there's nothing to compare. Your operator decides which models you can pick."
-            action={{ label: 'New task', onClick: newTask, primary: true }}
+            title={tApp('compare.unavailableTitle')}
+            description={tApp('compare.unavailableDescription')}
+            action={{ label: tApp('common.newTask'), onClick: newTask, primary: true }}
           />
         )}
         {route === 'compare' && showCompare && (
@@ -6728,10 +7001,14 @@ function AppCore() {
           <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
             <ModalHeader
               id="settings-modal-title"
-              title="Settings"
+              title={tSettings('nav.title')}
               onClose={() => setSettingsOpen(false)}
-              right={!ssoConnected && host.isElectron ? (
-                <Tooltip content="Sign in with MindsHub to use managed models">
+              right={(
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {/* Language from any section, not only Appearance (ENG-4149). */}
+                  <LanguageHeaderSelect />
+                  {!ssoConnected && host.isElectron && (
+                <Tooltip content={tSettings('header.signInTooltip')}>
                   <button
                     type="button"
                     onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
@@ -6747,9 +7024,11 @@ function AppCore() {
                     }}
                     onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
-                  >Sign in</button>
+                  >{tSettings('header.signIn')}</button>
                 </Tooltip>
-              ) : undefined}
+                  )}
+                </div>
+              )}
             />
             <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <SettingsView
@@ -6822,7 +7101,7 @@ function AppCore() {
         // than opening a connect form that couldn't work here.
         onDesktopOnly={(c) => {
           setConnectorPickerOpen(false);
-          setComingSoonFeature(c?.label || 'This connector');
+          setComingSoonFeature(c?.label || tApp('connect.thisConnector'));
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
@@ -6862,10 +7141,12 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDisconnect != null}
-        title={`Disconnect ${pendingDisconnect?.name || 'this connection'}?`}
-        message={`The saved ${pendingDisconnect?.engine || ''} connection and its stored credentials are deleted. You can connect it again later.`}
-        confirmLabel="Disconnect"
-        busyLabel="Disconnecting…"
+        title={pendingDisconnect?.name
+          ? tApp('disconnect.title', { name: pendingDisconnect.name })
+          : tApp('disconnect.titleFallback')}
+        message={tApp('disconnect.message', { engine: pendingDisconnect?.engine || '' })}
+        confirmLabel={tApp('disconnect.confirm')}
+        busyLabel={tApp('disconnect.busy')}
         destructive
         busy={disconnectBusy}
         error={disconnectError}
@@ -6875,10 +7156,10 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteTaskId != null}
-        title="Delete this task?"
-        message="The conversation history and any per-task scratchpad cells will be removed. This can't be undone."
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        title={tApp('deleteTask.title')}
+        message={tApp('deleteTask.message')}
+        confirmLabel={tApp('common.delete')}
+        cancelLabel={tApp('common.keep')}
         destructive
         onClose={() => setPendingDeleteTaskId(null)}
         onConfirm={async () => {
@@ -6890,10 +7171,10 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteTurn != null}
-        title="Delete this exchange?"
-        message={`This removes both your question and ${agentLabel}'s response from the conversation. Any scratchpad cells, artifacts, or memory writes produced as part of this turn stay on disk. This can't be undone.`}
-        confirmLabel="Delete"
-        cancelLabel="Keep"
+        title={tApp('deleteTurn.title')}
+        message={tApp('deleteTurn.message', { agent: agentLabel })}
+        confirmLabel={tApp('common.delete')}
+        cancelLabel={tApp('common.keep')}
         destructive
         onClose={() => setPendingDeleteTurn(null)}
         onConfirm={async () => {
@@ -6906,14 +7187,14 @@ function AppCore() {
 
       <ConfirmModal
         open={pendingDeleteProject != null}
-        title={`Delete project "${projectLabel(pendingDeleteProject)}"?`}
+        title={tApp('deleteProject.title', { name: projectLabel(pendingDeleteProject) })}
         message={
           pendingDeleteProject?.capabilities?.directoryIsExternal
-            ? `The project and its conversations will be removed. Your folder ${pendingDeleteProject?.path || ''} stays where it is and your own files in it are not touched, though Cowork's skills/ and .anton/ folders are left behind inside it. This can't be undone.`
-            : "All conversations, scratchpad output, memory, and artifacts under this project will be removed from disk. This can't be undone."
+            ? tApp('deleteProject.messageExternal', { path: pendingDeleteProject?.path || '' })
+            : tApp('deleteProject.message')
         }
-        confirmLabel="Delete project"
-        cancelLabel="Keep"
+        confirmLabel={tApp('deleteProject.confirm')}
+        cancelLabel={tApp('common.keep')}
         destructive
         onClose={() => setPendingDeleteProject(null)}
         onConfirm={async () => {
@@ -6935,10 +7216,10 @@ function AppCore() {
           google_drive connection yet — see useGoogleDrivePicker. */}
       <ConfirmModal
         open={!!driveConnectPrompt}
-        title="Connect Google Drive?"
-        message="You need to connect your Google Drive account to add files from Drive."
-        confirmLabel="Connect"
-        cancelLabel="Cancel"
+        title={tApp('drive.connectTitle')}
+        message={tApp('drive.connectMessage')}
+        confirmLabel={tApp('common.connect')}
+        cancelLabel={tApp('common.cancel')}
         onConfirm={confirmDriveConnect}
         onClose={cancelDriveConnect}
       />
@@ -6953,8 +7234,8 @@ function AppCore() {
       >
         <ModalHeader
           id="gdrive-account-picker-title"
-          title="Choose a Google Drive account"
-          subtitle="More than one Google Drive account is connected — pick which one to use."
+          title={tApp('drive.chooseAccountTitle')}
+          subtitle={tApp('drive.chooseAccountSubtitle')}
           onClose={cancelDriveAccountChoice}
         />
         <ModalBody>
@@ -7008,8 +7289,10 @@ function AppCore() {
             fontFamily: 'var(--font-sans)',
           }}>
             {updateStatus.phase === 'downloading'
-              ? `Updating${updateStatus.version ? ` to ${updateStatus.version}` : ''}...`
-              : 'Almost there...'}
+              ? (updateStatus.version
+                  ? tApp('update.updatingTo', { version: updateStatus.version })
+                  : tApp('update.updating'))
+              : tApp('update.almostThere')}
           </div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>

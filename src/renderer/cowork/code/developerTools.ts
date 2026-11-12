@@ -1,5 +1,6 @@
 import type { ConnectorConnection } from '../api';
 import type { ProjectConnection, SourceContext } from './api';
+import i18n from '../../lib/i18n';
 
 export type DeveloperProvider = 'github' | 'linear';
 
@@ -94,8 +95,8 @@ export function sourceContextLabel(context: SourceContext): string {
 export function sourceContextMeta(context: SourceContext): string {
   return [
     context.state,
-    context.comments?.length ? `${context.comments.length} ${context.comments.length === 1 ? 'comment' : 'comments'}` : '',
-    context.attachments?.length ? `${context.attachments.length} ${context.attachments.length === 1 ? 'attachment' : 'attachments'}` : '',
+    context.comments?.length ? i18n.t('developerTools.comments', { ns: 'code', count: context.comments.length }) : '',
+    context.attachments?.length ? i18n.t('developerTools.attachments', { ns: 'code', count: context.attachments.length }) : '',
   ].filter(Boolean).join(' · ');
 }
 

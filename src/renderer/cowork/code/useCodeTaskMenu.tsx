@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 
+import { useTranslation } from '../../lib/i18n';
 import { ConfirmModal } from '../components/ConfirmModal';
 import Ico from '../components/Icons';
 import type { MenuItem } from '../components/ui/Menu';
@@ -33,6 +34,7 @@ export function useCodeTaskMenu({ onTogglePinned, onRename, onSetArchived, onDel
   items: (session: CodingSession, options?: { pinBusy?: boolean }) => MenuItem[];
   dialogs: ReactNode;
 } {
+  const { t } = useTranslation('code');
   const [renaming, setRenaming] = useState<CodingSession | null>(null);
   const [deleting, setDeleting] = useState<CodingSession | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,32 +45,32 @@ export function useCodeTaskMenu({ onTogglePinned, onRename, onSetArchived, onDel
     try {
       await onSetArchived(session.id, archive);
     } catch {
-      onError(`Couldn't ${archive ? 'archive' : 'restore'} this task.`);
+      onError(archive ? t('taskMenu.errors.archive') : t('taskMenu.errors.restore'));
     }
   };
 
   const items = (session: CodingSession, { pinBusy = false } = {}): MenuItem[] => {
     // A turn in flight owns the task's files and history.
     const idle = session.status !== 'running' && session.status !== 'awaiting_approval';
-    const busyReason = idle ? undefined : 'Stop the active turn first.';
+    const busyReason = idle ? undefined : t('taskMenu.stopFirst');
     return [
       {
-        label: session.pinned ? 'Unpin' : 'Pin',
+        label: session.pinned ? t('taskMenu.unpin') : t('taskMenu.pin'),
         icon: Ico.pin(14),
         disabled: pinBusy,
         onClick: () => onTogglePinned(session),
       },
-      { label: 'Rename', icon: Ico.edit(14), onClick: () => setRenaming(session) },
+      { label: t('taskMenu.rename'), icon: Ico.edit(14), onClick: () => setRenaming(session) },
       { divider: true },
       {
-        label: session.archived ? 'Restore' : 'Archive',
+        label: session.archived ? t('taskMenu.restore') : t('taskMenu.archive'),
         icon: Ico.folder(14),
         disabled: !idle,
         title: busyReason,
         onClick: () => void toggleArchived(session),
       },
       {
-        label: 'Delete',
+        label: t('taskMenu.delete'),
         icon: Ico.trash(14),
         danger: true,
         disabled: !idle,
@@ -97,9 +99,9 @@ export function useCodeTaskMenu({ onTogglePinned, onRename, onSetArchived, onDel
       />
       <ConfirmModal
         open={!!deleting}
-        title="Delete this coding task?"
-        message="This removes the task history and any isolated working copy. Your original files are left alone."
-        confirmLabel="Delete task"
+        title={t('taskMenu.deleteConfirm.title')}
+        message={t('taskMenu.deleteConfirm.message')}
+        confirmLabel={t('taskMenu.deleteConfirm.confirm')}
         destructive
         busy={busy}
         onClose={() => { if (!busy) setDeleting(null); }}
@@ -109,7 +111,7 @@ export function useCodeTaskMenu({ onTogglePinned, onRename, onSetArchived, onDel
           try {
             await onDelete(deleting!.id);
           } catch {
-            onError("Couldn't delete this task.");
+            onError(t('taskMenu.errors.delete'));
           } finally {
             setDeleting(null);
             setBusy(false);

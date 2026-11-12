@@ -30,6 +30,9 @@ import {
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
 import { publishRefusalMessage } from './publishErrors';
+import i18n from '../../../../lib/i18n';
+
+const tr = (key, vars) => i18n.t(`publish.errors.${key}`, { ns: 'artifacts', ...vars });
 import { republishNotice, stopSharingNotice } from './linkLeftLive';
 import { useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../../../hooks/useOrgSharing';
 import { isOrgSharingOn, isOwnerOnlyAccess } from '../../../lib/orgSharing';
@@ -42,8 +45,8 @@ function friendlyPublishError(e) {
   const refusal = publishRefusalMessage(e);
   if (refusal) return refusal;
   const msg = e?.message || String(e);
-  if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to share.';
-  return `Sharing failed: ${msg}`;
+  if (/minds[_ ]?api[_ ]?key/i.test(msg)) return tr('mindsApiKey');
+  return tr('sharingFailed', { message: msg });
 }
 
 function modeFromArtifact(a) {
@@ -227,7 +230,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       const r = orgMode
         ? await setArtifactAccess(artifact, access)
         : await publishArtifact(targetPath, access);
-      if (!r?.url) throw new Error('Sharing returned no URL.');
+      if (!r?.url) throw new Error(tr('noUrl'));
       // Server is authoritative (it degrades an empty restricted/password
       // selection back to public); fall back to the requested access.
       const m = r.accessMode || access?.mode || 'public';
@@ -304,7 +307,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, modified: false, publishedUrl: url });
       return true;
     } catch (e) {
-      setError(publishRefusalMessage(e) ?? `Update failed: ${e?.message || e}`);
+      setError(publishRefusalMessage(e) ?? tr('updateFailed', { message: String(e?.message || e) }));
       return false;
     } finally {
       setPhase('idle');
@@ -329,7 +332,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, publishedUrl: '' });
       return { ok: true, notice: left };
     } catch (e) {
-      setError(`Couldn't stop sharing: ${e?.message || e}`);
+      setError(tr('stopFailed', { message: String(e?.message || e) }));
       return { ok: false, notice: '' };
     } finally {
       setPhase('idle');
@@ -492,7 +495,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       await activateArtifactVersion(targetPath, md5);
       return true;
     } catch (e) {
-      setError(`Roll back failed: ${e?.message || e}`);
+      setError(tr('rollBackFailed', { message: String(e?.message || e) }));
       return false;
     } finally {
       setPhase('idle');

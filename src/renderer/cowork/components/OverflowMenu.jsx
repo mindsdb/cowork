@@ -1,12 +1,13 @@
 import Ico from './Icons';
 import { cn } from '../lib/cn';
 import { Button, Menu } from './ui';
+import { useTranslation } from '../../lib/i18n';
 
 export function OverflowMenu({
   items = [],
   icon = Ico.moreVert(14),
-  label = 'More actions',
-  title = label,
+  label: labelProp,
+  title: titleProp,
   width = 200,
   align = 'end',
   side = 'bottom',
@@ -22,6 +23,9 @@ export function OverflowMenu({
   onTriggerKeyDown,
   ...menuProps
 }) {
+  const { t } = useTranslation('shell');
+  const label = labelProp === undefined ? t('ui.actionBar.moreActions') : labelProp;
+  const title = titleProp === undefined ? label : titleProp;
   // A ghost icon Button, sized by `size` (callers' `triggerClassName` keeps
   // layout such as position and reveal-on-hover). `title` becomes a Tooltip
   // that Menu composes onto its own trigger.

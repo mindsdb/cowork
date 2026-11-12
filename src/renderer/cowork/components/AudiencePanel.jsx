@@ -28,11 +28,11 @@ import { AudienceOption } from './AudienceOption';
 import RecipientField from './RecipientField';
 import {
   AUDIENCE_CHOICE,
-  EVERYONE_AT_DESC,
-  ONLY_ME_DESC,
-  ONLY_ME_TITLE,
-  SPECIFIC_DESC,
-  SPECIFIC_TITLE,
+  everyoneAtDesc,
+  onlyMeDesc,
+  onlyMeTitle,
+  specificDesc,
+  specificTitle,
   everyoneAtLabel,
 } from '../lib/orgSharing';
 
@@ -41,7 +41,7 @@ import {
  * @param {'skill' | 'artifact'} kind
  */
 export function onlyMeOption(kind) {
-  return { value: AUDIENCE_CHOICE.PRIVATE, icon: Ico.lock(16), title: ONLY_ME_TITLE, desc: ONLY_ME_DESC[kind] };
+  return { value: AUDIENCE_CHOICE.PRIVATE, icon: Ico.lock(16), title: onlyMeTitle(), desc: onlyMeDesc(kind) };
 }
 
 /**
@@ -56,7 +56,7 @@ export function everyoneOption({ orgName, lockReason }) {
     value: AUDIENCE_CHOICE.ORG,
     icon: Ico.building(16),
     title: everyoneAtLabel(orgName),
-    desc: EVERYONE_AT_DESC,
+    desc: everyoneAtDesc(),
     disabled: !!lockReason,
     disabledHint: lockReason,
     disabledTestId: 'org-option-locked',
@@ -68,7 +68,7 @@ export function everyoneOption({ orgName, lockReason }) {
  * @param {'skill' | 'artifact'} kind
  */
 export function specificOption(kind) {
-  return { value: AUDIENCE_CHOICE.SPECIFIC, icon: Ico.people(16), title: SPECIFIC_TITLE, desc: SPECIFIC_DESC[kind] };
+  return { value: AUDIENCE_CHOICE.SPECIFIC, icon: Ico.people(16), title: specificTitle(), desc: specificDesc(kind) };
 }
 
 /**

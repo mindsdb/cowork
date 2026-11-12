@@ -1,3 +1,4 @@
+import i18n from '../../lib/i18n';
 import type { ModelPickerMeta } from '../lib/modelPickerOptions';
 
 // Reasoning effort levels are the model gateway's, not ours. MindsHub's model
@@ -32,7 +33,14 @@ export function effortLevelsFor(model: string, catalog: ModelEffortCatalog | nul
 
 /** Display form of a gateway level, capitalised the way the Cowork composer shows it. */
 export function effortLabel(level: string): string {
-  return level ? level.charAt(0).toUpperCase() + level.slice(1) : level;
+  if (!level) return level;
+  const fallback = level.charAt(0).toUpperCase() + level.slice(1);
+  // Known gateway levels are translated; an unknown one keeps its own name.
+  return i18n.t(`reasoning.levels.${level}`, { ns: 'code', defaultValue: fallback });
+}
+
+function t(key: string, values?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: 'code', ...values });
 }
 
 
@@ -67,8 +75,8 @@ export function effortOptions(levels: EffortLevels, projectDefault?: string | nu
   return levels.levels.map((level) => ({
     value: level,
     label: effortLabel(level),
-    triggerLabel: `${effortLabel(level)} effort`,
-    description: level === projectDefault ? 'Project default' : level === levels.modelDefault ? 'Model default' : undefined,
+    triggerLabel: t('reasoning.levelEffort', { level: effortLabel(level) }),
+    description: level === projectDefault ? t('reasoning.projectDefault') : level === levels.modelDefault ? t('reasoning.modelDefault') : undefined,
   }));
 }
 
@@ -79,8 +87,8 @@ export function effortOptions(levels: EffortLevels, projectDefault?: string | nu
  */
 export function operatorEffortOptions(levels: string[]) {
   return [
-    { value: MODEL_DEFAULT_VALUE, label: 'Default', triggerLabel: 'Default effort' },
-    ...levels.map((level) => ({ value: level, label: effortLabel(level), triggerLabel: `${effortLabel(level)} effort` })),
+    { value: MODEL_DEFAULT_VALUE, label: t('reasoning.default'), triggerLabel: t('reasoning.defaultEffort') },
+    ...levels.map((level) => ({ value: level, label: effortLabel(level), triggerLabel: t('reasoning.levelEffort', { level: effortLabel(level) }) })),
   ];
 }
 
@@ -90,7 +98,7 @@ export function projectEffortOptions(levels: EffortLevels) {
   return [
     {
       value: MODEL_DEFAULT_VALUE,
-      label: 'Model default',
+      label: t('reasoning.modelDefault'),
       description: levels.modelDefault ? effortLabel(levels.modelDefault) : undefined,
     },
     ...levels.levels.map((level) => ({ value: level, label: effortLabel(level) })),

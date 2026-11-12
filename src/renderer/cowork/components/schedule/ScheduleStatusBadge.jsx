@@ -1,4 +1,7 @@
 import { Badge } from '../ui';
+import i18n from '../../../lib/i18n';
+
+const label = (key) => i18n.t(`scheduleStatus.${key}`, { ns: 'projects' });
 
 // The server's derived state (`task.state`): active | paused | auto_paused |
 // missed | done. Older servers send none; their tasks read from `enabled`.
@@ -16,22 +19,22 @@ export function lastRunFailed(task) {
   return !!task.lastError;
 }
 
-export function scheduleStatusBadge(task, failedLabel = 'Last failed') {
+export function scheduleStatusBadge(task, failedLabel = label('lastFailed')) {
   const state = scheduleState(task);
   if (task.running) {
     // Paused while a run was going: that run finishes, and nothing else starts
     // until the task is resumed.
-    if (state === 'paused' || state === 'auto_paused') return { label: 'Paused · finishing run', variant: 'accent' };
-    return { label: 'Running', variant: 'accent' };
+    if (state === 'paused' || state === 'auto_paused') return { label: label('pausedFinishing'), variant: 'accent' };
+    return { label: label('running'), variant: 'accent' };
   }
   // Paused by the server after repeated failures, not by the user.
-  if (state === 'auto_paused') return { label: 'Auto-paused', variant: 'danger' };
-  if (state === 'paused') return { label: 'Paused', variant: 'muted' };
+  if (state === 'auto_paused') return { label: label('autoPaused'), variant: 'danger' };
+  if (state === 'paused') return { label: label('paused'), variant: 'muted' };
   // A one-off whose time passed while the app was closed; Run now runs it.
-  if (state === 'missed') return { label: 'Missed', variant: 'warning' };
+  if (state === 'missed') return { label: label('missed'), variant: 'warning' };
   if (lastRunFailed(task)) return { label: failedLabel, variant: 'danger' };
-  if (state === 'done') return { label: 'Done', variant: 'muted' };
-  return { label: 'Active', variant: 'success' };
+  if (state === 'done') return { label: label('done'), variant: 'muted' };
+  return { label: label('active'), variant: 'success' };
 }
 
 export function ScheduleStatusBadge({ task, failedLabel, ...props }) {
