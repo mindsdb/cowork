@@ -260,5 +260,9 @@
   },
   "orgs": {
     "personal": "Personale"
+  },
+  "addon": {
+    "moveFailed": "Impossibile spostare il messaggio nella coda. Riprova.",
+    "stayQueued": "{agent} non può accettarlo ora. Resta in coda."
   }
 }

@@ -201,6 +201,26 @@
       "stalledBody": "O {product} deixou de receber notícias do agente. A resposta ainda pode estar em andamento. Espere terminar antes de enviar novamente.",
       "serverBusyTitle": "O servidor está ocupado",
       "coworkUnavailableTitle": "O servidor não está respondendo"
+    },
+    "addon": {
+      "sending": "Enviando…",
+      "added": "Adicionado à tarefa atual",
+      "withdrawing": "Movendo para a fila…",
+      "read": "Lido por {agent}",
+      "returned": "Movido para a fila",
+      "moveToQueue": "Mover para a fila",
+      "addToTask": "Adicionar à tarefa atual",
+      "addingToTask": "Adicionando à tarefa atual",
+      "unconfirmed": "Não foi possível confirmar se isto foi adicionado. Enviar de novo?",
+      "sendAgain": "Enviar de novo",
+      "queued": {
+        "separate": "Na fila: parece um pedido separado, então será executado depois da tarefa atual.",
+        "unsure": "Na fila: não ficou claro se pertence à tarefa atual. Use a seta para adicioná-lo agora.",
+        "unchecked": "Na fila: não foi possível verificar se pertence à tarefa atual.",
+        "unavailable": "Na fila: a tarefa atual não pode receber mensagens agora.",
+        "files": "Na fila: mensagens com arquivos são executadas depois da tarefa atual.",
+        "notRead": "Na fila: a tarefa terminou antes de conseguir ler isto."
+      }
     }
   },
   "composer": {

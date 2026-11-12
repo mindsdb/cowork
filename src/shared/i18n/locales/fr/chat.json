@@ -201,6 +201,26 @@
       "stalledBody": "{product} ne reçoit plus de nouvelles de l’agent. La réponse est peut-être toujours en cours. Attendez qu’elle se termine avant de renvoyer votre message.",
       "serverBusyTitle": "Le serveur est occupé",
       "coworkUnavailableTitle": "Le serveur ne répond pas"
+    },
+    "addon": {
+      "sending": "Envoi…",
+      "added": "Ajouté à la tâche en cours",
+      "withdrawing": "Déplacement vers la file d’attente…",
+      "read": "Lu par {agent}",
+      "returned": "Déplacé vers la file d’attente",
+      "moveToQueue": "Déplacer vers la file d’attente",
+      "addToTask": "Ajouter à la tâche en cours",
+      "addingToTask": "Ajout à la tâche en cours",
+      "unconfirmed": "Impossible de confirmer si ce message a été ajouté. L’envoyer à nouveau ?",
+      "sendAgain": "Renvoyer",
+      "queued": {
+        "separate": "En file d’attente : cela ressemble à une demande distincte, elle sera traitée après la tâche en cours.",
+        "unsure": "En file d’attente : il n’était pas clair que cela concerne la tâche en cours. Utilisez la flèche pour l’ajouter maintenant.",
+        "unchecked": "En file d’attente : impossible de vérifier si cela concerne la tâche en cours.",
+        "unavailable": "En file d’attente : la tâche en cours ne peut pas recevoir de messages pour le moment.",
+        "files": "En file d’attente : les messages avec des fichiers sont traités après la tâche en cours.",
+        "notRead": "En file d’attente : la tâche s’est terminée avant de pouvoir lire ceci."
+      }
     }
   },
   "composer": {

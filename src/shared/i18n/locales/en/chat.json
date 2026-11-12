@@ -201,6 +201,26 @@
       "stalledBody": "{product} stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again.",
       "serverBusyTitle": "The server is busy",
       "coworkUnavailableTitle": "The server isn't answering"
+    },
+    "addon": {
+      "sending": "Sending…",
+      "added": "Added to current task",
+      "withdrawing": "Moving to queue…",
+      "read": "Read by {agent}",
+      "returned": "Moved to queue",
+      "moveToQueue": "Move to queue",
+      "addToTask": "Add to current task",
+      "addingToTask": "Adding to current task",
+      "unconfirmed": "Couldn't confirm whether this was added. Send it again?",
+      "sendAgain": "Send again",
+      "queued": {
+        "separate": "Queued: this looks like a separate request, so it runs after the current task.",
+        "unsure": "Queued: it wasn't clear this belongs to the current task. Use the arrow to add it now.",
+        "unchecked": "Queued: couldn't check whether this belongs to the current task.",
+        "unavailable": "Queued: the current task can't take messages right now.",
+        "files": "Queued: messages with files run after the current task.",
+        "notRead": "Queued: the task finished before it could read this."
+      }
     }
   },
   "composer": {

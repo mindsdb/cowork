@@ -201,6 +201,26 @@
       "stalledBody": "{product} 已收不到智能体的消息。回答可能仍在进行中，请等待其完成后再发送。",
       "serverBusyTitle": "服务器繁忙",
       "coworkUnavailableTitle": "服务器没有响应"
+    },
+    "addon": {
+      "sending": "正在发送…",
+      "added": "已添加到当前任务",
+      "withdrawing": "正在移到队列…",
+      "read": "{agent} 已读",
+      "returned": "已移到队列",
+      "moveToQueue": "移到队列",
+      "addToTask": "添加到当前任务",
+      "addingToTask": "正在添加到当前任务",
+      "unconfirmed": "无法确认是否已添加。要再次发送吗？",
+      "sendAgain": "再次发送",
+      "queued": {
+        "separate": "已加入队列：这看起来是一个单独的请求，将在当前任务之后运行。",
+        "unsure": "已加入队列：不确定这是否属于当前任务。点击箭头可立即添加。",
+        "unchecked": "已加入队列：无法检查这是否属于当前任务。",
+        "unavailable": "已加入队列：当前任务暂时无法接收消息。",
+        "files": "已加入队列：带文件的消息会在当前任务之后运行。",
+        "notRead": "已加入队列：任务在读取之前就已结束。"
+      }
     }
   },
   "composer": {

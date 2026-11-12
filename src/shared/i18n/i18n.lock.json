@@ -1,4 +1,72 @@
 {
+  "app:addon.moveFailed": {
+    "de": {
+      "from": "ac4dcebe81c4",
+      "text": "e8c600345fe0"
+    },
+    "es": {
+      "from": "ac4dcebe81c4",
+      "text": "dc2f7fe4be38"
+    },
+    "fr": {
+      "from": "ac4dcebe81c4",
+      "text": "c53f2f816210"
+    },
+    "it": {
+      "from": "ac4dcebe81c4",
+      "text": "ef87c53d6d02"
+    },
+    "ja": {
+      "from": "ac4dcebe81c4",
+      "text": "4658df39ae03"
+    },
+    "ko": {
+      "from": "ac4dcebe81c4",
+      "text": "830c096ad769"
+    },
+    "pt-BR": {
+      "from": "ac4dcebe81c4",
+      "text": "c786fbbb0b6b"
+    },
+    "zh-CN": {
+      "from": "ac4dcebe81c4",
+      "text": "75fe0a31f10f"
+    }
+  },
+  "app:addon.stayQueued": {
+    "de": {
+      "from": "d9da9c176e80",
+      "text": "5fd5c46e310a"
+    },
+    "es": {
+      "from": "d9da9c176e80",
+      "text": "86bcc19cb4e7"
+    },
+    "fr": {
+      "from": "d9da9c176e80",
+      "text": "3d3d4c03d527"
+    },
+    "it": {
+      "from": "d9da9c176e80",
+      "text": "3debca8d92c2"
+    },
+    "ja": {
+      "from": "d9da9c176e80",
+      "text": "09fc0d81b72a"
+    },
+    "ko": {
+      "from": "d9da9c176e80",
+      "text": "6a7155a1524b"
+    },
+    "pt-BR": {
+      "from": "d9da9c176e80",
+      "text": "a8f388ea612d"
+    },
+    "zh-CN": {
+      "from": "d9da9c176e80",
+      "text": "1a12e8e42cbe"
+    }
+  },
   "app:askUser.notAccepted": {
     "de": {
       "from": "6feaeeb9eb4b",
@@ -25939,6 +26007,550 @@
     "zh-CN": {
       "from": "289aff12b042",
       "text": "33a8618cb671"
+    }
+  },
+  "chat:chatView.addon.addToTask": {
+    "de": {
+      "from": "463d41f850a6",
+      "text": "be3e31ae4bb0"
+    },
+    "es": {
+      "from": "463d41f850a6",
+      "text": "2db759924e98"
+    },
+    "fr": {
+      "from": "463d41f850a6",
+      "text": "954a0ebd8fd8"
+    },
+    "it": {
+      "from": "463d41f850a6",
+      "text": "556183a8ac13"
+    },
+    "ja": {
+      "from": "463d41f850a6",
+      "text": "34c370700a70"
+    },
+    "ko": {
+      "from": "463d41f850a6",
+      "text": "623d324731a2"
+    },
+    "pt-BR": {
+      "from": "463d41f850a6",
+      "text": "19cc9ce69573"
+    },
+    "zh-CN": {
+      "from": "463d41f850a6",
+      "text": "41a986d911e9"
+    }
+  },
+  "chat:chatView.addon.added": {
+    "de": {
+      "from": "81f36017892a",
+      "text": "f900ce476094"
+    },
+    "es": {
+      "from": "81f36017892a",
+      "text": "848bed9db22b"
+    },
+    "fr": {
+      "from": "81f36017892a",
+      "text": "39f7bc4bda71"
+    },
+    "it": {
+      "from": "81f36017892a",
+      "text": "047912363eb3"
+    },
+    "ja": {
+      "from": "81f36017892a",
+      "text": "4099c7deca77"
+    },
+    "ko": {
+      "from": "81f36017892a",
+      "text": "ff269da07959"
+    },
+    "pt-BR": {
+      "from": "81f36017892a",
+      "text": "bf234de9d44a"
+    },
+    "zh-CN": {
+      "from": "81f36017892a",
+      "text": "03cbbe0fab36"
+    }
+  },
+  "chat:chatView.addon.addingToTask": {
+    "de": {
+      "from": "c33b2340f46e",
+      "text": "f1a42fd97644"
+    },
+    "es": {
+      "from": "c33b2340f46e",
+      "text": "83cba83cd589"
+    },
+    "fr": {
+      "from": "c33b2340f46e",
+      "text": "d3fe70c52444"
+    },
+    "it": {
+      "from": "c33b2340f46e",
+      "text": "355030194859"
+    },
+    "ja": {
+      "from": "c33b2340f46e",
+      "text": "de2786debc93"
+    },
+    "ko": {
+      "from": "c33b2340f46e",
+      "text": "b69f56919420"
+    },
+    "pt-BR": {
+      "from": "c33b2340f46e",
+      "text": "70e9c8a57e29"
+    },
+    "zh-CN": {
+      "from": "c33b2340f46e",
+      "text": "f0303738e694"
+    }
+  },
+  "chat:chatView.addon.moveToQueue": {
+    "de": {
+      "from": "d10a1e70c661",
+      "text": "9af65aff6325"
+    },
+    "es": {
+      "from": "d10a1e70c661",
+      "text": "7278ba4f12f0"
+    },
+    "fr": {
+      "from": "d10a1e70c661",
+      "text": "3a234c431840"
+    },
+    "it": {
+      "from": "d10a1e70c661",
+      "text": "30b6bb5a923b"
+    },
+    "ja": {
+      "from": "d10a1e70c661",
+      "text": "63322a8c5ad0"
+    },
+    "ko": {
+      "from": "d10a1e70c661",
+      "text": "5499a12a987c"
+    },
+    "pt-BR": {
+      "from": "d10a1e70c661",
+      "text": "f7b7f10e6d1e"
+    },
+    "zh-CN": {
+      "from": "d10a1e70c661",
+      "text": "73943673304f"
+    }
+  },
+  "chat:chatView.addon.queued.files": {
+    "de": {
+      "from": "7003ec8721cf",
+      "text": "eadba22e8421"
+    },
+    "es": {
+      "from": "7003ec8721cf",
+      "text": "8fbbc8d8287b"
+    },
+    "fr": {
+      "from": "7003ec8721cf",
+      "text": "1bf7390181e8"
+    },
+    "it": {
+      "from": "7003ec8721cf",
+      "text": "7415f71b6818"
+    },
+    "ja": {
+      "from": "7003ec8721cf",
+      "text": "25af9e4dc37e"
+    },
+    "ko": {
+      "from": "7003ec8721cf",
+      "text": "842c0045e995"
+    },
+    "pt-BR": {
+      "from": "7003ec8721cf",
+      "text": "89c43dca4c30"
+    },
+    "zh-CN": {
+      "from": "7003ec8721cf",
+      "text": "2f2f34484c54"
+    }
+  },
+  "chat:chatView.addon.queued.notRead": {
+    "de": {
+      "from": "05bb30d12129",
+      "text": "4e4fe3ad7f7a"
+    },
+    "es": {
+      "from": "05bb30d12129",
+      "text": "d06531173b64"
+    },
+    "fr": {
+      "from": "05bb30d12129",
+      "text": "f141f68ed9bc"
+    },
+    "it": {
+      "from": "05bb30d12129",
+      "text": "89028e816353"
+    },
+    "ja": {
+      "from": "05bb30d12129",
+      "text": "d92760fe6852"
+    },
+    "ko": {
+      "from": "05bb30d12129",
+      "text": "8f7871c3a6de"
+    },
+    "pt-BR": {
+      "from": "05bb30d12129",
+      "text": "a8311dc15a8c"
+    },
+    "zh-CN": {
+      "from": "05bb30d12129",
+      "text": "4ba689836547"
+    }
+  },
+  "chat:chatView.addon.queued.separate": {
+    "de": {
+      "from": "233b6fe75674",
+      "text": "cbd1aa613b12"
+    },
+    "es": {
+      "from": "233b6fe75674",
+      "text": "bb56f66fcea7"
+    },
+    "fr": {
+      "from": "233b6fe75674",
+      "text": "52564867fc9c"
+    },
+    "it": {
+      "from": "233b6fe75674",
+      "text": "658f082aa0df"
+    },
+    "ja": {
+      "from": "233b6fe75674",
+      "text": "4bbead9afc1b"
+    },
+    "ko": {
+      "from": "233b6fe75674",
+      "text": "49a956b232be"
+    },
+    "pt-BR": {
+      "from": "233b6fe75674",
+      "text": "7450a0515424"
+    },
+    "zh-CN": {
+      "from": "233b6fe75674",
+      "text": "562477bdba88"
+    }
+  },
+  "chat:chatView.addon.queued.unavailable": {
+    "de": {
+      "from": "16abecf71206",
+      "text": "2e2ab5b919d9"
+    },
+    "es": {
+      "from": "16abecf71206",
+      "text": "5a40c6222a8f"
+    },
+    "fr": {
+      "from": "16abecf71206",
+      "text": "22cbc9f00159"
+    },
+    "it": {
+      "from": "16abecf71206",
+      "text": "211caec68ff0"
+    },
+    "ja": {
+      "from": "16abecf71206",
+      "text": "85b29ee6d730"
+    },
+    "ko": {
+      "from": "16abecf71206",
+      "text": "36fb375f940b"
+    },
+    "pt-BR": {
+      "from": "16abecf71206",
+      "text": "74975f7a43b3"
+    },
+    "zh-CN": {
+      "from": "16abecf71206",
+      "text": "611bbb8c807c"
+    }
+  },
+  "chat:chatView.addon.queued.unchecked": {
+    "de": {
+      "from": "d186155c173a",
+      "text": "2e199204d135"
+    },
+    "es": {
+      "from": "d186155c173a",
+      "text": "0dda9daf02dc"
+    },
+    "fr": {
+      "from": "d186155c173a",
+      "text": "6b100cbd81cf"
+    },
+    "it": {
+      "from": "d186155c173a",
+      "text": "0636d361c918"
+    },
+    "ja": {
+      "from": "d186155c173a",
+      "text": "af38c52c73b6"
+    },
+    "ko": {
+      "from": "d186155c173a",
+      "text": "57e087d99371"
+    },
+    "pt-BR": {
+      "from": "d186155c173a",
+      "text": "c7448ddfaa60"
+    },
+    "zh-CN": {
+      "from": "d186155c173a",
+      "text": "cbbe548690b6"
+    }
+  },
+  "chat:chatView.addon.queued.unsure": {
+    "de": {
+      "from": "53a5f31c0d03",
+      "text": "3a2488011f76"
+    },
+    "es": {
+      "from": "53a5f31c0d03",
+      "text": "39068e56a4fd"
+    },
+    "fr": {
+      "from": "53a5f31c0d03",
+      "text": "cb4cdc7934f4"
+    },
+    "it": {
+      "from": "53a5f31c0d03",
+      "text": "2072a59d61bf"
+    },
+    "ja": {
+      "from": "53a5f31c0d03",
+      "text": "662209161269"
+    },
+    "ko": {
+      "from": "53a5f31c0d03",
+      "text": "46945bffde87"
+    },
+    "pt-BR": {
+      "from": "53a5f31c0d03",
+      "text": "ca33135cf5e9"
+    },
+    "zh-CN": {
+      "from": "53a5f31c0d03",
+      "text": "6ba8c5921917"
+    }
+  },
+  "chat:chatView.addon.read": {
+    "de": {
+      "from": "36d60f4a0fee",
+      "text": "a9f5bae67bd2"
+    },
+    "es": {
+      "from": "36d60f4a0fee",
+      "text": "c127c201a564"
+    },
+    "fr": {
+      "from": "36d60f4a0fee",
+      "text": "5af864e66e5d"
+    },
+    "it": {
+      "from": "36d60f4a0fee",
+      "text": "131d4c1b895b"
+    },
+    "ja": {
+      "from": "36d60f4a0fee",
+      "text": "9746de14a83c"
+    },
+    "ko": {
+      "from": "36d60f4a0fee",
+      "text": "f10018ed2d2e"
+    },
+    "pt-BR": {
+      "from": "36d60f4a0fee",
+      "text": "92218b9b7c57"
+    },
+    "zh-CN": {
+      "from": "36d60f4a0fee",
+      "text": "1c7b09c47e56"
+    }
+  },
+  "chat:chatView.addon.returned": {
+    "de": {
+      "from": "affc4ad512ce",
+      "text": "70082dd3025f"
+    },
+    "es": {
+      "from": "affc4ad512ce",
+      "text": "ca4f1296f3c3"
+    },
+    "fr": {
+      "from": "affc4ad512ce",
+      "text": "9aba53a9cda5"
+    },
+    "it": {
+      "from": "affc4ad512ce",
+      "text": "957a5287a8ad"
+    },
+    "ja": {
+      "from": "affc4ad512ce",
+      "text": "fa6eb9b9e3ec"
+    },
+    "ko": {
+      "from": "affc4ad512ce",
+      "text": "afac3620b9e9"
+    },
+    "pt-BR": {
+      "from": "affc4ad512ce",
+      "text": "484645eafcaa"
+    },
+    "zh-CN": {
+      "from": "affc4ad512ce",
+      "text": "a252b2f3e84f"
+    }
+  },
+  "chat:chatView.addon.sendAgain": {
+    "de": {
+      "from": "feead925e260",
+      "text": "6b1d416765d7"
+    },
+    "es": {
+      "from": "feead925e260",
+      "text": "9b0b0b9994dd"
+    },
+    "fr": {
+      "from": "feead925e260",
+      "text": "58c0fa009a92"
+    },
+    "it": {
+      "from": "feead925e260",
+      "text": "b57c114afc70"
+    },
+    "ja": {
+      "from": "feead925e260",
+      "text": "2382b93b56b6"
+    },
+    "ko": {
+      "from": "feead925e260",
+      "text": "b27c841e8147"
+    },
+    "pt-BR": {
+      "from": "feead925e260",
+      "text": "a97da6d3b792"
+    },
+    "zh-CN": {
+      "from": "feead925e260",
+      "text": "d38a5b0b051c"
+    }
+  },
+  "chat:chatView.addon.sending": {
+    "de": {
+      "from": "b8ed5279e897",
+      "text": "754ed3f63a88"
+    },
+    "es": {
+      "from": "b8ed5279e897",
+      "text": "9415ac2416c5"
+    },
+    "fr": {
+      "from": "b8ed5279e897",
+      "text": "1ccef8a10ca7"
+    },
+    "it": {
+      "from": "b8ed5279e897",
+      "text": "40230a6f35ae"
+    },
+    "ja": {
+      "from": "b8ed5279e897",
+      "text": "a2fafca6c983"
+    },
+    "ko": {
+      "from": "b8ed5279e897",
+      "text": "e9df042ad1aa"
+    },
+    "pt-BR": {
+      "from": "b8ed5279e897",
+      "text": "9415ac2416c5"
+    },
+    "zh-CN": {
+      "from": "b8ed5279e897",
+      "text": "22eb0f8779ab"
+    }
+  },
+  "chat:chatView.addon.unconfirmed": {
+    "de": {
+      "from": "400aa7d6ec6f",
+      "text": "162e7ac94cf8"
+    },
+    "es": {
+      "from": "400aa7d6ec6f",
+      "text": "a97537d4c9fc"
+    },
+    "fr": {
+      "from": "400aa7d6ec6f",
+      "text": "c29f8c71e777"
+    },
+    "it": {
+      "from": "400aa7d6ec6f",
+      "text": "45e59c2ca561"
+    },
+    "ja": {
+      "from": "400aa7d6ec6f",
+      "text": "3167a47a74e7"
+    },
+    "ko": {
+      "from": "400aa7d6ec6f",
+      "text": "e58a6ea8fb01"
+    },
+    "pt-BR": {
+      "from": "400aa7d6ec6f",
+      "text": "4ea9e429a330"
+    },
+    "zh-CN": {
+      "from": "400aa7d6ec6f",
+      "text": "e6f2ca9d4598"
+    }
+  },
+  "chat:chatView.addon.withdrawing": {
+    "de": {
+      "from": "973fe6e15b3a",
+      "text": "79080a26efea"
+    },
+    "es": {
+      "from": "973fe6e15b3a",
+      "text": "7c8423dc384d"
+    },
+    "fr": {
+      "from": "973fe6e15b3a",
+      "text": "6a30ca144bfa"
+    },
+    "it": {
+      "from": "973fe6e15b3a",
+      "text": "1b9060b5bc6d"
+    },
+    "ja": {
+      "from": "973fe6e15b3a",
+      "text": "0b1e5ed57898"
+    },
+    "ko": {
+      "from": "973fe6e15b3a",
+      "text": "492b48c5f3d0"
+    },
+    "pt-BR": {
+      "from": "973fe6e15b3a",
+      "text": "cabaae3f9264"
+    },
+    "zh-CN": {
+      "from": "973fe6e15b3a",
+      "text": "aa2f818a9d0c"
     }
   },
   "chat:chatView.artifactCard.actionTarget": {

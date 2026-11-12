@@ -260,5 +260,9 @@
   },
   "orgs": {
     "personal": "个人"
+  },
+  "addon": {
+    "moveFailed": "无法将该消息移到队列。请重试。",
+    "stayQueued": "{agent} 现在无法接收。它仍在队列中。"
   }
 }

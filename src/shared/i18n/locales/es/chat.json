@@ -201,6 +201,26 @@
       "stalledBody": "{product} dejó de recibir noticias del agente. Es posible que la respuesta siga en curso. Espera a que termine antes de volver a enviar.",
       "serverBusyTitle": "El servidor está ocupado",
       "coworkUnavailableTitle": "El servidor no responde"
+    },
+    "addon": {
+      "sending": "Enviando…",
+      "added": "Añadido a la tarea actual",
+      "withdrawing": "Moviendo a la cola…",
+      "read": "Leído por {agent}",
+      "returned": "Movido a la cola",
+      "moveToQueue": "Mover a la cola",
+      "addToTask": "Añadir a la tarea actual",
+      "addingToTask": "Añadiendo a la tarea actual",
+      "unconfirmed": "No se pudo confirmar si se añadió. ¿Enviarlo de nuevo?",
+      "sendAgain": "Enviar de nuevo",
+      "queued": {
+        "separate": "En cola: parece una petición aparte, así que se ejecutará después de la tarea actual.",
+        "unsure": "En cola: no quedó claro si pertenece a la tarea actual. Usa la flecha para añadirlo ahora.",
+        "unchecked": "En cola: no se pudo comprobar si pertenece a la tarea actual.",
+        "unavailable": "En cola: la tarea actual no puede recibir mensajes ahora mismo.",
+        "files": "En cola: los mensajes con archivos se ejecutan después de la tarea actual.",
+        "notRead": "En cola: la tarea terminó antes de poder leerlo."
+      }
     }
   },
   "composer": {

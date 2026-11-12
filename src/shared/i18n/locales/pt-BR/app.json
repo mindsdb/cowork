@@ -260,5 +260,9 @@
   },
   "orgs": {
     "personal": "Pessoal"
+  },
+  "addon": {
+    "moveFailed": "Não foi possível mover essa mensagem para a fila. Tente novamente.",
+    "stayQueued": "{agent} não pode recebê-la agora. Ela continua na fila."
   }
 }

@@ -201,6 +201,26 @@
       "stalledBody": "{product} erhält keine Rückmeldung mehr vom Agenten. Die Antwort wird möglicherweise noch erstellt. Warten Sie, bis sie fertig ist, bevor Sie erneut senden.",
       "serverBusyTitle": "Der Server ist ausgelastet",
       "coworkUnavailableTitle": "Der Server antwortet nicht"
+    },
+    "addon": {
+      "sending": "Wird gesendet…",
+      "added": "Zur aktuellen Aufgabe hinzugefügt",
+      "withdrawing": "Wird in die Warteschlange verschoben…",
+      "read": "Von {agent} gelesen",
+      "returned": "In die Warteschlange verschoben",
+      "moveToQueue": "In die Warteschlange verschieben",
+      "addToTask": "Zur aktuellen Aufgabe hinzufügen",
+      "addingToTask": "Wird zur aktuellen Aufgabe hinzugefügt",
+      "unconfirmed": "Es ließ sich nicht bestätigen, ob dies hinzugefügt wurde. Erneut senden?",
+      "sendAgain": "Erneut senden",
+      "queued": {
+        "separate": "In der Warteschlange: Das sieht nach einer separaten Anfrage aus und läuft nach der aktuellen Aufgabe.",
+        "unsure": "In der Warteschlange: Es war nicht klar, ob das zur aktuellen Aufgabe gehört. Mit dem Pfeil jetzt hinzufügen.",
+        "unchecked": "In der Warteschlange: Es konnte nicht geprüft werden, ob das zur aktuellen Aufgabe gehört.",
+        "unavailable": "In der Warteschlange: Die aktuelle Aufgabe kann gerade keine Nachrichten annehmen.",
+        "files": "In der Warteschlange: Nachrichten mit Dateien laufen nach der aktuellen Aufgabe.",
+        "notRead": "In der Warteschlange: Die Aufgabe war fertig, bevor sie das lesen konnte."
+      }
     }
   },
   "composer": {
