@@ -395,7 +395,6 @@ export class ElectronTab implements TabView {
         select: (id, values) => inStep<SelectResult>({ kind: 'select', id, values }),
         viewport: () => inStep<{ width: number; height: number }>({ kind: 'viewport' }),
         hitTest: (id, points) => inStep<HitTestResult>({ kind: 'hitTest', id, points, childFrames: this.contents.mainFrame.frames.length }),
-        intoFrame: (point) => inStep<boolean>({ kind: 'intoFrame', point, childFrames: this.contents.mainFrame.frames.length }),
       },
       nav: {
         load: (url) => unlessTakenOver(signal, () => this.load(url)),

@@ -550,7 +550,6 @@ describe('the isolated-world page read', () => {
       const hitTest = (id: number, y: number, childFrames: number) => pageWorld(document, world, { kind: 'hitTest', id, points: [{ x: 50, y }], childFrames });
       // The frame tree holds one frame the DOM has no owner for, and the point lands on the closed root's host.
       expect(hitTest(ids['More info'], 50, 1)).toEqual({ found: true, reaches: -1, throughFrame: 0 } satisfies HitTestResult);
-      expect(pageWorld(document, world, { kind: 'intoFrame', point: { x: 50, y: 50 }, childFrames: 1 })).toBe(true);
       // With every frame placed it is an ordinary element.
       expect(hitTest(ids['More info'], 50, 0)).toEqual({ found: true, reaches: 0, throughFrame: -1 });
       // A point on its own text is where a click lands.
@@ -558,17 +557,6 @@ describe('the isolated-world page read', () => {
     } finally {
       restoreHits();
       restoreText();
-    }
-  });
-
-  it('tells whether a click at a point lands in a frame, or in a custom element sealed from this world', () => {
-    document.body.innerHTML = '<iframe id="buy" src="https://shop.other.test/buy"></iframe><x-pay id="sealed"></x-pay><button id="go">Go</button>';
-    const restore = hitTestBy((x) => document.getElementById(['buy', 'sealed', 'go'][x])!);
-    try {
-      const intoFrame = (x: number) => pageWorld(document, freshWorld(), { kind: 'intoFrame', point: { x, y: 5 }, childFrames: 0 });
-      expect([intoFrame(0), intoFrame(1), intoFrame(2)]).toEqual([true, true, false]);
-    } finally {
-      restore();
     }
   });
 

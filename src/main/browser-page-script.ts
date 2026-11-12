@@ -211,8 +211,6 @@ export type PageWorldRequest =
   /* Which of `points` (viewport CSS pixels) a click reaches element `id` at.
      `childFrames`: how many child frames the frame tree gives the main frame. */
   | { kind: 'hitTest'; id: number; points: ViewPoint[]; childFrames: number }
-  /* Whether a click at `point` lands in a frame, or where this world can't see. */
-  | { kind: 'intoFrame'; point: ViewPoint; childFrames: number }
   /* A step's change watch, under the step's token. `at` is where the step's
      pointer ended, or null for a step without one. */
   | { kind: 'changeStart'; token: number }
@@ -1076,11 +1074,6 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
         return opaqueHit(hit, x, y, hidden) ? 'frame' : 'element';
       });
       return { found: true, reaches: landings.indexOf('element'), throughFrame: landings.indexOf('frame') } satisfies HitTestResult;
-    }
-    case 'intoFrame': {
-      const { x, y } = request.point;
-      const hit = hitAt(x, y);
-      return !!hit && opaqueHit(hit, x, y, hiddenOnce(request.childFrames));
     }
     case 'changeStart': {
       stopChanges();

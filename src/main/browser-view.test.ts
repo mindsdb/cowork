@@ -78,7 +78,6 @@ const electron = await vi.hoisted(async () => {
       if (code.includes('"kind":"focusedSecret"')) return this.focus;
       if (code.includes('"kind":"secretBoxes"')) return this.secrets;
       if (code.includes('"kind":"hitTest"')) return { found: true, reaches: 0, throughFrame: -1 };
-      if (code.includes('"kind":"intoFrame"')) return false as boolean;
       if (code.includes('"kind":"watch"')) return { ok: true };
       const token = Number(/"token":(\d+)/.exec(code)?.[1]);
       if (code.includes('"kind":"changeStart"')) {
@@ -352,10 +351,8 @@ describe('ElectronTab', () => {
     } finally {
       vi.useRealTimers();
     }
-    for (const kind of ['hitTest', 'intoFrame']) {
-      expect(worldCalls(contents, kind).length, kind).toBeGreaterThan(0);
-      expect(worldCalls(contents, kind).every(([, scripts]) => scripts[0].code.includes('"childFrames":2')), kind).toBe(true);
-    }
+    expect(worldCalls(contents, 'hitTest').length).toBeGreaterThan(0);
+    expect(worldCalls(contents, 'hitTest').every(([, scripts]) => scripts[0].code.includes('"childFrames":2'))).toBe(true);
   });
 
   it('detaches the debugger at once when the person takes over', async () => {

@@ -418,6 +418,22 @@ test('lists a transparent frame laid over a control, with its box, unread', asyn
   ]);
 });
 
+test('presses by position into a frame under the point only when anton says the person approved it', async () => {
+  await openAt('/clear-frame');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // The frame was there when anton read the page, so a step it didn't raise for approval is refused.
+  const refused = await act({ action: 'click', x: 20, y: 20, coords: 'page' });
+  expect(refused.status, refused.body.toString()).toBe(409);
+  expect(refused.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame is now under the point (20, 20)') });
+  const drop = await act({ action: 'drag', from: { x: 20, y: 150 }, to: { x: 20, y: 20 }, coords: 'page' });
+  expect(drop.status, drop.body.toString()).toBe(409);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-click')).toEqual([]);
+  const approved = await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true });
+  expect(approved.status, approved.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-click')).toEqual([{ type: 'frame-click', isTrusted: true }]);
+});
+
 test('refuses a click whose point a frame slides over as the pointer arrives, by number and by position, and presses nothing', async () => {
   await openAt('/moving-frame');
   const byNumber = await act({ action: 'click', element: await element('Go') });

@@ -43,7 +43,6 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing, cdp: 
     select: vi.fn(async () => ({ ok: true as const, chosen: ['x'] })),
     viewport: vi.fn(async () => VIEWPORT),
     hitTest: vi.fn(async (): Promise<HitTestResult> => ({ found: true, reaches: 0, throughFrame: -1 })),
-    intoFrame: vi.fn(async () => false),
     ...over,
   };
   const nav = { load: vi.fn(async () => {}), back: vi.fn(async () => {}), forward: vi.fn(async () => {}), reload: vi.fn(async () => {}) };
@@ -367,6 +366,19 @@ describe('runStep', () => {
   const presses = (dbg: { sent: SentCommand[] }) =>
     events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed');
 
+  /* Sets `seen.it` once the debugger is sent a mouse event of `type`, as the
+     page sees the pointer arrive or the button go down. */
+  function onMouse(dbg: ReturnType<typeof fakeCdpDebugger>, type: string): { it: boolean } {
+    const seen = { it: false };
+    const send = dbg.sendCommand;
+    dbg.sendCommand = vi.fn(async (method: string, params?: Record<string, unknown>, sessionId?: string) => {
+      if (method === 'Input.dispatchMouseEvent' && params?.type === type) seen.it = true;
+      return send(method, params, sessionId);
+    });
+    return seen;
+  }
+  const mouse = (dbg: { sent: SentCommand[] }) => events(dbg.sent, 'Input.dispatchMouseEvent');
+
   it("refuses a click by number whose points the debugger's hit test finds in a frame, though the page's own says they reach the element, and presses nothing", async () => {
     const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE, nodeAt: () => frameOwner });
     await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
@@ -398,13 +410,9 @@ describe('runStep', () => {
 
   it("checks the point of a click by number with the debugger again just before each press, and presses nothing once it finds a frame there", async () => {
     // The page's world says the point reaches the element throughout; a frame slides over it as the pointer glides.
-    let glided = false;
-    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE, nodeAt: () => (glided ? frameOwner : button) });
-    const send = dbg.sendCommand;
-    dbg.sendCommand = vi.fn(async (method: string, params?: Record<string, unknown>, sessionId?: string) => {
-      if (method === 'Input.dispatchMouseEvent' && params?.type === 'mouseMoved') glided = true;
-      return send(method, params, sessionId);
-    });
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE });
+    const moved = onMouse(dbg, 'mouseMoved');
+    dbg.page.nodeAt = () => (moved.it ? frameOwner : button);
     await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
       code: 'stale_element',
       message: 'a frame moved over element 7 as the pointer arrived, so nothing was pressed; read the page again',
@@ -434,7 +442,9 @@ describe('runStep', () => {
     const hitTest = vi.fn()
       .mockResolvedValueOnce({ found: true, reaches: 0, throughFrame: -1 } satisfies HitTestResult)
       .mockResolvedValue({ found: true, reaches: -1, throughFrame: -1 } satisfies HitTestResult);
-    const { dbg, stepHost } = host({ hitTest, intoFrame: vi.fn(async () => true) });
+    const { dbg, stepHost } = host({ hitTest }, pacing, { frames: OTHER_SITE });
+    const moved = onMouse(dbg, 'mouseMoved');
+    dbg.page.nodeAt = () => (moved.it ? frameOwner : button);
     await expect(runStep(stepHost, step({ action: 'click', element: 7 }))).rejects.toMatchObject({
       message: 'a frame moved over element 7 as the pointer arrived, so nothing was pressed; read the page again',
     });
@@ -454,22 +464,71 @@ describe('runStep', () => {
     expect(events(dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed').map((e) => e.clickCount)).toEqual([1]);
   });
 
-  it('presses nothing for a click or a drag by position once a frame moved under the point since the step began, and presses into one that was there all along', async () => {
-    const arrives = host({ intoFrame: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true) });
-    await expect(runStep(arrives.stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page' }))).rejects.toMatchObject({
+  it.each([
+    ['without into_frame', {}],
+    ['with into_frame false', { into_frame: false }],
+  ])("refuses a click by position whose point lands in a frame when the step starts %s, and moves and presses nothing", async (_how, body) => {
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE, nodeAt: () => frameOwner });
+    await expect(runStep(stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page', ...body }))).rejects.toMatchObject({
       code: 'stale_element',
       status: 409,
+      message: "a frame is now under the point (400, 300), and the step wasn't approved to press into one, so nothing was pressed; read the page again",
+    });
+    expect(mouse(dbg)).toEqual([]);
+  });
+
+  it('presses into a frame under a click by position when anton sends into_frame, as the person approved', async () => {
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE, nodeAt: () => frameOwner });
+    await runStep(stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page', into_frame: true }));
+    expect(presses(dbg)).toEqual([expect.objectContaining({ x: 400, y: 300 })]);
+  });
+
+  it.each([
+    ['without into_frame', {}],
+    ['with into_frame', { into_frame: true }],
+  ])('presses nothing for a click by position once a frame moves under the point as the pointer arrives, %s', async (_how, body) => {
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE });
+    const moved = onMouse(dbg, 'mouseMoved');
+    dbg.page.nodeAt = () => (moved.it ? frameOwner : button);
+    await expect(runStep(stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page', ...body }))).rejects.toMatchObject({
+      code: 'stale_element',
       message: 'a frame moved under the point (400, 300) as the pointer arrived, so nothing was pressed; read the page again',
     });
-    expect(arrives.page.intoFrame).toHaveBeenCalledWith({ x: 400, y: 300 });
-    expect(events(arrives.dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
-    const dragged = host({ intoFrame: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true) });
-    await expect(runStep(dragged.stepHost, step({ action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page' }))).rejects.toMatchObject({ code: 'stale_element' });
-    expect(events(dragged.dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toEqual([]);
-    // A frame under the point from the start is what the step was asked to click.
-    const there = host({ intoFrame: vi.fn(async () => true) });
-    await runStep(there.stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page' }));
-    expect(events(there.dbg.sent, 'Input.dispatchMouseEvent').filter((e) => e.type === 'mousePressed')).toHaveLength(1);
+    expect(presses(dbg)).toEqual([]);
+  });
+
+  it("checks a double click by position again before its second press, and stops there once a frame lies under the point", async () => {
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE });
+    const pressed = onMouse(dbg, 'mousePressed');
+    dbg.page.nodeAt = () => (pressed.it ? frameOwner : button);
+    await expect(runStep(stepHost, step({ action: 'click', x: 400, y: 300, coords: 'page', clicks: 2 }))).rejects.toMatchObject({ code: 'stale_element' });
+    expect(presses(dbg).map((e) => e.clickCount)).toEqual([1]);
+  });
+
+  it("refuses a drag whose drop point lands in a frame when the step starts, unless anton sends into_frame, and presses nothing", async () => {
+    const dropIntoFrame = (x: number) => (x >= 500 ? frameOwner : button);
+    const drag = { action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page' };
+    const refused = host({}, pacing, { frames: OTHER_SITE, nodeAt: dropIntoFrame });
+    await expect(runStep(refused.stepHost, step(drag))).rejects.toMatchObject({
+      code: 'stale_element',
+      message: "a frame is now under the drop point (600, 300), and the step wasn't approved to press into one, so nothing was pressed; read the page again",
+    });
+    expect(presses(refused.dbg)).toEqual([]);
+    const approved = host({}, pacing, { frames: OTHER_SITE, nodeAt: dropIntoFrame });
+    await runStep(approved.stepHost, step({ ...drag, into_frame: true }));
+    expect(mouse(approved.dbg).at(-1)).toMatchObject({ type: 'mouseReleased', x: 600, y: 300 });
+  });
+
+  it('checks the drop point again just before the release, and lets go where the drag began once a frame moved under it', async () => {
+    const { dbg, stepHost } = host({}, pacing, { frames: OTHER_SITE });
+    const pressed = onMouse(dbg, 'mousePressed');
+    dbg.page.nodeAt = (x) => (pressed.it && x >= 500 ? frameOwner : button);
+    await expect(runStep(stepHost, step({ action: 'drag', from: { x: 400, y: 300 }, to: { x: 600, y: 300 }, coords: 'page' }))).rejects.toMatchObject({
+      code: 'stale_element',
+      message: 'a frame moved under the drop point (600, 300) as the pointer arrived, so nothing was pressed; read the page again',
+    });
+    const released = mouse(dbg).filter((e) => e.type === 'mouseReleased');
+    expect(released).toEqual([expect.objectContaining({ x: 400, y: 300, buttons: 0 })]);
   });
 
   it('checks the element a drag starts on again just before the press', async () => {

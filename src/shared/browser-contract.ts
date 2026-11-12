@@ -363,11 +363,17 @@ export type Step =
   | { action: 'navigate'; url: string };
 
 /** POST /sessions/{id}/action, checked. Points are in page CSS pixels, or in
-    the latest screenshot's pixels when `coords` is "screenshot". */
+    the latest screenshot's pixels when `coords` is "screenshot".
+    `intoFrame` is the body's into_frame: anton sends true only for a step it
+    raised to the one-step card because it may land in a frame, once the
+    person approved it. Anything else, a missing field included, is false,
+    and a press or a drag's release whose point lands in a frame is refused
+    (runStep in src/main/browser-input.ts). */
 export interface StepRequest {
   step: Step;
   coords: 'page' | 'screenshot';
   includePage: boolean;
+  intoFrame: boolean;
 }
 
 const BUTTONS: readonly MouseButton[] = ['left', 'right', 'middle'];
@@ -507,7 +513,7 @@ export function parseStepRequest(body: unknown): Parsed<StepRequest> {
   if (coords !== 'page' && coords !== 'screenshot') return refuse('coords must be "page" or "screenshot"');
   const step = parseStep(body);
   if (!step.ok) return step;
-  return ok({ step: step.value, coords, includePage: body.include_page === true });
+  return ok({ step: step.value, coords, includePage: body.include_page === true, intoFrame: body.into_frame === true });
 }
 
 /** POST /sessions. */

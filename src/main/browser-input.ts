@@ -24,7 +24,9 @@
  * which sees inside closed shadow roots, find its element and no frame. Just
  * before each press, a click or a drag checks its point again, and presses
  * nothing once the page slid a frame or another element under it
- * (`pressPoint`).
+ * (`pressPoint`). A press by position, or a drag's release, whose point lands
+ * in a frame is refused, at the step's start and just before it, unless anton
+ * says the person approved the step to land in one (`frameGuard`).
  */
 
 import {
@@ -275,9 +277,12 @@ export class AgentInput {
   }
 
   /** Presses at `from`, moves to `to` with the button held and releases.
-      `beforePress` runs just before the press, and stops the drag by
-      throwing. */
-  async drag(from: Point, to: Point, beforePress: () => Promise<void> = async () => {}): Promise<void> {
+      `beforePress` runs just before the press and `beforeRelease` just
+      before the release, and each stops the drag by throwing. Stopped before
+      the release, the pointer goes back to `from` and lets go there, as a
+      person calls a drag off, so the button is never left held (the web
+      pod's drag does the same). */
+  async drag(from: Point, to: Point, beforePress: () => Promise<void> = async () => {}, beforeRelease: () => Promise<void> = async () => {}): Promise<void> {
     await this.moveTo(from);
     await this.pause(40, 60);
     await beforePress();
@@ -285,6 +290,13 @@ export class AgentInput {
     await this.pause(60, 60);
     await this.moveTo(to, 1);
     await this.pause(40, 60);
+    try {
+      await beforeRelease();
+    } catch (error) {
+      await this.moveTo(from, 1);
+      await this.mouseEvent('mouseReleased', from, { button: 'left', buttons: 0, clickCount: 1 });
+      throw error;
+    }
     await this.mouseEvent('mouseReleased', to, { button: 'left', buttons: 0, clickCount: 1 });
   }
 
@@ -384,8 +396,6 @@ export interface PageReader {
   viewport(): Promise<{ width: number; height: number }>;
   /** Which of `points` a click reaches element `id` at. */
   hitTest(id: number, points: Point[]): Promise<HitTestResult>;
-  /** Whether a click at `point` lands in a frame, or where the isolated world can't see. */
-  intoFrame(point: Point): Promise<boolean>;
 }
 
 export interface Navigation {
@@ -518,19 +528,38 @@ function movedUnder(where: string, intoFrame: boolean): BridgeError {
   return new BridgeError('stale_element', `${intoFrame ? 'a frame' : 'another element'} moved ${where} as the pointer arrived, so nothing was pressed; read the page again`);
 }
 
+/* The check a press, or a drag's release, at a point runs when the step
+   starts, and the one it hands back to run just before. anton's commit hold
+   judged the step by the frames its last page read showed, and a frame can
+   arrive under the point after that read: the page moves one there, or the
+   person scrolls. A step anton sends with into_frame (`intoFrame`: the person
+   approved a step that may land in a frame) may press into a frame that lies
+   there when it starts. Any other press or release whose point lands in a
+   frame is refused, at the start and just before it; so is one where a frame
+   arrived during the glide. `where` names the point. */
+async function frameGuard(frames: FrameReads, at: Point, intoFrame: boolean, where: string): Promise<() => Promise<void>> {
+  const atStart = await frames.pressLandsInFrame(at);
+  if (atStart && !intoFrame) {
+    throw new BridgeError('stale_element', `a frame is now under ${where}, and the step wasn't approved to press into one, so nothing was pressed; read the page again`);
+  }
+  return async () => {
+    if (!atStart && await frames.pressLandsInFrame(at)) throw movedUnder(`under ${where}`, true);
+  };
+}
+
 /* A step's press point, and the check that runs just before each press there.
    The pointer glides for a while and the page sees it come, so the page can
    slide something under the point after the step's first look. The commit
    hold judged the step by what lay there before. A click by number must still
-   reach its element at the point, frames aside (`hitTest`); a click by
-   position must not land in a frame that wasn't under the point when the step
-   began (`intoFrame`). */
+   reach its element at the point, and never land in a frame (`hitTest`,
+   `pressLandsInFrame`); a click by position goes by `frameGuard`. */
 async function pressPoint(
   host: StepHost,
   input: AgentInput,
   frames: FrameReads,
   target: StepTarget,
   coords: 'page' | 'screenshot',
+  intoFrame: boolean,
 ): Promise<{ at: Point; beforePress: () => Promise<void> }> {
   if ('element' in target) {
     const id = target.element;
@@ -540,26 +569,20 @@ async function pressPoint(
       beforePress: async () => {
         const hit = await host.page.hitTest(id, [at]);
         if (!hit.found) throw stale(id, 'is no longer on the page');
-        if (hit.reaches < 0) throw movedUnder(`over element ${id}`, hit.throughFrame >= 0 || await host.page.intoFrame(at));
-        if (await frames.pressLandsInFrame(at)) throw movedUnder(`over element ${id}`, true);
+        const inFrame = hit.throughFrame >= 0 || await frames.pressLandsInFrame(at);
+        if (hit.reaches < 0 || inFrame) throw movedUnder(`over element ${id}`, inFrame);
       },
     };
   }
   const at = await targetPoint(host, input, frames, target, coords);
-  const frameAtStart = await host.page.intoFrame(at);
-  return {
-    at,
-    beforePress: async () => {
-      if (!frameAtStart && await host.page.intoFrame(at)) throw movedUnder(`under the point (${target.x}, ${target.y})`, true);
-    },
-  };
+  return { at, beforePress: await frameGuard(frames, at, intoFrame, `the point (${target.x}, ${target.y})`) };
 }
 
 const SCROLL_DELTAS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
 
 /** Runs one checked step. */
 export async function runStep(host: StepHost, request: StepRequest, platform: NodeJS.Platform = process.platform): Promise<void> {
-  const { step, coords } = request;
+  const { step, coords, intoFrame } = request;
   switch (step.action) {
     case 'navigate':
       return host.nav.load(step.url);
@@ -588,16 +611,18 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
         throw new BridgeError('bad_request', "the agent can't paste the person's selection, which a middle click does on Linux; click with the left or right button");
       }
       return host.withInput(async (input, frames) => {
-        const { at, beforePress } = await pressPoint(host, input, frames, step.target, coords);
+        const { at, beforePress } = await pressPoint(host, input, frames, step.target, coords, intoFrame);
         await input.click(at, step.button, step.clicks, beforePress);
       });
     case 'hover':
       return host.withInput(async (input, frames) => input.hover(await targetPoint(host, input, frames, step.target, coords)));
     case 'drag':
       return host.withInput(async (input, frames) => {
-        const from = await pressPoint(host, input, frames, step.from, coords);
+        const from = await pressPoint(host, input, frames, step.from, coords, intoFrame);
         const to = await targetPoint(host, input, frames, step.to, coords);
-        await input.drag(from.at, to, from.beforePress);
+        const where = 'element' in step.to ? `the drop point on element ${step.to.element}` : `the drop point (${step.to.x}, ${step.to.y})`;
+        const beforeRelease = await frameGuard(frames, to, intoFrame, where);
+        await input.drag(from.at, to, from.beforePress, beforeRelease);
       });
     case 'scroll':
       return host.withInput(async (input, frames) => {
