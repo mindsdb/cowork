@@ -1952,6 +1952,9 @@ export function redirectForTask(redirects, taskId) {
 export const warmBrowser = createBrowserWarmUp(() => provisionBrowser());
 
 // ─── Main view ───────────────────────────────────────────────────────────
+/** Sent for the person when they click Done after the turn that handed them the browser ended. */
+export const BROWSER_DONE_MESSAGE = 'Done: I handed the browser back to you. Carry on from where you stopped.';
+
 export default function ChatView({
   task,
   // The last /health snapshot, for the diagnostics a user copies off a failed
@@ -2299,14 +2302,25 @@ export default function ChatView({
   // Anton handed the browser to the person (the viewer says so): it opens,
   // and the strip under it says what to do.
   const [browserHandoff, setBrowserHandoff] = useState(null);
-  useEffect(() => { setBrowserHandoff(null); }, [task.id, shownBrowserId]);
+  /* Whether a turn ran while the person held the browser: a turn that ended
+     waiting for them can't see Done, so Done carries it on (`onBrowserControl`).
+     A turn still running sees Done itself. */
+  const heldThroughTurnRef = useRef(false);
+  const streamingRef = useRef(isStreaming);
+  streamingRef.current = isStreaming;
+  if (browserHandoff && isStreaming) heldThroughTurnRef.current = true;
+  useEffect(() => { setBrowserHandoff(null); heldThroughTurnRef.current = false; }, [task.id, shownBrowserId]);
   const onBrowserControl = (holder, reason) => {
     if (holder === 'human') {
       setBrowserHandoff(reason || 'Anton needs you in the browser');
       setBrowserMinimized(false);
-    } else {
-      setBrowserHandoff(null);
+      if (streamingRef.current) heldThroughTurnRef.current = true;
+      return;
     }
+    setBrowserHandoff(null);
+    const waiting = heldThroughTurnRef.current && !streamingRef.current;
+    heldThroughTurnRef.current = false;
+    if (waiting && onSend) onSend(BROWSER_DONE_MESSAGE);
   };
   const askingUser = (streamingMsg?.steps || []).some(
     (s) => s.badge === 'AskUser' && !s.data?.answer && !isPositionClickCard(s.data),

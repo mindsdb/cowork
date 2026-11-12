@@ -40,7 +40,7 @@ vi.mock('../api', async (importOriginal) => ({
 }));
 const openBrowserAt = vi.fn();
 
-import ChatView from './ChatView';
+import ChatView, { BROWSER_DONE_MESSAGE } from './ChatView';
 import { browserStep } from '../lib/browserSession';
 import { NOWHERE } from '../components/browser/LocalBrowserStage';
 
@@ -136,6 +136,38 @@ describe('ChatView shared browser pane', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show browser' })); });
     expect(pane()).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Show browser' })).toBeNull();
+  });
+
+  /* The viewer says who holds the browser, from the pane's own frame. */
+  const control = (holder) => act(async () => {
+    const frame = pane().querySelector('iframe');
+    if (!frame.__testWindow) {
+      const win = { postMessage: vi.fn() };
+      Object.defineProperty(frame, 'contentWindow', { configurable: true, get: () => win });
+      frame.__testWindow = win;
+    }
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'browser-viewer-control', holder, reason: 'sign in' }, source: frame.__testWindow }));
+  });
+
+  it('Done after a turn that ended waiting on the person carries the task on', async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(<ChatView task={task('p-done', [pastTurn[0], liveTurn()])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    await control('human');
+    rerender(<ChatView task={task('p-done', pastTurn)} onSend={onSend} browserOn />);
+    await act(async () => {});
+    await control('agent');
+    expect(onSend).toHaveBeenCalledWith(BROWSER_DONE_MESSAGE);
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('Done during the turn, or with no turn waiting, sends nothing: a running turn sees it itself', async () => {
+    const onSend = vi.fn();
+    render(<ChatView task={task('p-run', [pastTurn[0], liveTurn()])} onSend={onSend} browserOn />);
+    await act(async () => {});
+    await control('human');
+    await control('agent');
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("opens the task's real browser on a blank tab from the Show browser icon, with the call icon by the X", async () => {
