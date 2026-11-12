@@ -831,6 +831,11 @@ describe('frames', () => {
     expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: false });
     document.getElementById('other')!.focus();
     expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: true });
+    // The frame the debugger then reads the focus in: the owner of the one this world can't read, and none while the focus is in reach.
+    expect(pageWorld(document, world, { kind: 'focusedFrame' })).toBe(document.getElementById('other'));
+    (frameDoc('login').getElementById('user') as HTMLInputElement).focus();
+    document.getElementById('login')!.focus();
+    expect(pageWorld(document, world, { kind: 'focusedFrame' })).toBeNull();
   });
 
   it('finds what a screenshot must hide: secret fields in the page, its open shadow roots and its same-origin frames, payment frames by address, and every frame from another site', async () => {

@@ -200,6 +200,10 @@ export type PageWorldRequest =
   | { kind: 'snapshot'; maxText: number; maxElements: number; frames: FrameReadRules | null }
   | { kind: 'locate'; id: number; reveal: boolean }
   | { kind: 'focusedSecret' }
+  /* The frame owner the focus rests on where this world reaches no further
+     (a frame of another site), or null. It answers an element, which only a
+     read through the debugger takes (browser-frames.ts). */
+  | { kind: 'focusedFrame' }
   /* Where the focus is while a type step types into element `id`. */
   | { kind: 'typingFocus'; id: number }
   | { kind: 'viewport' }
@@ -893,10 +897,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return !!active && active !== doc.body && isSecret(active);
   };
 
-  /* The focus rests on a frame this world can't read. */
-  const focusInOtherSite = (): boolean => {
+  /* The frame owner the focus rests on when this world can't read its
+     frame, or null. */
+  const focusedFrameOwner = (): Element | null => {
     const active = deepActive();
-    return !!active && FRAME_TAGS.has(tagOf(active)) && !frameDocOf(active);
+    return active && FRAME_TAGS.has(tagOf(active)) && !frameDocOf(active) ? active : null;
   };
 
   /* Selects a field's text so typing replaces it; false when it held none. */
@@ -1024,7 +1029,9 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'viewport':
       return viewport;
     case 'focusedSecret':
-      return { secret: focusOnSecret(), otherSite: focusInOtherSite() } satisfies FocusedSecret;
+      return { secret: focusOnSecret(), otherSite: !!focusedFrameOwner() } satisfies FocusedSecret;
+    case 'focusedFrame':
+      return focusedFrameOwner();
     case 'typingFocus': {
       const el = world.ids.get(request.id);
       return { secret: focusOnSecret(), inField: !!el && el.isConnected && focusIn(el) };

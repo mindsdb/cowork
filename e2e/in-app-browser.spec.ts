@@ -138,6 +138,19 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Sealed slot</title><x-btn id="w" role="button" style="display:block;position:relative;width:400px;height:120px;margin:0;overflow:hidden;font:100px/120px sans-serif">Continue</x-btn>'
           + `<script>document.getElementById("w").attachShadow({ mode: "closed" }).innerHTML = ${JSON.stringify(sealed)}</script>`);
     }
+    if (url.pathname === '/frame-fields') {
+      /* Another site's embedded form, with an ordinary field and a password
+         field the person has filled. */
+      const fields = `${origin.replace('127.0.0.1', 'localhost')}/fields`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Frame fields</title><style>body{margin:0}</style><iframe src="${fields}" style="position:absolute;left:0;top:0;width:400px;height:200px;border:0"></iframe>`);
+    }
+    if (url.pathname === '/fields') {
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Fields</title><style>body{margin:0;background:#fff}input{position:absolute;left:0;width:300px;height:40px;border:0;background:#fff;font:20px sans-serif}</style>'
+          + '<input id="u" style="top:0"><input id="p" type="password" value="hunter2" style="top:100px">'
+          + '<script>addEventListener("keydown", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "frame-key", key: e.key, target: e.target.id, isTrusted: e.isTrusted }) }))</script>');
+    }
     if (url.pathname === '/clear-frame') {
       /* Another site's frame drawn fully transparent over a button. */
       const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
@@ -432,6 +445,24 @@ test('presses by position into a frame under the point only when anton says the 
   const approved = await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true });
   expect(approved.status, approved.body.toString()).toBe(200);
   await expect.poll(() => log.filter((e) => e.type === 'frame-click')).toEqual([{ type: 'frame-click', isTrusted: true }]);
+});
+
+test("types into an ordinary field of another site's embedded form, and refuses an editing key into its password field", async () => {
+  await openAt('/frame-fields');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // The person approved each click into the frame.
+  expect((await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true })).status).toBe(200);
+  const typed = await act({ action: 'press', key: 'a' });
+  expect(typed.status, typed.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-key')).toEqual([{ type: 'frame-key', key: 'a', target: 'u', isTrusted: true }]);
+  log = [];
+  expect((await act({ action: 'click', x: 20, y: 120, coords: 'page', into_frame: true })).status).toBe(200);
+  const refused = await act({ action: 'press', key: 'a' });
+  expect(refused.status, refused.body.toString()).toBe(403);
+  expect(refused.json().error).toBe('password_field');
+  // A key that edits nothing still goes in.
+  expect((await act({ action: 'press', key: 'ArrowLeft' })).status).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-key').map((e) => e.key)).toEqual(['ArrowLeft']);
 });
 
 test('refuses a click whose point a frame slides over as the pointer arrives, by number and by position, and presses nothing', async () => {

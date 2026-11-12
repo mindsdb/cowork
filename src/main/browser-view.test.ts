@@ -269,18 +269,23 @@ describe('ElectronTab', () => {
     expect(request[0].code).toContain(`"depth":${SECRET_SEARCH_DEPTH}`);
   });
 
-  it('refuses a key that edits text into a frame from another site while the page holds a payment frame', async () => {
+  it("refuses a key that edits text into a secret field of another site's frame, read through the debugger, and types into an ordinary one there", async () => {
     const { tab, contents } = setup();
+    // The page's world sees the focus rest on a frame it can't read.
     contents.focus = { secret: false, otherSite: true };
+    const frame = { id: 'widget', url: 'https://login.other.test/embed', parentId: 'main', remote: true, focus: { secret: true, otherSite: false } };
+    contents.debugger.page.frames.push(frame);
+    contents.debugger.page.focusedOwnerOf = 'widget';
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      await expect(tab.act(stepOf({ action: 'press', key: 'a' }))).resolves.toBeDefined();
-      contents.mainFrame.framesInSubtree = [contents.mainFrame, { url: 'https://checkout.shop.test/' }, { url: 'https://js.stripe.com/v3/elements-inner-card' }];
       await expect(tab.act(stepOf({ action: 'press', key: 'a' }))).rejects.toMatchObject({ code: 'password_field', status: 403 });
       await expect(tab.act(stepOf({ action: 'press', key: 'Enter' }))).resolves.toBeDefined();
+      frame.focus = { secret: false, otherSite: false };
+      await expect(tab.act(stepOf({ action: 'press', key: 'a' }))).resolves.toBeDefined();
     } finally {
       vi.useRealTimers();
     }
+    expect(contents.attached).toBe(false);
   });
 
   it('starts the secret-field watch as each document loads, and when asked', () => {

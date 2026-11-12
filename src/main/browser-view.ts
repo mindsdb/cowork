@@ -382,13 +382,7 @@ export class ElectronTab implements TabView {
       pacing,
       page: {
         locate: (id, reveal) => inStep<LocateResult>({ kind: 'locate', id, reveal }),
-        /* The world can't read a frame from another site, so a key into one
-           counts as a key into a secret field while the page holds a
-           payment frame anywhere in its frame tree. */
-        focusedSecret: async () => {
-          const focus = await inStep<FocusedSecret>({ kind: 'focusedSecret' });
-          return focus.secret || (focus.otherSite && this.subframeUrls().some(isPaymentAddress));
-        },
+        focusedSecret: () => inStep<FocusedSecret>({ kind: 'focusedSecret' }),
         typingFocus: (id) => inStep<TypingFocus>({ kind: 'typingFocus', id }),
         focusField: (id, select) => inStep<FocusFieldResult>({ kind: 'focusField', id, select }),
         focus: (id, editing) => inStep<FocusResult>({ kind: 'focus', id, editing }),

@@ -19,7 +19,9 @@
  * type or press step focuses its element rather than clicking it, and a type,
  * a select or a press of a key that edits text into a secret field gets 403
  * password_field. Before every key, typing checks that the focus is still in
- * its field and not on a secret one, and stops when it isn't. A click by
+ * its field and not on a secret one, and stops when it isn't. An editing key
+ * into a frame of another site is refused when the field focused there is a
+ * secret one, or can't be read (`keysGoToSecret`). A click by
  * number presses only where both the page's hit test and the debugger's,
  * which sees inside closed shadow roots, find its element and no frame. Just
  * before each press, a click or a drag checks its point again, and presses
@@ -36,7 +38,7 @@ import {
   type StepTarget,
 } from '../shared/browser-contract';
 import { type CdpDebugger, FrameReads, withDebugger } from './browser-frames';
-import type { FocusFieldResult, FocusResult, HitTestResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
+import type { FocusedSecret, FocusFieldResult, FocusResult, HitTestResult, LocateResult, SelectResult, TypingFocus } from './browser-page-script';
 import { screenshotScale } from './browser-screenshot';
 
 /** Waiting and randomness, injected so tests run fast and repeatably. */
@@ -385,7 +387,8 @@ export async function withAgentInput<T>(
 /** The isolated-world reads a step needs (browser-page-script.ts). */
 export interface PageReader {
   locate(id: number, reveal: boolean): Promise<LocateResult>;
-  focusedSecret(): Promise<boolean>;
+  /** Whether the focus is on a secret field, or on a frame of another site the world can't read. */
+  focusedSecret(): Promise<FocusedSecret>;
   /** Where the focus is while a type step types into element `id`. */
   typingFocus(id: number): Promise<TypingFocus>;
   /** Focuses text field `id` for typing; with `select`, selects its text so typing replaces it. */
@@ -578,6 +581,16 @@ async function pressPoint(
   return { at, beforePress: await frameGuard(frames, at, intoFrame, `the point (${target.x}, ${target.y})`) };
 }
 
+/* Whether an editing key now goes into a secret field: the focused one,
+   followed into frames of the page's origin, or, when the focus rests on a
+   frame of another site, the one focused in there, read in that frame's own
+   world (`focusedFrameSecret`), which counts what it can't read as secret. A
+   key into an ordinary field of an embedded form still goes in. */
+async function keysGoToSecret(host: StepHost, frames: FrameReads): Promise<boolean> {
+  const focus = await host.page.focusedSecret();
+  return focus.secret || (focus.otherSite && await frames.focusedFrameSecret());
+}
+
 const SCROLL_DELTAS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
 
 /** Runs one checked step. */
@@ -667,12 +680,12 @@ export async function runStep(host: StepHost, request: StepRequest, platform: No
       }
       if (pastes(press)) throw new BridgeError('bad_request', "the agent can't paste the person's clipboard; type the text instead");
       const editing = editsText(press);
-      return host.withInput(async (input) => {
+      return host.withInput(async (input, frames) => {
         if (step.element !== undefined) {
           const focus = await host.page.focus(step.element, editing);
           if (!focus.ok) throw focusRefused(step.element, focus.reason);
         }
-        if (editing && await host.page.focusedSecret()) throw secretField('the focused field');
+        if (editing && await keysGoToSecret(host, frames)) throw secretField('the focused field');
         await input.press(press);
       });
     }

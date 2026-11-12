@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BridgeError, parseStepRequest, STEP_TIMEOUT_MS, type StepRequest } from '../shared/browser-contract';
-import { type FakeCdpPage, fakeCdpDebugger, MAIN_FRAME, type SentCommand, sentOf } from '../../tests/browser-fake-cdp';
-import { ALLOWED_CDP_METHODS } from './browser-frames';
+import { type FakeCdpPage, type FakeFrame, fakeCdpDebugger, MAIN_FRAME, type SentCommand, sentOf } from '../../tests/browser-fake-cdp';
+import { ALLOWED_CDP_METHODS, FRAME_READ_MS } from './browser-frames';
 import {
   AgentInput,
   KEYED_CHARS,
@@ -36,7 +36,7 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing, cdp: 
   const dbg = fakeCdpDebugger(cdp);
   const page: PageReader = {
     locate: vi.fn(async () => located()),
-    focusedSecret: vi.fn(async () => false),
+    focusedSecret: vi.fn(async () => ({ secret: false, otherSite: false })),
     typingFocus: vi.fn(async (): Promise<TypingFocus> => ({ secret: false, inField: true })),
     focusField: vi.fn(async () => ({ ok: true as const, selected: true })),
     focus: vi.fn(async () => ({ ok: true as const })),
@@ -277,15 +277,66 @@ describe('runStep', () => {
   });
 
   it.each(['Enter', 'Tab', 'Shift+Tab', 'Escape', 'ArrowDown'])('presses %s while a secret field has focus, since it edits no text', async (key) => {
-    const { dbg, stepHost } = host({ focusedSecret: vi.fn(async () => true) });
+    const { dbg, stepHost } = host({ focusedSecret: vi.fn(async () => ({ secret: true, otherSite: false })) });
     await runStep(stepHost, step({ action: 'press', key }));
     expect(events(dbg.sent, 'Input.dispatchKeyEvent').length).toBeGreaterThan(0);
   });
 
   it.each(['a', 'Backspace', 'Delete', ' ', 'Control+x', 'Meta+a'])('refuses %s while a secret field has focus, since it edits text', async (key) => {
-    const { dbg, stepHost } = host({ focusedSecret: vi.fn(async () => true) });
+    const { dbg, stepHost } = host({ focusedSecret: vi.fn(async () => ({ secret: true, otherSite: false })) });
     await expect(runStep(stepHost, step({ action: 'press', key }))).rejects.toMatchObject({ code: 'password_field', status: 403 });
     expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+  });
+
+  /* The page's world sees the focus rest on a frame of another site, which
+     it can't read: the debugger reads the focus inside that frame. */
+  const focusInFrame = { focusedSecret: vi.fn(async () => ({ secret: false, otherSite: true })) };
+  const widget = (frame: Partial<FakeFrame> = {}): Partial<FakeCdpPage> => ({
+    frames: [{ id: 'widget', url: 'https://login.other.test/embed', parentId: MAIN_FRAME, remote: true, ...frame }],
+    focusedOwnerOf: 'widget',
+  });
+
+  it("reads the focus inside another site's frame in that frame's own world, and refuses an editing key only when it rests on a secret field there", async () => {
+    const secret = host(focusInFrame, pacing, widget({ focus: { secret: true, otherSite: false } }));
+    await expect(runStep(secret.stepHost, step({ action: 'press', key: 'a' }))).rejects.toMatchObject({ code: 'password_field', status: 403 });
+    expect(events(secret.dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    const plain = host(focusInFrame, pacing, widget({ focus: { secret: false, otherSite: false } }));
+    await runStep(plain.stepHost, step({ action: 'press', key: 'a' }));
+    expect(typedText(plain.dbg.sent)).toBe('a');
+    // Read on the frame's own session, in a world made for the read; the page's own main frame names the frame first.
+    const worlds = sentOf(plain.dbg, 'Page.createIsolatedWorld');
+    expect(worlds.map(({ params, sessionId }) => [params.frameId, sessionId])).toEqual([[MAIN_FRAME, undefined], ['widget', 'session-widget']]);
+    expect(worlds.every(({ params }) => !('grantUniveralAccess' in params))).toBe(true);
+    expect(sentOf(plain.dbg, 'Runtime.evaluate').at(-1)).toMatchObject({ sessionId: 'session-widget', params: { returnByValue: true } });
+  });
+
+  it.each([
+    ["a payment provider's frame, which is never read", widget({ url: 'https://js.stripe.com/v3/elements-inner-card' })],
+    ['a frame of yet another site inside it', widget({ focus: { secret: false, otherSite: true } })],
+    ['a frame the debugger finds no owner of', { ...widget(), focusedOwnerOf: null }],
+  ])("refuses an editing key whose focus rests in %s, and still presses Enter there", async (_where, page) => {
+    const refused = host(focusInFrame, pacing, page);
+    await expect(runStep(refused.stepHost, step({ action: 'press', key: 'a' }))).rejects.toMatchObject({ code: 'password_field' });
+    expect(events(refused.dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    expect(sentOf(refused.dbg, 'Page.createIsolatedWorld').filter(({ params }) => String(params.frameId) !== MAIN_FRAME).every(({ params }) => params.frameId === 'widget')).toBe(true);
+    if (page.frames?.[0]?.url.includes('stripe')) expect(sentOf(refused.dbg, 'Page.createIsolatedWorld').filter(({ params }) => params.frameId === 'widget')).toEqual([]);
+    const enter = host(focusInFrame, pacing, page);
+    await runStep(enter.stepHost, step({ action: 'press', key: 'Enter' }));
+    expect(events(enter.dbg.sent, 'Input.dispatchKeyEvent').some((e) => e.key === 'Enter')).toBe(true);
+  });
+
+  it("refuses an editing key into another site's frame whose world doesn't answer in time", async () => {
+    vi.useFakeTimers();
+    try {
+      const { dbg, stepHost } = host(focusInFrame, pacing, widget({ hangs: true }));
+      const pressed = runStep(stepHost, step({ action: 'press', key: 'a' }));
+      const outcome = expect(pressed).rejects.toMatchObject({ code: 'password_field' });
+      await vi.advanceTimersByTimeAsync(FRAME_READ_MS);
+      await outcome;
+      expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("focuses a press's element instead of clicking it, and leaves a secret one alone only for editing keys", async () => {
