@@ -190,6 +190,19 @@ async function startFixtureServer(): Promise<void> {
         .end('<title>Closed frame fields</title><style>body{margin:0}</style><div id="host" style="position:absolute;left:0;top:0;width:400px;height:200px"></div>'
           + `<script>document.getElementById("host").attachShadow({ mode: "closed" }).innerHTML = '<iframe src="${fields}" style="position:absolute;left:0;top:0;width:400px;height:200px;border:0"></iframe>'</script>`);
     }
+    if (url.pathname === '/card') {
+      /* A checkout form whose card number shows in clear, from (100, 40) to
+         (290, 80), grey on light grey, so only a mask draws black there. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Card</title><style>body{margin:0;background:#fff}input{position:absolute;left:100px;top:40px;width:190px;height:40px;border:0;padding:0;background:#ddd;font:bold 18px monospace;color:#777}</style>'
+          + '<input autocomplete="cc-number" value="4242424242424242">');
+    }
+    if (url.pathname === '/closed-same-card') {
+      /* The page's own checkout frame, in a closed shadow root. */
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Closed same card</title><style>body{margin:0;background:#fff}</style><div id="host" style="position:absolute;left:0;top:0;width:300px;height:100px"></div>'
+          + '<script>document.getElementById("host").attachShadow({ mode: "closed" }).innerHTML = \'<iframe src="/card" style="position:absolute;left:0;top:0;width:300px;height:100px;border:0"></iframe>\'</script>');
+    }
     if (url.pathname === '/clear-frame') {
       /* Another site's frame drawn fully transparent over a button. */
       const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
@@ -293,6 +306,22 @@ async function markPage(): Promise<void> {
 /* The /form page's mark, or null once the page reloaded. */
 async function pageMark(): Promise<string | null> {
   return app.evaluate(({ webContents }, at) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.executeJavaScript('window.inAppBrowserE2eMark ?? null') ?? 'no page', `${origin}/form`);
+}
+
+/* Whether each of `points`, in the page's CSS pixels, is black in a
+   screenshot of the page at `route`, as a mask draws it. */
+async function blackIn(route: string, points: number[][]): Promise<boolean[]> {
+  const shot = await call('GET', `/sessions/${SESSION}/screenshot?quality=95`);
+  expect(shot.status, shot.body.toString()).toBe(200);
+  const width: number = await app.evaluate(({ webContents }, at) => webContents.getAllWebContents().find((contents) => contents.getURL() === at)?.executeJavaScript('innerWidth'), `${origin}${route}`);
+  const scale = Number(shot.headers['x-image-width']) / width;
+  const pixels: number[][] = await app.evaluate(({ nativeImage }, { jpeg, at }) => {
+    const image = nativeImage.createFromBuffer(Buffer.from(jpeg, 'base64'));
+    const { width: imageWidth } = image.getSize();
+    const bitmap = image.toBitmap();
+    return at.map(([x, y]) => [...bitmap.subarray((y * imageWidth + x) * 4, (y * imageWidth + x) * 4 + 3)]);
+  }, { jpeg: shot.body.toString('base64'), at: points.map(([x, y]) => [Math.round(x * scale), Math.round(y * scale)]) });
+  return pixels.map((rgb) => rgb.every((channel) => channel < 40));
 }
 
 async function openAt(route: string): Promise<void> {
@@ -594,6 +623,13 @@ test("blacks out the password field of another site's embedded form in a screens
   }, { jpeg: shot.body.toString('base64'), at: points });
   const dark = pixels.map((rgb) => rgb.every((channel) => channel < 40));
   expect(dark).toEqual([true, true, true, false, false]);
+});
+
+test("blacks out a card field in the page's own frame kept in a closed shadow root, where the page's search can't reach it", async () => {
+  await openAt('/closed-same-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  // CSS points: three on the card number, then the form's background.
+  expect(await blackIn('/closed-same-card', [[110, 60], [190, 60], [280, 60], [50, 20]])).toEqual([true, true, true, false]);
 });
 
 test('refuses a click whose point a frame slides over as the pointer arrives, by number and by position, and presses nothing', async () => {

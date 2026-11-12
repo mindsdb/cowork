@@ -22,9 +22,10 @@
  * sendCommand takes its id.
  *
  * `frameMasks`: the secret fields a screenshot blacks out inside the frames
- * the world can't search, each read in its frame's own world, as the web
- * pod's frameMasks reads them; a frame that can't be read is blacked out
- * whole.
+ * below the main one, each read in its frame's own world, as the web pod's
+ * frameMasks reads them: those the world can't search, and those it does,
+ * since its search can't reach a frame in a closed shadow root. A frame that
+ * can't be read is blacked out whole.
  *
  * Every command goes out through `DebuggerSession.send`, which checks it
  * first: only the methods in ALLOWED_CDP_METHODS; input and the page reads on
@@ -319,21 +320,23 @@ export class DebuggerSession {
     await this.send('Runtime.releaseObject', { objectId }, this.frames.get(frameId)?.session).catch(() => {});
   }
 
-  /** The frames the page's isolated world can't search for secrets
-      (secretBoxes in browser-page-script.ts): each child of a frame it
-      searches (the main one, and below it each frame of the main frame's
-      origin in the page's process that is no payment frame, `depth` deep,
-      as ElectronTab.searchedFrames counts them) that it doesn't search
-      itself. Call it once mainFrame and attachFrames have answered. */
-  unsearchedFrames(main: string, depth: number): string[] {
+  /** The frames a screenshot reads in their own worlds (frameMasks): each
+      frame the page's isolated world searches for secrets (secretBoxes in
+      browser-page-script.ts: below the main one, each frame of the main
+      frame's origin in the page's process that is no payment frame, `depth`
+      deep, as ElectronTab.searchedFrames counts them), marked `searched`,
+      since that search can't reach one in a closed shadow root; and each
+      child of a frame it searches that it doesn't search itself. Call it
+      once mainFrame and attachFrames have answered. */
+  framesToRead(main: string, depth: number): Array<{ id: string; searched: boolean }> {
     const origin = this.frames.get(main)?.origin;
-    const found: string[] = [];
+    const found: Array<{ id: string; searched: boolean }> = [];
     const visit = (parent: string, level: number) => {
       for (const [id, frame] of this.frames) {
         if (frame.parentId !== parent) continue;
         const searched = level < depth && frame.session === undefined && !!origin && frame.origin === origin && !isPaymentAddress(frame.url);
+        found.push({ id, searched });
         if (searched) visit(id, level + 1);
-        else found.push(id);
       }
     };
     visit(main, 0);
@@ -527,25 +530,30 @@ export class FrameReads {
   }
 
   /**
-   * What a screenshot blacks out inside the frames the page's world can't
-   * search (`unsearchedFrames`), in the page's viewport: each one's secret
-   * fields, payment frames and frames it can't search in turn, read in its
-   * own world and kept inside its content box; the whole frame when it
-   * can't be read (a payment provider's frame, where no world opens, or one
-   * that doesn't answer within FRAME_READ_MS). A frame whose owner draws
-   * nothing has nothing to black out.
+   * What a screenshot blacks out inside the frames below the main one
+   * (`framesToRead`), in the page's viewport, each read in its own world and
+   * kept inside its content box. A frame the page's world can't search: its
+   * secret fields, payment frames and frames it can't search in turn. A
+   * frame that world searched, which it can't reach in a closed shadow root:
+   * the secret fields and payment frames of its own document, its frames
+   * being read on their own; a field both reads find is blacked out twice,
+   * which shows the same. A frame that can't be read (a payment provider's
+   * frame, where no world opens, or one that doesn't answer within
+   * FRAME_READ_MS) is blacked out whole. A frame whose owner draws nothing
+   * has nothing to black out.
    */
   async frameMasks(): Promise<Box[]> {
     const main = await this.session.mainFrame();
     await this.session.attachFrames();
-    const masks = await Promise.all(this.session.unsearchedFrames(main, SECRET_SEARCH_DEPTH).map(async (frameId) => {
+    const masks = await Promise.all(this.session.framesToRead(main, SECRET_SEARCH_DEPTH).map(async ({ id: frameId, searched }) => {
       const owner = await this.session.ownerBoxes(frameId).catch(() => null);
       if (!owner) return [];
-      const read = this.session.read<FoundSecrets>(frameId, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: SECRET_SEARCH_DEPTH });
+      const depth = searched ? 0 : SECRET_SEARCH_DEPTH;
+      const read = this.session.read<FoundSecrets>(frameId, { kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth });
       const found = await withTimeout(read, FRAME_READ_MS).catch(() => null);
       if (!found) return [owner.border];
       const { content } = owner;
-      return [...found.secrets, ...found.paymentFrames, ...found.otherSiteFrames]
+      return [...found.secrets, ...found.paymentFrames, ...(searched ? [] : found.otherSiteFrames)]
         .map((box) => clip({ ...box, x: box.x + content.x, y: box.y + content.y }, content))
         .filter((box): box is Box => box !== null);
     }));

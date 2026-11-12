@@ -330,12 +330,19 @@ describe('ElectronTab', () => {
       expect(sentOf(contents.debugger, 'Page.createIsolatedWorld')).toEqual([]);
     });
 
-    it("reads no frame of the page's own origin, which the page's world searched itself", async () => {
+    it("blacks out a secret field of the page's own frame too, read in that frame's own world, since the page's search can't reach one in a closed shadow root", async () => {
       const { tab, contents, black } = framed();
-      contents.debugger.page.frames.push({ id: 'same', url: 'https://a.test/inner', parentId: 'main', origin: 'https://a.test', owner: { content: { x: 0, y: 400, width: 100, height: 100 }, border: { x: 0, y: 400, width: 100, height: 100 } } });
+      contents.debugger.page.frames.push({
+        id: 'same',
+        url: 'https://a.test/inner',
+        parentId: 'main',
+        origin: 'https://a.test',
+        owner: { content: { x: 0, y: 400, width: 100, height: 100 }, border: { x: 0, y: 400, width: 100, height: 100 } },
+        secrets: { secrets: [{ x: 10, y: 10, width: 20, height: 20 }] },
+      });
       await tab.screenshot(false, 70);
-      expect(sentOf(contents.debugger, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).toEqual(['form']);
-      expect(black(50, 450)).toBe(false);
+      expect(sentOf(contents.debugger, 'Page.createIsolatedWorld').map(({ params }) => params.frameId)).toEqual(expect.arrayContaining(['form', 'same']));
+      expect([black(15, 415), black(50, 450)]).toEqual([true, false]);
     });
   });
 

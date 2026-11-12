@@ -546,9 +546,9 @@ export class ElectronTab implements TabView {
   }
 
   /* Every screenshot blacks out the page's secret fields and payment frames
-     (screenshotMasks), and those inside the frames the page's world can't
-     search (frameMasks), read just before the capture. A page with a payment
-     frame it can't place gets no capture at all. */
+     (screenshotMasks), and those inside its frames, each read in its own
+     world (frameMasks), just before the capture. A page with a payment frame
+     it can't place gets no capture at all. */
   async screenshot(annotate: boolean, quality: number): Promise<Screenshot> {
     const raw = annotate ? await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText: 0, maxElements: MAX_ELEMENTS, frames: null }) : null;
     const found = await this.inWorld<FoundSecrets>({ kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: SECRET_SEARCH_DEPTH });
@@ -562,9 +562,9 @@ export class ElectronTab implements TabView {
     return renderScreenshot(image, width, raw?.boxes ?? null, quality, (data, size) => nativeImage.createFromBitmap(data, size), [...masks, ...inFrames]);
   }
 
-  /* What a screenshot blacks out inside the frames the page's world can't
-     search, read through the debugger for this capture only
-     (FrameReads.frameMasks). When the debugger can't be had (something else
+  /* What a screenshot blacks out inside the page's frames, read through the
+     debugger for this capture only (FrameReads.frameMasks). When the
+     debugger can't be had (something else
      holds it, or the person took over and it was detached) or the read
      fails, each such frame the world found (`unread`) is blacked out whole. */
   private async frameMasks(unread: Box[]): Promise<Box[]> {

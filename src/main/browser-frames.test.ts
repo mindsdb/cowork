@@ -106,7 +106,7 @@ describe('FrameReads.frameMasks', () => {
   const owner = (x: number, y: number) => ({ content: box(x, y, 200, 100), border: box(x - 2, y - 2, 204, 104) });
   const secret = { secrets: [box(5, 5, 50, 10)] };
 
-  it("reads each frame the page's world can't search in its own world, wherever it sits, and none it searched", async () => {
+  it("reads each frame the page's world can't search in its own world, wherever it sits, and each it searched for its own secret fields", async () => {
     const dbg = fakeCdpDebugger({
       frames: [
         // Searched by the page's world: of the page's origin, in its process.
@@ -120,11 +120,27 @@ describe('FrameReads.frameMasks', () => {
       ],
     });
     const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
-    expect(masks).toHaveLength(2);
-    expect(masks).toEqual(expect.arrayContaining([box(305, 5, 50, 10), box(5, 205, 50, 10)]));
+    expect(masks).toHaveLength(3);
+    expect(masks).toEqual(expect.arrayContaining([box(5, 5, 50, 10), box(305, 5, 50, 10), box(5, 205, 50, 10)]));
     const worlds = sentOf(dbg, 'Page.createIsolatedWorld').map(({ params, sessionId }) => [params.frameId, sessionId]);
-    expect(worlds).toHaveLength(2);
-    expect(worlds).toEqual(expect.arrayContaining([['sibling', undefined], ['nested', 'session-nested']]));
+    expect(worlds).toHaveLength(3);
+    expect(worlds).toEqual(expect.arrayContaining([['same', undefined], ['sibling', undefined], ['nested', 'session-nested']]));
+  });
+
+  it("reads a frame the page's world searched for the secret fields of its own document alone, since that search can't reach one in a closed shadow root, and leaves its frames to their own reads", async () => {
+    const dbg = fakeCdpDebugger({
+      frames: [
+        // Its own world finds its field, and boxes for its frames, which are read on their own.
+        { id: 'same', url: 'https://a.test/inner', parentId: MAIN_FRAME, origin: 'https://a.test', owner: owner(0, 0), secrets: { secrets: [box(5, 5, 50, 10)], otherSiteFrames: [box(0, 0, 200, 100)] } },
+        { id: 'deeper', url: 'https://a.test/deeper', parentId: 'same', origin: 'https://a.test', owner: owner(0, 300), secrets: secret },
+      ],
+    });
+    const masks = await withDebugger(dbg, (session) => new FrameReads(session).frameMasks());
+    expect(masks).toHaveLength(2);
+    expect(masks).toEqual(expect.arrayContaining([box(5, 5, 50, 10), box(5, 305, 50, 10)]));
+    const reads = sentOf(dbg, 'Runtime.evaluate').map(({ params }) => String(params.expression)).filter((expression) => expression.includes('"kind":"secretBoxes"'));
+    expect(reads).toHaveLength(2);
+    expect(reads.every((expression) => expression.includes('"depth":0'))).toBe(true);
   });
 
   it("blacks out whole a payment provider's frame, which no world opens in, and keeps each mask inside its frame", async () => {
