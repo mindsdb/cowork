@@ -19,6 +19,7 @@
 // "Remove Create games mode".
 
 import { HABIT_TRACKER_PROMPT } from '../onboarding/steps';
+import i18n from '../../../lib/i18n';
 
 export const TASK_MODES = [
   {
@@ -322,6 +323,35 @@ export const FEATURED_EXAMPLES_MODE = {
   samplesVariant: 'rows',
   samples: FEATURED_LABELS.map((label) => ALL_SAMPLES.find((s) => s.label === label)).filter(Boolean),
 };
+
+/* What a person reads is translated when it is read; the English above stays
+   the data. A mode's pill, chip and placeholder text are getters onto the
+   chat catalog (taskModes.<mode id>.<field>), so every surface that shows
+   them gets the current language without asking. A sample's label doubles as
+   its id (console links, the featured list), so it stays English in the data
+   and `sampleLabel` translates it for display. `instruction` and `prompt` are
+   message text the agent reads, and are never translated. */
+const DISPLAY_FIELDS = ['pillLabel', 'chipLabel', 'chipNoun', 'placeholder'];
+for (const mode of [...TASK_MODES, FEATURED_EXAMPLES_MODE]) {
+  for (const field of DISPLAY_FIELDS) {
+    if (!(field in mode)) continue;
+    const english = mode[field];
+    Object.defineProperty(mode, field, {
+      enumerable: true,
+      get: () => i18n.t(`taskModes.${mode.id}.${field}`, { ns: 'chat', defaultValue: english }),
+    });
+  }
+}
+
+/** A sample's label in the current language: built-in samples by their mode
+    and position, anything else as given. */
+export function sampleLabel(sample) {
+  for (const mode of TASK_MODES) {
+    const index = mode.samples.indexOf(sample);
+    if (index >= 0) return i18n.t(`taskModes.${mode.id}.samples.${index}`, { ns: 'chat', defaultValue: sample.label });
+  }
+  return sample?.label;
+}
 
 /** The mode and sample whose prompt is exactly `prompt`, or null. */
 export function findSampleByPrompt(prompt) {

@@ -1,0 +1,619 @@
+{
+  "cardShell": {
+    "notice": "Notice",
+    "question": "Question"
+  },
+  "chatView": {
+    "connectIntro": {
+      "clickToReopen": "Click to re-open the form",
+      "fillOutForm": "Fill out the form on the side panel",
+      "cancel": "Cancel",
+      "disconnect": "Disconnect"
+    },
+    "attachment": {
+      "connector": "Connector",
+      "image": "Image",
+      "file": "File"
+    },
+    "turn": {
+      "metaDateTime": "{month} {day}, {time}",
+      "deleting": "Deleting…",
+      "copyMessage": "Copy message",
+      "copyResponse": "Copy response",
+      "agentFallback": "Agent"
+    },
+    "incomplete": {
+      "spendCeiling": "Stopped early: this task reached its token budget.",
+      "roundCap": "Stopped early: this task reached its step limit.",
+      "handbackBudget": "Stopped early: automatic continuations ran out before the task was done.",
+      "handbackVerifierFailure": "Stopped early: the agent couldn't confirm the task was done.",
+      "handbackStuck": "Stopped early: the agent judged the task stuck.",
+      "retryExhausted": "Stopped early: the task kept failing.",
+      "questionUnanswered": "Stopped early: a question went unanswered.",
+      "contentFilter": "Stopped early: the model's content filter blocked a reply.",
+      "fallback": "Stopped before it finished."
+    },
+    "figureFile": {
+      "attachedFile": "Attached file",
+      "noteWithStep": "Shows the file as it is now. Open step shows what the step read.",
+      "note": "Shows the file as it is now, which may differ from what the step read."
+    },
+    "artifactCard": {
+      "fallbackTitle": "Artifact",
+      "showInFinder": "Show in Finder",
+      "showInFolder": "Show in folder",
+      "openShared": "Open shared artifact",
+      "download": "Download",
+      "open": "Open",
+      "openPreview": "Open preview",
+      "noPreviewNoLink": "This artifact cannot be previewed and has no shared link yet.",
+      "noDownloadableFile": "This artifact has no downloadable file yet.",
+      "noFilePath": "No file path",
+      "deletedStatus": "This artifact was deleted.",
+      "noPathAvailable": "No artifact file path is available.",
+      "couldNotOpen": "Could not open artifact.",
+      "opened": "Opened.",
+      "shownInFinder": "Shown in Finder.",
+      "shownInFolder": "Shown in folder.",
+      "couldNotShow": "Could not show artifact.",
+      "downloading": "Downloading…",
+      "preview": "Preview",
+      "previewInProduct": "Preview this artifact in {product}",
+      "openSharedTooltip": "Open the shared artifact",
+      "saveFileTooltip": "Save this artifact's file",
+      "previewPath": "Preview {path}",
+      "downloadPath": "Download {path}",
+      "actionTarget": "{action}: {target}",
+      "sharedLink": "Shared link",
+      "sharedLinkTooltip": "Open the shared artifact in a new tab",
+      "openInDefaultApp": "Open in the default app",
+      "deletedAriaLabel": "Deleted artifact: {title}",
+      "thumbnailAlt": "Artifact thumbnail",
+      "deletedTitle": "This artifact was deleted",
+      "liveArtifact": "live artifact",
+      "deletedBadge": "Deleted"
+    },
+    "kinds": {
+      "provider": "Provider",
+      "billing": "Billing",
+      "usage": "Usage",
+      "connection": "Connection",
+      "model": "Model",
+      "rateLimit": "Rate limit",
+      "attachment": "Attachment",
+      "conversation": "Conversation",
+      "agent": "Agent",
+      "server": "Server"
+    },
+    "cards": {
+      "taskStopped": "Task stopped",
+      "providerLimitBody": "The provider's usage limit was reached. Contact your administrator before starting another task.",
+      "addFunds": "Add funds",
+      "switchToAir": "Switch to MindsHub Air",
+      "balanceRanOut": "Your balance ran out before this task finished. Add funds before starting another task.",
+      "balanceEmptyAirLeft": "Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.",
+      "providerUnavailableTitle": "The provider is temporarily unavailable",
+      "providerPausedBody": "The provider has paused requests. Try again later or contact your administrator.",
+      "freeAirPausedTitle": "Free MindsHub Air is paused",
+      "connectProviderTitle": "Connect a provider to start chatting",
+      "providerSetupRequiredTitle": "Provider setup is required",
+      "connectProviderBody": "Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings.",
+      "providerSetupRequiredBody": "Ask your operator to configure the model provider before starting a task.",
+      "startForFree": "Start for free",
+      "openSettings": "Open Settings",
+      "autoTopUpFailedTitle": "Auto top up failed",
+      "autoTopUpFailedBody": "We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running.",
+      "rateLimitedTitle": "Too many requests too quickly",
+      "tryAgainIn": "Try again in {seconds}s",
+      "tryAgain": "Try again",
+      "adminSpendingLimitBody": "Your administrator's spending limit was reached. Contact your administrator.",
+      "budgetUsedUpTitle": "Your organization's budget is used up",
+      "viewBudgets": "View budgets"
+    },
+    "usageAlert": {
+      "freeLow": "Free Air allowance {percent} left",
+      "freeLowRefills": "Free Air allowance {percent} left · refills at {time}",
+      "freeUsed": "Free Air allowance used up · now using your balance",
+      "freeUsedUntil": "Free Air allowance used up · now using your balance until {time}"
+    },
+    "reconnect": {
+      "couldNotReconnect": "Could not reconnect. Try signing out and back in.",
+      "failed": "Reconnect failed.",
+      "cannotAuthTitle": "The provider could not authenticate",
+      "reconnectedTitle": "Reconnected",
+      "reconnectTitle": "Reconnect to continue",
+      "signInAgainTitle": "Sign in again",
+      "updateKeyTitle": "Update your API key",
+      "cannotAuthBody": "The model provider rejected its credentials. Ask your operator to check the provider configuration.",
+      "reconnectedBody": "Your MindsHub session was refreshed. Send your message again to continue.",
+      "reconnectBody": "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation.",
+      "signInAgainBody": "Your MindsHub session is no longer valid. Open Settings to sign in again.",
+      "updateKeyBody": "Your {provider} API key is no longer valid. Update it in Settings to continue.",
+      "updateKeyBodyGeneric": "Your provider API key is no longer valid. Update it in Settings to continue.",
+      "reconnecting": "Reconnecting…",
+      "reconnect": "Reconnect"
+    },
+    "model": {
+      "thisModel": "This model",
+      "restrictedTitle": "{model} is restricted",
+      "unavailableTitle": "{model} isn't available right now",
+      "askOperatorBody": "Ask your operator to check the configured model and its access.",
+      "restrictedBody": "An admin in your organization restricted this model. Choose another model in Settings.",
+      "needsCreditsTitle": "{model} needs credits",
+      "needsCreditsBody": "You don't have enough credits for this model. Top up your balance to use it.",
+      "disabledBody": "This model is turned off for your workspace. Choose another model in Settings.",
+      "topUpBalance": "Top up balance"
+    },
+    "overloaded": {
+      "theModelProvider": "The model provider",
+      "body": "{who} had a temporary incident and didn't recover in time. Try again in a moment.",
+      "withFailover": "{base} MindsHub automatically routes around provider outages like this, so tasks keep running.",
+      "title": "{who} is having a temporary issue"
+    },
+    "header": {
+      "expandPanel": "Expand panel",
+      "collapsePanel": "Collapse panel",
+      "apps": "Apps",
+      "connectAppsAndData": "Connect Apps and Data",
+      "projects": "Projects",
+      "allProjects": "All projects",
+      "openProject": "Open project: {project}",
+      "taskMenu": "Task menu"
+    },
+    "transcript": {
+      "loading": "Loading…",
+      "loadEarlier": "Load earlier messages",
+      "thinking": "Thinking…",
+      "connect": "Connect",
+      "streaming": "Streaming…",
+      "deletingExchange": "Deleting the selected exchange."
+    },
+    "queue": {
+      "status": "{count} queued · waiting for {agent}",
+      "remove": "Remove from queue"
+    },
+    "composer": {
+      "replyPlaceholder": "Reply…"
+    },
+    "errors": {
+      "reference": "Reference: {id}",
+      "modelNotFoundNamedTitle": "\"{model}\" isn't a model we can use",
+      "modelNotFoundTitle": "That model isn't available",
+      "modelNotFoundOperatorBody": "The provider cannot serve the configured model. Ask your operator to check the model configuration.",
+      "modelNotFoundNamedBody": "Your settings point at \"{model}\", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.",
+      "modelNotFoundBody": "The selected model was removed or isn't offered anymore. Switch to another model in Settings.",
+      "imageFormatTitle": "That image couldn't be read",
+      "imageFormatBody": "The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again.",
+      "contentRecoveryTitle": "Fixed an issue with this conversation",
+      "contentRecoveryBody": "An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going.",
+      "contentTooLargeTitle": "That image is too large",
+      "billingUnavailableTitle": "Billing is temporarily unavailable",
+      "billingUnavailableBody": "MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment.",
+      "providerUnauthorizedBody": "The provider couldn't authorize this request. Try again in a moment.",
+      "workerUnresponsiveTitle": "The agent didn't start",
+      "workerUnresponsiveBody": "This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment.",
+      "modelTimeoutTitle": "The model didn't respond",
+      "modelTimeoutBody": "The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, pick another model in Settings.",
+      "modelTimeoutOperatorBody": "The model stopped sending anything, so this turn was ended. Try again. If it keeps happening, ask your operator to check the model configuration.",
+      "turnLostTitle": "The answer was cut off",
+      "turnLostBody": "The server stopped before this answer finished, so it ends here. Nothing was wrong with your question. Try again once the server is back.",
+      "stalledTitle": "The response stalled",
+      "stalledBody": "{product} stopped hearing from the agent. The answer may still be running. Wait for it to finish before sending again.",
+      "serverBusyTitle": "The server is busy",
+      "coworkUnavailableTitle": "The server isn't answering"
+    },
+    "addon": {
+      "sending": "Sending…",
+      "added": "Added to current task",
+      "withdrawing": "Moving to queue…",
+      "read": "Read by {agent}",
+      "returned": "Moved to queue",
+      "moveToQueue": "Move to queue",
+      "addToTask": "Add to current task",
+      "addingToTask": "Adding to current task",
+      "unconfirmed": "Couldn't confirm whether this was added. Send it again?",
+      "sendAgain": "Send again",
+      "queued": {
+        "separate": "Queued: this looks like a separate request, so it runs after the current task.",
+        "unsure": "Queued: it wasn't clear this belongs to the current task. Use the arrow to add it now.",
+        "unchecked": "Queued: couldn't check whether this belongs to the current task.",
+        "unavailable": "Queued: the current task can't take messages right now.",
+        "files": "Queued: messages with files run after the current task.",
+        "notRead": "Queued: the task finished before it could read this."
+      }
+    }
+  },
+  "composer": {
+    "placeholder": "Hi Boss, how can I help you today?",
+    "removeMode": "Remove {mode} mode",
+    "attachment": {
+      "connector": "Connector",
+      "image": "Image",
+      "file": "File",
+      "queued": "Queued",
+      "remove": "Remove attachment"
+    },
+    "claudeCodeNotDetected": "Claude-Code — not detected on this machine",
+    "model": {
+      "operatorDefaultTitle": "Runs on the model your operator set",
+      "routerTitle": "Routes to this account's configured model automatically",
+      "routerSettings": "Router Settings",
+      "fixed": "Model is fixed for this task",
+      "model": "Model",
+      "connectProvider": "Connect a provider in Settings to choose a model",
+      "choose": "Choose model",
+      "select": "Select model",
+      "effort": "Reasoning effort"
+    },
+    "slash": {
+      "openFilePicker": "Open file picker",
+      "ariaLabel": "Skills and actions"
+    },
+    "errors": {
+      "attachFiles": "Could not attach files.",
+      "addGoogleDriveFiles": "Could not add Google Drive files.",
+      "updateDatasource": "Could not update datasource setting.",
+      "send": "Could not send."
+    },
+    "dropFiles": "Drop files to attach",
+    "addContext": "Add context",
+    "menu": {
+      "attachFiles": "Attach files or photos",
+      "openingGoogleDrive": "Opening Google Drive…",
+      "addFromGoogleDrive": "Add files from Google Drive",
+      "addFromSharePoint": "Add files from SharePoint",
+      "browserTitle": "{agent} can use your shared browser in this task. Off applies from your next message.",
+      "browser": "Browser",
+      "browserOff": "Turn the browser off for this task",
+      "browserOn": "Turn the browser on for this task",
+      "connectors": "Connectors",
+      "connectorsHint": "Turning one off applies from your next message in this chat.",
+      "noConnectors": "No connectors yet. Add one in {link}.",
+      "connectAppsAndData": "Connect Apps and Data",
+      "enableConnector": "Enable {name} for this chat",
+      "disableConnector": "Disable {name} for this chat"
+    },
+    "stop": "Stop generation",
+    "send": "Send",
+    "project": {
+      "fixed": "Project is fixed for this task",
+      "none": "No project"
+    },
+    "chooseHarness": "Choose harness"
+  },
+  "attachmentThumbnail": {
+    "open": "Open image",
+    "openNamed": "Open image: {name}"
+  },
+  "askUser": {
+    "announcement": "The agent is asking a question",
+    "hintCustom": "…or type your own answer below.",
+    "hintSelectOnly": "Pick an option above — a typed reply won't be accepted. Skip to type something else.",
+    "skip": "Skip",
+    "send": "Send",
+    "skipped": "Skipped.",
+    "timedOut": "No answer — timed out.",
+    "answered": "Answered:",
+    "noLongerActive": "This question is no longer active."
+  },
+  "codingTerminal": {
+    "unavailable": "Embedded terminal is not available on this build.",
+    "couldNotStart": "Could not start Claude Code.",
+    "exited": "Claude Code exited (code {code})."
+  },
+  "turnActions": {
+    "copy": "Copy",
+    "editTooltip": "Edit and resend",
+    "editAriaLabel": "Edit and resend this message",
+    "copied": "Copied",
+    "delete": "Delete",
+    "copyFailed": "Could not copy. Try again."
+  },
+  "minimap": {
+    "ariaLabel": "Conversation turns",
+    "message": "Message",
+    "goTo": "Go to message {index}: {snippet}"
+  },
+  "userTurn": {
+    "showMore": "Show more",
+    "showLess": "Show less"
+  },
+  "scroller": {
+    "scrollToLatest": "Scroll to latest"
+  },
+  "duration": {
+    "seconds": "{seconds}s",
+    "minutesSeconds": "{minutes}m {seconds}s",
+    "hoursMinutes": "{hours}h {minutes}m",
+    "milliseconds": "{ms}ms"
+  },
+  "thinking": {
+    "workingFor": "Working for {duration}",
+    "hide": "Hide thought process",
+    "show": "Show thought process",
+    "thinking": "Thinking…",
+    "workedFor": "Worked for {duration}",
+    "thoughtProcess": "Thought process",
+    "timedOutTitle": "{count, plural, one {# cell timed out — the agent retried with smaller steps. Expand to see which.} other {# cells timed out — the agent retried with smaller steps. Expand to see which.}}",
+    "timedOutBadge": "{count} timed out",
+    "cellTimedOutTitle": "This cell was stopped — it timed out or went silent. The next cell should be smaller, or split the work across cells.",
+    "cellTimedOut": "timed out",
+    "cellErrorTitle": "This cell ended with an error.",
+    "artifactBadge": "artifact"
+  },
+  "phaseProgress": {
+    "thinking": {
+      "1": "Thought it through",
+      "2": "Mapped it out",
+      "3": "Lined up the steps",
+      "4": "Picked the angle",
+      "5": "Sketched the approach"
+    },
+    "working": {
+      "1": "Worked through it",
+      "2": "Crunched the numbers",
+      "3": "Did the heavy lifting",
+      "4": "Pulled it together",
+      "5": "Followed the breadcrumbs"
+    },
+    "reasoning": {
+      "1": "Wrapped up the answer",
+      "2": "Tied it together",
+      "3": "Distilled the result",
+      "4": "Composed the response",
+      "5": "Made it readable"
+    },
+    "artifact": "Wrapped up an artifact",
+    "empty": "Steps appear here while the agent works."
+  },
+  "scratchpad": {
+    "untitled": "Untitled",
+    "toolCall": "Tool Call",
+    "title": "Scratchpad",
+    "noSteps": "No steps in this turn.",
+    "stepOf": "step {index}/{total}",
+    "reason": "reason:",
+    "exec": "exec:",
+    "duration": "duration:",
+    "arguments": "Arguments",
+    "code": "Code",
+    "args": "Args",
+    "packages": "pkgs:",
+    "output": "Output",
+    "stderr": "Stderr",
+    "hideArgs": "Hide args",
+    "showArgs": "Show args",
+    "hideCode": "Hide code",
+    "showCode": "Show code"
+  },
+  "figure": {
+    "kinds": {
+      "query": "Query",
+      "file": "File",
+      "web": "Web page",
+      "step": "Step"
+    },
+    "states": {
+      "query": "from a query",
+      "file": "from a file",
+      "web": "from the web",
+      "step": "from a step",
+      "none": "no source",
+      "earlierAnswer": "repeated from an earlier answer"
+    },
+    "tableHint": "Arrow keys move between the figures in this table.",
+    "copied": "Copied",
+    "copyFailed": "Could not copy",
+    "copy": "Copy",
+    "opensInNewWindow": " (opens in new window)",
+    "page": "page {page}",
+    "copySql": "Copy SQL",
+    "request": "Request",
+    "copyRequest": "Copy request",
+    "viewFile": "View file",
+    "openStep": "Open step",
+    "ariaLabel": "{figure}, {state}",
+    "popoverTitle": "Where {figure} came from"
+  },
+  "markdown": {
+    "artifactLocalLinkTitle": "This file is in the Live Artifacts panel — open or download it there",
+    "linkBlocked": "Link blocked: unsupported URL scheme",
+    "opensInNewWindow": " (opens in new window)",
+    "copied": "Copied",
+    "copy": "Copy",
+    "scrollSideways": "Scroll sideways to see the rest of the line.",
+    "copyCode": "Copy code",
+    "copyLanguageCode": "Copy {language} code",
+    "form": {
+      "parseErrorTitle": "Form did not parse",
+      "parseErrorSubtitle": "The agent sent a form spec that was not valid JSON.",
+      "askRetry": "Ask the agent to retry",
+      "dismiss": "Dismiss",
+      "preparing": "Preparing form…",
+      "specDidNotParse": "Form spec did not parse.",
+      "useSidePanel": "Use the side panel to ask the agent to retry.",
+      "openInSidePanel": "Open in the side panel",
+      "form": "Form",
+      "fillItOut": " — fill it out in the side panel →"
+    },
+    "chart": {
+      "invalidSpec": "Invalid chart specification",
+      "intentUnsupported": "`chart` intent format requires a backend compile endpoint (not wired yet). Use `chartjs` for full configs.",
+      "missingType": "Missing chart type",
+      "unsupportedType": "Unsupported chart type: \"{type}\". Supported: {supported}.",
+      "invalidJson": "Invalid JSON in chart specification",
+      "error": "ERROR: {error}"
+    }
+  },
+  "taskModes": {
+    "slides": {
+      "pillLabel": "Create slides",
+      "chipLabel": "Slides",
+      "placeholder": "Describe your presentation topic",
+      "samples": {
+        "0": "Build quarterly sales performance dashboard",
+        "1": "Analyze competitor landscape and positioning",
+        "2": "Automate weekly team status reporting",
+        "3": "Research market opportunity for product launch",
+        "4": "Draft this week's update from last week's"
+      }
+    },
+    "website": {
+      "pillLabel": "Build website",
+      "chipLabel": "Website",
+      "placeholder": "Describe the website you want to build",
+      "samples": {
+        "0": "Build an online store for a small business",
+        "1": "Build a landing page for a product launch",
+        "2": "Build a dashboard website",
+        "3": "Build a portfolio website",
+        "4": "Build a company blog"
+      }
+    },
+    "apps": {
+      "pillLabel": "Develop apps",
+      "chipLabel": "Develop apps",
+      "chipNoun": "Apps",
+      "placeholder": "Describe the app you want to build",
+      "samples": {
+        "0": "Build employee onboarding workflow app",
+        "1": "Build expense reporting and approval app",
+        "2": "Build fitness tracking app with check-ins",
+        "3": "Build study planning and progress tool",
+        "4": "Build customer feedback collection app",
+        "5": "Build a quote or invoice generator",
+        "6": "Explain an error and suggest a fix",
+        "7": "Build a habit tracker"
+      }
+    },
+    "spreadsheet": {
+      "pillLabel": "Spreadsheet",
+      "chipLabel": "Spreadsheet",
+      "placeholder": "Upload a spreadsheet to analyze or start one from scratch",
+      "samples": {
+        "0": "Track project tasks across lifecycle elegantly",
+        "1": "Compile a North America AI conference calendar",
+        "2": "Create acquisition due diligence checklist",
+        "3": "Compare top VLM models using Hugging Face data",
+        "4": "Calculate IRR for investment cash flows",
+        "5": "Clean up my spreadsheet and chart it"
+      }
+    },
+    "visualization": {
+      "pillLabel": "Visualization",
+      "chipLabel": "Visualization",
+      "placeholder": "Upload your data and tell Cowork how to visualize it",
+      "samples": {
+        "0": "Show weekly sales activity via heatmap",
+        "1": "Generate customer churn analysis and insights",
+        "2": "Track monthly KPIs across departments",
+        "3": "Analyze competitor landscape across market segments"
+      }
+    },
+    "wide-research": {
+      "pillLabel": "Wide Research",
+      "chipLabel": "Wide Research",
+      "placeholder": "Describe a complex project you want to research in parallel",
+      "samples": {
+        "0": "Conduct comprehensive market sizing analysis",
+        "1": "Conduct deep competitor benchmarking study",
+        "2": "Research emerging technology landscape",
+        "3": "Conduct investment due diligence research",
+        "4": "Research customer personas and journey maps",
+        "5": "Summarize a document and draft my reply",
+        "6": "Choose a local model that fits my computer",
+        "7": "Review what is on my plate this week"
+      }
+    },
+    "games": {
+      "pillLabel": "Create games",
+      "chipLabel": "Create games",
+      "chipNoun": "Games",
+      "placeholder": "Describe the game you want to create",
+      "samples": {
+        "0": "Classic snake game",
+        "1": "Neon falling blocks",
+        "2": "Firefly memory sequence",
+        "3": "Celestial merge 2048",
+        "4": "Paper plane tap flyer"
+      }
+    },
+    "examples": {
+      "chipLabel": "Examples",
+      "placeholder": "Pick an example, or describe your own task"
+    },
+    "samplePrompts": "Sample prompts",
+    "pillsAriaLabel": "Task types"
+  },
+  "taskRows": {
+    "openProject": "Open {project}",
+    "untitled": "Untitled task",
+    "actionsFor": "Actions for {title}",
+    "actionsForUntitled": "Actions for untitled task",
+    "running": "Running",
+    "moveToProject": "Move to project…",
+    "delete": "Delete",
+    "scheduledTask": "Scheduled task",
+    "runs": "{count, plural, one {# run} other {# runs}}",
+    "openLatestRun": "Open latest run"
+  },
+  "taskList": {
+    "title": "Tasks",
+    "emptyTitle": "No tasks in this project yet",
+    "emptyDescription": "Type a prompt above to start one."
+  },
+  "browser": {
+    "close": "Close browser",
+    "shared": "Shared browser",
+    "title": "Browser",
+    "unreachable": "The browser isn't reachable",
+    "stopped": {
+      "keepsClosing": "The browser view keeps closing. Try again in a moment.",
+      "noSlotTitle": "No browser is free",
+      "noSlotDescription": "Every browser is busy right now. Try again in a few minutes.",
+      "taskCapTitle": "Your browser is full",
+      "taskCapDescription": "Your browser already has {count} tasks open."
+    },
+    "webPaneNote": "What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site. {agent}'s page reads and screenshots go to the model provider that serves your turn.",
+    "unexpectedAddress": "The browser returned an unexpected address.",
+    "couldNotOpen": "Could not open the browser.",
+    "hint": "You and {agent} share this. Click in it to take over.",
+    "reload": "Reload browser view",
+    "tryAgain": "Try again",
+    "slowTitle": "Your browser is taking longer than usual",
+    "slowDescription": "It may still be starting. Try again, or close the pane and come back in a minute.",
+    "starting": "Starting your browser…",
+    "signIn": {
+      "title": "{site} asks you to sign in",
+      "hint": "Your username and password go only to this site.",
+      "username": "Username",
+      "password": "Password",
+      "cancel": "Cancel",
+      "submit": "Sign in"
+    },
+    "download": {
+      "where": "Downloads, in {folder}",
+      "waiting": "This page wants to download {name} to {where}.",
+      "progressing": "Downloading {name}…",
+      "completed": "{name} is in {where}.",
+      "cancelled": "{name} wasn't saved.",
+      "failed": "{name} didn't download.",
+      "save": "Save",
+      "dontSave": "Don't save"
+    },
+    "aNewTab": "a new tab",
+    "yourTurn": "Your turn on {site}. Click Done to hand it back to {agent}.",
+    "yourTurnReason": "Your turn on {site}: {reason}. Click Done to hand it back to {agent}.",
+    "agentUsing": "{agent} is using it. Take over to use it yourself.",
+    "pageReadsNote": "{agent}'s page reads and screenshots go to the model provider that serves your turn.",
+    "back": "Back",
+    "forward": "Forward",
+    "reloadPage": "Reload page",
+    "done": "Done",
+    "takeOver": "Take over",
+    "newTab": "New tab",
+    "closedTitle": "This task's browser is closed",
+    "closedDescription": "{agent} opens it again when it needs it.",
+    "squeezed": "Make the window bigger to see the page"
+  }
+}

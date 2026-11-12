@@ -13,7 +13,7 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL, OPERATOR_DEFAULT_LABEL,
+  MODEL_ROUTER_ID, modelRouterLabel, operatorDefaultLabel,
 } from '../lib/modelCatalog';
 import { buildModelPickerOptions, offeredModels } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
@@ -35,6 +35,10 @@ import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
 import { connectionMuteKey } from '../lib/connectionMutes';
+import { useTranslation } from '../../lib/i18n';
+
+// Marks where an inline element (a link) sits inside a translated sentence.
+const INLINE_SLOT = '\u2063';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -57,11 +61,12 @@ function detectSlashToken(text, caret) {
 // (Class strings stay whole literals — Tailwind's scanner can't see through
 // template interpolation, and a missed candidate fails silently.)
 function TaskModeChip({ mode, onClear }) {
+  const { t } = useTranslation('chat');
   return (
     <button
       type="button"
       className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_var(--dur-hover)_ease,border-color_var(--dur-hover)_ease,transform_var(--dur-hover)_var(--ease-out)] animate-chip-in active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
-      aria-label={`Remove ${mode.chipNoun || mode.chipLabel} mode`}
+      aria-label={t('composer.removeMode', { mode: mode.chipNoun || mode.chipLabel })}
       onClick={onClear}
     >
       <span className="relative inline-flex h-3.5 w-3.5" aria-hidden>
@@ -78,11 +83,12 @@ function TaskModeChip({ mode, onClear }) {
 }
 
 function AttachmentChip({ attachment, onRemove }) {
+  const { t } = useTranslation('chat');
   const src = attachment.source || attachment.kind || 'file';
   const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
-  const label = src === 'connector' ? 'Connector' : src === 'gdrive' ? 'Google Drive' : isImage ? 'Image' : 'File';
+  const label = src === 'connector' ? t('composer.attachment.connector') : src === 'gdrive' ? 'Google Drive' : isImage ? t('composer.attachment.image') : t('composer.attachment.file');
   const status = attachment.pendingFile
-    ? 'Queued'
+    ? t('composer.attachment.queued')
     : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
       ? attachment.extractionStatus.replace('_', ' ')
       : null);
@@ -92,7 +98,7 @@ function AttachmentChip({ attachment, onRemove }) {
   return (
     <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
       <span className="attachment-chip-icon">
-        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || 'Image'} />
+        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || t('composer.attachment.image')} />
           : src === 'connector' ? Ico.link(14)
             : src === 'gdrive' ? Ico.googleDrive(14)
               : isImage ? Ico.image(14)
@@ -103,8 +109,8 @@ function AttachmentChip({ attachment, onRemove }) {
         <span className="attachment-chip-meta">{status || label}</span>
       </span>
       {onRemove && (
-        <Tooltip content="Remove attachment">
-          <button className="attachment-chip-remove" aria-label="Remove attachment" onClick={() => onRemove(attachment.id)}>
+        <Tooltip content={t('composer.attachment.remove')}>
+          <button className="attachment-chip-remove" aria-label={t('composer.attachment.remove')} onClick={() => onRemove(attachment.id)}>
             x
           </button>
         </Tooltip>
@@ -154,7 +160,7 @@ export default function Composer({
    */
   browserSwitch = null,
   onRemoveAttachment,
-  placeholder = 'Hi Boss, how can I help you today?',
+  placeholder: placeholderProp,
   disabled = false,
   metaReadOnly = false,
   // Whether the model pill is a fixed label rather than a picker. Defaults
@@ -227,6 +233,8 @@ export default function Composer({
   // the default agent and always offered.
   harnessClaudeCodeEnabled = true,
 }) {
+  const { t } = useTranslation('chat');
+  const placeholder = placeholderProp === undefined ? t('composer.placeholder') : placeholderProp;
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
@@ -373,11 +381,11 @@ export default function Composer({
       opts.push({
         value: 'claude-code',
         label: 'Claude-Code',
-        title: claudeCodeInfo.installed ? undefined : 'Claude-Code — not detected on this machine',
+        title: claudeCodeInfo.installed ? undefined : t('composer.claudeCodeNotDetected'),
       });
     }
     return opts;
-  }, [harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
+  }, [harnessClaudeCodeEnabled, claudeCodeInfo.installed, t]);
 
   // Claude Code needs a real, concrete model for its `--model` flag — no
   // auto-routing concept in the CLI — so Model Router is hidden whenever
@@ -465,8 +473,8 @@ export default function Composer({
       return [
         {
           value: MODEL_ROUTER_ID,
-          label: OPERATOR_DEFAULT_LABEL,
-          title: 'Runs on the model your operator set',
+          label: operatorDefaultLabel(),
+          title: t('composer.model.operatorDefaultTitle'),
           pin: 'top',
         },
         ...buildModelPickerOptions(operatorModels, modelMeta),
@@ -482,9 +490,9 @@ export default function Composer({
     return isClaudeCode ? catalogOptions : [
       {
         value: MODEL_ROUTER_ID,
-        label: MODEL_ROUTER_LABEL,
+        label: modelRouterLabel(),
         maker: 'mindshub',
-        title: "Routes to this account's configured model automatically",
+        title: t('composer.model.routerTitle'),
         // stopPropagation: a plain click on this row would otherwise also
         // fire Base UI's Combobox.Item select handler (it listens on the
         // row itself), selecting Model Router as a side effect of opening
@@ -492,10 +500,10 @@ export default function Composer({
         // avoids it lingering open behind the Settings modal this opens.
         ...(onOpenSettings ? {
           action: (
-            <Tooltip content="Router Settings">
+            <Tooltip content={t('composer.model.routerSettings')}>
               <button
                 type="button"
-                aria-label="Router Settings"
+                aria-label={t('composer.model.routerSettings')}
                 className="composer-icon shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -512,7 +520,7 @@ export default function Composer({
       },
       ...catalogOptions,
     ];
-  }, [models, modelMeta, isClaudeCode, onOpenSettings, operatorPicker, operatorModels]);
+  }, [models, modelMeta, isClaudeCode, onOpenSettings, operatorPicker, operatorModels, t]);
 
   // True once the picked model isn't valid for Claude Code — nothing
   // picked yet, or still Model Router (hidden from the picker once this
@@ -653,7 +661,7 @@ export default function Composer({
   const slashItems = useMemo(() => {
     if (!slashOpen) return [];
     const builtins = [
-      { id: 'add-files', label: 'add-files', hint: 'Open file picker', kind: 'action',
+      { id: 'add-files', label: 'add-files', hint: t('composer.slash.openFilePicker'), kind: 'action',
         run: () => fileRef.current?.click() },
     ];
     const currentProject = project?.name;
@@ -672,7 +680,7 @@ export default function Composer({
     return all.filter(
       (i) => i.label.toLowerCase().includes(slashQuery) || (i.hint || '').toLowerCase().includes(slashQuery),
     );
-  }, [slashOpen, slashQuery, allSkills, project]);
+  }, [slashOpen, slashQuery, allSkills, project, t]);
 
   const closeSlash = useCallback(() => setSlashOpen((prev) => (prev ? false : prev)), []);
   // Blur closes the menu after a short delay so a click on a menu row still
@@ -831,7 +839,7 @@ export default function Composer({
       // the page, so Enter would do nothing until the reader clicks back in.
       taRef.current?.focus();
     } catch (err) {
-      setError(err.message || 'Could not attach files.');
+      setError(err.message || t('composer.errors.attachFiles'));
     } finally {
       if (fileRef.current) fileRef.current.value = '';
     }
@@ -845,7 +853,7 @@ export default function Composer({
     try {
       await Promise.resolve(onAddGoogleDriveFiles(project?.name));
     } catch (err) {
-      setError(err.message || 'Could not add Google Drive files.');
+      setError(err.message || t('composer.errors.addGoogleDriveFiles'));
     } finally {
       setGdrivePickerBusy(false);
     }
@@ -888,7 +896,7 @@ export default function Composer({
     try {
       await Promise.resolve(onUpdateConnectorMute(connector, useInChat));
     } catch (err) {
-      setError(err?.message || 'Could not update datasource setting.');
+      setError(err?.message || t('composer.errors.updateDatasource'));
     } finally {
       setBusy(false);
     }
@@ -917,7 +925,7 @@ export default function Composer({
       setError('');
       if (taRef.current) taRef.current.style.height = 'auto';
     } catch (err) {
-      setError(err?.message || 'Could not send.');
+      setError(err?.message || t('composer.errors.send'));
     } finally {
       setBusy(false);
     }
@@ -956,10 +964,11 @@ export default function Composer({
   // `visibility: hidden` keeps the layout and drops it out of the tab order,
   // and aria-hidden keeps it out of the accessibility tree.
   const reservedBar = !usageWarning && anyPickWarning?.resting ? anyPickWarning : null;
+  const [noConnectorsBefore, noConnectorsAfter = ''] = t('composer.menu.noConnectors', { link: INLINE_SLOT }).split(INLINE_SLOT);
 
   return (
     <div ref={wrapRef} {...fileDropHandlers} className="relative w-full max-w-[var(--composer-max-width,_640px)]">
-      <FileDropOverlay active={filesDragging} label="Drop files to attach" />
+      <FileDropOverlay active={filesDragging} label={t('composer.dropFiles')} />
       <input
         ref={fileRef}
         type="file"
@@ -989,7 +998,7 @@ export default function Composer({
           {slashOpen && slashItems.length > 0 && (
             <div
               role="listbox"
-              aria-label="Skills and actions"
+              aria-label={t('composer.slash.ariaLabel')}
               onMouseDown={(e) => e.preventDefault()}
               className={`menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto${slashMenuBelow ? ' menu--drop-down' : ''}`}
               style={{
@@ -1210,13 +1219,13 @@ export default function Composer({
               ref={attachAnchorRef}
               className="relative inline-flex items-center"
             >
-              <Tooltip content="Add context">
+              <Tooltip content={t('composer.addContext')}>
               {/* Native title only while disabled — a disabled button fires no
                   hover/focus events, so the styled Tooltip can't open. */}
               <button
                 className="composer-icon"
-                aria-label="Add context"
-                title={(disabled || busy) ? 'Add context' : undefined}
+                aria-label={t('composer.addContext')}
+                title={(disabled || busy) ? t('composer.addContext') : undefined}
                 disabled={disabled || busy}
                 onClick={() => {
                   if (openMenu === 'attach') {
@@ -1249,7 +1258,7 @@ export default function Composer({
                   }}
                 >
                   <button className="menu-item" onClick={() => fileRef.current?.click()}>
-                    {Ico.attach(14)} Attach files or photos
+                    {Ico.attach(14)} {t('composer.menu.attachFiles')}
                   </button>
                   {onAddGoogleDriveFiles && (
                     <button
@@ -1257,7 +1266,7 @@ export default function Composer({
                       onClick={handleAddGoogleDriveFiles}
                       disabled={gdrivePickerBusy}
                     >
-                      {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
+                      {Ico.googleDrive(14)} {gdrivePickerBusy ? t('composer.menu.openingGoogleDrive') : t('composer.menu.addFromGoogleDrive')}
                     </button>
                   )}
                   {onAddSharePointFiles && project?.name && (
@@ -1268,7 +1277,7 @@ export default function Composer({
                         onAddSharePointFiles(project.name);
                       }}
                     >
-                      {Ico.folder(14)} Add files from SharePoint
+                      {Ico.folder(14)} {t('composer.menu.addFromSharePoint')}
                     </button>
                   )}
                   {browserSwitch && (
@@ -1278,16 +1287,16 @@ export default function Composer({
                         // cascade-forced: legacy .menu-item sets cursor:pointer.
                         cursor: 'default',
                       }}
-                      title={`${browserSwitch.agentLabel} can use your shared browser in this task. Off applies from your next message.`}
+                      title={t('composer.menu.browserTitle', { agent: browserSwitch.agentLabel })}
                       onMouseDown={(e) => e.stopPropagation()}
                     >
                       {Ico.globe(14)}
-                      <span className="flex-1">Browser</span>
+                      <span className="flex-1">{t('composer.menu.browser')}</span>
                       <button
                         type="button"
                         role="switch"
                         aria-checked={!!browserSwitch.on}
-                        aria-label={browserSwitch.on ? 'Turn the browser off for this task' : 'Turn the browser on for this task'}
+                        aria-label={browserSwitch.on ? t('composer.menu.browserOff') : t('composer.menu.browserOn')}
                         className={`toggle shrink-0${browserSwitch.on ? ' on' : ''}`}
                         disabled={busy}
                         onClick={(e) => {
@@ -1305,7 +1314,7 @@ export default function Composer({
                     aria-expanded={connectorsOpen}
                   >
                     {Ico.link(14)}
-                    <span className="flex-1">Connectors</span>
+                    <span className="flex-1">{t('composer.menu.connectors')}</span>
                     <span className="inline-flex text-ink-4">
                       {connectorsOpen ? Ico.chevDown(12) : Ico.chevRight(12)}
                     </span>
@@ -1321,24 +1330,24 @@ export default function Composer({
                       >
                         {connectors.length > 0 && (
                           <div className="pt-1.5 px-[14px] pb-1 text-[11px] text-ink-4 leading-[1.5]">
-                            Turning one off applies from your next message in this chat.
+                            {t('composer.menu.connectorsHint')}
                           </div>
                         )}
                         {connectors.length === 0 ? (
                           <div className="py-2 px-[14px] text-sm text-ink-3">
-                            No connectors yet. Add one in{' '}
+                            {noConnectorsBefore}
                             {onNavigateToConnectors ? (
                               <button
                                 type="button"
                                 onClick={navigateToConnectors}
                                 className="m-0 p-0 border-0 bg-transparent text-accent [font:inherit] cursor-pointer underline underline-offset-2"
                               >
-                                Connect Apps and Data
+                                {t('composer.menu.connectAppsAndData')}
                               </button>
                             ) : (
-                              'Connect Apps and Data'
+                              t('composer.menu.connectAppsAndData')
                             )}
-                            .
+                            {noConnectorsAfter}
                           </div>
                         ) : (
                           connectors.map((c) => {
@@ -1368,7 +1377,7 @@ export default function Composer({
                                     type="button"
                                     role="switch"
                                     aria-checked={!muted}
-                                    aria-label={muted ? `Enable ${c.name} for this chat` : `Disable ${c.name} for this chat`}
+                                    aria-label={muted ? t('composer.menu.enableConnector', { name: c.name }) : t('composer.menu.disableConnector', { name: c.name })}
                                     className={`toggle shrink-0${!muted ? ' on' : ''}`}
                                     disabled={busy}
                                     onClick={(e) => {
@@ -1405,8 +1414,8 @@ export default function Composer({
                 `metaReadOnly`) keeps ChatView's existing "model is fixed
                 once a task starts" behavior. */}
             {showModelControl && (modelReadOnly ? (
-              <span className="meta-pill" title="Model is fixed for this task">
-                <span>{model?.name ?? 'Model'}</span>
+              <span className="meta-pill" title={t('composer.model.fixed')}>
+                <span>{model?.name ?? t('composer.model.model')}</span>
               </span>
             ) : noRealModels ? (
               // No provider connected (MindsHub or BYOK) — `models` (the
@@ -1416,7 +1425,7 @@ export default function Composer({
               // broken; show a plain button instead — no caret, since there
               // is nothing to open — that goes straight to where a model
               // actually gets connected.
-              <Tooltip content="Connect a provider in Settings to choose a model">
+              <Tooltip content={t('composer.model.connectProvider')}>
                 <button
                   type="button"
                   className="meta-pill"
@@ -1429,7 +1438,7 @@ export default function Composer({
                       Settings, not as an unrelated control. */}
                   <span className="flex items-center gap-[8px] min-w-0">
                     <ProviderIcon maker="other" className="text-ink-2" />
-                    <span className="truncate">{MODEL_ROUTER_LABEL}</span>
+                    <span className="truncate">{modelRouterLabel()}</span>
                   </span>
                   <span className="inline-flex shrink-0 text-ink-3">
                     {Ico.settings(14)}
@@ -1456,8 +1465,8 @@ export default function Composer({
                 options={modelPickerOptions}
                 variant="unstyled"
                 className="meta-pill"
-                ariaLabel="Choose model"
-                placeholder="Select model"
+                ariaLabel={t('composer.model.choose')}
+                placeholder={t('composer.model.select')}
               />
             ))}
             {/* Reasoning effort as its own pill (ENG-2591), the same
@@ -1472,8 +1481,8 @@ export default function Composer({
                 options={effortOptions(effortLevels)}
                 variant="unstyled"
                 className="meta-pill"
-                ariaLabel="Reasoning effort"
-                menuLabel="Reasoning effort"
+                ariaLabel={t('composer.model.effort')}
+                menuLabel={t('composer.model.effort')}
               />
             )}
             {operatorPicker && !modelReadOnly && operatorLevels.length > 0 && (
@@ -1483,8 +1492,8 @@ export default function Composer({
                 options={operatorEffortOptions(operatorLevels)}
                 variant="unstyled"
                 className="meta-pill"
-                ariaLabel="Reasoning effort"
-                menuLabel="Reasoning effort"
+                ariaLabel={t('composer.model.effort')}
+                menuLabel={t('composer.model.effort')}
               />
             )}
             {/* Mic / voice input intentionally hidden — voice flow isn't
@@ -1492,11 +1501,11 @@ export default function Composer({
                 around so we can reinstate later by re-rendering the
                 button (e.g. behind a `showMic` prop). */}
             {streaming && onStop ? (
-              <Tooltip content="Stop generation">
+              <Tooltip content={t('composer.stop')}>
               <button
                 className="send-btn stop"
                 onClick={onStop}
-                aria-label="Stop generation"
+                aria-label={t('composer.stop')}
                 style={{
                   // cascade-forced: .send-btn sets background/color/border/
                   // box-shadow at rest AND background on :hover — a same-
@@ -1530,13 +1539,13 @@ export default function Composer({
               </button>
               </Tooltip>
             ) : (
-              <Tooltip content="Send">
+              <Tooltip content={t('composer.send')}>
                 <button
                   className="send-btn"
                   disabled={disabled || !value.trim() || busy}
                   onClick={handleSend}
-                  aria-label="Send"
-                  title={(disabled || !value.trim() || busy) ? 'Send' : undefined}
+                  aria-label={t('composer.send')}
+                  title={(disabled || !value.trim() || busy) ? t('composer.send') : undefined}
                 >
                   {Ico.send(16)}
                 </button>
@@ -1550,9 +1559,9 @@ export default function Composer({
         <div className="meta-row">
           {metaReadOnly ? (
             <>
-              <span className="meta-pill" title="Project is fixed for this task">
+              <span className="meta-pill" title={t('composer.project.fixed')}>
                 {Ico.folder(14)}
-                <span>{project ? projectLabel(project) : 'No project'}</span>
+                <span>{project ? projectLabel(project) : t('composer.project.none')}</span>
               </span>
             </>
           ) : (
@@ -1592,7 +1601,7 @@ export default function Composer({
             <ToggleGroup
               value={codingHarness}
               onValueChange={setCodingHarness}
-              aria-label="Choose harness"
+              aria-label={t('composer.chooseHarness')}
               size="sm"
               options={harnessPickerOptions}
             />

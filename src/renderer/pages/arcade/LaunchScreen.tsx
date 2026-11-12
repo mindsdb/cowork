@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { ArcadeShell, PixelProgress } from './components';
+import { useTranslation } from '../../lib/i18n';
 
 export default function LaunchScreen({
   coworkerLabel,
@@ -14,6 +15,7 @@ export default function LaunchScreen({
   durationMs?: number;
   onDone: () => void;
 }) {
+  const { t: tr } = useTranslation('setup');
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
@@ -37,14 +39,14 @@ export default function LaunchScreen({
       <div className="arc-stack arc-fade-in" style={{ gap: 0 }}>
         <div className="arc-title-logo" style={{ fontSize: 'clamp(44px, 8vw, 72px)' }}>COWORK</div>
         <div className="arc-title-rule" />
-        <div className="arc-tagline" style={{ marginTop: 26, fontSize: 14 }}>ONE APP. ANY AGENT.</div>
+        <div className="arc-tagline" style={{ marginTop: 26, fontSize: 14 }}>{tr('launch.tagline')}</div>
         <div style={{ marginTop: 18, fontSize: 12.5, letterSpacing: '0.1em', color: 'var(--arc-muted)' }}>
-          now playing:{' '}
+          {tr('launch.nowPlaying')}{' '}
           <span style={{ color: 'var(--arc-green)', fontWeight: 700 }}>{coworkerLabel.toUpperCase()}</span>
         </div>
         <PixelProgress value={progress} cells={20} style={{ width: 300, marginTop: 30 }} />
         <div className="arc-blink" style={{ marginTop: 16, fontSize: 10.5, letterSpacing: '0.16em', color: 'var(--arc-dim)' }}>
-          NOW LOADING…
+          {tr('launch.nowLoading')}
         </div>
       </div>
     </ArcadeShell>

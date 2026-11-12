@@ -1,4 +1,5 @@
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
+import { useTranslation } from './lib/i18n';
 
 interface Props {
   unconfigured: boolean;
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function ServiceUnavailable({ unconfigured, retrying, onRetry }: Props) {
+  const { t } = useTranslation('app');
   return (
     <div
       className="arc-root welcome-loading"
@@ -14,15 +16,15 @@ export default function ServiceUnavailable({ unconfigured, retrying, onRetry }: 
     >
       <OrbitMorph state="thinking" size={72} />
       <div className="arc-welcome-title" role="status">
-        {unconfigured ? 'The service is not configured yet' : 'The service is unavailable'}
+        {unconfigured ? t('shell.serviceUnconfiguredTitle') : t('shell.serviceUnavailableTitle')}
       </div>
       <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)', maxWidth: 380 }}>
         {unconfigured
-          ? 'Ask your administrator to check the model settings, then try again.'
-          : 'The server may be restarting. Wait a moment, then try again.'}
+          ? t('shell.serviceUnconfiguredBody')
+          : t('shell.serviceUnavailableBody')}
       </div>
       <button className="arc-btn" disabled={retrying} onClick={onRetry}>
-        {retrying ? 'Retrying…' : 'Try again'}
+        {retrying ? t('shell.retrying') : t('shell.tryAgain')}
       </button>
     </div>
   );

@@ -232,3 +232,20 @@ body[data-skin="8bit"][data-theme="light"] {
   /* Glassy sidebar surface follows the paper tone instead of white. */
   --surface-glass: rgba(244, 245, 232, 0.96);
 }
+
+/* Japanese under the 8-bit skin: keep the mono face for Latin text and give
+   kana and kanji a Japanese face (ENG-4149). */
+body[data-skin="8bit"]:lang(ja) {
+  --font-sans:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans JP', monospace;
+}
+
+body[data-skin="8bit"]:lang(ko) {
+  --font-sans:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', monospace;
+}
+
+body[data-skin="8bit"]:lang(zh) {
+  --font-sans:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', monospace;
+}

@@ -26,9 +26,7 @@ import {
 } from '../lib/orgSharing';
 import { skillAlwaysOnRequest } from '../lib/sharingContract';
 import { UpToDateTag } from './UpToDateTag';
-
-export const SKILL_SHARE_TITLE = 'Who can use this skill';
-const AUDIENCE_LOCKED_NOTE = 'Only its owner or an admin can change who can use it.';
+import { useTranslation } from '../../lib/i18n';
 
 /**
  * @param {{
@@ -42,6 +40,7 @@ const AUDIENCE_LOCKED_NOTE = 'Only its owner or an admin can change who can use 
  * }} props
  */
 export function SkillShareMenu({ skill, capabilities, orgName = null, onSave, trigger, tooltip = null, align = 'end' }) {
+  const { t } = useTranslation('library');
   const [open, setOpen] = useState(false);
   const [access, setAccess] = useState(() => skillAccess(skill));
   // "Specific teams and people" picked with nobody in it: Update waits.
@@ -76,7 +75,7 @@ export function SkillShareMenu({ skill, capabilities, orgName = null, onSave, tr
       await onSave(payload);
       setOpen(false);
     } catch (err) {
-      setError(err?.message || "Couldn't change who can use this skill.");
+      setError(err?.message || t('share.changeFailed'));
     } finally {
       setBusy(false);
     }
@@ -95,22 +94,22 @@ export function SkillShareMenu({ skill, capabilities, orgName = null, onSave, tr
       <Popover.Portal>
         <Popover.Positioner side="bottom" align={align} sideOffset={8} style={{ zIndex: 90 }}>
           <Popover.Popup
-            aria-label={skill ? `Share ${skill.label}` : 'Share'}
+            aria-label={skill ? t('share.shareNamed', { name: skill.label }) : t('share.share')}
             className="flex max-h-[min(640px,80vh)] flex-col overflow-hidden rounded-[14px] bg-surface font-body outline-none"
             style={{ width: 'min(380px, 92vw)', boxShadow: 'var(--sh-popup)' }}
           >
             <div className="flex items-baseline justify-between gap-2 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
-              <span className="s-h3">{SKILL_SHARE_TITLE}</span>
+              <span className="s-h3">{t('share.whoCanUseSkill')}</span>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 className="bg-transparent border-0 cursor-pointer p-0 font-body text-sm font-medium text-accent"
-              >Dismiss</button>
+              >{t('share.dismiss')}</button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto py-3 px-4">
               {open && (audienceLocked ? (
                 <div className="flex flex-col gap-3">
-                  <p className="m-0 font-body text-[12px] text-ink-3" role="note">{AUDIENCE_LOCKED_NOTE}</p>
+                  <p className="m-0 font-body text-[12px] text-ink-3" role="note">{t('share.audienceLocked')}</p>
                   {canBeAlwaysOn(saved) && (
                     <AlwaysOnRow
                       checked={access.alwaysOn}
@@ -136,7 +135,7 @@ export function SkillShareMenu({ skill, capabilities, orgName = null, onSave, tr
               {changed ? (
                 <Button variant="primary" onClick={update} disabled={busy || pending}>
                   {busy && <Spinner style={{ color: 'currentColor' }} />}
-                  {busy ? 'Updating…' : 'Update'}
+                  {busy ? t('share.updating') : t('share.update')}
                 </Button>
               ) : <UpToDateTag />}
             </div>

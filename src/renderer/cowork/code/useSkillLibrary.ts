@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 
+import i18n from '../../lib/i18n';
 import { codingApi, type SkillLibraryPage } from './api';
 
 // Keyed by the account identity (skillScopeKey) so one organisation's skills
@@ -111,7 +112,7 @@ export function resetSkillLibraryCache(): void {
 }
 
 function loadErrorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : 'Could not load the Skills Library.';
+  return reason instanceof Error ? reason.message : i18n.t('skills.errors.loadLibrary', { ns: 'code' });
 }
 
 export function useSkillLibrary(projectId?: string | null, { enabled = true }: { enabled?: boolean } = {}) {

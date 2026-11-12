@@ -11,6 +11,7 @@ import Ico from '../Icons';
 import { fetchSavedConnection, importSharePointFiles, listSharePointLibraries } from '../../api';
 import { SHAREPOINT_ENGINE } from './SharePointSetupModal';
 import { ROOT, useSharePointTree } from './useSharePointTree';
+import { useTranslation } from '../../../lib/i18n';
 
 export const MAX_PICKS = 100;
 export const PROJECT_FILES_CHANGED = 'anton:project-files-changed';
@@ -37,12 +38,15 @@ function connectionLabel(connection) {
  * @param {object} props
  * @param {boolean} props.open
  * @param {string} props.projectName the project the files land in, at its root
+ * @param {string|null} [props.projectDisplayName] what the person reads for that project; the slug when absent
  * @param {{name: string, user_label?: string|null}[]} props.connections SharePoint connections
  * @param {() => void} props.onClose
  * @param {(result: {imported: object[], skipped: object[]}) => void} [props.onImported]
  */
-export default function SharePointImportModal({ open, projectName, connections, onClose, onImported }) {
+export default function SharePointImportModal({ open, projectName, projectDisplayName, connections, onClose, onImported }) {
+  const { t } = useTranslation('library');
   const [busy, setBusy] = useState(false);
+  const label = projectDisplayName || projectName;
   const close = busy ? undefined : onClose;
   return (
     <Modal
@@ -55,13 +59,14 @@ export default function SharePointImportModal({ open, projectName, connections, 
     >
       <ModalHeader
         id="sharepoint-import-title"
-        title="Add files from SharePoint"
-        subtitle={`Copies land at the top of ${projectName}.`}
+        title={t('sharepoint.import.title')}
+        subtitle={t('sharepoint.import.subtitle', { project: label })}
         onClose={close}
       />
       {open && (
         <ImportBody
           projectName={projectName}
+          projectLabel={label}
           connections={connections}
           busy={busy}
           setBusy={setBusy}
@@ -87,7 +92,8 @@ function loadedDescendants(tree, folderId) {
 }
 
 /** The picking view: connection, site and library choices, the tree, and the import itself. */
-function ImportBody({ projectName, connections, busy, setBusy, onClose, onImported }) {
+function ImportBody({ projectName, projectLabel, connections, busy, setBusy, onClose, onImported }) {
+  const { t } = useTranslation('library');
   const [connection, setConnection] = useState(connections[0]?.name || null);
   const [sites, setSites] = useState([]);
   const [site, setSite] = useState(null);
@@ -113,9 +119,9 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
         const urls = String(saved?.fields?.site_urls || '').split('\n').map((line) => line.trim()).filter(Boolean);
         setSites(urls);
         setSite(urls[0] || null);
-        if (!urls.length) setBlocked('This connection names no sites. Edit it in Customize to add one.');
+        if (!urls.length) setBlocked(t('sharepoint.import.noSites'));
       })
-      .catch((err) => { if (active) setBlocked(err?.message || 'This connection could not be loaded.'); });
+      .catch((err) => { if (active) setBlocked(err?.message || t('sharepoint.import.connectionLoadFailed')); });
     return () => { active = false; };
   }, [connection]);
 
@@ -132,9 +138,9 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
         const list = Array.isArray(data?.libraries) ? data.libraries : [];
         setLibraries(list);
         setDriveId(list[0]?.id || null);
-        if (!list.length) setBlocked('This site has no document libraries.');
+        if (!list.length) setBlocked(t('sharepoint.import.noLibraries'));
       })
-      .catch((err) => { if (active) setBlocked(err?.message || "This site's libraries could not be listed."); });
+      .catch((err) => { if (active) setBlocked(err?.message || t('sharepoint.import.librariesFailed')); });
     return () => { active = false; };
   }, [connection, site]);
 
@@ -176,7 +182,7 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
       window.dispatchEvent(new CustomEvent(PROJECT_FILES_CHANGED, { detail: { project: projectName } }));
       onImported?.(imported);
     } catch (err) {
-      setError(err?.message || 'The import failed.');
+      setError(err?.message || t('sharepoint.import.failed'));
     } finally {
       setBusy(false);
     }
@@ -199,23 +205,23 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
         <div className="flex flex-col gap-3">
           {error && <Alert variant="danger">{error}</Alert>}
           {connections.length > 1 && (
-            <Field label="Connection">
+            <Field label={t('sharepoint.import.connection')}>
               <Select value={connection || ''} onValueChange={setConnection} options={connectionOptions} disabled={busy} />
             </Field>
           )}
           {sites.length > 1 && (
-            <Field label="Site">
+            <Field label={t('sharepoint.import.site')}>
               <Select value={site || ''} onValueChange={setSite} options={siteOptions} disabled={busy} />
             </Field>
           )}
           {libraries.length > 1 && (
-            <Field label="Library">
+            <Field label={t('sharepoint.import.library')}>
               <Select value={driveId || ''} onValueChange={setDriveId} options={libraryOptions} disabled={busy} />
             </Field>
           )}
           <div
             role="region"
-            aria-label="SharePoint files and folders"
+            aria-label={t('sharepoint.import.treeAriaLabel')}
             className="max-h-[360px] overflow-auto rounded-lg border border-solid border-line py-1.5"
           >
             {blocked ? (
@@ -233,19 +239,19 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
               />
             ) : (
               <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-ink-3">
-                <Spinner /> Loading…
+                <Spinner /> {t('recipients.loading')}
               </div>
             )}
           </div>
           <p className="m-0 text-[12px] text-ink-3" aria-live="polite">
-            {selected.size} of {MAX_PICKS} picked. Files inside a picked folder count toward the {MAX_PICKS}-file limit too.
+            {t('sharepoint.import.picked', { count: selected.size, max: MAX_PICKS })}
           </p>
         </div>
       </ModalBody>
       <ModalFooter>
-        <Button type="button" variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button type="button" variant="subtle" onClick={onClose} disabled={busy}>{t('skillModal.cancel')}</Button>
         <Button type="button" variant="primary" onClick={runImport} disabled={busy || selected.size === 0}>
-          {busy ? 'Importing…' : `Import into ${projectName}`}
+          {busy ? t('sharepoint.import.importing') : t('sharepoint.import.importInto', { project: projectLabel })}
         </Button>
       </ModalFooter>
     </>
@@ -254,6 +260,7 @@ function ImportBody({ projectName, connections, busy, setBusy, onClose, onImport
 
 /** One folder's loaded items, with its own loading, error, empty and "Load more" rows. */
 function TreeLevel({ tree, folderId, depth, covered, selected, atCap, busy, onToggleSelected }) {
+  const { t } = useTranslation('library');
   const node = tree.node(folderId);
   const indent = { paddingLeft: 12 + depth * 18 };
   return (
@@ -272,7 +279,7 @@ function TreeLevel({ tree, folderId, depth, covered, selected, atCap, busy, onTo
                   type="button"
                   className="inline-flex h-4 w-4 items-center justify-center text-ink-3"
                   aria-expanded={child.expanded}
-                  aria-label={child.expanded ? `Collapse ${item.name}` : `Expand ${item.name}`}
+                  aria-label={child.expanded ? t('sharepoint.import.collapse', { name: item.name }) : t('sharepoint.import.expand', { name: item.name })}
                   onClick={() => tree.toggle(item.id)}
                   style={{ transform: child.expanded ? 'rotate(90deg)' : undefined }}
                 >
@@ -286,7 +293,7 @@ function TreeLevel({ tree, folderId, depth, covered, selected, atCap, busy, onTo
                 checked={checked}
                 disabled={busy || covered || item.kind === 'other' || (!picked && atCap)}
                 onCheckedChange={() => onToggleSelected(item)}
-                aria-label={`Pick ${item.name}`}
+                aria-label={t('sharepoint.import.pick', { name: item.name })}
               />
               <span className="inline-flex text-ink-3">{isFolder ? Ico.folder(14) : Ico.doc(14)}</span>
               <span className="min-w-0 flex-1 truncate">{item.name}</span>
@@ -310,21 +317,21 @@ function TreeLevel({ tree, folderId, depth, covered, selected, atCap, busy, onTo
       </ul>
       {node.loading && (
         <div className="flex items-center gap-2 py-1 text-[12px] text-ink-3" style={indent}>
-          <Spinner /> Loading…
+          <Spinner /> {t('recipients.loading')}
         </div>
       )}
       {node.error && (
         <div className="flex items-center gap-2 py-1 text-[12px] text-danger" style={indent}>
           <span>{node.error}</span>
-          <Button size="sm" variant="subtle" onClick={() => tree.retry(folderId)}>Try again</Button>
+          <Button size="sm" variant="subtle" onClick={() => tree.retry(folderId)}>{t('datasource.tryAgain')}</Button>
         </div>
       )}
       {node.loaded && !node.loading && !node.error && node.items.length === 0 && (
-        <div className="py-1 text-[12px] italic text-ink-4" style={indent}>This folder is empty.</div>
+        <div className="py-1 text-[12px] italic text-ink-4" style={indent}>{t('sharepoint.import.emptyFolder')}</div>
       )}
       {node.cursor && !node.loading && (
         <div className="py-1" style={indent}>
-          <Button size="sm" variant="subtle" onClick={() => tree.loadMore(folderId)}>Load more</Button>
+          <Button size="sm" variant="subtle" onClick={() => tree.loadMore(folderId)}>{t('sharepoint.import.loadMore')}</Button>
         </div>
       )}
     </div>
@@ -333,6 +340,7 @@ function TreeLevel({ tree, folderId, depth, covered, selected, atCap, busy, onTo
 
 /** What the finished import brought in, and what it skipped and why. */
 function ImportResult({ result, onDone }) {
+  const { t } = useTranslation('library');
   const imported = result?.imported || [];
   const skipped = result?.skipped || [];
   return (
@@ -340,12 +348,12 @@ function ImportResult({ result, onDone }) {
       <ModalBody>
         <div className="flex flex-col gap-3">
           <Alert variant="success">
-            Imported {imported.length} file{imported.length === 1 ? '' : 's'}.
+            {t('sharepoint.import.imported', { count: imported.length })}
           </Alert>
           {skipped.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <div className="text-[12px] text-ink-3">
-                Skipped {skipped.length} item{skipped.length === 1 ? '' : 's'}:
+                {t('sharepoint.import.skipped', { count: skipped.length })}
               </div>
               <ul className="m-0 pl-[18px] text-[12px] text-ink-2">
                 {skipped.map((item) => (
@@ -357,7 +365,7 @@ function ImportResult({ result, onDone }) {
         </div>
       </ModalBody>
       <ModalFooter>
-        <Button type="button" variant="primary" onClick={onDone}>Done</Button>
+        <Button type="button" variant="primary" onClick={onDone}>{t('sharepoint.import.done')}</Button>
       </ModalFooter>
     </>
   );

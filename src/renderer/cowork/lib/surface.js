@@ -12,13 +12,17 @@
 // are empty. Callers render a note only when it has text.
 
 import { PLATFORM_UI } from '../../lib/deployment';
+import i18n from '../../lib/i18n';
+
+/* User-facing copy, translated when it is read (never at import). */
+const tr = (key, vars) => i18n.t(`messages.surface.${key}`, { ns: 'projects', ...vars });
 
 /** Empty-state copy that points at the other app. */
 export function surfaceCopy(isWeb, platformUi = PLATFORM_UI) {
   if (isWeb && !platformUi) return { tasksNote: '', artifactsNote: '' };
-  const other = isWeb ? 'desktop app' : 'web app';
+  const other = isWeb ? 'desktop' : 'web';
   return {
-    tasksNote: `Tasks made in the ${other} stay there.`,
-    artifactsNote: `Artifacts made in the ${other} stay there.`,
+    tasksNote: tr('tasksNote', { other }),
+    artifactsNote: tr('artifactsNote', { other }),
   };
 }

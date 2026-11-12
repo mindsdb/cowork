@@ -12,6 +12,7 @@
 // opening prompt.
 import { useEffect, useRef, useState } from 'react';
 import { host } from '../../platform/host';
+import { useTranslation } from '../../lib/i18n';
 
 // xterm renders via canvas, which only accepts resolved color values —
 // var(--bg) works fine as a plain CSS background but canvas fillStyle
@@ -37,6 +38,7 @@ function readTerminalTheme() {
 }
 
 export default function CodingTerminal({ taskId, projectPath, message, model }) {
+  const { t } = useTranslation('chat');
   const containerRef = useRef(null);
   const termRef = useRef(null);
   const [error, setError] = useState(null);
@@ -60,7 +62,7 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
         ]);
         await import('@xterm/xterm/css/xterm.css');
       } catch {
-        if (!disposed) setError('Embedded terminal is not available on this build.');
+        if (!disposed) setError(t('codingTerminal.unavailable'));
         return;
       }
       if (disposed || !containerRef.current) return;
@@ -108,7 +110,7 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
           term.rows,
         );
         if (!result?.ok) {
-          if (!disposed) setError(result?.reason || 'Could not start Claude Code.');
+          if (!disposed) setError(result?.reason || t('codingTerminal.couldNotStart'));
           return;
         }
       } else {
@@ -157,7 +159,7 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
       )}
       {exited != null && (
         <div className="flex-shrink-0 px-4 py-2 text-sm text-ink-3 bg-surface-2 border-b border-solid border-line">
-          Claude Code exited (code {exited}).
+          {t('codingTerminal.exited', { code: exited })}
         </div>
       )}
       {/* xterm.css hardcodes .xterm-viewport's background to #000, which

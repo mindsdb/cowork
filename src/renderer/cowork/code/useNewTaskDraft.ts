@@ -9,6 +9,7 @@ import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import { modelLabel } from '../lib/settingsTransform';
 import { effortLevelsFor, requestedEffort, resolveEffort } from './reasoning';
 import { host } from '../../platform/host';
+import i18n from '../../lib/i18n';
 import {
   codingApi,
   type CodeProject,
@@ -58,7 +59,7 @@ interface NewTaskDraftOptions {
 async function projectFolderIssue(projectId: string, items: ProjectFolderInspection[], setup?: TaskRepositorySetup): Promise<string> {
   const unavailable = items.find(({ inspection }) => !inspection.exists || !inspection.is_directory);
   if (unavailable) {
-    return `${unavailable.folder.name} is unavailable. Remove and re-add it in Project settings.`;
+    return i18n.t('newTaskDraft.folderUnavailable', { ns: 'code', name: unavailable.folder.name });
   }
   for (const item of items) {
     const branch = setup?.base_branches[item.folder.id] || item.folder.base_branch;
@@ -68,8 +69,9 @@ async function projectFolderIssue(projectId: string, items: ProjectFolderInspect
       ? (await codingApi.repositoryBranches(projectId, item.folder.id)).items.includes(branch)
       : item.base_branch_available;
     if (!available) {
-      const location = setup ? 'Repositories & folders' : 'Project settings';
-      return `${item.folder.name} cannot find its ${branch} base branch. Update it in ${location}.`;
+      return i18n.t('newTaskDraft.baseBranchMissing', {
+        ns: 'code', name: item.folder.name, branch, location: setup ? 'setup' : 'project',
+      });
     }
   }
   return '';
@@ -85,13 +87,11 @@ function sourcePrompt(contexts: SourceContext[]): string {
   if (contexts.length === 0) return '';
   if (contexts.length === 1) {
     const [context] = contexts;
-    return `Work on ${context.external_id}: ${context.title}`;
+    return i18n.t('newTaskDraft.sourcePromptOne', { ns: 'code', id: context.external_id, title: context.title });
   }
-  return `Work on the ${contexts.length} linked work items.`;
+  return i18n.t('newTaskDraft.sourcePromptMany', { ns: 'code', count: contexts.length });
 }
 
-
-const NO_CODING_MODELS = 'No coding models are available.';
 
 
 export function useNewTaskDraft({
@@ -202,7 +202,7 @@ export function useNewTaskDraft({
       const issue = await projectFolderIssue(selectedProject.id, items.filter(item => resourceIds.includes(item.folder.id)), repositorySetup);
       if (active) setFolderIssue(issue);
     }).catch((reason) => {
-      if (active) setFolderIssue(reason instanceof Error ? reason.message : 'Could not check this project’s folders.');
+      if (active) setFolderIssue(reason instanceof Error ? reason.message : i18n.t('newTaskDraft.foldersCheckFailed', { ns: 'code' }));
     }).finally(() => { if (active) setFoldersLoading(false); });
     return () => { active = false; };
   }, [selectedProject, resourceScopeKey, repositorySetup]);
@@ -262,7 +262,7 @@ export function useNewTaskDraft({
     value: engine.id,
     label: engine.label,
     disabled: !engine.available,
-    title: engine.available ? undefined : engine.reason || 'Unavailable',
+    title: engine.available ? undefined : engine.reason || i18n.t('newTaskDraft.engineUnavailable', { ns: 'code' }),
   })), [engines]);
 
   const attachFiles = (files: FileList | null) => {
@@ -289,12 +289,12 @@ export function useNewTaskDraft({
         storeFolder('');
         setStandaloneFolderPath('');
       } else {
-        setStandaloneFolderIssue('That folder is no longer available. Choose another folder.');
+        setStandaloneFolderIssue(i18n.t('newTaskDraft.folderGone', { ns: 'code' }));
       }
     } catch (reason) {
       if (request !== folderRequest.current) return;
       if (remembered) setStandaloneFolderPath('');
-      else setStandaloneFolderIssue(reason instanceof Error ? reason.message : 'Could not access that folder.');
+      else setStandaloneFolderIssue(reason instanceof Error ? reason.message : i18n.t('newTaskDraft.folderAccessFailed', { ns: 'code' }));
     } finally {
       if (request === folderRequest.current) setStandaloneFolderLoading(false);
     }
@@ -303,7 +303,7 @@ export function useNewTaskDraft({
   const chooseStandaloneFolder = useCallback(async (): Promise<boolean> => {
     const result = await host.pickCodeFolder();
     if (!result.ok || !result.path) {
-      if (!result.cancelled) setCatalogError(result.reason || 'Could not choose that folder.');
+      if (!result.cancelled) setCatalogError(result.reason || i18n.t('newTaskDraft.folderChooseFailed', { ns: 'code' }));
       return false;
     }
     await openStandaloneFolder(result.path);
@@ -350,32 +350,37 @@ export function useNewTaskDraft({
     || !selectedModelValid
     || enabledModelOptions.length === 0;
 
+  const readiness = (key: string) => i18n.t(`newTaskDraft.readiness.${key}`, { ns: 'code' });
+  // Checked by identity below: an empty model list is how a missing MindsHub
+  // connection first shows up.
+  let noModelsMessage = '';
   const readinessMessage = (() => {
-    if (busy) return 'Starting task…';
-    if (engineLoading || modelsLoading) return 'Loading coding agent…';
-    if (workspaceLoading) return selectedProject ? 'Checking project resources…' : 'Checking folder…';
-    if (executionLoading) return 'Finding an available computer…';
+    if (busy) return readiness('startingTask');
+    if (engineLoading || modelsLoading) return readiness('loadingAgent');
+    if (workspaceLoading) return selectedProject ? readiness('checkingResources') : readiness('checkingFolder');
+    if (executionLoading) return readiness('findingComputer');
     if (workspaceIssue) return workspaceIssue;
     if (executionIssue) return executionIssue;
-    if (noProjectResources) return 'Add a repository or folder to this project in Project settings.';
+    if (noProjectResources) return readiness('addResource');
     // Before the first check, resourceIds is still empty and computerId unset.
-    if (selectedProject && resourceIds.length > 0 && !computerId) return 'No computer can run this task.';
+    if (selectedProject && resourceIds.length > 0 && !computerId) return readiness('noComputer');
     /* A catalog error already shows in the alert below, so these stay quiet
        rather than repeat it. */
-    if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
+    if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : readiness('noAgent'));
     /* An admin's model rule is not something credits unlock, so it never
        mentions them. */
-    if (selectedModelOption?.restricted) return 'An admin restricted this model. Choose another model.';
-    if (selectedModelOption?.locked) return 'Add credits or choose an available model.';
-    if (enabledModelOptions.length === 0) return catalogError ? '' : NO_CODING_MODELS;
-    if (!selectedModelValid) return 'Choose a model to continue.';
-    if (!workspaceSelected) return 'Choose a folder to continue.';
+    if (selectedModelOption?.restricted) return readiness('modelRestricted');
+    if (selectedModelOption?.budgetReached) return readiness('budgetReached');
+    if (selectedModelOption?.locked) return readiness('addCredits');
+    if (enabledModelOptions.length === 0) return catalogError ? '' : (noModelsMessage = readiness('noModels'));
+    if (!selectedModelValid) return readiness('chooseModel');
+    if (!workspaceSelected) return readiness('chooseFolder');
     return '';
   })();
 
   // cowork-server answers an empty model list, not an error, when MindsHub is
   // not connected, so this is how a user without MindsHub first shows up.
-  const noCodingModels = readinessMessage === NO_CODING_MODELS;
+  const noCodingModels = !!noModelsMessage;
 
   const readinessKind = loading || busy
     ? 'loading'

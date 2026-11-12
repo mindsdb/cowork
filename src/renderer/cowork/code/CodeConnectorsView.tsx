@@ -9,6 +9,7 @@ import {
   type ConnectorConnection,
   type ConnectorSpec,
 } from '../api';
+import i18n, { useTranslation } from '../../lib/i18n';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { DataVaultForm } from '../components/datavault/DataVaultForm';
 import Ico from '../components/Icons';
@@ -38,19 +39,19 @@ type FormAction = {
 const PROVIDERS: Array<{
   id: ProviderId;
   label: string;
-  description: string;
+  descriptionKey: string;
   logo: string;
 }> = [
   {
     id: 'github',
     label: 'GitHub',
-    description: 'Start from issues, create draft pull requests, and follow reviews and checks.',
+    descriptionKey: 'connectors.providers.github',
     logo: 'logos/github.svg',
   },
   {
     id: 'linear',
     label: 'Linear',
-    description: 'Start from Linear issues and post progress back to them.',
+    descriptionKey: 'connectors.providers.linear',
     logo: 'logos/linear.svg',
   },
 ];
@@ -66,8 +67,8 @@ function projectUsage(projects: CodeProject[], provider: ProviderId, name: strin
 }
 
 function usageLabel(count: number): string {
-  if (count === 0) return 'Not used by a project';
-  return `Used by ${count} ${count === 1 ? 'project' : 'projects'}`;
+  if (count === 0) return i18n.t('connectors.usage.none', { ns: 'code' });
+  return i18n.t('connectors.usage.used', { ns: 'code', count });
 }
 
 function oauthCredentialsMissing(result: { code?: string; reason?: string } | null | undefined): boolean {
@@ -80,7 +81,7 @@ function oauthCredentialsMissing(result: { code?: string; reason?: string } | nu
 function personalCredentialForm(provider: ProviderId, spec: ConnectorSpec): CredentialSetup {
   const methodId = provider === 'github' ? 'fine-grained-pat' : 'personal-api-key';
   const method = spec.form.methods?.find((candidate) => candidate.id === methodId);
-  if (!method) throw new Error(`Could not load ${provider === 'github' ? 'GitHub' : 'Linear'} connection options.`);
+  if (!method) throw new Error(i18n.t('connectors.errors.loadOptions', { ns: 'code', provider: provider === 'github' ? 'GitHub' : 'Linear' }));
   return {
     provider,
     connectionName: '',
@@ -95,7 +96,7 @@ function personalCredentialForm(provider: ProviderId, spec: ConnectorSpec): Cred
         ...method,
         recommended: true,
         fields: (method.fields || []).map((field) => ({ ...field, skipable: false })),
-        actions: [{ id: 'connect', label: 'Connect', kind: 'primary' }],
+        actions: [{ id: 'connect', label: i18n.t('connectors.connect', { ns: 'code' }), kind: 'primary' }],
       }],
     },
   };
@@ -106,7 +107,7 @@ export function CodeConnectorsView({
   projects,
   onConnectionsChange,
   returnProjectName = '',
-  backLabel = 'Back to task',
+  backLabel,
   onBack,
   onConnected,
 }: {
@@ -118,6 +119,7 @@ export function CodeConnectorsView({
   onBack?: () => void;
   onConnected?: (provider: ProviderId, connection: ConnectorConnection) => Promise<void> | void;
 }) {
+  const { t } = useTranslation('code');
   const [busyKey, setBusyKey] = useState('');
   const [errorByProvider, setErrorByProvider] = useState<Partial<Record<ProviderId, string>>>({});
   const [disconnecting, setDisconnecting] = useState<ConnectorConnection | null>(null);
@@ -169,7 +171,7 @@ export function CodeConnectorsView({
         await openPersonalCredentialSetup(provider, connectionName);
         return;
       }
-      if (!result?.ok) throw new Error(result?.reason || `Could not connect ${providerLabel}.`);
+      if (!result?.ok) throw new Error(result?.reason || t('connectors.errors.connect', { provider: providerLabel }));
       const next = await refresh();
       const connectedName = result.name || connectionName;
       const connected = next.find((item) => item.engine === provider && (!connectedName || item.name === connectedName));
@@ -178,7 +180,7 @@ export function CodeConnectorsView({
       if (cancelledKey.current === key || (reason instanceof Error && reason.message === 'cancelled')) return;
       setErrorByProvider((current) => ({
         ...current,
-        [provider]: reason instanceof Error ? reason.message : `Could not connect ${providerLabel}.`,
+        [provider]: reason instanceof Error ? reason.message : t('connectors.errors.connect', { provider: providerLabel }),
       }));
     } finally {
       setBusyKey('');
@@ -206,7 +208,7 @@ export function CodeConnectorsView({
         values: { ...(action.values || {}), user_label: credentialLabel },
       });
     } catch (reason) {
-      setCredentialError(reason instanceof Error ? reason.message : 'Could not validate this credential.');
+      setCredentialError(reason instanceof Error ? reason.message : t('connectors.errors.validate'));
       setCredentialBusy(false);
       return;
     }
@@ -224,7 +226,7 @@ export function CodeConnectorsView({
     } catch (reason) {
       setErrorByProvider((current) => ({
         ...current,
-        [provider]: `Connected, but could not finish updating Code: ${reason instanceof Error ? reason.message : 'try reopening Connectors.'}`,
+        [provider]: t('connectors.errors.postConnect', { reason: reason instanceof Error ? reason.message : t('connectors.errors.postConnectFallback') }),
       }));
     } finally {
       setCredentialBusy(false);
@@ -242,7 +244,7 @@ export function CodeConnectorsView({
       const accountEmail = typeof detail?.fields?.account_email === 'string' ? detail.fields.account_email : '';
       if (host.isElectron && detail?.method === 'browser_oauth_builtin' && accountEmail) {
         const result = await host.keychainRevoke(connection.engine, connection.name, accountEmail);
-        if (!result?.ok) throw new Error(result?.reason || 'Could not disconnect this account.');
+        if (!result?.ok) throw new Error(result?.reason || t('connectors.errors.disconnect'));
       } else {
         await deleteDatasource(connection.engine, connection.name);
       }
@@ -251,7 +253,7 @@ export function CodeConnectorsView({
     } catch (reason) {
       setErrorByProvider((current) => ({
         ...current,
-        [connection.engine as ProviderId]: reason instanceof Error ? reason.message : 'Could not disconnect this account.',
+        [connection.engine as ProviderId]: reason instanceof Error ? reason.message : t('connectors.errors.disconnect'),
       }));
     } finally {
       setBusyKey('');
@@ -261,20 +263,20 @@ export function CodeConnectorsView({
   return (
     <main className="code-connectors-view">
       <PageHeader
-        title="Connectors"
-        subtitle="Connect developer tools once, then add them to any Code Project."
+        title={t('connectors.title')}
+        subtitle={t('connectors.subtitle')}
       />
 
       {(returnProjectName || onBack) && (
         <div className="code-connector-return" role="status">
           <span>{returnProjectName
-            ? <>Accounts you connect here are added to <strong>{returnProjectName}</strong>. Connect as many as you need, then go back.</>
-            : 'Connect an account, then return to your task.'}</span>
-          {onBack && <Button size="sm" variant="subtle" onClick={onBack}>{backLabel}</Button>}
+            ? <>{t('connectors.returnProject.before')} <strong>{returnProjectName}</strong>{t('connectors.returnProject.after')}</>
+            : t('connectors.returnTask')}</span>
+          {onBack && <Button size="sm" variant="subtle" onClick={onBack}>{backLabel ?? t('connectors.backToTask')}</Button>}
         </div>
       )}
 
-      <div className="mx-8 grid gap-4" aria-label="Code Connectors">
+      <div className="mx-8 grid gap-4" aria-label={t('connectors.ariaLabel')}>
         {PROVIDERS.map((provider) => {
           const accounts = providerConnections[provider.id];
           const providerBusy = busyKey.startsWith(`${provider.id}:`);
@@ -286,12 +288,12 @@ export function CodeConnectorsView({
                   <img src={provider.logo} alt="" className="block size-3.5" />
                 </span>}
                 title={<span role="heading" aria-level={2} id={`code-connector-${provider.id}`}>{provider.label}</span>}
-                description={provider.description}
+                description={t(provider.descriptionKey)}
                 meta={<>
                   <StatusDot tone={needsAttention ? 'warning' : accounts.length ? 'success' : 'muted'}>
                     {needsAttention
-                      ? `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'} · reconnect`
-                      : accounts.length ? `${accounts.length} connected` : 'Not connected'}
+                      ? t('connectors.status.reconnect', { count: accounts.length })
+                      : accounts.length ? t('connectors.status.connectedCount', { count: accounts.length }) : t('connectors.status.notConnected')}
                   </StatusDot>
                   <Button
                     variant={accounts.length ? 'subtle' : 'primary'}
@@ -299,7 +301,7 @@ export function CodeConnectorsView({
                     disabled={providerBusy}
                     onClick={() => void connect(provider.id)}
                   >
-                    {providerBusy && busyKey.includes(':new:oauth') ? 'Connecting…' : accounts.length ? 'Add account' : 'Connect'}
+                    {providerBusy && busyKey.includes(':new:oauth') ? t('connectors.connecting') : accounts.length ? t('connectors.addAccount') : t('connectors.connect')}
                   </Button>
                 </>}
               />
@@ -311,14 +313,14 @@ export function CodeConnectorsView({
               {providerBusy && busyKey.endsWith(':oauth') && (
                 <ListNotice className="flex items-center justify-between gap-3 bg-accent-bg">
                   <span role="status" className="grid min-w-0 gap-0.5 pl-9">
-                    <strong className="text-xs font-semibold text-ink-2">Continue in your browser</strong>
-                    <small className="text-2xs text-ink-4">Return here when {provider.label} finishes authorizing.</small>
+                    <strong className="text-xs font-semibold text-ink-2">{t('connectors.browser.title')}</strong>
+                    <small className="text-2xs text-ink-4">{t('connectors.browser.hint', { provider: provider.label })}</small>
                   </span>
                   <Button size="sm" variant="subtle" onClick={async () => {
                     cancelledKey.current = busyKey;
                     await host.oauthCancel();
                     setBusyKey('');
-                  }}>Cancel</Button>
+                  }}>{t('connectors.cancel')}</Button>
                 </ListNotice>
               )}
 
@@ -336,22 +338,22 @@ export function CodeConnectorsView({
                     // overlay) so it never covers the visible Reconnect button.
                     meta={<>
                       {needsReconnect ? <>
-                        <StatusDot tone="warning">Reconnect needed</StatusDot>
+                        <StatusDot tone="warning">{t('connectors.status.reconnectNeeded')}</StatusDot>
                         <Button
                           variant="subtle"
                           size="sm"
                           disabled={providerBusy}
                           onClick={() => void connect(provider.id, connection.name)}
                         >
-                          {busyKey === reconnectKey ? 'Reconnecting…' : 'Reconnect'}
+                          {busyKey === reconnectKey ? t('connectors.reconnecting') : t('connectors.reconnect')}
                         </Button>
-                      </> : <StatusDot tone="success">Connected</StatusDot>}
+                      </> : <StatusDot tone="success">{t('connectors.status.connected')}</StatusDot>}
                       <OverflowMenu
-                        label={`More actions for ${label}`}
+                        label={t('skills.view.moreActions', { name: label })}
                         icon={Ico.more(14)}
                         disabled={providerBusy}
                         size="sm"
-                        items={[{ id: 'disconnect', label: 'Disconnect', icon: Ico.trash(14), danger: true, onClick: () => setDisconnecting(connection) }]}
+                        items={[{ id: 'disconnect', label: t('connectors.disconnect.action'), icon: Ico.trash(14), danger: true, onClick: () => setDisconnecting(connection) }]}
                       />
                     </>}
                   />
@@ -372,10 +374,10 @@ export function CodeConnectorsView({
       >
         <ModalHeader
           id="code-credential-title"
-          title={`Connect ${credentialSetup?.provider === 'github' ? 'GitHub' : 'Linear'}`}
+          title={t('connectors.credential.title', { provider: credentialSetup?.provider === 'github' ? 'GitHub' : 'Linear' })}
           subtitle={credentialSetup?.provider === 'github'
-            ? 'Use a personal access token for this local build.'
-            : 'Use a personal API key for this local build.'}
+            ? t('connectors.credential.githubSubtitle')
+            : t('connectors.credential.linearSubtitle')}
           onClose={credentialBusy ? undefined : closeCredentialSetup}
         />
         <ModalBody>
@@ -395,9 +397,9 @@ export function CodeConnectorsView({
 
       <ConfirmModal
         open={disconnecting !== null}
-        title={`Disconnect ${disconnecting ? connectionLabel(disconnecting) : 'this account'}?`}
-        message="Projects using this account will keep the reference, but Code cannot read or publish through it until you reconnect."
-        confirmLabel="Disconnect"
+        title={disconnecting ? t('connectors.disconnect.title', { name: connectionLabel(disconnecting) }) : t('connectors.disconnect.titleFallback')}
+        message={t('connectors.disconnect.message')}
+        confirmLabel={t('connectors.disconnect.action')}
         destructive
         busy={busyKey.endsWith(':disconnect')}
         onClose={() => { if (!busyKey.endsWith(':disconnect')) setDisconnecting(null); }}
