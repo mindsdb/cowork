@@ -19,6 +19,7 @@ import {
   type LocateResult,
   pageAnswer,
   pageWorld,
+  pageWorldFunction,
   pageWorldSource,
   type PageWorldState,
   type RawSnapshot,
@@ -408,7 +409,7 @@ describe('the isolated-world page read', () => {
     const world = freshWorld();
     for (const id of ['emb', 'obj']) {
       (document.getElementById(id) as HTMLElement).focus();
-      expect(pageWorld(document, world, { kind: 'focusedSecret' }), id).toEqual({ secret: false, otherSite: true } satisfies FocusedSecret);
+      expect(pageWorld(document, world, { kind: 'focusedSecret' }), id).toEqual({ secret: false, otherSite: true, sealed: false } satisfies FocusedSecret);
     }
   });
 
@@ -638,9 +639,41 @@ describe('the isolated-world page read', () => {
     layout();
     const world = freshWorld();
     (document.getElementById('email') as HTMLInputElement).focus();
-    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: false });
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: false, sealed: false });
     (document.getElementById('pw') as HTMLInputElement).focus();
-    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true, otherSite: false });
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true, otherSite: false, sealed: false });
+  });
+
+  it('says when the focus stops on an element that may keep a closed shadow root, and reads the focus inside the root the debugger hands it', () => {
+    document.body.innerHTML = '<x-login id="host"></x-login><div id="plain" tabindex="0"></div><input id="field"><x-open id="open"></x-open>';
+    const root = document.getElementById('host')!.attachShadow({ mode: 'closed' });
+    root.innerHTML = '<input id="pw" type="password"><input id="user">';
+    const open = document.getElementById('open')!.attachShadow({ mode: 'open' });
+    open.innerHTML = '<input id="inner">';
+    const world = freshWorld();
+    (root.getElementById('pw') as HTMLInputElement).focus();
+    // The world's focus stops at the closed root's host...
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: false, sealed: true } satisfies FocusedSecret);
+    expect(pageWorld(document, world, { kind: 'focusedElement' })).toBe(document.getElementById('host'));
+    // ...and from the root the debugger hands it, it finds the field, in its source text too.
+    expect(pageWorld(document, world, { kind: 'focusedSecret' }, root)).toEqual({ secret: true, otherSite: false, sealed: false });
+    try {
+      const fromSource = new Function(`return ${pageWorldFunction({ kind: 'focusedSecret' })}`)() as (from: ShadowRoot) => FocusedSecret;
+      expect(fromSource(root)).toEqual({ secret: true, otherSite: false, sealed: false });
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__coworkBrowserWorld;
+    }
+    (root.getElementById('user') as HTMLInputElement).focus();
+    expect(pageWorld(document, world, { kind: 'focusedSecret' }, root)).toEqual({ secret: false, otherSite: false, sealed: false });
+    // A div may keep one too, and so may the body while nothing has the focus; a field, or an element with an open root, shows all it holds.
+    const sealed = (focus: () => void) => {
+      focus();
+      return (pageWorld(document, world, { kind: 'focusedSecret' }) as FocusedSecret).sealed;
+    };
+    expect(sealed(() => document.getElementById('plain')!.focus())).toBe(true);
+    expect(sealed(() => (document.activeElement as HTMLElement).blur())).toBe(true);
+    expect(sealed(() => document.getElementById('field')!.focus())).toBe(false);
+    expect(sealed(() => (open.getElementById('inner') as HTMLInputElement).focus())).toBe(false);
   });
 
   it('tells a type step whether the focus is still in its field, and whether it is on a secret one', () => {
@@ -965,11 +998,11 @@ describe('frames', () => {
     const world = freshWorld();
     (frameDoc('login').getElementById('pw') as HTMLInputElement).focus();
     document.getElementById('login')!.focus();
-    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true, otherSite: false } satisfies FocusedSecret);
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: true, otherSite: false, sealed: false } satisfies FocusedSecret);
     (frameDoc('login').getElementById('user') as HTMLInputElement).focus();
-    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: false });
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: false, sealed: false });
     document.getElementById('other')!.focus();
-    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: true });
+    expect(pageWorld(document, world, { kind: 'focusedSecret' })).toEqual({ secret: false, otherSite: true, sealed: false });
     // The frame the debugger then reads the focus in: the owner of the one this world can't read, and none while the focus is in reach.
     expect(pageWorld(document, world, { kind: 'focusedFrame' })).toBe(document.getElementById('other'));
     (frameDoc('login').getElementById('user') as HTMLInputElement).focus();

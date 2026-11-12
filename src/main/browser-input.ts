@@ -20,8 +20,9 @@
  * a select or a press of a key that edits text into a secret field gets 403
  * password_field. Before every key, typing checks that the focus is still in
  * its field and not on a secret one, and stops when it isn't. An editing key
- * into a frame of another site is refused when the field focused there is a
- * secret one, or can't be read (`keysGoToSecret`). A click by
+ * into a frame of another site, or into a closed shadow root, is refused
+ * when the field focused there is a secret one, or can't be read
+ * (`keysGoToSecret`). A click by
  * number presses only where both the page's hit test and the debugger's,
  * which sees inside closed shadow roots, find its element and no frame. Just
  * before each press, a click or a drag checks its point again, and presses
@@ -387,7 +388,7 @@ export async function withAgentInput<T>(
 /** The isolated-world reads a step needs (browser-page-script.ts). */
 export interface PageReader {
   locate(id: number, reveal: boolean): Promise<LocateResult>;
-  /** Whether the focus is on a secret field, or on a frame of another site the world can't read. */
+  /** Whether the focus is on a secret field, on a frame of another site the world can't read, or on an element that may keep a closed shadow root. */
   focusedSecret(): Promise<FocusedSecret>;
   /** Where the focus is while a type step types into element `id`. */
   typingFocus(id: number): Promise<TypingFocus>;
@@ -583,12 +584,14 @@ async function pressPoint(
 
 /* Whether an editing key now goes into a secret field: the focused one,
    followed into frames of the page's origin, or, when the focus rests on a
-   frame of another site, the one focused in there, read in that frame's own
-   world (`focusedFrameSecret`), which counts what it can't read as secret. A
-   key into an ordinary field of an embedded form still goes in. */
+   frame of another site or on an element that may keep a closed shadow
+   root, the one focused in there, read through the debugger
+   (`FrameReads.focusedSecret`), which counts what it can't read as secret.
+   A key into an ordinary field of an embedded form, or of a closed root,
+   still goes in. */
 async function keysGoToSecret(host: StepHost, frames: FrameReads): Promise<boolean> {
   const focus = await host.page.focusedSecret();
-  return focus.secret || (focus.otherSite && await frames.focusedFrameSecret());
+  return focus.secret || ((focus.otherSite || focus.sealed) && await frames.focusedSecret());
 }
 
 const SCROLL_DELTAS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;

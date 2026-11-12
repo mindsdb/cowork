@@ -32,6 +32,27 @@ describe('DebuggerSession', () => {
     });
   });
 
+  it('calls a function only in an isolated world this attach made, never on an object, and resolves a node only into such a world', async () => {
+    const dbg = fakeCdpDebugger({ frames: [WIDGET] });
+    await withDebugger(dbg, async (session) => {
+      await session.mainFrame();
+      const { executionContextId } = await session.send<{ executionContextId: number }>('Page.createIsolatedWorld', { frameId: MAIN_FRAME });
+      await expect(session.send('Runtime.callFunctionOn', { functionDeclaration: 'function () {}' })).rejects.toThrow(/isolated world this attach made/);
+      // On an object, the function runs in whatever world holds it: the page's own, for one the page handed out.
+      await expect(session.send('Runtime.callFunctionOn', { functionDeclaration: 'function () {}', objectId: 'page-object', executionContextId })).rejects.toThrow(/not on an object/);
+      await expect(session.send('DOM.resolveNode', { backendNodeId: 1 })).rejects.toThrow(/resolve into an isolated world this attach made/);
+      await expect(session.send('DOM.resolveNode', { backendNodeId: 1, executionContextId: executionContextId + 100 })).rejects.toThrow(/resolve into an isolated world/);
+      // A world of the page's session is no world of a frame's session.
+      await session.attachFrames();
+      await expect(session.send('DOM.resolveNode', { backendNodeId: 1, executionContextId }, 'session-widget')).rejects.toThrow(/resolve into an isolated world/);
+      await expect(session.send('Runtime.callFunctionOn', { functionDeclaration: 'function () {}', executionContextId }, 'session-widget')).rejects.toThrow(/isolated world/);
+      // One in this attach's world reaches the debugger.
+      await session.send('Runtime.callFunctionOn', { functionDeclaration: 'function () {}', executionContextId, arguments: [] }).catch(() => {});
+    });
+    expect(sentOf(dbg, 'DOM.resolveNode')).toEqual([]);
+    expect(sentOf(dbg, 'Runtime.callFunctionOn')).toHaveLength(1);
+  });
+
   it("opens no world in a payment provider's frame or one inside it, in a frame whose address isn't known, or with universal access", async () => {
     const inside = { id: 'inner', url: 'https://merchant.other.test/fields', parentId: 'card', remote: true };
     const dbg = fakeCdpDebugger({ frames: [STRIPE, inside, WIDGET] });

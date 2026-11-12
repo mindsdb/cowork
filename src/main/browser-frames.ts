@@ -9,11 +9,15 @@
  * as the control. DOM.getNodeForLocation hit-tests inside closed roots and
  * names the frame of the node it finds, as the web pod's readPoint does.
  *
- * `focusedFrameSecret`: whether an editing key goes into a secret field
- * inside a frame of another site, which the world can't read. Electron runs
- * isolated-world script only in a view's main frame's process, so the read
- * runs in the frame's own process: Target.setAutoAttach (flat) gives each
- * such frame a session on the same debugger, and sendCommand takes its id.
+ * `focusedSecret`: whether an editing key goes into a secret field the
+ * world can't see: one inside a closed shadow root, where the world's focus
+ * stops at the host, or inside a frame of another site. DOM.describeNode
+ * reports a host's closed shadow root, and DOM.resolveNode hands it to this
+ * browser's own isolated world, which follows the focus inside it. Electron
+ * runs isolated-world script only in a view's main frame's process, so a
+ * frame of another site is read in its own process: Target.setAutoAttach
+ * (flat) gives each such frame a session on the same debugger, and
+ * sendCommand takes its id.
  *
  * `frameMasks`: the secret fields a screenshot blacks out inside the frames
  * the world can't search, each read in its frame's own world, as the web
@@ -23,9 +27,11 @@
  * Every command goes out through `DebuggerSession.send`, which checks it
  * first: only the methods in ALLOWED_CDP_METHODS; input and the page reads on
  * the page's own session, a frame's session only opening and reading its
- * world; Runtime.evaluate only in an isolated world this attach made with
- * Page.createIsolatedWorld, never in the page's own world, so the page's
- * scripts never meet it; never a world with universal access, nor one in a
+ * world and the nodes that world answers; Runtime.evaluate and
+ * Runtime.callFunctionOn only in an isolated world this attach made with
+ * Page.createIsolatedWorld, and DOM.resolveNode only into one, never in the
+ * page's own world, so the page's scripts never meet them; never a world
+ * with universal access, nor one in a
  * frame whose address isn't known or that is a payment provider's frame or
  * inside one (isPaymentAddress); and no auto-attach that pauses a frame.
  * Nothing here sends Runtime.enable, Page.enable, Network, Debugger, Console or
@@ -41,6 +47,7 @@ import {
   type FocusedSecret,
   type FoundSecrets,
   isPaymentAddress,
+  pageWorldFunction,
   pageWorldSource,
   type PageWorldRequest,
   SECRET_SEARCH_DEPTH,
@@ -60,16 +67,30 @@ export const ALLOWED_CDP_METHODS: ReadonlySet<string> = new Set([
   'Page.getLayoutMetrics',
   'Page.createIsolatedWorld',
   'Runtime.evaluate',
+  'Runtime.callFunctionOn',
   'Runtime.releaseObject',
   'DOM.getNodeForLocation',
   'DOM.describeNode',
+  'DOM.resolveNode',
   'DOM.getFrameOwner',
   'DOM.getBoxModel',
 ]);
 
-/* What a frame's own session may send: its frame tree, and opening and
-   reading the isolated world it reads in. */
-const FRAME_SESSION_METHODS: ReadonlySet<string> = new Set(['Page.getFrameTree', 'Page.createIsolatedWorld', 'Runtime.evaluate']);
+/* What a frame's own session may send: its frame tree, opening and reading
+   the isolated world it reads in, and the nodes that world answers. */
+const FRAME_SESSION_METHODS: ReadonlySet<string> = new Set([
+  'Page.getFrameTree',
+  'Page.createIsolatedWorld',
+  'Runtime.evaluate',
+  'Runtime.callFunctionOn',
+  'Runtime.releaseObject',
+  'DOM.describeNode',
+  'DOM.resolveNode',
+]);
+
+/* How many closed shadow roots deep a read of the focus follows it. A focus
+   deeper than that counts as one on a secret field. */
+const CLOSED_ROOTS_DEEP = 8;
 
 /** How long a read in a frame's own world may take. One that takes longer
     counts as unreadable. The web pod waits as long (FRAME_FOCUS_MS). */
@@ -192,9 +213,16 @@ export class DebuggerSession {
     if (!ALLOWED_CDP_METHODS.has(method)) return 'it is not one this browser sends';
     if (session !== undefined && !FRAME_SESSION_METHODS.has(method)) return "a frame's session only opens and reads its own world";
     if (session !== undefined && ![...this.frames.values()].some((frame) => frame.session === session)) return 'no frame of this attach has that session';
+    const ownWorld = (id: unknown) => this.worlds.get(session ?? '')?.has(id as number) ?? false;
     switch (method) {
       case 'Runtime.evaluate':
-        return this.worlds.get(session ?? '')?.has(params.contextId as number) ? null : 'it must name an isolated world this attach made';
+        return ownWorld(params.contextId) ? null : 'it must name an isolated world this attach made';
+      case 'Runtime.callFunctionOn':
+        // Called on an object, it would run in whatever world holds the object.
+        if (params.objectId !== undefined) return 'it must run in an isolated world this attach made, not on an object';
+        return ownWorld(params.executionContextId) ? null : 'it must name an isolated world this attach made';
+      case 'DOM.resolveNode':
+        return ownWorld(params.executionContextId) ? null : 'it must resolve into an isolated world this attach made';
       case 'Page.createIsolatedWorld':
         if (params.grantUniveralAccess) return "a world with universal access reaches other sites' frames";
         return this.worldRefusal(String(params.frameId));
@@ -262,19 +290,31 @@ export class DebuggerSession {
     return this.frameWorlds.get(frameId)!.then((id) => ({ id, session }));
   }
 
-  /* Runs `request` in frame `frameId`'s world: its answer by value, or, with
-     `node`, the id of the element it answers (null for none), which the
-     caller releases. */
-  private async evaluate(frameId: string, request: PageWorldRequest, node: boolean): Promise<Evaluated['result']> {
+  /* Runs `request` in frame `frameId`'s world, from its document, or from
+     `from`, a node this attach handed that world (closedRootOf): its answer
+     by value, or, with `node`, the id of the element it answers (null for
+     none), which the caller releases. Arguments of another world are
+     refused by Chromium, so `from` runs in this world alone. */
+  private async evaluate(frameId: string, request: PageWorldRequest, node: boolean, from: string | null): Promise<Evaluated['result']> {
     const { id, session } = await this.world(frameId);
-    const answer = await this.send<Evaluated>('Runtime.evaluate', { expression: pageWorldSource(request), contextId: id, returnByValue: !node }, session);
+    const answer = from === null
+      ? await this.send<Evaluated>('Runtime.evaluate', { expression: pageWorldSource(request), contextId: id, returnByValue: !node }, session)
+      : await this.send<Evaluated>('Runtime.callFunctionOn', {
+        functionDeclaration: pageWorldFunction(request), executionContextId: id, arguments: [{ objectId: from }], returnByValue: !node,
+      }, session);
     if (answer.exceptionDetails || !answer.result) throw new Error('the frame did not answer');
     return answer.result;
   }
 
-  /** `request`'s answer from frame `frameId`'s own world. */
-  async read<T>(frameId: string, request: PageWorldRequest): Promise<T> {
-    return (await this.evaluate(frameId, request, false))?.value as T;
+  /** `request`'s answer from frame `frameId`'s own world, read from its
+      document or from `from` (a closed shadow root, closedRootOf). */
+  async read<T>(frameId: string, request: PageWorldRequest, from: string | null = null): Promise<T> {
+    return (await this.evaluate(frameId, request, false, from))?.value as T;
+  }
+
+  /** Lets go of `objectId`, a node frame `frameId`'s world holds for this attach. */
+  async release(frameId: string, objectId: string): Promise<void> {
+    await this.send('Runtime.releaseObject', { objectId }, this.frames.get(frameId)?.session).catch(() => {});
   }
 
   /** The frames the page's isolated world can't search for secrets
@@ -307,15 +347,41 @@ export class DebuggerSession {
   }
 
   /** The frame that the element `request` answers in frame `frameId`'s
-      world holds, or null when it answers none or holds no frame. */
-  async frameOf(frameId: string, request: PageWorldRequest): Promise<string | null> {
-    const found = await this.evaluate(frameId, request, true);
+      world (from `from`) holds, or null when it answers none or holds no
+      frame. */
+  async frameOf(frameId: string, request: PageWorldRequest, from: string | null = null): Promise<string | null> {
+    const found = await this.evaluate(frameId, request, true, from);
     if (found?.subtype !== 'node' || !found.objectId) return null;
     try {
-      const { node } = await this.send<{ node: { frameId?: string } }>('DOM.describeNode', { objectId: found.objectId, depth: 0 });
+      const { node } = await this.send<{ node: { frameId?: string } }>('DOM.describeNode', { objectId: found.objectId, depth: 0 }, this.frames.get(frameId)?.session);
       return node.frameId ?? null;
     } finally {
-      await this.send('Runtime.releaseObject', { objectId: found.objectId }).catch(() => {});
+      await this.release(frameId, found.objectId);
+    }
+  }
+
+  /** The closed shadow root of the element `request` answers in frame
+      `frameId`'s world (from `from`), handed to that world, or null when it
+      answers none or the element keeps no closed root. DOM.describeNode
+      reports a host's shadow roots, closed ones included, and
+      DOM.resolveNode hands one to the world. The caller releases it. */
+  async closedRootOf(frameId: string, request: PageWorldRequest, from: string | null = null): Promise<string | null> {
+    const found = await this.evaluate(frameId, request, true, from);
+    if (found?.subtype !== 'node' || !found.objectId) return null;
+    const { id, session } = await this.world(frameId);
+    try {
+      const { node } = await this.send<{ node: { shadowRoots?: Array<{ shadowRootType?: string; backendNodeId: number }> } }>(
+        'DOM.describeNode',
+        { objectId: found.objectId, depth: 0, pierce: true },
+        session,
+      );
+      const root = node.shadowRoots?.find((shadow) => shadow.shadowRootType === 'closed');
+      if (!root) return null;
+      const { object } = await this.send<{ object: { objectId?: string } }>('DOM.resolveNode', { backendNodeId: root.backendNodeId, executionContextId: id }, session);
+      if (!object.objectId) throw new Error('the closed shadow root did not resolve');
+      return object.objectId;
+    } finally {
+      await this.release(frameId, found.objectId);
     }
   }
 }
@@ -374,23 +440,49 @@ export class FrameReads {
   }
 
   /**
-   * Whether an editing key now goes into a secret field in the frame the
-   * focus rests on, one the page's world can't read: the field focused
-   * there, read in that frame's own world, as the web pod's keysGoToSecret
-   * reads it. Whatever can't be read counts as one: a payment provider's
-   * frame (no world opens there), a frame of yet another site the focus
-   * sits in inside it, a frame with no owner the debugger can name, and a
-   * read that fails or takes longer than FRAME_READ_MS.
+   * Whether an editing key now goes into a secret field the page's world
+   * can't see, read where the focus rests: inside a closed shadow root,
+   * whose host is as far as the world's focus goes (closedRootOf hands the
+   * root to this browser's world in that frame, which follows the focus
+   * inside it), and inside a frame of another site, in that frame's own
+   * world, closed roots there included, as the web pod's keysGoToSecret
+   * reads it. A key into an ordinary field there still goes in. Whatever
+   * can't be read counts as a secret field: a payment provider's frame (no
+   * world opens there), a frame of yet another site the focus sits in
+   * inside it, a frame with no owner the debugger can name, a focus more
+   * than CLOSED_ROOTS_DEEP closed roots deep, and a read that fails or
+   * takes longer than FRAME_READ_MS.
    */
-  async focusedFrameSecret(): Promise<boolean> {
-    const read = async () => {
-      const frameId = await this.session.frameOf(await this.session.mainFrame(), { kind: 'focusedFrame' });
-      if (!frameId) return true;
-      await this.session.attachFrames();
-      const focus = await this.session.read<FocusedSecret>(frameId, { kind: 'focusedSecret' });
-      return focus.secret || focus.otherSite;
-    };
+  async focusedSecret(): Promise<boolean> {
+    const read = async () => this.secretFocusIn(await this.session.mainFrame(), true);
     return withTimeout(read(), FRAME_READ_MS).catch(() => true);
+  }
+
+  /* `focusedSecret` in frame `frameId`, from its document: `top` for the
+     page's main frame, whose focus may go on into a frame of another site. */
+  private async secretFocusIn(frameId: string, top: boolean): Promise<boolean> {
+    let from: string | null = null;
+    try {
+      for (let roots = 0; roots <= CLOSED_ROOTS_DEEP; roots += 1) {
+        const focus: FocusedSecret = await this.session.read<FocusedSecret>(frameId, { kind: 'focusedSecret' }, from);
+        if (focus.secret) return true;
+        if (focus.otherSite) {
+          if (!top) return true;
+          const inner = await this.session.frameOf(frameId, { kind: 'focusedFrame' }, from);
+          if (!inner) return true;
+          await this.session.attachFrames();
+          return await this.secretFocusIn(inner, false);
+        }
+        if (!focus.sealed) return false;
+        const root: string | null = await this.session.closedRootOf(frameId, { kind: 'focusedElement' }, from);
+        if (from !== null) await this.session.release(frameId, from);
+        from = root;
+        if (from === null) return false;
+      }
+      return true;
+    } finally {
+      if (from !== null) await this.session.release(frameId, from);
+    }
   }
 
   /**

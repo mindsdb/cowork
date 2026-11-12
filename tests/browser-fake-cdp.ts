@@ -18,8 +18,12 @@ export interface FakeFrame {
   /** The frame's security origin, for a frame in the page's process. */
   origin?: string;
   remote?: boolean;
-  /** Where the focus is, as the frame's own world reads it. */
+  /** Where the focus is, as the frame's own world reads it from its document. */
   focus?: FocusedSecret;
+  /** Where the focus is inside each closed shadow root it passes, in turn:
+      the first is inside the root of the element `focus` stops on (`sealed`),
+      the next inside the root of the element that one stops on. */
+  closedRoots?: FocusedSecret[];
   /** What the frame's own world finds for a screenshot, in its own viewport's pixels. */
   secrets?: Partial<FoundSecrets>;
   /** The frame's owner element in the page: its content and border boxes in
@@ -39,9 +43,12 @@ export interface FakeNode {
 
 export interface FakeCdpPage {
   frames: FakeFrame[];
+  /** The page's own main frame, beyond its address. */
+  main?: Partial<FakeFrame>;
   /** The node at viewport point (x, y). The default is a button of the main frame. */
   nodeAt?: (x: number, y: number) => FakeNode | null;
-  /** The frame the owner holding the focus holds, when the page's focus rests on one. */
+  /** The frame the owner holding the focus holds, when the page's focus rests on one: in the
+      main frame's document, unless `main.focus` says otherwise, or inside a closed root there. */
   focusedOwnerOf?: string | null;
   scroll?: { x: number; y: number };
 }
@@ -64,12 +71,14 @@ export const MAIN_FRAME = 'main';
 
 const quad = (box: Box) => [box.x, box.y, box.x + box.width, box.y, box.x + box.width, box.y + box.height, box.x, box.y + box.height];
 
+const FOCUS_NONE: FocusedSecret = { secret: false, otherSite: false, sealed: false };
+
 const SECRETS_NONE: FoundSecrets = { secrets: [], paymentFrames: [], otherSiteFrames: [], owners: 0, viewport: { width: 400, height: 100 } };
 
 /** A plain page at https://a.test/ with a button everywhere and no frames, unless `page` says otherwise. */
 export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugger {
   const model: FakeCdpPage = {
-    frames: [{ id: MAIN_FRAME, url: 'https://a.test/', parentId: null, origin: 'https://a.test' }, ...(page.frames ?? [])],
+    frames: [{ id: MAIN_FRAME, url: 'https://a.test/', parentId: null, origin: 'https://a.test', ...page.main }, ...(page.frames ?? [])],
     nodeAt: page.nodeAt,
     focusedOwnerOf: page.focusedOwnerOf ?? null,
     scroll: page.scroll ?? { x: 0, y: 0 },
@@ -78,6 +87,8 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
   let nextWorld = 1;
   const worlds = new Map<string, string>();
   const nodes = new Map<number, FakeNode>();
+  /* The closed shadow roots resolveNode hands out, by backend node id. */
+  const closedRoots = new Map<number, { frame: FakeFrame; level: number }>();
   const listeners: Listener[] = [];
   const sessionOf = (frame: FakeFrame) => `session-${frame.id}`;
   const frameOfSession = (sessionId: string | undefined) => model.frames.find((f) => f.remote && sessionOf(f) === sessionId);
@@ -111,9 +122,25 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
       }
       case 'DOM.describeNode': {
         if (params.objectId === 'focused-owner') return { node: { localName: 'iframe', nodeName: 'IFRAME', frameId: model.focusedOwnerOf } };
+        // The element the focus stops on in a frame, at a closed-root level: its closed root, when it keeps one.
+        const host = /^focus:(.+):(\d+)$/.exec(String(params.objectId ?? ''));
+        if (host) {
+          const [, frameId, level] = host;
+          const owner = frame(frameId)!;
+          if (!owner.closedRoots?.[Number(level)]) return { node: { localName: 'x-host', nodeName: 'X-HOST' } };
+          const backendNodeId = 5000 + closedRoots.size;
+          closedRoots.set(backendNodeId, { frame: owner, level: Number(level) });
+          return { node: { localName: 'x-host', nodeName: 'X-HOST', shadowRoots: [{ nodeName: '#document-fragment', shadowRootType: 'closed', backendNodeId }] } };
+        }
         const node = nodes.get(Number(params.backendNodeId));
         if (!node) throw new Error('No node with given id found');
         return { node: { localName: node.localName, nodeName: node.localName.toUpperCase(), ...(node.ownsFrame ? { frameId: node.ownsFrame } : {}) } };
+      }
+      case 'DOM.resolveNode': {
+        const root = closedRoots.get(Number(params.backendNodeId));
+        if (!root) throw new Error('No node with given id found');
+        if (worlds.get(`${sessionId ?? ''}/${String(params.executionContextId)}`) !== root.frame.id) throw new Error('Cannot find context with specified id');
+        return { object: { type: 'object', subtype: 'node', objectId: `root:${root.frame.id}:${root.level}` } };
       }
       case 'DOM.getFrameOwner': {
         const owned = frame(params.frameId);
@@ -132,17 +159,30 @@ export function fakeCdpDebugger(page: Partial<FakeCdpPage> = {}): FakeCdpDebugge
         worlds.set(`${sessionId ?? ''}/${id}`, target.id);
         return { executionContextId: id };
       }
-      case 'Runtime.evaluate': {
-        const target = frame(worlds.get(`${sessionId ?? ''}/${String(params.contextId)}`));
+      case 'Runtime.evaluate':
+      case 'Runtime.callFunctionOn': {
+        const context = method === 'Runtime.evaluate' ? params.contextId : params.executionContextId;
+        const target = frame(worlds.get(`${sessionId ?? ''}/${String(context)}`));
         if (!target) throw new Error('Cannot find context with specified id');
-        const expression = String(params.expression);
+        const expression = String(method === 'Runtime.evaluate' ? params.expression : params.functionDeclaration);
         if (target.hangs) return new Promise(() => {});
-        if (expression.includes('"kind":"focusedFrame"')) {
-          return model.focusedOwnerOf
-            ? { result: { type: 'object', subtype: 'node', objectId: 'focused-owner' } }
-            : { result: { type: 'object', subtype: 'null', value: null } };
+        /* Read from the document, or from inside the closed root at `level` the debugger handed the world. */
+        let level = -1;
+        if (method === 'Runtime.callFunctionOn') {
+          const [argument] = params.arguments as Array<{ objectId?: string }>;
+          const root = /^root:(.+):(\d+)$/.exec(argument?.objectId ?? '');
+          if (!root || root[1] !== target.id) throw new Error('Argument should belong to the same JavaScript world as target object');
+          level = Number(root[2]);
         }
-        if (expression.includes('"kind":"focusedSecret"')) return { result: { type: 'object', value: target.focus ?? { secret: false, otherSite: false } } };
+        /* The main frame's document holds the focus on a frame owner when the page says one has it. */
+        const onOwner = target.id === MAIN_FRAME && model.focusedOwnerOf ? { ...FOCUS_NONE, otherSite: true } : undefined;
+        const focus = (level < 0 ? target.focus ?? onOwner : target.closedRoots?.[level]) ?? FOCUS_NONE;
+        const node = (objectId: string | null) => (objectId
+          ? { result: { type: 'object', subtype: 'node', objectId } }
+          : { result: { type: 'object', subtype: 'null', value: null } });
+        if (expression.includes('"kind":"focusedFrame"')) return node(focus.otherSite && model.focusedOwnerOf ? 'focused-owner' : null);
+        if (expression.includes('"kind":"focusedElement"')) return node(focus.sealed ? `focus:${target.id}:${level + 1}` : null);
+        if (expression.includes('"kind":"focusedSecret"')) return { result: { type: 'object', value: focus } };
         if (expression.includes('"kind":"secretBoxes"')) return { result: { type: 'object', value: { ...SECRETS_NONE, ...target.secrets } } };
         return { exceptionDetails: { text: 'Uncaught' }, result: { type: 'object', subtype: 'error' } };
       }

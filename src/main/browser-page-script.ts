@@ -181,11 +181,14 @@ export type RawFrame =
   | { url: string; read: false; box: Box; offscreen: boolean }
   | { url: string; read: true; box: Box; offscreen: boolean; elements: PageFrameElement[]; text: string; truncated: boolean };
 
-/** Where the focus is for a key: on a secret field, or in a frame from
-    another site, whose fields this world can't read. */
+/** Where the focus is for a key: on a secret field, in a frame from
+    another site, whose fields this world can't read, or on an element that
+    may keep a closed shadow root (`sealed`), which no world sees into, so
+    the focus may sit on a field inside it. */
 export interface FocusedSecret {
   secret: boolean;
   otherSite: boolean;
+  sealed: boolean;
 }
 
 /** What a screenshot must not show, in viewport CSS pixels: secret fields
@@ -210,6 +213,9 @@ export type PageWorldRequest =
      (a frame of another site), or null. It answers an element, which only a
      read through the debugger takes (browser-frames.ts). */
   | { kind: 'focusedFrame' }
+  /* The element the focus rests on, followed as far as this world sees, or
+     null. It answers an element, for the debugger to look inside. */
+  | { kind: 'focusedElement' }
   /* Where the focus is while a type step types into element `id`. */
   | { kind: 'typingFocus'; id: number }
   | { kind: 'viewport' }
@@ -293,9 +299,11 @@ export interface TypingFocus {
 
 /**
  * One read or one small DOM step, run in the isolated world. `world` is the
- * isolated world's own state object; `request` says what to do.
+ * isolated world's own state object; `request` says what to do. `from`, for
+ * the focus reads only, is the closed shadow root the debugger handed this
+ * world (browser-frames.ts), where they start instead of at the document.
  */
-export function pageWorld(doc: Document, world: PageWorldState, request: PageWorldRequest): unknown {
+export function pageWorld(doc: Document, world: PageWorldState, request: PageWorldRequest, from?: DocumentOrShadowRoot): unknown {
   const win = doc.defaultView as Window;
   const INTERACTIVE_ROLES = new Set([
     'button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox',
@@ -903,10 +911,12 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     return found;
   };
 
-  /* The focused element, followed into open shadow roots and same-origin
-     frames. A frame from another site keeps the focus on its owner. */
+  /* The focused element, from the document or the root the request starts
+     at (`from`), followed into open shadow roots and same-origin frames. A
+     frame from another site keeps the focus on its owner, and a closed
+     shadow root on its host. */
   const deepActive = (): Element | null => {
-    let active = doc.activeElement;
+    let active = (from ?? doc).activeElement;
     for (;;) {
       const inFrame = active && FRAME_TAGS.has(tagOf(active)) ? frameDocOf(active) : null;
       const inner = active?.shadowRoot?.activeElement ?? inFrame?.activeElement ?? null;
@@ -994,6 +1004,15 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   const focusedFrameOwner = (): Element | null => {
     const active = deepActive();
     return active && FRAME_TAGS.has(tagOf(active)) && !frameDocOf(active) ? active : null;
+  };
+
+  /* Whether the focus rests on an element that may keep a closed shadow
+     root, where the focus may sit on a field this world can't see: one that
+     shows no open shadow root and that a page may attach one to (a custom
+     element, or one of SHADOW_HOSTS, the body included). */
+  const focusSealed = (): boolean => {
+    const active = deepActive();
+    return !!active && !active.shadowRoot && (tagOf(active).includes('-') || SHADOW_HOSTS.has(tagOf(active)));
   };
 
   /* Selects a field's text so typing replaces it; false when it held none. */
@@ -1121,9 +1140,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     case 'viewport':
       return viewport;
     case 'focusedSecret':
-      return { secret: focusOnSecret(), otherSite: !!focusedFrameOwner() } satisfies FocusedSecret;
+      return { secret: focusOnSecret(), otherSite: !!focusedFrameOwner(), sealed: focusSealed() } satisfies FocusedSecret;
     case 'focusedFrame':
       return focusedFrameOwner();
+    case 'focusedElement':
+      return deepActive();
     case 'typingFocus': {
       const el = world.ids.get(request.id);
       return { secret: focusOnSecret(), inField: !!el && el.isConnected && focusIn(el) };
@@ -1316,10 +1337,18 @@ export function screenshotMasks(found: FoundSecrets, frameUrls: string[], search
    belongs to the isolated world, not to the page, so the page never sees it. */
 const WORLD_STATE_KEY = '__coworkBrowserWorld';
 
+const WORLD_STATE = `globalThis[${JSON.stringify(WORLD_STATE_KEY)}] ??= { ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(), change: null }`;
+
 /** The source text that runs `request` in the isolated world. */
 export function pageWorldSource(request: PageWorldRequest): string {
-  const state = `globalThis[${JSON.stringify(WORLD_STATE_KEY)}] ??= { ids: new Map(), byElement: new WeakMap(), next: 1, secret: new WeakSet(), observer: null, watched: new WeakSet(), change: null }`;
-  return `(${pageWorld.toString()})(document, ${state}, ${JSON.stringify(request)})`;
+  return `(${pageWorld.toString()})(document, ${WORLD_STATE}, ${JSON.stringify(request)})`;
+}
+
+/** The source text of a function that runs `request` in the isolated world
+    from the node the debugger passes it (Runtime.callFunctionOn): a closed
+    shadow root to read the focus inside (pageWorld's `from`). */
+export function pageWorldFunction(request: PageWorldRequest): string {
+  return `function (from) { return (${pageWorld.toString()})(document, ${WORLD_STATE}, ${JSON.stringify(request)}, from); }`;
 }
 
 // ---- Challenges ------------------------------------------------------------

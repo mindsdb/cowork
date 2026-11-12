@@ -12,7 +12,7 @@ import {
   type StepHost,
   withAgentInput,
 } from './browser-input';
-import type { HitTestResult, LocateResult, TypingFocus } from './browser-page-script';
+import type { FocusedSecret, HitTestResult, LocateResult, TypingFocus } from './browser-page-script';
 
 const pacing: Pacing = { sleep: async () => {}, random: () => 0.5 };
 
@@ -36,7 +36,7 @@ function host(over: Partial<PageReader> = {}, stepPacing: Pacing = pacing, cdp: 
   const dbg = fakeCdpDebugger(cdp);
   const page: PageReader = {
     locate: vi.fn(async () => located()),
-    focusedSecret: vi.fn(async () => ({ secret: false, otherSite: false })),
+    focusedSecret: vi.fn(async () => ({ secret: false, otherSite: false, sealed: false })),
     typingFocus: vi.fn(async (): Promise<TypingFocus> => ({ secret: false, inField: true })),
     focusField: vi.fn(async () => ({ ok: true as const, selected: true })),
     focus: vi.fn(async () => ({ ok: true as const })),
@@ -277,30 +277,31 @@ describe('runStep', () => {
   });
 
   it.each(['Enter', 'Tab', 'Shift+Tab', 'Escape', 'ArrowDown'])('presses %s while a secret field has focus, since it edits no text', async (key) => {
-    const { dbg, stepHost } = host({ focusedSecret: vi.fn(async () => ({ secret: true, otherSite: false })) });
+    const { dbg, stepHost } = host({ focusedSecret: vi.fn(async () => ({ secret: true, otherSite: false, sealed: false })) });
     await runStep(stepHost, step({ action: 'press', key }));
     expect(events(dbg.sent, 'Input.dispatchKeyEvent').length).toBeGreaterThan(0);
   });
 
   it.each(['a', 'Backspace', 'Delete', ' ', 'Control+x', 'Meta+a'])('refuses %s while a secret field has focus, since it edits text', async (key) => {
-    const { dbg, stepHost } = host({ focusedSecret: vi.fn(async () => ({ secret: true, otherSite: false })) });
+    const { dbg, stepHost } = host({ focusedSecret: vi.fn(async () => ({ secret: true, otherSite: false, sealed: false })) });
     await expect(runStep(stepHost, step({ action: 'press', key }))).rejects.toMatchObject({ code: 'password_field', status: 403 });
     expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
   });
 
   /* The page's world sees the focus rest on a frame of another site, which
      it can't read: the debugger reads the focus inside that frame. */
-  const focusInFrame = { focusedSecret: vi.fn(async () => ({ secret: false, otherSite: true })) };
+  const focusInFrame = { focusedSecret: vi.fn(async () => ({ secret: false, otherSite: true, sealed: false })) };
   const widget = (frame: Partial<FakeFrame> = {}): Partial<FakeCdpPage> => ({
+    main: { focus: { secret: false, otherSite: true, sealed: false } },
     frames: [{ id: 'widget', url: 'https://login.other.test/embed', parentId: MAIN_FRAME, remote: true, ...frame }],
     focusedOwnerOf: 'widget',
   });
 
   it("reads the focus inside another site's frame in that frame's own world, and refuses an editing key only when it rests on a secret field there", async () => {
-    const secret = host(focusInFrame, pacing, widget({ focus: { secret: true, otherSite: false } }));
+    const secret = host(focusInFrame, pacing, widget({ focus: { secret: true, otherSite: false, sealed: false } }));
     await expect(runStep(secret.stepHost, step({ action: 'press', key: 'a' }))).rejects.toMatchObject({ code: 'password_field', status: 403 });
     expect(events(secret.dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
-    const plain = host(focusInFrame, pacing, widget({ focus: { secret: false, otherSite: false } }));
+    const plain = host(focusInFrame, pacing, widget({ focus: { secret: false, otherSite: false, sealed: false } }));
     await runStep(plain.stepHost, step({ action: 'press', key: 'a' }));
     expect(typedText(plain.dbg.sent)).toBe('a');
     // Read on the frame's own session, in a world made for the read; the page's own main frame names the frame first.
@@ -312,7 +313,7 @@ describe('runStep', () => {
 
   it.each([
     ["a payment provider's frame, which is never read", widget({ url: 'https://js.stripe.com/v3/elements-inner-card' })],
-    ['a frame of yet another site inside it', widget({ focus: { secret: false, otherSite: true } })],
+    ['a frame of yet another site inside it', widget({ focus: { secret: false, otherSite: true, sealed: false } })],
     ['a frame the debugger finds no owner of', { ...widget(), focusedOwnerOf: null }],
   ])("refuses an editing key whose focus rests in %s, and still presses Enter there", async (_where, page) => {
     const refused = host(focusInFrame, pacing, page);
@@ -329,6 +330,84 @@ describe('runStep', () => {
     vi.useFakeTimers();
     try {
       const { dbg, stepHost } = host(focusInFrame, pacing, widget({ hangs: true }));
+      const pressed = runStep(stepHost, step({ action: 'press', key: 'a' }));
+      const outcome = expect(pressed).rejects.toMatchObject({ code: 'password_field' });
+      await vi.advanceTimersByTimeAsync(FRAME_READ_MS);
+      await outcome;
+      expect(events(dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /* The page's world sees the focus stop on an element that may keep a
+     closed shadow root, as it stops at a closed root's host: the debugger
+     follows the focus inside. `closedRoots` is where it is in each one. */
+  const focusSealed = { focusedSecret: vi.fn(async () => ({ secret: false, otherSite: false, sealed: true })) };
+  const inRoot = (focus: Partial<FocusedSecret>): FocusedSecret => ({ secret: false, otherSite: false, sealed: false, ...focus });
+  const sealedMain = (...closedRoots: Array<Partial<FocusedSecret>>): Partial<FakeCdpPage> => ({
+    main: { focus: inRoot({ sealed: true }), closedRoots: closedRoots.map(inRoot) },
+  });
+
+  it('follows the focus into a closed shadow root through the debugger, refuses an editing key into a secret field there, and types into an ordinary one', async () => {
+    const secret = host(focusSealed, pacing, sealedMain({ secret: true }));
+    await expect(runStep(secret.stepHost, step({ action: 'press', key: 'a' }))).rejects.toMatchObject({ code: 'password_field', status: 403 });
+    expect(events(secret.dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    const plain = host(focusSealed, pacing, sealedMain({}));
+    await runStep(plain.stepHost, step({ action: 'press', key: 'a' }));
+    expect(typedText(plain.dbg.sent)).toBe('a');
+    // The root goes to this browser's own world in the page, and the read inside it runs in that world, never on an object.
+    const [{ params: world }] = sentOf(plain.dbg, 'Page.createIsolatedWorld');
+    expect(world).toMatchObject({ frameId: MAIN_FRAME });
+    const resolved = sentOf(plain.dbg, 'DOM.resolveNode');
+    expect(resolved).toEqual([{ params: { backendNodeId: expect.any(Number), executionContextId: expect.any(Number) }, sessionId: undefined }]);
+    const calls = sentOf(plain.dbg, 'Runtime.callFunctionOn');
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every(({ params }) => params.executionContextId === resolved[0].params.executionContextId && !('objectId' in params))).toBe(true);
+    // Each node handed to the world goes back.
+    expect(sentOf(plain.dbg, 'Runtime.releaseObject').map(({ params }) => params.objectId)).toEqual(expect.arrayContaining(['focus:main:0', 'root:main:0']));
+  });
+
+  const widgetInRoot = (frame: Partial<FakeFrame>): Partial<FakeCdpPage> => ({
+    ...sealedMain({ otherSite: true }),
+    frames: [{ id: 'widget', url: 'https://login.other.test/embed', parentId: MAIN_FRAME, remote: true, ...frame }],
+    focusedOwnerOf: 'widget',
+  });
+
+  it.each([
+    ['a secret field two closed roots deep', focusSealed, sealedMain({ sealed: true }, { secret: true })],
+    ["the password field of another site's frame kept in a closed root", focusSealed, widgetInRoot({ focus: inRoot({ secret: true }) })],
+    ["a secret field in a closed root inside another site's frame", focusInFrame, widget({ focus: inRoot({ sealed: true }), closedRoots: [inRoot({ secret: true })] })],
+  ])('refuses an editing key into %s, and still presses Enter there', async (_where, page, cdp) => {
+    const refused = host(page, pacing, cdp);
+    await expect(runStep(refused.stepHost, step({ action: 'press', key: 'a' }))).rejects.toMatchObject({ code: 'password_field' });
+    expect(events(refused.dbg.sent, 'Input.dispatchKeyEvent')).toEqual([]);
+    const enter = host(page, pacing, cdp);
+    await runStep(enter.stepHost, step({ action: 'press', key: 'Enter' }));
+    expect(events(enter.dbg.sent, 'Input.dispatchKeyEvent').some((e) => e.key === 'Enter')).toBe(true);
+  });
+
+  it("types into an ordinary field of another site's frame kept in a closed root, read in that frame's own world", async () => {
+    const { dbg, stepHost } = host(focusSealed, pacing, widgetInRoot({ focus: inRoot({}) }));
+    await runStep(stepHost, step({ action: 'press', key: 'a' }));
+    expect(typedText(dbg.sent)).toBe('a');
+    expect(sentOf(dbg, 'Runtime.evaluate').at(-1)).toMatchObject({ sessionId: 'session-widget', params: { expression: expect.stringContaining('"kind":"focusedSecret"') } });
+  });
+
+  it('types where the focus rests on an element that keeps no closed root, and reads nothing through the debugger for a focus the world sees all of', async () => {
+    const sealed = host(focusSealed, pacing, sealedMain());
+    await runStep(sealed.stepHost, step({ action: 'press', key: 'a' }));
+    expect(typedText(sealed.dbg.sent)).toBe('a');
+    expect(sentOf(sealed.dbg, 'DOM.resolveNode')).toEqual([]);
+    const plain = host();
+    await runStep(plain.stepHost, step({ action: 'press', key: 'a' }));
+    expect(sentOf(plain.dbg, 'Page.createIsolatedWorld')).toEqual([]);
+  });
+
+  it("refuses an editing key into a closed root whose page doesn't answer in time", async () => {
+    vi.useFakeTimers();
+    try {
+      const { dbg, stepHost } = host(focusSealed, pacing, { main: { hangs: true } });
       const pressed = runStep(stepHost, step({ action: 'press', key: 'a' }));
       const outcome = expect(pressed).rejects.toMatchObject({ code: 'password_field' });
       await vi.advanceTimersByTimeAsync(FRAME_READ_MS);

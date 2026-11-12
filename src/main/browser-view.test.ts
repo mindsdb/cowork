@@ -24,7 +24,7 @@ const electron = await vi.hoisted(async () => {
        what it counted, and when content last changed. */
     change = { token: null as number | null, changes: 0, lastChangeAt: 0, busy: false, opaque: false };
     mainFrame = { origin: 'https://a.test', framesInSubtree: [] as unknown[], frames: [] as unknown[] };
-    focus = { secret: false, otherSite: false };
+    focus = { secret: false, otherSite: false, sealed: false };
     /* What the page's secret-field read finds for a screenshot. */
     secrets = { secrets: [] as unknown[], paymentFrames: [] as unknown[], otherSiteFrames: [] as unknown[], owners: 0, viewport: { width: 800, height: 600 } };
     capturePage = vi.fn(async () => {
@@ -342,15 +342,15 @@ describe('ElectronTab', () => {
   it("refuses a key that edits text into a secret field of another site's frame, read through the debugger, and types into an ordinary one there", async () => {
     const { tab, contents } = setup();
     // The page's world sees the focus rest on a frame it can't read.
-    contents.focus = { secret: false, otherSite: true };
-    const frame = { id: 'widget', url: 'https://login.other.test/embed', parentId: 'main', remote: true, focus: { secret: true, otherSite: false } };
+    contents.focus = { secret: false, otherSite: true, sealed: false };
+    const frame = { id: 'widget', url: 'https://login.other.test/embed', parentId: 'main', remote: true, focus: { secret: true, otherSite: false, sealed: false } };
     contents.debugger.page.frames.push(frame);
     contents.debugger.page.focusedOwnerOf = 'widget';
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       await expect(tab.act(stepOf({ action: 'press', key: 'a' }))).rejects.toMatchObject({ code: 'password_field', status: 403 });
       await expect(tab.act(stepOf({ action: 'press', key: 'Enter' }))).resolves.toBeDefined();
-      frame.focus = { secret: false, otherSite: false };
+      frame.focus = { secret: false, otherSite: false, sealed: false };
       await expect(tab.act(stepOf({ action: 'press', key: 'a' }))).resolves.toBeDefined();
     } finally {
       vi.useRealTimers();

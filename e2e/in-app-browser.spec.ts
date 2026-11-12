@@ -173,6 +173,23 @@ async function startFixtureServer(): Promise<void> {
           + '<input id="u" style="top:0"><input id="p" type="password" value="hunter2" style="top:100px">'
           + '<script>addEventListener("keydown", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "frame-key", key: e.key, target: e.target.id, isTrusted: e.isTrusted }) }))</script>');
     }
+    if (url.pathname === '/closed-fields') {
+      /* A form the page keeps in a closed shadow root, with an ordinary
+         field and a password field the person has filled. */
+      const form = '<style>input{position:absolute;left:0;width:300px;height:40px;border:0;font:20px sans-serif}</style>'
+        + '<input id="u" style="top:0"><input id="p" type="password" value="hunter2" style="top:100px">';
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Closed fields</title><style>body{margin:0}</style><x-login id="host" style="display:block;position:absolute;left:0;top:0;width:400px;height:200px"></x-login>'
+          + `<script>const root = document.getElementById("host").attachShadow({ mode: "closed" }); root.innerHTML = ${JSON.stringify(form)};`
+          + 'root.addEventListener("keydown", (e) => fetch("/log", { method: "POST", body: JSON.stringify({ type: "closed-key", key: e.key, target: e.target.id, isTrusted: e.isTrusted }) }));</script>');
+    }
+    if (url.pathname === '/closed-frame-fields') {
+      /* Another site's embedded form in a closed shadow root. */
+      const fields = `${origin.replace('127.0.0.1', 'localhost')}/fields`;
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<title>Closed frame fields</title><style>body{margin:0}</style><div id="host" style="position:absolute;left:0;top:0;width:400px;height:200px"></div>'
+          + `<script>document.getElementById("host").attachShadow({ mode: "closed" }).innerHTML = '<iframe src="${fields}" style="position:absolute;left:0;top:0;width:400px;height:200px;border:0"></iframe>'</script>`);
+    }
     if (url.pathname === '/clear-frame') {
       /* Another site's frame drawn fully transparent over a button. */
       const buy = `${origin.replace('127.0.0.1', 'localhost')}/buy`;
@@ -511,6 +528,37 @@ test("types into an ordinary field of another site's embedded form, and refuses 
   // A key that edits nothing still goes in.
   expect((await act({ action: 'press', key: 'ArrowLeft' })).status).toBe(200);
   await expect.poll(() => log.filter((e) => e.type === 'frame-key').map((e) => e.key)).toEqual(['ArrowLeft']);
+});
+
+test('refuses an editing key into a password field the page keeps in a closed shadow root, and types into an ordinary field there', async () => {
+  await openAt('/closed-fields');
+  expect((await act({ action: 'click', x: 20, y: 20, coords: 'page' })).status).toBe(200);
+  const typed = await act({ action: 'press', key: 'a' });
+  expect(typed.status, typed.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'closed-key')).toEqual([{ type: 'closed-key', key: 'a', target: 'u', isTrusted: true }]);
+  log = [];
+  expect((await act({ action: 'click', x: 20, y: 120, coords: 'page' })).status).toBe(200);
+  const refused = await act({ action: 'press', key: 'a' });
+  expect(refused.status, refused.body.toString()).toBe(403);
+  expect(refused.json().error).toBe('password_field');
+  expect((await act({ action: 'press', key: 'ArrowLeft' })).status).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'closed-key').map((e) => e.key)).toEqual(['ArrowLeft']);
+});
+
+test("refuses an editing key into the password field of another site's form the page keeps in a closed shadow root, and types into its ordinary field", async () => {
+  await openAt('/closed-frame-fields');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  expect((await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: true })).status).toBe(200);
+  const typed = await act({ action: 'press', key: 'a' });
+  expect(typed.status, typed.body.toString()).toBe(200);
+  await expect.poll(() => log.filter((e) => e.type === 'frame-key')).toEqual([{ type: 'frame-key', key: 'a', target: 'u', isTrusted: true }]);
+  log = [];
+  expect((await act({ action: 'click', x: 20, y: 120, coords: 'page', into_frame: true })).status).toBe(200);
+  const refused = await act({ action: 'press', key: 'a' });
+  expect(refused.status, refused.body.toString()).toBe(403);
+  expect(refused.json().error).toBe('password_field');
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(log.filter((e) => e.type === 'frame-key')).toEqual([]);
 });
 
 test("blacks out the password field of another site's embedded form in a screenshot, and shows the rest of the form", async () => {
