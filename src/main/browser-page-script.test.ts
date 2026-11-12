@@ -852,10 +852,21 @@ describe('frames', () => {
       ['faint around', 'opacity: 0.4', 'opacity: 0.2', false],
       ['faded', 'filter: opacity(5%)', '', false],
       ['masked', 'mask-image: linear-gradient(transparent, transparent)', '', false],
+      ['mask box', '-webkit-mask-box-image-source: linear-gradient(transparent, transparent)', '', false],
+      ['mask border', 'mask-border-source: linear-gradient(transparent, transparent)', '', false],
       ['darkened', 'filter: brightness(0)', '', false],
       ['blurred', 'filter: blur(40px)', '', false],
       ['inverted around', '', 'filter: invert(1) brightness(0)', false],
       ['blended', 'mix-blend-mode: multiply', '', false],
+      // Filters weighed all together, as the web pod weighs them: a dark mode, a slight dimming or a slight blur leaves a frame readable.
+      ['dark mode', 'filter: invert(1) hue-rotate(180deg)', '', true],
+      ['dark mode around', '', 'filter: invert(90%) hue-rotate(180deg) contrast(0.9)', true],
+      ['dimmed', 'filter: brightness(0.9)', '', true],
+      ['softened', 'filter: blur(1px)', '', true],
+      ['flattened', 'filter: contrast(0.3)', '', false],
+      ['blurred twice', 'filter: blur(1.5px)', 'filter: blur(1.5px)', false],
+      ['dimmed to black around', 'filter: brightness(0.6)', 'filter: brightness(0.5) contrast(0.8)', false],
+      ['filtered by an image', 'filter: url(#hide)', '', false],
     ];
     const byBoxes = document.elementFromPoint;
     for (const [name, style, around, read] of cases) {
@@ -875,6 +886,88 @@ describe('frames', () => {
       } finally {
         restoreCover();
       }
+    }
+  });
+
+  it('leaves unread a same-origin frame drawn at under half its size, or with less than 32 px of it in view either way', async () => {
+    // Each case alone on its page: the frame's layout size, its box as drawn, and whether a read reads it.
+    const cases: Array<[string, { width: number; height: number }, { x: number; y: number; width: number; height: number }, boolean]> = [
+      ['drawn at its size', { width: 400, height: 200 }, { x: 0, y: 100, width: 400, height: 200 }, true],
+      ['drawn at 80%', { width: 400, height: 200 }, { x: 0, y: 100, width: 320, height: 160 }, true],
+      ['drawn at 40%', { width: 400, height: 200 }, { x: 0, y: 100, width: 160, height: 80 }, false],
+      ['squeezed to 40% high', { width: 400, height: 200 }, { x: 0, y: 100, width: 400, height: 80 }, false],
+      ['20 px of it in view', { width: 400, height: 200 }, { x: 0, y: window.innerHeight - 20, width: 400, height: 200 }, false],
+      ['20 px of it in view at the left', { width: 400, height: 200 }, { x: -380, y: 100, width: 400, height: 200 }, false],
+    ];
+    for (const [name, layoutSize, drawn, read] of cases) {
+      document.body.innerHTML = '<iframe id="f" srcdoc="<p>Inside the frame</p>"></iframe>';
+      await framesLoad();
+      const frame = document.getElementById('f')!;
+      place(frame, drawn.x, drawn.y, drawn.width, drawn.height);
+      Object.defineProperty(frame, 'offsetWidth', { configurable: true, value: layoutSize.width });
+      Object.defineProperty(frame, 'offsetHeight', { configurable: true, value: layoutSize.height });
+      const [listed] = snapshot(freshWorld()).frames;
+      expect.soft(listed, name).toMatchObject({ url: 'about:srcdoc', read, box: drawn });
+    }
+  });
+
+  it('reads a same-origin frame only when a hit test finds it at most of its sample points, so a cover with holes leaves it unread and a banner across part of it does not', async () => {
+    document.body.innerHTML = '<iframe id="f" srcdoc="<p>Inside the frame</p>"></iframe><div id="cover"></div>';
+    await framesLoad();
+    const frame = document.getElementById('f')!;
+    const cover = document.getElementById('cover')!;
+    place(frame, 0, 100, 300, 200);
+    const readWith = (hit: (x: number, y: number) => Element | null): RawFrame => {
+      const restore = hitTestBy(hit);
+      try {
+        return snapshot(freshWorld()).frames[0];
+      } finally {
+        restore();
+      }
+    };
+    // A cover with a hole at the middle and a quarter in from each corner of the frame.
+    const fivePoints = [[150, 200], [75, 150], [225, 150], [75, 250], [225, 250]];
+    const near = (x: number, y: number, points: number[][]) => points.some(([px, py]) => Math.abs(px - x) <= 2 && Math.abs(py - y) <= 2);
+    expect(readWith((x, y) => (near(x, y, fivePoints) ? frame : cover)).read).toBe(false);
+    // A cover with a hole at the middle of each cell of a 5 by 5 grid over the frame.
+    const grid = [0.1, 0.3, 0.5, 0.7, 0.9].flatMap((fy) => [0.1, 0.3, 0.5, 0.7, 0.9].map((fx) => [Math.floor(300 * fx), Math.floor(100 + 200 * fy)]));
+    expect(readWith((x, y) => (near(x, y, grid) ? frame : cover)).read).toBe(false);
+    // A banner across the frame's top fifth, and one down its right side.
+    expect(readWith((x, y) => (y < 140 ? cover : frame)).read).toBe(true);
+    expect(readWith((x, _y) => (x >= 240 ? cover : frame)).read).toBe(true);
+    // Under half of it seen.
+    expect(readWith((x, _y) => (x >= 120 ? cover : frame)).read).toBe(false);
+  });
+
+  it("samples a frame's hit test at points new to each read, inside its part in view", async () => {
+    document.body.innerHTML = '<iframe id="f" srcdoc="<p>Inside the frame</p>"></iframe>';
+    await framesLoad();
+    const frame = document.getElementById('f')!;
+    place(frame, -100, 100, 400, 200);
+    // The page text's own look at the middle of the view, whether the page is scrolled, is no frame's point.
+    const textLook = `${window.innerWidth / 2},${window.innerHeight / 2}`;
+    const pointsOfRead = (): string[] => {
+      const points: string[] = [];
+      const restore = hitTestBy((x, y) => {
+        if (`${x},${y}` !== textLook) points.push(`${x},${y}`);
+        return frame;
+      });
+      try {
+        expect(snapshot(freshWorld()).frames[0].read).toBe(true);
+      } finally {
+        restore();
+      }
+      return points;
+    };
+    const first = pointsOfRead();
+    const second = pointsOfRead();
+    // It stops once most points found the frame.
+    expect(first).toHaveLength(13);
+    expect(second).not.toEqual(first);
+    for (const point of [...first, ...second]) {
+      const [x, y] = point.split(',').map(Number);
+      expect(Number.isInteger(x) && Number.isInteger(y)).toBe(true);
+      expect(x >= 0 && x < 300 && y >= 100 && y < 300, point).toBe(true);
     }
   });
 

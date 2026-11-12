@@ -125,6 +125,62 @@ export interface Screenshot {
   height: number;
 }
 
+/** How a page read looks at a frame it read (ElectronTab.read in
+    browser-view.ts): the frame's box, captured as the page draws it, scaled
+    down to FRAME_LOOK_SCALE of its CSS width, FRAME_LOOK_MAX_PX at most. */
+export const FRAME_LOOK_SCALE = 0.5;
+export const FRAME_LOOK_MAX_PX = 160;
+
+/* A pixel draws something over a frame's box when one of its channels is
+   more than this off the box's main color. */
+const DRAWN_CHANNEL_DIFFERENCE = 32;
+
+/* A box that draws something on at most this share of its pixels reads as
+   one color: a few pinholes in a cover don't show a frame's text. */
+const ONE_COLOR_SHARE = 0.003;
+
+/** A frame's box as a page read looks at it: `capture` scaled down to
+    FRAME_LOOK_SCALE of the box's CSS width (`cssWidth`), FRAME_LOOK_MAX_PX
+    wide at most, as a bitmap; null for a capture with nothing in it or a
+    bitmap that can't be read. */
+export function frameLook(capture: ImageLike, cssWidth: number): Bitmap | null {
+  if (!capture.getSize().width) return null;
+  const look = capture.resize({ width: Math.max(1, Math.min(FRAME_LOOK_MAX_PX, Math.round(cssWidth * FRAME_LOOK_SCALE))), quality: 'good' });
+  const size = look.getSize();
+  const data = look.toBitmap();
+  if (!size.width || !size.height || data.length !== size.width * size.height * 4) return null;
+  return { data, ...size };
+}
+
+/** Whether a look at a frame's box (frameLook) is nearly one color: at most
+    ONE_COLOR_SHARE of its pixels more than DRAWN_CHANNEL_DIFFERENCE off its
+    main color, the mean of its most common colors (each channel cut to 16
+    levels). Text a person can read, dimmed or in a dark mode too, draws far
+    more; a cover of one color, through a few pinholes or over text so faint
+    it barely shows, doesn't. */
+export function nearlyOneColor(bitmap: Bitmap): boolean {
+  const pixels = bitmap.width * bitmap.height;
+  const counts = new Uint32Array(4096);
+  const sums = new Float64Array(4096 * 3);
+  const { data } = bitmap;
+  for (let at = 0; at < pixels * 4; at += 4) {
+    const key = ((data[at] >> 4) << 8) | ((data[at + 1] >> 4) << 4) | (data[at + 2] >> 4);
+    counts[key] += 1;
+    sums[key * 3] += data[at];
+    sums[key * 3 + 1] += data[at + 1];
+    sums[key * 3 + 2] += data[at + 2];
+  }
+  let main = 0;
+  for (let key = 1; key < counts.length; key += 1) if (counts[key] > counts[main]) main = key;
+  const color = [0, 1, 2].map((channel) => sums[main * 3 + channel] / counts[main]);
+  let drawn = 0;
+  for (let at = 0; at < pixels * 4; at += 4) {
+    const off = Math.max(Math.abs(data[at] - color[0]), Math.abs(data[at + 1] - color[1]), Math.abs(data[at + 2] - color[2]));
+    if (off > DRAWN_CHANNEL_DIFFERENCE) drawn += 1;
+  }
+  return drawn <= pixels * ONE_COLOR_SHARE;
+}
+
 export function jpegQuality(raw: string | null): number {
   const quality = raw === null ? 70 : Number(raw);
   return Number.isInteger(quality) && quality >= 1 && quality <= 100 ? quality : 70;

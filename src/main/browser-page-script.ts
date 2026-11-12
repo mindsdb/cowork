@@ -49,14 +49,18 @@
  *
  * A page read lists every child frame a click can land in, a transparent
  * one included, with its content box, and reads the ones it may: a
- * same-origin frame the person sees (in view, not faint, masked, blended or
- * filtered out of sight, and found by a hit test), big enough, within the
- * read cap, on no payment, sign-in or consent address, and holding no
- * secret, card or sign-in field. A read
+ * same-origin frame the person sees (enough of it in view, drawn near its
+ * size, not faint, masked, blended or filtered out of sight, and found by a
+ * hit test at most of its sample points), big enough, within the read cap,
+ * on no payment, sign-in or consent address, and holding no secret, card or
+ * sign-in field; main then keeps it read only where its box, as the page
+ * draws it, shows more than one color (browser-view.ts). A read
  * frame's elements have no id and no field value, and no editor's text
  * reaches its text or a name there. A frame from another site can't be read
- * from here: Electron runs this world only in the view's own process, and a
- * page read attaches no debugger, so that frame is listed unread. A step
+ * from here: this world runs in the view's main frame, and the page's DOM
+ * gives it no way into another site's document; a page read attaches no
+ * debugger, which would open a world in that frame, so that frame is listed
+ * unread. A step
  * or a screenshot, which attach the debugger, read its focus and its secret
  * fields in that frame's own isolated world (browser-frames.ts).
  * `secretBoxes` finds what every screenshot blacks out.
@@ -756,55 +760,136 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
   /* The opacity a filter's opacity() functions draw with ("opacity(5%)"). */
   const filterOpacity = (filter: string): number => Array.from(filter.matchAll(/opacity\(\s*([\d.]+)(%?)\s*\)/g))
     .reduce((drawn, [, value, percent]) => drawn * Math.min(1, Number(value) / (percent ? 100 : 1)), 1);
-  /* The functions a computed filter applies, by name ("blur", "url"), not
-     the colors inside them. */
-  const filterFunctions = (filter: string): string[] => {
-    const names: string[] = [];
+  /* The functions a computed filter applies, in order, each by name ("blur",
+     "url") with its argument's text, not the functions inside it (a drop
+     shadow's color). */
+  const filterFunctions = (filter: string): Array<{ name: string; arg: string }> => {
+    const found: Array<{ name: string; arg: string }> = [];
     let depth = 0;
-    for (const [token, name] of filter.matchAll(/([a-z-]*)\(|\)/g)) {
-      if (token === ')') depth -= 1;
-      else if (depth++ === 0) names.push(name);
+    let start = 0;
+    for (const match of filter.matchAll(/([a-z-]*)\(|\)/g)) {
+      if (match[0] === ')') {
+        depth -= 1;
+        if (depth === 0 && found.length) found[found.length - 1].arg = filter.slice(start, match.index).trim();
+      } else if (depth++ === 0) {
+        found.push({ name: match[1], arg: '' });
+        start = (match.index ?? 0) + match[0].length;
+      }
     }
-    return names;
+    return found;
   };
-  /* Filter functions that leave what an element draws readable: they tint
-     or shade it. opacity() counts toward FAINT_OPACITY. */
-  const READABLE_FILTERS = new Set(['opacity', 'grayscale', 'sepia', 'saturate', 'hue-rotate', 'drop-shadow']);
-  /* Whether `el`, though in view, draws so the person can't read it: it or
-     an ancestor draws too faint (FAINT_OPACITY), through a mask image,
-     blended with what lies behind it, or through a filter that darkens,
-     brightens, blurs, inverts or flattens it (any but READABLE_FILTERS), as
-     the web pod's isFaint and isObscured weigh it. */
+  /* The properties that draw an element through a mask: an image, or a
+     border image (one Chromium doesn't know reads as ''), as the web pod's
+     MASKS. */
+  const MASKS = ['mask-image', '-webkit-mask-image', '-webkit-mask-box-image-source', 'mask-border-source'];
+  /* Filter functions that leave what an element draws readable however
+     strong: they tint or shade it. opacity() counts toward FAINT_OPACITY. */
+  const TINTS = new Set(['opacity', 'grayscale', 'sepia', 'saturate', 'hue-rotate', 'drop-shadow']);
+  /* How brightness(), contrast() and invert() of an amount map a color
+     channel's value, 0 to 1 (Chromium clamps what each draws to that range). */
+  const CHANNEL_FILTERS: Record<string, (amount: number) => (value: number) => number> = {
+    brightness: (amount) => (value) => amount * value,
+    contrast: (amount) => (value) => amount * (value - 0.5) + 0.5,
+    invert: (amount) => (value) => Math.min(amount, 1) + (1 - 2 * Math.min(amount, 1)) * value,
+  };
+  /* A filter's amount: a number or a percentage, 1 when left out. */
+  const amountOf = (arg: string): number => {
+    const match = /^([\d.]+(?:e-?\d+)?)(%?)$/.exec(arg || '1');
+    return match ? Number(match[1]) / (match[2] ? 100 : 1) : NaN;
+  };
+  /* What filters may leave of a channel's range, black to white, for text
+     drawn through them to stay readable, and how much they may blur it (in
+     CSS pixels, every blur on the way together), as the web pod's
+     READABLE_SPREAD and READABLE_BLUR_PX. */
+  const READABLE_SPREAD = 0.5;
+  const READABLE_BLUR_PX = 2;
+  /* Whether `el`, though in view, draws so the person can't read it, as the
+     web pod's isFaint and isObscured weigh it: it or an ancestor draws too
+     faint (FAINT_OPACITY, its own opacity and its filter's opacity()
+     functions, times each ancestor's), through a mask image or a mask border
+     (MASKS), blended with what lies behind it, or through filters that, all
+     together, in the order they draw, darken, brighten, invert or flatten it
+     until less than READABLE_SPREAD of a channel's range is left (sample
+     values run through each brightness(), contrast() and invert(), clamped),
+     or blur it by more than READABLE_BLUR_PX. A tint or a shadow (TINTS)
+     leaves it readable, so a dark mode, a slight dimming or a slight blur
+     does; any other filter (an SVG one, by url()) counts as hiding it. */
   const drawnUnreadable = (el: Element): boolean => {
     let opacity = 1;
+    let channel = [0, 0.25, 0.5, 0.75, 1];
+    let blur = 0;
     for (let at: Element | null = el; at; at = drawnParent(at)) {
       const style = styleOf(at);
       const filter = style.filter || '';
-      if (['mask-image', '-webkit-mask-image'].some((name) => !['', 'none'].includes(style.getPropertyValue(name)))) return true;
+      if (MASKS.some((name) => !['', 'none'].includes(style.getPropertyValue(name)))) return true;
       if (style.mixBlendMode && style.mixBlendMode !== 'normal') return true;
-      if (filterFunctions(filter).some((name) => !READABLE_FILTERS.has(name))) return true;
+      for (const { name, arg } of filterFunctions(filter)) {
+        if (TINTS.has(name)) continue;
+        if (name === 'blur') {
+          const radius = /^([\d.]+)px$/.exec(arg || '0px');
+          if (!radius) return true;
+          blur = Math.hypot(blur, Number(radius[1]));
+          continue;
+        }
+        const amount = amountOf(arg);
+        if (!CHANNEL_FILTERS[name] || !(amount >= 0)) return true;
+        const map = CHANNEL_FILTERS[name](amount);
+        channel = channel.map((value) => Math.min(1, Math.max(0, map(value))));
+      }
       opacity *= Number(style.opacity || '1') * filterOpacity(filter);
     }
-    return opacity <= FAINT_OPACITY;
+    return opacity <= FAINT_OPACITY || blur > READABLE_BLUR_PX || Math.max(...channel) - Math.min(...channel) < READABLE_SPREAD;
   };
-  /* Whether a hit test finds `owner` over its frame's content box `box`: at
-     the middle, or a corner a quarter in, of its part in view, the points
-     the web pod tries. An element laid over the whole frame takes every one. */
+  /* Under this share of its size either way, a frame is drawn too small to
+     read, as the web pod's FRAME_MIN_SCALE. */
+  const FRAME_MIN_SCALE = 0.5;
+  /* The share of its laid-out size `el` is drawn at, the smaller of its
+     width's and its height's, transforms and zoom applied: 1 when it has no
+     laid-out size to compare. */
+  const drawnScale = (el: Element): number => {
+    const { offsetWidth, offsetHeight } = el as HTMLElement;
+    if (!(offsetWidth > 0) || !(offsetHeight > 0)) return 1;
+    const box = boxOf(el);
+    return Math.min(box.width / offsetWidth, box.height / offsetHeight);
+  };
+  /* A frame's hit test samples one point in each cell of a grid this many
+     cells each way over its part in view, as the web pod's does. */
+  const HIT_GRID = 5;
+  /* Whether a hit test finds `owner` at most of its sample points over the
+     part of its frame's content box `box` in view: one random point in each
+     cell of a HIT_GRID by HIT_GRID grid, new at every read, so no fixed
+     pattern of holes in a cover lets a hidden frame pass, while a banner
+     across part of a frame leaves it seen. It stops once the answer is known.
+     The world's hit test passes through an element marked pointer-events:
+     none; ElectronTab.read's look at the frame's pixels finds a cover of one
+     color there. */
   const hitsOwner = (owner: Element, box: Box): boolean => {
     const [left, top] = [Math.max(box.x, 0), Math.max(box.y, 0)];
-    const [right, bottom] = [Math.min(box.x + box.width, viewport.width), Math.min(box.y + box.height, viewport.height)];
-    const [dx, dy] = [(right - left) / 4, (bottom - top) / 4];
-    const points = [[(left + right) / 2, (top + bottom) / 2], [left + dx, top + dy], [right - dx, top + dy], [left + dx, bottom - dy], [right - dx, bottom - dy]];
-    return points.some(([x, y]) => hitAt(Math.floor(x), Math.floor(y)) === owner);
+    const [width, height] = [Math.min(box.x + box.width, viewport.width) - left, Math.min(box.y + box.height, viewport.height) - top];
+    const cells = HIT_GRID * HIT_GRID;
+    const need = Math.floor(cells / 2) + 1;
+    let hits = 0;
+    for (let cell = 0; cell < cells; cell += 1) {
+      const x = left + (((cell % HIT_GRID) + Math.random()) * width) / HIT_GRID;
+      const y = top + ((Math.floor(cell / HIT_GRID) + Math.random()) * height) / HIT_GRID;
+      if (hitAt(Math.floor(x), Math.floor(y)) === owner) hits += 1;
+      if (hits >= need) return true;
+      if (hits + cells - cell - 1 < need) return false;
+    }
+    return false;
   };
 
   /* The frames among `owners` a click can land in, transparent ones
      included, on-screen first, each read when the rules let it: a
-     same-origin frame the person sees (in view, not drawn unreadable, and
-     found by a hit test there, so a page can't carry a frame it hides off
-     screen, under a box or behind its own CSS), at least `minPx` each way,
+     same-origin frame the person sees (at least `minPx` each way, its part
+     in view too, drawn at no less than FRAME_MIN_SCALE of its size, not
+     drawn unreadable, and found by a hit test at most of its sample points,
+     so a page can't carry a frame it hides off screen, under a box, behind
+     its own CSS, or behind a cover with holes),
      within the first `read` frames read, on no payment, sign-in or consent
-     address (its src's or its document's), and holding no private field. */
+     address (its src's or its document's), and holding no private field.
+     ElectronTab.read then looks at what the page draws over each frame read
+     (browser-view.ts). */
   const readFrames = (owners: Element[], rules: FrameReadRules): RawFrame[] => {
     const placed = owners
       .filter((owner) => takesClicks(owner, boxOf(owner)))
@@ -819,9 +904,11 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       const url = inner ? String(inner.location?.href || src) : src;
       const refusedAddress = (address: string) =>
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
-      if (!inner || offscreen || reads >= rules.read || box.width < rules.minPx || box.height < rules.minPx
-        || refusedAddress(src) || refusedAddress(url) || drawnUnreadable(owner) || !hitsOwner(owner, box)
-        || holdsPrivateField(inner)) {
+      const shownWidth = Math.min(box.x + box.width, viewport.width) - Math.max(box.x, 0);
+      const shownHeight = Math.min(box.y + box.height, viewport.height) - Math.max(box.y, 0);
+      if (!inner || offscreen || reads >= rules.read || Math.min(box.width, box.height, shownWidth, shownHeight) < rules.minPx
+        || drawnScale(owner) < FRAME_MIN_SCALE || refusedAddress(src) || refusedAddress(url) || drawnUnreadable(owner)
+        || !hitsOwner(owner, box) || holdsPrivateField(inner)) {
         return { url, read: false, box, offscreen };
       }
       reads += 1;

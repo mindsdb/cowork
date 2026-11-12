@@ -5,7 +5,9 @@
  * The pane's tab is placed over the pane's stage; every other tab stays laid
  * out at the stage's size but hidden, so the agent can read and act in it.
  * Page reads run in an isolated world (browser-page-script.ts) and answer
- * 409 page_busy when the page doesn't answer in time. Agent steps attach the
+ * 409 page_busy when the page doesn't answer in time. A frame a read reads
+ * stays read only where its box, as the page draws it, shows more than one
+ * color (`lookAtFrame`). Agent steps attach the
  * debugger for the step only (browser-input.ts). Screenshots are captured
  * without showing a hidden tab, with the page's secret fields and payment
  * frames blacked out (browser-screenshot.ts), those in frames of other sites
@@ -63,6 +65,7 @@ import {
   pageAnswer,
   pageWorldSource,
   type PageWorldRequest,
+  type RawFrame,
   type RawSnapshot,
   screenshotMasks,
   SECRET_SEARCH_DEPTH,
@@ -70,7 +73,7 @@ import {
   type TypingFocus,
 } from './browser-page-script';
 import { browserViewPreferences, guardNavigation, navigationAllowed, refusedDestination, type RequestsInFlight, requestsInFlight } from './browser-profile';
-import { renderScreenshot, type Screenshot } from './browser-screenshot';
+import { frameLook, nearlyOneColor, renderScreenshot, type Screenshot } from './browser-screenshot';
 import type { TabFactory, TabHooks, TabView, ViewBounds } from './browser-sessions';
 
 /* A navigation the agent asks for answers once the page loads, or after this
@@ -78,6 +81,10 @@ import type { TabFactory, TabHooks, TabView, ViewBounds } from './browser-sessio
    shorter than STEP_TIMEOUT_MS, so a slow load answers 200, not page_blocked. */
 export const NAVIGATION_WAIT_MS = 30_000;
 const MAX_ELEMENTS = 300;
+
+/** How long a page read's look at one frame's box may take (lookAtFrame);
+    a frame whose look takes longer is left unread. */
+export const FRAME_LOOK_MS = 1_000;
 
 /* A step's settle: how long it waits before it first looks for what the
    step started (a change, a request or a navigation), how often it then
@@ -355,7 +362,44 @@ export class ElectronTab implements TabView {
 
   async read(maxText: number): Promise<PageSnapshot> {
     const raw = await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText, maxElements: MAX_ELEMENTS, frames: FRAME_READ_RULES });
-    return pageAnswer(raw, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls());
+    const frames = await Promise.all(raw.frames.map((frame) => this.lookAtFrame(frame, raw.viewport)));
+    return pageAnswer({ ...raw, frames }, challengesFrom(this.subframeUrls(), raw.frameOwners), this.childFrameUrls());
+  }
+
+  /* A frame the page's world read, kept read only when the person sees what
+     the read found there (its text, or a control's name): its box, as the
+     page draws it, shows more than one color (nearlyOneColor). The world's
+     hit test can't see a cover that only paints, such as an element's box
+     shadow or outline, or one marked pointer-events: none, and a box all one
+     color is such a cover's. The frame's part in view, a CSS pixel in from
+     each edge, is captured from the composited page and scaled down
+     (frameLook): one small capture a frame read, FRAMES_READ at most a page
+     read. A look that fails, or takes longer than FRAME_LOOK_MS, leaves the
+     frame unread, and so does one that finds the box one color. A read that
+     found no text has nothing to look for. */
+  private async lookAtFrame(frame: RawFrame, viewport: { width: number; height: number }): Promise<RawFrame> {
+    if (!frame.read || !(frame.text.trim() || frame.elements.some((element) => element.name.trim()))) return frame;
+    const shows = await withTimeout(this.frameShows(frame.box, viewport), FRAME_LOOK_MS, () => new Error('the frame was not captured in time'))
+      .catch(() => false);
+    return shows ? frame : { url: frame.url, read: false, box: frame.box, offscreen: frame.offscreen };
+  }
+
+  /* Whether the part in view of a frame's box (viewport CSS pixels) shows
+     more than one color as the page draws it. capturePage takes
+     device-independent pixels, so the view's zoom applies. */
+  private async frameShows(box: Box, viewport: { width: number; height: number }): Promise<boolean> {
+    const zoom = this.contents.getZoomFactor();
+    const left = Math.max(box.x, 0) + 1;
+    const top = Math.max(box.y, 0) + 1;
+    const right = Math.min(box.x + box.width, viewport.width) - 1;
+    const bottom = Math.min(box.y + box.height, viewport.height) - 1;
+    const x = Math.ceil(left * zoom);
+    const y = Math.ceil(top * zoom);
+    const width = Math.floor(right * zoom) - x;
+    const height = Math.floor(bottom * zoom) - y;
+    if (width <= 0 || height <= 0) return false;
+    const look = frameLook(await this.contents.capturePage({ x, y, width, height }, { stayHidden: true }), right - left);
+    return look !== null && !nearlyOneColor(look);
   }
 
   /** Starts the page's secret-field watch on its current document

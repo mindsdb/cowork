@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type Bitmap,
   drawLabels,
+  FRAME_LOOK_MAX_PX,
+  frameLook,
   type ImageLike,
   jpegQuality,
   LABEL_HEIGHT,
   labelWidth,
+  nearlyOneColor,
   renderScreenshot,
   screenshotScale,
   screenshotWidth,
@@ -182,5 +185,53 @@ describe('renderScreenshot', () => {
     const odd: ImageLike = { getSize: () => ({ width: 800, height: 600 }), resize: () => odd, toBitmap: () => Buffer.alloc(16), toJPEG: () => Buffer.from('plain') };
     expect(() => renderScreenshot(odd, 800, null, 70, vi.fn(), [{ x: 10, y: 10, width: 100, height: 20 }])).toThrow(expect.objectContaining({ code: 'internal' }));
     expect(renderScreenshot(odd, 800, [{ id: 1, x: 0, y: 0, width: 10, height: 10 }], 70, vi.fn(), [])).toEqual({ jpeg: Buffer.from('plain'), width: 800, height: 600 });
+  });
+});
+
+describe("a page read's look at a frame", () => {
+  /* A box `width` by `height` of one gray, with `drawn` of its pixels, top
+     left first, in another. */
+  function box(width: number, height: number, background: number, drawn = 0, ink = 0): Bitmap {
+    const bitmap = { data: Buffer.alloc(width * height * 4, background), width, height };
+    for (let at = 0; at < drawn; at += 1) bitmap.data.fill(ink, at * 4, at * 4 + 3);
+    return bitmap;
+  }
+  const PIXELS = 160 * 80;
+
+  it('reads a box of one color, or of one color with a few pinholes or a text too faint to read, as one color', () => {
+    expect(nearlyOneColor(box(160, 80, 0xff))).toBe(true);
+    expect(nearlyOneColor(box(160, 80, 0xff, 25, 0))).toBe(true);
+    // Text under a white cover nine tenths opaque: 25 levels off the white.
+    expect(nearlyOneColor(box(160, 80, 0xff, PIXELS / 10, 230))).toBe(true);
+  });
+
+  it('reads a box that draws text, dimmed, in a dark mode or sparse, as more than one color', () => {
+    expect(nearlyOneColor(box(160, 80, 0xff, PIXELS / 10, 0))).toBe(false);
+    // Dimmed: the white is light gray, the text darker gray.
+    expect(nearlyOneColor(box(160, 80, 230, PIXELS / 20, 120))).toBe(false);
+    // A dark mode: light text on a dark ground.
+    expect(nearlyOneColor(box(160, 80, 20, PIXELS / 20, 220))).toBe(false);
+    // One short word in a large box.
+    expect(nearlyOneColor(box(160, 80, 0xff, 60, 60))).toBe(false);
+  });
+
+  it('scales a capture of the box down to half its CSS width, at most FRAME_LOOK_MAX_PX, and reads none it cannot', () => {
+    const resized = vi.fn((options: { width: number }) => {
+      const scaled: ImageLike = {
+        getSize: () => ({ width: options.width, height: 40 }),
+        resize: () => scaled,
+        toBitmap: () => Buffer.alloc(options.width * 40 * 4, 0xff),
+        toJPEG: () => Buffer.from(''),
+      };
+      return scaled;
+    });
+    const capture: ImageLike = { getSize: () => ({ width: 800, height: 160 }), resize: resized, toBitmap: () => Buffer.alloc(0), toJPEG: () => Buffer.from('') };
+    expect(frameLook(capture, 400)).toMatchObject({ width: Math.min(200, FRAME_LOOK_MAX_PX), height: 40 });
+    expect(frameLook(capture, 1000)).toMatchObject({ width: FRAME_LOOK_MAX_PX });
+    expect(resized).toHaveBeenLastCalledWith({ width: FRAME_LOOK_MAX_PX, quality: 'good' });
+    const empty: ImageLike = { getSize: () => ({ width: 0, height: 0 }), resize: () => empty, toBitmap: () => Buffer.alloc(0), toJPEG: () => Buffer.from('') };
+    expect(frameLook(empty, 400)).toBeNull();
+    const odd: ImageLike = { getSize: () => ({ width: 800, height: 160 }), resize: () => odd, toBitmap: () => Buffer.alloc(16), toJPEG: () => Buffer.from('') };
+    expect(frameLook(odd, 400)).toBeNull();
   });
 });

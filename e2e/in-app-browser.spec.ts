@@ -119,6 +119,28 @@ async function startFixtureServer(): Promise<void> {
         .end(`<title>Unseen</title><style>body{margin:0}</style>${frames}<div style="${at(2)};background:#fff"></div>`
           + '<iframe src="/frame-inner" style="position:absolute;left:0;top:3000px;width:200px;height:120px;border:0"></iframe>');
     }
+    if (url.pathname === '/hidden-frame') {
+      /* One same-origin frame, 300 by 150 at (50, 50), alone on its page,
+         drawn as `case` says: plain; in a page a dark mode inverts; slightly
+         dimmed; under a white cover that only paints (a 1 px element's box
+         shadow or outline), which a hit test can't see; under a white cover
+         with a 3 px hole at the middle of each cell of a 5 by 5 grid over it;
+         or through a mask border. */
+      const frame = (style = '') => `<iframe src="/frame-inner" style="position:absolute;left:50px;top:50px;width:300px;height:150px;border:0;${style}"></iframe>`;
+      const dot = (paint: string) => `<div style="position:absolute;left:200px;top:125px;width:1px;height:1px;z-index:2;${paint}"></div>`;
+      const holes = [0.1, 0.3, 0.5, 0.7, 0.9].flatMap((fy) => [0.1, 0.3, 0.5, 0.7, 0.9].map((fx) => `M${Math.floor(300 * fx) - 1} ${Math.floor(150 * fy) - 1}h3v3h-3z`)).join('');
+      const pages: Record<string, string> = {
+        plain: frame(),
+        dark: `<div style="filter:invert(1) hue-rotate(180deg);background:#fff;position:absolute;inset:0">${frame()}</div>`,
+        dimmed: frame('filter:brightness(0.85)'),
+        shadow: frame() + dot('box-shadow:0 0 0 400px #fff'),
+        outline: frame() + dot('outline:400px solid #fff'),
+        holes: frame() + `<div style="position:absolute;left:50px;top:50px;width:300px;height:150px;z-index:2;background:#fff;clip-path:path(evenodd,'M0 0H300V150H0Z${holes}')"></div>`,
+        'mask-border': frame('-webkit-mask-box-image-source:linear-gradient(transparent,transparent);-webkit-mask-box-image-slice:1 fill'),
+      };
+      return void res.writeHead(200, { 'content-type': 'text/html' })
+        .end(`<title>Hidden frame</title><style>body{margin:0;background:#fff}</style>${pages[url.searchParams.get('case') ?? 'plain']}`);
+    }
     if (url.pathname === '/css-editor') {
       /* A same-origin frame whose draft CSS alone makes editable. */
       return void res.writeHead(200, { 'content-type': 'text/html' })
@@ -512,6 +534,21 @@ test('reads a same-origin frame only where the person sees it, and lists the res
   expect(snapshot.frames.every((f: { box: { width: number } | null }) => f.box !== null && f.box.width >= 200)).toBe(true);
 });
 
+test('reads a same-origin frame a dark mode inverts or a filter dims, and leaves one unread under a cover only its paint shows, a cover with holes, or a mask border', async () => {
+  const cases: Array<[string, boolean]> = [
+    ['plain', true], ['dark', true], ['dimmed', true], ['shadow', false], ['outline', false], ['holes', false], ['mask-border', false],
+  ];
+  for (const [name, read] of cases) {
+    await openAt(`/hidden-frame?case=${name}`);
+    await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+    // The frame's page loads after the frame is placed: wait for its text where the frame is read.
+    if (read) await expect.poll(async () => (await page()).frames[0].text ?? '', { timeout: 10_000, message: name }).toContain('Get the weekly digest.');
+    const [frame] = (await page()).frames;
+    expect.soft(frame.read, name).toBe(read);
+    expect.soft(JSON.stringify(frame).includes('weekly digest'), name).toBe(read);
+  }
+});
+
 test('refuses a click by number on a control something covers, and presses nothing', async () => {
   await openAt('/covered');
   const reply = await act({ action: 'click', element: await element('Under') });
@@ -683,6 +720,8 @@ test('refuses a click whose point a frame slides over as the pointer arrives, by
 });
 
 test('presses nothing with into_frame once another frame slides over the approved one as the pointer arrives, and presses the approved one when it stays', async () => {
+  // The pointer starts on the page, outside the player frame, so the page sees it move.
+  expect((await act({ action: 'hover', x: 700, y: 500, coords: 'page' })).status).toBe(200);
   await openAt('/swap-frame');
   await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(2);
   const swapped = await act({ action: 'click', x: 150, y: 50, coords: 'page', into_frame: true });
