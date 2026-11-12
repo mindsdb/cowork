@@ -5153,6 +5153,7 @@ function AppCore() {
         (content) => { callWorkRef.current.delete(key); reportCallWork(work, { content }); },
         (err) => { callWorkRef.current.delete(key); reportCallWork(work, { error: err?.message || 'something went wrong' }); },
       );
+      voiceCall.armAway();
       const title = tasksRef.current.find((t) => t.id === sent.taskId)?.title;
       return `Sent to ${agentLabel}${title ? ` in "${title}"` : ' in a new task'}. Tell the user in a few words that `
         + `${agentLabel} is on it and you'll get back to them when it's done. Don't wait for the answer.`;
@@ -5168,6 +5169,7 @@ function AppCore() {
       const work = { request: text, taskId: task.id };
       const key = Symbol('queued call work');
       callWorkRef.current.set(key, work);
+      voiceCall.armAway();
       // When the work ahead ends, the next turn here is this one: say its gist then.
       void (async () => {
         await busy?.done;
@@ -5287,6 +5289,9 @@ function AppCore() {
   let voiceCallShortcut = null;
   if (!voiceOffered && voiceCall.phase === 'idle') {
     voiceCallShortcut = null;
+  } else if (voiceCall.lingering) {
+    // Fading out, still listening: the button brings the call back as an ordinary one.
+    voiceCallShortcut = { label: `Back to the call with ${agentLabel}`, live: true, onClick: () => voiceCall.resume() };
   } else if (voiceCall.phase !== 'idle' && voiceCall.phase !== 'ended') {
     voiceCallShortcut = { label: `On a call with ${agentLabel}`, live: true };
   } else if (startVoiceCall) {

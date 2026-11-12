@@ -20,7 +20,7 @@ const STATUS = {
 };
 
 export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = false }) {
-  const { phase, notice, working, micOn, meters, closing } = call;
+  const { phase, notice, working, micOn, meters, closing, lingering } = call;
   const prefs = useVoicePrefs();
   if (phase === 'idle') return null;
   const live = phase === 'live';
@@ -53,7 +53,8 @@ export default function VoiceCallWindow({ call, agentLabel = 'Anton', docked = f
     <div
       role="dialog"
       aria-label={`Voice call with ${agentLabel}`}
-      className={`voice-call${docked ? ' voice-call--docked' : ''}${working ? ' is-working' : ''}${ended ? ' is-ended' : ''}${closing ? ' is-closing' : ''}`}
+      className={`voice-call${docked ? ' voice-call--docked' : ''}${working ? ' is-working' : ''}${ended ? ' is-ended' : ''}${closing ? ' is-closing' : ''}${lingering ? ' is-lingering' : ''}`}
+      aria-hidden={lingering || undefined}
     >
       <button
         type="button"

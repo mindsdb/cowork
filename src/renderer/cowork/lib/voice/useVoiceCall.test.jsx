@@ -8,7 +8,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 vi.mock('../../api', () => ({ startVoiceSession: vi.fn() }));
 
 import { startVoiceSession } from '../../api';
-import { AWAY_MS, IDLE_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceStartFailure } from './useVoiceCall';
+import { AWAY_MS, IDLE_MS, LINGER_MS, MAX_SPOKEN_CHARS, useVoiceCall, voiceStartFailure } from './useVoiceCall';
 
 class FakeChannel {
   constructor() {
@@ -230,18 +230,56 @@ describe('a quiet call', () => {
     expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
   });
 
-  it('hangs up after ten quiet seconds while Anton works, and says it is away', async () => {
+  it('after handing Anton work, fades out after five quiet seconds, listens a moment, then hangs up away', async () => {
     const onAway = vi.fn();
-    await started({ onAsk: vi.fn(), context: () => '', busy: () => true, onAway });
+    const { result } = await started({ onAsk: vi.fn(), context: () => '', busy: () => true, onAway });
     act(() => peer.channel.emit({ type: 'session.started' }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS - 3_000); });
-    act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: "I'll get back to you." }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS - 3_000); });
+    act(() => result.current.armAway());
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS + 1_000); });
+    expect(result.current.lingering).toBe(true);
+    expect(track.enabled).toBe(true);
     expect(onAway).not.toHaveBeenCalled();
-    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(LINGER_MS); });
     expect(onAway).toHaveBeenCalledTimes(1);
     expect(track.enabled).toBe(false);
     expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+  });
+
+  it('comes back when the person speaks while it fades', async () => {
+    const onAway = vi.fn();
+    const { result } = await started({ onAsk: vi.fn(), context: () => '', busy: () => true, onAway });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    act(() => result.current.armAway());
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS + 1_000); });
+    act(() => peer.channel.emit({ type: 'session.input_transcript.delta', delta: 'wait, one more' }));
+    expect(result.current.lingering).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(LINGER_MS + 500); });
+    expect(onAway).not.toHaveBeenCalled();
+    expect(peer.channel.sent.some((e) => e.type === 'session.close')).toBe(false);
+  });
+
+  it('the call button while it fades makes it an ordinary call again', async () => {
+    const { result } = await started({ onAsk: vi.fn(), context: () => '', busy: () => true, onAway: vi.fn() });
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    act(() => result.current.armAway());
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS + 1_000); });
+    act(() => result.current.resume());
+    expect(result.current.lingering).toBe(false);
+    // The quick rule is gone: well past it, still on.
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS * 4); });
+    expect(result.current.lingering).toBe(false);
+    expect(peer.channel.sent.some((e) => e.type === 'session.close')).toBe(false);
+  });
+
+  it('a call-back fades out soon after its news, with nothing left to call back about', async () => {
+    const onAway = vi.fn();
+    const hook = renderHook(() => useVoiceCall({ onAsk: vi.fn(), context: () => '', busy: () => false, onAway }));
+    await act(() => hook.result.current.callBack('It is done.'));
+    act(() => peer.channel.emit({ type: 'session.started' }));
+    act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: "Hey, it's done." }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(AWAY_MS + LINGER_MS + 1_000); });
+    expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+    expect(onAway).not.toHaveBeenCalled();
   });
 
   it('calls back with the news as its opening line', async () => {

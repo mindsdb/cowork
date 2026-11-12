@@ -69,6 +69,10 @@ body[data-skin="8bit"] .voice-call__voice { border-radius: 0; }
 
 /* Mute signs off: once Anton has said goodbye the card folds away. */
 .voice-call.is-closing { animation: voice-call-fold 360ms cubic-bezier(.4, 0, .2, 1) forwards; pointer-events: none; overflow: hidden; }
+/* Faded out while the call still listens a moment (useVoiceCall LINGER_MS):
+   it comes back the same way if anyone speaks or the call button is pressed. */
+.voice-call { transition: opacity 600ms ease, transform 600ms ease; }
+.voice-call.is-lingering { opacity: 0; transform: translateY(8px) scale(.98); pointer-events: none; }
 @keyframes voice-call-fold {
   0% { opacity: 1; transform: translateY(0) scale(1); max-height: 240px; }
   60% { opacity: 0; transform: translateY(6px) scale(.97); }
@@ -76,6 +80,7 @@ body[data-skin="8bit"] .voice-call__voice { border-radius: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .voice-call.is-closing { animation-duration: 1ms; }
+  .voice-call { transition: none; }
 }
 .voice-call__status { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-3); }
 .voice-call__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: voice-call-dot 2.4s ease-in-out infinite; }

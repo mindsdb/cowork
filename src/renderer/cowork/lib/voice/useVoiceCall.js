@@ -23,9 +23,12 @@
 //   card away (`closing`) and hangs up.
 // - A call that goes quiet (nobody speaks and Anton has no work running) for
 //   IDLE_MS stops listening: the card folds away and the call ends.
-// - While Anton works on the call's requests (`busy`), a quiet AWAY_MS hangs
-//   up the same way and calls `onAway`: the app calls back (`callBack`) when
-//   the work is done, rather than keeping the call open meanwhile.
+// - Right after the call hands Anton work (`armAway`), and after a call-back
+//   says its news, a quiet AWAY_MS is enough. Either way the card first fades
+//   out while the call still listens for LINGER_MS (`lingering`): speech
+//   brings it back, and so does the call button (`resume`), which also drops
+//   the quick rule. Then it hangs up; with work still running (`busy`) it
+//   calls `onAway`, and the app calls back (`callBack`) when the work is done.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startVoiceSession } from '../../api';
@@ -48,8 +51,10 @@ const LINE_MAX_MS = 12000;
 export const FOLD_MS = 360;
 // A call this long with nobody speaking and no work running ends by itself.
 export const IDLE_MS = 60_000;
-// Quiet this long while Anton works: hang up, and call back with the result.
-export const AWAY_MS = 10_000;
+// Quiet this long after handing Anton work, or after a call-back's news: fade out.
+export const AWAY_MS = 5_000;
+// How long a faded call still listens before it hangs up.
+export const LINGER_MS = 3_500;
 const IDLE_CHECK_MS = 1_000;
 
 const OPENINGS = {
@@ -92,6 +97,12 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   const [closing, setClosing] = useState(false);
   const [voice, setVoice] = useState(null);
   const [previewing, setPreviewing] = useState(false);
+  // Faded out, still listening for a moment before it hangs up.
+  const [lingering, setLingering] = useState(false);
+  const lingeringRef = useRef(false);
+  const lingerTimer = useRef(null);
+  // The quick rule (AWAY_MS): after handing Anton work, and on a call-back.
+  const awayArmed = useRef(false);
 
   const call = useRef(null); // { peer, channel, microphone, audio, listening }
   const meters = useRef({ agent: null, user: null });
@@ -119,6 +130,9 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     const current = call.current;
     call.current = null;
     clearTimeout(speakingTimer.current);
+    clearTimeout(lingerTimer.current);
+    lingeringRef.current = false;
+    setLingering(false);
     if (!current) return;
     current.microphone?.getTracks().forEach((t) => t.stop());
     try { current.channel?.close(); } catch { /* already closed */ }
@@ -159,6 +173,15 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     send({ type: 'session.commentary.append', event_id: eventId('result'), delegation_id: delegationId, content });
   }, [send]);
 
+  // Back from fading out: someone spoke, or the person clicked the call button.
+  const wake = useCallback(() => {
+    if (!lingeringRef.current) return;
+    clearTimeout(lingerTimer.current);
+    lingeringRef.current = false;
+    setLingering(false);
+    lastActive.current = Date.now();
+  }, []);
+
   const onEvent = useCallback((event) => {
     switch (event.type) {
       case 'session.started': {
@@ -173,6 +196,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         break;
       }
       case 'session.input_transcript.delta': {
+        wake();
         lastActive.current = Date.now();
         const delta = String(event.delta || '');
         heard.current.pending += delta;
@@ -180,6 +204,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         break;
       }
       case 'session.output_transcript.delta': {
+        wake();
         const delta = String(event.delta || '');
         setCaptions((c) => ({ ...c, agent: tail(c.last === 'agent' ? c.agent + delta : delta.trimStart()), last: 'agent' }));
         setAgentSpeaking(true);
@@ -205,7 +230,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         break;
       default:
     }
-  }, [cleanup, handleDelegation, send]);
+  }, [cleanup, handleDelegation, send, wake]);
 
   // Resolves once Anton has said the line just asked for (or it never came).
   const afterLine = useCallback(() => new Promise((resolve) => {
@@ -236,6 +261,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     if (call.current) return;
     opening.current = kind;
     news.current = withoutPhoneNumbers(String(say)).slice(0, MAX_SPOKEN_CHARS);
+    awayArmed.current = kind === 'callBack';
     setPhase('starting');
     setNotice('');
     setClosing(false);
@@ -353,24 +379,39 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     await foldAndEnd();
   }, [afterLine, closing, foldAndEnd, send]);
 
-  // Quiet for IDLE_MS (nobody speaking, no work running): stop listening and
-  // fold the card away. A preview ends by itself; a sign-off is under way.
+  // Quiet for long enough (AWAY_MS right after handing Anton work or on a
+  // call-back, else IDLE_MS): the card fades out and the call listens for
+  // LINGER_MS more, then hangs up, saying it is away when work still runs. A
+  // preview ends by itself; a sign-off is under way.
   useEffect(() => {
     if (phase !== 'live' || previewing || closing) return undefined;
     lastActive.current = Date.now();
     const timer = setInterval(() => {
-      // Mid-request: the answer to say is still coming.
-      if (workingRef.current || !call.current) return;
-      const away = Boolean(busyRef.current?.());
-      if (Date.now() - lastActive.current < (away ? AWAY_MS : IDLE_MS)) return;
-      clearInterval(timer);
-      if (away) onAwayRef.current?.();
-      call.current.microphone?.getAudioTracks().forEach((t) => { t.enabled = false; });
-      setMicOn(false);
-      void foldAndEnd();
+      if (workingRef.current || !call.current || lingeringRef.current) return;
+      const limit = awayArmed.current ? AWAY_MS : IDLE_MS;
+      if (Date.now() - lastActive.current < limit) return;
+      lingeringRef.current = true;
+      setLingering(true);
+      clearTimeout(lingerTimer.current);
+      lingerTimer.current = setTimeout(() => {
+        if (!lingeringRef.current || !call.current) return;
+        if (busyRef.current?.()) onAwayRef.current?.();
+        call.current.microphone?.getAudioTracks().forEach((t) => { t.enabled = false; });
+        setMicOn(false);
+        void endRef.current?.();
+      }, LINGER_MS);
     }, IDLE_CHECK_MS);
     return () => clearInterval(timer);
-  }, [phase, previewing, closing, foldAndEnd]);
+  }, [phase, previewing, closing]);
+
+  // The call just handed Anton work: a short quiet is enough to fade out.
+  const armAway = useCallback(() => { awayArmed.current = true; lastActive.current = Date.now(); }, []);
+  // The call button while the card is fading: back to an ordinary call.
+  const resume = useCallback(() => {
+    awayArmed.current = false;
+    wake();
+    lastActive.current = Date.now();
+  }, [wake]);
 
   // Something to tell the person unasked (queued work finished): GPT-Live
   // says it in its own words when it can.
@@ -403,7 +444,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
 
   return {
     phase, notice, captions, agentSpeaking, working, micOn, meters, closing, voice, previewing,
-    start, end, toggleMic, announce, switchVoice, preview, signOff, callBack, isOn,
+    lingering, start, end, toggleMic, announce, switchVoice, preview, signOff, callBack, isOn, armAway, resume,
     dismiss: () => { setPhase('idle'); setNotice(''); },
   };
 }

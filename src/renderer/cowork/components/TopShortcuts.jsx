@@ -34,7 +34,7 @@ export default function TopShortcuts({ onShowBrowser = null, call = null, classN
             aria-label={call.label}
             aria-disabled={call.disabled || undefined}
             className={`${base} ${
-              call.live ? 'top-shortcut--live cursor-default'
+              call.live ? `top-shortcut--live ${call.onClick ? 'cursor-pointer' : 'cursor-default'}`
                 : call.disabled ? 'text-ink-3 opacity-50 cursor-default'
                   : 'cursor-pointer text-ink-3 hover:text-ink hover:bg-surface-2'
             }`}
