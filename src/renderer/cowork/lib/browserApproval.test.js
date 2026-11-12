@@ -183,6 +183,28 @@ describe('which cards the app approves for the person', () => {
     expect(isAutoApprovedCard(desktop, { askToApprove: false })).toBe(true);
     expect(isAutoApprovedCard(desktop, { askToApprove: true })).toBe(false);
   });
+  /* On the desktop, whose browser holds nothing, the one-step card anton
+     raises for a click by position that may land in a frame is the only
+     gate on that click: anton sends into_frame only once it is approved,
+     and the desktop refuses a press into a frame without it. So it must
+     reach the person by default, though every position card is approved
+     for them. */
+  it("shows the one-step card for a click by position that may land in a frame by default, though it approves every position card", () => {
+    const frameStep = {
+      question_id: 'q-frame',
+      options: [
+        { value: 'approve', label: 'Approve', detail: STEP_APPROVE_DETAIL },
+        { value: 'cancel', label: 'Cancel', detail: 'Leave the page as it is' },
+      ],
+    };
+    const position = { question_id: 'q-position', options: [{ value: 'approve', label: 'Approve', detail: POSITION_APPROVE_DETAIL }] };
+    resetBrowserPrefsForTests();
+    expect(isAutoApprovedCard(position)).toBe(true);
+    expect(isPositionClickCard(frameStep)).toBe(false);
+    expect(isAutoApprovedCard(frameStep)).toBe(false);
+    expect(isAutoApprovedCard(frameStep, { askToApprove: true })).toBe(false);
+    expect(isPersonsBrowserTurn({ badge: 'AskUser', data: frameStep })).toBe(true);
+  });
 });
 
 describe('approving for the person only with approvals off on the server', () => {

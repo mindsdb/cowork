@@ -572,6 +572,10 @@ test('presses by position into a frame under the point only when anton says the 
   const refused = await act({ action: 'click', x: 20, y: 20, coords: 'page' });
   expect(refused.status, refused.body.toString()).toBe(409);
   expect(refused.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame is now under the point (20, 20)') });
+  // What anton sends once the app approved clicks by position on the page itself: into_frame false.
+  const positionApproved = await act({ action: 'click', x: 20, y: 20, coords: 'page', into_frame: false });
+  expect(positionApproved.status, positionApproved.body.toString()).toBe(409);
+  expect(positionApproved.json()).toMatchObject({ error: 'stale_element', message: expect.stringContaining('a frame is now under the point (20, 20)') });
   const drop = await act({ action: 'drag', from: { x: 20, y: 150 }, to: { x: 20, y: 20 }, coords: 'page' });
   expect(drop.status, drop.body.toString()).toBe(409);
   await new Promise((resolve) => setTimeout(resolve, 500));
