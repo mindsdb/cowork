@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { splitTurnSegments, liveSegmentIndex } from './turnSegments';
+import { resetBrowserPrefsForTests, syncBrowserPrefs } from './browserPrefs';
 
 const work = (id, startedAt = 1) => ({ id, label: id, badge: 'ToolProgress', status: 'completed', startedAt });
 const question = (qid, { answer = null, completedAt = null, options, select } = {}) => ({
@@ -151,10 +152,17 @@ describe('splitTurnSegments', () => {
 
 describe('position-click cards', () => {
   const POSITION = [{ value: 'approve', label: 'Approve', detail: 'Allow clicks by position on this page' }];
+  afterEach(() => { resetBrowserPrefsForTests(); });
 
-  it('drops an answered one, so the work around it stays one block', () => {
+  it('with approvals off, drops an answered one, so the work around it stays one block', () => {
+    syncBrowserPrefs({ browserApproveSteps: false });
     const steps = [work('a'), question('browser:approve:t:p', { answer: { status: 'answered', values: ['approve'] }, options: POSITION }), work('b')];
     expect(shape(splitTurnSegments(steps))).toEqual([['a', 'b']]);
+  });
+
+  it('while the person approves steps, keeps an answered one: they answered it', () => {
+    const steps = [work('a'), question('browser:approve:t:p', { answer: { status: 'answered', values: ['approve'] }, options: POSITION }), work('b')];
+    expect(shape(splitTurnSegments(steps))).toEqual([['a'], 'Q:question-browser:approve:t:p', ['b']]);
   });
 
   it('keeps one still waiting, in case the app could not approve it', () => {
