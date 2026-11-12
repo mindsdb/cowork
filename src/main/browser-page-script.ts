@@ -47,10 +47,10 @@
  * attribute's content. A style change counts, but doesn't keep the page from
  * going quiet, so an animation can't hold a step. Focus doesn't count.
  *
- * A page read lists the page's shown child frames with their content boxes,
- * and reads the ones it may: a same-origin frame, big enough, within the
- * read cap, on no payment, sign-in or consent address, and holding no
- * secret, card or sign-in field. A read frame's elements have no id and no
+ * A page read lists every child frame a click can land in, a transparent
+ * one included, with its content box, and reads the ones it may: a shown,
+ * same-origin frame, big enough, within the read cap, on no payment, sign-in
+ * or consent address, and holding no secret, card or sign-in field. A read frame's elements have no id and no
  * field value. A frame from another site can't be read from here: running
  * script in its own world would let its page see it. `secretBoxes` finds what
  * every screenshot blacks out.
@@ -158,8 +158,8 @@ export const FRAME_READ_RULES: FrameReadRules = {
   signInHosts: SIGN_IN_FRAME_HOSTS,
 };
 
-/** A shown child frame as a page read finds it: its address (the
-    document's own for a frame the read reaches, else its owner's src), its
+/** A child frame a click can land in, as a page read finds it: its address
+    (the document's own for a frame the read reaches, else its owner's src), its
     content box in viewport CSS pixels, and what a read frame holds. */
 export type RawFrame =
   | { url: string; read: false; box: Box; offscreen: boolean }
@@ -215,7 +215,7 @@ export interface RawSnapshot {
   /** Every frame element in the page's DOM (open shadow roots included), and
       whether the person can see it: a non-empty box in the viewport, not hidden. */
   frameOwners: DomFrame[];
-  /** The shown ones, on-screen first, and what a read one holds. */
+  /** The ones a click can land in, on-screen first, and what a read one holds. */
   frames: RawFrame[];
   /** Boxes of the numbered elements in the viewport, in CSS pixels, for screenshot labels. */
   boxes: ElementBox[];
@@ -303,11 +303,17 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     const rect = el.getBoundingClientRect();
     return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
   };
-  const shown = (el: Element, box: Box): boolean => {
+  /* Whether a click can land on the element: a non-empty box, laid out and
+     not hidden. A transparent one takes clicks as any other, and its style
+     can turn it back on as the pointer arrives, so neither opacity nor
+     pointer-events counts. */
+  const takesClicks = (el: Element, box: Box): boolean => {
     if (box.width <= 0 || box.height <= 0) return false;
     const style = win.getComputedStyle(el);
-    return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || '1') > 0;
+    return style.visibility !== 'hidden' && style.display !== 'none';
   };
+  /* Whether the person can see it: it takes clicks, and isn't transparent. */
+  const shown = (el: Element, box: Box): boolean => takesClicks(el, box) && Number(win.getComputedStyle(el).opacity || '1') > 0;
   const inView = (box: Box, view: { width: number; height: number } = viewport): boolean =>
     box.x < view.width && box.y < view.height && box.x + box.width > 0 && box.y + box.height > 0;
   /* The box inside an element's border and padding: a frame's own viewport. */
@@ -659,25 +665,26 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     || SIGN_IN_AUTOCOMPLETE.test((el.getAttribute('autocomplete') || '').toLowerCase())
     || ['name', 'id', 'aria-label', 'placeholder'].some((attr) => CARD_FIELD_NAME.test(el.getAttribute(attr) || ''))));
 
-  /* The shown frames among `owners`, on-screen first, each read when the
-     rules let it: a same-origin frame at least `minPx` each way, within the
-     first `read` frames read, on no payment, sign-in or consent address (its
-     src's or its document's), and holding no private field. */
+  /* The frames among `owners` a click can land in, transparent ones
+     included, on-screen first, each read when the rules let it: a shown,
+     same-origin frame at least `minPx` each way, within the first `read`
+     frames read, on no payment, sign-in or consent address (its src's or its
+     document's), and holding no private field. */
   const readFrames = (owners: Element[], rules: FrameReadRules): RawFrame[] => {
     const placed = owners
-      .filter((owner) => shown(owner, boxOf(owner)))
+      .filter((owner) => takesClicks(owner, boxOf(owner)))
       .map((owner) => {
         const box = contentBox(owner);
-        return { owner, box, offscreen: !inView(box) };
+        return { owner, box, offscreen: !inView(box), seen: shown(owner, boxOf(owner)) };
       });
     let reads = 0;
-    return [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen }): RawFrame => {
+    return [...placed.filter((f) => !f.offscreen), ...placed.filter((f) => f.offscreen)].map(({ owner, box, offscreen, seen }): RawFrame => {
       const inner = frameDocOf(owner);
       const src = sourceOf(owner);
       const url = inner ? String(inner.location?.href || src) : src;
       const refusedAddress = (address: string) =>
         hostIn(address, rules.paymentHosts) || hostIn(address, rules.signInHosts) || consentPage(address);
-      if (!inner || reads >= rules.read || box.width < rules.minPx || box.height < rules.minPx
+      if (!inner || !seen || reads >= rules.read || box.width < rules.minPx || box.height < rules.minPx
         || refusedAddress(src) || refusedAddress(url) || holdsPrivateField(inner)) {
         return { url, read: false, box, offscreen };
       }
@@ -700,8 +707,8 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
    * Every shown element is listed in page order when they all fit. Past
    * `maxElements`, the ones in view first, then the rest, each group in
    * page order, and `truncated` says more exist. Only listed elements get an
-   * id. Frames are never elements: each one is a frame owner, and the shown
-   * ones are listed as frames.
+   * id. Frames are never elements: each one is a frame owner, and the ones a
+   * click can land in are listed as frames.
    */
   const snapshot = (maxText: number, maxElements: number, frameRules: FrameReadRules | null) => {
     for (const [id, el] of world.ids) {

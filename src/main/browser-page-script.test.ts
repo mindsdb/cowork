@@ -691,6 +691,31 @@ describe('frames', () => {
     expect(world.ids.size).toBe(0);
   });
 
+  it('lists a transparent frame, which still takes clicks, with its box and unread; a hidden one stays out', async () => {
+    document.body.innerHTML = `
+      <iframe id="clear" src="https://shop.other.test/buy" style="opacity: 0"></iframe>
+      <iframe id="clear-same" srcdoc="<p>Readable</p>" style="opacity: 0"></iframe>
+      <iframe id="through" src="https://ads.example.test/" style="pointer-events: none"></iframe>
+      <iframe id="hidden" src="https://track.example.test/" style="visibility: hidden"></iframe>`;
+    await framesLoad();
+    place(document.getElementById('clear')!, 10, 10, 300, 100);
+    place(document.getElementById('clear-same')!, 10, 120, 300, 100);
+    place(document.getElementById('through')!, 10, 230, 300, 100);
+    place(document.getElementById('hidden')!, 10, 340, 300, 100);
+    const raw = snapshot(freshWorld());
+    expect(raw.frames).toEqual([
+      { url: 'https://shop.other.test/buy', read: false, box: { x: 10, y: 10, width: 300, height: 100 }, offscreen: false },
+      { url: 'about:srcdoc', read: false, box: { x: 10, y: 120, width: 300, height: 100 }, offscreen: false },
+      { url: 'https://ads.example.test/', read: false, box: { x: 10, y: 230, width: 300, height: 100 }, offscreen: false },
+    ]);
+    expect(JSON.stringify(raw)).not.toContain('Readable');
+    expect(pageAnswer(raw, [], []).frames.map((frame) => frame.box)).toEqual([
+      { x: 10, y: 10, width: 300, height: 100 },
+      { x: 10, y: 120, width: 300, height: 100 },
+      { x: 10, y: 230, width: 300, height: 100 },
+    ]);
+  });
+
   it("reads a same-origin frame's controls and text with no ids and no field values; a select keeps its value", async () => {
     document.body.innerHTML = `<iframe id="news" srcdoc="${`
       <p>Get the weekly digest.</p>
