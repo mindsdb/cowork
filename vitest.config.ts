@@ -106,13 +106,17 @@ export default defineConfig({
         'src/renderer/cowork/lib/skillSharing.js': { statements: 100, branches: 100 },
         /* The desktop in-app browser's guards: the bridge's request checks,
            the profile's lockdown and destination refusals, the host's
-           downloads and account moves, and the tasks' control and caps. A
-           refusal that stops firing looks like a browser that works, so the
-           branch table is what proves each one still does. */
+           downloads and account moves, the tasks' control and caps, and the
+           debugger's allow-list, its refusal of a world with universal
+           access or in a payment frame, and the frame reads that count what
+           they can't read as a secret field. A refusal that stops firing
+           looks like a browser that works, so the branch table is what
+           proves each one still does. */
         'src/main/browser-bridge.ts': { statements: 86, branches: 78 },
         'src/main/browser-profile.ts': { statements: 91, branches: 88 },
         'src/main/browser-host.ts': { statements: 89, branches: 78 },
         'src/main/browser-sessions.ts': { statements: 94, branches: 84 },
+        'src/main/browser-frames.ts': { statements: 92, branches: 86 },
         /* The web commit hold's card and the web pane's viewer link. A card
            answered without the browser's approval, or a frame for another
            session's viewer, looks like a working page. */
