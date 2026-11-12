@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 const embedBrowser = vi.fn();
 vi.mock('../../api', () => ({ embedBrowser: (...args) => embedBrowser(...args) }));
 
-import { BrowserPanel, STARTING_TIMEOUT_MS, webPaneNote } from './BrowserPanel';
+import { BrowserPanel, STARTING_TIMEOUT_MS, webPaneDetails } from './BrowserPanel';
 import { QUICK_CLOSE_MS } from '../../lib/browserSession';
 import { WEB_JEV_LINE, WEB_SIGN_INS } from '../../views/settings/BrowserSettingsSection';
 
@@ -66,16 +66,24 @@ describe('BrowserPanel', () => {
   });
 
   describe('starting state', () => {
-    it('says where the view, what the person types and the page go, and that sign-ins stay', async () => {
+    it('says in one line who runs the browser, with the whole note under Details', async () => {
       render(<BrowserPanel sessionId="t-abc" agentLabel="Cowork" onClose={() => {}} />);
       await flush();
-      const note = webPaneNote('Cowork');
-      expect(screen.getByText(note)).toBeInTheDocument();
-      expect(note).toMatch(/^What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site\. /);
-      expect(note).toContain("Cowork's page reads and screenshots go to the model provider that serves your turn.");
+      const note = document.querySelector('details.browser-panel__note');
+      expect(note).not.toBeNull();
+      // Closed until the person asks: the pane shows one line.
+      expect(note.open).toBe(false);
+      const summary = note.querySelector('summary');
+      expect(within(summary).getByText('MindsDB runs this browser, and page reads go to your model provider.')).toBeInTheDocument();
+      expect(within(summary).getByText('Details')).toBeInTheDocument();
+      // Every fact the long note stated stays under Details.
+      const details = webPaneDetails('Cowork');
+      expect(within(note).getByText(details)).toBeInTheDocument();
+      expect(details).toMatch(/^What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site\. /);
+      expect(details).toContain("Cowork's page reads and screenshots go to the model provider that serves your turn.");
       // Settings' own lines, so the pane and Settings say the same.
-      expect(note).toContain(WEB_JEV_LINE);
-      expect(note).toContain(WEB_SIGN_INS);
+      expect(details).toContain(WEB_JEV_LINE);
+      expect(details).toContain(WEB_SIGN_INS);
     });
 
     it("frames the link in the router's own embed answer", async () => {

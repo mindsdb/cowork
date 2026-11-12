@@ -575,6 +575,8 @@
       "taskCapDescription": "Il browser ha già {count} attività aperte."
     },
     "webPaneNote": "Ciò che questo riquadro mostra e ciò che digiti qui, password comprese, passa attraverso Cloudflare e il servizio browser di MindsDB nel tragitto da e verso il sito. Le letture di pagina e gli screenshot di {agent} vengono inviati al provider del modello che gestisce il tuo turno.",
+    "webPaneSummary": "MindsDB gestisce questo browser, e le letture di pagina vanno al tuo provider del modello.",
+    "noteDetails": "Dettagli",
     "unexpectedAddress": "Il browser ha restituito un indirizzo imprevisto.",
     "couldNotOpen": "Impossibile aprire il browser.",
     "hint": "Tu e {agent} condividete questo browser. Fai clic all’interno per prendere il controllo.",

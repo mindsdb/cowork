@@ -73,14 +73,20 @@ function postTheme(frame) {
   );
 }
 
-/* The web pane's note on where things go and what stays. The view and every
-   key typed in it cross Cloudflare and MindsDB's browser service. The
-   agent's page reads go to the model provider and, with Jev on, to Jev. Sites
-   the person signs in to stay signed in for later tasks. The Jev and sign-in
-   lines are Settings' own, so the two surfaces can't drift. The pane can't
-   tell who holds the browser (the viewer posts only that it is ready or
-   closed), so the sign-in line always shows. */
-export function webPaneNote(agentLabel) {
+/* The web pane's note on where things go and what stays. One line shows:
+   MindsDB runs the browser, and page reads go to the model provider. Details
+   holds the whole account: the view and every key typed in it cross
+   Cloudflare and MindsDB's browser service, the agent's page reads go to the
+   model provider and, with Jev on, to Jev, and sites the person signs in to
+   stay signed in for later tasks. The Jev and sign-in lines are Settings'
+   own, so the two surfaces can't drift. The pane can't tell who holds the
+   browser (the viewer posts only that it is ready or closed), so the sign-in
+   line always shows. */
+export function webPaneSummary() {
+  return i18n.t('browser.webPaneSummary', { ns: 'chat' });
+}
+
+export function webPaneDetails(agentLabel) {
   return `${i18n.t('browser.webPaneNote', { ns: 'chat', agent: agentLabel })} ${i18n.t('settingsTools:browser.webJevLine')} ${i18n.t('settingsTools:browser.webSignIns')}`;
 }
 
@@ -241,7 +247,15 @@ function WebBrowserStage({ sessionId, agentLabel = 'Anton', onClose }) {
   return (
     <BrowserFrame
       hint={t('browser.hint', { agent: agentLabel })}
-      below={<p className="browser-panel__note">{webPaneNote(agentLabel)}</p>}
+      below={(
+        <details className="browser-panel__note browser-panel__note--details">
+          <summary>
+            <span className="browser-panel__note-line">{webPaneSummary()}</span>
+            <span className="browser-panel__note-more">{t('browser.noteDetails')}</span>
+          </summary>
+          <p>{webPaneDetails(agentLabel)}</p>
+        </details>
+      )}
       actions={<Button icon size="sm" variant="subtle" aria-label={t('browser.reload')} onClick={retry}>{Ico.reload(14)}</Button>}
       onClose={onClose}
     >

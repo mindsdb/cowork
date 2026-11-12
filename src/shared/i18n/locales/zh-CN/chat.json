@@ -575,6 +575,8 @@
       "taskCapDescription": "你的浏览器已打开 {count} 个任务。"
     },
     "webPaneNote": "此窗格显示的内容以及你在此输入的内容（包括密码），在往返网站时都会经过 Cloudflare 和 MindsDB 的浏览器服务。{agent} 读取的页面内容和截图会发送给为你这一轮提供服务的模型提供商。",
+    "webPaneSummary": "此浏览器由 MindsDB 运行，页面读取内容会发送给你的模型提供商。",
+    "noteDetails": "详细信息",
     "unexpectedAddress": "浏览器返回了意外的地址。",
     "couldNotOpen": "无法打开浏览器。",
     "hint": "你和 {agent} 共用此浏览器。在其中点击即可接管。",

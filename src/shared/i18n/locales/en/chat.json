@@ -575,6 +575,8 @@
       "taskCapDescription": "Your browser already has {count} tasks open."
     },
     "webPaneNote": "What this pane shows and what you type here, passwords included, pass through Cloudflare and MindsDB's browser service on their way to and from the site. {agent}'s page reads and screenshots go to the model provider that serves your turn.",
+    "webPaneSummary": "MindsDB runs this browser, and page reads go to your model provider.",
+    "noteDetails": "Details",
     "unexpectedAddress": "The browser returned an unexpected address.",
     "couldNotOpen": "Could not open the browser.",
     "hint": "You and {agent} share this. Click in it to take over.",
