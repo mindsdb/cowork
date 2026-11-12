@@ -909,9 +909,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   /* A message the person sent while this turn ran (ENG-4194): added to the
      running task, read by Anton, or handed back unread at turn end. The app
      injects the same event for its own request (`sending`, then `added`), so
-     the row shows the moment Enter is pressed. See lib/addons.js. */
+     the row shows the moment Enter is pressed. Only this client's own
+     add-ons create a live row; saved history (`replay`) shows its own. See
+     lib/addons.js. */
   if (type === 'response.addon') {
-    const steps = applyAddonEvent(state.steps, event, eventTs);
+    const steps = applyAddonEvent(state.steps, event, eventTs, { replay });
     return steps === state.steps ? state : { ...state, steps };
   }
 

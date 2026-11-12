@@ -211,6 +211,8 @@
       "moveToQueue": "Mover para a fila",
       "addToTask": "Adicionar à tarefa atual",
       "addingToTask": "Adicionando à tarefa atual",
+      "unconfirmed": "Não foi possível confirmar se isto foi adicionado. Enviar de novo?",
+      "sendAgain": "Enviar de novo",
       "queued": {
         "separate": "Na fila: parece um pedido separado, então será executado depois da tarefa atual.",
         "unsure": "Na fila: não ficou claro se pertence à tarefa atual. Use a seta para adicioná-lo agora.",

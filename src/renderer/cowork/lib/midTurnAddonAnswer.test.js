@@ -16,7 +16,8 @@ const OPENING = 'Assuming “past week” means the last five completed trading 
 const ACK = 'Got it—using the last six calendar months instead.';
 const FINAL = 'Updated the dashboard to cover the past six months.';
 
-const replay = (events) => events.reduce((s, ev) => reduceStream(s, ev, () => ev.at_ms), initialStreamState());
+// Saved events, as a reload replays them: rows show from history alone.
+const replay = (events) => events.reduce((s, ev) => reduceStream(s, ev, () => ev.at_ms, { replay: true }), initialStreamState());
 const savedContent = (events) => events.at(-1).response.output[0].content[0].text;
 const notes = (steps) => steps.filter((s) => s.badge === 'Note').map((s) => s.label);
 

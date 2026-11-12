@@ -46,6 +46,23 @@ describe('sendAddon', () => {
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({ conversation_id: 'conv-1', text: 'also Q3', force: true });
   });
 
+  it('names the running turn and the app\'s own key for the row', async () => {
+    global.fetch = vi.fn(async () => reply(200, { status: 'queued', reason: 'too_many' }));
+    await sendAddon('conv-1', 'also Q3', { responseId: 'resp_1', localKey: 'a_k1-x' });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({
+      conversation_id: 'conv-1', text: 'also Q3', response_id: 'resp_1', local_key: 'a_k1-x',
+    });
+  });
+
+  it('drops a local key the server would refuse', async () => {
+    global.fetch = vi.fn(async () => reply(200, { status: 'queued' }));
+    await sendAddon('conv-1', 'also Q3', { localKey: 'has space' });
+    await sendAddon('conv-1', 'also Q3', { localKey: 'x'.repeat(65) });
+    for (const [, opts] of global.fetch.mock.calls) {
+      expect(JSON.parse(opts.body)).toEqual({ conversation_id: 'conv-1', text: 'also Q3' });
+    }
+  });
+
   it('passes a queued verdict through with its reason', async () => {
     global.fetch = vi.fn(async () => reply(200, { status: 'queued', reason: 'new_request' }));
     await expect(sendAddon('conv-1', 'email it')).resolves.toEqual({ status: 'queued', reason: 'new_request' });
@@ -112,5 +129,28 @@ describe('a stream handle takes the app\'s own add-on rows', () => {
     ctrl.abort();
     ctrl.injectEvent(ev);
     expect(onEvent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a stream handle keeps its turn\'s response id', () => {
+  const sse = (events) => new Response(new ReadableStream({
+    start(c) {
+      const enc = new TextEncoder();
+      events.forEach((e) => c.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`)));
+      c.close();
+    },
+  }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+
+  it.each([
+    ['streamMessage', (onEvent) => streamMessage('conv-1', 'hi', { onEvent })],
+    ['tailInFlight', (onEvent) => tailInFlight('conv-1', { onEvent })],
+  ])('%s: from response.created', async (_name, open) => {
+    global.fetch = vi.fn(async () => sse([{ type: 'response.created', response: { id: 'resp_9' }, conversation_id: 'conv-1' }]));
+    const onEvent = vi.fn();
+    const ctrl = open(onEvent);
+    expect(ctrl.responseId).toBeNull();
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalled());
+    expect(ctrl.responseId).toBe('resp_9');
+    ctrl.abort();
   });
 });

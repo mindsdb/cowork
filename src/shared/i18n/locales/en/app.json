@@ -260,5 +260,9 @@
   },
   "orgs": {
     "personal": "Personal"
+  },
+  "addon": {
+    "moveFailed": "Could not move that message to the queue. Please try again.",
+    "stayQueued": "{agent} could not take it now. It stays in the queue."
   }
 }

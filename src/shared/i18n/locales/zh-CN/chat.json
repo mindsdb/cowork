@@ -211,6 +211,8 @@
       "moveToQueue": "移到队列",
       "addToTask": "添加到当前任务",
       "addingToTask": "正在添加到当前任务",
+      "unconfirmed": "无法确认是否已添加。要再次发送吗？",
+      "sendAgain": "再次发送",
       "queued": {
         "separate": "已加入队列：这看起来是一个单独的请求，将在当前任务之后运行。",
         "unsure": "已加入队列：不确定这是否属于当前任务。点击箭头可立即添加。",

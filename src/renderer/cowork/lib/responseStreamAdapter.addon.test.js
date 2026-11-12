@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import { initialStreamState, reduceAll, reduceStream } from './responseStreamAdapter';
+import { __resetOwnAddonsForTests, rememberOwnAddon } from './addons';
 import { splitTurnSegments } from './turnSegments';
 import { hydrateMessagesFromServerEvents } from './conversationHistory';
 
@@ -11,6 +12,18 @@ const tool = (id, at_ms) => ({
 });
 
 describe('responseStreamAdapter — response.addon', () => {
+  // The live stream's rows are this client's own add-on.
+  beforeEach(() => {
+    __resetOwnAddonsForTests();
+    rememberOwnAddon('ad1');
+  });
+
+  it('shows no live row for an add-on another client sent', () => {
+    __resetOwnAddonsForTests();
+    const state = reduceAll([tool('t1', 10), addon('added'), addon('returned')]);
+    expect(state.steps.some((s) => s.badge === 'Addon')).toBe(false);
+  });
+
   it('adds an Addon step at the point it joined the turn', () => {
     const state = reduceAll([tool('t1', 10), addon('added'), tool('t2', 40)]);
     const badges = state.steps.map((s) => s.badge);
@@ -41,6 +54,8 @@ describe('responseStreamAdapter — response.addon', () => {
 });
 
 describe('hydrateMessagesFromServerEvents — saved add-ons', () => {
+  beforeEach(() => { __resetOwnAddonsForTests(); });
+
   it('folds a saved add-on into the turn it joined, without doubling one the events already show', () => {
     const events = [
       { type: 'response.created', response: { id: 'resp_1' }, at_ms: 1 },
@@ -51,7 +66,8 @@ describe('hydrateMessagesFromServerEvents — saved add-ons', () => {
     ];
     const out = hydrateMessagesFromServerEvents([
       { id: 'u1', role: 'user', content: 'build the report' },
-      { id: 'u2', role: 'user', content: 'use the sales DB', metadata: { addon_of_turn: 'resp_1', decided_by: 'jev' } },
+      // Matched to the turn's events by its add-on id, never by its words.
+      { id: 'u2', role: 'user', content: 'use the sales DB', metadata: { addon_of_turn: 'resp_1', addon_id: 'ad1', decided_by: 'jev' } },
       { id: 'a1', role: 'assistant', content: 'done', events },
     ]);
     expect(out.map((m) => m.id)).toEqual(['u1', 'a1']);

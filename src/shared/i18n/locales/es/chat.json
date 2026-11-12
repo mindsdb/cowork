@@ -211,6 +211,8 @@
       "moveToQueue": "Mover a la cola",
       "addToTask": "Añadir a la tarea actual",
       "addingToTask": "Añadiendo a la tarea actual",
+      "unconfirmed": "No se pudo confirmar si se añadió. ¿Enviarlo de nuevo?",
+      "sendAgain": "Enviar de nuevo",
       "queued": {
         "separate": "En cola: parece una petición aparte, así que se ejecutará después de la tarea actual.",
         "unsure": "En cola: no quedó claro si pertenece a la tarea actual. Usa la flecha para añadirlo ahora.",

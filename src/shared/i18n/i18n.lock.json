@@ -1,4 +1,72 @@
 {
+  "app:addon.moveFailed": {
+    "de": {
+      "from": "ac4dcebe81c4",
+      "text": "e8c600345fe0"
+    },
+    "es": {
+      "from": "ac4dcebe81c4",
+      "text": "dc2f7fe4be38"
+    },
+    "fr": {
+      "from": "ac4dcebe81c4",
+      "text": "c53f2f816210"
+    },
+    "it": {
+      "from": "ac4dcebe81c4",
+      "text": "ef87c53d6d02"
+    },
+    "ja": {
+      "from": "ac4dcebe81c4",
+      "text": "4658df39ae03"
+    },
+    "ko": {
+      "from": "ac4dcebe81c4",
+      "text": "830c096ad769"
+    },
+    "pt-BR": {
+      "from": "ac4dcebe81c4",
+      "text": "c786fbbb0b6b"
+    },
+    "zh-CN": {
+      "from": "ac4dcebe81c4",
+      "text": "75fe0a31f10f"
+    }
+  },
+  "app:addon.stayQueued": {
+    "de": {
+      "from": "d9da9c176e80",
+      "text": "5fd5c46e310a"
+    },
+    "es": {
+      "from": "d9da9c176e80",
+      "text": "86bcc19cb4e7"
+    },
+    "fr": {
+      "from": "d9da9c176e80",
+      "text": "3d3d4c03d527"
+    },
+    "it": {
+      "from": "d9da9c176e80",
+      "text": "3debca8d92c2"
+    },
+    "ja": {
+      "from": "d9da9c176e80",
+      "text": "09fc0d81b72a"
+    },
+    "ko": {
+      "from": "d9da9c176e80",
+      "text": "6a7155a1524b"
+    },
+    "pt-BR": {
+      "from": "d9da9c176e80",
+      "text": "a8f388ea612d"
+    },
+    "zh-CN": {
+      "from": "d9da9c176e80",
+      "text": "1a12e8e42cbe"
+    }
+  },
   "app:askUser.notAccepted": {
     "de": {
       "from": "6feaeeb9eb4b",
@@ -26349,6 +26417,40 @@
       "text": "a252b2f3e84f"
     }
   },
+  "chat:chatView.addon.sendAgain": {
+    "de": {
+      "from": "feead925e260",
+      "text": "6b1d416765d7"
+    },
+    "es": {
+      "from": "feead925e260",
+      "text": "9b0b0b9994dd"
+    },
+    "fr": {
+      "from": "feead925e260",
+      "text": "58c0fa009a92"
+    },
+    "it": {
+      "from": "feead925e260",
+      "text": "b57c114afc70"
+    },
+    "ja": {
+      "from": "feead925e260",
+      "text": "2382b93b56b6"
+    },
+    "ko": {
+      "from": "feead925e260",
+      "text": "b27c841e8147"
+    },
+    "pt-BR": {
+      "from": "feead925e260",
+      "text": "a97da6d3b792"
+    },
+    "zh-CN": {
+      "from": "feead925e260",
+      "text": "d38a5b0b051c"
+    }
+  },
   "chat:chatView.addon.sending": {
     "de": {
       "from": "b8ed5279e897",
@@ -26381,6 +26483,40 @@
     "zh-CN": {
       "from": "b8ed5279e897",
       "text": "22eb0f8779ab"
+    }
+  },
+  "chat:chatView.addon.unconfirmed": {
+    "de": {
+      "from": "400aa7d6ec6f",
+      "text": "162e7ac94cf8"
+    },
+    "es": {
+      "from": "400aa7d6ec6f",
+      "text": "a97537d4c9fc"
+    },
+    "fr": {
+      "from": "400aa7d6ec6f",
+      "text": "c29f8c71e777"
+    },
+    "it": {
+      "from": "400aa7d6ec6f",
+      "text": "45e59c2ca561"
+    },
+    "ja": {
+      "from": "400aa7d6ec6f",
+      "text": "3167a47a74e7"
+    },
+    "ko": {
+      "from": "400aa7d6ec6f",
+      "text": "e58a6ea8fb01"
+    },
+    "pt-BR": {
+      "from": "400aa7d6ec6f",
+      "text": "4ea9e429a330"
+    },
+    "zh-CN": {
+      "from": "400aa7d6ec6f",
+      "text": "e6f2ca9d4598"
     }
   },
   "chat:chatView.addon.withdrawing": {

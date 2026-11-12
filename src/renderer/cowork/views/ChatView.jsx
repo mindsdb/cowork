@@ -270,7 +270,7 @@ function AddonNote({ label, onMoveToQueue }) {
   const { t } = useTranslation('chat');
   return (
     <div className="flex items-center justify-end gap-2 font-body text-[12px] leading-[1.4] text-ink-3" data-testid="addon-note">
-      <span className="inline-flex items-center gap-1.5">
+      <span role="status" aria-live="polite" className="inline-flex items-center gap-1.5">
         <span aria-hidden="true" className="text-ink-4">{Ico.arrowUpLeft(12)}</span>
         {label}
       </span>
@@ -2016,6 +2016,7 @@ export default function ChatView({
   onRemoveFromQueue,
   onAddQueuedToTask,
   onMoveAddonToQueue,
+  onResendQueued,
   agentLabel,
   // Conversation ids the server currently has an active producer for
   // (App.jsx's cross-client sync feed). Used to decide whether an
@@ -2163,6 +2164,10 @@ export default function ChatView({
   const cancelTitleRename = () => setTitleEditing(false);
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
+  // A mid-task send holds its queue slot while the server decides (ENG-4194);
+  // the running turn already shows it as "Sending…", so the chip appears only
+  // if that turn ends first.
+  const shownQueue = queuedMessages.filter((q) => !(q.addonOffer && isStreaming));
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
   // Usage state (ENG-1782): decides where "Add funds" lands and whether the
   // stopped-task cards offer auto top up. Null outside the provider (tests).
@@ -2772,7 +2777,7 @@ export default function ChatView({
                     onDelete={deleteThisTurn}
                     deleting={isTurnBeingDeleted(i)}
                     isLast={i === lastTurnIdx}
-                    addonLabel={m._addon ? addonRowLabel('saved', agentLabel).label : null}
+                    addonLabel={m._addon ? t(`chatView.addon.${addonRowLabel('saved').key}`, { agent: agentLabel || 'Anton' }) : null}
                     onEdit={pane ? null : (text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
@@ -3509,25 +3514,35 @@ export default function ChatView({
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
-          {queuedMessages.length > 0 && (
+          {shownQueue.length > 0 && (
             <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_var(--dur-layout)_var(--ease-out)]">
               <div className="section-label text-accent flex items-center gap-1.5">
                 <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent-glow)]" />
-                {t('chatView.queue.status', { count: queuedMessages.length, agent: agentLabel || 'Anton' })}
+                {t('chatView.queue.status', { count: shownQueue.length, agent: agentLabel || 'Anton' })}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {queuedMessages.map((q) => (
+                {shownQueue.map((q) => (
                   <span
                     key={q.id}
                     // The full text on hover, unless the chip has a reason to
                     // show there: two tooltips at once overlap (ENG-4194).
-                    title={queuedReasonKey(q.queuedReason) ? undefined : q.text}
+                    title={queuedReasonKey(q.queuedReason) || q.unconfirmed ? undefined : q.text}
                     data-testid="queued-chip"
+                    data-paused={q.paused || undefined}
                     aria-busy={q.addonPending || undefined}
                     className={`inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color,opacity] duration-hover ease-[ease]${q.addonPending ? ' opacity-70' : ''}`}
                   >
                     {(() => {
                       const text = <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>;
+                      // Nobody could say whether it joined the task: it waits
+                      // for the person instead of running a second time.
+                      if (q.unconfirmed) {
+                        return (
+                          <Tooltip content={t('chatView.addon.unconfirmed')}>
+                            <span className="inline-flex min-w-0" data-testid="queued-unconfirmed">{text}</span>
+                          </Tooltip>
+                        );
+                      }
                       // Why it waits rather than joining the running task (ENG-4194).
                       const why = queuedReasonKey(q.queuedReason);
                       return why ? (
@@ -3539,9 +3554,17 @@ export default function ChatView({
                     {/* The person's own override of the queue (ENG-4194), like
                         the Coding view's Steer: only while this task's turn is
                         running, and text only — files always wait. */}
+                    {q.unconfirmed && onResendQueued ? (
+                      <button
+                        type="button"
+                        onClick={() => onResendQueued(q.id)}
+                        title={t('chatView.addon.unconfirmed')}
+                        className="py-0 px-2 rounded-full bg-transparent border border-solid border-line text-ink-2 font-body text-[12px] cursor-pointer flex-shrink-0 hover:bg-surface-2 hover:text-ink"
+                      >{t('chatView.addon.sendAgain')}</button>
+                    ) : null}
                     {q.addonPending ? (
                       <span role="status" className="text-ink-3 text-[12px] px-1" aria-label={t('chatView.addon.addingToTask')}>…</span>
-                    ) : (onAddQueuedToTask && isStreaming && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && (
+                    ) : (onAddQueuedToTask && isStreaming && !q.paused && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && (
                       <Tooltip content={t('chatView.addon.addToTask')}>
                         <button
                           type="button"

@@ -211,6 +211,8 @@
       "moveToQueue": "Déplacer vers la file d’attente",
       "addToTask": "Ajouter à la tâche en cours",
       "addingToTask": "Ajout à la tâche en cours",
+      "unconfirmed": "Impossible de confirmer si ce message a été ajouté. L’envoyer à nouveau ?",
+      "sendAgain": "Renvoyer",
       "queued": {
         "separate": "En file d’attente : cela ressemble à une demande distincte, elle sera traitée après la tâche en cours.",
         "unsure": "En file d’attente : il n’était pas clair que cela concerne la tâche en cours. Utilisez la flèche pour l’ajouter maintenant.",

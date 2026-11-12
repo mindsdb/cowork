@@ -1815,4 +1815,17 @@ describe('mid-task message events (ENG-4194)', () => {
     const { properties } = await sentEvent(fetchMock, 'addon_overridden');
     expect(properties).toMatchObject({ direction: 'to_queue', outcome: 'withdrawn', decided_by: 'jev' });
   });
+
+  it('reports a reason it does not know as unknown, never the raw string', async () => {
+    const fetchMock = mockFetch();
+    const { trackAddonQueued, trackAddonOverridden } = await importAnalytics();
+    trackAddonQueued('too_many');
+    expect((await sentEvent(fetchMock, 'addon_queued')).properties.reason).toBe('too_many');
+    fetchMock.mockClear();
+    trackAddonQueued('something the server made up');
+    expect((await sentEvent(fetchMock, 'addon_queued')).properties.reason).toBe('unknown');
+    fetchMock.mockClear();
+    trackAddonOverridden('to_task', 'free text', 'robot');
+    expect((await sentEvent(fetchMock, 'addon_overridden')).properties).toMatchObject({ outcome: 'unknown', decided_by: 'jev' });
+  });
 });

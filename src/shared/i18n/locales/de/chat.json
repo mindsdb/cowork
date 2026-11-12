@@ -211,6 +211,8 @@
       "moveToQueue": "In die Warteschlange verschieben",
       "addToTask": "Zur aktuellen Aufgabe hinzufügen",
       "addingToTask": "Wird zur aktuellen Aufgabe hinzugefügt",
+      "unconfirmed": "Es ließ sich nicht bestätigen, ob dies hinzugefügt wurde. Erneut senden?",
+      "sendAgain": "Erneut senden",
       "queued": {
         "separate": "In der Warteschlange: Das sieht nach einer separaten Anfrage aus und läuft nach der aktuellen Aufgabe.",
         "unsure": "In der Warteschlange: Es war nicht klar, ob das zur aktuellen Aufgabe gehört. Mit dem Pfeil jetzt hinzufügen.",

@@ -11,7 +11,7 @@ import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
 import { iterateSSE } from './lib/responseStreamAdapter';
 import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
 import { isAntonConfigError } from './lib/antonErrors';
-import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages } from './lib/addons';
+import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
 import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { currentServerLocale } from '../lib/i18n';
@@ -764,6 +764,8 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // Lets the app put its own `response.addon` rows (ENG-4194) through this
   // stream's reducer, so they sit in the turn exactly where server events do.
   ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
+  // The running turn's response id, which an add-on request names.
+  ctrl.responseId = null;
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -863,6 +865,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
 
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
           bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
 
           // Raw passthrough — used by the streamAdapter to build a
@@ -993,6 +996,8 @@ export function tailInFlight(conversationId, {
   // Lets the app put its own `response.addon` rows (ENG-4194) through this
   // stream's reducer, so they sit in the turn exactly where server events do.
   ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
+  // The running turn's response id, which an add-on request names.
+  ctrl.responseId = null;
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
   const reportError = (message, event) => onError?.(message, {
@@ -1044,6 +1049,7 @@ export function tailInFlight(conversationId, {
           try { msg = JSON.parse(raw); } catch { continue; }
           // Real producer frame — reset the idle window. (Keepalives have no
           // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
           bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
           onEvent?.(msg);
           switch (msg.type) {
@@ -1270,22 +1276,40 @@ export async function submitAnswer(conversationId, questionId, answer) {
   }
 }
 
+/** Keep the running turn's response id on its stream handle (ENG-4194). */
+function noteResponseId(ctrl, msg) {
+  if (msg?.type === 'response.created' && msg.response?.id) ctrl.responseId = String(msg.response.id);
+}
+
 /**
  * Offer a message sent while a turn runs to that turn (ENG-4194). The server
  * asks Jev whether it belongs to the running task; `force` is the person's own
- * "Add to current task" and skips that question.
+ * "Add to current task" and skips that question. `responseId` is the running
+ * turn's id (from its `response.created`); `localKey` is the app's own key for
+ * the row (≤64 chars of [A-Za-z0-9_-], dropped otherwise).
  *
  * Never throws. Answers `{status: 'added', addon_id, decided_by}`, or a status
  * the caller queues on: the server's `queued` (with its reason), `not_found`
  * (no running turn), `unsupported` (an older server without the route),
  * `timeout` (no verdict within the window) or `error`.
  */
-export async function sendAddon(conversationId, text, { force = false, timeoutMs = ADDON_REQUEST_TIMEOUT_MS } = {}) {
+export async function sendAddon(conversationId, text, {
+  force = false, responseId = null, localKey = null, timeoutMs = ADDON_REQUEST_TIMEOUT_MS,
+} = {}) {
   if (!conversationId) return { status: 'not_found' };
   try {
     const res = await req('/responses/addon', {
       method: 'POST',
-      body: JSON.stringify({ conversation_id: conversationId, text, ...(force ? { force: true } : {}) }),
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        text,
+        ...(force ? { force: true } : {}),
+        // The turn this was typed against, so the server never adds it to a
+        // later one; and the app's own key for its row, echoed on the
+        // stream's `response.addon` events.
+        ...(responseId ? { response_id: String(responseId) } : {}),
+        ...(isValidLocalKey(localKey) ? { local_key: localKey } : {}),
+      }),
       timeoutMs,
     });
     return res && typeof res === 'object' ? res : { status: 'error' };
@@ -2695,6 +2719,8 @@ export function streamDataVaultSubmission({
   // Lets the app put its own `response.addon` rows (ENG-4194) through this
   // stream's reducer, so they sit in the turn exactly where server events do.
   ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
+  // The running turn's response id, which an add-on request names.
+  ctrl.responseId = null;
   /*
    * Same idle timer as _streamResponse. Without it a submission that never
    * answers keeps its conversation's stream record forever, and every message
@@ -2743,6 +2769,7 @@ export function streamDataVaultSubmission({
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
+          noteResponseId(ctrl, msg);
           bumpIdle();
 
           onEvent?.(msg);

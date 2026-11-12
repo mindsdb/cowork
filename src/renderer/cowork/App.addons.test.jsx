@@ -151,6 +151,7 @@ vi.mock('./lib/analytics', () => ({
 import App from './App';
 import { trackAddonAdded, trackAddonQueued, trackAddonOverridden } from './lib/analytics';
 import { __resetDraftsForTests } from './lib/draftStore';
+import { __resetOwnAddonsForTests } from './lib/addons';
 
 /** Renders App, opens the seeded conversation, and returns the composer. */
 async function openTask(user) {
@@ -171,7 +172,10 @@ async function send(user, composer, text) {
 
 async function emit(event) {
   await act(async () => {
-    streams[streams.length - 1].opts.onEvent(event);
+    const handle = streams[streams.length - 1];
+    // Like the real handle, which keeps its turn's response id.
+    if (event.type === 'response.created') handle.responseId = event.response?.id;
+    handle.opts.onEvent(event);
     await Promise.resolve();
   });
 }
@@ -196,6 +200,7 @@ const addonRow = () => screen.queryByTestId('addon-row');
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
   __resetDraftsForTests();
+  __resetOwnAddonsForTests();
   streams.length = 0;
   spies.useActualStreams = false;
   spies.useActualHealth = false;
@@ -231,7 +236,10 @@ describe('a message sent while Anton is working (ENG-4194)', () => {
 
     // Enter does not wait on the server: the composer is clear and the row is
     // already in the turn, pending.
-    expect(spies.sendAddon).toHaveBeenCalledWith('conv-a', 'use the sales DB');
+    // Names the running turn and the row's own key.
+    expect(spies.sendAddon).toHaveBeenCalledWith('conv-a', 'use the sales DB', {
+      responseId: 'resp_1', localKey: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/),
+    });
     await waitFor(() => expect(composer.value).toBe(''));
     await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'sending'));
     expect(screen.getByText('Sending…')).toBeInTheDocument();
@@ -317,8 +325,13 @@ describe('a message sent while Anton is working (ENG-4194)', () => {
 
     expect(spies.withdrawAddon).toHaveBeenCalledWith('conv-a', 'ad1');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    await waitFor(() => expect(addonRow()).toBeNull());
+    // The row stays where it joined, saying where it went.
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'withdrawn'));
+    expect(screen.getByText('Moved to queue')).toBeInTheDocument();
     expect(trackAddonOverridden).toHaveBeenCalledWith('to_queue', 'withdrawn', 'jev');
+    // The server's own withdrawn event does not queue it a second time.
+    await emit({ type: 'response.addon', addon_id: 'ad1', state: 'withdrawn', text: 'use the sales DB' });
+    expect(screen.getAllByLabelText('Remove from queue')).toHaveLength(1);
   });
 
   it('Move to queue on a message Anton already read just says so', async () => {
@@ -384,7 +397,9 @@ describe('Add to current task on a queued message', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add to current task' }));
 
-    expect(spies.sendAddon).toHaveBeenLastCalledWith('conv-a', 'skip the chart', { force: true });
+    expect(spies.sendAddon).toHaveBeenLastCalledWith('conv-a', 'skip the chart', {
+      force: true, responseId: 'resp_1', localKey: expect.any(String),
+    });
     await waitFor(() => expect(screen.queryByLabelText('Remove from queue')).toBeNull());
     expect(await screen.findByText('Added to current task')).toBeInTheDocument();
     expect(trackAddonOverridden).toHaveBeenCalledWith('to_task', 'added');
@@ -438,5 +453,130 @@ describe('Add to current task on a queued message', () => {
     // The ended turn drains the queue; the chip goes with it.
     await act(async () => { streams[streams.length - 1].opts.onDone(); });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Add to current task' })).toBeNull());
+  });
+});
+
+describe('self-review: whose add-on, and never losing or doubling one (ENG-4194)', () => {
+  it('never shows or queues an add-on another client sent', async () => {
+    const user = userEvent.setup();
+    await startTurn(user);
+
+    await emit({ type: 'response.addon', addon_id: 'theirs', local_key: 'their_key', state: 'added', text: 'from another device', decided_by: 'jev' });
+    await emit({ type: 'response.addon', addon_id: 'theirs', state: 'returned', text: 'from another device' });
+
+    expect(addonRow()).toBeNull();
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    // Nothing of theirs runs here as a next task.
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the server\'s withdrawn as "Moved to queue" without queueing a withdraw it did not ask for', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    spies.sendAddon.mockImplementation(async () => ({ status: 'added', addon_id: 'ad1', decided_by: 'jev' }));
+    await send(user, composer, 'use the sales DB');
+    await screen.findByText('Added to current task');
+
+    await emit({ type: 'response.addon', addon_id: 'ad1', state: 'withdrawn', text: 'use the sales DB' });
+
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'withdrawn'));
+    expect(screen.getByText('Moved to queue')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+  });
+
+  it('queues its own withdraw once the server confirms it, even when the request failed', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    spies.sendAddon.mockImplementation(async () => ({ status: 'added', addon_id: 'ad1', decided_by: 'jev' }));
+    spies.withdrawAddon.mockImplementation(async () => ({ status: 'error' }));
+    await send(user, composer, 'use the sales DB');
+    await user.click(await screen.findByRole('button', { name: 'Move to queue' }));
+    await waitFor(() => expect(addonRow()).toHaveAttribute('data-addon-state', 'added'));
+
+    await emit({ type: 'response.addon', addon_id: 'ad1', state: 'withdrawn', text: 'use the sales DB' });
+    await emit({ type: 'response.addon', addon_id: 'ad1', state: 'withdrawn', text: 'use the sales DB' });
+
+    expect(await screen.findAllByLabelText('Remove from queue')).toHaveLength(1);
+  });
+
+  it('keeps a message paused, not lost or run twice, when the turn ends and the withdraw says nothing', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    const verdict = deferred();
+    spies.sendAddon.mockImplementation(() => verdict.promise);
+    spies.withdrawAddon.mockImplementation(async () => ({ status: 'error' }));
+    await send(user, composer, 'use the sales DB');
+
+    // The turn ends while the server decides; the stream is gone.
+    await act(async () => {
+      streams[streams.length - 1].opts.onDone();
+      streams[streams.length - 1].injectEvent = undefined;
+    });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      verdict.resolve({ status: 'added', addon_id: 'ad1', decided_by: 'jev' });
+      await verdict.promise;
+    });
+
+    await waitFor(() => expect(spies.withdrawAddon).toHaveBeenCalledWith('conv-a', 'ad1'));
+    const chip = await screen.findByTestId('queued-chip');
+    await waitFor(() => expect(chip).toHaveAttribute('data-paused', 'true'));
+    // Paused: it does not run on its own.
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    await user.hover(screen.getByTestId('queued-unconfirmed'));
+    expect((await screen.findAllByText("Couldn't confirm whether this was added. Send it again?")).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Send again' }));
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('use the sales DB');
+  });
+
+  it('runs messages in the order they were typed, whatever order the server answers in', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    const first = deferred();
+    const second = deferred();
+    spies.sendAddon.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+
+    await send(user, composer, 'first follow-up');
+    await send(user, composer, 'second follow-up');
+    // The later message is answered first.
+    await act(async () => { second.resolve({ status: 'queued', reason: 'next_task' }); await second.promise; });
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    // The earlier one still holds its place: nothing runs ahead of it.
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+
+    await act(async () => { first.resolve({ status: 'queued', reason: 'next_task' }); await first.promise; });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('first follow-up');
+  });
+
+  it('pauses a queued message when Add to current task gets no clear answer', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    await send(user, composer, 'skip the chart');
+    await screen.findByLabelText('Remove from queue');
+    spies.sendAddon.mockImplementation(async () => ({ status: 'timeout' }));
+
+    await user.click(screen.getByRole('button', { name: 'Add to current task' }));
+
+    await waitFor(() => expect(screen.getByTestId('queued-chip')).toHaveAttribute('data-paused', 'true'));
+    expect(screen.getByRole('button', { name: 'Send again' })).toBeInTheDocument();
+    await act(async () => { streams[streams.length - 1].opts.onDone(); });
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('says it could not take the message in the person\'s language', async () => {
+    const user = userEvent.setup();
+    const composer = await startTurn(user);
+    await send(user, composer, 'skip the chart');
+    await screen.findByLabelText('Remove from queue');
+    spies.sendAddon.mockImplementation(async () => ({ status: 'queued', reason: 'busy' }));
+
+    await user.click(screen.getByRole('button', { name: 'Add to current task' }));
+
+    expect(await screen.findByText('Anton could not take it now. It stays in the queue.')).toBeInTheDocument();
+    expect(trackAddonOverridden).toHaveBeenCalledWith('to_task', 'busy');
   });
 });

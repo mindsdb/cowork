@@ -211,6 +211,8 @@
       "moveToQueue": "Move to queue",
       "addToTask": "Add to current task",
       "addingToTask": "Adding to current task",
+      "unconfirmed": "Couldn't confirm whether this was added. Send it again?",
+      "sendAgain": "Send again",
       "queued": {
         "separate": "Queued: this looks like a separate request, so it runs after the current task.",
         "unsure": "Queued: it wasn't clear this belongs to the current task. Use the arrow to add it now.",

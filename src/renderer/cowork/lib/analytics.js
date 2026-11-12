@@ -906,15 +906,31 @@ export function trackAddonAdded(decidedBy, via) {
   capture(EVENTS.ADDON_ADDED, { decided_by: decidedBy === 'user' ? 'user' : 'jev', via: via === 'queue' ? 'queue' : 'send' });
 }
 
+// Reasons are reported from a fixed list: the server's own reason strings are
+// not ours to forward as-is, and anything new reads as 'unknown'.
+const ADDON_QUEUED_REASONS = new Set([
+  // The app's own.
+  'empty', 'attachments', 'no_conversation', 'no_live_stream', 'turn_ending',
+  'not_found', 'unsupported', 'timeout', 'error', 'returned',
+  // The server's `queued` reasons.
+  'jev', 'next_task', 'low_confidence', 'new_request', 'jev_off', 'jev_error', 'jev_timeout',
+  'too_many', 'too_large', 'rate_limited', 'busy', 'internal', 'redis_error', 'pod_timeout',
+]);
+const ADDON_OVERRIDE_OUTCOMES = new Set([
+  'added', 'withdrawn', 'already_read', ...ADDON_QUEUED_REASONS,
+]);
+
+const allowed = (value, list) => (list.has(value) ? value : 'unknown');
+
 export function trackAddonQueued(reason) {
-  capture(EVENTS.ADDON_QUEUED, { reason: reason || 'unknown' });
+  capture(EVENTS.ADDON_QUEUED, { reason: allowed(reason, ADDON_QUEUED_REASONS) });
 }
 
 export function trackAddonOverridden(direction, outcome, decidedBy) {
   capture(EVENTS.ADDON_OVERRIDDEN, {
     direction: direction === 'to_task' ? 'to_task' : 'to_queue',
-    outcome: outcome || 'unknown',
-    ...(decidedBy ? { decided_by: decidedBy } : {}),
+    outcome: allowed(outcome, ADDON_OVERRIDE_OUTCOMES),
+    ...(decidedBy ? { decided_by: decidedBy === 'user' ? 'user' : 'jev' } : {}),
   });
 }
 

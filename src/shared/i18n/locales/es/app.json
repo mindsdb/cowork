@@ -260,5 +260,9 @@
   },
   "orgs": {
     "personal": "Personal"
+  },
+  "addon": {
+    "moveFailed": "No se pudo mover ese mensaje a la cola. Inténtalo de nuevo.",
+    "stayQueued": "{agent} no puede recibirlo ahora. Se queda en la cola."
   }
 }
