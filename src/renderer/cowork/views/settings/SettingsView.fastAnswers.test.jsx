@@ -179,7 +179,7 @@ describe('the Decision model group', () => {
   it('sits with the provider settings, and its fields save with the form', async () => {
     const onSave = vi.fn(async () => {});
     render(<SettingsView
-      settings={settingsFor('minds-cloud', MINDS, { routing: { mode: 'jev', canSetDecisionModel: true } })}
+      settings={settingsFor('openai-compatible', { ...COMPAT, name: 'Local' }, { routing: { mode: 'llm', routerProvider: 'openai-compatible', canSetDecisionModel: true } })}
       setSetting={vi.fn()} onSave={onSave}
       theme="dark" onThemeChange={vi.fn()} skin="default" onSkinChange={vi.fn()}
       customTheme={{}} onCustomThemeChange={vi.fn()} agentLabel="Anton"

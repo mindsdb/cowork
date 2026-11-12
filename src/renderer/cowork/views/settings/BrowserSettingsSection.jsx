@@ -339,6 +339,7 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
               a tap or a key, since touch has no hover. */}
           <Tooltip content={browserHelp} open={helpOpen} onOpenChange={setHelpOpen} closeOnClick={false}>
             <span className="inline-flex items-center gap-2">
+              {browserSwitch}
               <button
                 type="button"
                 className="inline-flex items-center justify-center w-7 h-7 rounded-full border-0 bg-transparent text-ink-3 hover:text-ink cursor-pointer"
@@ -348,7 +349,6 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
               >
                 <Info size={15} aria-hidden="true" />
               </button>
-              {browserSwitch}
             </span>
           </Tooltip>
         </Section>
@@ -370,6 +370,11 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
                   which the info button opens on a tap or a key. */}
               <Tooltip content={<span className="block max-w-[300px] text-left">{onlyWhenNeededHelp(agentLabel)}</span>} open={neededHelpOpen} onOpenChange={setNeededHelpOpen} closeOnClick={false}>
                 <span className="inline-flex items-center gap-2">
+                  <Switch
+                    checked={showsOnlyWhenNeeded(settings)}
+                    onCheckedChange={(on) => setSetting('browserOnlyWhenNeeded', on)}
+                    aria-label={t('browser.onlyWhenNeededTitle')}
+                  />
                   <button
                     type="button"
                     className="inline-flex items-center justify-center w-7 h-7 rounded-full border-0 bg-transparent text-ink-3 hover:text-ink cursor-pointer"
@@ -379,11 +384,6 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
                   >
                     <Info size={15} aria-hidden="true" />
                   </button>
-                  <Switch
-                    checked={showsOnlyWhenNeeded(settings)}
-                    onCheckedChange={(on) => setSetting('browserOnlyWhenNeeded', on)}
-                    aria-label={t('browser.onlyWhenNeededTitle')}
-                  />
                 </span>
               </Tooltip>
             </Section>

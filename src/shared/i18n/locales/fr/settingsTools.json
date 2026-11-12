@@ -205,6 +205,9 @@
     "passed": "Réponse en {ms} ms.",
     "failed": "Le modèle de décision n'a pas répondu comme prévu ({error}). Vérifiez l'endpoint et la clé.",
     "untested": "Impossible de tester le modèle de décision. Réessayez.",
-    "remove": "Supprimer"
+    "remove": "Supprimer",
+    "viaMindsHubTitle": "Jev sur MindsHub Inference",
+    "viaMindsHub": "{agent} utilise Jev via MindsHub Inference, auquel vous êtes déjà connecté. Rien à configurer.",
+    "learnMore": "En savoir plus"
   }
 }

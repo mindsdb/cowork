@@ -205,6 +205,9 @@
     "passed": "It answered in {ms} ms.",
     "failed": "The decision model didn't answer as expected ({error}). Check the endpoint and key.",
     "untested": "Couldn't test the decision model. Try again.",
-    "remove": "Remove"
+    "remove": "Remove",
+    "viaMindsHubTitle": "Jev on MindsHub Inference",
+    "viaMindsHub": "{agent} uses Jev through MindsHub Inference, which you're already signed in to. Nothing to set up.",
+    "learnMore": "Learn more"
   }
 }

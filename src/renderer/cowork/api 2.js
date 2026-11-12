@@ -1,0 +1,3918 @@
+import { diagnostic } from '../../shared/diagnostics';
+import { PLATFORM_UI } from '../lib/deployment';
+import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
+import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
+// API client — talks to the FastAPI backend at /v1/*.
+// The origin comes from the host abstraction: packaged Electron addresses
+// the loopback server on the per-OS-user port main resolved (ENG-439); Vite
+// dev / web are same-origin (proxied), so getApiOrigin() returns the page
+// origin. Routing through host keeps the port in one place.
+
+import { iterateSSE } from './lib/responseStreamAdapter';
+import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
+import { isAntonConfigError } from './lib/antonErrors';
+import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
+import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
+import { host } from '../platform/host';
+import { currentServerLocale } from '../lib/i18n';
+import { relativeAge } from './lib/formatTime';
+import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, committedSettingsPatch, CLIENT_TO_SERVER } from './lib/settingsTransform';
+import { MODEL_ROUTER_ID } from './lib/modelCatalog';
+import { cacheSettings } from './lib/settingsCache';
+import { setAntonInstallId } from './lib/analytics';
+import { artifactIdentity } from './lib/artifactIdentity';
+import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
+import { liveAppStatesFrom } from './lib/liveAppState';
+import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
+import { getOrgMode } from '../lib/orgMode';
+import { isTaskBrowserOff } from './lib/taskBrowser';
+import { SHARING_OFF } from './lib/orgSharing';
+import {
+  MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
+} from './lib/sharingContract';
+import {
+  expectedOrganizationHeaders,
+  handleOrganizationBoundaryResponse,
+} from './lib/organizationRequestBoundary';
+import {
+  buildMemoryDeletePayload,
+  buildMemoryWritePayload,
+  groupMemoryItems,
+  resolveProjectId,
+} from './lib/memoryTransform';
+
+const API_ORIGIN = host.getApiOrigin();
+
+export const BASE = `${API_ORIGIN}/api/v1`;
+const ROOT_BASE = `${API_ORIGIN}`;
+
+/* Settles with `promise`, or rejects with the abort reason, as fetch does,
+   once `signal` aborts first. A request's own deadline or Stop then also
+   covers the wait for its access token, which a stalled Keycloak refresh can
+   hold. */
+function _untilAborted(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+// Thin wrapper around fetch() for server calls.
+//
+// Web: attach the Keycloak access token as `Authorization: Bearer` so the
+// ingress auth subrequest (auth-service /v1/authenticate) can validate the
+// caller, mirroring the MindsHub console (mindshub_frontend). host.getAccessToken
+// refreshes the token as needed.
+//
+// Electron: the main process injects the loopback server's bearer token (when
+// COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
+// (src/main/app.ts). That token never reaches the renderer and is NOT the
+// Keycloak token, so nothing is attached here.
+//
+// Both: every request carries the UI language as X-Cowork-UI-Locale (one of
+// SUPPORTED_LOCALES), so cowork-server can tell Anton which language to fall
+// back to (ENG-4149). Its own header, not Accept-Language, which browsers send
+// on their own; and only while the language picker is on. A caller's own
+// header wins.
+export async function authFetch(url, options = {}) {
+  options = withUiLocale(options);
+  if (host.isWeb) {
+    const token = await _untilAborted(host.getAccessToken(), options.signal);
+    if (token) {
+      options = {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: `Bearer ${token}`,
+          ...expectedOrganizationHeaders(token),
+        },
+      };
+    }
+  }
+  const response = await fetch(url, options);
+  if (host.isWeb && handleOrganizationBoundaryResponse(response)) {
+    throw new Error('The active organization changed; reload required');
+  }
+  return response;
+}
+
+function hasHeader(headers, name) {
+  if (!headers) return false;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) return headers.has(name);
+  const wanted = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === wanted);
+}
+
+export const UI_LOCALE_HEADER = 'X-Cowork-UI-Locale';
+
+export function withUiLocale(options = {}) {
+  if (hasHeader(options.headers, UI_LOCALE_HEADER)) return options;
+  const locale = currentServerLocale();
+  if (!locale) return options;
+  if (typeof Headers !== 'undefined' && options.headers instanceof Headers) {
+    const headers = new Headers(options.headers);
+    headers.set(UI_LOCALE_HEADER, locale);
+    return { ...options, headers };
+  }
+  return { ...options, headers: { ...(options.headers || {}), [UI_LOCALE_HEADER]: locale } };
+}
+
+/* Opt-in bound for a plain JSON request, so a dead server (a proxy holding
+   the socket open with nothing behind it) can't hang a caller forever. Only
+   callers on the "server may be dead" path opt in (Stop's cancelResponse and
+   cancelScratchpad, the history reload after Stop/error, the health check
+   every send waits on). Everything else stays unbounded, since some endpoints
+   have their own longer server-side budget (e.g. connector validation allows
+   15s). Streaming calls use authFetch directly and manage their own
+   longer-lived idle timeout (see _streamResponse, tailInFlight and
+   streamDataVaultSubmission). */
+export const SHORT_REQUEST_TIMEOUT_MS = 10_000;
+
+function _timeoutSignal(existingSignal, timeoutMs) {
+  if (existingSignal || !timeoutMs) return { signal: existingSignal, cancel: () => {} };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  return { signal: ctrl.signal, cancel: () => clearTimeout(timer) };
+}
+
+async function req(path, { timeoutMs, ...options } = {}) {
+  const { signal, cancel } = _timeoutSignal(options.signal, timeoutMs);
+  try {
+    const res = await authFetch(BASE + path, {
+      ...options,
+      signal,
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+    });
+    /* responseError carries err.status, so callers can branch on the HTTP
+       code (e.g. 404 fallbacks). */
+    if (!res.ok) throw await responseError(res, `API ${path} returned ${res.status}`);
+    if (res.status === 204) return { ok: true };
+    return await res.json();
+  } finally {
+    cancel();
+  }
+}
+
+async function rootReq(path, { timeoutMs, ...options } = {}) {
+  const { signal, cancel } = _timeoutSignal(options.signal, timeoutMs);
+  try {
+    const res = await authFetch(ROOT_BASE + path, {
+      ...options,
+      signal,
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+    });
+    if (!res.ok) {
+      throw new Error(`API ${path} returned ${res.status}`);
+    }
+    if (res.status === 204) return { ok: true };
+    return await res.json();
+  } finally {
+    cancel();
+  }
+}
+
+// In-flight single-flight cache. When several call sites ask for
+// the same endpoint at the same time (e.g. WorkingFolderLive and
+// ContextCard both mounting at once and both calling
+// `listProjectFiles(name)`, or the projects list view fanning N
+// rows that all want `fetchArtifacts`), we collapse the duplicates
+// into one network request and share its promise.
+//
+// Behaviour:
+//   - First caller for a given key starts the request.
+//   - Concurrent callers receive the SAME promise.
+//   - A force-fresh caller replaces that generation; later callers join it.
+//   - Once the promise settles (resolve or reject) the entry is
+//     deleted so the next call will re-fetch — i.e. NO long-lived
+//     cache, just request coalescing within the same tick / async
+//     window. Streaming polls keep working.
+//
+// The keys are constructed by callers; convention is the URL path
+// plus any query params, so different projects never collide.
+const _inflight = new Map();
+function dedupe(key, factory, { forceFresh = false } = {}) {
+  const existing = _inflight.get(key);
+  if (existing && !forceFresh) return existing.promise;
+
+  // Store a generation alongside the promise. A post-mutation read replaces
+  // the current generation, so later callers join the newer request even if
+  // the pre-mutation request is still pending. The identity check in finally
+  // prevents that older promise from deleting its replacement when it settles.
+  const generation = Symbol(key);
+  const promise = Promise.resolve()
+    .then(factory)
+    .finally(() => {
+      if (_inflight.get(key)?.generation === generation) {
+        _inflight.delete(key);
+      }
+    });
+  _inflight.set(key, { generation, promise });
+  return promise;
+}
+
+/**
+ * A refused request, with what its body and headers said about it.
+ * @typedef {Error & {
+ *   status: number,
+ *   code: string|null,
+ *   retry_after: number|null,
+ *   retry_at: string|null,
+ *   body: Record<string, unknown>|null,
+ * }} RefusalError
+ */
+
+/**
+ * What a stream's onError gets beside its message. A response.failed frame
+ * arrives whole, so any other field the server sends rides along too.
+ * @typedef {object} StreamFailure
+ * @property {string} [code] Why the turn ended: a wire code such as
+ *   server_busy, or api.js's own stalled, interrupted, stream_error or
+ *   reconnect_error.
+ * @property {string} [type] `response.failed` when the server ended the turn.
+ * @property {string} [user_message_id] The question's id, from this stream's
+ *   response.created.
+ * @property {number} [http_status] The status of a question refused before
+ *   the stream. Present only on such a refusal.
+ * @property {number|null} [retry_after] Seconds the server asked to wait.
+ * @property {string|null} [retry_at] When that wait ends, as an offset-bearing
+ *   ISO 8601 instant.
+ * @property {string} [reset_at] When a spent allowance refills.
+ * @property {string} [request_id] The server's id for the failed request.
+ * @property {boolean} [reconnectable] The credential is MindsHub's, so
+ *   signing in again fixes it.
+ * @property {string} [provider_label] The model provider's display name.
+ * @property {string} [model] The model the failed turn asked for.
+ */
+
+/**
+ * Builds the Error a refused request throws. The message is the body's
+ * sentence, else the caller's fallback. status, code, retry_after and retry_at
+ * let a caller tell a busy server from a turn already running, and wait as
+ * long as the server asked. The body is read once, as text, and parsed from
+ * there: reading it as JSON first would consume it, and a body that isn't JSON
+ * would then have no text left to show.
+ *
+ * @param {Response} res
+ * @param {string} fallback
+ * @returns {Promise<RefusalError>}
+ */
+async function responseError(res, fallback) {
+  let text = '';
+  try {
+    text = await res.text();
+  } catch {
+    /* An unreadable body leaves the fallback. */
+  }
+  const { message, code } = readRefusalBody(text);
+  const { retry_after, retry_at } = readRetryAfter(res.headers?.get?.('Retry-After'));
+  const err = /** @type {RefusalError} */ (new Error(message || fallback));
+  err.status = res.status;
+  err.code = code;
+  err.retry_after = retry_after;
+  err.retry_at = retry_at;
+  err.body = readRefusalObject(text);
+  return err;
+}
+
+// ─── Health ──────────────────────────────────────────────────────────────────
+// Hands anton's install id to analytics on the way through (ENG-1689). Done
+// here rather than at the call sites because there are five of them and a sixth
+// added later would silently stop reporting the join key; this is the one funnel
+// every health read passes through. Same shape as the `cacheSettings` call
+// below — a lib-level setter written from the transport layer.
+// `setAntonInstallId` self-gates to desktop.
+export async function fetchHealth({ timeoutMs } = {}) {
+  try {
+    /* Bounded, because every send waits on this check first: a server that
+       holds the request open would otherwise leave Send busy with no message.
+       A timeout reads as offline, the same answer as any other failure. The
+       Updates panel passes its own, longer bound (ENG-3291). */
+    const health = await rootReq('/api/v1/health', { timeoutMs: timeoutMs ?? SHORT_REQUEST_TIMEOUT_MS });
+    // Isolated: analytics must never decide whether the server looks healthy.
+    // This sits inside fetchHealth's try, so an exception here would fall to the
+    // catch below and report `status: 'offline'` — making an analytics failure
+    // indistinguishable from a down server, on the call that gates boot. Same
+    // rule anton applies to its own reporting ("must never affect the turn").
+    try {
+      setAntonInstallId(health?.aid);
+    } catch {
+      /* ignore — the join key is worth less than a correct readiness answer */
+    }
+    return health;
+  } catch {
+    // Deliberately NOT cleared on an outage. Unlike a version, this id is a
+    // stable machine fingerprint — it cannot go stale, and dropping it during a
+    // health blip would strand events that could have carried the join key.
+    return { status: 'offline', anton_available: false };
+  }
+}
+
+// ─── Conversations (Tasks) ──────────────────────────────────────────────────
+// Cowork's "task" object is the merge of an Anton conversation (id, title,
+// preview, project_path, messages) with cowork-side UI state (pinned,
+// attachments). The shape returned here mirrors what App.jsx already
+// expects so callers don't need to change.
+
+function _failedEventMeta(events) {
+  if (!Array.isArray(events)) return null;
+  const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
+  if (!ev) return null;
+  return {
+    code: ev.code || null,
+    message: ev.error || ev.message || '',
+    /* Carry the card context so a RELOADED failure renders the same affordance
+       as the live one. Without these, reconnectable is undefined on reload and
+       the provider_overloaded / provider_auth cards mis-nudge a managed user
+       toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
+       failedEventMeta in lib/conversationHistory.js (the two hydrate paths
+       must agree on this). */
+    reconnectable: ev.reconnectable ?? null,
+    providerLabel: ev.provider_label ?? null,
+    failedModel: ev.model ?? null,
+    // ENG-1537 — see lib/conversationHistory.js's failedEventMeta; the two paths must agree.
+    retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
+    /* included_allowance_exhausted and free_serving_paused: when the free
+       allowance refills or the fuse lifts, as the gate's opaque ISO string,
+       on a desktop or a hosted turn. A cowork-server that predates it on
+       hosted failures sends none, and the card falls back. Formatted at
+       render time: the server deliberately doesn't parse it, since only the
+       client knows the viewer's timezone (ENG-1537). */
+    resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // Absolute instant to gate Retry against. The message's own created_at
+    // is NOT a substitute: the server serialises it offset-less, so JS reads
+    // it as local time — the gate would last hours west of UTC and no-op east
+    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
+    retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
+    // The remote turn's own correlation id (cowork-server) — the one thing a
+    // generic anton_error bubble can still offer for a support lookup.
+    requestId: typeof ev.request_id === 'string' ? ev.request_id : null,
+  };
+}
+
+// Replay the server-persisted SSE event log through the live stream
+// reducer to reconstruct `steps`, `startedAt` and `figureSources` for each
+// assistant turn. The server saves raw events in a sidecar file and returns
+// them inline on `/conversations/{id}/items`; doing the replay
+// here keeps reducer logic single-source (lib/responseStreamAdapter).
+function _hydrateAssistantEvents(messages) {
+  if (!Array.isArray(messages)) return messages || [];
+  const out = [];
+  for (const m of messages) {
+    if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
+      out.push(m);
+      continue;
+    }
+    const state = reduceServerEvents(m.events, null);
+    const { events: _drop, ...rest } = m;
+    // The turn's response id, so an add-on saved against it can find it.
+    if (state.responseId) rest._responseId = state.responseId;
+    const turnComplete = state.status === 'done' || state.status === 'error';
+    const completeFlag = turnComplete ? { _turnComplete: true } : {};
+    out.push({
+      ...rest,
+      ...(state.steps?.length > 0
+        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null, endedAt: rest.endedAt || state.endedAt || null }
+        : {}),
+      ...(state.figureSources ? { figureSources: state.figureSources } : {}),
+      ...completeFlag,
+      ...(state.incompleteReason ? { incompleteReason: state.incompleteReason } : {}),
+      // The answer the live turn showed, not the saved text that joins every
+      // round: earlier rounds' narration is already in the steps as Notes.
+      // Every conversation open and every refetch after a turn ends comes
+      // through here, so without it a finished answer gained its narration
+      // back the moment the chat refetched it (ENG-4194).
+      ...(replayedAnswer(state, rest.content) || {}),
+    });
+    if (state.status === 'error') {
+      const failed = _failedEventMeta(m.events);
+      // Same mapping as App.jsx's live-stream path (lib/antonErrors): a
+      // config/auth failure renders the connect-a-provider card. Before
+      // ENG-1304 only the live path mapped it, so reopening a conversation
+      // downgraded the card to a raw error string.
+      if (isAntonConfigError(failed?.message, { code: failed?.code })) {
+        out.push({ role: 'provider_required' });
+      } else {
+        out.push({
+          role: 'error',
+          content: failed?.message || 'An unexpected error occurred.',
+          code: failed?.code || null,
+          reconnectable: failed?.reconnectable ?? null,
+          providerLabel: failed?.providerLabel ?? null,
+          retryAfter: failed?.retryAfter ?? null,
+          resetAt: failed?.resetAt ?? null,
+          retryAt: failed?.retryAt ?? null,
+          failedModel: failed?.failedModel ?? null,
+          requestId: failed?.requestId ?? null,
+        });
+      }
+    }
+  }
+  // Messages added to a running turn (ENG-4194) render inside that turn.
+  return foldAddonMessages(out);
+}
+
+function _conversationToTask(conv, messages = [], { messagesStatus = 'loaded' } = {}) {
+  // Server stores conversations under <project>/.anton/episodes/ and
+  // returns the project NAME on each conversation meta. We carry both:
+  //   projectName — the canonical id from the server
+  //   projectPath — resolved later from the projects list (App.jsx)
+  //
+  // Each assistant message may carry an `events` array — the SSE log
+  // captured server-side for that turn. Replaying it through the live
+  // reducer gives us back `steps` + `startedAt` byte-for-byte. We do
+  // the replay at the api boundary so the rest of the app sees a
+  // consistent message shape regardless of whether the data came from
+  // a fresh stream or a server reload.
+  // The server does not store a chat's mutes, so the field is normally absent.
+  // Leave it undefined then: an empty list would read as "no mutes" and wipe
+  // the ones the chat's last send recorded locally.
+  const rawDisabled = conv.disabled_connections ?? conv.disabledConnections;
+  const disabledConnections = Array.isArray(rawDisabled)
+    ? rawDisabled
+      .filter((x) => x && typeof x.engine === 'string' && typeof x.name === 'string')
+      .map((x) => ({ engine: x.engine.trim(), name: x.name.trim() }))
+    : undefined;
+
+  return {
+    id: conv.id,
+    title: conv.title || conv.preview || conv.id || 'Untitled task',
+    subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
+    status: 'idle',
+    messages: _hydrateAssistantEvents(messages),
+    // 'loading' until a real fetch resolves — every sidebar-listed
+    // task is built with an empty placeholder array before that happens, so
+    // the loading gate needs this to distinguish "not fetched yet" from
+    // "genuinely empty". Callers that hand over messages from a real fetch
+    // (fetchSession/fetchSessionResult) rely on the 'loaded' default; the
+    // conversation-list caller (fetchSessions) passes 'loading' explicitly.
+    messagesStatus,
+    projectName: conv.project || null,
+    projectId: conv.project_id || null,
+    projectPath: conv.project_path || null,
+    harness: conv.harness || null,
+    model: conv.model || null,
+    attachments: [],
+    disabledConnections,
+    // Kept on this device, like the mutes (lib/taskBrowser).
+    browserOff: isTaskBrowserOff(conv.id),
+    pinned: false,
+    // Carry the schedule linkage through so the renderer can group
+    // multiple runs of the same schedule into a single "view all"
+    // row instead of showing each execution as its own task. Set on
+    // conversations created by `_run_schedule`; null for chat-
+    // initiated conversations.
+    scheduledId: conv.scheduled_id || conv.scheduledId || null,
+    updatedAt: conv.updated_at || conv.updatedAt || null,
+    createdAt: conv.created_at || conv.createdAt || null,
+  };
+}
+
+/** The raw list request. Throws on failure so callers that need to tell an
+ * empty account from a broken fetch can (ENG-2246) — `fetchConversationList`
+ * below keeps the swallowing contract its other caller relies on. */
+async function requestConversationList() {
+  // Critical: pass `project=all` so we list conversations across
+  // every project, not just the active one. Without this, a task
+  // created in project A vanishes from `tasks` the moment we
+  // refresh while the user is "in" project B (because the server
+  // defaults to the active project's episodes/ dir).
+  const list = await req('/conversations/?project=all&limit=200');
+  return Array.isArray(list?.conversations) ? list.conversations : [];
+}
+
+export async function fetchConversationList() {
+  try {
+    return await requestConversationList();
+  } catch {
+    return [];
+  }
+}
+
+/** Create a task record directly (bypassing the `/responses` stream) — used
+ * by coding-mode (MVP): the actual work happens in an external CLI, but the
+ * task should still show up with its harness/model recorded. */
+export async function createConversation({ project, projectId, topic, harness, model } = {}) {
+  return req('/conversations/', {
+    method: 'POST',
+    body: JSON.stringify({ project, projectId, topic, harness, model }),
+  });
+}
+
+/** How many recent conversations get their transcript warmed in the
+ * background. Unchanged from the original eager fan-out — see ENG-2246's
+ * "deliberately not in scope" for why the depth is left alone. */
+const EAGER = 50;
+
+/** How many of those warm-up reads run at once. Every page load warms, so
+ * firing all 50 together turned each reload into a 50-request burst; one
+ * browser reloading staging up to 13 times a minute starved cowork-server's
+ * single process with them. A reload drops the reads still queued,
+ * so at most this many reach the server per load. */
+const WARM_CONCURRENCY = 4;
+
+/** Default page size for the paginated /items envelope. Matches
+ * the server's own default so the two agree without either side needing to
+ * repeat the number. */
+const MESSAGE_PAGE_LIMIT = 50;
+
+function _itemsPath(id, { limit, before } = {}) {
+  const params = new URLSearchParams();
+  if (limit != null) params.set('limit', String(limit));
+  if (before) params.set('before', before);
+  const qs = params.toString();
+  return `/conversations/${encodeURIComponent(id)}/items${qs ? `?${qs}` : ''}`;
+}
+
+/** Normalizes a /items response into one shape regardless of which branch
+ * the server took: the bare (unbounded) list — from a call with no params,
+ * or a version-skewed server during a rolling deploy — or the paginated
+ * envelope. Every caller that requests a page reads this instead of
+ * checking Array.isArray itself, so the envelope is never silently read as
+ * an empty transcript. */
+function _pageFromItemsResponse(raw) {
+  if (Array.isArray(raw)) return { items: raw, hasMore: false, nextBefore: null };
+  if (raw && Array.isArray(raw.items)) {
+    return { items: raw.items, hasMore: !!raw.hasMore, nextBefore: raw.nextBefore ?? null };
+  }
+  return { items: [], hasMore: false, nextBefore: null };
+}
+
+/** Resolves as soon as the conversation LIST lands — one request. Everything
+ * the sidebar renders comes from that response (`_conversationToTask` reads
+ * `messages` for nothing but `messages`), so waiting on the per-conversation
+ * transcripts only delayed first paint (ENG-2246).
+ *
+ * The transcript warm-up still runs, at the same depth, but off the critical
+ * path: it is deliberately NOT awaited, and reports each bundle through
+ * `onItems` so the caller can merge it in as it arrives.
+ *
+ * Returns `Task[]` on success and `{ error: true, status }` on a failed list
+ * request. Seven of the eight call sites guard with `Array.isArray`, so the
+ * failure is inert for them and actionable for the one that cares; the eighth
+ * (`App.jsx` delete-rollback) checks the shape explicitly for the same reason.
+ * Any new caller must do one or the other — a bare truthiness check would
+ * treat the error object as a task list. */
+export async function fetchSessions({ onItems } = {}) {
+  let conversations;
+  try {
+    conversations = await requestConversationList();
+  } catch (err) {
+    return { error: true, status: (err && err.status) || 0 };
+  }
+  if (conversations.length === 0) return [];
+
+  // Background: not awaited, one callback per conversation as it lands, at
+  // most WARM_CONCURRENCY reads in flight. A finished read starts the next.
+  // A failed one stops the warm-up: a server that could not answer one
+  // transcript will not answer the rest faster, and a warm-up that misses
+  // costs a slower open, never a blocked list.
+  //
+  // Only warmed when a caller is actually listening. Seven of the eight
+  // `fetchSessions` call sites want the list and nothing else (every task
+  // open is one of them); warming for those fetched 50 transcripts and threw
+  // every one away, which is 50 wasted requests on the app's most common
+  // interaction.
+  if (onItems) {
+    const queue = conversations.slice(0, EAGER);
+    const warmNext = () => {
+      const c = queue.shift();
+      if (!c) return;
+      // Bounded like every other transcript fetch. Warming the FULL history of
+      // the 50 most recent conversations moved the unbounded fetch from
+      // task-open to startup rather than removing it — and it pre-filled a long
+      // conversation so completely that neither the loading state nor
+      // "load earlier" ever engaged for the tasks most likely to be opened.
+      req(_itemsPath(c.id, { limit: MESSAGE_PAGE_LIMIT }))
+        .then(
+          // Hydrated, not raw: the pre-ENG-2246 path ran these same transcripts
+          // through _conversationToTask, so they got _hydrateAssistantEvents —
+          // which replays `events` into steps/startedAt and appends the synthetic
+          // `error` / `provider_required` message a failed turn renders its card
+          // from. Handing over the raw array silently dropped both.
+          (r) => {
+            warmNext();
+            const page = _pageFromItemsResponse(r);
+            onItems(c.id, _hydrateAssistantEvents(page.items), {
+              hasMoreMessages: page.hasMore,
+              messagesCursor: page.nextBefore,
+            });
+          },
+          () => { queue.length = 0; },
+        )
+        // An onItems error stays silent, as before; the next read has started.
+        .catch(() => {});
+    };
+    for (let i = 0; i < WARM_CONCURRENCY; i += 1) warmNext();
+  }
+
+  // Guarded: the outer try/catch that used to wrap this whole function is gone,
+  // and _conversationToTask dereferences conv.title / conv.disabled_connections.
+  // One malformed row would reject a promise whose caller has no .catch, leaving
+  // tasksStatus stuck on 'loading' — skeleton rows forever, no retry reachable.
+  return conversations
+    .filter((c) => c && typeof c === 'object')
+    .map((c) => {
+      try {
+        return _conversationToTask(c, [], { messagesStatus: 'loading' });
+      } catch (err) {
+        // Dropping it beats stranding the whole list, but a conversation that
+        // silently vanishes from the sidebar is un-diagnosable without this.
+        // eslint-disable-next-line no-console
+        diagnostic("renderer.cowork.api", "WARNING", "fetchsessions_skipped_a_malformed_conversation_row", '[fetchSessions] skipped a malformed conversation row', c?.id, err);
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+export async function fetchSession(id, { timeoutMs } = {}) {
+  try {
+    const [meta, raw] = await Promise.all([
+      req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }).catch(() => null),
+      req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }).catch(() => null),
+    ]);
+    // A failed transcript read is unavailable, not an empty conversation.
+    // Recovery must keep the visible transcript and its interruption notice.
+    if (!meta || !(Array.isArray(raw) || Array.isArray(raw?.items))) return null;
+    const page = _pageFromItemsResponse(raw);
+    return {
+      ..._conversationToTask(meta, page.items),
+      hasMoreMessages: page.hasMore,
+      messagesCursor: page.nextBefore,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Fetches the next OLDER page for a conversation already showing its most
+ * recent one — the "load earlier messages" affordance. `cursor` is the
+ * `messagesCursor`/`nextBefore` the previous page returned; the caller
+ * merges the result in ahead of what it already has (see
+ * lib/mergeMessagePage.js). Returns `null` on failure — same "caller
+ * decides how to degrade" convention as fetchSession. */
+export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
+  if (!cursor) return null;
+  try {
+    const raw = await req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT, before: cursor }), { timeoutMs });
+    const page = _pageFromItemsResponse(raw);
+    return { messages: page.items, hasMoreMessages: page.hasMore, messagesCursor: page.nextBefore };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
+ * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
+ * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the
+ * route can drop a dead link Home but keep the URL + retry on a transient
+ * outage. Metadata is authoritative for existence. A failed transcript is only
+ * treated as an empty conversation on a 404 (the one benign case); any other
+ * items failure is 'unavailable' so a real transcript is never silently blanked.
+ *
+ * A `timeoutMs` that elapses aborts both requests and reads as 'unavailable'.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
+ */
+export async function fetchSessionResult(id, { timeoutMs } = {}) {
+  const [metaRes, msgsRes] = await Promise.allSettled([
+    req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs }),
+    req(_itemsPath(id, { limit: MESSAGE_PAGE_LIMIT }), { timeoutMs }),
+  ]);
+  if (metaRes.status === 'rejected') {
+    const err = metaRes.reason;
+    if (err && err.status === 404) return { status: 'not_found' };
+    // `err.status` is undefined for a network/abort failure — code 0.
+    return { status: 'unavailable', code: (err && err.status) || 0 };
+  }
+  // The conversation exists but its transcript failed to load. Only a 404 is
+  // benign (existing conversation, nothing recorded yet → render empty); auth /
+  // 5xx / network would blank a real transcript, so surface the retry instead.
+  if (msgsRes.status === 'rejected') {
+    const err = msgsRes.reason;
+    if (!(err && err.status === 404)) {
+      return { status: 'unavailable', code: (err && err.status) || 0 };
+    }
+  }
+  const page = msgsRes.status === 'fulfilled' ? _pageFromItemsResponse(msgsRes.value) : { items: [], hasMore: false, nextBefore: null };
+  const task = {
+    ..._conversationToTask(metaRes.value, page.items),
+    hasMoreMessages: page.hasMore,
+    messagesCursor: page.nextBefore,
+  };
+  return { status: 'ok', task };
+}
+
+/**
+ * Pre-allocates the id for a conversation that doesn't exist yet, so
+ * attachments can be uploaded against it before the first stream. The
+ * server adopts a client-supplied UUID as the conversation's real id
+ * (ENG-264) — the old timestamp format here predated the DB-backed
+ * server and made it create a different id, stranding the uploads.
+ */
+export function allocateConversationId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  // randomUUID is gated to secure contexts, but getRandomValues isn't —
+  // assemble an RFC-4122 v4 UUID from raw bytes so the server can still
+  // adopt the id (and CodeQL doesn't flag a Math.random in the id flow).
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+  // No crypto at all (not a real Electron/browser case): the server
+  // can't adopt a non-UUID id but re-links the uploads it covers.
+  return `${Date.now().toString(36)}-${(typeof performance !== 'undefined' ? Math.floor(performance.now() * 1e6) : 0).toString(36)}`;
+}
+
+// No real producer frame for this long (a wedged sidecar, or a proxy holding
+// a dead connection open) aborts rather than hangs forever. Shared with
+// tailInFlight; timed against producer frames, not raw keepalive bytes.
+const STREAM_IDLE_TIMEOUT_MS = 300_000;
+const STALLED_STREAM_MESSAGE = 'The connection stalled. The answer may still be running. Wait for it to finish before sending again.';
+
+// Server-side ask_user deadline, for a frame that doesn't state its own.
+const ASK_USER_DEFAULT_TIMEOUT_S = 300;
+
+// How long to wait for the next producer frame after `msg`. A turn blocked on
+// an ask_user card is legitimately silent until the user answers or the
+// server's own deadline passes, and that deadline equals the normal idle
+// window — so the two timers raced and the client cancelled a healthy turn
+// as "stalled". Past the question's deadline the usual window applies again.
+function idleWindowAfter(msg, idleTimeoutMs) {
+  if (msg?.type !== 'response.ask_user') return idleTimeoutMs;
+  const timeoutS = Number(msg.timeout_s) > 0 ? Number(msg.timeout_s) : ASK_USER_DEFAULT_TIMEOUT_S;
+  return timeoutS * 1000 + idleTimeoutMs;
+}
+
+// The controller a turn's stream hands back (ENG-4194): an AbortController
+// that also lets the app put its own `response.addon` rows through this
+// stream's reducer (`injectEvent`), so they sit in the turn exactly where server
+// events do, and carries the running turn's response id, which an add-on
+// request names (set once `response.created` arrives).
+function turnStreamController(onEvent) {
+  const ctrl = new AbortController();
+  ctrl.injectEvent = (ev) => { if (!ctrl.signal.aborted) onEvent?.(ev); };
+  ctrl.responseId = null;
+  return ctrl;
+}
+
+// Streams a /v1/responses request. Maps OpenAI-style typed events to the
+// callback shape the rest of the app already speaks. `conversationId` is
+// optional — omit it to start a new conversation; the caller learns the
+// new id via the first onChunk/onProgress/onDone callback's second arg.
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+  const ctrl = turnStreamController(onEvent);
+  let userMessageId = null;
+  /** @param {string} message @param {StreamFailure} event */
+  const reportError = (message, event) => onError?.(message, {
+    ...event,
+    ...(userMessageId ? { user_message_id: userMessageId } : {}),
+  });
+  let cid = conversationId || null;
+  // Same idle timer as tailInFlight — a fresh turn stuck behind a dead
+  // proxy connection had none before this.
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = (ms = idleTimeoutMs) => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
+  };
+  // MODEL_ROUTER_ID never leaves the renderer — it's how the
+  // composer represents "let this account's Settings decide"
+  // (modelCatalog.js). The server already treats a null/absent
+  // model as exactly that. With platform UI off, only the operator's
+  // picker (lib/modelPicker) sends a model, and App hands it only the
+  // models that picker offers. With it off, all callers use
+  // operator-configured role settings, including restored tasks.
+  const sentModel = ((PLATFORM_UI || modelPickerMode() !== 'off') && model && model !== MODEL_ROUTER_ID) ? model : null;
+  // A per-task effort is available with platform UI on, and under the
+  // operator's picker for an effort it lets users pick on the model this
+  // question sends, a retried task's saved effort included. Omit the key
+  // otherwise so this request cannot override role settings.
+  const sendsEffort = Boolean(reasoningEffort)
+    && (PLATFORM_UI || operatorEffortLevels(sentModel).includes(reasoningEffort));
+  (async () => {
+    try {
+      bumpIdle();
+      const res = await authFetch(`${BASE}/responses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: text,
+          model: sentModel,
+          // Always named. This UI only knows Anton, so every send says so
+          // rather than lean on the account default, which an older server
+          // may still hold at a harness this build has no control left to
+          // change. Callers with a per-task pick (the composer) still win.
+          harness: harness || 'anton',
+          ...(sendsEffort ? { reasoning_effort: reasoningEffort } : {}),
+          stream: true,
+          conversation: conversationId || null,
+          // Server's `project` field is a project NAME (folder under
+          // projects_store). Sending project_path is silently ignored —
+          // every conversation would fall back to the active project.
+          project: projectName || null,
+          // Names are mutable (rename) — the id is the stable identifier,
+          // so send it whenever the caller has one (ENG-1028). Conditional
+          // so older servers never see an unknown field.
+          ...(projectId ? { project_id: projectId } : {}),
+          attachment_ids: attachmentIds,
+          ...(disabledConnections !== undefined
+            ? { disabled_connections: disabledConnections }
+            : {}),
+          // The task's Browser switch is off (ENG-3188). Only sent then, so
+          // an older server never sees the key.
+          ...(browserOff ? { browser: 'off' } : {}),
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        /* Refused before the stream, so no turn started. Keep what the server
+           said: its status, its code, such as server_busy or
+           turn_in_progress, and when to try again. */
+        const refusal = await responseError(res, `Response stream failed (${res.status})`);
+        reportError(refusal.message, {
+          code: refusal.code || 'stream_error',
+          http_status: refusal.status,
+          retry_after: refusal.retry_after,
+          retry_at: refusal.retry_at,
+        });
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += dec.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+        for (const block of events) {
+          // Each SSE event is `event: ...\ndata: ...`. Pull out the `data:` line.
+          const dataLine = block.split('\n').find((line) => line.startsWith('data:'));
+          if (!dataLine) continue;
+          const raw = dataLine.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let msg;
+          try { msg = JSON.parse(raw); } catch { continue; }
+
+          // Real producer frame — reset the idle window. (Keepalives have no
+          // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
+          bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
+
+          // Raw passthrough — used by the streamAdapter to build a
+          // structured ThinkingStep[] for the UI. Fires before the
+          // type-specific routing so existing callbacks still work.
+          onEvent?.(msg);
+
+          switch (msg.type) {
+            case 'response.created':
+              userMessageId = msg.user_message_id || userMessageId;
+              cid = msg.conversation_id || msg.response?.id || cid;
+              break;
+            case 'response.output_text.delta':
+              onChunk?.(msg.delta || '', cid);
+              break;
+            case 'response.in_progress': {
+              const role = msg.thought_role || '';
+              if (role === 'thought.scratchpad.result') {
+                onToolResult?.({
+                  type: 'tool_result',
+                  name: msg.tool_name || '',
+                  action: msg.tool_action || '',
+                  content: msg.content || '',
+                }, cid);
+              } else {
+                onProgress?.({
+                  type: 'progress',
+                  phase: msg.phase || role.replace(/^thought\./, '') || 'progress',
+                  message: msg.message || msg.content || '',
+                  etaSeconds: msg.eta_seconds ?? null,
+                  thoughtRole: role,
+                }, cid);
+              }
+              break;
+            }
+            case 'response.completed':
+              onDone?.(cid);
+              return;
+            case 'response.failed':
+              reportError(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              return;
+            case 'response.cancelled':
+              // Someone pressed Stop (here, in another tab, or a teammate):
+              // end the turn quietly, as a finished one, not as a drop.
+              onDone?.(cid);
+              return;
+            default:
+              break;
+          }
+        }
+      }
+      // Closed with no response.completed/failed — onDone here used to render
+      // partial text as a finished answer. Distinct from stream_error below:
+      // that's a drop mid-read, this is a clean close with no terminal.
+      reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
+    } catch (err) {
+      /* Our own idle abort surfaces as an AbortError too, so check idledOut
+         first to tell it apart from a caller-initiated cancel (Stop button,
+         new send, navigation). */
+      if (idledOut) {
+        /* End this reader locally. Even after our response.created, its turn
+           may have finished behind a stalled connection and a newer turn may
+           now own the conversation. The cancel API names only a conversation,
+           so it cannot safely cancel the turn this reader remembers. The
+           server's idle watchdog ends a producer that stays stuck. */
+        reportError(STALLED_STREAM_MESSAGE, { code: 'stalled' });
+      } else if (err.name !== 'AbortError') {
+        // Distinct code from tailInFlight's reconnect_error: this is a dropped
+        // connection on the initial send, not a reconnect attempt.
+        reportError(err.message, { code: 'stream_error' });
+      }
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
+    }
+  })();
+  return ctrl;
+}
+
+export function streamNewSession(text, opts = {}) {
+  return _streamResponse(text, opts);
+}
+
+// Phase 2 — reconnect helpers. Built so a tab that mounted on an
+// already-streaming conversation can re-attach without restarting
+// the turn. The cheap probe (`fetchInFlightStatus`) decides whether
+// it's worth opening an SSE; `tailInFlight` reuses the same callback
+// signature as `_streamResponse` so the caller's adapter logic
+// (onChunk / onProgress / onToolResult / onDone / onError / onEvent)
+// is identical between fresh-turn and reconnect paths.
+/** `strict` rethrows a failed or timed-out check instead of answering "not
+ *  running", for a caller that must tell the two apart. */
+export async function fetchInFlightStatus(conversationId, { strict = false, timeoutMs } = {}) {
+  if (!conversationId) return { in_flight: false, has_buffer: false, latest_seq: 0 };
+  try {
+    return await req(`/responses/in-flight?conversation_id=${encodeURIComponent(conversationId)}`, { timeoutMs });
+  } catch (err) {
+    if (strict) throw err;
+    return { in_flight: false, has_buffer: false, latest_seq: 0 };
+  }
+}
+
+// Cross-client sync feed (Option B). Returns every conversation_id
+// whose producer task is currently running. The renderer mirrors this
+// into a local Set so reconcileTaskMessages can synchronously decide
+// "is this conversation alive on the server right now?" without a
+// per-task probe.
+//
+// Returns `null` when the poll itself FAILS (network blip, non-200), as distinct
+// from `[]` (server answered: nothing running). The stranded-slot self-heal
+// counts a missing conversation as evidence its turn ended, so a failed poll must
+// not read as "nothing running" — two blips would abort a healthy streaming turn.
+export async function fetchInFlightList() {
+  try {
+    const res = await req('/responses/in-flight-list');
+    return Array.isArray(res?.in_flight) ? res.in_flight : [];
+  } catch {
+    return null;
+  }
+}
+
+export function tailInFlight(conversationId, {
+  fromSeq = 0,
+  model = 'anton',
+  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
+  onChunk, onProgress, onToolResult, onDone, onError, onEvent,
+} = {}) {
+  const ctrl = turnStreamController(onEvent);
+  let userMessageId = null;
+  /** @param {string} message @param {StreamFailure} event */
+  const reportError = (message, event) => onError?.(message, {
+    ...event,
+    ...(userMessageId ? { user_message_id: userMessageId } : {}),
+  });
+  // Bumped per real producer frame; cleared in the finally so a cleanly
+  // finished tail leaves no dangling timer.
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = (ms = idleTimeoutMs) => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, ms);
+  };
+  (async () => {
+    try {
+      bumpIdle();
+      const url = `${BASE}/responses/tail?conversation_id=${encodeURIComponent(conversationId)}&from_seq=${fromSeq}&model=${encodeURIComponent(model)}`;
+      const res = await authFetch(url, {
+        method: 'GET',
+        headers: { Accept: 'text/event-stream' },
+        signal: ctrl.signal,
+      });
+      if (res.status === 404) {
+        // Buffer's gone — nothing to tail. Treat as a clean no-op so
+        // the caller can fall back to history.
+        onDone?.(conversationId);
+        return;
+      }
+      if (!res.ok) throw await responseError(res, `Tail stream failed (${res.status})`);
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buffer = '';
+      let cid = conversationId;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += dec.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+        for (const block of events) {
+          const dataLine = block.split('\n').find((line) => line.startsWith('data:'));
+          if (!dataLine) continue;
+          const raw = dataLine.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let msg;
+          try { msg = JSON.parse(raw); } catch { continue; }
+          // Real producer frame — reset the idle window. (Keepalives have no
+          // `data:` line and never reach here, so a silent producer still trips.)
+          noteResponseId(ctrl, msg);
+          bumpIdle(idleWindowAfter(msg, idleTimeoutMs));
+          onEvent?.(msg);
+          switch (msg.type) {
+            case 'response.created':
+              userMessageId = msg.user_message_id || userMessageId;
+              cid = msg.conversation_id || cid;
+              break;
+            case 'response.output_text.delta':
+              onChunk?.(msg.delta || '', cid);
+              break;
+            case 'response.in_progress': {
+              const role = msg.thought_role || '';
+              if (role === 'thought.scratchpad.result') {
+                onToolResult?.({
+                  type: 'tool_result',
+                  name: msg.tool_name || '',
+                  action: msg.tool_action || '',
+                  content: msg.content || '',
+                }, cid);
+              } else {
+                onProgress?.({
+                  type: 'progress',
+                  phase: msg.phase || role.replace(/^thought\./, '') || 'progress',
+                  message: msg.message || msg.content || '',
+                  etaSeconds: msg.eta_seconds ?? null,
+                  thoughtRole: role,
+                }, cid);
+              }
+              break;
+            }
+            case 'response.completed':
+              onDone?.(cid);
+              return;
+            case 'response.failed':
+              reportError(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
+              return;
+            case 'response.cancelled':
+              // Someone pressed Stop (here, in another tab, or a teammate):
+              // end the turn quietly, as a finished one, not as a drop.
+              onDone?.(cid);
+              return;
+            default:
+              break;
+          }
+        }
+      }
+      // Closed with no response.completed/failed — same as _streamResponse's
+      // main stream: the tail must not report a partial answer as finished.
+      reportError('The response was interrupted before it finished. Please try again.', { code: 'interrupted' });
+    } catch (err) {
+      // An idle-timeout abort surfaces as an AbortError too, but unlike a
+      // caller-initiated abort (a new send or navigation) it must release the
+      // slot — so report it as an error the reconnect's onError acts on.
+      if (idledOut) {
+        /* End only this tab's view of the turn. A tail watches whatever turn
+           is running in the conversation, which can be another tester's, and
+           a cancel would stop it for everyone. The server's idle watchdog
+           ends a turn that stays stuck. */
+        reportError(STALLED_STREAM_MESSAGE, { code: 'stalled' });
+      } else if (err.name !== 'AbortError') {
+        reportError(err.message, { code: 'reconnect_error' });
+      }
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
+    }
+  })();
+  return ctrl;
+}
+
+export function streamMessage(sessionId, text, opts = {}) {
+  // Strip renderer-side temp ids (`tmp-connect-…` from the connector
+  // picker) before they hit the wire — the server has a defensive
+  // guard, but skipping the value here means the server doesn't even
+  // have to consider it, and the `response.created` event carries
+  // the canonical id straight back. The caller's stream consumer
+  // (App.jsx adoptServerId) rewrites the local task in place.
+  const conversationId = sessionId && !String(sessionId).startsWith('tmp-')
+    ? sessionId
+    : null;
+  return _streamResponse(text, { ...opts, conversationId });
+}
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+// Server returns a flat array of project objects (with id, name, path,
+// is_active). Older servers wrapped in { projects: [...] } — handle both.
+export async function fetchProjects() {
+  try {
+    const data = await req('/projects/');
+    if (Array.isArray(data)) return data;
+    return Array.isArray(data?.projects) ? data.projects : [];
+  } catch {
+    return [];
+  }
+}
+
+// `path` points the project at a folder the user already has, instead of
+// letting the server allocate one under its projects root. Desktop only: the
+// server refuses it on an org deployment and off loopback.
+export async function createProject(name, path) {
+  const body = path ? { name, path } : { name };
+  return req('/projects/', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Rename — backed by PATCH /api/v1/projects/{id}. Server moves the
+// project directory and updates internal references; the response is
+// the renamed Project record. Accepts either a project object (with id)
+// or a plain name string for backwards compat.
+export async function renameProject(projectOrName, newName) {
+  const id = projectOrName?.id;
+  if (id) {
+    return req(`/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: newName }),
+    });
+  }
+  // Fallback: lookup by name from the projects list
+  const projects = await fetchProjects();
+  const match = projects.find((p) => p.name === projectOrName);
+  if (!match?.id) throw new Error(`Project "${projectOrName}" not found`);
+  return req(`/projects/${encodeURIComponent(match.id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: newName }),
+  });
+}
+
+// Reveal a project's working folder in Finder. Same backend as
+// `revealArtifact` — the endpoint takes any path and dispatches it to
+// the OS's native "show in folder" handler.
+export async function revealProjectInFinder(projectPath) {
+  if (!projectPath) return null;
+  try {
+    return await req('/artifacts/reveal', {
+      method: 'POST',
+      body: JSON.stringify({ path: projectPath }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+// publishArtifact + previewArtifact live further down in this file.
+// We only add the new unpublish endpoint here.
+export async function cancelScratchpad(name) {
+  if (!name) return null;
+  try {
+    // Stop awaits this before it drops the stopped turn's queue and live row.
+    return await req('/scratchpad/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+  } catch {
+    // 404 = pad already gone, treat as success.
+    return { status: 'gone', name };
+  }
+}
+
+// Phase 3 — explicit cancel of an in-flight LLM turn.
+//
+// Under the new producer/consumer split (Phase 1), aborting the SSE
+// fetch only tears down the consumer; the server-side producer keeps
+// running. The Stop button needs this dedicated signal to actually
+// halt the work.
+//
+// Never throws (a fire-and-forget caller relies on that), but it no longer
+// hides failures behind a fake success. It returns a discriminated status so
+// the Stop handler can tell three cases apart:
+//   'ok'    — 2xx: the server wrote the cancel flag; `cancelled` says whether a
+//             live run was found. The stop request definitely reached the server.
+//   'gone'  — 404: no run the caller may touch (already finished, or another
+//             org's id). Nothing is running, which is the desired end state.
+//   'error' — network error / 5xx: the request never reached the server, so the
+//             cancel flag was NOT written and the turn may still be running (and
+//             still spending tokens). Callers must NOT report this as success.
+//
+// `reason` says why the turn is being cancelled; the server saves a 'stalled'
+// cancel as a stall instead of a Stop, and an older server ignores the field.
+// No caller in this app sets it: Stop sends none, and an idle stall ends only
+// this tab's reader and sends no cancel at all.
+export async function cancelResponse(conversationId, { reason } = {}) {
+  if (!conversationId) return { status: 'gone', conversation_id: conversationId };
+  try {
+    const res = await req('/responses/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId, ...(reason ? { reason } : {}) }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+    return { status: 'ok', ...res };
+  } catch (err) {
+    // A 404 is the one failure that genuinely means "nothing to stop"; every
+    // other failure means the cancel did not land. Conflating them (the old
+    // behavior) is what let Stop silently report success while the remote turn
+    // kept running.
+    if (err?.status === 404) return { status: 'gone', conversation_id: conversationId };
+    return { status: 'error', conversation_id: conversationId };
+  }
+}
+
+/**
+ * Deliver the user's answer to a question a turn is blocked on.
+ *
+ * Callers must distinguish outcomes, so unlike cancelResponse this does not
+ * swallow failures: 404 means the question is gone (the card should become
+ * inert and the composer should stop redirecting), 409 means somebody else
+ * already answered.
+ */
+export async function submitAnswer(conversationId, questionId, answer) {
+  if (!conversationId || !questionId) return { status: 'not_found' };
+  try {
+    return await req('/responses/answer', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        question_id: questionId,
+        ...answer,
+      }),
+    });
+  } catch (err) {
+    const status = err?.status;
+    if (status === 404) return { status: 'not_found' };
+    if (status === 409) return { status: 'already_answered' };
+    if (status === 400) return { status: 'rejected' };
+    return { status: 'error' };
+  }
+}
+
+/** Keep the running turn's response id on its stream handle (ENG-4194). */
+function noteResponseId(ctrl, msg) {
+  if (msg?.type === 'response.created' && msg.response?.id) ctrl.responseId = String(msg.response.id);
+}
+
+/**
+ * Offer a message sent while a turn runs to that turn (ENG-4194). The server
+ * asks Jev whether it belongs to the running task; `force` is the person's own
+ * "Add to current task" and skips that question. `responseId` is the running
+ * turn's id (from its `response.created`); `localKey` is the app's own key for
+ * the row (≤64 chars of [A-Za-z0-9_-], dropped otherwise).
+ *
+ * Never throws. Answers `{status: 'added', addon_id, decided_by}`, or a status
+ * the caller queues on: the server's `queued` (with its reason), `not_found`
+ * (no running turn), `unsupported` (an older server without the route),
+ * `timeout` (no verdict within the window) or `error`.
+ */
+export async function sendAddon(conversationId, text, {
+  force = false, responseId = null, localKey = null, timeoutMs = ADDON_REQUEST_TIMEOUT_MS,
+} = {}) {
+  if (!conversationId) return { status: 'not_found' };
+  try {
+    const res = await req('/responses/addon', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        text,
+        ...(force ? { force: true } : {}),
+        // The turn this was typed against, so the server never adds it to a
+        // later one; and the app's own key for its row, echoed on the
+        // stream's `response.addon` events.
+        ...(responseId ? { response_id: String(responseId) } : {}),
+        ...(isValidLocalKey(localKey) ? { local_key: localKey } : {}),
+      }),
+      timeoutMs,
+    });
+    return res && typeof res === 'object' ? res : { status: 'error' };
+  } catch (err) {
+    if (err?.name === 'AbortError') return { status: 'timeout' };
+    const status = err?.status;
+    // An older server has no such route: FastAPI's plain 404 or a 405. A 404
+    // from the route itself (`{"status":"not_found"}`) means no running turn;
+    // both end the same way, in the queue.
+    if (status === 404) {
+      const body = err?.body;
+      const said = body?.status ?? body?.detail?.status;
+      return { status: said === 'not_found' ? 'not_found' : 'unsupported' };
+    }
+    if (status === 405) return { status: 'unsupported' };
+    return { status: 'error' };
+  }
+}
+
+/**
+ * Take an added message back out of the running turn ("Move to queue").
+ * `withdrawn` means Anton never saw it; `already_read` means it is too late.
+ */
+export async function withdrawAddon(conversationId, addonId) {
+  if (!conversationId || !addonId) return { status: 'not_found' };
+  try {
+    const res = await req('/responses/addon/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId, addon_id: addonId }),
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
+    return res && typeof res === 'object' ? res : { status: 'error' };
+  } catch (err) {
+    const status = err?.status;
+    if (status === 409) return { status: 'already_read' };
+    if (status === 404) return { status: 'not_found' };
+    return { status: 'error' };
+  }
+}
+
+export async function unpublishArtifact(path) {
+  // Idempotent — server 404 means "no record" which is the desired
+  // end state.
+  const res = await authFetch(BASE + `/publish?path=${encodeURIComponent(path)}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (res.status === 404) return { status: 'gone' };
+  if (!res.ok) throw await responseError(res, `Unpublish failed (${res.status})`);
+  return res.json();
+}
+
+// Accepts the artifact card, not a path: org mode addresses artifacts by slug
+// within a project, desktop still by path. Keeping the choice here means call sites
+// don't each have to branch on the mode. A bare string is still accepted so any
+// stray caller keeps working on desktop.
+export async function deleteArtifact(artifact) {
+  // A full identity only: a card replayed from a pre-widening conversation
+  // carries the short id, which the endpoint cannot resolve — it has to fall
+  // through to the slug the way it did before ids were widened.
+  const artifactRef = artifactIdentity(artifact) || artifact?.slug;
+  const url = artifact?.projectId && artifactRef
+    ? `/artifacts/${encodeURIComponent(artifactRef)}`
+      + `?project_id=${encodeURIComponent(artifact.projectId)}`
+    : `/artifacts/?path=${encodeURIComponent(
+        typeof artifact === 'string' ? artifact : (artifact?.folder || artifact?.path || ''),
+      )}`;
+  const res = await authFetch(BASE + url, { method: 'DELETE' });
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
+  return { status: 'deleted' };
+}
+
+// Delete a project by object (with id) or name string.
+export async function deleteProject(projectOrName) {
+  let id = projectOrName?.id;
+  const name = typeof projectOrName === 'string' ? projectOrName : projectOrName?.name;
+  if (!id) {
+    const projects = await fetchProjects();
+    const match = projects.find((p) => p.name === name);
+    if (!match?.id) return { status: 'gone', name };
+    id = match.id;
+  }
+  // Idempotent: 404 = "already gone" = success.
+  const res = await authFetch(BASE + `/projects/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (res.status === 404) return { status: 'gone', name };
+  if (res.status === 204) return { status: 'deleted', name };
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
+  return res.json();
+}
+
+// ── Project files ────────────────────────────────────────────────
+//
+// Most paths are relative to the project root. Project instructions
+// live at ANTON_PROJECT_INSTRUCTIONS_PATH (on disk: `.anton/anton.md`).
+// These helpers wrap routes/projects.py.
+
+const enc = encodeURIComponent;
+
+/** Relative path from project root for project instructions (projects file API). */
+export const ANTON_PROJECT_INSTRUCTIONS_PATH = '.anton/anton.md';
+
+/** True if `relPath` is the canonical instructions file (`.anton/anton.md`). */
+export function isProjectInstructionsPath(relPath) {
+  const r = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  return r === ANTON_PROJECT_INSTRUCTIONS_PATH;
+}
+
+/** Legacy installs: true if `relPath` is under `.context/` (pre-migration tree). */
+export function isUnderContextDir(relPath) {
+  const r = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  return r === '.context' || r.startsWith('.context/');
+}
+
+/** True if `relPath` is under the project `.anton/` tree (runtime state, outputs, etc.). */
+export function isUnderAntonDir(relPath) {
+  const r = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  return r === '.anton' || r.startsWith('.anton/');
+}
+
+/**
+ * Stat just `.anton/anton.md` for the project — far cheaper than
+ * `listProjectFiles` when the only thing the caller needs is the
+ * canonical instructions row. Returns `{ file: { path, name, size,
+ * modified, is_dir, synthetic? } }`. `synthetic: true` means the
+ * file doesn't exist on disk yet (renderer should show the "empty,
+ * click to author" affordance). Coalesced like `listProjectFiles`.
+ */
+export async function fetchProjectInstructions(projectName) {
+  if (!projectName) return { file: null };
+  return dedupe(`projects/${projectName}/instructions`, () =>
+    req(`/projects/${enc(projectName)}/instructions`),
+  );
+}
+
+export async function listProjectFiles(projectName, { forceFresh = false } = {}) {
+  if (!projectName) return { files: [] };
+  // Coalesced — see `dedupe` notes above. WorkingFolderLive +
+  // ContextCard mount in the same rail and both call this on open,
+  // so without coalescing every project switch fires two identical
+  // requests. The cache entry releases on settle, so subsequent
+  // streaming polls hit the network normally.
+  const request = () => req(`/projects/${enc(projectName)}/files`);
+  // A mutation acknowledgement establishes a happens-before boundary that an
+  // older coalesced GET cannot satisfy. Callers refreshing after a successful
+  // write/delete bypass the single-flight request so the response necessarily
+  // comes from a GET started after that mutation completed.
+  return dedupe(`projects/${projectName}/files`, request, { forceFresh });
+}
+
+export async function readProjectFile(projectName, path) {
+  // `path` may have slashes — encode each segment, not the whole
+  // string (encodeURIComponent('a/b') → 'a%2Fb' which the FastAPI
+  // route would treat as a single literal segment).
+  const safe = path.split('/').map(enc).join('/');
+  return req(`/projects/${enc(projectName)}/files/${safe}`);
+}
+
+export function listSharedProjectFiles(projectId) {
+  // Bounded so one hung request can't stall the access recheck that runs after it.
+  return req(`/shared-projects/${enc(projectId)}/files`, { cache: 'no-store', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function readSharedProjectFile(projectId, path) {
+  const safe = path.split('/').map(enc).join('/');
+  return req(`/shared-projects/${enc(projectId)}/files/${safe}`, { cache: 'no-store' });
+}
+
+export async function downloadSharedProjectFile(projectId, path) {
+  const safe = path.split('/').map(enc).join('/');
+  const response = await authFetch(`${BASE}/shared-projects/${enc(projectId)}/files-raw/${safe}`, { cache: 'no-store' });
+  if (!response.ok) throw await responseError(response, 'Download unavailable');
+  return response.blob();
+}
+
+// HTML preview-mount for a project file — server registers the
+// parent dir under a token and returns `relUrl`, relative to BASE.
+// `url` is the absolute iframe `src`.
+export async function mountProjectFilePreview(projectName, path) {
+  const data = await req(`/projects/preview-mount-file`, {
+    method: 'POST',
+    body: JSON.stringify({ name: projectName, path }),
+  });
+  return { ...data, url: data?.relUrl ? `${BASE}${data.relUrl}` : '' };
+}
+
+// Absolute URL for downloading a project file's raw bytes. Server
+// sets `Content-Disposition: attachment` so browsers trigger a save
+// dialog rather than rendering inline.
+export function projectFileDownloadUrl(projectName, path) {
+  const safe = path.split('/').map(enc).join('/');
+  return `${BASE}/projects/${enc(projectName)}/files-raw/${safe}`;
+}
+
+export async function writeProjectFile(projectName, path, content) {
+  const safe = path.split('/').map(enc).join('/');
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: content || '' }),
+  });
+  if (!res.ok) throw await responseError(res, `Write failed (${res.status})`);
+  return res.json();
+}
+
+export async function uploadProjectFiles(projectName, files) {
+  // `files` is an iterable of File objects (drag&drop or input).
+  // Endpoint accepts a multipart payload with a repeated `files`
+  // field — same shape FastAPI's `list[UploadFile]` consumes.
+  const form = new FormData();
+  for (const f of files) form.append('files', f, f.name);
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  return res.json();
+}
+
+export async function deleteProjectFile(projectName, path) {
+  const safe = path.split('/').map(enc).join('/');
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
+    method: 'DELETE',
+  });
+  if (res.status === 404) return { status: 'gone', path };
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
+  return res.json();
+}
+
+
+export async function fetchActiveProject() {
+  try {
+    const projects = await fetchProjects();
+    const active = projects.find((p) => p.is_active || p.isActive);
+    return active?.name || null;
+  } catch {
+    return null;
+  }
+}
+
+// Set the active project via PATCH /projects/{id} with { is_active: true }.
+// Accepts a project object (with id) or a name string.
+export async function setActiveProject(projectOrName) {
+  const id = projectOrName?.id;
+  if (id) {
+    return req(`/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: true }),
+    });
+  }
+  // Fallback: lookup by name
+  const name = typeof projectOrName === 'string' ? projectOrName : projectOrName?.name;
+  const projects = await fetchProjects();
+  const match = projects.find((p) => p.name === name);
+  if (!match?.id) throw new Error(`Project "${name}" not found`);
+  return req(`/projects/${encodeURIComponent(match.id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_active: true }),
+  });
+}
+
+// ─── Artifacts ────────────────────────────────────────────────────────────────
+// Returns the full system-wide artifact list. Heavy enough that
+// callers need to be careful not to fan out: ProjectsView's row
+// stats hook calls this from each visible project row, and prior to
+// the `dedupe` wrapper that meant N copies of the same request on
+// every list render. With coalescing, one network request fans out
+// to all subscribers and the cache entry releases on settle.
+export async function fetchArtifacts({ projectId, projectPath } = {}) {
+  // Either parameter scopes the response to one project's `<base>/artifacts/`
+  // tree, so the server skips reading every other project's metadata.json. Omit
+  // both for the system-wide list the global Live Artifacts page wants.
+  //
+  // `projectId` is the org-mode addressing: the server resolves the project
+  // through a scoped DB read, so no filesystem path crosses the wire (and a path
+  // would carry no tenant for it to check). `projectPath` stays for desktop, where
+  // the client legitimately knows it; org deployments reject it outright.
+  let suffix = '';
+  if (projectId) suffix = `?project_id=${encodeURIComponent(projectId)}`;
+  else if (projectPath) suffix = `?project_path=${encodeURIComponent(projectPath)}`;
+  // Dedupe key includes the suffix so a global fetch and a scoped fetch don't
+  // share an in-flight promise.
+  return dedupe(`artifacts${suffix}`, async () => {
+    try {
+      return await req(`/artifacts/${suffix}`);
+    } catch {
+      return [];
+    }
+  });
+}
+
+// Same URL shapes as `fetchArtifacts` above, but THROWS instead of returning [].
+//
+// The liveness store (lib/artifactsStore.js) has to tell "loaded, and the list
+// is empty" from "the request failed". Its sibling cannot: it swallows every
+// error into `[]`, and an empty list read as authoritative would mark every
+// artifact card in the conversation as deleted. Deliberately not routed through
+// `dedupe` either — the store coalesces its own loads and needs the rejection.
+export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
+  let suffix = '';
+  if (projectId) suffix = `?project_id=${encodeURIComponent(projectId)}`;
+  else if (projectPath) suffix = `?project_path=${encodeURIComponent(projectPath)}`;
+  const data = await req(`/artifacts/${suffix}`);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function previewArtifact(path) {
+  return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
+}
+
+// Fresh published/modified/access status for one artifact — the cheap read
+// the preview viewer polls on window focus to light up "Update" when the
+// artifact changes underneath an open preview. Best-effort: returns null on
+// any failure (e.g. an older server without the endpoint) so callers degrade
+// to the prior reopen-to-refresh behaviour rather than throwing.
+export async function fetchArtifactStatus(path) {
+  if (!path) return null;
+  // Desktop-only route (require_local_tenancy): an org deployment answers 403 by
+  // design, and usePublish asks on every viewer open and every window focus. The
+  // null is the same answer the catch below already promises callers, so no
+  // caller has to learn about tenancy.
+  if (getOrgMode()) return null;
+  try {
+    return await req(`/artifacts/status?path=${encodeURIComponent(path)}`);
+  } catch {
+    return null;
+  }
+}
+
+// Mount an artifact for iframe preview. Two response shapes:
+//   - kind="static" (HTML artifacts): server returns `relUrl` under
+//     /artifacts/preview-asset/<token>/…; the iframe loads it directly.
+//   - kind="proxy"  (backend+frontend artifacts): server returns the
+//     artifact dir; the renderer then asks the Electron main process to
+//     point the local preview proxy at that dir and gets back the URL.
+// `kind` is the discriminator; legacy callers can keep using `url`.
+export async function mountArtifactPreview(path) {
+  const data = await req('/artifacts/preview-mount', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+  const kind = data?.kind || (data?.relUrl ? 'static' : '');
+  // Prefer the stateless `serveUrl` over the token `relUrl`: it's stable,
+  // shareable, and resolves against any origin — works in web deployment.
+  // `serveUrl` already carries `/v1`, so combine with ROOT_BASE, not BASE.
+  const url = data?.serveUrl
+    ? `${ROOT_BASE}${data.serveUrl}`
+    : (data?.relUrl ? `${BASE}${data.relUrl}` : '');
+  return {
+    kind,
+    token: data?.token,
+    entry: data?.entry,
+    artifactDir: data?.artifactDir || '',
+    // Backend port for proxy previews — so the viewer can build a direct
+    // `http://127.0.0.1:<port>` URL for "Open in OS" without the proxy.
+    port: typeof data?.port === 'number' ? data.port : null,
+    // Absolute URL the iframe loads directly (static) or empty (proxy).
+    url,
+    // Loopback URL of the cowork-process preview proxy. Web shell only.
+    proxyUrl: data?.proxyUrl || '',
+    // Origin-relative serve URL for callers that open the artifact in a
+    // new tab (web "open" action).
+    serveUrl: data?.serveUrl ? `${ROOT_BASE}${data.serveUrl}` : '',
+    // Server-side sidecar lookup of the artifact's published URL (if
+    // any). Forwarded so the viewer shows the "Published" pill even
+    // when opened from a chat bubble — those carry no publishedUrl on
+    // the artifact object since they're built from streamed payloads.
+    publishedUrl: data?.publishedUrl || '',
+    // Backend launch status for proxy previews. When false, launchError
+    // carries the reason — the viewer surfaces it instead of an empty iframe.
+    backendRunning: data?.backendRunning !== false,
+    launchError: data?.launchError || '',
+  };
+}
+
+export async function openArtifact(path) {
+  return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+// Absolute "private" URL for an artifact's primary file: the
+// origin-relative `/v1/artifacts/serve/...` endpoint made absolute
+// against the current API origin. In the web build this is the
+// canonical address of the artifact — the file lives on the server,
+// not the user's machine — and in production it sits behind the auth
+// proxy, hence "private" (as opposed to the public `publishedUrl`).
+// Returns '' when the artifact has no serveable primary file yet.
+export function artifactServeUrl(artifact) {
+  const rel = artifact?.serveUrl || '';
+  if (!rel) return '';
+  return rel.startsWith('http') ? rel : `${host.getApiOrigin()}${rel}`;
+}
+
+// Open an artifact's primary file the right way for the current host.
+// Only the desktop app pointed at the local loopback server can hand an
+// OS path to the shell; in the browser (or a desktop app pointed at a
+// remote server) the file isn't on this machine, so we open its HTTP
+// serve URL instead — falling back to the published URL when the
+// artifact has no serveUrl yet.
+export async function openArtifactFile(artifact) {
+  const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
+  if (!canOpenLocalFile) {
+    const url = artifactServeUrl(artifact) || artifact?.publishedUrl || '';
+    if (!url) return { ok: false, reason: 'no-serve-url' };
+    try { await host.openExternal(url); }
+    catch { return { ok: false, reason: 'open-failed' }; }
+    return { ok: true };
+  }
+  return openArtifact(artifact?.path || '');
+}
+
+export async function revealArtifact(path) {
+  return req('/artifacts/reveal', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+// Key maps, row transforms, provider backfill, and write-diffing live in
+// settingsTransform.js (pure functions, no network calls).  The API calls
+// here are thin wrappers that fetch/push and delegate the translation.
+
+// Snapshot of the last-fetched settings — used by diffSettingsForWrite to
+// skip no-op writes and by the masked-sentinel ("***") skip logic.
+let _lastFetchedSettings = {};
+
+// Serialize settings reads/writes so a concurrent fetchSettings +
+// updateSettings can't race on _lastFetchedSettings.
+let _settingsLock = Promise.resolve();
+
+/* Live per-provider model picker options + effort capability. The server
+   overlays minds-cloud with MindsHub's `/v1/models` (live ids and, per model,
+   the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
+   static effort catalog for direct providers. Returns null on any failure so the
+   caller keeps the static lists baked into transformSettingsRows. */
+export async function fetchRecommendedModels({ refresh = false } = {}) {
+  try {
+    // `refresh` bypasses the server's fetch_minds_models cache (up to a
+    // 5-minute TTL) — the model dropdown passes it on open so a wallet top-up
+    // isn't masked by the cached `enabled` map. A cached *failure* is still
+    // honored server-side, so this can't cost every open an HTTP timeout while
+    // MindsHub is down.
+    const data = await req(`/settings/recommended-models${refresh ? '?refresh=true' : ''}`);
+    if (data && typeof data === 'object') return data;
+  } catch { /* fall back to static lists */ }
+  return null;
+}
+
+// ── MindsHub workspaces ──────────────────────────────────────────────
+//
+// A MindsHub Workspace is an org-internal container that owns hub resources
+// (API keys, artifacts, model entitlements) and lives in the auth service. It is
+// unrelated to the working folder this app calls a workspace.
+//
+// The sidecar makes the call to auth, not us: auth's ingress allows the console
+// origins and no Cowork host, and a per-PR Cowork host cannot be added to a
+// static allow-list. So these two go to our own server and it forwards.
+//
+// The credential travels in its own header because it cannot travel in
+// Authorization. In Electron the main process overwrites that header on every
+// loopback request with the sidecar's own token, so the Keycloak JWT can never
+// arrive under that name; `authFetch` does not even attach it there. The server
+// reads `X-MindsHub-Authorization` first and falls back to Authorization, which
+// is what the web shell uses.
+
+const HUB_CREDENTIAL_HEADER = 'X-MindsHub-Authorization';
+
+async function hubHeaders() {
+  const token = await host.getAccessToken().catch(() => null);
+  return token ? { [HUB_CREDENTIAL_HEADER]: `Bearer ${token}` } : {};
+}
+
+/**
+ * The workspace selector's whole state: whether the surface is on, whether the
+ * hub could be reached, the rows, and which one is active.
+ *
+ * Answers the disabled shape for the two DEFINITE answers, and throws for
+ * everything else. A 404 is definite: this sidecar has no such route, so it
+ * never will and there is nothing to retry. A body that is not an object is the
+ * same. A 5xx, a dropped connection, or a sidecar that has not finished
+ * starting are all transient, and collapsing those into the disabled shape too
+ * is how one blip at launch hid the control for the rest of the session. The
+ * caller decides how many times to ask again.
+ */
+export async function fetchHubWorkspaces() {
+  if (!PLATFORM_UI) return { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+  try {
+    const data = await req('/hub/workspaces/', { headers: await hubHeaders() });
+    if (data && typeof data === 'object') return data;
+  } catch (err) {
+    if (err?.status !== 404) throw err;
+  }
+  return { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+}
+
+/**
+ * Switch the active workspace. Rejects on failure so the caller owns the
+ * message; the server refuses a workspace the caller holds no grant on (403),
+ * refuses an archived one with its own status so the UI can say retrying will
+ * not help (409), and refuses rather than guessing when it cannot reach the hub
+ * (503). `err.status` carries the code, which is what lets the caller tell the
+ * three apart.
+ */
+export async function setActiveHubWorkspace(workspaceId) {
+  if (!PLATFORM_UI) throw new Error('Workspace switching is unavailable.');
+  return req('/hub/workspaces/active', {
+    method: 'PUT',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ workspaceId }),
+  });
+}
+
+/**
+ * The signed-in account's free MindsHub Air allowance, paid balance, and auto
+ * top up state (ENG-1782). Never throws: signed out, an unreachable sidecar,
+ * and an old sidecar with no such route all answer the same dark shape, and
+ * the composer notice and Settings tab render nothing for it.
+ */
+export async function fetchHubUsage() {
+  if (!PLATFORM_UI) return { reachable: false };
+  try {
+    const data = await req('/hub/usage/', { headers: await hubHeaders() });
+    if (data && typeof data === 'object') return data;
+  } catch { /* an old sidecar has no such route: stay dark */ }
+  return { reachable: false };
+}
+
+/**
+ * The org's branding: its logo and icon URLs, its look, and whether
+ * the caller may edit it. The hosted server serves it in org mode; the
+ * desktop's local server passes it through to auth with the MindsHub
+ * credential, which rides in the same header as the hub calls. Either answers
+ * `enabled: false` outside an org or in a personal one. Rejects on failure so
+ * the caller can keep what it has (the cached answer) rather than painting
+ * stock.
+ */
+export async function fetchOrgBranding() {
+  if (!host.isElectron) requireOrgMode('Company branding');
+  return req('/org-branding', { headers: await hubHeaders() });
+}
+
+/**
+ * Each organization's icon for the org switcher: `{ reachable,
+ * orgs: [{ id, iconUrl }] }`, read by the server from auth's org list with
+ * the caller's credential. Null when the server has no such route or the read
+ * fails, so the menu falls back to the Keycloak attribute and initials.
+ */
+export async function fetchHubOrgIcons() {
+  try {
+    const data = await req('/hub/org-icons', { headers: await hubHeaders() });
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save the org's look (admins only; the server answers 403 otherwise). Takes
+ * the snake_case body (lib/orgBranding.ts appearancePayload) and resolves to
+ * the same body as fetchOrgBranding.
+ */
+export async function updateOrgAppearance(payload) {
+  if (!host.isElectron) requireOrgMode('Company branding');
+  return req('/org-branding/appearance', {
+    method: 'PUT',
+    headers: await hubHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+// The lock-owning wrappers decide how to handle failure. A save must never
+// publish offline/mock defaults as if they were the canonical persisted values.
+async function readSettings({ validate = true } = {}) {
+  const rows = await req('/settings/');
+  const result = transformSettingsRows(rows);
+  if (validate) {
+    try {
+      const v = await req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
+      result.configReady = v.configReady;
+      result.configError = v.configError;
+      result.providerLabel = v.provider;
+    } catch { /* leave defaults */ }
+  }
+  const merged = mergeRecommendedModels(result, await fetchRecommendedModels());
+  if (merged) Object.assign(result, merged);
+  _lastFetchedSettings = result;
+  cacheSettings(result);
+  return result;
+}
+
+/* The person's Approve browser steps setting as the server holds it now
+   (browser_approve_steps), read just before the app approves a held browser
+   step for them, so a choice made on another device counts at once: false
+   when they turned approvals off, true otherwise, null when it can't be read. */
+export async function readBrowserApproveSteps() {
+  try {
+    return transformSettingsRows(await req('/settings/')).browserApproveSteps !== false;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchSettings() {
+  const op = _settingsLock.then(async () => {
+    try {
+      return await readSettings();
+    } catch {
+      return { ...MOCK_DATA.settings, configReady: false, configError: 'Backend is offline.' };
+    }
+  });
+  _settingsLock = op.catch(() => {});
+  return op;
+}
+
+/* A MindsHub key the user typed is diverted out of the settings write and
+ * handed to the main process, which stores it in the OS keychain and pushes it
+ * to the sidecar at runtime. Two copies have to be stopped, not one: the
+ * `minds_api_key` row, and the raw value the Settings form also puts inside the
+ * `providers_json` card (SettingsView's updateProviderField writes both from one
+ * keystroke). `providers_json` is a plain column nothing encrypts, so leaving
+ * that half behind would defeat the whole change.
+ *
+ * `***` is the value already used for a stored-but-unreadable key, so the card
+ * round-trips exactly as it does when the server masks it on read.
+ *
+ * Web keeps writing the key as a setting: there is no main process to route it
+ * to, and the runtime hand-over is a desktop mechanism. `supported: false` is
+ * how host.mindshubSetUserKey says so. */
+async function divertMindsKey(writes) {
+  if (!('minds_api_key' in writes)) return writes;
+  const key = writes.minds_api_key;
+  const stored = await host.mindshubSetUserKey(key);
+  if (!stored.supported) return writes;
+  if (!stored.ok) {
+    const err = new Error(`Failed to save settings: ${stored.reason || 'could not store the MindsHub key'}`);
+    err.failed = ['mindsApiKey'];
+    throw err;
+  }
+  const { minds_api_key: _diverted, ...rest } = writes;
+  if (typeof rest.providers_json === 'string') {
+    try {
+      const cards = JSON.parse(rest.providers_json);
+      if (Array.isArray(cards)) {
+        for (const card of cards) {
+          if (card && card.type === 'minds-cloud' && card.apiKey) card.apiKey = '***';
+        }
+        rest.providers_json = JSON.stringify(cards);
+      }
+    } catch { /* unparseable: leave it, the server masks on read and rejects nothing */ }
+  }
+  return rest;
+}
+
+export async function updateSettings(patch) {
+  const op = _settingsLock.then(async () => {
+    const requestedWrites = diffSettingsForWrite(patch, _lastFetchedSettings);
+    const writes = await divertMindsKey(requestedWrites);
+    const keys = Object.keys(writes);
+    let updated = keys;
+
+    // A `null` in the patch is a tombstone: clear the stored row entirely so
+    // the server's own resolution (enabled-aware defaults) governs the key
+    // again — deliberately NOT a `''` write, which creates a permanent empty
+    // row the raw readers and apply_model_defaults mishandle (ENG-1632).
+    // Tombstones run BEFORE the bulk PUT: the PUT is what repoints providers,
+    // and a repointed provider with the old provider's model row left behind
+    // misroutes every turn — with no retry path, because the next save's
+    // repoint guard sees a matching provider and never re-attempts the
+    // DELETE. Deleting first leaves only consistent, retryable states: a
+    // failed DELETE aborts the save before anything is repointed, and a
+    // failed PUT after the DELETEs leaves the untouched provider on its own
+    // server-side default. Only 404 (no row to clear — the fetched value was
+    // the server's resolved default) and 400 (a pre-ENG-660 server that
+    // doesn't know the key) are skipped; anything else surfaces like the
+    // PUT's own failures. The `k in _lastFetchedSettings` gate skips servers
+    // that never served the key at all (mirrors the BUDGET_FIELDS
+    // absent-key rule).
+    const tombstones = Object.keys(patch).filter(
+      (k) => patch[k] === null && CLIENT_TO_SERVER[k] && k in _lastFetchedSettings,
+    );
+    for (const k of tombstones) {
+      try {
+        await req(`/settings/${encodeURIComponent(CLIENT_TO_SERVER[k])}`, { method: 'DELETE' });
+      } catch (err) {
+        if (err?.status === 400 || err?.status === 404) continue;
+        const e = new Error(`Failed to save settings: ${err?.message || String(err)}`);
+        e.failed = [k];
+        throw e;
+      }
+    }
+
+    if (keys.length > 0) {
+      // One transactional bulk write: the server applies every key or none, so
+      // a partial failure can't leave settings half-saved the way the former
+      // per-key PUT loop could (ENG-1126).
+      try {
+        const res = await req('/settings/', { method: 'PUT', body: JSON.stringify({ values: writes }) });
+        if (Array.isArray(res?.updated)) updated = res.updated;
+      } catch (err) {
+        const e = new Error(`Failed to save settings: ${err?.message || String(err)}`);
+        e.failed = keys;
+        throw e;
+      }
+    }
+
+    const acceptedKeys = new Set([
+      ...updated,
+      ...tombstones.map((key) => CLIENT_TO_SERVER[key]),
+    ]);
+    // Desktop diverts this accepted credential to the keychain before PUT.
+    if ('minds_api_key' in requestedWrites && !('minds_api_key' in writes)) acceptedKeys.add('minds_api_key');
+    const committedPatch = committedSettingsPatch(patch, acceptedKeys);
+    _lastFetchedSettings = { ..._lastFetchedSettings, ...committedPatch };
+    let settings = null;
+    try {
+      settings = await readSettings({ validate: false });
+    } catch { /* write succeeded; keep accepted values until a read recovers */ }
+    return { status: 'ok', updated, committedPatch, settings };
+
+  });
+  _settingsLock = op.catch(() => {});
+  return op;
+}
+
+export async function validateSettings() {
+  return req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
+}
+
+/**
+ * @typedef {{
+ *   providerStatus: Record<string, string>,
+ *   providerStatusDetails: Record<string, string>,
+ *   providerStatusReasons?: Record<string, import('./lib/providerStatus.js').ProbeDenialReason>,
+ *   error?: string,
+ * }} ProviderTestResult
+ *   `providerStatusReasons` is absent from a sidecar too old to classify the
+ *   probe, which keeps the Settings notice on its legacy detail check. A
+ *   sidecar that sends it classified every type in `providerStatus`, so a
+ *   reported type with no entry was not refused by MindsHub, and the Settings
+ *   notice shows no billing copy for it.
+ */
+
+/** @returns {Promise<ProviderTestResult>} */
+export async function testProviders(providers) {
+  const body = Array.isArray(providers) ? { providers } : {};
+  try {
+    return await req('/settings/test-providers', { method: 'POST', body: JSON.stringify(body) });
+  } catch (err) {
+    return { providerStatus: {}, providerStatusDetails: {}, providerStatusReasons: {}, error: err?.message || 'Test failed' };
+  }
+}
+
+export async function revealSettingKey(name) {
+  // `/settings/reveal-key` returns UNMASKED provider secrets and is
+  // loopback-only server-side (`require_local`); on hosted the browser
+  // reaches the server from the docker bridge rather than 127.0.0.1, so the
+  // fetch would 403 (ENG-932). Short-circuited here — not just at the
+  // ApiKeyInput call site — so a future caller can't reintroduce the doomed
+  // request.
+  if (host.isWeb) return '';
+  try {
+    const res = await req(`/settings/reveal-key/${encodeURIComponent(name)}`);
+    return res?.value || '';
+  } catch {
+    return '';
+  }
+}
+
+export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
+
+// ─── Anton Utilities ────────────────────────────────────────────────────────
+// Every project card asks for its memory at once, and each lookup needs the
+// project list. Only these read-only lookups share one request: a caller
+// reading back after a mutation must not join a request sent before it.
+const fetchProjectsShared = () => dedupe('projects', fetchProjects);
+
+export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
+  const projectId = await resolveProjectId(projectRef, fetchProjectsShared);
+  const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+  // Coalesced per project. ContextCard, ProjectCard, and the list
+  // view's row-stats hook can all ask for the same project's memory
+  // listing at the same moment; this collapses the duplicates.
+  return dedupe(`memory${suffix}`, async () => {
+    const [items, projects] = await Promise.all([
+      req(`/memory/${suffix}`),
+      fetchProjectsShared(),
+    ]);
+    const list = Array.isArray(items) ? items : [];
+    return groupMemoryItems(list, projects);
+  }, { forceFresh });
+}
+
+export async function saveMemory(payload) {
+  const body = buildMemoryWritePayload(payload);
+  return req('/memory/', { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export async function deleteMemory(payload) {
+  const body = buildMemoryDeletePayload(payload);
+  return req('/memory/', { method: 'DELETE', body: JSON.stringify(body) });
+}
+
+/* Whether the server removes the caller's whole memory in one step. A server
+   without the route answers 404 or 405, which means it offers no reset; any
+   other failure is the caller's to report. */
+export async function fetchMemoryCapabilities() {
+  try {
+    const capabilities = await req('/memory/capabilities');
+    return { canReset: capabilities?.canReset === true };
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return { canReset: false };
+    throw err;
+  }
+}
+
+/* Removes all of the caller's learned memory: their profile, rules and
+   lessons, in every project of theirs. */
+export async function resetMemory() {
+  return req('/memory/all', { method: 'DELETE' });
+}
+
+export async function fetchSkills() {
+  return req('/skills/');
+}
+
+export async function saveSkill(payload, isEdit = false) {
+  if (isEdit) {
+    return req(`/skills/${encodeURIComponent(payload.label)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  }
+  return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+/* `shared` is the create-time "Who can use it" answer. The form field goes
+   out only when the caller passes a boolean, so a caller that never asks
+   leaves it to the server's default, Only me. */
+export async function uploadSkillFile(file, { shared } = {}) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  if (typeof shared === 'boolean') form.append('shared', shared ? 'true' : 'false');
+  const res = await authFetch(BASE + '/skills/upload', { method: 'POST', body: form });
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  return res.json();
+}
+
+/* Turns a skill on or off for the caller alone. Any skill the caller can
+   see takes it, a built-in included; the skill's own `enabled` (on or off
+   for everyone) is untouched. Answers the updated skill. */
+export async function setSkillEnabledForMe(slug, enabled) {
+  return req(`/skills/${encodeURIComponent(slug)}/me`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled: enabled === true }),
+  });
+}
+
+/* Shares the caller's own skill with everyone, read-only, or stops sharing
+   it. The refusal's sentence comes back as the error message. */
+export async function setSkillSharing(label, shared) {
+  return req(`/skills/${encodeURIComponent(label)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify({ shared: shared === true }),
+  });
+}
+
+/* What sharing inside the org allows the caller, in MindsHub mode
+   (lib/sharingContract's SharingCapabilities). `enabled: false` is every
+   other build, and the sharing UI stays hidden there. A server without the
+   route answers 404 and reads the same. */
+export async function fetchSkillSharingCapabilities() {
+  try {
+    const data = await req('/skills/sharing-capabilities');
+    if (!data || typeof data !== 'object') return SHARING_OFF;
+    return readSharingCapabilities(data);
+  } catch (err) {
+    if (err?.status === 404) return SHARING_OFF;
+    throw err;
+  }
+}
+
+/* Sets who a skill reaches: everyone in the org, teams by id, people in the
+   org by user id. An empty audience is Only me. `always_on` makes a skill
+   shared with everyone or a team part of every task. The route keeps any
+   field left out, so someone who may switch only `always_on` sends it alone:
+   the people are listed only to the owner or an admin, and an empty list
+   from anyone else would read as removing them. The body comes from
+   lib/sharingContract's skillAccessRequest or skillAlwaysOnRequest. A refusal (400/403) throws
+   with the server's `detail` as its message. */
+export async function setSkillAccess(slug, access) {
+  return req(`/skills/${encodeURIComponent(slug)}/sharing`, {
+    method: 'PUT',
+    body: JSON.stringify(access),
+  });
+}
+
+/* A MindsHub read's answer when it got none: `reachable` false, and
+   `failure` saying why (lib/sharingContract's MINDSHUB_ERROR_CODE). A 200
+   with `reachable: false` is cowork-server saying MindsHub couldn't be asked;
+   a refusal or a throttle comes as its own error code (readMindsHubFailure). */
+const MINDSHUB_NOT_ASKED = Object.freeze({ reachable: false, failure: MINDSHUB_ERROR_CODE.UNREACHABLE });
+const mindsHubReadFailed = (err) => ({ reachable: false, failure: readMindsHubFailure(err) });
+
+/* The caller's teams in the MindsHub org. `reachable: false` when MindsHub
+   gave no answer, so the picker can say why (`failure`) rather than show no
+   teams. This read and the two people reads below send no
+   X-MindsHub-Authorization (README, "The MindsHub hub routes", says why). */
+export async function fetchMindsHubTeams() {
+  try {
+    const data = await req('/hub/teams/');
+    if (data?.reachable === false) return { ...MINDSHUB_NOT_ASKED, teams: [] };
+    const teams = Array.isArray(data?.teams)
+      ? data.teams
+        .filter((team) => team && typeof team.id === 'string' && team.id)
+        .map((team) => ({
+          id: team.id,
+          display_name: mindsHubTeamName(team),
+          // The org's default "All members" team, which the server maps to
+          // sharing with everyone: the pickers leave it out for "Everyone at
+          // ‹org›".
+          is_default: team.isDefault === true,
+        }))
+      : [];
+    return { reachable: true, failure: null, teams };
+  } catch (err) {
+    return { ...mindsHubReadFailed(err), teams: [] };
+  }
+}
+
+/* A team's name to show; a raw id is never shown. */
+const UNNAMED_TEAM = 'Unnamed team';
+
+function mindsHubTeamName(team) {
+  const name = team.displayName;
+  return typeof name === 'string' && name.trim() ? name.trim() : UNNAMED_TEAM;
+}
+
+/* One person as MindsHub sends them, or null without an id. The id is what
+   sharing stores (`allowed_user_ids`); the name and email only label a row. */
+function mindsHubPerson(person) {
+  if (!person || typeof person.id !== 'string' || !person.id) return null;
+  const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
+  const name = typeof person.name === 'string' && person.name.trim() ? person.name.trim() : null;
+  return { id: person.id, name, email };
+}
+
+/* Everyone in the caller's active MindsHub org, read once so the recipient
+   picker can list and filter them locally (`GET /hub/people/`). MindsHub
+   caps the list; `truncated` says there are more than it sent. Parsed
+   tolerantly: a bare array is taken as the people, and any answer with no
+   list at all reads as unreachable, so the picker offers Retry. `failure`
+   says why there is no list. */
+export async function fetchMindsHubDirectory() {
+  try {
+    const data = await req('/hub/people/');
+    const raw = Array.isArray(data) ? data : (Array.isArray(data?.people) ? data.people : null);
+    if (!raw || data?.reachable === false) return { ...MINDSHUB_NOT_ASKED, people: [], truncated: false };
+    const seen = new Set();
+    const people = [];
+    for (const entry of raw) {
+      const person = mindsHubPerson(entry);
+      if (!person || (!person.email && !person.name) || seen.has(person.id)) continue;
+      seen.add(person.id);
+      people.push(person);
+    }
+    return { reachable: true, failure: null, people, truncated: data?.truncated === true };
+  } catch (err) {
+    return { ...mindsHubReadFailed(err), people: [], truncated: false };
+  }
+}
+
+/* The values of `asked` a refused lookup names as malformed: cowork-server
+   checks every value before it asks MindsHub and answers 400 with the
+   lookup's `invalidCode`, naming them in the body's `param` field (an id
+   that isn't a UUID, an address MindsHub wouldn't take) and asking about
+   none of the batch. Compared trimmed, and addresses lowercased, as
+   cowork-server compares them. Empty for any other failure. */
+function malformedValues(err, lookup, asked) {
+  if (err?.status !== 400 || err?.code !== lookup.invalidCode) return [];
+  const named = Array.isArray(err.body?.[lookup.param]) ? err.body[lookup.param] : [];
+  const fold = (value) => (lookup === PEOPLE_LOOKUP.EMAILS ? value.trim().toLowerCase() : value.trim());
+  const refused = new Set(named.filter((value) => typeof value === 'string').map(fold));
+  return asked.filter((value) => refused.has(fold(value)));
+}
+
+/* Asks one batch (`GET /hub/people/?ids=` or `?emails=`). A batch refused
+   for malformed values is asked again once without them, so the good values
+   beside a bad one still get an answer. A batch that got no answer says why
+   (`failure`). */
+async function askMindsHubPeople(lookup, batch) {
+  try {
+    const params = new URLSearchParams({ [lookup.param]: batch.join(',') });
+    const data = await req(`/hub/people/?${params}`);
+    const people = (Array.isArray(data?.people) ? data.people : []).map(mindsHubPerson).filter(Boolean);
+    if (data?.reachable === false) return { people, unanswered: batch, invalid: [], failure: MINDSHUB_NOT_ASKED.failure };
+    return { people, unanswered: [], invalid: [], failure: null };
+  } catch (err) {
+    const invalid = malformedValues(err, lookup, batch);
+    if (invalid.length === 0) return { people: [], unanswered: batch, invalid: [], failure: readMindsHubFailure(err) };
+    const rest = batch.filter((value) => !invalid.includes(value));
+    if (rest.length === 0) return { people: [], unanswered: [], invalid, failure: null };
+    const again = await askMindsHubPeople(lookup, rest);
+    return { ...again, invalid: [...invalid, ...again.invalid] };
+  }
+}
+
+/* The people MindsHub answers for `values` under one lookup (PEOPLE_LOOKUP),
+   asked in batches of its `batchSize` (the bound MindsHub sets per lookup).
+   A person is kept when `keyOf` gives one of the values asked; a value
+   MindsHub answered for but no member has is simply absent from `people`.
+   `unanswered` lists the values of any batch that got no answer (`reachable`
+   is then false, and `failure` says why): those are not known to be missing,
+   only not looked up yet. `invalid` lists the values cowork-server refused
+   as malformed, which no lookup will ever find. */
+async function fetchMindsHubPeopleBy(lookup, values, keyOf) {
+  const unique = [...new Set((values || []).filter((value) => typeof value === 'string' && value))];
+  if (unique.length === 0) return { reachable: true, failure: null, people: [], unanswered: [], invalid: [] };
+  const batches = [];
+  for (let i = 0; i < unique.length; i += lookup.batchSize) {
+    batches.push(unique.slice(i, i + lookup.batchSize));
+  }
+  const answers = await Promise.all(batches.map((batch) => askMindsHubPeople(lookup, batch)));
+  const wanted = new Set(unique);
+  const byKey = new Map();
+  const unanswered = [];
+  const invalid = [];
+  for (const answer of answers) {
+    unanswered.push(...answer.unanswered);
+    invalid.push(...answer.invalid);
+    for (const person of answer.people) {
+      const key = keyOf(person);
+      if (wanted.has(key) && !byKey.has(key)) byKey.set(key, person);
+    }
+  }
+  return {
+    reachable: unanswered.length === 0,
+    // Batches that failed differently report one failure (firstMindsHubFailure).
+    failure: firstMindsHubFailure(answers.map((answer) => answer.failure)),
+    people: [...byKey.values()],
+    unanswered,
+    invalid,
+  };
+}
+
+/* The people a stored audience names, by user id, so their rows can say who
+   they are. `invalid` holds ids cowork-server refused as no UUID, which name
+   nobody. */
+export async function fetchMindsHubPeopleByIds(ids) {
+  return fetchMindsHubPeopleBy(PEOPLE_LOOKUP.IDS, ids, (person) => person.id);
+}
+
+/* The members who hold these addresses. The directory the picker loads is
+   capped (`truncated`), so a member past the cap is not in it; asked here, a
+   typed address still names them, and sharing stores their user id rather
+   than an outside email. `unanswered` and `invalid` hold lowercased
+   addresses. */
+export async function fetchMindsHubPeopleByEmails(emails) {
+  const lowered = (emails || []).map((email) => (typeof email === 'string' ? email.trim().toLowerCase() : ''));
+  return fetchMindsHubPeopleBy(PEOPLE_LOOKUP.EMAILS, lowered, (person) => person.email);
+}
+
+export async function deleteSkill(label) {
+  return req(`/skills/${encodeURIComponent(label)}`, { method: 'DELETE' });
+}
+
+// Sweep a staged skill draft (after Save or dismiss). Idempotent server-side —
+// a missing draft is a no-op — so callers can fire-and-forget.
+export async function deleteSkillDraft(projectName, slug) {
+  return req(`/projects/${enc(projectName)}/skill_drafts/${enc(slug)}`, { method: 'DELETE' });
+}
+
+export async function fetchDatasources() {
+  const data = await req('/connectors/connections/');
+  return { connections: Array.isArray(data) ? data : [] };
+}
+
+// DEPRECATED: Legacy manual-form save — the real save flow now goes through
+// streamDataVaultSubmission → POST /connectors/submissions. The old
+// POST /datasources and POST /datasources/validate endpoints no longer
+// exist on the server. These stubs exist only because UtilitiesView's
+// retired ConnectView still imports them; they are unreachable in the
+// current routing. Remove when ConnectView is fully deleted.
+export async function saveDatasource(_payload) {
+  diagnostic("renderer.cowork.api", "WARNING", "savedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'saveDatasource() is deprecated — use streamDataVaultSubmission instead');
+  return { ok: true };
+}
+
+export async function validateDatasource(_payload) {
+  diagnostic("renderer.cowork.api", "WARNING", "validatedatasource_is_deprecated_use_streamdatavaultsubmission_instead", 'validateDatasource() is deprecated — use streamDataVaultSubmission instead');
+  return { valid: true };
+}
+
+export async function deleteDatasource(engine, name) {
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+}
+
+// Untags one file from `project` in a connection's persisted
+// `_picked_files` grant — the "un-pick" counterpart to the PATCH the
+// Google Picker flow calls. Used by the Project files rail to remove a
+// Drive reference row; only removes it from THIS project's rail — if
+// the file is tagged to other projects too, it stays visible there.
+export async function deletePickedFile(engine, name, fileId, project) {
+  const qs = new URLSearchParams({ project });
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
+}
+
+// Modify-flow read: returns the saved connection as
+//   {
+//     engine, name, createdAt, updatedAt,
+//     secureKeys: string[],                  // names of secret fields
+//     fields: { ... },                       // non-secret values verbatim,
+//                                            // secret slots replaced with
+//                                            // ANTON_VAULT_KEEP sentinel
+//   }
+// The renderer pre-fills the form with `fields`. On submit, any
+// field still carrying the sentinel resolves server-side against
+// the prior record (the modify merge — see anton-core's
+// `resolve_modify_merge`). Empty string means "explicitly clear".
+export async function fetchSavedConnection(engine, name) {
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`);
+}
+
+// Changes an MCP-based connection's read/write/none tool-access mode after
+// it's already connected (ENG-487 — HubSpot's connector is the first with
+// an editable-after-connect setting). No PKCE, no reconnect — a purely
+// local write on cowork-server's side (or a proxy to auth in org mode),
+// works identically from Electron and the web SPA.
+export async function patchConnectionAccessMode(engine, name, accessMode) {
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/access-mode`, {
+    method: 'PATCH',
+    body: JSON.stringify({ access_mode: accessMode }),
+  });
+}
+
+// Sentinel string used in the modify-flow round-trip. Mirrors the
+// constant in `anton.core.datasources.data_vault.ANTON_VAULT_KEEP` —
+// they MUST stay in sync. The form panel uses this to detect "user
+// hasn't touched this secret field" on submit; any field whose
+// value is still this exact string is sent back as-is and resolved
+// server-side against the prior record.
+export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
+
+// Sentinel used specifically by the Connections detail/edit round-trip —
+// mirrors `cowork.services.connectors.identity.VAULT_KEEP_SENTINEL` on the
+// server. NOT the same value as ANTON_VAULT_KEEP above (that one is anton's
+// own data-vault sentinel for a different subsystem) — despite the similar
+// name, the two are deliberately distinct and must not be conflated.
+export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
+
+// ─── SharePoint ─────────────────────────────────────────────────────
+//
+// SharePoint connections are created and edited only through these routes,
+// never the generic connector save: the server checks the key with
+// Microsoft before it stores anything.
+
+export const SHAREPOINT_UNAVAILABLE_MESSAGE = 'Update Cowork to use SharePoint.';
+
+/* A server older than the SharePoint routes answers with FastAPI's own
+   "Not Found" or a 405. The routes' own 404s carry their own detail
+   ("Connection not found.") and pass through unchanged. */
+async function sharePointReq(path, options) {
+  try {
+    return await req(path, options);
+  } catch (err) {
+    if (err?.status === 405 || (err?.status === 404 && err.message === 'Not Found')) {
+      const unavailable = /** @type {RefusalError} */ (new Error(SHAREPOINT_UNAVAILABLE_MESSAGE));
+      unavailable.status = err.status;
+      unavailable.code = 'sharepoint_unavailable';
+      throw unavailable;
+    }
+    throw err;
+  }
+}
+
+/**
+ * The key fields a SharePoint create or edit sends, in the routes' names.
+ * An empty label is left out: the server then keeps the label it has.
+ */
+function sharePointKeyBody({ userLabel, tenantId, clientId, clientSecret, siteUrls }) {
+  const body = { tenant_id: tenantId, client_id: clientId, client_secret: clientSecret, site_urls: siteUrls };
+  if (userLabel) body.user_label = userLabel;
+  return body;
+}
+
+/** Create a SharePoint connection; the server checks the key with Microsoft before saving. */
+export function createSharePointConnection({ name, ...key }) {
+  return sharePointReq('/connectors/sharepoint/connections', {
+    method: 'POST',
+    body: JSON.stringify({ name, ...sharePointKeyBody(key) }),
+  });
+}
+
+/** Replace a SharePoint connection's key and sites; `clientSecret` is CONNECTIONS_VAULT_KEEP to keep the stored one. */
+export function editSharePointConnection(name, key) {
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify(sharePointKeyBody(key)),
+  });
+}
+
+/** The document libraries of one site the connection names. */
+export function listSharePointLibraries(name, site) {
+  const query = new URLSearchParams({ site });
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/libraries?${query}`);
+}
+
+/** One page of a folder's items; pass the previous page's `cursor` for the next one. */
+export function listSharePointChildren(name, { site, driveId, itemId = 'root', cursor = null }) {
+  const query = new URLSearchParams({ site, drive_id: driveId, item_id: itemId });
+  if (cursor) query.set('cursor', cursor);
+  return sharePointReq(`/connectors/sharepoint/connections/${encodeURIComponent(name)}/children?${query}`);
+}
+
+/** Import picked items into a project's root in one request; it can run for minutes, so no timeout. */
+export function importSharePointFiles(projectName, { connection, site, driveId, folder = '', itemIds }) {
+  return sharePointReq(`/projects/${encodeURIComponent(projectName)}/files/import/sharepoint`, {
+    method: 'POST',
+    body: JSON.stringify({ connection, site, drive_id: driveId, folder, item_ids: itemIds }),
+  });
+}
+
+// ─── Connector registry ─────────────────────────────────────────────
+//
+// ── Cloud datasource connections ─────────────────────────────────────────
+//
+// The relay at /connectors/datasources/ is the hosted path for PostgreSQL and
+// MySQL: auth holds the encrypted credential and this server never sees it
+// again after the create. Every route here is org-mode only (the server
+// answers 404 outside it by design), so the gate below keeps the desktop
+// connections page from showing an error banner it can do nothing about.
+//
+// A created or edited connection comes back `pending`: auth marks it so and
+// only the gateway's probe completion moves it to verified or failed, so a
+// caller shows that state and refreshes rather than waiting on the response.
+function requireOrgMode(what) {
+  if (!getOrgMode()) {
+    throw new Error(`${what} is a cloud-only feature`);
+  }
+}
+
+const DATASOURCES = '/connectors/datasources/';
+
+export async function listDatasourceConnections() {
+  requireOrgMode('Cloud database connections');
+  return req(DATASOURCES);
+}
+
+export async function createDatasourceConnection(payload) {
+  requireOrgMode('Connecting a cloud database');
+  return req(DATASOURCES, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getDatasourceConnection(connectionId) {
+  requireOrgMode('Cloud database connections');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`);
+}
+
+// `expectedRevision` is the connection revision the form was opened against;
+// auth moves it on every edit, a rename included. The relay refuses with code
+// `stale_version` when it has moved, the only way to tell a conflict apart.
+export async function editDatasourceConnection(connectionId, payload, expectedRevision) {
+  requireOrgMode('Editing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, expected_revision: expectedRevision }),
+  });
+}
+
+export async function deleteDatasourceConnection(connectionId) {
+  requireOrgMode('Removing a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+export async function retryDatasourceValidation(connectionId) {
+  requireOrgMode('Retrying a cloud database connection');
+  return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
+}
+
+// Predefined JSON specs in server/connectors/. Three calls:
+//   list()         → lightweight summaries for the picker UI
+//   get(id)        → the full spec (literal-retrieval, no LLM)
+//   match(query)   → ranked candidates for natural-language input
+//
+// The match endpoint runs a no-LLM cascade (exact id/alias →
+// token-overlap) so most calls finish without a model round-trip.
+
+// `includeUnavailable` only changes the org-mode (cloud) response: the server
+// then also returns connectors the hosted build can't run, each flagged
+// `cloud_available: false`, so the picker can list them as desktop-only.
+// Against a server without that param the flag is simply absent and every
+// connector reads as available — the old behaviour.
+export async function fetchConnectors({ includeUnavailable = false } = {}) {
+  try {
+    const path = includeUnavailable
+      ? '/connectors/specs?include_unavailable=true'
+      : '/connectors/specs';
+    const data = await req(path);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchConnector(id) {
+  return req(`/connectors/specs/${encodeURIComponent(id)}`);
+}
+
+// Whether the caller can build a custom connector that is kept for reuse: only
+// in one person's own scope. A server without the route (404) keeps the old
+// answer, yes; any other failure says no, since the server would refuse the save.
+export async function fetchCanBuildCustomConnector() {
+  try {
+    const data = await req('/connectors/specs/custom-availability');
+    return data?.can_build !== false;
+  } catch (err) {
+    return err?.status === 404;
+  }
+}
+
+export async function matchConnector(query, maxCandidates = 3) {
+  return req('/connectors/specs/match', {
+    method: 'POST',
+    body: JSON.stringify({ query, max_candidates: maxCandidates }),
+  });
+}
+
+// Save a connector connection through the JSON-declared field
+// schema (bypasses Anton-core's built-in registry — needed for
+// OAuth + service-account flows where the legacy email/password
+// engine would reject the credential shape).
+// The saved connection a new form submission would overwrite ({ name, label }), or null.
+export async function fetchSubmissionReplaces({ formId, formSpec, values, skipped, method } = {}) {
+  const res = await req('/connectors/submissions/replaces', {
+    method: 'POST',
+    body: JSON.stringify({
+      form_id: formId,
+      name: '',
+      method: method || null,
+      values: values || {},
+      skipped: skipped || [],
+      form_spec: formSpec || null,
+    }),
+  });
+  return res?.replaces || null;
+}
+
+export async function saveConnector(connectorId, payload) {
+  const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
+  return req('/connectors/connections/save', { method: 'POST', body });
+}
+
+// Personal-token setup for Code's developer connectors. Unlike the OAuth-only
+// save route above, the server verifies the credential with the provider before
+// creating a vault record, so an invalid token can never appear connected.
+export async function validateAndSaveConnector(connectorId, payload) {
+  const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
+  return req('/connectors/connections/validate-and-save', { method: 'POST', body });
+}
+
+// ─── Web (redirect-based) connector OAuth ──────────────────────────────────
+// The desktop app authenticates connectors through an Electron loopback
+// PKCE flow (host.oauthConnect). The web SPA can't open a loopback server,
+// so it drives the server-side redirect flow instead:
+//   1. startConnectorOAuth → server mints PKCE + state, returns authUrl.
+//   2. open authUrl (new tab); the user consents; the provider redirects
+//      to the server callback, which exchanges the code + saves the vault
+//      record itself.
+//   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
+// The SPA never handles the code or tokens directly.
+
+export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret, extraFields } = {}) {
+  return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
+    method: 'POST',
+    body: JSON.stringify({
+      method: method || null,
+      name: name || '',
+      client_id: clientId || '',
+      client_secret: clientSecret || '',
+      extra_fields: extraFields || {},
+    }),
+  });
+}
+
+export async function pollConnectorOAuth(state) {
+  return req(`/connectors/oauth/status?state=${encodeURIComponent(state)}`);
+}
+
+export async function fetchPublishable() {
+  return req('/publish');
+}
+
+export async function discoverPostHogProjects({ personalApiKey, host, customHost }) {
+  return req('/connectors/posthog/projects', {
+    method: 'POST',
+    body: JSON.stringify({
+      personal_api_key: personalApiKey,
+      host,
+      custom_host: customHost || null,
+    }),
+  });
+}
+
+// Submit a data-vault form and stream the cowork agent's response.
+//
+// Replaces the prior fire-and-forget POST. The agent endpoint:
+//   1. stages the values into the vault keyed by submission_id
+//   2. validates / probes the connection server-side
+//   3. emits a Response-API-compatible SSE stream with text deltas,
+//      a `data-vault-form-patch` block, and `response.completed` with
+//      a status field
+//
+// We pipe those events through the same callbacks the chat stream
+// uses, so the consumer (App.jsx) can treat the result as a fresh
+// assistant turn — no separate render path needed.
+//
+// Field VALUES never round-trip through the response.
+export function streamDataVaultSubmission({
+  formId, conversationId, formSpec, values, skipped, name, method,
+  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
+  onChunk, onProgress, onToolResult, onDone, onError, onEvent,
+} = {}) {
+  const ctrl = turnStreamController(onEvent);
+  /*
+   * Same idle timer as _streamResponse. Without it a submission that never
+   * answers keeps its conversation's stream record forever, and every message
+   * sent to that conversation waits behind it.
+   */
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+  };
+  (async () => {
+    try {
+      bumpIdle();
+      const res = await authFetch(`${BASE}/connectors/submissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          form_id: formId,
+          conversation_id: conversationId || null,
+          name: name || formSpec?._existing_name || formSpec?.name || '',
+          method: method || null,
+          values: values || {},
+          skipped: skipped || [],
+          form_spec: formSpec || null,
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw await responseError(res, `Form submit failed (${res.status})`);
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buffer = '';
+      let cid = conversationId || null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += dec.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+        for (const block of events) {
+          const dataLine = block.split('\n').find((line) => line.startsWith('data:'));
+          if (!dataLine) continue;
+          const raw = dataLine.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let msg;
+          try { msg = JSON.parse(raw); } catch { continue; }
+          noteResponseId(ctrl, msg);
+          bumpIdle();
+
+          onEvent?.(msg);
+
+          switch (msg.type) {
+            case 'response.created':
+              cid = msg.conversation_id || cid;
+              break;
+            case 'response.output_text.delta':
+              onChunk?.(msg.delta || '', cid);
+              break;
+            case 'response.in_progress': {
+              const role = msg.thought_role || '';
+              if (role === 'thought.scratchpad.result') {
+                onToolResult?.({
+                  type: 'tool_result',
+                  name: msg.tool_name || '',
+                  action: msg.tool_action || '',
+                  content: msg.content || '',
+                }, cid);
+              } else {
+                onProgress?.({
+                  type: 'progress',
+                  phase: msg.phase || role.replace(/^thought\./, '') || 'progress',
+                  message: msg.message || msg.content || '',
+                  thoughtRole: role,
+                }, cid);
+              }
+              break;
+            }
+            case 'response.completed':
+              onDone?.(cid, msg);
+              return;
+            case 'response.failed':
+              onError?.(msg.error || msg.message || 'Form processing failed', msg);
+              return;
+            default:
+              break;
+          }
+        }
+      }
+      // Closed with no response.completed/failed: a partial answer is not a
+      // finished one, and the form is still waiting on its result.
+      onError?.('The form submission was interrupted before it finished. Please try again.');
+    } catch (err) {
+      // Our own idle abort surfaces as an AbortError too, so check it first.
+      if (idledOut) onError?.('The form submission stalled and was ended. Please try again.');
+      else if (err.name !== 'AbortError') onError?.(err.message);
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
+    }
+  })();
+  return ctrl;
+}
+
+// Answers to a custom connector's waiting connection test. Each id is single
+// use; a 404 means the test is no longer waiting and the form must be sent again.
+export function allowConnectorTestHost(approvalId) {
+  return req('/connectors/submissions/allow-private', {
+    method: 'POST', body: JSON.stringify({ approval_id: approvalId }),
+  });
+}
+
+export function confirmConnectorTest(confirmId) {
+  return req('/connectors/submissions/confirm', {
+    method: 'POST', body: JSON.stringify({ confirm_id: confirmId }),
+  });
+}
+
+export function cancelConnectorTest({ approvalId, confirmId } = {}) {
+  const body = approvalId ? { approval_id: approvalId } : { confirm_id: confirmId };
+  return req('/connectors/submissions/cancel', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Backwards-compatible non-streaming wrapper — kept so callers that
+// just need to stage values without streaming back can still do so.
+// (Currently unused by the form panel; might disappear in a cleanup.)
+export async function submitDataVaultForm({ formId, conversationId, values, skipped, formSpec, name, method }) {
+  // Fire the streaming endpoint but only consume the JSON body of
+  // the response — useful for tests/probes that don't want SSE.
+  const res = await authFetch(`${BASE}/connectors/submissions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      form_id: formId,
+      conversation_id: conversationId || null,
+      name: name || formSpec?._existing_name || formSpec?.name || '',
+      method: method || null,
+      values: values || {},
+      skipped: skipped || [],
+      form_spec: formSpec || null,
+    }),
+  });
+  if (!res.ok) throw await responseError(res, `Form submit failed (${res.status})`);
+  // Consume the stream and return a summary.
+  const text = await res.text();
+  return { status: 'streamed', body: text };
+}
+
+// `access` (optional): a publish-mode object, one of
+//   { mode: 'public' }
+//   { mode: 'password', password: '...' }
+//   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
+// Public (or a falsy access) sends just `{ path }`, which clears any prior
+// protection on re-publish. `notify` goes through as given: cowork-server
+// forwards it to MindsHub, which emails exactly the people it lists.
+export async function publishArtifact(path, access) {
+  const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
+  return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Re-publish an already-published artifact: pushes current files to the same
+// URL with the same access settings (server reuses report_id). Clears the
+// "Modified" badge on success.
+export async function updateArtifact(path) {
+  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+// Version history of a live artifact:
+//   { reportId, currentMd5, artifactType, versions: [{ md5, publishedAt, title, isCurrent }] }
+// Versions are newest-first. Throws on 404 — which is also what an older server
+// (no /versions route) returns, so callers feature-detect by treating any error
+// as "no history available" and hiding the UI.
+export async function listArtifactVersions(path) {
+  return req(`/publish/versions?path=${encodeURIComponent(path)}`);
+}
+
+// Roll the live URL back to an existing version (flips current_md5 — the public
+// URL is stable). Static artifacts only; the server rejects fullstack apps.
+export async function activateArtifactVersion(path, md5) {
+  return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
+}
+
+// The path to send to publish/unpublish for an artifact. Prefer the
+// artifact *folder* so folder-based artifacts publish as a unit — the
+// server resolves the primary file for static artifacts and treats
+// fullstack apps as a directory. Legacy loose-HTML and chat-bubble
+// artifacts carry no `folder`, so fall back to the primary file path
+// (the server then climbs to the artifact root itself).
+export function publishTargetPath(artifact) {
+  return artifact?.folder
+    || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
+}
+
+// ─── Live-app sharing ───────────────────────────────────────────────────────
+/*
+ * Only a deployment that runs live apps has these routes; elsewhere they 404,
+ * and nothing calls them unless /health reports `live_apps` (lib/liveApps.ts).
+ * A refusal's sentence comes back as the thrown error's message.
+ */
+
+export function createLiveAppPreview(launchId) {
+  return req('/live-apps/previews', { method: 'POST', body: JSON.stringify({ launchId }), timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function keepLiveAppPreview(id) {
+  return req(`/live-apps/previews/${encodeURIComponent(id)}/keepalive`, { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+}
+
+export function revokeLiveAppPreview(id) {
+  return req(`/live-apps/previews/${encodeURIComponent(id)}`, { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS, keepalive: true });
+}
+
+export async function revokeLiveAppPreviews() {
+  try { await req('/live-apps/previews', { method: 'DELETE', timeoutMs: SHORT_REQUEST_TIMEOUT_MS }); }
+  catch (error) { if (error.status !== 404) throw error; }
+}
+
+/** Availability is advisory; a subsequent launch still needs admission. */
+export async function fetchLiveAppAvailability() {
+  return liveAppAvailabilityFrom(await req('/live-apps/availability', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, cache: 'no-store' }));
+}
+
+/** Called only after a visible toast has displayed this durable notice. */
+export async function acknowledgeLiveAppAvailability(noticeId) {
+  return req(`/live-apps/availability/${encodeURIComponent(noticeId)}/ack`, {
+    method: 'POST',
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+/*
+ * The caller's own live apps and whether each is running, for the cards'
+ * state line. Shared by every card on screen through one in-flight request.
+ */
+export async function fetchMyLiveApps() {
+  return dedupe('live-apps-mine', async () => liveAppStatesFrom(await req('/live-apps/mine')));
+}
+
+/**
+ * The owner shares a full-stack app with one colleague, named by email, or
+ * with everyone on the stack. The body carries exactly one of the two. Sharing
+ * the same app with the same audience again returns the same share.
+ *
+ * @returns {Promise<import('./lib/liveAppSharing.js').LiveAppShare>}
+ */
+export async function shareLiveApp({ projectId, slug, email, everyone = false }) {
+  const audience = everyone ? { everyone: true } : { email };
+  return req('/artifacts/live-app-share', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, slug, ...audience }),
+  });
+}
+
+/*
+ * The owner's current shares of one app, newest first, for the share dialog's
+ * list. Throws, so the dialog can tell "shared with nobody" from "could not ask".
+ */
+export async function fetchLiveAppShares({ projectId, slug }) {
+  const query = `?projectId=${encodeURIComponent(projectId)}&slug=${encodeURIComponent(slug)}`;
+  return liveAppSharesFrom(await req(`/artifacts/live-app-shares${query}`));
+}
+
+/*
+ * The owner stops one share. It leaves the recipients' "Shared with you" at
+ * once; copies they already made stay theirs.
+ */
+export async function withdrawLiveAppShare(shareId) {
+  return req(`/artifacts/live-app-share/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+}
+
+/*
+ * What other people shared with the caller, newest first. Throws, so a caller
+ * can tell "nothing shared" from "could not ask".
+ */
+export async function fetchSharedLiveApps() {
+  return sharedLiveAppsFrom(await req('/artifacts/shared-live-apps'));
+}
+
+/**
+ * Copies a shared app into one of the caller's own projects and returns the
+ * new artifact card, with `receivedFrom` set. `confirmed` is the disclaimer's
+ * answer: the server refuses the copy without it, so only the dialog's
+ * confirm button calls this.
+ *
+ * @returns {Promise<object & { receivedFrom: import('./lib/liveAppSharing.js').ReceivedFrom }>}
+ */
+export async function duplicateLiveApp({ shareId, projectId }) {
+  return req('/artifacts/live-app-duplicate', {
+    method: 'POST',
+    body: JSON.stringify({ shareId, projectId, confirmed: true }),
+  });
+}
+
+// ─── Shared browser ─────────────────────────────────────────────────────────
+
+/**
+ * Whether this deployment offers the shared browser to the caller. On the web
+ * `available` means a browser router is configured and the caller's account
+ * may use it; an account it isn't enabled for answers `available: false` with
+ * `status: 'not_entitled'`, and one whose organization turned the browser off
+ * with `status: 'organization_off'`. On the desktop it means the app's own
+ * browser has registered with the local server.
+ *
+ * @typedef {Object} BrowseStatus
+ * @property {boolean} enabled  The person's own switch (Settings), on by default.
+ * @property {boolean} available
+ * @property {'none' | 'starting' | 'running' | 'unavailable' | 'not_entitled' | 'organization_off'} status
+ */
+
+/**
+ * A viewer link for the web pane. The router honors it once, before
+ * `ticket_expires_at`, and the viewer it opens closes at `lease_expires_at`.
+ * Both are Unix seconds.
+ *
+ * @typedef {Object} BrowserEmbed
+ * @property {string} session_id
+ * @property {string} view_url
+ * @property {number} ticket_expires_at
+ * @property {number} lease_expires_at
+ */
+
+/**
+ * Sends no MindsHub credential header: the desktop answers from what it holds
+ * locally, and the web shell's Authorization header already names the caller.
+ * A `timeoutMs` that passes aborts the request, which then rejects with no
+ * status.
+ *
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {Promise<BrowseStatus>}
+ */
+export async function fetchBrowseStatus({ timeoutMs } = {}) {
+  return req('/browse/status', { timeoutMs });
+}
+
+/* The browser's time zone and language, so the web browser's pages match the
+   person's. */
+export function browserClientHints() {
+  const hints = {};
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (timezone) hints.timezone = timezone;
+  } catch {
+    // No Intl time zone: the server keeps whatever it had.
+  }
+  if (typeof navigator !== 'undefined' && navigator.language) hints.locale = navigator.language;
+  return hints;
+}
+
+/**
+ * Web only: wakes the person's browser early, in a task that used it, so it
+ * is up by the time the agent asks for it.
+ *
+ * @returns {Promise<BrowseStatus>}
+ */
+// ─── Voice calls (prototype) ─────────────────────────────────────────────────
+/* Whether this deployment's MindsHub Inference serves live voice. A failed
+   read reads as no, with `failed: true`, so the caller can ask again. */
+export async function fetchVoiceStatus() {
+  try {
+    const status = await req('/voice/status', { timeoutMs: 15_000, headers: await hubHeaders() });
+    return { available: !!status?.available };
+  } catch {
+    return { available: false, failed: true };
+  }
+}
+
+/* The browser's SDP offer in, GPT-Live's answer out ({session: {id},
+   transport: {sdp}}), through the server and MindsHub as the caller. */
+function localTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function startVoiceSession(sdp, voice) {
+  return req('/voice/session', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    // The person's time zone, so the call knows their date and time.
+    body: JSON.stringify({ sdp, ...(voice ? { voice } : {}), ...(localTimeZone() ? { timezone: localTimeZone() } : {}) }),
+  });
+}
+
+/* One step of the voice call's operator: the call's history and what is on
+   screen in, the model's next turn ({content, tool_calls: [{id, name,
+   arguments}]}) out. The app runs the calls (lib/voice/operator.js). */
+export async function voiceOperate(messages, snapshot) {
+  return req('/voice/operate', {
+    method: 'POST',
+    timeoutMs: 40_000,
+    headers: await hubHeaders(),
+    // The time zone, so the operator counts dates from the person's today.
+    body: JSON.stringify({ messages, snapshot, timezone: localTimeZone() || undefined }),
+  });
+}
+
+/* The person typed an address in a task's browser pane: the server opens the
+   task's own session at it, as them, with no agent. Web only; the desktop
+   opens its own browser (host.inAppBrowser.open). Resolves {session_id}. */
+export async function openBrowserAt(conversationId, url) {
+  return req('/browse/open', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_id: conversationId, url }),
+  });
+}
+
+/* The project's browsers (ENG-4138, prototype): which of these tasks have an
+   open browser, each with its tabs and the tabs it saved. Web only. Resolves
+   {browsers: [{conversation_id, session_id, url, viewers, holder, tabs, parked_tabs}]}. */
+export async function fetchTaskBrowsers(conversationIds) {
+  return req('/browse/browsers', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ conversation_ids: conversationIds.slice(0, 100) }),
+  });
+}
+
+export async function switchTaskTab(conversationId, tabId) {
+  return req('/browse/tabs/switch', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId }),
+  });
+}
+
+/* Closes a tab; `park` keeps a note of it, to reopen when the task needs it. */
+export async function closeTaskTab(conversationId, tabId, { park = true } = {}) {
+  return req('/browse/tabs/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId, tab_id: tabId, park }),
+  });
+}
+
+/* Closes a task's browser; its tabs are noted and reopen when the task needs them. */
+export async function closeTaskBrowser(conversationId) {
+  return req('/browse/close', {
+    method: 'POST', headers: await hubHeaders(), body: JSON.stringify({ conversation_id: conversationId }),
+  });
+}
+
+export async function provisionBrowser() {
+  return req('/browse/provision', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify(browserClientHints()),
+  });
+}
+
+/**
+ * The browser's record of the person's approval of one held step (the commit
+ * hold). The step may then run once, until `expires_at` (Unix seconds).
+ *
+ * @typedef {Object} BrowserApproval
+ * @property {string} pending_id
+ * @property {boolean} approved
+ * @property {number} expires_at
+ */
+
+/**
+ * Web only: records the person's approval of a step the browser held, before
+ * the chat card that asked is answered. Only the person's own credential is
+ * accepted; a turn key gets 403 `person_only`.
+ *
+ * @param {string} sessionId
+ * @param {string} pendingId
+ * @returns {Promise<BrowserApproval>}
+ */
+export async function approveBrowserStep(sessionId, pendingId) {
+  return req('/browse/approve', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ session_id: sessionId, pending_id: pendingId }),
+  });
+}
+
+/**
+ * Web only: declines a step the browser held, before the chat card that asked
+ * is answered with anything but Approve. The router's decline drops the held
+ * step and any approval already recorded for it, so a late approval can't
+ * run it. Sends the person's own credential, as approveBrowserStep does. The
+ * card reads nothing from the answer, and waits for it before it answers, so
+ * the call gives up after SHORT_REQUEST_TIMEOUT_MS.
+ *
+ * @param {string} sessionId
+ * @param {string} pendingId
+ * @returns {Promise<unknown>}
+ */
+export async function declineBrowserStep(sessionId, pendingId) {
+  return req('/browse/decline', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ session_id: sessionId, pending_id: pendingId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Web only: signs the person out of every site in their browser, the live
+ * one and the saved sign-ins. Works even when the person's browser access is
+ * off.
+ *
+ * @returns {Promise<{ cleared: boolean }>}
+ */
+export async function signOutOfBrowserSites() {
+  return req('/browse/logins', { method: 'DELETE', headers: await hubHeaders() });
+}
+
+/**
+ * Web only: a fresh viewer link for one session.
+ *
+ * @param {string} sessionId
+ * @returns {Promise<BrowserEmbed>}
+ */
+export async function embedBrowser(sessionId) {
+  return req('/browse/embed', {
+    method: 'POST',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+}
+
+// ─── Channels ───────────────────────────────────────────────────────────────
+// Wraps /api/v1/channels/* on cowork-server. Plugins advertise a credential
+// schema + capability flags so the UI knows which fields/buttons to render;
+// secrets are masked on read (is_set / value:null) and only sent on write.
+
+export async function fetchChannelPlugins() {
+  try {
+    const data = await req('/channels/plugins');
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchChannelStatus() {
+  try {
+    return await req('/channels/status');
+  } catch {
+    return { plugin_count: 0, installation_count: 0, channels: [] };
+  }
+}
+
+export async function fetchChannelInstallations() {
+  try {
+    const data = await req('/channels/installations');
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+// The harness that serves channel conversations (separate from the desktop
+// harness). Returns the current value plus the registered options.
+export async function fetchChannelAgent() {
+  try {
+    return await req('/channels/agent');
+  } catch {
+    return { harness: '', options: [] };
+  }
+}
+
+export async function setChannelAgent(harness) {
+  return req('/channels/agent', { method: 'PUT', body: JSON.stringify({ harness }) });
+}
+
+export async function fetchChannelConfig(channelType) {
+  return req(`/channels/${enc(channelType)}/config`);
+}
+
+export async function saveChannelConfig(channelType, values) {
+  return req(`/channels/${enc(channelType)}/config`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: values || {} }),
+  });
+}
+
+export async function deleteChannelConfig(channelType) {
+  return req(`/channels/${enc(channelType)}/config`, { method: 'DELETE' });
+}
+
+// Rebuild the live adapter from stored config (no webhook registration).
+export async function reloadChannel(channelType) {
+  return req(`/channels/${enc(channelType)}/reload`, { method: 'POST' });
+}
+
+// Register the channel's inbound endpoint with the platform (Telegram setWebhook).
+// 501 when the channel has no lifecycle (gate on capabilities.supports_webhook_setup).
+export async function setupChannel(channelType) {
+  return req(`/channels/${enc(channelType)}/setup`, { method: 'POST' });
+}
+
+export async function teardownChannel(channelType) {
+  return req(`/channels/${enc(channelType)}/teardown`, { method: 'POST' });
+}
+
+// Calls the platform with the STORED credentials — proof they actually
+// authenticate, not just that every required field has some value typed in.
+// Gate on capabilities.supports_verify.
+export async function testChannelConnection(channelType) {
+  return req(`/channels/${enc(channelType)}/test-connection`, { method: 'POST' });
+}
+
+// ── Channel bindings (wire an external chat/thread to a project/conversation) ──
+
+export async function fetchChannelBindings(channelType) {
+  const suffix = channelType ? `?channel_type=${enc(channelType)}` : '';
+  try {
+    const data = await req(`/channels/bindings${suffix}`);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createChannelBinding(payload) {
+  return req('/channels/bindings', { method: 'POST', body: JSON.stringify(payload || {}) });
+}
+
+export async function updateChannelBinding(bindingId, patch) {
+  return req(`/channels/bindings/${enc(bindingId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch || {}),
+  });
+}
+
+export async function deleteChannelBinding(bindingId) {
+  return req(`/channels/bindings/${enc(bindingId)}`, { method: 'DELETE' });
+}
+
+// ─── Attachments And Context ───────────────────────────────────────────────
+
+/** POST /v1/attachments/{project_name}/{session_id}/upload — response body is a JSON array of file attachments. */
+/* A send holds the app-wide stream slot while its files upload, so an upload
+   that never answers blocks every send until a reload. The bound grows with
+   the payload, so a large file on a slow link still has time to finish. */
+const UPLOAD_TIMEOUT_BASE_MS = 60_000;
+const UPLOAD_MIN_BYTES_PER_MS = 128; // ~1 Mbit/s
+
+export function uploadTimeoutMs(totalBytes) {
+  return UPLOAD_TIMEOUT_BASE_MS + Math.ceil((Number(totalBytes) || 0) / UPLOAD_MIN_BYTES_PER_MS);
+}
+
+export async function uploadAttachments(files, { projectName, sessionId, timeoutMs } = {}) {
+  if (!projectName || !sessionId) {
+    throw new Error('Open a saved task before attaching files (project and conversation id are required).');
+  }
+  const enc = encodeURIComponent;
+  const form = new FormData();
+  const list = Array.from(files);
+  list.forEach((file) => form.append('files', file));
+  const totalBytes = list.reduce((sum, file) => sum + (file?.size || 0), 0);
+  const { signal, cancel } = _timeoutSignal(null, timeoutMs ?? uploadTimeoutMs(totalBytes));
+  try {
+    const res = await authFetch(
+      `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
+      { method: 'POST', body: form, signal },
+    );
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (signal?.aborted) throw new Error('The file upload stopped responding. Please try again.');
+    throw err;
+  } finally {
+    cancel();
+  }
+}
+
+/** GET /v1/attachments/{project_name}/{session_id} — response body is a JSON array. */
+export async function fetchAttachments(projectName, sessionId, { ids } = {}) {
+  if (!projectName || !sessionId) {
+    return { attachments: [] };
+  }
+  const enc = encodeURIComponent;
+  const qs = new URLSearchParams();
+  if (Array.isArray(ids) && ids.length) {
+    for (const id of ids) {
+      if (id) qs.append('ids', id);
+    }
+  }
+  const q = qs.toString();
+  const path = `/attachments/${enc(projectName)}/${enc(sessionId)}${q ? `?${q}` : ''}`;
+  const data = await req(path);
+  const raw = Array.isArray(data) ? data : [];
+  return { attachments: raw };
+}
+
+export async function deleteAttachment(id, { projectName, sessionId } = {}) {
+  // Prefer the path-scoped route — the legacy `DELETE /attachments/{id}`
+  // looked up a JSON state file the upload code never populates and
+  // always 404'd. When the caller passes project + session, hit the
+  // new endpoint that walks the on-disk directory directly.
+  if (projectName && sessionId && id) {
+    const enc = encodeURIComponent;
+    return req(`/attachments/${enc(projectName)}/${enc(sessionId)}/${enc(id)}`, { method: 'DELETE' });
+  }
+  // Back-compat — kept so any older call site that hasn't migrated
+  // still hits the original route (and gets the same 404 it always
+  // did, surfacing the problem rather than failing silently).
+  return req(`/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Absolute URL to the attachment's underlying file, served inline so
+ * the browser's default handler (image / pdf / text preview) takes
+ * over when the row is clicked. Works in both Electron and the web
+ * SPA — `host.openExternal(url)` does the right thing for each. */
+export function attachmentRawUrl(projectName, sessionId, attachmentId) {
+  if (!projectName || !sessionId || !attachmentId) return null;
+  const enc = encodeURIComponent;
+  return `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/${enc(attachmentId)}/raw`;
+}
+
+/** Promote a task upload to a project-level file. Returns
+ * `{ ok, project_path, absolute_path }` on success. The client must
+ * refresh BOTH the task uploads list and the project files list — the
+ * file moves out of one and into the other on disk. */
+export async function moveAttachmentToProject(projectName, sessionId, attachmentId) {
+  if (!projectName || !sessionId || !attachmentId) {
+    throw new Error('projectName, sessionId, and attachmentId are required.');
+  }
+  const enc = encodeURIComponent;
+  return req(
+    `/attachments/${enc(projectName)}/${enc(sessionId)}/${enc(attachmentId)}/move-to-project`,
+    { method: 'POST' },
+  );
+}
+
+// ─── Search, Pins, Schedules ───────────────────────────────────────────────
+export async function searchCowork(query) {
+  if (!query.trim()) return { results: [] };
+  return req(`/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function fetchPins() {
+  try {
+    return await req('/pins/');
+  } catch {
+    return { pins: [] };
+  }
+}
+
+export async function pinTask(task) {
+  return req('/pins/', { method: 'POST', body: JSON.stringify({ item_type: 'conversation', item_id: task.id, title: task.title }) });
+}
+
+export async function unpinTask(id) {
+  return req(`/pins/${encodeURIComponent(id)}?item_type=conversation`, { method: 'DELETE' });
+}
+
+// Rename + delete + move are powered by the conversation patch/delete
+// endpoints. The server's PATCH supports both `title` and `project`
+// in one call; we expose them as separate helpers for clearer call
+// sites.
+export async function renameConversation(id, title) {
+  return req(`/conversations/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  });
+}
+
+/** PATCH conversation meta (`title`, `project`, `disabled_connections`, …). */
+export async function patchConversation(id, body) {
+  return req(`/conversations/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+const DELETE_TURN_TIMEOUT_MS = 30000;
+
+// Delete one user→answer cycle (the question + the assistant
+// response, including any internal tool_use/tool_result blocks
+// anton generated during the turn).
+/** `messageId` anchors the turn: the visible assistant message it produced,
+ * or (a turn stopped/failed before any answer) the opening user message
+ * itself — matching the server's two accepted anchor shapes.
+ * Positional (`turnIndex`) doesn't survive a lazily-loaded/paginated
+ * conversation, so this replaced that contract; both worktrees land
+ * together. */
+export async function deleteConversationTurn(id, messageId) {
+  // The caller holds the turn in an in-flight state for the life of this
+  // request and refuses further deletes in that conversation while it is out,
+  // so a request that never settles would strand the conversation until a
+  // reload. Multiple seconds is normal here; never answering is not.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), DELETE_TURN_TIMEOUT_MS);
+  try {
+    const res = await authFetch(
+      BASE + `/conversations/${encodeURIComponent(id)}/turns/${encodeURIComponent(messageId)}`,
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
+      },
+    );
+    if (res.status === 404) return { status: 'gone', id, messageId };
+    /* responseError carries err.status: the caller has to tell a refusal apart
+       from a gateway giving up on a delete the server may still be running. */
+    if (!res.ok) throw await responseError(res, `Delete turn failed (${res.status})`);
+    // Awaited inside the bound: a server that sends headers and then stalls the
+    // body is the same hang the timeout exists for.
+    return await res.json();
+  } catch (e) {
+    // Giving up on the wire says nothing about the server, which may well have
+    // finished the delete, so this is typed rather than reported as a failure.
+    // Keyed on the error, not on `signal.aborted`: a server error raised after
+    // the timer fired is a refusal the server was explicit about, not a hang.
+    if (e?.name === 'AbortError') {
+      const timedOut = new Error(
+        `The delete request timed out after ${DELETE_TURN_TIMEOUT_MS / 1000} seconds.`,
+        { cause: e },
+      );
+      timedOut.code = 'timeout';
+      throw timedOut;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function deleteConversation(id) {
+  // Idempotent — if the server says "not found", treat that as
+  // success. The conversation may have been removed by a previous
+  // attempt or a concurrent client; either way the desired end state
+  // ("gone from server") is achieved.
+  const res = await authFetch(BASE + `/conversations/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (res.status === 404) return { status: 'gone', id };
+  if (!res.ok) throw await responseError(res, `Delete failed (${res.status})`);
+  if (res.status === 204) return { ok: true };
+  return res.json();
+}
+
+export async function moveConversation(id, projectName) {
+  return req(`/conversations/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ project: projectName }),
+  });
+}
+
+// Move a task to another project and (when moveObjects) relocate the
+// artifacts the task created + re-tag its files. Backed by
+// POST /conversations/{id}/move. The destination project must exist —
+// the caller creates a new one first, then moves to it.
+export async function moveTaskToProject(id, projectName, moveObjects = true) {
+  return req(`/conversations/${encodeURIComponent(id)}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ project: projectName, moveObjects }),
+  });
+}
+
+// Model comparisons: one task run on two models side by side. Each side is an
+// ordinary conversation the server keeps in a hidden project, so its turns go
+// through the same streaming calls as any task.
+//
+// `null` means the sidecar predates comparisons: the renderer bundle updates
+// over the air ahead of the server, so the Compare screen has to be able to
+// say "update needed" rather than show an empty history.
+/** One page of the history, newest first: `{ comparisons, hasMore }`. Null on
+ *  a server with no comparisons at all. */
+export async function fetchComparisons({ offset = 0 } = {}) {
+  try {
+    const data = await req(offset ? `/comparisons/?offset=${encodeURIComponent(offset)}` : '/comparisons/');
+    return {
+      comparisons: Array.isArray(data?.comparisons) ? data.comparisons : [],
+      // An older server sends no flag: it has no pages beyond the first.
+      hasMore: data?.hasMore === true,
+    };
+  } catch (err) {
+    if (err?.status === 404 || err?.status === 405) return null;
+    throw err;
+  }
+}
+
+export async function fetchComparison(id) {
+  return req(`/comparisons/${encodeURIComponent(id)}`);
+}
+
+/** Tokens and list-price cost per side and turn. Null when this server or its
+ *  gateway cannot say, so the screen simply shows no figure. */
+export async function fetchComparisonUsage(id) {
+  try {
+    const data = await req(`/comparisons/${encodeURIComponent(id)}/usage`, { headers: await hubHeaders() });
+    return data && typeof data === 'object' && data.sides ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createComparison({ title, sides, sourceProjectId } = {}) {
+  return req('/comparisons/', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: title || '',
+      sides: (sides || []).map((side) => ({
+        model: side.model,
+        ...(side.reasoningEffort ? { reasoningEffort: side.reasoningEffort } : {}),
+      })),
+      ...(sourceProjectId ? { sourceProjectId } : {}),
+    }),
+  });
+}
+
+export async function deleteComparison(id) {
+  return req(`/comparisons/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function recordComparisonVerdict(id, turnIndex, winner) {
+  return req(`/comparisons/${encodeURIComponent(id)}/verdicts/${encodeURIComponent(turnIndex)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ winner }),
+  });
+}
+
+/** `modelLabel` names the folder the side's files land in; an older server ignores it. */
+export async function continueComparisonSide(id, label, projectId, modelLabel) {
+  return req(`/comparisons/${encodeURIComponent(id)}/sides/${encodeURIComponent(label)}/continue`, {
+    method: 'POST',
+    body: JSON.stringify({ projectId, ...(modelLabel ? { modelLabel } : {}) }),
+  });
+}
+
+export async function recordTaskVisit(task, autoPin = false) {
+  const params = new URLSearchParams({ auto_pin: autoPin ? 'true' : 'false' });
+  if (task?.title) params.set('title', task.title);
+  return req(`/pins/${encodeURIComponent(task.id)}/visit?${params.toString()}`, { method: 'POST' });
+}
+
+// Null when the list couldn't be read, so a caller can tell a failed read
+// from a server with no schedules.
+export async function fetchSchedules() {
+  try {
+    return await req('/schedules/');
+  } catch {
+    return null;
+  }
+}
+
+export async function createSchedule(payload) {
+  return req('/schedules/', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateSchedule(id, payload) {
+  return req(`/schedules/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export async function deleteSchedule(id) {
+  return req(`/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function pauseSchedule(id) {
+  return req(`/schedules/${encodeURIComponent(id)}/pause`, { method: 'POST' });
+}
+
+export async function resumeSchedule(id) {
+  return req(`/schedules/${encodeURIComponent(id)}/resume`, { method: 'POST' });
+}
+
+// `trial` runs it once without touching its schedule: the run neither uses
+// up a one-off nor makes the server skip the next slot as just run.
+export async function runScheduleNow(id, { trial = false } = {}) {
+  const query = trial ? '?trial=true' : '';
+  return req(`/schedules/${encodeURIComponent(id)}/run-now${query}`, { method: 'POST' });
+}
+
+export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}) {
+  // Returns { runs: [{ id, scheduleId, startedAt, finishedAt, durationMs,
+  // status, error, conversationId, isManual }] }
+  // Newest first. A failed read is an empty list, unless `strict`, where it
+  // throws so a caller acting on the list can say so.
+  try {
+    return await req(`/schedules/${encodeURIComponent(id)}/runs?limit=${encodeURIComponent(limit)}`);
+  } catch (err) {
+    if (strict) throw err;
+    return { schedule_id: id, runs: [] };
+  }
+}
+
+// ─── Mock data (used when server is offline) ──────────────────────────────────
+export const MOCK_DATA = {
+  tasks: [
+    {
+      id: 't1',
+      title: 'Communicate RIF to remaining team',
+      subtitle: '6 days ago',
+      status: 'active',
+      messages: [
+        {
+          role: 'user',
+          content: 'Help me draft a message to the remaining team about the RIF. Keep it human, factual, no corporate fluff. We need to acknowledge what happened last week, address the immediate questions, and outline next steps.',
+        },
+        {
+          role: 'assistant',
+          content: "I pulled the latest from your Operational ops project — the RIF announcement v3 doc and last week's all-hands transcript. Here's a draft. I kept it to three short sections, with the practical info up top.",
+          artifact: {
+            title: 'RIF — message to remaining team',
+            kind: 'Document', icon: 'doc',
+            progress: 72,
+            preview: [
+              { heading: "What's changed" },
+              { text: "Last Thursday we said goodbye to 14 colleagues across infra and ops. The decision was based on where we're investing for the next 18 months — primarily AI Fab and the Minds platform." },
+              { heading: 'What this means for you' },
+              { text: 'Reporting lines stay the same this quarter. New squad assignments will be shared by Monday.' },
+            ],
+          },
+        },
+      ],
+    },
+    { id: 't2', title: 'Determine Lightsail instance for AI Fab', subtitle: '7 days ago', status: 'idle', messages: [
+      { role: 'user', content: 'Determine Lightsail instance for AI Fab' },
+      { role: 'assistant', content: 'Picking this back up — I have the project context loaded. Where would you like to start?' },
+    ]},
+    { id: 't3', title: 'Review RIF announcement presentation', subtitle: '1 week ago', status: 'idle', messages: [
+      { role: 'user', content: 'Review RIF announcement presentation' },
+      { role: 'assistant', content: 'Picking this back up — I have the project context loaded. Where would you like to start?' },
+    ]},
+    { id: 't4', title: 'Write website copy for agent platform', subtitle: '2 weeks ago', status: 'done', messages: [
+      { role: 'user', content: 'Write website copy for agent platform' },
+      { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
+    ]},
+    { id: 't5', title: `Create website copy for ${STOCK_PRODUCT_NAME}`, subtitle: '2 weeks ago', status: 'done', messages: [
+      { role: 'user', content: `Create website copy for ${STOCK_PRODUCT_NAME}` },
+      { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
+    ]},
+    { id: 't6', title: 'Create MindsDB website copy positioning', subtitle: '3 weeks ago', status: 'done', messages: [] },
+    { id: 't7', title: 'Redesign presentation slide from doc', subtitle: '3 weeks ago', status: 'idle', messages: [] },
+    { id: 't8', title: 'Create operational plan with milestones', subtitle: '1 month ago', status: 'done', messages: [] },
+  ],
+
+  projects: [
+    { id: 'p1', name: 'AI Fab launch', description: 'Hardware, infra, and brand for the AI Fab', taskCount: 14, fileCount: 23, updated: '2h ago', tint: 'rgba(31,156,176,0.12)', color: 'var(--primary-700)' },
+    { id: 'p2', name: 'MindsDB website', description: 'Marketing site copy + positioning', taskCount: 9, fileCount: 41, updated: 'Yesterday', tint: 'rgba(72,190,227,0.14)', color: 'var(--ocean-700)' },
+    { id: 'p3', name: 'Cowork brand', description: `Brand and identity for the ${STOCK_PRODUCT_NAME} app`, taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
+    { id: 'p4', name: 'Operational ops', description: 'Internal ops, RIF, hiring plans', taskCount: 11, fileCount: 8, updated: '1w ago', tint: 'rgba(244,177,131,0.15)', color: '#B7522B' },
+  ],
+
+  artifacts: [
+    { id: 'a1', title: 'RIF announcement — v3', kind: 'Document', updated: 'updated 4m ago', live: true, bg: 'linear-gradient(135deg, var(--stone-100), var(--surface-03))', snippet: "Team,\n\nAs we mentioned in last\nweek's all-hands, we are\nrestructuring our…" },
+    { id: 'a2', title: 'Lightsail cost projection', kind: 'Spreadsheet', updated: 'updated 1h ago', live: true, bg: 'linear-gradient(135deg, var(--ocean-50), #fff)', snippet: 'instance | type   | $/mo\n--------+--------+-----\n  ai-01 | xlarge |  84\n  ai-02 | medium |  42' },
+    { id: 'a3', title: 'Cowork landing — copy v2', kind: 'Document', updated: 'updated yesterday', live: false, bg: 'linear-gradient(135deg, var(--sage-50), #fff)', snippet: "A teammate that knows your\ncompany. Anton works in your\nprojects, with your data, on\nyour cadence." },
+    { id: 'a4', title: 'AI Fab brand explorations', kind: 'Canvas', updated: 'updated 2d ago', live: false, bg: 'linear-gradient(135deg, #fff, var(--stone-150))', snippet: '◇ logomark draft 04\n◇ wordmark v2\n◇ palette — aqua x stone' },
+  ],
+
+  scheduled: [
+    { id: 's1', title: 'Daily — pull GitHub PR digest', cadence: 'Every weekday at 9:00', nextRun: 'tomorrow 9:00', enabled: true },
+    { id: 's2', title: 'Weekly — sales pipeline summary', cadence: 'Mondays at 8:30', nextRun: 'Mon 8:30', enabled: true },
+    { id: 's3', title: 'Hourly — monitor Lightsail spend', cadence: 'Every hour', nextRun: 'in 24m', enabled: false },
+  ],
+
+  settings: {
+    greeting: "Let's knock something off your list",
+    tone: 'balanced',
+    defaultModel: 'latest:sonnet',
+    autoPin: true,
+    // Flat background by default; opt back into the animated dot grid via
+    // Settings → Personalization → Animated background.
+    showDots: false,
+    showCounters: false,
+    accentVariant: 'aqua',
+    planningProvider: 'minds-cloud',
+    planningModel: 'latest:sonnet',
+    codingProvider: 'minds-cloud',
+    codingModel: 'latest:haiku',
+    memoryEnabled: true,
+    memoryMode: 'autopilot',
+    episodicMemory: true,
+    proactiveDashboards: false,
+    actFirst: true,
+    anthropicApiKey: '',
+    openaiApiKey: '',
+    providers: [],
+    modelMode: 'default',
+    modelOverrides: {},
+    providerTypes: ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'],
+    providerTypeLabels: {
+      'minds-cloud': 'MindsHub',
+      anthropic: 'Anthropic',
+      openai: 'OpenAI',
+      gemini: 'Gemini',
+      'openai-compatible': 'OpenAI-compatible',
+    },
+    recommendedModels: {},
+    recommendedPair: {},
+    providerStatus: {},
+  },
+};
+
+// ── Artifact comments ────────────────────────────────────────────
+// Renderer holds no token; cowork-server attaches the user's MindsHub creds and
+// proxies to the inference backend. Scope is the composite {userDir}/{reportId}.
+
+function _commentsBase(userDir, reportId) {
+  return `/artifact-comments/${encodeURIComponent(userDir)}/${encodeURIComponent(reportId)}`;
+}
+
+export function listCommentThreads(userDir, reportId, status = 'open') {
+  return req(`${_commentsBase(userDir, reportId)}/threads?status=${encodeURIComponent(status)}`);
+}
+
+export function createCommentThread(userDir, reportId, {
+  selector, text, revisionId = null, kind = 'review',
+}) {
+  return req(`${_commentsBase(userDir, reportId)}/threads`, {
+    method: 'POST',
+    body: JSON.stringify({ selector: selector ?? null, text, revisionId, kind }),
+  });
+}
+
+export function addCommentReply(userDir, reportId, threadId, text) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/replies`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function setCommentThreadStatus(userDir, reportId, threadId, status) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function markCommentsRead(userDir, reportId) {
+  return req(`${_commentsBase(userDir, reportId)}/read`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function editCommentThread(userDir, reportId, threadId, text) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function deleteCommentThread(userDir, reportId, threadId) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function editCommentReply(userDir, reportId, threadId, replyId, text) {
+  return req(
+    `${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/replies/${encodeURIComponent(replyId)}`,
+    { method: 'PATCH', body: JSON.stringify({ text }) },
+  );
+}
+
+export function deleteCommentReply(userDir, reportId, threadId, replyId) {
+  return req(
+    `${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/replies/${encodeURIComponent(replyId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+// Open the SSE stream via fetch + iterateSSE (NOT EventSource — the renderer
+// can't set headers and we route through cowork-server). Returns an
+// AbortController; callers call .abort() on unmount. onExpired fires on a
+// terminal 401/403 so the UI can stop instead of reconnecting forever.
+export function openCommentsStream(userDir, reportId, since, { onEvent, onError, onExpired } = {}) {
+  const ctrl = new AbortController();
+  (async () => {
+    const q = since ? `?since=${encodeURIComponent(since)}` : '';
+    const url = `${BASE}${_commentsBase(userDir, reportId)}/stream${q}`;
+    try {
+      const res = await authFetch(url, { headers: { Accept: 'text/event-stream' }, signal: ctrl.signal });
+      if (res.status === 401 || res.status === 403) { onExpired && onExpired(); return; }
+      if (!res.ok || !res.body) { onError && onError(new Error(`stream ${res.status}`)); return; }
+      for await (const ev of iterateSSE(res)) {
+        if (ev && ev.type && String(ev.type).indexOf('thread.') === 0) onEvent && onEvent(ev);
+      }
+      // Stream ended without an abort (proxy/nginx idle-close, server restart) —
+      // signal so the caller can reconnect with the latest `since`.
+      if (!ctrl.signal.aborted) onError && onError(new Error('stream ended'));
+    } catch (e) {
+      if (!ctrl.signal.aborted) onError && onError(e);
+    }
+  })();
+  return ctrl;
+}

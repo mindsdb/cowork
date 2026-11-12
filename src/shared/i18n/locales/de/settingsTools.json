@@ -205,6 +205,9 @@
     "passed": "Antwort in {ms} ms.",
     "failed": "Das Entscheidungsmodell hat nicht wie erwartet geantwortet ({error}). Prüfen Sie Endpunkt und Schlüssel.",
     "untested": "Das Entscheidungsmodell konnte nicht getestet werden. Versuchen Sie es noch einmal.",
-    "remove": "Entfernen"
+    "remove": "Entfernen",
+    "viaMindsHubTitle": "Jev über MindsHub Inference",
+    "viaMindsHub": "{agent} nutzt Jev über MindsHub Inference, bei dem Sie bereits angemeldet sind. Es gibt nichts einzurichten.",
+    "learnMore": "Mehr erfahren"
   }
 }

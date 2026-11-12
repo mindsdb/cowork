@@ -147253,6 +147253,40 @@
       "text": "479d7b624186"
     }
   },
+  "settingsTools:decisionModel.learnMore": {
+    "de": {
+      "from": "1445799c033a",
+      "text": "a85e18d1411a"
+    },
+    "es": {
+      "from": "1445799c033a",
+      "text": "86aa1ed6c240"
+    },
+    "fr": {
+      "from": "1445799c033a",
+      "text": "dd3ae33250cf"
+    },
+    "it": {
+      "from": "1445799c033a",
+      "text": "6181e70dc1db"
+    },
+    "ja": {
+      "from": "1445799c033a",
+      "text": "9652e7b5f699"
+    },
+    "ko": {
+      "from": "1445799c033a",
+      "text": "5ad668e982f3"
+    },
+    "pt-BR": {
+      "from": "1445799c033a",
+      "text": "7bdfe6321ceb"
+    },
+    "zh-CN": {
+      "from": "1445799c033a",
+      "text": "ca66c2da6f5b"
+    }
+  },
   "settingsTools:decisionModel.model": {
     "de": {
       "from": "a3c3370cc732",
@@ -147523,6 +147557,74 @@
     "zh-CN": {
       "from": "2578179d1779",
       "text": "892524327232"
+    }
+  },
+  "settingsTools:decisionModel.viaMindsHub": {
+    "de": {
+      "from": "61042b724c07",
+      "text": "ea7f4ad5d5f3"
+    },
+    "es": {
+      "from": "61042b724c07",
+      "text": "3011b4c1aeed"
+    },
+    "fr": {
+      "from": "61042b724c07",
+      "text": "92efe138fa45"
+    },
+    "it": {
+      "from": "61042b724c07",
+      "text": "ff4301cd6a01"
+    },
+    "ja": {
+      "from": "61042b724c07",
+      "text": "4708d9b49b51"
+    },
+    "ko": {
+      "from": "61042b724c07",
+      "text": "dfe1b147b848"
+    },
+    "pt-BR": {
+      "from": "61042b724c07",
+      "text": "a75367e6824a"
+    },
+    "zh-CN": {
+      "from": "61042b724c07",
+      "text": "346ac3770d7b"
+    }
+  },
+  "settingsTools:decisionModel.viaMindsHubTitle": {
+    "de": {
+      "from": "7bdcde193730",
+      "text": "f0b719051e96"
+    },
+    "es": {
+      "from": "7bdcde193730",
+      "text": "0fb94f5dacd0"
+    },
+    "fr": {
+      "from": "7bdcde193730",
+      "text": "18e4e639dd3b"
+    },
+    "it": {
+      "from": "7bdcde193730",
+      "text": "0d7b9f005d64"
+    },
+    "ja": {
+      "from": "7bdcde193730",
+      "text": "7c6d9915b8be"
+    },
+    "ko": {
+      "from": "7bdcde193730",
+      "text": "9f56cf19821b"
+    },
+    "pt-BR": {
+      "from": "7bdcde193730",
+      "text": "cdc827bd081b"
+    },
+    "zh-CN": {
+      "from": "7bdcde193730",
+      "text": "4f137604cb77"
     }
   },
   "setup:checklist.close": {

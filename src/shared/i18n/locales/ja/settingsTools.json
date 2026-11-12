@@ -205,6 +205,9 @@
     "passed": "{ms} ミリ秒で応答しました。",
     "failed": "判定モデルが想定どおりに応答しませんでした ({error})。エンドポイントとキーを確認してください。",
     "untested": "判定モデルをテストできませんでした。もう一度お試しください。",
-    "remove": "削除"
+    "remove": "削除",
+    "viaMindsHubTitle": "MindsHub Inference の Jev",
+    "viaMindsHub": "{agent} は、すでにサインインしている MindsHub Inference を通じて Jev を使います。設定は不要です。",
+    "learnMore": "詳細"
   }
 }

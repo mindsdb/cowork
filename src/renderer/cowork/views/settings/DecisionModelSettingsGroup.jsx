@@ -4,6 +4,9 @@ import Button from '../../components/ui/Button';
 import { Field, Input } from '../../components/ui';
 import { testDecisionModel } from '../../api';
 import { useTranslation } from '../../../lib/i18n';
+import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
+
+const DECISION_MODELS_DOCS = 'https://docs.mindshub.ai/inference/decision-models';
 
 /* Settings > Agent > Decision model, beside the LLM provider and its keys.
 
@@ -19,7 +22,12 @@ import { useTranslation } from '../../../lib/i18n';
    the fields, or the stored one where they are unchanged (a key of '***' is
    the stored key, which the server sends only to the stored endpoint).
    Remove clears all three in the draft; once saved, a browser that had only
-   this decision model reads as off. */
+   this decision model reads as off.
+
+   On MindsHub there is nothing to set up: Jev runs through MindsHub
+   Inference, so the group says so instead of asking for an endpoint. An
+   organization that already set its own keeps the fields, to change or
+   remove it. */
 
 export const DEFAULT_DECISION_MODEL = 'jev';
 
@@ -36,6 +44,21 @@ export default function DecisionModelSettingsGroup({ settings, setSetting, agent
   const key = settings.decisionModelApiKey ?? '';
   const model = (settings.decisionModel ?? '').trim();
   const configured = Boolean(url || key);
+
+  if (llmViaMindsHub(settings) && !configured) {
+    return (
+      <SettingsGroup title={t('decisionModel.title')}>
+        <Section title={t('decisionModel.viaMindsHubTitle')} subtitle={t('decisionModel.viaMindsHub', { agent: agentLabel })}>
+          <a
+            href={DECISION_MODELS_DOCS}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-accent no-underline whitespace-nowrap"
+          >{t('decisionModel.learnMore')} ↗</a>
+        </Section>
+      </SettingsGroup>
+    );
+  }
 
   const edit = (settingKey, value) => {
     setTest({ busy: false, ok: null, note: '' });
