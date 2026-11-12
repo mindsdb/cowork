@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
@@ -38,9 +38,10 @@ describe('DecisionModelSettingsGroup', () => {
     expect(screen.getByText(/lets Cowork's browser pick its steps quickly when you don't use MindsHub/)).toBeInTheDocument();
   });
 
-  it('on MindsHub says Jev runs there, with nothing to set up', () => {
-    render(<Form initial={{ routing: ADMIN, planningProvider: 'minds-cloud' }} />);
-    expect(screen.getByText('Jev on MindsHub Inference')).toBeInTheDocument();
+  it('signed in to MindsHub, is just Jev, for everyone, with nothing to set up', () => {
+    render(<Form initial={{ routing: { canSetDecisionModel: false }, planningProvider: 'minds-cloud' }} />);
+    expect(screen.getByText('Jev')).toBeInTheDocument();
+    expect(screen.getByText(/uses Jev through MindsHub Inference/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Learn more/ })).toHaveAttribute(
       'href', 'https://docs.mindshub.ai/inference/decision-models',
     );
@@ -50,7 +51,14 @@ describe('DecisionModelSettingsGroup', () => {
   it('on MindsHub keeps the fields of a decision model the organization already set', () => {
     render(<Form initial={{ routing: ADMIN, planningProvider: 'minds-cloud', decisionModelUrl: 'https://decide.example.test/d' }} />);
     expect(screen.getByLabelText('Endpoint URL')).toHaveValue('https://decide.example.test/d');
-    expect(screen.queryByText('Jev on MindsHub Inference')).not.toBeInTheDocument();
+    expect(screen.queryByText(/uses Jev through MindsHub Inference/)).not.toBeInTheDocument();
+  });
+
+  it('follows the MindsHub sign-in it is given over the LLM provider', () => {
+    render(<Form initial={{ routing: ADMIN, planningProvider: 'minds-cloud' }} />);
+    cleanup();
+    render(<DecisionModelSettingsGroup settings={{ routing: ADMIN, planningProvider: 'minds-cloud' }} setSetting={() => {}} mindsConnected={false} embedded />);
+    expect(screen.getByLabelText('Endpoint URL')).toBeInTheDocument();
   });
 
   it('edits the endpoint, key and model name in the draft and tests them', async () => {

@@ -147185,6 +147185,40 @@
       "text": "51dfe6605d7a"
     }
   },
+  "settingsTools:decisionModel.jev": {
+    "de": {
+      "from": "4b23c5040d02",
+      "text": "4b23c5040d02"
+    },
+    "es": {
+      "from": "4b23c5040d02",
+      "text": "4b23c5040d02"
+    },
+    "fr": {
+      "from": "4b23c5040d02",
+      "text": "4b23c5040d02"
+    },
+    "it": {
+      "from": "4b23c5040d02",
+      "text": "4b23c5040d02"
+    },
+    "ja": {
+      "from": "4b23c5040d02",
+      "text": "4b23c5040d02"
+    },
+    "ko": {
+      "from": "4b23c5040d02",
+      "text": "4b23c5040d02"
+    },
+    "pt-BR": {
+      "from": "4b23c5040d02",
+      "text": "4b23c5040d02"
+    },
+    "zh-CN": {
+      "from": "4b23c5040d02",
+      "text": "4b23c5040d02"
+    }
+  },
   "settingsTools:decisionModel.key": {
     "de": {
       "from": "16f0ee47f993",
@@ -147561,28 +147595,28 @@
   },
   "settingsTools:decisionModel.viaMindsHub": {
     "de": {
-      "from": "61042b724c07",
-      "text": "ea7f4ad5d5f3"
+      "from": "a23db6bc03a1",
+      "text": "155be0da59a8"
     },
     "es": {
       "from": "61042b724c07",
       "text": "3011b4c1aeed"
     },
     "fr": {
-      "from": "61042b724c07",
-      "text": "92efe138fa45"
+      "from": "a23db6bc03a1",
+      "text": "e78f35fb681e"
     },
     "it": {
-      "from": "61042b724c07",
-      "text": "ff4301cd6a01"
+      "from": "a23db6bc03a1",
+      "text": "685ae424746d"
     },
     "ja": {
-      "from": "61042b724c07",
-      "text": "4708d9b49b51"
+      "from": "a23db6bc03a1",
+      "text": "2bd136e92a73"
     },
     "ko": {
-      "from": "61042b724c07",
-      "text": "dfe1b147b848"
+      "from": "a23db6bc03a1",
+      "text": "a17bae82c970"
     },
     "pt-BR": {
       "from": "61042b724c07",
@@ -147591,40 +147625,6 @@
     "zh-CN": {
       "from": "61042b724c07",
       "text": "346ac3770d7b"
-    }
-  },
-  "settingsTools:decisionModel.viaMindsHubTitle": {
-    "de": {
-      "from": "7bdcde193730",
-      "text": "f0b719051e96"
-    },
-    "es": {
-      "from": "7bdcde193730",
-      "text": "0fb94f5dacd0"
-    },
-    "fr": {
-      "from": "7bdcde193730",
-      "text": "18e4e639dd3b"
-    },
-    "it": {
-      "from": "7bdcde193730",
-      "text": "0d7b9f005d64"
-    },
-    "ja": {
-      "from": "7bdcde193730",
-      "text": "7c6d9915b8be"
-    },
-    "ko": {
-      "from": "7bdcde193730",
-      "text": "9f56cf19821b"
-    },
-    "pt-BR": {
-      "from": "7bdcde193730",
-      "text": "cdc827bd081b"
-    },
-    "zh-CN": {
-      "from": "7bdcde193730",
-      "text": "4f137604cb77"
     }
   },
   "setup:checklist.close": {

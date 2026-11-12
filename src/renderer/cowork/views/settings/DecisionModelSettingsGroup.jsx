@@ -24,10 +24,13 @@ const DECISION_MODELS_DOCS = 'https://docs.mindshub.ai/inference/decision-models
    Remove clears all three in the draft; once saved, a browser that had only
    this decision model reads as off.
 
-   On MindsHub there is nothing to set up: Jev runs through MindsHub
-   Inference, so the group says so instead of asking for an endpoint. An
-   organization that already set its own keeps the fields, to change or
-   remove it. */
+   Signed in to a MindsHub server for inference (`mindsConnected`, which
+   SettingsView knows from the provider cards; the LLM provider when it
+   isn't passed) there is nothing to set up: the decision model is Jev
+   through MindsHub Inference, a single row that says so. An organization
+   that already set its own keeps the fields, to change or remove it.
+
+   `embedded` renders the rows alone, for the Model router card. */
 
 export const DEFAULT_DECISION_MODEL = 'jev';
 
@@ -35,30 +38,35 @@ export function canSetDecisionModel(settings) {
   return settings?.routing?.canSetDecisionModel === true;
 }
 
-export default function DecisionModelSettingsGroup({ settings, setSetting, agentLabel = 'Anton' }) {
+export default function DecisionModelSettingsGroup({
+  settings, setSetting, agentLabel = 'Anton', mindsConnected, embedded = false,
+}) {
   const { t } = useTranslation('settingsTools');
   const [test, setTest] = useState({ busy: false, ok: null, note: '' });
-  if (!canSetDecisionModel(settings)) return null;
+  const wrap = (rows) => (embedded ? rows : <SettingsGroup title={t('decisionModel.title')}>{rows}</SettingsGroup>);
 
   const url = (settings.decisionModelUrl ?? '').trim();
   const key = settings.decisionModelApiKey ?? '';
   const model = (settings.decisionModel ?? '').trim();
   const configured = Boolean(url || key);
+  const viaMindsHub = mindsConnected ?? llmViaMindsHub(settings);
 
-  if (llmViaMindsHub(settings) && !configured) {
-    return (
-      <SettingsGroup title={t('decisionModel.title')}>
-        <Section title={t('decisionModel.viaMindsHubTitle')} subtitle={t('decisionModel.viaMindsHub', { agent: agentLabel })}>
+  if (viaMindsHub && !configured) {
+    return wrap(
+      <Section title={t('decisionModel.title')} subtitle={t('decisionModel.viaMindsHub', { agent: agentLabel })}>
+        <span className="inline-flex items-center gap-3 text-sm">
+          <span className="text-ink font-medium">{t('decisionModel.jev')}</span>
           <a
             href={DECISION_MODELS_DOCS}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-accent no-underline whitespace-nowrap"
+            className="text-accent no-underline whitespace-nowrap"
           >{t('decisionModel.learnMore')} ↗</a>
-        </Section>
-      </SettingsGroup>
+        </span>
+      </Section>,
     );
   }
+  if (!canSetDecisionModel(settings)) return null;
 
   const edit = (settingKey, value) => {
     setTest({ busy: false, ok: null, note: '' });
@@ -88,9 +96,8 @@ export default function DecisionModelSettingsGroup({ settings, setSetting, agent
     setSetting('decisionModel', DEFAULT_DECISION_MODEL);
   };
 
-  return (
-    <SettingsGroup title={t('decisionModel.title')}>
-      <Section title={t('decisionModel.endpointTitle')} subtitle={t('decisionModel.help', { agent: agentLabel })}>
+  return wrap(
+      <Section title={embedded ? t('decisionModel.title') : t('decisionModel.endpointTitle')} subtitle={t('decisionModel.help', { agent: agentLabel })}>
         <div className="flex flex-col gap-3">
           <Field label={t('decisionModel.url')}>
             <Input
@@ -132,7 +139,6 @@ export default function DecisionModelSettingsGroup({ settings, setSetting, agent
             )}
           </div>
         </div>
-      </Section>
-    </SettingsGroup>
+      </Section>,
   );
 }

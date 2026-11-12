@@ -206,8 +206,8 @@
     "failed": "O modelo de decisão não respondeu como esperado ({error}). Verifique o endpoint e a chave.",
     "untested": "Não foi possível testar o modelo de decisão. Tente de novo.",
     "remove": "Remover",
-    "viaMindsHubTitle": "Jev no MindsHub Inference",
     "viaMindsHub": "{agent} usa o Jev pelo MindsHub Inference, no qual você já está conectado. Não há nada para configurar.",
-    "learnMore": "Saiba mais"
+    "learnMore": "Saiba mais",
+    "jev": "Jev"
   }
 }

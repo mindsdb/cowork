@@ -167,9 +167,21 @@ describe('the Fast answers with Jev switch', () => {
 });
 
 describe('the Decision model group', () => {
-  it('is absent for whoever may not change the provider, and on an older server', async () => {
-    for (const routing of [undefined, { mode: 'jev' }, { mode: 'jev', canSetDecisionModel: false }]) {
+  it('signed in to MindsHub, is just Jev in the Model router card, with no fields', async () => {
+    for (const routing of [undefined, { mode: 'jev' }, { mode: 'jev', canSetDecisionModel: true }]) {
       const { unmount } = render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing })} />);
+      expect(await screen.findByText('Planning model')).toBeInTheDocument();
+      expect(screen.getByText('Decision model')).toBeInTheDocument();
+      expect(screen.getByText('Jev')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Endpoint URL')).toBeNull();
+      unmount();
+    }
+  });
+
+  it('without MindsHub, is absent for whoever may not change the provider, and on an older server', async () => {
+    const local = { ...COMPAT, name: 'Local' };
+    for (const routing of [undefined, { mode: 'llm' }, { mode: 'llm', canSetDecisionModel: false }]) {
+      const { unmount } = render(<Harness initial={settingsFor('openai-compatible', local, { routing })} />);
       expect(await screen.findByText('Planning model')).toBeInTheDocument();
       expect(screen.queryByText('Decision model')).toBeNull();
       unmount();

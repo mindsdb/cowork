@@ -206,8 +206,8 @@
     "failed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
     "untested": "无法测试决策模型。请重试。",
     "remove": "移除",
-    "viaMindsHubTitle": "MindsHub Inference 上的 Jev",
     "viaMindsHub": "{agent} 通过你已登录的 MindsHub Inference 使用 Jev，无需任何设置。",
-    "learnMore": "了解更多"
+    "learnMore": "了解更多",
+    "jev": "Jev"
   }
 }
