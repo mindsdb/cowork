@@ -421,6 +421,22 @@ describe('ElectronTab', () => {
       expect(sentOf(contents.debugger, 'Page.createIsolatedWorld')).toEqual([]);
     });
 
+    it("takes no screenshot when the debugger can't read the frames and the page's search found other frames than the frame tree holds, as one in a closed shadow root, and captures nothing", async () => {
+      // The page's own frame in a closed shadow root: the frame tree holds two frames, the search found one owner.
+      const { tab, contents } = framed();
+      const same = { url: 'https://a.test/checkout', origin: 'https://a.test', frames: [] };
+      contents.mainFrame.frames = [...contents.mainFrame.frames, same];
+      contents.mainFrame.framesInSubtree = [...contents.mainFrame.framesInSubtree, same];
+      contents.debugger.attach();
+      await expect(tab.screenshot(false, 70)).rejects.toMatchObject({ code: 'internal', status: 500, message: expect.stringContaining("couldn't read every frame") });
+      expect(contents.capturePage).not.toHaveBeenCalled();
+      // With the debugger free, every frame is read in its own world, and the screenshot is taken.
+      contents.debugger.detach();
+      contents.secrets = { ...contents.secrets, owners: 2 };
+      await expect(tab.screenshot(false, 70)).resolves.toMatchObject({ width: 800, height: 600 });
+      expect(contents.capturePage).toHaveBeenCalledTimes(1);
+    });
+
     it("blacks out a secret field of the page's own frame too, read in that frame's own world, since the page's search can't reach one in a closed shadow root", async () => {
       const { tab, contents, black } = framed();
       contents.debugger.page.frames.push({

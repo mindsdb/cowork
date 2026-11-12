@@ -601,7 +601,8 @@ export class ElectronTab implements TabView {
   /* Every screenshot blacks out the page's secret fields and payment frames
      (screenshotMasks), and those inside its frames, each read in its own
      world (frameMasks), just before the capture. A page with a payment frame
-     it can't place gets no capture at all. */
+     it can't place gets no capture at all, and so does one with a frame the
+     page's search can't reach when the debugger can't read the frames. */
   async screenshot(annotate: boolean, quality: number): Promise<Screenshot> {
     const raw = annotate ? await this.inWorld<RawSnapshot>({ kind: 'snapshot', maxText: 0, maxElements: MAX_ELEMENTS, frames: null }) : null;
     const found = await this.inWorld<FoundSecrets>({ kind: 'secretBoxes', paymentHosts: PAYMENT_FRAME_HOSTS, depth: SECRET_SEARCH_DEPTH });
@@ -609,7 +610,7 @@ export class ElectronTab implements TabView {
     if (!masks) {
       throw new BridgeError('internal', "the page holds a payment frame this browser can't place to black out, so no screenshot was taken; read the page instead");
     }
-    const inFrames = this.subframeUrls().length ? await this.frameMasks(found.otherSiteFrames) : [];
+    const inFrames = this.subframeUrls().length ? await this.frameMasks(found) : [];
     const image = await this.contents.capturePage(undefined, { stayHidden: true });
     const width = (raw?.viewport ?? found.viewport).width;
     return renderScreenshot(image, width, raw?.boxes ?? null, quality, (data, size) => nativeImage.createFromBitmap(data, size), [...masks, ...inFrames]);
@@ -617,14 +618,22 @@ export class ElectronTab implements TabView {
 
   /* What a screenshot blacks out inside the page's frames, read through the
      debugger for this capture only (FrameReads.frameMasks). When the
-     debugger can't be had (something else
-     holds it, or the person took over and it was detached) or the read
-     fails, each such frame the world found (`unread`) is blacked out whole. */
-  private async frameMasks(unread: Box[]): Promise<Box[]> {
+     debugger can't be had (something else holds it, or the person took over
+     and it was detached) or the read fails, each frame the page's search
+     found and couldn't enter (`found.otherSiteFrames`) is blacked out whole,
+     as long as the search found every frame the frame tree places in the
+     documents it searched (`searchedFrames`). Otherwise one sits where the
+     search can't reach (a closed shadow root, behind an embed), so no mask
+     would cover its secret fields, and no screenshot is taken, as for a
+     payment frame no box covers (screenshotMasks). */
+  private async frameMasks(found: FoundSecrets): Promise<Box[]> {
     try {
       return await withDebugger(this.contents.debugger, (session) => new FrameReads(session).frameMasks());
     } catch {
-      return unread;
+      if (found.owners !== this.searchedFrames()) {
+        throw new BridgeError('internal', "this browser couldn't read every frame of the page to black out its secret fields, so no screenshot was taken; read the page instead");
+      }
+      return found.otherSiteFrames;
     }
   }
 

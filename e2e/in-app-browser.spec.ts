@@ -698,6 +698,38 @@ test("blacks out a card field in the page's own frame kept in a closed shadow ro
   expect(await blackIn('/closed-same-card', [[110, 60], [190, 60], [280, 60], [50, 20]])).toEqual([true, true, true, false]);
 });
 
+/* Attaches or detaches the debugger of the page at `route` from outside the
+   browser, as something else holding it would. */
+async function holdDebugger(route: string, hold: boolean): Promise<void> {
+  await app.evaluate(({ webContents }, { at, attach }) => {
+    const contents = webContents.getAllWebContents().find((c) => c.getURL() === at);
+    if (attach) contents?.debugger.attach('1.3');
+    else if (contents?.debugger.isAttached()) contents.debugger.detach();
+  }, { at: `${origin}${route}`, attach: hold });
+}
+
+test("takes no screenshot while something else holds the debugger when the page keeps a frame its search can't reach, and blacks out whole another site's frame it found", async () => {
+  await openAt('/closed-same-card');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  await holdDebugger('/closed-same-card', true);
+  try {
+    const shot = await call('GET', `/sessions/${SESSION}/screenshot?quality=95`);
+    expect(shot.status, shot.body.toString()).toBe(500);
+    expect(shot.json()).toMatchObject({ error: 'internal', message: expect.stringContaining("couldn't read every frame") });
+  } finally {
+    await holdDebugger('/closed-same-card', false);
+  }
+  await openAt('/frame-fields');
+  await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
+  await holdDebugger('/frame-fields', true);
+  try {
+    // CSS points: the ordinary field and the password field, both inside the frame.
+    expect(await blackIn('/frame-fields', [[150, 20], [150, 120], [350, 170]])).toEqual([true, true, true]);
+  } finally {
+    await holdDebugger('/frame-fields', false);
+  }
+});
+
 test("blacks out a card field where another site's frame draws it at twice its size", async () => {
   await openAt('/scaled-card');
   await expect.poll(async () => (await page()).frames.length, { timeout: 10_000 }).toBe(1);
