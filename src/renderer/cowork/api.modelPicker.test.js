@@ -77,3 +77,16 @@ it.each([
   const body = await questionBody('conversation-1', { model, reasoningEffort: effort });
   expect(body).not.toHaveProperty('reasoning_effort');
 });
+
+it("names the picks a question goes back to the default on, so the server clears the saved ones", async () => {
+  const body = await questionBody('conversation-1', {
+    model: MODEL_ROUTER_ID, reasoningEffort: null, resetPicks: ['model', 'reasoning_effort'],
+  });
+  expect(body).toMatchObject({ model: null, reset_picks: ['model', 'reasoning_effort'] });
+  expect(body).not.toHaveProperty('reasoning_effort');
+});
+
+it('sends no reset_picks when nothing goes back to the default', async () => {
+  const body = await questionBody('conversation-1', { model: 'opus-5-5' });
+  expect(body).not.toHaveProperty('reset_picks');
+});
