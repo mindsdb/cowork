@@ -69,8 +69,6 @@
     "sharedBrowser": "共有ブラウザ",
     "useSharedBrowser": "共有ブラウザを使用",
     "beta": "ベータ",
-    "signInsTitle": "サインイン",
-    "providerSeesTitle": "モデルプロバイダに送信される情報",
     "retry": "再試行",
     "usageEventsTitle": "使用状況イベント",
     "sendUsageEvents": "匿名の使用状況イベントを送信",
@@ -206,8 +204,9 @@
     "failed": "判定モデルが想定どおりに応答しませんでした ({error})。エンドポイントとキーを確認してください。",
     "untested": "判定モデルをテストできませんでした。もう一度お試しください。",
     "remove": "削除",
-    "viaMindsHub": "{agent} は、サインイン済みの MindsHub Inference を通じて Jev を使います。設定は不要です。",
+    "viaMindsHub": "{agent} のブラウザ操作と、どのメッセージにフルエージェントが必要かを選びます。サインイン済みの MindsHub Inference で動作します。",
     "learnMore": "詳細",
-    "jev": "Jev"
+    "jev": "Jev",
+    "modelLabel": "モデル:"
   }
 }

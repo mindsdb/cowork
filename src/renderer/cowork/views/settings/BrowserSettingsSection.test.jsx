@@ -296,10 +296,10 @@ describe('BrowserSettingsSection', () => {
     fetchBrowseStatus.mockResolvedValue(AVAILABLE);
     renderSection({});
     await screen.findByRole('switch', { name: 'Shared browser' });
-    expect(screen.queryByText('Sign-ins')).toBeNull();
+    expect(screen.queryByText(/Sites you sign in to stay signed in/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Learn what Cowork sees' }));
-    expect(await screen.findByText('Sign-ins')).toBeInTheDocument();
-    expect(screen.getByText('What the model provider sees')).toBeInTheDocument();
+    expect(await screen.findByText(/Sites you sign in to stay signed in/)).toBeInTheDocument();
+    expect(screen.getByText(/reads a page, its text and a screenshot go to the model provider/)).toBeInTheDocument();
   });
 
   it('approving browser steps is on until the person turns it off, and is their server-side setting', async () => {

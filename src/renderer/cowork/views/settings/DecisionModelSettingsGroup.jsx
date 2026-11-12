@@ -5,6 +5,7 @@ import { Field, Input } from '../../components/ui';
 import { testDecisionModel } from '../../api';
 import { useTranslation } from '../../../lib/i18n';
 import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
+import ModelSelect from '../../components/ModelSelect.jsx';
 
 const DECISION_MODELS_DOCS = 'https://docs.mindshub.ai/inference/decision-models';
 
@@ -52,17 +53,27 @@ export default function DecisionModelSettingsGroup({
   const viaMindsHub = mindsConnected ?? llmViaMindsHub(settings);
 
   if (viaMindsHub && !configured) {
+    // A row like the planning and coding models: its picker has the one
+    // decision model MindsHub serves, Jev.
     return wrap(
       <Section title={t('decisionModel.title')} subtitle={t('decisionModel.viaMindsHub', { agent: agentLabel })}>
-        <span className="inline-flex items-center gap-3 text-sm">
-          <span className="text-ink font-medium">{t('decisionModel.jev')}</span>
+        <div className="grid gap-2 min-w-[240px]">
+          <label className="grid gap-1">
+            <span className="text-xs font-bold text-ink tracking-[0.02em]">{t('decisionModel.modelLabel')}</span>
+            <ModelSelect
+              value={DEFAULT_DECISION_MODEL}
+              onValueChange={() => {}}
+              options={[{ value: DEFAULT_DECISION_MODEL, label: t('decisionModel.jev') }]}
+              aria-label={t('decisionModel.title')}
+            />
+          </label>
           <a
             href={DECISION_MODELS_DOCS}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-accent no-underline whitespace-nowrap"
+            className="text-[11.5px] text-accent no-underline whitespace-nowrap"
           >{t('decisionModel.learnMore')} ↗</a>
-        </span>
+        </div>
       </Section>,
     );
   }

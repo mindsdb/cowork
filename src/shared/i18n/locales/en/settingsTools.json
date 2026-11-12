@@ -69,8 +69,6 @@
     "sharedBrowser": "Shared browser",
     "useSharedBrowser": "Use the shared browser",
     "beta": "Beta",
-    "signInsTitle": "Sign-ins",
-    "providerSeesTitle": "What the model provider sees",
     "retry": "Retry",
     "usageEventsTitle": "Usage events",
     "sendUsageEvents": "Send anonymous usage events",
@@ -206,8 +204,9 @@
     "failed": "The decision model didn't answer as expected ({error}). Check the endpoint and key.",
     "untested": "Couldn't test the decision model. Try again.",
     "remove": "Remove",
-    "viaMindsHub": "{agent} uses Jev through MindsHub Inference, which you're signed in to. Nothing to set up.",
+    "viaMindsHub": "Picks {agent}'s browser steps and which messages need the full agent. It runs on MindsHub Inference, which you're signed in to.",
     "learnMore": "Learn more",
-    "jev": "Jev"
+    "jev": "Jev",
+    "modelLabel": "Model:"
   }
 }

@@ -238,14 +238,8 @@ export default function BrowserSettingsSection({ settings, setSetting, agentLabe
 
   const browserHelp = (
     <div className="flex flex-col gap-2 max-w-[340px] text-left">
-      <p className="m-0">
-        <strong>{t('browser.signInsTitle')}</strong>{' '}
-        <span>{inApp ? t('browser.desktopSignIns') : t('browser.webSignIns')}</span>
-      </p>
-      <p className="m-0">
-        <strong>{t('browser.providerSeesTitle')}</strong>{' '}
-        <span>{providerSees}</span>
-      </p>
+      <p className="m-0">{inApp ? t('browser.desktopSignIns') : t('browser.webSignIns')}</p>
+      <p className="m-0">{providerSees}</p>
     </div>
   );
 

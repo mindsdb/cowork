@@ -69,8 +69,6 @@
     "sharedBrowser": "Navegador compartido",
     "useSharedBrowser": "Usar el navegador compartido",
     "beta": "Beta",
-    "signInsTitle": "Inicios de sesión",
-    "providerSeesTitle": "Qué ve el proveedor de modelos",
     "retry": "Reintentar",
     "usageEventsTitle": "Eventos de uso",
     "sendUsageEvents": "Enviar eventos de uso anónimos",
@@ -206,8 +204,9 @@
     "failed": "El modelo de decisión no respondió como se esperaba ({error}). Revisa el endpoint y la clave.",
     "untested": "No se pudo probar el modelo de decisión. Vuelve a intentarlo.",
     "remove": "Quitar",
-    "viaMindsHub": "{agent} usa Jev a través de MindsHub Inference, donde ya iniciaste sesión. No hay nada que configurar.",
+    "viaMindsHub": "Elige los pasos del navegador de {agent} y qué mensajes necesitan al agente completo. Se ejecuta en MindsHub Inference, donde ya iniciaste sesión.",
     "learnMore": "Más información",
-    "jev": "Jev"
+    "jev": "Jev",
+    "modelLabel": "Modelo:"
   }
 }

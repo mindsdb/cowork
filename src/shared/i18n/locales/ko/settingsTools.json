@@ -69,8 +69,6 @@
     "sharedBrowser": "공유 브라우저",
     "useSharedBrowser": "공유 브라우저 사용",
     "beta": "베타",
-    "signInsTitle": "로그인",
-    "providerSeesTitle": "모델 제공업체에 전송되는 정보",
     "retry": "다시 시도",
     "usageEventsTitle": "사용 이벤트",
     "sendUsageEvents": "익명 사용 이벤트 보내기",
@@ -206,8 +204,9 @@
     "failed": "결정 모델이 예상대로 응답하지 않았습니다({error}). 엔드포인트와 키를 확인하세요.",
     "untested": "결정 모델을 테스트할 수 없습니다. 다시 시도하세요.",
     "remove": "삭제",
-    "viaMindsHub": "{agent}은(는) 로그인한 MindsHub Inference를 통해 Jev를 사용합니다. 설정할 것이 없습니다.",
+    "viaMindsHub": "{agent}의 브라우저 단계와 전체 에이전트가 필요한 메시지를 고릅니다. 로그인한 MindsHub Inference에서 실행됩니다.",
     "learnMore": "자세히 알아보기",
-    "jev": "Jev"
+    "jev": "Jev",
+    "modelLabel": "모델:"
   }
 }

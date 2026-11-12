@@ -69,8 +69,6 @@
     "sharedBrowser": "共享浏览器",
     "useSharedBrowser": "使用共享浏览器",
     "beta": "测试版",
-    "signInsTitle": "登录信息",
-    "providerSeesTitle": "模型提供商能看到的内容",
     "retry": "重试",
     "usageEventsTitle": "使用事件",
     "sendUsageEvents": "发送匿名使用事件",
@@ -206,8 +204,9 @@
     "failed": "决策模型未按预期响应（{error}）。请检查端点和密钥。",
     "untested": "无法测试决策模型。请重试。",
     "remove": "移除",
-    "viaMindsHub": "{agent} 通过你已登录的 MindsHub Inference 使用 Jev，无需任何设置。",
+    "viaMindsHub": "选择 {agent} 的浏览器步骤，并判断哪些消息需要完整代理。它在你已登录的 MindsHub Inference 上运行。",
     "learnMore": "了解更多",
-    "jev": "Jev"
+    "jev": "Jev",
+    "modelLabel": "模型："
   }
 }
