@@ -1,5 +1,6 @@
 import { applyAddonEvent } from './addons';
 import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { artifactIdentity } from './artifactIdentity';
 import { browserStep, withBrowserStep } from './browserSession';
 import { parseFigureSources } from './figureSources';
 import i18n from '../../lib/i18n';
@@ -771,7 +772,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
     };
     if (!replay) {
-      try { _trackArtifactBuilt(art.type || 'unknown'); }
+      try { _trackArtifactBuilt(art.type || 'unknown', artifactIdentity(art) || art.id || ''); }
       catch { /* analytics must never break streaming */ }
     }
     return { ...state, steps: [...state.steps, step] };

@@ -29,7 +29,13 @@ import {
   loadArtifactAccess,
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
-import { publishRefusalMessage } from './publishErrors';
+import { publishFailureReason, publishRefusalMessage } from './publishErrors';
+import {
+  UNKNOWN_SHARE_SNAPSHOT,
+  reportAccessChangeFailed,
+  reportAccessChanged,
+  shareSnapshot,
+} from '../../../lib/artifactShareAnalytics';
 import i18n from '../../../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(`publish.errors.${key}`, { ns: 'artifacts', ...vars });
@@ -195,6 +201,17 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const teams = useMindsHubTeams(sharingOn);
   const orgName = useSharingOrgName(sharingOn);
   const orgSharing = { ...sharing, teams, orgName };
+  /* Who the artifact reaches as this render knows it, for the sharing
+     analytics: what a save started from. Unknown until its access is read. */
+  const teamListRef = useRef([]);
+  teamListRef.current = teams?.teams || [];
+  const beforeSaveRef = useRef(UNKNOWN_SHARE_SNAPSHOT);
+  beforeSaveRef.current = publishedUrl && !accessLoaded
+    ? UNKNOWN_SHARE_SNAPSHOT
+    : shareSnapshot({
+      publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, ownerOnly,
+      allowedTeamIds: teamIds, allowedUserIds: userIds,
+    }, { teams: teamListRef.current });
   const refreshRequestRef = useRef(0);
   const busy = phase !== 'idle';
   /* Whether the open-time access read still has to run: set when the
@@ -214,6 +231,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
        so it must not land after the save's answer and undo it. */
     ++refreshRequestRef.current;
     const wasPublished = !!publishedUrl;
+    const before = beforeSaveRef.current;
     /* The answer is applied only if the artifact it saved is still on screen.
        Without this, A's answer landing after the viewer moved to B writes A's
        audience into B's state and marks B's access as loaded before B's own
@@ -238,8 +256,6 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
          on every in-place access change. The save happened even when the
          viewer has since moved on, so it counts either way. */
       if (!wasPublished) trackArtifactPublished(r.report_id || r.reportId || artifact?.id || '', m);
-      // False, so the panel now on screen does not act on another artifact's save.
-      if (!isCurrent()) return false;
       // What the answer says about the audience; a field it leaves out is
       // taken from the request that was sent.
       const restricted = m === 'restricted';
@@ -258,6 +274,15 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         artifactKey: r.artifactKey || artifact?.artifactKey || '',
         modified: false,
       };
+      reportAccessChanged(artifact, {
+        entry: 'viewer',
+        before,
+        after: shareSnapshot(next, { teams: teamListRef.current }),
+        reportId: r.report_id || r.reportId || '',
+        access,
+      });
+      // False, so the panel now on screen does not act on another artifact's save.
+      if (!isCurrent()) return false;
       setPublishedUrl(next.publishedUrl);
       setAccessMode(next.accessMode);
       setAccessPassword(next.accessPassword);
@@ -276,6 +301,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, ...next });
       return true;
     } catch (e) {
+      reportAccessChangeFailed(artifact, { entry: 'viewer', reason: publishFailureReason(e) });
       if (isCurrent()) {
         setError(friendlyPublishError(e));
         // The save dropped the open-time read above; with the access still
@@ -323,8 +349,10 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setPhase('unpublishing');
     setError('');
     setNotice('');
+    const before = beforeSaveRef.current;
     try {
       const r = await unpublishArtifact(targetPath);
+      reportAccessChanged(artifact, { entry: 'viewer', before, after: shareSnapshot(null) });
       const left = stopSharingNotice(r);
       setNotice(left);
       setLinkOwnerRecorded(null);
@@ -565,6 +593,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     phase, busy, error, setError, notice, linkOwnerRecorded,
     versions, versionsLoading,
     orgMode,
+    // The artifact this controller acts on, for the Share panel's analytics.
+    artifact,
     publish, update, unpublish, refresh, loadVersions, activate,
   };
 }

@@ -10,6 +10,7 @@ import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
 import { ArtifactExportMenu } from './export/ArtifactExportMenu';
+import { reportDownloaded } from '../../lib/artifactShareAnalytics';
 import { useTranslation } from '../../../lib/i18n';
 
 export function ArtifactViewerHeader({
@@ -254,7 +255,12 @@ export function ArtifactViewerHeader({
             server sends no list and gets none either. The route is addressed
             by the draft URL, so no draft URL means no Export. */}
         {exportFormats.length > 0 && artifact?.draftUrl && (
-          <ArtifactExportMenu key={artifact.draftUrl} draftUrl={artifact.draftUrl} formats={exportFormats} />
+          <ArtifactExportMenu
+            key={artifact.draftUrl}
+            draftUrl={artifact.draftUrl}
+            formats={exportFormats}
+            onExported={(format) => reportDownloaded(artifact, { entry: 'viewer', kind: 'export', format })}
+          />
         )}
         {/* Download, Open and Show in folder left this menu when they became
             visible controls, so nothing appears twice. "Open in browser" and

@@ -1050,7 +1050,7 @@ export function ArtifactViewer({
   // Content-Disposition: attachment, through the serve URL on desktop or the
   // authenticated draft URL on an org deployment (ENG-2044).
   const onDownload = async () => {
-    if (!(await downloadArtifactFile(artifact, { actionPath }))) {
+    if (!(await downloadArtifactFile(artifact, { actionPath, entry: 'viewer' }))) {
       setErr(downloadUnavailableMessage(disabledReason || t('viewer.noDownload')));
     }
   };
@@ -1161,7 +1161,7 @@ export function ArtifactViewer({
       filename: title || 'file',
     },
     fetchFile: (url, signal) => fetchAuthenticatedResponse(url, { signal }),
-    download: () => downloadArtifactFile(artifact, { actionPath }),
+    download: () => downloadArtifactFile(artifact, { actionPath, entry: 'viewer' }),
     openInDefaultApp: onOpenOS,
     onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, t('viewer.loadFileFailed'))),
   } : null;

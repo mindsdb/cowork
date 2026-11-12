@@ -1665,6 +1665,101 @@ describe('artifact_stats_opened', () => {
   });
 });
 
+describe('artifact sharing events', () => {
+  const signedIn = () => getAccessToken.mockResolvedValue(fakeJwt({
+    sub: 'user-share',
+    email: 'owner@example.com',
+    activate_organization: { id: 'org-share', name: 'Acme' },
+  }));
+
+  it('artifact_built names the artifact, and builds without an id still send', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactBuilt } = await importAnalytics();
+
+    trackArtifactBuilt('html', 'a1b2');
+    const event = await sentEvent(fetchMock, 'artifact_built');
+    expect(event.properties).toMatchObject({ artifact_type: 'html', artifact_id: 'a1b2' });
+  });
+
+  it('artifact_access_changed carries the before and after as categories and counts, and the session org', async () => {
+    signedIn();
+    const fetchMock = mockFetch();
+    const { trackArtifactAccessChanged } = await importAnalytics();
+
+    trackArtifactAccessChanged({
+      artifactId: 'a1', artifactType: 'html', entry: 'viewer', reportId: 'r1',
+      before: { shared: false, audience: 'only_me' },
+      after: { shared: true, audience: 'specific', orgWide: false, teamCount: 1, peopleCount: 2 },
+      notified: true,
+    });
+
+    const event = await sentEvent(fetchMock, 'artifact_access_changed');
+    expect(event.properties).toMatchObject({
+      artifact_id: 'a1',
+      artifact_type: 'html',
+      entry: 'viewer',
+      report_id: 'r1',
+      was_shared: false,
+      is_shared: true,
+      was_audience: 'only_me',
+      audience: 'specific',
+      org_wide: false,
+      team_count: 1,
+      people_count: 2,
+      notified: true,
+      sso_organization_id: 'org-share',
+    });
+  });
+
+  it('sends null, not false, when the audience before the save was unknown', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactAccessChanged } = await importAnalytics();
+
+    trackArtifactAccessChanged({
+      artifactId: 'a1', entry: 'viewer',
+      before: { shared: null, audience: 'unknown' },
+      after: { shared: false, audience: 'only_me', orgWide: false, teamCount: 0, peopleCount: 0 },
+    });
+
+    const event = await sentEvent(fetchMock, 'artifact_access_changed');
+    expect(event.properties.was_shared).toBeNull();
+    expect(event.properties.is_shared).toBe(false);
+  });
+
+  it('the other sharing events carry the artifact, where it happened and the session org', async () => {
+    signedIn();
+    const fetchMock = mockFetch();
+    const {
+      trackArtifactShareOpened, trackArtifactAccessChangeFailed, trackArtifactLinkCopied, trackArtifactDownloaded,
+    } = await importAnalytics();
+    const ref = { artifactId: 'a1', artifactType: 'html', entry: 'list' };
+
+    trackArtifactShareOpened({ ...ref, isShared: null });
+    trackArtifactAccessChangeFailed({ ...ref, reason: 'share_org_not_allowed' });
+    trackArtifactLinkCopied(ref);
+    trackArtifactDownloaded({ ...ref, kind: 'export', format: 'pdf' });
+
+    const common = { artifact_id: 'a1', artifact_type: 'html', entry: 'list', sso_organization_id: 'org-share' };
+    expect((await sentEvent(fetchMock, 'artifact_share_opened')).properties).toMatchObject({ ...common, is_shared: null });
+    expect((await sentEvent(fetchMock, 'artifact_access_change_failed')).properties)
+      .toMatchObject({ ...common, reason: 'share_org_not_allowed' });
+    expect((await sentEvent(fetchMock, 'artifact_link_copied')).properties).toMatchObject(common);
+    expect((await sentEvent(fetchMock, 'artifact_downloaded')).properties)
+      .toMatchObject({ ...common, kind: 'export', format: 'pdf' });
+  });
+
+  it('a file download sends no format', async () => {
+    const fetchMock = mockFetch();
+    const { trackArtifactDownloaded } = await importAnalytics();
+
+    trackArtifactDownloaded({ artifactId: 'a1', entry: 'list', kind: 'file', format: 'pdf' });
+
+    const event = await sentEvent(fetchMock, 'artifact_downloaded');
+    expect(event.properties.kind).toBe('file');
+    expect(event.properties).not.toHaveProperty('format');
+  });
+});
+
 describe('onboarding and start events', () => {
   it('onboarding_row_clicked and onboarding_step_completed carry only the step and where it happened', async () => {
     const fetchMock = mockFetch();

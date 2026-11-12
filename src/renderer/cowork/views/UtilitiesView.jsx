@@ -23,6 +23,10 @@ import {
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { trackArtifactPublished } from '../lib/analytics';
+import {
+  UNKNOWN_SHARE_SNAPSHOT, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, shareSnapshot,
+} from '../lib/artifactShareAnalytics';
+import { publishFailureReason } from '../components/artifact/publish/publishErrors';
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
 import { productName } from '../../lib/deploymentBrand';
@@ -660,21 +664,34 @@ function ConnectView({ data, setData, setStatus }) {
 function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   const { t } = useTranslation('library');
   const publish = async (artifact) => {
+    // This list may not say who a published artifact reaches.
+    const knowsAccess = artifact.accessMode != null || artifact.accessProtected != null;
+    const before = artifact.publishedUrl && !knowsAccess ? UNKNOWN_SHARE_SNAPSHOT : shareSnapshot(artifact);
     try {
       setStatus(t('publish.sharing'));
       const result = await publishArtifact(artifact.path);
       if (result.url) trackArtifactPublished(result.report_id || artifact.id || '', 'public');
+      if (result.url) {
+        reportAccessChanged(artifact, {
+          entry: 'utilities',
+          before,
+          after: shareSnapshot({ ...result, publishedUrl: result.url }),
+          reportId: result.report_id || '',
+        });
+      }
       setStatus(result.url ? t('publish.sharedUrl', { url: result.url }) : t('publish.shared'));
       const latest = await fetchPublishable();
       setData(latest);
       onRefreshArtifacts?.();
     } catch (err) {
+      reportAccessChangeFailed(artifact, { entry: 'utilities', reason: publishFailureReason(err) });
       setStatus(err.message || t('publish.failed'));
     }
   };
 
-  const copyUrl = async (url) => {
-    const ok = await copyText(url);
+  const copyUrl = async (artifact) => {
+    const ok = await copyText(artifact.publishedUrl);
+    if (ok) reportLinkCopied(artifact, { entry: 'utilities' });
     setStatus(ok ? t('publish.copied') : t('publish.copyFailed'));
   };
 
@@ -693,7 +710,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
             <div className="text-[11.5px] text-[var(--frost-600)] whitespace-nowrap overflow-hidden text-ellipsis">{artifact.path}</div>
             {artifact.publishedUrl && <div className="text-[12px] text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
           </div>
-          {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>{t('publish.copyUrl')}</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact)}>{t('publish.copyUrl')}</Button>}
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => host.openExternal(artifact.publishedUrl)}>{t('publish.open')}</Button>}
           <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>{t('share.share')}</Button>
         </div>

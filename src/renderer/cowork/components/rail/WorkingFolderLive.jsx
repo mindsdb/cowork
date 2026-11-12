@@ -347,7 +347,7 @@ export function WorkingFolderLive({
         onClick: async () => {
           setRowError('');
           setRowNote('');
-          if (!(await downloadArtifactFile(a))) setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));
+          if (!(await downloadArtifactFile(a, { entry: 'rail' }))) setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));
         },
       },
       canShareLiveApp(a, liveApps) && {
@@ -475,7 +475,7 @@ export function WorkingFolderLive({
     } else if (target === 'download') {
       /* Nothing here renders the file and nobody shared it: its bytes are
          still one request away, and the note says why it saved. */
-      if (await downloadArtifactFile(artifact)) {
+      if (await downloadArtifactFile(artifact, { entry: 'rail' })) {
         setRowNote(noPreviewDownloadedNote());
       } else {
         setRowError(downloadUnavailableMessage(t('rail.artifacts.noServableFile')));

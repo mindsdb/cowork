@@ -22,6 +22,7 @@ import { Alert, Button, OutsidePressLayer, Spinner, Tooltip } from '../../ui';
 import { unrecordedLinkWarning } from './linkLeftLive';
 import i18n, { useTranslation } from '../../../../lib/i18n';
 import { copyText } from '../../../lib/clipboard';
+import { reportLinkCopied, reportShareOpened } from '../../../lib/artifactShareAnalytics';
 import {
   AccessChooser,
   accessDraftFromArtifact,
@@ -102,12 +103,16 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, chil
   );
 }
 
-function UrlField({ url }) {
+function UrlField({ url, onCopied }) {
   const { t } = useTranslation('artifacts');
   const [copied, setCopied] = useState(false);
   const display = (url || '').replace(/^https?:\/\//, '');
   const onCopy = async () => {
-    if (await copyText(url)) { setCopied(true); setTimeout(() => setCopied(false), 1400); }
+    if (await copyText(url)) {
+      onCopied?.();
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }
   };
   return (
     <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-[6px] pb-0 pl-[10px]">
@@ -444,6 +449,12 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
             if (!pub.busy) setNotifyPrompt(null);
             return;
           }
+          if (v && !open) {
+            reportShareOpened(pub.artifact, {
+              entry: 'viewer',
+              isShared: shareState.kind === 'unknown' ? null : isSharedWithSomeone,
+            });
+          }
           setOpen(v);
         }}
       >
@@ -521,7 +532,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                   <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
                     <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
-                    <UrlField url={pub.publishedUrl} />
+                    <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry: 'viewer' })} />
                   </div>
   
                   <div className="py-3 px-4">

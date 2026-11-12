@@ -29,9 +29,24 @@ import { startCreditsFlow } from './creditsFlow';
 // so it lives inline in the merge rather than here.
 const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
-  ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
+  ARTIFACT_BUILT:           'artifact_built',           // { artifact_type, artifact_id (cowork artifact uuid; absent from builds before it was added) }
   ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
   ARTIFACT_STATS_OPENED:    'artifact_stats_opened',    // { artifact_id (cowork artifact uuid, bare hex; not the id artifact_published sends, which prefers report_id), access_mode: 'public'|'password'|'restricted'|null, has_views }
+  // The sharing events below all carry { artifact_id (cowork artifact uuid,
+  // as artifact_stats_opened), artifact_type, entry, sso_organization_id }.
+  // `entry` is where the person acted: 'viewer'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'other'.
+  // Audiences are categories and counts only, never an email, name or password.
+  ARTIFACT_SHARE_OPENED:    'artifact_share_opened',    // { is_shared: true|false|null (null while Web still reads who has access) } — the Share panel or dialog opened
+  // Every successful save that changes who can open the artifact, while it
+  // reached someone besides its owner before or after: a first share
+  // (was_shared false → is_shared true), a change (true → true) or a pull-back
+  // (true → false, Stop sharing included). Saving the same access again, or a
+  // save that leaves it reaching only its owner, sends nothing. was_shared is
+  // null when the panel didn't know the audience before the save.
+  ARTIFACT_ACCESS_CHANGED:  'artifact_access_changed',  // { report_id, was_shared, is_shared, was_audience, audience: 'unpublished'|'public'|'password'|'only_me'|'organization'|'specific'|'unknown', org_wide, team_count, people_count, notified }
+  ARTIFACT_ACCESS_CHANGE_FAILED: 'artifact_access_change_failed', // { reason: 'share_org_not_allowed'|'owned_by_other'|'error' } — never counted as a share
+  ARTIFACT_LINK_COPIED:     'artifact_link_copied',     // {} — only when the copy succeeded
+  ARTIFACT_DOWNLOADED:      'artifact_downloaded',      // { kind: 'file'|'export', format? ('pdf'|'docx'|'html', exports only) } — only when the file was saved
   AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id?, entry_placement? } — only on the first task within 30 min of a console handoff
   COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, entry_placement? } — Home composer interactive after a console handoff
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
@@ -148,6 +163,14 @@ const EVENTS = {
   ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
   ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
 };
+
+const ORG_STAMPED_EVENTS = new Set([
+  EVENTS.ARTIFACT_SHARE_OPENED,
+  EVENTS.ARTIFACT_ACCESS_CHANGED,
+  EVENTS.ARTIFACT_ACCESS_CHANGE_FAILED,
+  EVENTS.ARTIFACT_LINK_COPIED,
+  EVENTS.ARTIFACT_DOWNLOADED,
+]);
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
 const POSTHOG_KEY =
@@ -600,6 +623,12 @@ function capture(event, properties = {}, envelope = {}) {
           eventProps.sso_plan_tier = identity.personProps.plan_tier;
         }
       }
+      // The sharing events carry the session's organisation too, because a
+      // person who switches organisations would otherwise be read against the
+      // last one their profile names. The same session caveats apply.
+      if (ORG_STAMPED_EVENTS.has(event) && identity.personProps.organization_id) {
+        eventProps.sso_organization_id = identity.personProps.organization_id;
+      }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.
       if (distinctId) eventProps.$set = personSet();
@@ -618,8 +647,10 @@ export function trackDataSourceConnected(sourceType) {
   capture(EVENTS.DATA_SOURCE_CONNECTED, { source_type: sourceType || 'unknown' });
 }
 
-export function trackArtifactBuilt(artifactType) {
-  capture(EVENTS.ARTIFACT_BUILT, { artifact_type: artifactType || 'unknown' });
+export function trackArtifactBuilt(artifactType, artifactId) {
+  const props = { artifact_type: artifactType || 'unknown' };
+  if (artifactId) props.artifact_id = artifactId;
+  capture(EVENTS.ARTIFACT_BUILT, props);
 }
 
 export function trackArtifactPublished(artifactId, visibility) {
@@ -638,6 +669,52 @@ export function trackArtifactStatsOpened({ artifactId, accessMode = null, hasVie
     access_mode: accessMode || null,
     has_views: !!hasViews,
   });
+}
+
+// The sharing events. Callers go through lib/artifactShareAnalytics, which
+// reads the artifact and its audience; these only shape the wire properties.
+function artifactProps({ artifactId, artifactType, entry }) {
+  return {
+    artifact_id: artifactId || '',
+    artifact_type: artifactType || 'unknown',
+    entry: entry || 'other',
+  };
+}
+
+export function trackArtifactShareOpened({ isShared = null, ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_SHARE_OPENED, {
+    ...artifactProps(ref),
+    is_shared: typeof isShared === 'boolean' ? isShared : null,
+  });
+}
+
+export function trackArtifactAccessChanged({ reportId = '', before, after, notified = false, ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_ACCESS_CHANGED, {
+    ...artifactProps(ref),
+    report_id: reportId || '',
+    was_shared: typeof before?.shared === 'boolean' ? before.shared : null,
+    is_shared: typeof after?.shared === 'boolean' ? after.shared : null,
+    was_audience: before?.audience || 'unknown',
+    audience: after?.audience || 'unknown',
+    org_wide: after?.orgWide ?? null,
+    team_count: after?.teamCount ?? null,
+    people_count: after?.peopleCount ?? null,
+    notified: !!notified,
+  });
+}
+
+export function trackArtifactAccessChangeFailed({ reason = 'error', ...ref } = {}) {
+  capture(EVENTS.ARTIFACT_ACCESS_CHANGE_FAILED, { ...artifactProps(ref), reason });
+}
+
+export function trackArtifactLinkCopied(ref = {}) {
+  capture(EVENTS.ARTIFACT_LINK_COPIED, artifactProps(ref));
+}
+
+export function trackArtifactDownloaded({ kind = 'file', format = '', ...ref } = {}) {
+  const props = { ...artifactProps(ref), kind };
+  if (kind === 'export' && format) props.format = format;
+  capture(EVENTS.ARTIFACT_DOWNLOADED, props);
 }
 
 // Where the next task came from, when Home was opened by a console link. Held
