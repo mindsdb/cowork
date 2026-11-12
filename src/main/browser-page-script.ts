@@ -1143,12 +1143,13 @@ function unplacedFrames(childFrameUrls: string[], owners: DomFrame[]): string[] 
     content never leaves main. */
 export function pageAnswer(raw: RawSnapshot, challenges: Challenge[], childFrameUrls: string[]): PageSnapshot {
   const scale = screenshotScale(raw.viewport.width);
-  const inShot = (box: Box): FrameBox => ({
-    x: Math.round(box.x / scale),
-    y: Math.round(box.y / scale),
-    width: Math.round(box.width / scale),
-    height: Math.round(box.height / scale),
-  });
+  /* Outward to whole pixels, as renderScreenshot's masks: a click at any
+     screenshot point that lands in the frame is inside its box. */
+  const inShot = (box: Box): FrameBox => {
+    const x = Math.floor(box.x / scale);
+    const y = Math.floor(box.y / scale);
+    return { x, y, width: Math.ceil((box.x + box.width) / scale) - x, height: Math.ceil((box.y + box.height) / scale) - y };
+  };
   const frames = raw.frames.map((frame): PageFrame => {
     const where = { url: frameAddress(frame.url), box: inShot(frame.box), ...(frame.offscreen ? { offscreen: true as const } : {}) };
     if (!frame.read || challengeKind(frame.url) !== null) return { ...where, read: false };

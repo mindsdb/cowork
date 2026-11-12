@@ -852,10 +852,20 @@ describe('the page answer', () => {
       ],
     }), [], ['https://forms.example.test/newsletter?u=ada', 'data:text/html,hi']);
     expect(answer.frames).toEqual([
-      { url: 'https://forms.example.test/newsletter', read: true, box: { x: 102, y: 192, width: 560, height: 179 }, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
-      { url: 'data:', read: false, box: { x: 0, y: 1024, width: 102, height: 102 }, offscreen: true },
+      { url: 'https://forms.example.test/newsletter', read: true, box: { x: 102, y: 192, width: 561, height: 180 }, elements: [{ role: 'button', name: 'Subscribe' }], text: 'Get the weekly digest.', truncated: false },
+      { url: 'data:', read: false, box: { x: 0, y: 1024, width: 103, height: 103 }, offscreen: true },
     ]);
     expect(problems(pageShape, answer)).toEqual([]);
+  });
+
+  it('rounds a frame box outward to whole screenshot pixels, so every point a click can land on in the frame is inside it', () => {
+    // 1536 CSS pixels in a 1024-pixel screenshot: 1.5 CSS pixels a screenshot pixel.
+    const answer = pageAnswer(raw({
+      viewport: { width: 1536, height: 900 },
+      frames: [{ url: 'https://shop.other.test/buy', read: false, box: { x: 150.6, y: 75.3, width: 300, height: 150 }, offscreen: false }],
+    }), [], []);
+    // CSS x 150.6 to 450.6 is screenshot x 100.4 to 300.4: an integer click at 300 lands at CSS 450, in the frame.
+    expect(answer.frames).toEqual([{ url: 'https://shop.other.test/buy', read: false, box: { x: 100, y: 50, width: 201, height: 101 } }]);
   });
 
   it("lists a frame the page's DOM doesn't place, as one in a closed shadow root, unread and with no box", () => {
