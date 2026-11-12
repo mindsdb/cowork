@@ -59,6 +59,18 @@ function fromViewer(step, port, fields = {}) {
   messageFrom(frameWindow(), { ...step.message, ...fields }, step.carries_port ? [port] : undefined);
 }
 
+// A viewer that took the keyboard and went live, with its port.
+async function liveViewer() {
+  render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
+  await flush();
+  const frame = screen.getByTitle('Shared browser');
+  const port = fakePort();
+  fromViewer(DROP_READY, port);
+  fromViewer(DROP_LIVE, port);
+  expect(document.activeElement).toBe(frame);
+  return { frame, port };
+}
+
 // The pane's stop: an error or the slow-start offer, either one in place of the view.
 function stopShown() {
   return document.querySelector('.browser-panel__empty');
@@ -378,7 +390,7 @@ describe('BrowserPanel', () => {
   });
 
   describe('fresh links', () => {
-    it('never mints on a timer', async () => {
+    it('never mints on a timer for a frame whose page gave no port', async () => {
       render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
       await flush();
       messageFrom(frameWindow(), { type: 'browser-viewer-ready' });
@@ -590,18 +602,6 @@ describe('BrowserPanel', () => {
   });
 
   describe('a dropped connection', () => {
-    // A viewer that took the keyboard and went live, with its port.
-    async function liveViewer() {
-      render(<BrowserPanel sessionId="t-abc" onClose={() => {}} />);
-      await flush();
-      const frame = screen.getByTitle('Shared browser');
-      const port = fakePort();
-      fromViewer(DROP_READY, port);
-      fromViewer(DROP_LIVE, port);
-      expect(document.activeElement).toBe(frame);
-      return { frame, port };
-    }
-
     it("follows the browser service's drop sequence", () => {
       expect(DROP.map((step) => [step.from, step.message.type])).toEqual([
         ['viewer', 'browser-viewer-ready'],
@@ -782,6 +782,96 @@ describe('BrowserPanel', () => {
       const { frame } = await liveViewer();
       await act(async () => { window.dispatchEvent(new Event('online')); });
       expect(embedBrowser).toHaveBeenCalledTimes(1);
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+    });
+  });
+
+  describe('the lease and a hidden tab', () => {
+    // link() leaves 780 s between the ticket's redeem-by time and the lease's end.
+    const RENEW_AFTER_MS = 780_000;
+
+    it('hands the open viewer a fresh ticket one ticket-life before its lease ends, and only while the tab is visible', async () => {
+      const { frame, port } = await liveViewer();
+      embedBrowser.mockResolvedValue(link(2));
+      await act(async () => { vi.advanceTimersByTime(RENEW_AFTER_MS - 1); });
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      fromViewer(DROP_LIVE, port);
+
+      setVisibility('hidden');
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-pause' });
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      await act(async () => { vi.advanceTimersByTime(2 * 60 * 60_000); });
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+
+      embedBrowser.mockResolvedValue(link(3));
+      setVisibility('visible');
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(3);
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok3' });
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(frame).toHaveAttribute('src', `${VIEW}1`);
+      expect(document.activeElement).toBe(frame);
+    });
+
+    it('a connection that drops within 10 s of a renewal relinks and counts nothing', async () => {
+      const { frame, port } = await liveViewer();
+      // Twice: a close rule that timed from the renewal would stop on the second.
+      for (const n of [2, 4]) {
+        embedBrowser.mockResolvedValue(link(n));
+        await act(async () => { vi.advanceTimersByTime(RENEW_AFTER_MS); });
+        expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: `tok${n}` });
+        fromViewer(DROP_LIVE, port);
+
+        act(() => { vi.advanceTimersByTime(5_000); });
+        embedBrowser.mockResolvedValue(link(n + 1));
+        fromViewer(DROP_CLOSED, port);
+        await flush();
+        expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: `tok${n + 1}` });
+        fromViewer(DROP_LIVE_AGAIN, port);
+        expect(stopShown()).toBeNull();
+        expect(screen.getByTitle('Shared browser')).toBe(frame);
+      }
+      expect(embedBrowser).toHaveBeenCalledTimes(5);
+    });
+
+    it('does nothing when a renewal fails, and the lease close then relinks', async () => {
+      const { frame, port } = await liveViewer();
+      embedBrowser.mockRejectedValue(new TypeError('Failed to fetch'));
+      await act(async () => { vi.advanceTimersByTime(RENEW_AFTER_MS); });
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(port.postMessage).toHaveBeenCalledTimes(1);
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+      expect(stopShown()).toBeNull();
+
+      // The live socket runs on to its lease, and the router closes it.
+      await act(async () => { vi.advanceTimersByTime(120_000); });
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      embedBrowser.mockResolvedValue(link(2));
+      fromViewer(DROP_CLOSED, port, { code: 4401 });
+      await flush();
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+    });
+
+    it('leaves a viewer it paused alone while the tab is hidden, even when a close crosses the pause', async () => {
+      const { frame, port } = await liveViewer();
+      act(() => { vi.advanceTimersByTime(QUICK_CLOSE_MS); });
+      setVisibility('hidden');
+      // The viewer posted this before the pause reached it.
+      fromViewer(DROP_CLOSED, port);
+      await act(async () => { vi.advanceTimersByTime(RELINK_WAIT_MS); });
+      expect(embedBrowser).toHaveBeenCalledTimes(1);
+      expect(screen.getByTitle('Shared browser')).toBe(frame);
+
+      embedBrowser.mockResolvedValue(link(2));
+      setVisibility('visible');
+      await flush();
+      expect(embedBrowser).toHaveBeenCalledTimes(2);
+      expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'browser-viewer-ticket', ticket: 'tok2' });
       expect(screen.getByTitle('Shared browser')).toBe(frame);
     });
   });

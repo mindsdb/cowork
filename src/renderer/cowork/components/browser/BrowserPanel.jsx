@@ -7,7 +7,7 @@ import Spinner from '../ui/Spinner';
 import { embedBrowser } from '../../api';
 import {
   RELINK_RETRY_MAX_MS, RELINK_RETRY_MS, RELINK_WAIT_MS,
-  VIEWER_ASK, VIEWER_CLOSED, VIEWER_CONTROL, VIEWER_FOCUS, VIEWER_LIVE, VIEWER_READY, VIEWER_TICKET, VIEWER_URL,
+  VIEWER_ASK, VIEWER_CLOSED, VIEWER_CONTROL, VIEWER_FOCUS, VIEWER_LIVE, VIEWER_PAUSE, VIEWER_READY, VIEWER_TICKET, VIEWER_URL,
   afterViewerClose, browserViewerTheme, viewerLinkFrom,
 } from '../../lib/browserSession';
 import { host } from '../../../platform/host';
@@ -34,11 +34,19 @@ import i18n, { useTranslation } from '../../../lib/i18n';
    back-off, and at once when the network comes back, until RELINK_WAIT_MS
    after the close. The pane reloads the frame with a fresh link only for a
    page that gave no port, for a ticket that never goes live, and when that
-   wait runs out. It also loads a fresh frame when it opens, when the tab
-   becomes visible again and when the person asks, and, for a page with no
-   port, when the network comes back. No timer fetches a link unless a close
-   started a reconnect. While the tab is hidden the pane drops the frame, so a
-   browser nobody is watching can go to sleep.
+   wait runs out. It also loads a fresh frame when it opens and when the
+   person asks, and, for a page with no port, when the tab becomes visible
+   again and when the network comes back.
+
+   renewAfterMs after each fetch, one ticket-life before that link's lease
+   ends, a viewer with a port that is live in a visible tab gets a fresh
+   ticket in place, so its new socket opens before the router closes the old
+   one at the lease. A renewal that fails changes nothing: the live socket
+   runs on to its lease, and that close starts a reconnect. While the tab is
+   hidden, the pane pauses a viewer with a port and keeps its frame, and
+   hands it a fresh ticket, as a reconnect, when the tab shows again; a
+   frame with no port goes. Either way a browser nobody is watching can go
+   to sleep. No other timer fetches a link unless a reconnect is under way.
 
    The browser may still be starting: until the viewer itself says it is
    ready (a VIEWER_READY postMessage), the pane says so. A frame load alone
@@ -166,8 +174,11 @@ function WebBrowserStage({
      dropped. */
   const mintSeq = useRef(0);
   /* When this connection began, for the close rule: the mint for a frame
-     whose page gave no port, the viewer's last live for one that did. */
+     whose page gave no port, the viewer's last live for one that did. A
+     renewal's live carries the connection on, so it keeps this time. */
   const sinceRef = useRef(0);
+  // Whether the ticket last handed over the port is a renewal's.
+  const renewingRef = useRef(false);
   const quickCloses = useRef(0);
   // Whether the current link's viewer said it is ready, for the close handler.
   const readyRef = useRef(false);
@@ -180,6 +191,10 @@ function WebBrowserStage({
   const retries = useRef(0);
   const retryTimer = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   const watchdog = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  /* The renewal the last fetched link asks for, and what it does when due
+     (set below, once relink exists). */
+  const renewTimer = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  const renewRef = useRef(() => {});
   const frameKey = `${viewUrl}:${generation}`;
 
   // The reconnect is over: the viewer is live or ready, or the pane stopped, hid or closed.
@@ -192,9 +207,26 @@ function WebBrowserStage({
     watchdog.current = null;
   }, []);
 
+  const dropRenewal = useCallback(() => {
+    clearTimeout(renewTimer.current);
+    renewTimer.current = null;
+  }, []);
+
+  /* One renewal per fetched link, renewAfterMs after the fetch; a link with
+     no renewAfterMs gets none. */
+  const armRenewal = useCallback((afterMs) => {
+    dropRenewal();
+    if (afterMs === null) return;
+    renewTimer.current = setTimeout(() => {
+      renewTimer.current = null;
+      renewRef.current();
+    }, afterMs);
+  }, [dropRenewal]);
+
   /* POST /browse/embed for this session's viewer. A fetch replaces any
-     retry the back-off holds. Resolves to null when a newer fetch, a stop or
-     the tab hiding overtook it. */
+     retry the back-off holds, and a link it gets replaces the renewal.
+     Resolves to null when a newer fetch, a stop or the tab hiding overtook
+     it. */
   const fetchLink = useCallback(async () => {
     clearTimeout(retryTimer.current);
     retryTimer.current = null;
@@ -208,8 +240,10 @@ function WebBrowserStage({
     } catch (err) {
       got = { link: null, failure: err?.message || i18n.t('browser.couldNotOpen', { ns: 'chat' }), again: true };
     }
-    return seq === mintSeq.current ? got : null;
-  }, [sessionId]);
+    if (seq !== mintSeq.current) return null;
+    if (got.link) armRenewal(got.link.renewAfterMs);
+    return got;
+  }, [sessionId, armRenewal]);
 
   /* A fetch that failed during a reconnect runs again on the back-off, with
      no error and the frame kept, until RELINK_WAIT_MS after the close. Says
@@ -250,9 +284,9 @@ function WebBrowserStage({
   }, [sessionId, fetchLink, retryLater, showFailure]);
 
   /* A fresh ticket for the open viewer, handed over its port: the frame, its
-     picture and the keyboard stay. Past RELINK_WAIT_MS a failed fetch
-     reloads the frame instead; an answer the pane must not use stops it at
-     once. */
+     picture and the keyboard stay. A renewal that fails changes nothing.
+     After a close, past RELINK_WAIT_MS a failed fetch reloads the frame
+     instead; an answer the pane must not use stops it at once. */
   const relink = useCallback(async () => {
     const got = await fetchLink();
     if (!got) return;
@@ -260,10 +294,22 @@ function WebBrowserStage({
       portRef.current?.postMessage({ type: VIEWER_TICKET, ticket: got.link.ticket });
       return;
     }
+    if (renewingRef.current) {
+      renewingRef.current = false;
+      return;
+    }
     if (got.again && retryLater(relink)) return;
     if (got.again) void mint();
     else showFailure(got.failure);
   }, [fetchLink, retryLater, mint, showFailure]);
+
+  /* A renewal comes due: a viewer with a port that is live in a visible tab
+     gets a fresh ticket in place. Any other viewer has nothing to renew. */
+  renewRef.current = () => {
+    if (!portRef.current || !liveRef.current || tabHidden()) return;
+    renewingRef.current = true;
+    void relink();
+  };
 
   /* Reloads the frame when the viewer has a port and no live comes within
      RELINK_WAIT_MS of the latest close, so a frame reloaded after a close
@@ -292,21 +338,41 @@ function WebBrowserStage({
     return () => {
       mintSeq.current += 1;
       endReconnect();
+      dropRenewal();
     };
-  }, [retry, endReconnect]);
+  }, [retry, endReconnect, dropRenewal]);
 
   useEffect(() => {
+    /* A viewer with a port pauses while the tab is hidden and keeps its
+       frame, then gets a fresh ticket in place, with the reconnect's wait,
+       when the tab shows again. A frame with no port goes, and a fresh one
+       comes. */
     const onVisibility = () => {
+      const port = portRef.current;
       if (tabHidden()) {
         mintSeq.current += 1;
         endReconnect();
+        dropRenewal();
         setHidden(true);
+        if (port) {
+          port.postMessage({ type: VIEWER_PAUSE });
+          liveRef.current = false;
+          renewingRef.current = false;
+          return;
+        }
         setViewUrl(null);
         setError(null);
         return;
       }
       setHidden(false);
-      retry();
+      if (!port) {
+        retry();
+        return;
+      }
+      quickCloses.current = 0;
+      downSinceRef.current = Date.now();
+      armWatchdog();
+      void relink();
     };
     /* A viewer with a port gets a fresh ticket at once when it lost its
        connection, and nothing while it is live. A viewer with no port gets a
@@ -325,7 +391,7 @@ function WebBrowserStage({
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', onOnline);
     };
-  }, [retry, relink, endReconnect]);
+  }, [retry, relink, armWatchdog, endReconnect, dropRenewal]);
 
   /* The viewer asks for the theme once loaded, and reports when its
      connection closes. The sandboxed frame's origin is 'null', so the message's
@@ -347,10 +413,12 @@ function WebBrowserStage({
         postTheme(frameRef.current);
         return;
       }
-      // The viewer's current socket got the pod's hello: this connection began now.
+      /* The viewer's current socket got the pod's hello: this connection
+         began now, unless the socket is a renewal's. */
       if (type === VIEWER_LIVE) {
         liveRef.current = true;
-        sinceRef.current = Date.now();
+        if (!renewingRef.current) sinceRef.current = Date.now();
+        renewingRef.current = false;
         endReconnect();
         return;
       }
@@ -375,11 +443,16 @@ function WebBrowserStage({
         return;
       }
       if (type !== VIEWER_CLOSED) return;
+      /* While the tab is hidden the pane paused this viewer, and a close it
+         posted before the pause reached it changes nothing: the viewer gets a
+         fresh ticket when the tab shows again. */
+      if (tabHidden()) return;
       /* A viewer with a port posts closed once no socket is left. It was
          ready when the socket it lost was live; a ticket handed in place
          that never went live is a failed open. */
       const wasLive = liveRef.current;
       liveRef.current = false;
+      renewingRef.current = false;
       const next = afterViewerClose({
         mintedAtMs: sinceRef.current,
         nowMs: Date.now(),
@@ -416,6 +489,7 @@ function WebBrowserStage({
   useEffect(() => {
     readyRef.current = false;
     liveRef.current = false;
+    renewingRef.current = false;
     setViewerReady(false);
     setPageUrl('');
   }, [frameKey]);
