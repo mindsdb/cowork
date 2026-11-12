@@ -12,7 +12,7 @@ import { SHAREPOINT_ENGINE } from './connectorIds';
 
 export const ADDRESS_FIELD = '_api_address';
 
-const ADDRESS_HELP = "The address your provider's documentation gives for its API, such as api.example.com.";
+const ADDRESS_HELP = "Only the host your provider's documentation gives for its API, such as api.example.com, with no path or version.";
 const TEMPLATE_NOTE = 'Anton wrote the field names and help below. Check them against your provider before entering a key.';
 const NO_CHECK_NOTE = 'This connector has no connection check, so it cannot be connected. If the API takes a key, ask Anton to build it again; if it takes none, Anton can use it without a connector.';
 
@@ -117,6 +117,7 @@ const CHECK_FAILURES = {
   check_not_protected: 'The check answered without your key, so it cannot prove the key works. Ask Anton to build the connector again with an endpoint that needs the key.',
   authentication_failed: 'The provider refused these credentials.',
   provider_error: 'The provider answered with an error.',
+  check_path_not_found: "The provider has no such path. The connector's paths may be missing a version such as /v2; ask Anton to build the connector again.",
   host_unresolved: 'That address could not be found.',
   host_not_public: 'That address is not on the public internet.',
   address_refused: 'That address cannot be used.',
